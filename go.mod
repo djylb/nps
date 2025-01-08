@@ -13,7 +13,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/xtaci/kcp-go v5.4.20+incompatible
-	golang.org/x/net v0.30.0
+	golang.org/x/net v0.33.0
 )
 
 require (
