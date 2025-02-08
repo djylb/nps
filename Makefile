@@ -6,10 +6,13 @@ export PATH := ./bin:$(PATH)
 export GO111MODULE := on
 export GOPROXY := https://goproxy.io
 
+GIT_VERSION=$(shell git describe --tags --abbrev=14 --match "v[0-9]*" 2>/dev/null | sed 's/^v//')
+LDFLAGS="-s -w -extldflags -static -extldflags -static -X 'ehang.io/nps/lib/version/version.VERSION=$(GIT_VERSION)'"
+
 # Build a beta version of goreleaser
 build:
-	go build cmd/nps/nps.go
-	go build cmd/npc/npc.go
+	go build -trimpath  -ldflags "$(LDFLAGS)" cmd/nps/nps.go
+	go build -trimpath  -ldflags "$(LDFLAGS)" cmd/npc/npc.go
 .PHONY: build
 
 # Install all the build and lint dependencies
