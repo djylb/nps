@@ -18,6 +18,7 @@ cd /go/src/ehang.io/nps
 rm cmd/npc/sdk.go
 #go get -u ./...
 #go mod tidy
+
 #rm -rf /go/src/golang.org/x/mobile
 echo "tidy success"
 cd /go/src/ehang.io/nps
