@@ -7,12 +7,16 @@ export GO111MODULE := on
 export GOPROXY := https://goproxy.io
 
 GIT_VERSION=$(shell git describe --tags --abbrev=14 --match "v[0-9]*" 2>/dev/null | sed 's/^v//')
-LDFLAGS="-s -w -extldflags -static -extldflags -static -X 'ehang.io/nps/lib/version/version.VERSION=$(GIT_VERSION)'"
+# 检查 GIT_VERSION 是否为空
+ifeq ($(GIT_VERSION),)
+$(error GIT_VERSION is null. Please ensure you have a valid Git version.)
+endif
+LDFLAGS="-s -w -extldflags -static -X 'ehang.io/nps/lib/version.VERSION=$(GIT_VERSION)'"
 
 # Build a beta version of goreleaser
 build:
-	go build -trimpath  -ldflags "$(LDFLAGS)" cmd/nps/nps.go
-	go build -trimpath  -ldflags "$(LDFLAGS)" cmd/npc/npc.go
+	go build -trimpath  -ldflags $(LDFLAGS) cmd/nps/nps.go
+	go build -trimpath  -ldflags $(LDFLAGS) cmd/npc/npc.go
 .PHONY: build
 
 # Install all the build and lint dependencies
@@ -74,5 +78,13 @@ todo:
 clean:
 	rm npc nps
 .PHONY: clean
+
+.PHONY: docker-nps
+docker-nps:
+	docker build --build-arg LDFLAGS=$(LDFLAGS) -f  Dockerfile.nps -t nps:$(GIT_VERSION) .
+
+.PHONY: docker-npc
+docker-npc:
+	docker build --build-arg LDFLAGS=$(LDFLAGS) -f  Dockerfile.npc -t npc:$(GIT_VERSION) .
 
 .DEFAULT_GOAL := build
