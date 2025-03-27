@@ -165,8 +165,8 @@
 		<en-US>Client ID</en-US>
 	</lang>
 	<lang id="word-belongclient">
-		<zh-CN>所属客户端</zh-CN>
-		<en-US>Belonging Client</en-US>
+		<zh-CN>选择一个客户端</zh-CN>
+		<en-US>Select a client</en-US>
 	</lang>
 	<lang id="word-clientstatus">
 		<zh-CN>客户端状态</zh-CN>
