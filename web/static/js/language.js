@@ -171,14 +171,17 @@ function submitform(action, url, postdata) {
                 url: url,
                 data: postdata,
                 success: function (res) {
-                    alert(langreply(res.msg));
-                    if (res.status) {
-                        if (postsubmit) {
-                            document.location.reload();
-                        } else {
-                            window.location.href = document.referrer
+                    $('#alertModal').off('hidden.bs.modal').on('hidden.bs.modal', function (e) {
+                        if (res.status) {
+                            if (postsubmit) {
+                                document.location.reload();
+                            } else {
+                                window.location.href = document.referrer
+                            }
                         }
-                    }
+                    });
+                    $('#alertModalContent').text(langreply(res.msg));
+                    $('#alertModal').modal();
                 }
             });
             return;
@@ -188,10 +191,13 @@ function submitform(action, url, postdata) {
                 url: url,
                 data: postdata,
                 success: function (res) {
-                    alert(langreply(res.msg));
-                    if (res.status) {
-                        document.location.reload();
-                    }
+                    $('#alertModal').off('hidden.bs.modal').on('hidden.bs.modal', function (e) {
+                        if (res.status) {
+                            document.location.reload();
+                        }
+                    });
+                    $('#alertModalContent').text(langreply(res.msg));
+                    $('#alertModal').modal();
                 }
             });
     }

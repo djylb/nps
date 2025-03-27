@@ -805,6 +805,14 @@
 		<zh-CN>上次在线时间</zh-CN>
 		<en-US>Last Online Time</en-US>
 	</lang>
+	<lang id="word-alert-title">
+		<zh-CN>提示信息</zh-CN>
+		<en-US>Alert Message</en-US>
+	</lang>
+	<lang id="word-alert-confirm">
+		<zh-CN>确定</zh-CN>
+		<en-US>Confirm</en-US>
+	</lang>
 
 	<confirm>
 		<lang id="delete">
