@@ -7,7 +7,7 @@
                     <input name="id" type="hidden" value="{{.t.Id}}">
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-scheme"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <span class="help-block m-b-none font-bold" langtag="word-usecase"></span>:
                             <span id="usecase">
                                 <span id="casetcp" langtag="info-casetcp"></span>
@@ -18,7 +18,7 @@
                                 <span id="casep2p" langtag="info-casep2p"></span>
                                 <span id="casefile" langtag="info-casefile"></span>
                             </span>
-                            <select class="form-control" id="type" name="type">
+                            <select class="form-control selectpicker" id="type" name="type">
                                 <option value="tcp" langtag="scheme-tcp"></option>
                                 <option value="udp" langtag="scheme-udp"></option>
                                 <option value="httpProxy" langtag="scheme-httpProxy"></option>
@@ -32,35 +32,36 @@
 
                     <div class="form-group" id="client_id">
                         <label class="control-label font-bold" langtag="word-clientid"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" id="client_id_select" langtag="word-clientid" name="client_id" placeholder=""></select>
-                            <!-- <input class="form-control" langtag="word-clientid" name="client_id" placeholder="" type="text" value="{{.t.Client.Id}}"> -->
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="client_id" data-live-search="true">
+                                <option value="" langtag="word-belongclient"></option>
+                            </select>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-unrestricted" name="remark" placeholder="" type="text" value="{{.t.Remark}}">
                         </div>
                     </div>
                     {{if eq true .allow_multi_ip}}
                     <div class="form-group" id="server_ip">
                         <label class="control-label font-bold" langtag="word-serverip"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-suchasip" name="server_ip" placeholder="" type="text" value="{{.t.ServerIp}}">
                         </div>
                     </div>
                     {{end}}
                     <div class="form-group" id="port">
                         <label class="control-label font-bold" langtag="word-serverport"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text" value="{{.t.Port}}">
                         </div>
                     </div>
                     <div class="form-group" id="flow_reset">
                         <label class="control-label font-bold" langtag="word-flowreset"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input name="flow_reset" type="checkbox" value="1">
                             <span class="help-block m-b-none" langtag="info-flowreset"></span>
                         </div>
@@ -68,7 +69,7 @@
                     {{if eq true .allow_flow_limit}}
                     <div class="form-group" id="flow_limit">
                         <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.t.Flow.FlowLimit}}">
                             <span class="help-block m-b-none" langtag="word-unit"></span>: M
                         </div>
@@ -77,7 +78,7 @@
                     {{if eq true .allow_time_limit}}
                     <div class="form-group" id="time_limit">
                         <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.t.Flow.TimeLimit}}">
                             <span class="help-block m-b-none" langtag="info-timelimit"></span>
                         </div>
@@ -85,8 +86,8 @@
                     {{end}}
                     <div class="form-group" id="proxy_protocol">
                         <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="proxy_protocol">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="proxy_protocol">
                                 <option value="0" {{if eq .t.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
                                 <option value="1" {{if eq .t.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
                                 <option value="2" {{if eq .t.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
@@ -96,8 +97,8 @@
                     {{if eq true .allow_local_proxy}}
                     <div class="form-group" id="local_proxy">
                         <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="local_proxy">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="local_proxy">
                                 <option  {{if eq false .t.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option  {{if eq true .t.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
                             </select>
@@ -106,7 +107,7 @@
                     {{end}}
                     <div class="form-group" id="target">
                         <label class="control-label font-bold" langtag="word-target"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4">{{.t.Target.TargetStr}}</textarea>
                             <span class="help-block m-b-none" langtag="info-targettunnel"></span>
                         </div>
@@ -114,21 +115,21 @@
 
                     <div class="form-group" id="local_path">
                         <label class="control-label font-bold" langtag="word-localpath"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text" value="{{.t.LocalPath}}">
                         </div>
                     </div>
 
                     <div class="form-group" id="strip_pre">
                         <label class="control-label font-bold" langtag="word-stripprefix"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text" value="{{.t.StripPre}}">
                         </div>
                     </div>
 
                     <div class="form-group" id="password">
                         <label class="control-label font-bold" langtag="word-identificationkey"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="word-identificationkey" name="password" placeholder="" type="text" value="{{.t.Password}}">
                             <span class="help-block m-b-none" langtag="info-identificationkey"></span>
                         </div>
@@ -181,50 +182,35 @@
         $("#use_client").on("change", function () {
             resetForm()
         })
-        
-        var clientId = "{{if .t.Client.Id}}{{.t.Client.Id}}{{else}}{{.client_id}}{{end}}";
-        $("#client_id_select").select2({
-            minimumInputLength: 0,
-            ajax: {
-                type: 'POST',
-                url: '{{.web_base_url}}/client/list',
-                dataType: 'json',
-                delay: 300,
-                data: function (params) {
-                    return {
-                        search: params.term || '',
-                        order: 'asc',
-                        offset: 0,
-                        limit: 0
-                    };
-                },
-                processResults: function (data) {
-                    return {
-                        results: data.rows.map(function (client) {
-                            return {
-                                id: client.Id,
-                                text: client.Id + ' - ' + client.Remark
-                            };
-                        })
-                    };
+    });
+
+    function getClientList() {
+        const clientId = "{{if .t.Client.Id}}{{.t.Client.Id}}{{else}}{{.client_id}}{{end}}"; // 根据优先级选择
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
+            data: {order: "asc", offset: 0, limit: 999},
+            dataType: "json",
+            success: function (data) {
+                if (data && data.rows.length > 0) {
+                    for (var i = 0; i < data.rows.length; i++) {
+                        var option = "<option value=\"" + data.rows[i].Id + "\"";
+                        option += ">" + data.rows[i].Id + '-' + data.rows[i].Remark + "</option>"; // 动态添加数据
+                        $("select[name='client_id']").append(option);
+                    }
+
+                    $("select[name='client_id']").selectpicker('refresh');
+
+                    // 设置选中项
+                    if (clientId) {
+                        $("select[name='client_id']").selectpicker('val', clientId);
+                    }
                 }
             }
         });
+    }
 
-        if (clientId) {
-            $.ajax({
-                type: 'POST',
-                url: '{{.web_base_url}}/client/list',
-                data: { clientId: clientId, offset: 0, limit: 0 },
-                dataType: 'json',
-                success: function (data) {
-                    if (data.rows && data.rows.length > 0) {
-                        var client = data.rows[0];
-                        var option = new Option(client.Id + ' - ' + client.Remark, client.Id, true, true);
-                        $("#client_id_select").append(option).trigger('change');
-                    }
-                }
-            });
-        }
-    });
+    function internationalized() {
+        getClientList();
+    }
 </script>

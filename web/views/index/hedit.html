@@ -7,27 +7,28 @@
                     <input name="id" type="hidden" value="{{.h.Id}}">
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-clientid"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" id="client_id_select" langtag="word-clientid" name="client_id" placeholder=""></select>
-                            <!-- <input class="form-control" langtag="word-clientid" name="client_id" placeholder="" type="text" value="{{.h.Client.Id}}"> -->
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" id="client_id_select" name="client_id">
+                                <option langtag="word-clientid"></option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" name="remark" placeholder="remark" type="text" value="{{.h.Remark}}">
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-host"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-suchashost" name="host" placeholder="" type="text" value="{{.h.Host}}">
                         </div>
                     </div>
                     <div class="form-group" id="scheme">
                         <label class="control-label font-bold" langtag="word-scheme"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" id="scheme_select" name="scheme">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" id="scheme_select" name="scheme">
                                 <option {{if eq "all" .h.Scheme}}selected{{end}} value="all" langtag="word-all"></option>
                                 <option {{if eq "http" .h.Scheme}}selected{{end}} value="http" langtag="word-http"></option>
                                 <option {{if eq "https" .h.Scheme}}selected{{end}} value="https" langtag="word-https"></option>
@@ -36,7 +37,7 @@
                     </div>
                     <div class="form-group" id="flow_reset">
                         <label class="control-label font-bold" langtag="word-flowreset"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input name="flow_reset" type="checkbox" value="1">
                             <span class="help-block m-b-none" langtag="info-flowreset"></span>
                         </div>
@@ -44,7 +45,7 @@
                     {{if eq true .allow_flow_limit}}
                     <div class="form-group" id="flow_limit">
                         <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.h.Flow.FlowLimit}}">
                             <span class="help-block m-b-none" langtag="word-unit"></span>: M
                         </div>
@@ -53,7 +54,7 @@
                     {{if eq true .allow_time_limit}}
                     <div class="form-group" id="time_limit">
                         <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.h.Flow.TimeLimit}}">
                             <span class="help-block m-b-none" langtag="info-timelimit"></span>
                         </div>
@@ -61,8 +62,8 @@
                     {{end}}
                     <div class="form-group" id="auto_https">
                         <label class="control-label font-bold" langtag="word-autohttps"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="auto_https">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="auto_https">
                                 <option {{if eq false .h.AutoHttps}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option {{if eq true .h.AutoHttps}}selected{{end}}  value="1" langtag="word-yes"></option>
                             </select>
@@ -70,8 +71,8 @@
                     </div>
                     <div class="form-group" id="auto_cors">
                         <label class="control-label font-bold" langtag="word-autocors"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="auto_cors">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="auto_cors">
                                 <option {{if eq false .h.AutoCORS}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option {{if eq true .h.AutoCORS}}selected{{end}}  value="1" langtag="word-yes"></option>
                             </select>
@@ -79,8 +80,8 @@
                     </div>
                     <div class="form-group" id="https_just_proxy">
                         <label class="control-label font-bold" langtag="word-httpsjustproxy"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" id="https_just_proxy_select" name="https_just_proxy">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" id="https_just_proxy_select" name="https_just_proxy">
                                 <option {{if eq false .h.HttpsJustProxy}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option {{if eq true .h.HttpsJustProxy}}selected{{end}}  value="1" langtag="word-yes"></option>
                             </select>
@@ -88,8 +89,8 @@
                     </div>
                     <div class="form-group" id="proxy_protocol">
                         <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="proxy_protocol">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="proxy_protocol">
                                 <option value="0" {{if eq .h.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
                                 <option value="1" {{if eq .h.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
                                 <option value="2" {{if eq .h.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
@@ -98,27 +99,27 @@
                     </div>
                     <div class="form-group" id="cert_file">
                         <label class="control-label font-bold" langtag="word-httpscert"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <textarea class="form-control" id="pemText" langtag="info-pemtext" name="cert_file_path" placeholder="" rows="6" type="text">{{.h.CertFilePath}}</textarea>
                         </div>
                     </div>
                     <div class="form-group" id="key_file">
                         <label class="control-label font-bold" langtag="word-httpskey"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <textarea class="form-control" id="pemKey" langtag="info-pemkey" name="key_file_path" placeholder="" rows="6" type="text">{{.h.KeyFilePath}}</textarea>
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-urlroute"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="info-unrestricted" name="location" placeholder="" type="text" value="{{.h.Location}}">
                         </div>
                     </div>
                     {{if eq true .allow_local_proxy}}
                     <div class="form-group" id="local_proxy">
                         <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="local_proxy">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="local_proxy">
                                 <option {{if eq false .h.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option {{if eq true .h.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
                             </select>
@@ -127,8 +128,8 @@
                     {{end}}
                     <div class="form-group" id="target_is_https">
                         <label class="control-label font-bold" langtag="word-targetishttps"></label>
-                        <div class="col-sm-10">
-                            <select class="form-control" name="target_is_https">
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="target_is_https">
                                 <option {{if eq false .h.TargetIsHttps}}selected{{end}} value="0">HTTP</option>
                                 <option {{if eq true .h.TargetIsHttps}}selected{{end}}  value="1">HTTPS</option>
                             </select>
@@ -136,21 +137,21 @@
                     </div>
                     <div class="form-group">
                         <label class="control-label font-bold" langtag="word-target"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4" type="text">{{.h.Target.TargetStr}}</textarea>
                             <span class="help-block m-b-none" langtag="info-targethost"></span>
                         </div>
                     </div>
                     <div class="form-group" id="header">
                         <label class="control-label font-bold" langtag="word-requestheader"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <textarea class="form-control" name="header" placeholder="Cache-Control: no-cache" rows="4" type="text">{{.h.HeaderChange}}</textarea>
                             <span class="help-block m-b-none" langtag="info-header"></span>
                         </div>
                     </div>
                     <div class="form-group" id="hostchange">
                         <label class="control-label font-bold" langtag="word-requesthost"></label>
-                        <div class="col-sm-10">
+                        <div class="col-sm-12">
                             <input class="form-control" langtag="word-requesthost" name="hostchange" placeholder="" type="text" value="{{.h.HostChange}}" value="">
                         </div>
                     </div>
@@ -263,50 +264,35 @@
                 $("#key_file").css("display", "block")
             }
         })
+    });
 
-        var clientId = "{{if .h.Client.Id}}{{.h.Client.Id}}{{else}}{{.client_id}}{{end}}";
-        $("#client_id_select").select2({
-            minimumInputLength: 0,
-            ajax: {
-                type: 'POST',
-                url: '{{.web_base_url}}/client/list',
-                dataType: 'json',
-                delay: 300,
-                data: function (params) {
-                    return {
-                        search: params.term || '',
-                        order: 'asc',
-                        offset: 0,
-                        limit: 0
-                    };
-                },
-                processResults: function (data) {
-                    return {
-                        results: data.rows.map(function (client) {
-                            return {
-                                id: client.Id,
-                                text: client.Id + ' - ' + client.Remark
-                            };
-                        })
-                    };
+    function getClientList() {
+        const clientId = "{{if .h.Client.Id}}{{.h.Client.Id}}{{else}}{{.client_id}}{{end}}"; // 根据优先级选择
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
+            data: {order: "asc", offset: 0, limit: 999},
+            dataType: "json",
+            success: function (data) {
+                if (data && data.rows.length > 0) {
+                    for (var i = 0; i < data.rows.length; i++) {
+                        var option = "<option value=\"" + data.rows[i].Id + "\"";
+                        option += ">" + data.rows[i].Id + '-' + data.rows[i].Remark + "</option>"; // 动态添加数据
+                        $("select[name='client_id']").append(option);
+                    }
+
+                    $("select[name='client_id']").selectpicker('refresh');
+                    
+                    // 设置选中项
+                    if (clientId) {
+                        $("select[name='client_id']").selectpicker('val', clientId);
+                    }
                 }
             }
         });
+    }
 
-        if (clientId) {
-            $.ajax({
-                type: 'POST',
-                url: '{{.web_base_url}}/client/list',
-                data: { clientId: clientId, offset: 0, limit: 0 },
-                dataType: 'json',
-                success: function (data) {
-                    if (data.rows && data.rows.length > 0) {
-                        var client = data.rows[0];
-                        var option = new Option(client.Id + ' - ' + client.Remark, client.Id, true, true);
-                        $("#client_id_select").append(option).trigger('change');
-                    }
-                }
-            });
-        }
-    });
+    function internationalized() {
+        getClientList();
+    }
 </script>

@@ -74,6 +74,7 @@
                 }
                 $('#languagemenu').attr('lang', (languages['current'] || languages['default']));
                 $('body').setLang('');
+                $('.selectpicker').selectpicker('refresh');
             }
         });
     };
@@ -115,6 +116,10 @@
                     charts[key] = echarts.init(document.getElementById(key));
                 charts[key].setOption(chartdatas[key], true);
             }
+        }
+        
+        if(window.hasOwnProperty('internationalized')){
+            internationalized();
         }
     }
 

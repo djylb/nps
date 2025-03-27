@@ -12043,3 +12043,39 @@ body.md-skin {
 .body-small .sidebar-collapse {
     bottom: 40px;
 }
+
+.bootstrap-select .dropdown-item {
+    font-size: 0.9rem;
+}
+
+.bootstrap-select .dropdown-toggle {
+    border: 1px solid #e5e6e7;
+    border-radius: 0;
+    background-color: transparent !important;
+}
+
+.bootstrap-select .show > .btn-light.dropdown-toggle {
+    background-color: transparent !important;
+}
+
+.bootstrap-select .dropdown-menu {
+    border-radius: 0;
+}
+
+.bootstrap-select .dropdown-menu > li > a {
+    border-radius: 0;
+}
+
+.bootstrap-select .dropdown-toggle:focus,
+.bootstrap-select > select.mobile-device:focus + .dropdown-toggle {
+    outline: none !important;
+}
+
+.bootstrap-select .dropdown-toggle.btn-light,
+.bootstrap-select .dropdown-toggle.btn-light:hover {
+    color: #212529;
+}
+
+.bs-actionsbox, .bs-donebutton, .bs-searchbox {
+    padding: 4px !important;
+}
