@@ -9,15 +9,15 @@
     <!-- Latest compiled and minified CSS -->
     <link href="{{.web_base_url}}/static/css/fontawesome.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/solid.min.css" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/select2.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{.web_base_url}}/static/css/bootstrap-select.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/bootstrap-table.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/style.css?v={{.version}}" rel="stylesheet">
     <!-- Latest compiled and minified JavaScript -->
     <script src="{{.web_base_url}}/static/js/jquery-3.7.1.min.js"></script>
     <script src="{{.web_base_url}}/static/js/popper.min.js"></script>
-    <script src="{{.web_base_url}}/static/js/select2.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap.min.js"></script>
+    <script src="{{.web_base_url}}/static/js/bootstrap-select.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap-table.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap-table-cookie.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap-table-locale-all.min.js"></script>
@@ -139,6 +139,25 @@
                 <span langtag="word-readmore"></span> <strong><a href="https://github.com/djylb/nps" langtag="word-go"></a></strong>
             </div>
             <div><strong langtag="word-copyright"></strong> <span langtag="application"></span> &copy; 2018-{{.year}}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="alertModal" tabindex="-1" role="dialog" aria-labelledby="alertModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="alertModalLabel" langtag="word-alert-title"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="alertModalContent">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal" langtag="word-alert-confirm"></button>
+            </div>
         </div>
     </div>
 </div>
