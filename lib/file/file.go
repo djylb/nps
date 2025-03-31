@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -182,8 +183,67 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 		panic(err)
 	}
 
+	if strings.Contains(string(b), "\n"+common.CONN_DATA_SEQ) {
+		// json文件里面，存在 "\n"+common.CONN_DATA_SEQ ，说明是旧的json
+		loadObsoleteJsonFile(b, t, f)
+		return
+	}
+
+	// 加载新的json文件，是一个正常的json数组文件
+	loadJsonFile(b, t, f)
+}
+
+func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
+	// 加载旧版的json文件，以"\n"+common.CONN_DATA_SEQ分隔
+	var err error
+	// 根据分隔符处理内容
+	for _, v := range strings.Split(string(b), "\n"+common.CONN_DATA_SEQ) {
+		switch t.(type) {
+		case Client:
+			var client Client
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &client)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&client)
+			break
+		case Host:
+			var host Host
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &host)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&host)
+			break
+		case Tunnel:
+			var tunnel Tunnel
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &tunnel)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&tunnel)
+			break
+		}
+	}
+}
+
+func loadJsonFile(b []byte, t interface{}, f func(value interface{})) {
+	// 加载新的json文件，是一个正常的json数组文件
+	var err error
 	switch t.(type) {
-	case *Client:
+	case Client:
 		var clients []Client
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &clients)
@@ -197,7 +257,7 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 			f(&clients[i])
 		}
 		break
-	case *Host:
+	case Host:
 		var hosts []Host
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &hosts)
@@ -211,7 +271,7 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 			f(&hosts[i])
 		}
 		break
-	case *Tunnel:
+	case Tunnel:
 		var tunnels []Tunnel
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &tunnels)
