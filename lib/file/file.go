@@ -347,8 +347,6 @@ func storeSyncMapToFile(m sync.Map, filePath string) {
 	_, _ = file.WriteString("[\n")
 	m.Range(func(key, value interface{}) bool {
 		index++
-		// 每一条json数据前加空格
-		_, _ = file.WriteString("  ")
 		var b []byte
 		var err error
 		switch value.(type) {
@@ -380,6 +378,9 @@ func storeSyncMapToFile(m sync.Map, filePath string) {
 		if err != nil {
 			return true
 		}
+
+		// 每一条json数据前加空格
+		_, _ = file.WriteString("  ")
 
 		// 写入一条json数据
 		_, err = file.Write(b)
