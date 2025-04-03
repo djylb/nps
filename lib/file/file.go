@@ -3,6 +3,7 @@ package file
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,12 +44,9 @@ type JsonDb struct {
 }
 
 func (s *JsonDb) LoadTaskFromJsonFile() {
-	loadSyncMapFromFile(s.TaskFilePath, func(v string) {
+	loadSyncMapFromFile(s.TaskFilePath, Tunnel{}, func(v interface{}) {
 		var err error
-		post := new(Tunnel)
-		if json.Unmarshal([]byte(v), &post) != nil {
-			return
-		}
+		post := v.(*Tunnel)
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
 			return
 		}
@@ -78,11 +76,8 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 			logs.Notice("Auto create local proxy client.")
 		}
 	}
-	loadSyncMapFromFile(s.ClientFilePath, func(v string) {
-		post := new(Client)
-		if json.Unmarshal([]byte(v), &post) != nil {
-			return
-		}
+	loadSyncMapFromFile(s.ClientFilePath, Client{}, func(v interface{}) {
+		post := v.(*Client)
 		if post.RateLimit > 0 {
 			post.Rate = rate.NewRate(int64(post.RateLimit * 1024))
 		} else {
@@ -98,12 +93,9 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 }
 
 func (s *JsonDb) LoadHostFromJsonFile() {
-	loadSyncMapFromFile(s.HostFilePath, func(v string) {
+	loadSyncMapFromFile(s.HostFilePath, Host{}, func(v interface{}) {
 		var err error
-		post := new(Host)
-		if json.Unmarshal([]byte(v), &post) != nil {
-			return
-		}
+		post := v.(*Host)
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
 			return
 		}
@@ -177,7 +169,7 @@ func (s *JsonDb) GetHostId() int32 {
 	return atomic.AddInt32(&s.HostIncreaseId, 1)
 }
 
-func loadSyncMapFromFile(filePath string, f func(value string)) {
+func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{})) {
 	// 如果文件不存在，则创建空文件
 	if !common.FileExists(filePath) {
 		if err := createEmptyFile(filePath); err != nil {
@@ -191,9 +183,108 @@ func loadSyncMapFromFile(filePath string, f func(value string)) {
 		panic(err)
 	}
 
+	if strings.Contains(string(b), "\n"+common.CONN_DATA_SEQ) {
+		// json文件里面，存在 "\n"+common.CONN_DATA_SEQ ，说明是旧的json
+		loadObsoleteJsonFile(b, t, f)
+		return
+	}
+
+	// 加载新的json文件，是一个正常的json数组文件
+	loadJsonFile(b, t, f)
+}
+
+func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
+	// 加载旧版的json文件，以"\n"+common.CONN_DATA_SEQ分隔
+	var err error
 	// 根据分隔符处理内容
 	for _, v := range strings.Split(string(b), "\n"+common.CONN_DATA_SEQ) {
-		f(v)
+		switch t.(type) {
+		case Client:
+			var client Client
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &client)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&client)
+			break
+		case Host:
+			var host Host
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &host)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&host)
+			break
+		case Tunnel:
+			var tunnel Tunnel
+			if len(b) != 0 {
+				err = json.Unmarshal([]byte(v), &tunnel)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+			}
+
+			f(&tunnel)
+			break
+		}
+	}
+}
+
+func loadJsonFile(b []byte, t interface{}, f func(value interface{})) {
+	// 加载新的json文件，是一个正常的json数组文件
+	var err error
+	switch t.(type) {
+	case Client:
+		var clients []Client
+		if len(b) != 0 {
+			err = json.Unmarshal(b, &clients)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+		}
+
+		for i := range clients {
+			f(&clients[i])
+		}
+		break
+	case Host:
+		var hosts []Host
+		if len(b) != 0 {
+			err = json.Unmarshal(b, &hosts)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+		}
+
+		for i := range hosts {
+			f(&hosts[i])
+		}
+		break
+	case Tunnel:
+		var tunnels []Tunnel
+		if len(b) != 0 {
+			err = json.Unmarshal(b, &tunnels)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+		}
+
+		for i := range tunnels {
+			f(&tunnels[i])
+		}
+		break
 	}
 }
 
@@ -243,7 +334,19 @@ func storeSyncMapToFile(m sync.Map, filePath string) {
 	if err != nil {
 		panic(err)
 	}
+
+	var index = 0
+	var total = 0
+
 	m.Range(func(key, value interface{}) bool {
+		total++
+		return true
+	})
+
+	// json数组，以“[”开头，然后换行，一行一条json数据
+	_, _ = file.WriteString("[\n")
+	m.Range(func(key, value interface{}) bool {
+		index++
 		var b []byte
 		var err error
 		switch value.(type) {
@@ -271,21 +374,32 @@ func storeSyncMapToFile(m sync.Map, filePath string) {
 		default:
 			return true
 		}
+
 		if err != nil {
 			return true
 		}
+
+		// 每一条json数据前加空格
+		_, _ = file.WriteString("  ")
+
+		// 写入一条json数据
 		_, err = file.Write(b)
 		if err != nil {
 			panic(err)
 		}
-		_, err = file.Write([]byte("\n" + common.CONN_DATA_SEQ))
-		if err != nil {
-			panic(err)
+
+		if index >= 1 && index <= total-1 {
+			// 不是第一条和最后一条时，每一条json数据后加逗号，同时换行
+			_, _ = file.Write([]byte(",\n"))
 		}
 		return true
 	})
+	// json数组，“]”结束，结束前需要换行
+	_, _ = file.WriteString("\n]")
+
 	_ = file.Sync()
 	_ = file.Close()
+
 	// must close file first, then rename it
 	err = os.Rename(filePath+".tmp", filePath)
 	if err != nil {

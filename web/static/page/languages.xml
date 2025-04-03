@@ -165,8 +165,8 @@
 		<en-US>Client ID</en-US>
 	</lang>
 	<lang id="word-belongclient">
-		<zh-CN>所属客户端</zh-CN>
-		<en-US>Belonging Client</en-US>
+		<zh-CN>选择一个客户端</zh-CN>
+		<en-US>Select a client</en-US>
 	</lang>
 	<lang id="word-clientstatus">
 		<zh-CN>客户端状态</zh-CN>
@@ -804,6 +804,14 @@
 	<lang id="word-lastonlinetime">
 		<zh-CN>上次在线时间</zh-CN>
 		<en-US>Last Online Time</en-US>
+	</lang>
+	<lang id="word-alert-title">
+		<zh-CN>提示信息</zh-CN>
+		<en-US>Alert Message</en-US>
+	</lang>
+	<lang id="word-alert-confirm">
+		<zh-CN>确定</zh-CN>
+		<en-US>Confirm</en-US>
 	</lang>
 
 	<confirm>
