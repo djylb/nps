@@ -206,14 +206,12 @@
             event.preventDefault();
             const file = event.dataTransfer.files[0];
             const reader = new FileReader();
-
             reader.onload = function (e) {
                 pemText.value = e.target.result;
-                console.log("上传pem")
+                console.log("Upload pem")
                 $('#edit_form').data('bootstrapValidator').updateStatus('pemText', 'NOT_VALIDATED');
                 $('#edit_form').data('bootstrapValidator').validateField('pemText');
             }
-
             reader.readAsText(file);
         });
 
@@ -221,13 +219,11 @@
             event.preventDefault();
             const file = event.dataTransfer.files[0];
             const reader = new FileReader();
-
             reader.onload = function (e) {
                 pemKey.value = e.target.result;
                 $('#edit_form').data('bootstrapValidator').updateStatus('pemKey', 'NOT_VALIDATED');
                 $('#edit_form').data('bootstrapValidator').validateField('pemKey');
             }
-
             reader.readAsText(file);
         });
 
@@ -253,7 +249,7 @@
             }
         })
 
-        $("#https_just_proxy").on("change", function () {
+        $("#https_just_proxy_select").on("change", function () {
             if ($("#https_just_proxy_select").val() == "1") {
                 $("#proxy_protocol").css("display", "block")
                 $("#cert_file").css("display", "none")
@@ -268,6 +264,7 @@
 
     function getClientList() {
         const clientId = "{{if .h.Client.Id}}{{.h.Client.Id}}{{else}}{{.client_id}}{{end}}"; // 根据优先级选择
+        $("select[name='client_id']").empty();
         $.ajax({
             type: "POST",
             url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
