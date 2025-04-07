@@ -7,87 +7,55 @@ on:
     branches: [ master ]
 
 jobs:
-
   build_assets:
-
     runs-on: ubuntu-latest
-    steps:
 
+    steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           check-latest: true
         id: go
+
       - name: Get dependencies
         run: |
           go get -v -t -d ./...
           if [ -f Gopkg.toml ]; then
-              curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-              dep ensure
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
           fi
+
       - name: Build
         run: |
           chmod +x build.assets.sh
           ./build.assets.sh
+
       - name: Upload
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            freebsd_386_client.tar.gz
-            freebsd_386_server.tar.gz
-            freebsd_amd64_client.tar.gz
-            freebsd_amd64_server.tar.gz
-            freebsd_arm_client.tar.gz
-            freebsd_arm_server.tar.gz
-            linux_386_client.tar.gz
-            linux_386_server.tar.gz
-            linux_amd64_client.tar.gz
-            linux_amd64_server.tar.gz
-            linux_arm64_client.tar.gz
-            linux_arm64_server.tar.gz
-            linux_arm_v5_client.tar.gz
-            linux_arm_v6_client.tar.gz
-            linux_arm_v7_client.tar.gz
-            linux_arm_v5_server.tar.gz
-            linux_arm_v6_server.tar.gz
-            linux_arm_v7_server.tar.gz
-            linux_mips64le_client.tar.gz
-            linux_mips64le_server.tar.gz
-            linux_mips64_client.tar.gz
-            linux_mips64_server.tar.gz
-            linux_mipsle_client.tar.gz
-            linux_mipsle_server.tar.gz
-            linux_mips_client.tar.gz
-            linux_mips_server.tar.gz
-            darwin_amd64_client.tar.gz
-            darwin_amd64_server.tar.gz
-            darwin_arm64_client.tar.gz
-            darwin_arm64_server.tar.gz
-            windows_386_client.tar.gz
-            windows_386_server.tar.gz
-            windows_amd64_client.tar.gz
-            windows_amd64_server.tar.gz
-            npc_sdk.tar.gz
+          files: "*.tar.gz"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_assets_old:
-
     runs-on: ubuntu-latest
-    steps:
 
+    steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           check-latest: true
         id: go
+
       - name: Setup the patched Go version for Windows 7
         run: |
           GOSDK=$(go env GOROOT)
@@ -96,26 +64,24 @@ jobs:
           curl -O -L https://github.com/XTLS/go-win7/releases/latest/download/go-for-win7-linux-amd64.zip
           unzip ./go-for-win7-linux-amd64.zip -d $GOSDK
           rm ./go-for-win7-linux-amd64.zip
+
       - name: Get dependencies
         run: |
           go get -v -t -d ./...
           if [ -f Gopkg.toml ]; then
-              curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-              dep ensure
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
           fi
+
       - name: Build
         run: |
           chmod +x build.assets.old.sh
           ./build.assets.old.sh
+
       - name: Upload
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            windows_386_client_old.tar.gz
-            windows_386_server_old.tar.gz
-            windows_amd64_client_old.tar.gz
-            windows_amd64_server_old.tar.gz
-            npc_sdk_old.tar.gz
+          files: "*.tar.gz"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
