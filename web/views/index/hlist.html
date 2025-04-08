@@ -78,68 +78,70 @@
                 + '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
                 + '<b langtag="word-requesthost"></b>: ' + row.HostChange + '&emsp;'
         },
-        //表格的列
+        // 表格的列
         columns: [
             {
-                field: 'Id',//域值
-                title: '<span langtag="word-id"></span>',//标题
+                field: 'Id', //域值
+                title: '<span langtag="word-id"></span>', //标题
                 halign: 'center',
-                visible: true//false表示不显示
+                visible: true //false表示不显示
             },
             {
-                field: 'ClientId',//域值
-                title: '<span langtag="word-clientid"></span>',//标题
+                field: 'ClientId', //域值
+                title: '<span langtag="word-clientid"></span>', //标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
-                    return row.Client.Id + '-' + row.Client.Remark
+                    return row.Client.Remark 
+                        ? row.Client.Id + ' · ' + row.Client.Remark 
+                        : row.Client.Id;
                 }
             },
             {
-                field: 'Remark',//域值
-                title: '<span langtag="word-remark"></span>',//标题
+                field: 'Remark', //域值
+                title: '<span langtag="word-remark"></span>', //标题
                 halign: 'center',
-                visible: true//false表示不显示
+                visible: true //false表示不显示
             },
             {
-                field: 'Client.VerifyKey',//域值
-                title: '<span langtag="word-verifykey"></span>',//标题
+                field: 'Client.VerifyKey', //域值
+                title: '<span langtag="word-verifykey"></span>', //标题
                 halign: 'center',
-                visible: true//false表示不显示
+                visible: true //false表示不显示
             },
             {
-                field: 'Host',//域值
-                title: '<span langtag="word-host"></span>',//标题
+                field: 'Host', //域值
+                title: '<span langtag="word-host"></span>', //标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
                     hosturl = ((row.Scheme == 'http') ? 'http://' : 'https://') + row.Host + ((row.Scheme == 'http') ? ":{{.data.httpProxyPort}}" : ":{{.data.httpsProxyPort}}") + row.Location
                     return '<a href="' + hosturl + '" target="_blank">' + row.Host + '</a>'
                 }
             },
             {
-                field: 'Scheme',//域值
-                title: '<span langtag="word-scheme"></span>',//标题
+                field: 'Scheme', //域值
+                title: '<span langtag="word-scheme"></span>', //标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
                     return '<span langtag="word-' + value + '"></span>'
                 }
             },
             {
-                field: 'Target',//域值
-                title: '<span langtag="word-target"></span>',//标题
+                field: 'Target', //域值
+                title: '<span langtag="word-target"></span>', //标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
                     return row.Target.TargetStr
                 }
             },
             {
-                field: 'Location',//域值
-                title: '<span langtag="word-location"></span>',//标题
+                field: 'Location', //域值
+                title: '<span langtag="word-location"></span>', //标题
                 halign: 'center',
-                visible: true//false表示不显示
+                visible: true //false表示不显示
             },
             {
                 field: 'IsClose', //域值
@@ -156,11 +158,11 @@
                 }
             },
             {
-                field: '',//域值
-                title: '<span langtag="word-clientstatus"></span>',//内容
+                field: '', //域值
+                title: '<span langtag="word-clientstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
                     hosturl = ((row.Scheme == 'http') ? 'http://' : 'https://') + row.Host + row.Location
                     if (row.Client.IsConnect) {
@@ -171,11 +173,11 @@
                 }
             },
             {
-                field: 'option',//域值
-                title: '<span langtag="word-option"></span>',//内容
+                field: 'option', //域值
+                title: '<span langtag="word-option"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: true, //false表示不显示
                 formatter: function (value, row, index) {
                     btn_group = '<div class="btn-group">'
                     if (row.IsClose) {

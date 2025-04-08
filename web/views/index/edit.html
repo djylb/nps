@@ -186,14 +186,15 @@
                         method: 'POST',
                         url: "{{.web_base_url}}/client/list",
                         dataType: 'json',
-                        data: {order: "asc", offset: 0, limit: 0},
+                        data: { order: "asc", offset: 0, limit: 0 },
                         success: function(response) {
                             // 转换数据格式（必须包含 `value` 和 `text`）
                             const results = $.map(response.rows, function(item) {
+                                let displayText = item.Remark ? item.Id + ' · ' + item.Remark : item.Id.toString();
                                 return {
-                                    value: item.Id,  // 选项的 value
-                                    text: item.Remark, // 选项的显示文本
-                                    selected: item.Id == clientId //默认选中
+                                    value: item.Id,     // 选项的 value
+                                    text: displayText,  // 选项的显示文本
+                                    selected: item.Id == clientId // 默认选中
                                 };
                             });
                             callback(results); // 返回给 selectpicker
@@ -204,19 +205,20 @@
                     });
                 },
                 search: function (callback, page, searchTerm) {
-                    let data = {search: searchTerm, order: "asc", offset: 0, limit: 0};
+                    let data = { search: searchTerm, order: "asc", offset: 0, limit: 0 };
                     $.ajax({
                         method: 'POST',
                         url: "{{.web_base_url}}/client/list",
-                        data,
+                        data: data,
                         dataType: 'json',
                         success: function(response) {
                             // 转换数据格式（必须包含 `value` 和 `text`）
                             const results = $.map(response.rows, function(item) {
+                                let displayText = item.Remark ? item.Id + ' · ' + item.Remark : item.Id.toString();
                                 return {
-                                    value: item.Id,  // 选项的 value
-                                    text: item.Remark, // 选项的显示文本
-                                    selected: item.Id == clientId //默认选中
+                                    value: item.Id,    // 选项的 value
+                                    text: displayText, // 选项的显示文本
+                                    selected: item.Id == clientId // 默认选中
                                 };
                             });
                             callback(results); // 返回给 selectpicker

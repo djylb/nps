@@ -199,41 +199,33 @@ func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
 	var err error
 	// 根据分隔符处理内容
 	for _, v := range strings.Split(string(b), "\n"+common.CONN_DATA_SEQ) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
 		switch t.(type) {
 		case Client:
 			var client Client
-			if len(v) != 0 {
-				err = json.Unmarshal([]byte(v), &client)
-				if err != nil {
-					fmt.Println("Error:", err)
-					return
-				}
+			if err = json.Unmarshal([]byte(v), &client); err != nil {
+				fmt.Println("Error:", err)
+				return
 			}
-
 			f(&client)
 			break
 		case Host:
 			var host Host
-			if len(v) != 0 {
-				err = json.Unmarshal([]byte(v), &host)
-				if err != nil {
-					fmt.Println("Error:", err)
-					return
-				}
+			if err = json.Unmarshal([]byte(v), &host); err != nil {
+				fmt.Println("Error:", err)
+				return
 			}
-
 			f(&host)
 			break
 		case Tunnel:
 			var tunnel Tunnel
-			if len(v) != 0 {
-				err = json.Unmarshal([]byte(v), &tunnel)
-				if err != nil {
-					fmt.Println("Error:", err)
-					return
-				}
+			if err = json.Unmarshal([]byte(v), &tunnel); err != nil {
+				fmt.Println("Error:", err)
+				return
 			}
-
 			f(&tunnel)
 			break
 		}
@@ -252,7 +244,6 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 				return err
 			}
 		}
-
 		for i := range clients {
 			f(&clients[i])
 		}
@@ -265,7 +256,6 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 				return err
 			}
 		}
-
 		for i := range hosts {
 			f(&hosts[i])
 		}
@@ -278,13 +268,11 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 				return err
 			}
 		}
-
 		for i := range tunnels {
 			f(&tunnels[i])
 		}
 		break
 	}
-
 	return nil
 }
 
@@ -329,74 +317,48 @@ func createEmptyFile(filePath string) error {
 }
 
 func storeSyncMapToFile(m sync.Map, filePath string) {
-	file, err := os.Create(filePath + ".tmp")
-	// first create a temporary file to store
-	if err != nil {
-		panic(err)
-	}
-
-	var index = 0
-	var total = 0
-
+	var objs []interface{}
 	m.Range(func(key, value interface{}) bool {
-		total++
+		switch v := value.(type) {
+		case *Tunnel:
+			if v.NoStore {
+				return true
+			}
+		case *Host:
+			if v.NoStore {
+				return true
+			}
+		case *Client:
+			if v.NoStore {
+				return true
+			}
+		}
+		objs = append(objs, value)
 		return true
 	})
 
-	// json数组，以“[”开头，然后换行，一行一条json数据
-	_, _ = file.WriteString("[\n")
-	m.Range(func(key, value interface{}) bool {
-		index++
-		var b []byte
-		var err error
-		switch value.(type) {
-		case *Tunnel:
-			obj := value.(*Tunnel)
-			if obj.NoStore {
-				return true
-			}
-			b, err = json.Marshal(obj)
-		case *Host:
-			obj := value.(*Host)
-			if obj.NoStore {
-				return true
-			}
-			b, err = json.Marshal(obj)
-		case *Client:
-			obj := value.(*Client)
-			if obj.NoStore {
-				return true
-			}
-			b, err = json.Marshal(obj)
-		//case *Glob:
-		//	obj := value.(*Glob)
-		//	b, err = json.Marshal(obj)
-		default:
-			return true
-		}
-
-		if err != nil {
-			return true
-		}
-
-		// 每一条json数据前加空格
-		_, _ = file.WriteString("  ")
-
-		// 写入一条json数据
-		_, err = file.Write(b)
+	// 使用缩进格式序列化整个对象数组
+	var elems []string
+	for _, obj := range objs {
+		// 使用 json.Marshal 产生紧凑格式的单行 JSON
+		b, err := json.Marshal(obj)
 		if err != nil {
 			panic(err)
 		}
+		// 在每个元素前加入两个空格缩进
+		elems = append(elems, "  "+string(b))
+	}
+	jsonStr := "[\n" + strings.Join(elems, ",\n") + "\n]"
 
-		if index >= 1 && index <= total-1 {
-			// 不是第一条和最后一条时，每一条json数据后加逗号，同时换行
-			_, _ = file.Write([]byte(",\n"))
-		}
-		return true
-	})
-	// json数组，“]”结束，结束前需要换行
-	_, _ = file.WriteString("\n]")
-
+	// 写入临时文件
+	file, err := os.Create(filePath + ".tmp")
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Write([]byte(jsonStr))
+	if err != nil {
+		panic(err)
+	}
 	_ = file.Sync()
 	_ = file.Close()
 
@@ -405,7 +367,6 @@ func storeSyncMapToFile(m sync.Map, filePath string) {
 	if err != nil {
 		logs.Error(err, "store to file err, data will lost")
 	}
-	// replace the file, maybe provides atomic operation
 }
 
 func storeGlobalToFile(m *Glob, filePath string) {
