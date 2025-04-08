@@ -2,12 +2,14 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
 	"io/ioutil"
 	"net"
 	"strconv"
+	"strings"
 )
 
 type NetPackager interface {
@@ -215,5 +217,20 @@ func ToSocksAddr(addr net.Addr) *Addr {
 		Type: ipV4,
 		Host: host,
 		Port: uint16(port),
+	}
+}
+
+func SetCustomDNS(dnsAddr string) {
+	if dnsAddr == "" {
+		return
+	}
+	if !strings.Contains(dnsAddr, ":") {
+		dnsAddr += ":53"
+	}
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return net.Dial(network, dnsAddr)
+		},
 	}
 }

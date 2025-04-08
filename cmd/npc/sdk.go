@@ -49,6 +49,11 @@ func SetTlsEnable(enable bool) {
 	client.SetTlsEnable(enable)
 }
 
+//export SetDnsServer
+func SetDnsServer(dnsServer *C.char) {
+	common.SetCustomDNS(C.GoString(dnsServer))
+}
+
 func main() {
 	// Need a main function to make CGO compile package as C shared library
 }

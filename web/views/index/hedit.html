@@ -204,14 +204,12 @@
             event.preventDefault();
             const file = event.dataTransfer.files[0];
             const reader = new FileReader();
-
             reader.onload = function (e) {
                 pemText.value = e.target.result;
-                console.log("上传pem")
+                console.log("Upload pem")
                 $('#edit_form').data('bootstrapValidator').updateStatus('pemText', 'NOT_VALIDATED');
                 $('#edit_form').data('bootstrapValidator').validateField('pemText');
             }
-
             reader.readAsText(file);
         });
 
@@ -219,13 +217,11 @@
             event.preventDefault();
             const file = event.dataTransfer.files[0];
             const reader = new FileReader();
-
             reader.onload = function (e) {
                 pemKey.value = e.target.result;
                 $('#edit_form').data('bootstrapValidator').updateStatus('pemKey', 'NOT_VALIDATED');
                 $('#edit_form').data('bootstrapValidator').validateField('pemKey');
             }
-
             reader.readAsText(file);
         });
 
@@ -251,7 +247,7 @@
             }
         })
 
-        $("#https_just_proxy").on("change", function () {
+        $("#https_just_proxy_select").on("change", function () {
             if ($("#https_just_proxy_select").val() == "1") {
                 $("#proxy_protocol").css("display", "block")
                 $("#cert_file").css("display", "none")

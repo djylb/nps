@@ -17,6 +17,7 @@ type CommonConfig struct {
 	AutoReconnection bool
 	TlsEnable        bool
 	ProxyUrl         string
+	DnsServer        string
 	Client           *file.Client
 	DisconnectTime   int
 }
@@ -139,6 +140,8 @@ func dealCommon(s string) *CommonConfig {
 			c.Client.Cnf.Crypt = common.GetBoolByStr(item[1])
 		case "proxy_url":
 			c.ProxyUrl = item[1]
+		case "dns_server":
+			c.DnsServer = item[1]
 		case "rate_limit":
 			c.Client.RateLimit = common.GetIntNoErrByStr(item[1])
 		case "flow_limit":

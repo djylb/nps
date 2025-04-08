@@ -45,6 +45,7 @@ var (
 	stunAddr       = flag.String("stun_addr", "stun.miwifi.com:3478", "STUN server address")
 	ver            = flag.Bool("version", false, "Show current version")
 	disconnectTime = flag.Int("disconnect_timeout", 60, "Disconnect timeout in seconds")
+	dnsServer      = flag.String("dns_server", "8.8.8.8", "DNS server for domain lookup")
 	tlsEnable      = flag.Bool("tls_enable", false, "Enable TLS")
 )
 
@@ -62,6 +63,9 @@ func main() {
 
 	// 配置日志
 	configureLogging()
+
+	// 配置DNS
+	common.SetCustomDNS(*dnsServer)
 
 	// 初始化服务
 	options := make(service.KeyValue)

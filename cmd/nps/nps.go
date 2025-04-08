@@ -58,6 +58,7 @@ func main() {
 	}
 
 	common.InitPProfFromFile()
+	common.SetCustomDNS(beego.AppConfig.String("dns_server"))
 	if level = beego.AppConfig.String("log_level"); level == "" {
 		level = "7"
 	}
