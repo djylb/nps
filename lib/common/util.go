@@ -248,6 +248,10 @@ func GetTimeNoErrByStr(str string) time.Time {
 	return time.Time{}
 }
 
+func ContainsFold(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
 // Get verify value
 func Getverifyval(vkey string) string {
 	return crypt.Md5(vkey)
