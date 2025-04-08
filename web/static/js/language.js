@@ -1,5 +1,4 @@
 (function ($) {
-
     function xml2json(Xml) {
         var tempvalue, tempJson = {};
         $(Xml).each(function () {
@@ -74,7 +73,10 @@
                 }
                 $('#languagemenu').attr('lang', (languages['current'] || languages['default']));
                 $('body').setLang('');
-                $('.selectpicker').selectpicker('refresh');
+
+                if ($.fn.selectpicker != null) {
+                    $('.selectpicker').selectpicker('refresh');
+                }
             }
         });
     };
@@ -119,7 +121,7 @@
         }
         
         if(window.hasOwnProperty('internationalized')){
-            internationalized();
+            internationalized(languages['current']);
         }
     }
 

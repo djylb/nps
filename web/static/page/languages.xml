@@ -1102,4 +1102,15 @@
 			</series>
 		</lang>
 	</charts>
+
+	<bootstrap-select>
+		<lang id="noneSelectedText">
+			<zh-CN>没有选中任何项</zh-CN>
+			<en-US>Nothing selected</en-US>
+		</lang>
+		<lang id="noneResultsText">
+			<zh-CN>没有找到匹配项</zh-CN>
+			<en-US>No results match {0}</en-US>
+		</lang>
+	</bootstrap-select>
 </content>

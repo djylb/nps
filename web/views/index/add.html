@@ -32,9 +32,7 @@
                     <div class="form-group" id="client_id">
                         <label class="control-label font-bold" langtag="word-clientid"></label>
                         <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="client_id" data-live-search="true">
-                                <option value="" langtag="word-belongclient"></option>
-                            </select>
+                            <select class="form-control" name="client_id" data-live-search="true"></select>
                         </div>
                     </div>
 
@@ -179,31 +177,65 @@
 
     function getClientList() {
         const clientId = "{{if .t.Client.Id}}{{.t.Client.Id}}{{else}}{{.client_id}}{{end}}"; // 根据优先级选择
-        $.ajax({
-            type: "POST",
-            url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
-            data: {order: "asc", offset: 0, limit: 0},
-            dataType: "json",
-            success: function (data) {
-                if (data && data.rows.length > 0) {
-                    for (var i = 0; i < data.rows.length; i++) {
-                        var option = "<option value=\"" + data.rows[i].Id + "\"";
-                        option += ">" + data.rows[i].Id + '-' + data.rows[i].Remark + "</option>"; // 动态添加数据
-                        $("select[name='client_id']").append(option);
-                    }
 
-                    $("select[name='client_id']").selectpicker('refresh');
-
-                    // 设置选中项
-                    if (clientId) {
-                        $("select[name='client_id']").selectpicker('val', clientId);
-                    }
+        $("select[name='client_id']").selectpicker({
+            liveSearch: true,
+            source: {
+                data: function (callback, page) {
+                    $.ajax({
+                        method: 'POST',
+                        url: "{{.web_base_url}}/client/list",
+                        dataType: 'json',
+                        data: {order: "asc", offset: 0, limit: 0},
+                        success: function(response) {
+                            // 转换数据格式（必须包含 `value` 和 `text`）
+                            const results = $.map(response.rows, function(item) {
+                                return {
+                                    value: item.Id,  // 选项的 value
+                                    text: item.Remark, // 选项的显示文本
+                                    selected: item.Id == clientId //默认选中
+                                };
+                            });
+                            callback(results); // 返回给 selectpicker
+                        },
+                        error: function() {
+                            callback([]); // 出错时返回空数组
+                        }
+                    });
+                },
+                search: function (callback, page, searchTerm) {
+                    let data = {search: searchTerm, order: "asc", offset: 0, limit: 0};
+                    $.ajax({
+                        method: 'POST',
+                        url: "{{.web_base_url}}/client/list",
+                        data,
+                        dataType: 'json',
+                        success: function(response) {
+                            console.log(response)
+                            // 转换数据格式（必须包含 `value` 和 `text`）
+                            const results = $.map(response.rows, function(item) {
+                                return {
+                                    value: item.Id,  // 选项的 value
+                                    text: item.Remark, // 选项的显示文本
+                                    selected: item.Id == clientId //默认选中
+                                };
+                            });
+                            callback(results); // 返回给 selectpicker
+                        },
+                        error: function() {
+                            callback([]); // 出错时返回空数组
+                        }
+                    });
                 }
             }
         });
     }
 
-    function internationalized() {
+    function internationalized(current) {
+        $.fn.selectpicker.defaults = {
+            noneSelectedText: languages['content']['bootstrap-select']['noneSelectedText'][current],
+            noneResultsText: languages['content']['bootstrap-select']['noneResultsText'][current]
+        };
         getClientList();
     }
 </script>
