@@ -211,7 +211,6 @@
                         data,
                         dataType: 'json',
                         success: function(response) {
-                            console.log(response)
                             // 转换数据格式（必须包含 `value` 和 `text`）
                             const results = $.map(response.rows, function(item) {
                                 return {
