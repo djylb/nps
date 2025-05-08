@@ -85,25 +85,29 @@
         "web_base_url": "{{.web_base_url}}",
         "version": "{{.version}}"
     }
-
     // Login Page Flipbox control
     function login() {
+        var formData = $("form").serializeArray();
         $.ajax({
             type: "POST",
             url: "{{.web_base_url}}/login/verify",
-            data: $("form").serializeArray(),
+            data: formData,
             success: function (res) {
                 if (res.status) {
-                    showMsg(langreply(res.msg), 'success', 1000, function() {
-                        window.location.href = "{{.web_base_url}}/index/index"
-                    })
+                    localStorage.setItem("username", formData.find(t => t.name == "username").value);
+                    localStorage.setItem("password", formData.find(t => t.name == "password").value);
+                    window.location.href = "{{.web_base_url}}/index/index";
                 } else {
-                    showMsg(langreply(res.msg), 'error', 3000)
+                    $('#alertModalContent').text(res.msg);
+                    $('#alertModal').modal();
                 }
             }
         })
         return false
     }
+    // Load FormData
+    $("input[name='username']").val(localStorage.getItem("username"));
+    $("input[name='password']").val(localStorage.getItem("password"));
 </script>
 </body>
 </html>
