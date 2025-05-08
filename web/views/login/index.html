@@ -94,12 +94,13 @@
             data: formData,
             success: function (res) {
                 if (res.status) {
-                    localStorage.setItem("username", formData.find(t => t.name == "username").value);
-                    localStorage.setItem("password", formData.find(t => t.name == "password").value);
-                    window.location.href = "{{.web_base_url}}/index/index";
+                    showMsg(langreply(res.msg), 'success', 1000, function() {
+                        localStorage.setItem("username", formData.find(t => t.name == "username").value);
+                        localStorage.setItem("password", formData.find(t => t.name == "password").value);
+                        window.location.href = "{{.web_base_url}}/index/index";
+                    })
                 } else {
-                    $('#alertModalContent').text(res.msg);
-                    $('#alertModal').modal();
+                    showMsg(langreply(res.msg), 'error', 3000)
                 }
             }
         })
