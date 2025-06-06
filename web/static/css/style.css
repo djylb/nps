@@ -5630,7 +5630,6 @@ samp {
 }
 
 body {
-    font-family: Consolas, "Courier New", "open sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
     background-color: var(--base-color);
     font-size: 13px;
     color: var(--text);
