@@ -272,13 +272,12 @@ function showMsg(text, type = 'success', dur = 1500, cb) {
       : '<svg style="width:3rem;height:3rem;padding:1.5rem;padding-bottom:1.1rem;box-sizing:content-box;" viewBox="0 0 1024 1024"><path d="M384 887.456L25.6 529.056 145.056 409.6 384 648.544 878.944 153.6 998.4 273.056z" fill="#ffffff"/></svg>';
     var w = document.createElement('div');
     w.id = 'wangmarket_loading';
-    w.style = 'position: fixed;z-index: 2147483647;margin: 0 auto;text-align: center;width: 100%;';
+    w.style = 'position: fixed;z-index: 2147483647;margin: 0 auto;text-align: center;width: 100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center';
     w.innerHTML =
-      '<div id="loading" style="position: fixed;top: 30%;text-align: center;font-size: 1rem;color: #dedede;margin: 0px auto;left: 50%;margin-left: -'+(isLong?'9':'3.5')+'rem;">'
-        +'<div style="width: 7rem;background-color: #2e2d3c;border-radius: 0.3rem;filter: alpha(Opacity=80);-moz-opacity:0.8;opacity:0.8;min-height:4.8rem;'+(isLong?'width: 18rem;':'')+'">'
-          +'<div'+(isLong?' style="float:left;height:20rem;margin-top:-0.6rem;position:fixed;"':'')+'>'+svg+'</div>'
-          +'<div style="width:100%;padding-bottom:1.4rem;font-size:1.1rem;padding-left:0.3rem;padding-right:0.3rem;box-sizing:border-box;line-height:1.2rem;color:white;'
-              +(isLong?'padding:1rem;text-align:left;padding-right:0.3rem;line-height:1.5rem;margin-left:4.8rem;padding-right:5.5rem;padding-top:0.7rem;':'')+'">'
+      '<div id="loading">'
+        +'<div style="width: 7rem;background-color: #2e2d3c;border-radius: 0.3rem;opacity:0.8;min-height:4.8rem;'+(isLong?'width: 18rem;':'')+';display:flex;align-items:center;">'
+          +'<div>'+svg+'</div>'
+          +'<div style="width:100%;font-size:1.1rem;box-sizing:border-box;line-height:1.5rem;color:white;flex:1;padding:1rem">'
             + text +
           '</div>'
         +'</div>'
