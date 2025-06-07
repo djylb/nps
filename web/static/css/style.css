@@ -8,8 +8,13 @@
 */
 @font-face {
     font-family: 'Glyphicons Halflings';
-    src: url('../fonts/glyphicons-halflings-regular.eot');
-    src: url('../fonts/glyphicons-halflings-regular.eot?#iefix') format('embedded-opentype'), url('../fonts/glyphicons-halflings-regular.woff2') format('woff2'), url('../fonts/glyphicons-halflings-regular.woff') format('woff'), url('../fonts/glyphicons-halflings-regular.ttf') format('truetype'), url('../fonts/glyphicons-halflings-regular.svg') format('svg');
+    src: url('../webfonts/glyphicons-halflings-regular.eot');
+    src: url('../webfonts/glyphicons-halflings-regular.eot?#iefix') format('embedded-opentype'), url('../webfonts/glyphicons-halflings-regular.woff2') format('woff2'), url('../webfonts/glyphicons-halflings-regular.woff') format('woff'), url('../webfonts/glyphicons-halflings-regular.ttf') format('truetype'), url('../webfonts/glyphicons-halflings-regular.svg') format('svg');
+}
+
+@font-face {
+    font-family: 'SourceCodePro';
+    src: url('../webfonts/SourceCodePro.otf') format('opentype');
 }
 
 :root {
@@ -5630,7 +5635,7 @@ samp {
 }
 
 body {
-    font-family: Consolas, "Courier New", "open sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: SourceCodePro, Consolas, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     background-color: var(--base-color);
     font-size: 13px;
     color: var(--text);
