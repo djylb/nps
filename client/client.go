@@ -347,7 +347,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		key := strings.TrimPrefix(strings.TrimSpace(lk.Host), "file://")
 		vl, ok := s.fsm.GetListenerByKey(key)
 		if !ok {
-			logs.Warn("Fail to find file server: ", key)
+			logs.Warn("Fail to find file server: %s", key)
 			_ = src.Close()
 			return
 		}
