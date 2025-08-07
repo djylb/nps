@@ -894,6 +894,7 @@ func startSpeedSampler() {
 
 		go func() {
 			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
 			for now := range ticker.C {
 				if io2, _ := net.IOCounters(false); len(io2) > 0 {
 					sent := io2[0].BytesSent
