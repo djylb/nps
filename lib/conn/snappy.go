@@ -38,16 +38,16 @@ func (s *SnappyConn) Read(b []byte) (n int, err error) {
 }
 
 func (s *SnappyConn) Close() error {
-	err := s.w.Close()
+	err1 := s.w.Close()
 	err2 := s.c.Close()
-	if err != nil && err2 == nil {
-		return err
+	if err1 != nil && err2 != nil {
+		return errors.New(err1.Error() + err2.Error())
 	}
-	if err == nil && err2 != nil {
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
 		return err2
-	}
-	if err != nil && err2 != nil {
-		return errors.New(err.Error() + err2.Error())
 	}
 	return nil
 }

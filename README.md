@@ -5,6 +5,8 @@
 [![Release](https://github.com/djylb/nps/workflows/Release/badge.svg)](https://github.com/djylb/nps/actions)
 [![GitHub All Releases](https://img.shields.io/github/downloads/djylb/nps/total)](https://github.com/djylb/nps/releases)
 
+> 在 [GitHub](https://github.com/djylb/nps) 点击右上角 ⭐ Star 以支持我在空闲时间继续开发
+
 > 由于 GitHub 限制浏览器语言为中文（Accept-Language=zh-CN) 访问 *.githubusercontent.com ，图标可能无法正常显示。
 
 - [English](https://github.com/djylb/nps/blob/master/README_en.md)
@@ -15,7 +17,7 @@
 
 NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（TCP、UDP、HTTP、HTTPS、SOCKS5 等）转发。它提供直观的 Web 管理界面，使得内网资源能安全、便捷地在外网访问，同时满足多种复杂场景的需求。
 
-由于[NPS](https://github.com/ehang-io/nps)停更已久，本仓库基于 nps 0.26 整合社区更新二次开发而来。
+由于[NPS](https://github.com/ehang-io/nps)停更已久，本仓库整合社区更新二次开发而来。
 
 - **提问前请先查阅：**  [文档](https://d-jy.net/docs/nps/) 与 [Issues](https://github.com/djylb/nps/issues)
 - **欢迎参与：**  提交 PR、反馈问题或建议，共同推动项目发展。
@@ -29,7 +31,7 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
 ## 主要特性
 
 - **多协议支持**  
-  TCP/UDP 转发、HTTP/HTTPS 转发、HTTP/SOCKS5 代理、P2P 模式、Proxy Protocol支持等，满足各种内网访问场景。
+  TCP/UDP 转发、HTTP/HTTPS 转发、HTTP/SOCKS5 代理、P2P 模式、Proxy Protocol支持、HTTP/3支持等，满足各种内网访问场景。
 
 - **跨平台部署**  
   支持 Linux、Windows 等主流平台，可轻松安装为系统服务。
@@ -39,6 +41,9 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
 
 - **安全与扩展**  
   内置加密传输、流量限制、到期限制、证书管理续签等多重功能，保障数据安全。
+
+- **多连接协议**  
+  支持 TCP、KCP、TLS、QUIC、WS、WSS 协议连接服务器。
 
 ---
 
@@ -73,19 +78,16 @@ docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:12
 #### Linux
 ```bash
 # 安装（默认配置路径：/etc/nps/；二进制文件路径：/usr/bin/）
-./nps install
+wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s nps
+nps install
 nps start|stop|restart|uninstall
 
 # 更新
-nps stop
-nps-update update
-nps start
-# 快速更新
 nps update && nps restart
 ```
 
 #### Windows
-> Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz) （需要手动更新）
+> Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
 ```powershell
 .\nps.exe install
 .\nps.exe start|stop|restart|uninstall
@@ -100,20 +102,16 @@ nps update && nps restart
 
 #### Linux
 ```bash
-./npc install
+wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s npc
 /usr/bin/npc install -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls -log=off
 npc start|stop|restart|uninstall
 
 # 更新
-npc stop
-/usr/bin/npc-update update
-npc start
-# 快速更新
 npc update && npc restart
 ```
 
 #### Windows
-> Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz) （需要手动更新）
+> Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
 ```powershell
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
 .\npc.exe start|stop|restart|uninstall
@@ -140,6 +138,255 @@ npc update && npc restart
   - 待定，优先修BUG，新功能随缘更新
 
 ### Stable
+
+- **v0.32.9 (2025-08-25)**
+  - 避免下载过程中被阻断导致绕过换源 [#139](https://github.com/djylb/nps/issues/139)
+  - 优化P2P断连检测逻辑
+  - 调整重复隧道检查逻辑
+  - 更新相关依赖包
+
+- **v0.32.8 (2025-08-21)**
+  - 支持客户端通过配置文件覆盖已有临时隧道
+  - 添加仅转发相关配置说明
+  - 调整客户端连接处理逻辑
+  - 更新相关依赖包
+
+- **v0.32.7 (2025-08-18)**
+  - 避免状态获取失败引起崩溃 [#133](https://github.com/djylb/nps/issues/133)
+  - 优化状态获取性能
+  - 修复IPv6地址显示 [#135](https://github.com/djylb/nps/issues/135)
+
+- **v0.32.6 (2025-08-18)**
+  - 重构状态获取函数 [#134](https://github.com/djylb/nps/issues/134)
+
+- **v0.32.5 (2025-08-17)**
+  - 避免状态获取失败引起崩溃 [#133](https://github.com/djylb/nps/issues/133)
+
+- **v0.32.4 (2025-08-12)**
+  - 避免注释影响配置文件解析
+  - 修复时区不生效
+
+- **v0.32.3 (2025-08-12)**
+  - 支持使用代理更新 [#128](https://github.com/djylb/nps/issues/128)
+  - 调整日志输出
+  - 优化ACK检查逻辑
+  - 添加时区配置支持
+  - 内置tzdata数据库
+  - P2P多隧道时复用同一底层连接
+  - 避免QUIC提前关闭
+
+- **v0.32.2 (2025-08-11)**
+  - 整理仓库代码
+  - 安装脚本添加超时切换
+  - 安装脚本减少环境依赖
+  - 优化客户端体积大小
+  - 更新获取版本失败时直接切换CDN下载
+
+- **v0.32.1 (2025-08-10)**
+  - 优化连接释放
+  - P2P、私密代理支持代理到本地
+  - 优化断线重连逻辑
+  - 添加允许用户使用本地代理配置
+
+- **v0.32.0 (2025-08-10)**
+  - 使用UUID标记每个客户端实例
+  - 私密代理支持连接复用
+  - 修复文件隧道访问
+  - 管理页面隧道添加点击复制
+  - 允许配置多条文件隧道
+  - 添加禁用P2P连接选项
+  - 更新相关依赖包
+
+- **v0.31.1 (2025-08-09)**
+  - 更激进地连接状态检查策略
+  - 避免系统时钟差异导致在线时间不正确
+  - 避免系统时钟差异导致登录失败
+  - 调整超时错误判断逻辑
+
+- **v0.31.0 (2025-08-08)**
+  - 优化连接复用
+  - 支持原生QUIC特性
+
+- **v0.30.6 (2025-08-07)**
+  - P2P无感切换连接
+  - NPC同时支持命令启动和传入配置文件启动
+  - 自动转换全角冒号为半角冒号
+  - 添加允许私密代理客户端连接任意地址配置
+  - 添加是否允许用户使用vkey登录管理配置
+  - 添加默认预读取最大限制
+  - 添加是否允许P2P回落私密代理选项
+  - 符合RFC1928规范要求
+  - 允许Socks5的UDP连接端口号改变
+  - 优化游戏场景隧道性能
+  - 修复开启压缩或加密时代理到服务器本地失败
+  - 文件隧道允许配置只读
+  - 支持通过文件配置混合代理
+  - 文件隧道支持配置为其他隧道的目的地址（不再兼容旧版）
+  - 添加客户端节点数量统计（旧版客户端相同vkey每个IP地址最多连1个）
+  - 管理页面添加文件隧道连接地址
+  - 更新相关依赖包
+
+- **v0.30.5 (2025-08-04)**
+  - 优化小包转发性能
+  - 优化P2P访问时延
+  - 限制P2P访问隧道类型
+  - 调整Socks5超时时间
+
+- **v0.30.4 (2025-08-03)**
+  - P2P 支持双栈连接
+  - 整理优化代码
+  - 修正拼写错误
+  - P2P 在双方支持时自动使用 QUIC 建立连接
+  - P2P 支持原生 QUIC 特性
+  - 修复 NPC 的 status 查询功能
+  - 优化超时释放逻辑
+  - 增强断连状态检测
+  - 私密代理支持UDP
+  - 调整管理页面显示
+
+- **v0.30.3 (2025-08-01)**
+  - 支持客户端主备 / 轮询 / 随机模式选择
+  - 提升并发安全性
+  - 修复一些资源泄露问题
+  - 优化连接池获取策略
+  - 调整连接状态判断逻辑
+  - 优化 Socks5 处理逻辑
+  - P2P 支持多客户端连接
+  - 更新相关依赖包
+
+- **v0.30.2 (2025-07-30)**
+  - 优化资源释放
+  - 优化P2P连接
+  - 更新相关依赖包
+
+- **v0.30.1 (2025-07-29)**
+  - 默认关闭NTP校准
+  - 添加NTP查询最小间隔配置
+
+- **v0.30.0 (2025-07-29)**
+  - 优化流量特征
+  - 优化依赖导入
+  - 调整登录时间限制
+  - 添加时间校准
+  - 添加下载超时切换
+  - 更新添加哈希校验
+  - 添加NTP服务器配置
+  - 调整日志输出
+  - 更新相关依赖包
+
+- **v0.29.38 (2025-07-18)**
+  - 添加缓存避免多次写入
+  - 优化网络包传输
+
+- **v0.29.37 (2025-07-17)**
+  - 修复非RSA证书导致解密错误 [#109](https://github.com/djylb/nps/issues/109)
+  - 调整延迟检查逻辑
+  - 更新相关依赖包
+
+- **v0.29.36 (2025-07-14)**
+  - 调整风控处理逻辑
+  - 调整登录页面逻辑
+  - 添加总是返回错误页面选项
+  - 更新相关依赖包
+
+- **v0.29.35 (2025-07-13)**
+  - 列表添加流量和时间限制相关列
+  - 域名转发重定向支持变量
+  - 客户端支持更多域名转发配置
+  - 更新相关依赖包
+
+- **v0.29.34 (2025-07-11)**
+  - 域名转发支持重定向
+  - 调整管理页面显示
+  - 更新相关依赖包
+
+- **v0.29.33 (2025-07-07)**
+  - 修复连接数统计
+
+- **v0.29.32 (2025-07-04)**
+  - 清理旧`vkey`索引
+  - 启动命令添加引号
+  - 更新相关依赖包
+
+- **v0.29.31 (2025-07-02)**
+  - 优化域名转发并发性能
+  - 更新相关依赖包
+
+- **v0.29.30 (2025-06-29)**
+  - 支持同时配置密码和TOTP
+  - 支持客户端用户配置TOTP
+  - TOTP支持写在密码后或验证码后
+  - 限制高频登录请求
+  - 登录添加PoW验证
+  - 调整IP封禁时间
+  - 自动判断风险选择验证方式
+  - `-gen2fa`添加二维码生成
+  - 客户端列表TOTP支持生成二维码
+
+- **v0.29.29 (2025-06-28)**
+  - 添加返回头修改 [具体说明](https://d-jy.net/docs/nps/#/feature?id=%e8%87%aa%e5%ae%9a%e4%b9%89%e5%93%8d%e5%ba%94-header)
+  - 更新相关依赖包
+  - 优化页面显示
+  - 避免替换转义
+
+- **v0.29.28 (2025-06-26)**
+  - 域名转发支持 HTTP/3
+  - 更新相关依赖包
+  - 避免插入Connection: close [#102](https://github.com/djylb/nps/issues/102)
+
+- **v0.29.27 (2025-06-25)**
+  - 调整UDP的Proxy Protocol处理逻辑
+  - 允许bridge端口全部为0 [#100](https://github.com/djylb/nps/issues/100)
+
+- **v0.29.26 (2025-06-25)**
+  - 添加QUIC连接方式
+  - 弃用`bridge_type`和`bridge_port`配置，通过指定端口号是否为0控制开关
+  - 更新相关依赖包
+  - 统一日志输出
+  - 优化客户端连接
+
+- **v0.29.25 (2025-06-24)**
+  - 优化UDP流量统计
+  - 优化流量限制机制
+  - 优化安装逻辑
+  - 重构UDP隧道
+  - 添加缓冲队列
+  - 优化内存拷贝
+  - 优化资源释放
+
+- **v0.29.24 (2025-06-23)**
+  - 自动生成唯一标识密钥
+  - UDP添加Proxy Protocol支持 [#99](https://github.com/djylb/nps/issues/99)
+
+- **v0.29.23 (2025-06-20)**
+  - Docker添加CA证书
+  - 更新相关依赖
+  - 允许自定义页面显示
+
+- **v0.29.22 (2025-06-19)**
+  - 修复禁用客户端失效 [#97](https://github.com/djylb/nps/issues/97)
+  - 虚拟客户端支持禁用
+
+- **v0.29.21 (2025-06-11)**
+  - 增强 WebSocket 连接稳定性
+  - 调整界面翻译
+  - 域名转发完整支持 Proxy Protocol
+  - 更新时自动创建不存在的文件夹
+
+- **v0.29.20 (2025-06-10)**
+  - 头部替换支持变量替换 [具体说明](https://d-jy.net/docs/nps/#/feature?id=%e8%87%aa%e5%ae%9a%e4%b9%89%e8%af%b7%e6%b1%82-header)
+  - 避免重复添加 X-Forwarded-For
+  - 修复上游错误导致发布失败 [#93](https://github.com/djylb/nps/issues/93)
+
+- **v0.29.19 (2025-06-09)**
+  - 默认添加 X-Forwarded-Proto 请求头
+  - 后端验证用户名密码表单非空
+  - 管理页面支持 X-NPS-Http-Only 头
+
+- **v0.29.18 (2025-06-08)**
+  - 调整字体 [#90](https://github.com/djylb/nps/pull/90) (感谢[yhl452493373](https://github.com/yhl452493373))
+  - 登录表单非空时允许提交 [#89](https://github.com/djylb/nps/issues/89)
+  - 更新相关依赖
 
 - **v0.29.17 (2025-06-07)**
   - NPC配置文件支持兼容模式

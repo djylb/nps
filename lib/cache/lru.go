@@ -37,7 +37,7 @@ func New(maxEntries int) *Cache {
 	}
 }
 
-// If the key value already exists, move the key to the front
+// Add If the key value already exists, move the key to the front
 func (c *Cache) Add(key Key, value interface{}) {
 	if ee, ok := c.cache.Load(key); ok {
 		c.ll.MoveToFront(ee.(*list.Element)) // move to the front

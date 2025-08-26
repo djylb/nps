@@ -2,4 +2,6 @@
 
 github: [djylb]
 #patreon: # Replace with a single Patreon username
-custom: ["https://afdian.com/a/duanlab"]
+custom:
+  - "https://d-jy.net/docs/nps/#/donate"
+  - "https://afdian.com/a/duanlab"

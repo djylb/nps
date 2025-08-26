@@ -11,6 +11,7 @@ import (
 )
 
 const SO_ORIGINAL_DST = 80
+const TCP_KEEPIDLE = unix.TCP_KEEPIDLE
 
 func GetAddress(conn net.Conn) (string, error) {
 	sysconn, ok := conn.(syscall.Conn)

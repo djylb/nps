@@ -12,7 +12,7 @@ func Init() {
 	beego.ErrorHandler("404", func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusNotFound)
 	})
-	controllers.InitCaptcha()
+	controllers.InitLogin()
 	webBaseUrl := beego.AppConfig.String("web_base_url")
 	if len(webBaseUrl) > 0 {
 		ns := beego.NewNamespace(webBaseUrl,

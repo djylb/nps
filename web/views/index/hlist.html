@@ -79,15 +79,30 @@
                 + '<b langtag="word-autohttps"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_https\'})" langtag="word-' + row.AutoHttps + '"></span>&emsp;'
                 + '<b langtag="word-autocors"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_cors\'})" langtag="word-' + row.AutoCORS + '"></span>&emsp;'
                 + '<b langtag="word-compatmode"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'compat_mode\'})" langtag="word-' + row.CompatMode + '"></span>&emsp;'
-                + '<b langtag="word-httpsjustproxy"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'https_just_proxy\'})" langtag="word-' + row.HttpsJustProxy + '"></span>&emsp;'
-                + '<b langtag="word-targetishttps"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
-                + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
-                + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
-                + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
-                + '<b langtag="word-requesthost"></b>: ' + row.HostChange + '&emsp;<br/><br>'
-                + '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
-                + '<b langtag="word-autossl"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_ssl\'})" langtag="word-' + row.AutoSSL + '"></span>&emsp;'
-            if (row.Scheme != "http" && row.HttpsJustProxy == false && row.AutoSSL == false) {
+                + '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
+                + '<b langtag="word-httpsjustproxytitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'https_just_proxy\'})" langtag="word-' + row.HttpsJustProxy + '"></span>&emsp;'
+                + '<b langtag="word-targettype"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
+            if (row.Client.Cnf.U || row.Client.Cnf.P) {
+                tmp += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.U + '</span>&emsp;'
+                + '<b langtag="word-basicpassword"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.P + '</span>&emsp;<br/><br>'
+            }
+            if (row.UserAuth && row.UserAuth.Content) {
+                tmp += '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
+            }
+            if (row.HostChange) {
+                tmp += '<b langtag="word-requesthost"></b>: <span onclick="oCopy(this)">' + row.HostChange + '</span>&emsp;<br/><br>'
+            }
+            if (row.HeaderChange) {
+                tmp += '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
+            }
+            if (row.RespHeaderChange) {
+                tmp += '<b langtag="word-responseheader"></b>: ' + row.RespHeaderChange + '&emsp;<br/><br>'
+            }
+            if (row.RedirectURL) {
+                tmp += '<b langtag="word-redirecturl"></b>: <span onclick="oCopy(this)">' + row.RedirectURL + '</span>&emsp;<br/><br>'
+            }
+            tmp += '<b langtag="word-autossl"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_ssl\'})" langtag="word-' + row.AutoSSL + '"></span>&emsp;'
+            if (row.Scheme != "http" && row.HttpsJustProxy == false && row.AutoSSL == false && (row.CertFile || row.KeyFile)) {
                 return tmp + "<br/><br>"
                 + '<b langtag="word-httpscert"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.CertFile + '</div>&emsp;<br/>'
                 + '<b langtag="word-httpskey"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.KeyFile + '</div>&emsp;<br/><br>'
@@ -303,6 +318,59 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                }
+            },
+            {
+                field: 'FlowRemain', //域值
+                title: '<span langtag="word-flowremain"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (row.Flow.FlowLimit === 0) {
+                        return '∞'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow) + '</span>'
+                }
+            },
+            {
+                field: 'TimeRemain', //域值
+                title: '<span langtag="word-timeremain"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + getRemainingTime(row.Flow.TimeLimit).formatted + '</span>'
+                }
+            },
+            {
+                field: 'Flow.FlowLimit', //域值
+                title: '<span langtag="word-flowlimit"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (value === 0) {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(value * 1024 * 1024) + '</span>'
+                }
+            },
+            {
+                field: 'Flow.TimeLimit', //域值
+                title: '<span langtag="word-timelimit"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (value === "0001-01-01T00:00:00Z") {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + value + '</span>'
                 }
             },
             {

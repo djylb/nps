@@ -1,16 +1,22 @@
 package conn
 
-import "time"
+import (
+	"time"
+)
 
 type Secret struct {
+	//Type     string // tcp/udp
 	Password string
 	Conn     *Conn
+	//Tunnel   *mux.Mux
 }
 
 func NewSecret(p string, conn *Conn) *Secret {
 	return &Secret{
+		//Type:     tp,
 		Password: p,
 		Conn:     conn,
+		//Tunnel:   tunnel,
 	}
 }
 
@@ -28,6 +34,7 @@ type Option func(*Options)
 
 type Options struct {
 	Timeout time.Duration
+	NeedAck bool
 }
 
 var defaultTimeOut = time.Second * 5
@@ -49,6 +56,7 @@ func NewLink(connType string, host string, crypt bool, compress bool, remoteAddr
 func newOptions(opts ...Option) Options {
 	opt := Options{
 		Timeout: defaultTimeOut,
+		NeedAck: false,
 	}
 	for _, o := range opts {
 		o(&opt)
@@ -59,5 +67,11 @@ func newOptions(opts ...Option) Options {
 func LinkTimeout(t time.Duration) Option {
 	return func(opt *Options) {
 		opt.Timeout = t
+	}
+}
+
+func WithAck(enabled bool) Option {
+	return func(opt *Options) {
+		opt.NeedAck = enabled
 	}
 }

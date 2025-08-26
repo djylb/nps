@@ -907,7 +907,13 @@
             $('#stat-clientOnlineCount').text(d.clientOnlineCount);
             $('#stat-tcpCount').text(d.tcpCount);
             const nowSecs = Math.floor(Date.now() / 1000);
-            upTimeSeconds = nowSecs - d.startTime;
+            let calc = nowSecs - d.startTime;
+            if (!Number.isFinite(calc) || calc < 0) calc = 0;
+            if (Number.isFinite(d.upSecs)) {
+                upTimeSeconds = Math.abs(calc - d.upSecs) > 5 ? d.upSecs : calc;
+            } else {
+                upTimeSeconds = calc;
+            }
             $('#overview_cpu').text(d.cpu + '%');
             $('#overview_cpu_bar').width(d.cpu + '%');
             $('#overview_memory').text(d.virtual_mem + '%');
@@ -916,7 +922,7 @@
             $('#overview_load')
                 .empty()
                 .append([loadObj.load1, loadObj.load5, loadObj.load15]
-                    .map(v => '&emsp;'+v).join(''));
+                    .map(v => '&emsp;' + v).join(''));
             $('#overview_tcp').text(d.tcp);
             $('#overview_udp').text(d.udp);
             $('#overview_send').text(changeunit(d.io_send) + '/s');

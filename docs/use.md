@@ -191,7 +191,7 @@ header_set_proxy=nps
 | 项           | 含义                                             |
 |-------------|------------------------------------------------|
 | web1        | 备注                                             |
-| host        | 域名(http                                        |https都可解析)
+| host        | 域名                                             |
 | target_addr | 内网目标，负载均衡时多个目标，逗号隔开                            |
 | host_change | 请求host修改                                       |
 | header_xxx  | 请求header修改或添加，header_proxy表示添加header proxy:nps |
@@ -208,11 +208,11 @@ target_addr=127.0.0.1:8080
 server_port=9001
 ```
 
-| 项            | 含义        |
-|--------------|-----------|
-| mode         | tcp       |
-| server_port  | 在服务端的代理端口 |
-| tartget_addr | 内网目标      |
+| 项           | 含义        |
+|-------------|-----------|
+| mode        | tcp       |
+| server_port | 在服务端的代理端口 |
+| target_addr | 内网目标      |
 
 #### udp隧道模式
 
@@ -315,6 +315,7 @@ mode=file
 server_port=9100
 local_path=/tmp/
 strip_pre=/web/
+read_only=false
 ````
 
 | 项           | 含义       |
@@ -323,6 +324,7 @@ strip_pre=/web/
 | server_port | 服务端开启的端口 |
 | local_path  | 本地文件目录   |
 | strip_pre   | 前缀       |
+| read_only   | 只读       |
 
 对于`strip_pre`，访问公网`ip:9100/web/`相当于访问`/tmp/`目录
 

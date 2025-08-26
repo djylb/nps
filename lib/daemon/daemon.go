@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -53,7 +52,7 @@ func reload(f string, pidPath string) {
 	}
 	var c *exec.Cmd
 	var err error
-	b, err := ioutil.ReadFile(filepath.Join(pidPath, f+".pid"))
+	b, err := os.ReadFile(filepath.Join(pidPath, f+".pid"))
 	if err == nil {
 		c = exec.Command("/bin/bash", "-c", `kill -30 `+string(b))
 	} else {
@@ -68,7 +67,7 @@ func reload(f string, pidPath string) {
 
 func status(f string, pidPath string) bool {
 	var cmd *exec.Cmd
-	b, err := ioutil.ReadFile(filepath.Join(pidPath, f+".pid"))
+	b, err := os.ReadFile(filepath.Join(pidPath, f+".pid"))
 	if err == nil {
 		if !common.IsWindows() {
 			cmd = exec.Command("/bin/sh", "-c", "ps -ax | awk '{ print $1 }' | grep "+string(b))
@@ -89,11 +88,14 @@ func start(osArgs []string, f string, pidPath, runPath string) {
 		return
 	}
 	cmd := exec.Command(osArgs[0], osArgs[1:]...)
-	cmd.Start()
+	err := cmd.Start()
+	if err != nil {
+		log.Println("start error", err.Error())
+	}
 	if cmd.Process.Pid > 0 {
 		log.Println("start ok , pid:", cmd.Process.Pid, "config path:", runPath)
 		d1 := []byte(strconv.Itoa(cmd.Process.Pid))
-		ioutil.WriteFile(filepath.Join(pidPath, f+".pid"), d1, 0600)
+		_ = os.WriteFile(filepath.Join(pidPath, f+".pid"), d1, 0600)
 	} else {
 		log.Println("start error")
 	}
@@ -110,7 +112,7 @@ func stop(f string, p string, pidPath string) {
 		p := strings.Split(p, `\`)
 		c = exec.Command("taskkill", "/F", "/IM", p[len(p)-1])
 	} else {
-		b, err := ioutil.ReadFile(filepath.Join(pidPath, f+".pid"))
+		b, err := os.ReadFile(filepath.Join(pidPath, f+".pid"))
 		if err == nil {
 			c = exec.Command("/bin/bash", "-c", `kill -9 `+string(b))
 		} else {

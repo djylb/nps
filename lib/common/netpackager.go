@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"strconv"
 )
@@ -82,7 +81,7 @@ func (addr *Addr) Encode(b []byte) (int, error) {
 	case domainName:
 		b[pos] = byte(len(addr.Host))
 		pos++
-		pos += copy(b[pos:], []byte(addr.Host))
+		pos += copy(b[pos:], addr.Host)
 	case ipV6:
 		ip16 := net.ParseIP(addr.Host).To16()
 		if ip16 == nil {
@@ -153,7 +152,7 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 	}
 	dlen := int(header.Rsv)
 	if dlen == 0 { // standard SOCKS5 UDP datagram
-		extra, err := ioutil.ReadAll(r) // we assume no redundant data
+		extra, err := io.ReadAll(r) // we assume no redundant data
 		if err != nil {
 			return nil, err
 		}

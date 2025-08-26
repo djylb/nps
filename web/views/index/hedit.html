@@ -92,6 +92,7 @@
                                 <option {{if eq false .h.HttpsJustProxy}}selected{{end}} value="0" langtag="word-no"></option>
                                 <option {{if eq true .h.HttpsJustProxy}}selected{{end}}  value="1" langtag="word-yes"></option>
                             </select>
+                            <span class="help-block m-b-none" langtag="info-httpsjustproxy"></span>
                         </div>
                     </div>
                     <div class="form-group" id="proxy_protocol">
@@ -137,7 +138,13 @@
                             <input class="form-control" langtag="info-urlrewrite" name="path_rewrite" placeholder="" type="text" value="{{.h.PathRewrite}}">
                         </div>
                     </div>
-                    {{if eq true .allow_local_proxy}}
+                    <div class="form-group">
+                        <label class="control-label font-bold" langtag="word-redirecturl"></label>
+                        <div class="col-sm-12">
+                            <input class="form-control" langtag="info-redirecturl" name="redirect_url" placeholder="" type="text" value="{{.h.RedirectURL}}">
+                        </div>
+                    </div>
+                    {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
                     <div class="form-group" id="local_proxy">
                         <label class="control-label font-bold" langtag="word-proxytolocal"></label>
                         <div class="col-sm-12">
@@ -178,6 +185,13 @@
                             <span class="help-block m-b-none" langtag="info-header"></span>
                         </div>
                     </div>
+                    <div class="form-group" id="resp_header">
+                        <label class="control-label font-bold" langtag="word-responseheader"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" name="resp_header" placeholder="Strict-Transport-Security: max-age=31536000; includeSubDomains; preload" rows="4" type="text">{{.h.RespHeaderChange}}</textarea>
+                            <span class="help-block m-b-none" langtag="info-header"></span>
+                        </div>
+                    </div>
                     <div class="form-group" id="hostchange">
                         <label class="control-label font-bold" langtag="word-requesthost"></label>
                         <div class="col-sm-12">
@@ -206,16 +220,24 @@
 
 <script>
     $(function () {
+        ["header", "resp_header", "redirect_url"].forEach(function(name){
+            var el = document.getElementsByName(name)[0];
+            if (el) {
+                var div = document.createElement("div");
+                div.innerHTML = el.value;
+                div.innerHTML = div.textContent;
+                el.value = div.textContent;
+            }
+        });
+
         if ($("#scheme_select").val() == "all" || $("#scheme_select").val() == "https") {
             $("#auto_https").css("display", "block")
             $("#https_just_proxy").css("display", "block")
             if ($("#https_just_proxy_select").val() == "1") {
-                $("#proxy_protocol").css("display", "block")
                 $("#auto_ssl").css("display", "none")
                 $("#cert_file").css("display", "none")
                 $("#key_file").css("display", "none")
             } else {
-                $("#proxy_protocol").css("display", "none")
                 $("#auto_ssl").css("display", "block")
                 $("#cert_file").css("display", "block")
                 $("#key_file").css("display", "block")
@@ -224,7 +246,6 @@
             $("#auto_ssl").css("display", "none")
             $("#cert_file").css("display", "none")
             $("#key_file").css("display", "none")
-            $("#proxy_protocol").css("display", "none")
             $("#https_just_proxy").css("display", "none")
             $("#auto_https").css("display", "none")
         }
@@ -267,12 +288,10 @@
                 $("#auto_https").css("display", "block")
                 $("#https_just_proxy").css("display", "block")
                 if ($("#https_just_proxy_select").val() == "1") {
-                    $("#proxy_protocol").css("display", "block")
                     $("#auto_ssl").css("display", "none")
                     $("#cert_file").css("display", "none")
                     $("#key_file").css("display", "none")
                 } else {
-                    $("#proxy_protocol").css("display", "none")
                     $("#auto_ssl").css("display", "block")
                     $("#cert_file").css("display", "block")
                     $("#key_file").css("display", "block")
@@ -281,7 +300,6 @@
                 $("#auto_ssl").css("display", "none")
                 $("#cert_file").css("display", "none")
                 $("#key_file").css("display", "none")
-                $("#proxy_protocol").css("display", "none")
                 $("#https_just_proxy").css("display", "none")
                 $("#auto_https").css("display", "none")
             }
@@ -289,12 +307,10 @@
 
         $("#https_just_proxy_select").on("change", function () {
             if ($("#https_just_proxy_select").val() == "1") {
-                $("#proxy_protocol").css("display", "block")
                 $("#auto_ssl").css("display", "none")
                 $("#cert_file").css("display", "none")
                 $("#key_file").css("display", "none")
             } else {
-                $("#proxy_protocol").css("display", "none")
                 $("#auto_ssl").css("display", "block")
                 $("#cert_file").css("display", "block")
                 $("#key_file").css("display", "block")

@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/djylb/nps/lib/common"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 	IOCInOut     = 0x80000000
 	IOCPARM_MASK = 0x1FFF
 	DIOCNATLOOK  = IOCInOut | ((LEN & IOCPARM_MASK) << 16) | ('D' << 8) | 23
+	TCP_KEEPIDLE = unix.TCP_KEEPALIVE
 )
 
 func GetAddress(conn net.Conn) (string, error) {

@@ -13,7 +13,7 @@ import (
 )
 
 type P2PServer struct {
-	BaseServer
+	*BaseServer
 	p2pPort  int
 	sessions sync.Map // key string → *session
 	listener *net.UDPConn
@@ -25,6 +25,10 @@ type session struct {
 	providerAddr  *net.UDPAddr
 	visitorLocal  string
 	providerLocal string
+	visitorMode   string
+	providerMode  string
+	visitorData   string
+	providerData  string
 	timer         *time.Timer
 	once          sync.Once
 }
@@ -36,7 +40,7 @@ func NewP2PServer(p2pPort int) *P2PServer {
 func (s *P2PServer) Start() error {
 	logs.Info("start p2p server port %d", s.p2pPort)
 	var err error
-	s.listener, err = net.ListenUDP("udp", &net.UDPAddr{net.ParseIP("0.0.0.0"), s.p2pPort, ""})
+	s.listener, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.p2pPort})
 	if err != nil {
 		return err
 	}
@@ -70,6 +74,14 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 	if len(chunks) >= 3 {
 		localStr = string(chunks[2])
 	}
+	var modeStr string
+	if len(chunks) >= 4 {
+		modeStr = string(chunks[3])
+	}
+	var dataStr string
+	if len(chunks) >= 5 {
+		dataStr = string(chunks[4])
+	}
 
 	t := file.GetDb().GetTaskByMd5Password(key)
 	if t == nil {
@@ -84,24 +96,38 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	logs.Trace("P2P %s [%s] from %v (local %q)", role, key, addr, localStr)
+	logs.Trace("P2P %s [%s] from %v (local %q) mode[%s] data[%s]", role, key, addr, localStr, modeStr, dataStr)
 
 	switch role {
 	case common.WORK_P2P_VISITOR:
 		sess.visitorAddr = addr
 		sess.visitorLocal = localStr
+		sess.visitorMode = modeStr
+		sess.visitorData = dataStr
 	case common.WORK_P2P_PROVIDER:
 		sess.providerAddr = addr
 		sess.providerLocal = localStr
+		sess.providerMode = modeStr
+		sess.providerData = dataStr
 	default:
 		sess.providerAddr = addr
 		sess.providerLocal = localStr
+		sess.providerMode = modeStr
+		sess.providerData = dataStr
 	}
 
 	if sess.visitorAddr != nil && sess.providerAddr != nil {
 		var toVisitor []byte
 		var toProvider []byte
-		if sess.visitorLocal != "" && sess.providerLocal != "" {
+		if sess.visitorMode != "" && sess.providerMode != "" {
+			if sess.visitorData != "" || sess.providerData != "" {
+				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal, sess.providerMode, sess.providerData)
+				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal, sess.visitorMode, sess.visitorData)
+			} else {
+				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal, sess.providerMode)
+				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal, sess.visitorMode)
+			}
+		} else if sess.visitorLocal != "" && sess.providerLocal != "" {
 			toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal)
 			toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal)
 		} else {

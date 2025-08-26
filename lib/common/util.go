@@ -3,13 +3,13 @@ package common
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net"
@@ -23,11 +23,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/araddon/dateparse"
-	"github.com/beego/beego"
+	"github.com/beevik/ntp"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/version"
 )
 
 // ExtractHost
@@ -119,6 +119,29 @@ func GetPortByAddr(addr string) int {
 	return 0
 }
 
+func GetPortStrByAddr(addr string) string {
+	port := GetPortByAddr(addr)
+	if port == 0 {
+		return ""
+	}
+	return strconv.Itoa(port)
+}
+
+func ValidateAddr(s string) string {
+	host, port, err := net.SplitHostPort(s)
+	if err != nil {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip == nil {
+		return ""
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return ""
+	}
+	return s
+}
+
 func BuildAddress(host string, port string) string {
 	if strings.Contains(host, ":") { // IPv6
 		return fmt.Sprintf("[%s]:%s", host, port)
@@ -129,12 +152,12 @@ func BuildAddress(host string, port string) string {
 func SplitServerAndPath(s string) (server, path string) {
 	index := strings.Index(s, "/")
 	if index == -1 {
-		return s, "/ws"
+		return s, ""
 	}
 	return s[:index], s[index:]
 }
 
-// Get the corresponding IP address through domain name
+// GetHostByName Get the corresponding IP address through domain name
 func GetHostByName(hostname string) string {
 	if !DomainCheck(hostname) {
 		return hostname
@@ -154,7 +177,7 @@ func GetHostByName(hostname string) string {
 	return ""
 }
 
-// Check the legality of domain
+// DomainCheck Check the legality of domain
 func DomainCheck(domain string) bool {
 	var match bool
 	IsLine := "^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,6}(/)"
@@ -201,8 +224,8 @@ func GetPort(value int) int {
 // accountMap enable multi user auth
 func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[string]string) bool {
 	// Single account check
-	noAccountMap := (accountMap == nil || len(accountMap) == 0)
-	noAuthMap := (authMap == nil || len(authMap) == 0)
+	noAccountMap := accountMap == nil || len(accountMap) == 0
+	noAuthMap := authMap == nil || len(authMap) == 0
 	if noAccountMap && noAuthMap {
 		return u == user && p == passwd
 	}
@@ -231,7 +254,7 @@ func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[
 	return false
 }
 
-// Check if the Request request is validated
+// CheckAuth Check if the Request request is validated
 func CheckAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
 	// Bypass authentication only if user, passwd are empty and multiAccount is nil or empty
 	if user == "" && passwd == "" && (accountMap == nil || len(accountMap) == 0) && (authMap == nil || len(authMap) == 0) {
@@ -282,7 +305,7 @@ func DealMultiUser(s string) map[string]string {
 	return multiUserMap
 }
 
-// get bool by str
+// GetBoolByStr get bool by str
 func GetBoolByStr(s string) bool {
 	switch s {
 	case "1", "true":
@@ -291,7 +314,7 @@ func GetBoolByStr(s string) bool {
 	return false
 }
 
-// get str by bool
+// GetStrByBool get str by bool
 func GetStrByBool(b bool) string {
 	if b {
 		return "1"
@@ -299,13 +322,13 @@ func GetStrByBool(b bool) string {
 	return "0"
 }
 
-// int
+// GetIntNoErrByStr int
 func GetIntNoErrByStr(str string) int {
 	i, _ := strconv.Atoi(strings.TrimSpace(str))
 	return i
 }
 
-// time
+// GetTimeNoErrByStr time
 func GetTimeNoErrByStr(str string) time.Time {
 	// 1. 去除前后空格
 	str = strings.TrimSpace(str)
@@ -337,68 +360,14 @@ func ContainsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// Change headers and host of request
-func ChangeHostAndHeader(r *http.Request, host string, header string, httpOnly bool) {
-	// 设置 Host 头部信息
-	if host != "" {
-		r.Host = host
-		if orig := r.Header.Get("Origin"); orig != "" {
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			r.Header.Set("Origin", scheme+"://"+host)
-		}
-	}
-
-	// 获取请求的客户端 IP
-	clientIP := GetIpByAddr(r.RemoteAddr)
-
-	//logs.Debug("get X-Remote-IP = " + clientIP)
-
-	// 获取 X-Forwarded-For 头部的先前值
-	xfwdFor := clientIP
-	if prior, ok := r.Header["X-Forwarded-For"]; ok {
-		xfwdFor = strings.Join(prior, ", ") + ", " + clientIP
-	}
-
-	//logs.Debug("get X-Forwarded-For = " + xfwdFor)
-
-	// 判断是否需要添加真实 IP 信息
-	var addOrigin bool
-	if !httpOnly {
-		addOrigin, _ = beego.AppConfig.Bool("http_add_origin_header")
-		r.Header.Set("X-Forwarded-For", xfwdFor)
-	} else {
-		addOrigin = false
-	}
-
-	// 添加 X-Forwarded-For 和 X-Real-IP 头部信息
-	if addOrigin {
-		r.Header.Set("X-Forwarded-For", clientIP)
-		r.Header.Set("X-Real-IP", clientIP)
-	}
-
-	// 设置自定义头部信息
-	if header != "" {
-		h := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
-		for _, v := range h {
-			hd := strings.SplitN(v, ":", 2)
-			if len(hd) == 2 {
-				r.Header.Set(strings.TrimSpace(hd[0]), strings.TrimSpace(hd[1]))
-			}
-		}
-	}
-}
-
-// Read file content by file path
+// ReadAllFromFile Read file content by file path
 func ReadAllFromFile(filePath string) ([]byte, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ioutil.ReadAll(f)
+	return io.ReadAll(f)
 }
 
 func GetPath(filePath string) string {
@@ -481,12 +450,12 @@ func FileExists(name string) bool {
 	return true
 }
 
-// Judge whether the TCP port can open normally
+// TestTcpPort Judge whether the TCP port can open normally
 func TestTcpPort(port int) bool {
-	l, err := net.ListenTCP("tcp", &net.TCPAddr{net.ParseIP("0.0.0.0"), port, ""})
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: port})
 	defer func() {
 		if l != nil {
-			l.Close()
+			_ = l.Close()
 		}
 	}()
 	if err != nil {
@@ -495,12 +464,12 @@ func TestTcpPort(port int) bool {
 	return true
 }
 
-// Judge whether the UDP port can open normally
+// TestUdpPort Judge whether the UDP port can open normally
 func TestUdpPort(port int) bool {
-	l, err := net.ListenUDP("udp", &net.UDPAddr{net.ParseIP("0.0.0.0"), port, ""})
+	l, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: port})
 	defer func() {
 		if l != nil {
-			l.Close()
+			_ = l.Close()
 		}
 	}()
 	if err != nil {
@@ -509,28 +478,28 @@ func TestUdpPort(port int) bool {
 	return true
 }
 
-// Write length and individual byte data
+// BinaryWrite Write length and individual byte data
 // Length prevents sticking
 // # Characters are used to separate data
 func BinaryWrite(raw *bytes.Buffer, v ...string) {
 	b := GetWriteStr(v...)
-	binary.Write(raw, binary.LittleEndian, int32(len(b)))
-	binary.Write(raw, binary.LittleEndian, b)
+	_ = binary.Write(raw, binary.LittleEndian, int32(len(b)))
+	_ = binary.Write(raw, binary.LittleEndian, b)
 }
 
-// get seq str
+// GetWriteStr get seq str
 func GetWriteStr(v ...string) []byte {
 	buffer := new(bytes.Buffer)
 	var l int32
 	for _, v := range v {
 		l += int32(len([]byte(v))) + int32(len([]byte(CONN_DATA_SEQ)))
-		binary.Write(buffer, binary.LittleEndian, []byte(v))
-		binary.Write(buffer, binary.LittleEndian, []byte(CONN_DATA_SEQ))
+		_ = binary.Write(buffer, binary.LittleEndian, []byte(v))
+		_ = binary.Write(buffer, binary.LittleEndian, []byte(CONN_DATA_SEQ))
 	}
 	return buffer.Bytes()
 }
 
-// inArray str interface
+// InStrArr inArray str interface
 func InStrArr(arr []string, val string) bool {
 	for _, v := range arr {
 		if v == val {
@@ -540,7 +509,7 @@ func InStrArr(arr []string, val string) bool {
 	return false
 }
 
-// inArray int interface
+// InIntArr inArray int interface
 func InIntArr(arr []int, val int) bool {
 	for _, v := range arr {
 		if v == val {
@@ -550,31 +519,48 @@ func InIntArr(arr []int, val int) bool {
 	return false
 }
 
-// format ports str to a int array
-func GetPorts(p string) []int {
-	var ps []int
-	arr := strings.Split(p, ",")
-	for _, v := range arr {
-		fw := strings.Split(v, "-")
-		if len(fw) == 2 {
-			if IsPort(fw[0]) && IsPort(fw[1]) {
-				start, _ := strconv.Atoi(fw[0])
-				end, _ := strconv.Atoi(fw[1])
-				for i := start; i <= end; i++ {
-					ps = append(ps, i)
+// GetPorts format ports str to an int array
+func GetPorts(s string) []int {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	seen := make(map[int]struct{})
+	for _, item := range strings.Split(s, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if fw := strings.SplitN(item, "-", 2); len(fw) == 2 {
+			a, b := strings.TrimSpace(fw[0]), strings.TrimSpace(fw[1])
+			if IsPort(a) && IsPort(b) {
+				start, _ := strconv.Atoi(a)
+				end, _ := strconv.Atoi(b)
+				if end < start {
+					start, end = end, start
 				}
-			} else {
-				continue
+				for i := start; i <= end; i++ {
+					seen[i] = struct{}{}
+				}
 			}
-		} else if IsPort(v) {
-			p, _ := strconv.Atoi(v)
-			ps = append(ps, p)
+			continue
+		}
+		if IsPort(item) {
+			port, _ := strconv.Atoi(item)
+			seen[port] = struct{}{}
 		}
 	}
+	if len(seen) == 0 {
+		return nil
+	}
+	ps := make([]int, 0, len(seen))
+	for p := range seen {
+		ps = append(ps, p)
+	}
+	sort.Ints(ps)
 	return ps
 }
 
-// is the string a port
+// IsPort is the string a port
 func IsPort(p string) bool {
 	pi, err := strconv.Atoi(p)
 	if err != nil {
@@ -586,7 +572,7 @@ func IsPort(p string) bool {
 	return true
 }
 
-// if the s is just a port,return 127.0.0.1:s
+// FormatAddress if the s is just a port,return 127.0.0.1:s
 func FormatAddress(s string) string {
 	if strings.Contains(s, ":") {
 		return s
@@ -594,10 +580,10 @@ func FormatAddress(s string) string {
 	return "127.0.0.1:" + s
 }
 
-func in(target string, str_array []string) bool {
-	sort.Strings(str_array)
-	index := sort.SearchStrings(str_array, target)
-	if index < len(str_array) && str_array[index] == target {
+func in(target string, strArray []string) bool {
+	sort.Strings(strArray)
+	index := sort.SearchStrings(strArray, target)
+	if index < len(strArray) && strArray[index] == target {
 		return true
 	}
 	return false
@@ -642,7 +628,7 @@ func CopyBuffer(dst io.Writer, src io.Reader, label ...string) (written int64, e
 	return written, err
 }
 
-// send this ip forget to get a local udp port
+// GetLocalUdpAddr send this ip forget to get a local udp port
 func GetLocalUdpAddr() (net.Conn, error) {
 	tmpConn, err := net.Dial("udp", GetCustomDNS())
 	if err != nil {
@@ -667,7 +653,7 @@ func GetLocalUdp6Addr() (net.Conn, error) {
 	return tmpConn, tmpConn.Close()
 }
 
-// parse template
+// ParseStr parse template
 func ParseStr(str string) (string, error) {
 	tmp := template.New("npc")
 	var err error
@@ -681,7 +667,7 @@ func ParseStr(str string) (string, error) {
 	return w.String(), nil
 }
 
-// get env
+// GetEnvMap get env
 func GetEnvMap() map[string]string {
 	m := make(map[string]string)
 	environ := os.Environ()
@@ -694,7 +680,7 @@ func GetEnvMap() map[string]string {
 	return m
 }
 
-// throw the empty element of the string array
+// TrimArr throw the empty element of the string array
 func TrimArr(arr []string) []string {
 	newArr := make([]string, 0)
 	for _, v := range arr {
@@ -718,7 +704,7 @@ func IsArrContains(arr []string, val string) bool {
 	return false
 }
 
-// remove value from string array
+// RemoveArrVal remove value from string array
 func RemoveArrVal(arr []string, val string) []string {
 	for k, v := range arr {
 		if v == val {
@@ -769,18 +755,18 @@ func ExtendArrs(arrays ...*[]string) int {
 	return maxLength
 }
 
-// convert bytes to num
+// BytesToNum convert bytes to num
 func BytesToNum(b []byte) int {
 	var str string
 	for i := 0; i < len(b); i++ {
 		str += strconv.Itoa(int(b[i]))
 	}
 	x, _ := strconv.Atoi(str)
-	return int(x)
+	return x
 }
 
-// get the length of the sync map
-func GeSynctMapLen(m sync.Map) int {
+// GetSyncMapLen get the length of the sync map
+func GetSyncMapLen(m *sync.Map) int {
 	var c int
 	m.Range(func(key, value interface{}) bool {
 		c++
@@ -808,6 +794,30 @@ func IsSameIPType(addr1, addr2 string) bool {
 	return false
 }
 
+func GetMatchingLocalAddr(remoteAddr, localAddr string) (string, error) {
+	remoteIsV6 := strings.Contains(remoteAddr, "]:")
+	localIsV6 := strings.Contains(localAddr, "]:")
+	if remoteIsV6 == localIsV6 {
+		return localAddr, nil
+	}
+	port := GetPortStrByAddr(localAddr)
+	if remoteIsV6 {
+		tmpConn, err := GetLocalUdp6Addr()
+		if err != nil {
+			return localAddr, fmt.Errorf("get local ipv6 addr: %w", err)
+		}
+		ip6 := tmpConn.LocalAddr().(*net.UDPAddr).IP.String()
+		return fmt.Sprintf("[%s]:%s", ip6, port), nil
+	} else {
+		tmpConn, err := GetLocalUdp4Addr()
+		if err != nil {
+			return localAddr, fmt.Errorf("get local ipv4 addr: %w", err)
+		}
+		ip4 := tmpConn.LocalAddr().(*net.UDPAddr).IP.String()
+		return fmt.Sprintf("%s:%s", ip4, port), nil
+	}
+}
+
 var externalIp string
 var ipApis = []string{
 	"https://4.ipw.cn",
@@ -828,8 +838,8 @@ func FetchExternalIp() string {
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
-		content, _ := ioutil.ReadAll(resp.Body)
+		content, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		ip := string(content)
 		if IsValidIP(ip) {
 			externalIp = ip
@@ -913,13 +923,12 @@ func IsPublicIP(IP net.IP) bool {
 	return false
 }
 
-func GetServerIp() string {
-	p2pIP := beego.AppConfig.String("p2p_ip")
-	if p2pIP != "" && p2pIP != "0.0.0.0" && p2pIP != "::" {
-		return p2pIP
+func GetServerIp(ip string) string {
+	if ip != "" && ip != "0.0.0.0" && ip != "::" {
+		return ip
 	}
 
-	if p2pIP == "::" {
+	if ip == "::" {
 		tmpConn, err := GetLocalUdp6Addr()
 		if err == nil {
 			return tmpConn.LocalAddr().(*net.UDPAddr).IP.String()
@@ -983,6 +992,99 @@ func RandomBytes(maxLen int) ([]byte, error) {
 	return buf, nil
 }
 
+func SetTimezone(tz string) error {
+	if tz == "" {
+		return nil
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return err
+	}
+	time.Local = loc
+	return nil
+}
+
+var (
+	timeOffset   time.Duration
+	ntpServer    string
+	syncInterval = 5 * time.Minute
+	lastSyncMono time.Time
+	timeMutex    sync.RWMutex
+	syncCh       = make(chan struct{}, 1)
+)
+
+func SetNtpServer(server string) {
+	timeMutex.Lock()
+	defer timeMutex.Unlock()
+	ntpServer = server
+}
+
+func SetNtpInterval(d time.Duration) {
+	timeMutex.Lock()
+	defer timeMutex.Unlock()
+	syncInterval = d
+}
+
+func CalibrateTimeOffset(server string) (time.Duration, error) {
+	if server == "" {
+		return 0, nil
+	}
+	ntpTime, err := ntp.Time(server)
+	if err != nil {
+		return 0, err
+	}
+	return ntpTime.Sub(time.Now()), nil
+}
+
+func TimeOffset() time.Duration {
+	timeMutex.RLock()
+	defer timeMutex.RUnlock()
+	return timeOffset
+}
+
+func TimeNow() time.Time {
+	SyncTime()
+	timeMutex.RLock()
+	defer timeMutex.RUnlock()
+	return time.Now().Add(timeOffset)
+}
+
+func SyncTime() {
+	timeMutex.RLock()
+	srv, last := ntpServer, lastSyncMono
+	interval := syncInterval
+	timeMutex.RUnlock()
+
+	if srv == "" || (!last.IsZero() && time.Since(last) < interval) {
+		return
+	}
+
+	select {
+	case syncCh <- struct{}{}:
+		defer func() { <-syncCh }()
+	default:
+		return
+	}
+
+	now := time.Now()
+	timeMutex.Lock()
+	lastSyncMono = now
+	timeMutex.Unlock()
+
+	offset, err := CalibrateTimeOffset(srv)
+	if err != nil {
+		logs.Error("ntp[%s] sync failed: %v", srv, err)
+	}
+
+	timeMutex.Lock()
+	timeOffset = offset
+	timeMutex.Unlock()
+
+	if offset != 0 {
+		logs.Info("ntp[%s] offset=%v", srv, offset)
+	}
+}
+
 // TimestampToBytes 8bit
 func TimestampToBytes(ts int64) []byte {
 	b := make([]byte, 8)
@@ -995,6 +1097,25 @@ func BytesToTimestamp(b []byte) int64 {
 	return int64(binary.BigEndian.Uint64(b))
 }
 
-func PrintVersion(ver int) {
-	fmt.Printf("Version: %s\nCore version: %s\nSame core version of client and server can connect each other\n", version.VERSION, version.GetVersion(ver))
+func ValidatePoW(bits int, parts ...string) bool {
+	if bits < 1 || bits > 256 {
+		return false
+	}
+
+	data := strings.Join(parts, "")
+	sum := sha256.Sum256([]byte(data))
+	fullBytes := bits / 8
+	for i := 0; i < fullBytes; i++ {
+		if sum[i] != 0 {
+			return false
+		}
+	}
+	remBits := bits % 8
+	if remBits > 0 {
+		mask := byte(0xFF << (8 - remBits))
+		if (sum[fullBytes] & mask) != 0 {
+			return false
+		}
+	}
+	return true
 }

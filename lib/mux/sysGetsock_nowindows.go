@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package nps_mux
+package mux
 
 import (
 	"net"

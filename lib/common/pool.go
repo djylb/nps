@@ -65,7 +65,7 @@ type copyBufferPool struct {
 func (Self *copyBufferPool) New() {
 	Self.pool = sync.Pool{
 		New: func() interface{} {
-			return make([]byte, PoolSizeCopy, PoolSizeCopy)
+			return make([]byte, PoolSizeCopy)
 		},
 	}
 }

@@ -7,10 +7,9 @@ RUN go mod edit -go=$(go version | awk '{print $3}' | sed 's/go//') && \
     go mod tidy && \
     go get -d -v ./...
 RUN CGO_ENABLED=0 go build -ldflags="-w -s -extldflags -static" ./cmd/npc/npc.go
-RUN mkdir tmp
 
-FROM scratch
+FROM alpine
+RUN apk add --no-cache tzdata nano ca-certificates && update-ca-certificates
 COPY --from=builder /go/src/github.com/djylb/nps/npc /
-COPY --from=builder /go/src/github.com/djylb/nps/tmp /tmp
 VOLUME /conf
 ENTRYPOINT ["/npc"]

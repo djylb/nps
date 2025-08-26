@@ -2,7 +2,6 @@ package file
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -26,7 +25,7 @@ var (
 	TaskPasswordIndex = index.NewStringIDIndex()
 )
 
-// init csv from file
+// GetDb init data from file
 func GetDb() *DbUtils {
 	once.Do(func() {
 		jsonDb := NewJsonDb(common.GetRunPath())
@@ -39,7 +38,7 @@ func GetDb() *DbUtils {
 	return Db
 }
 
-func GetMapKeys(m sync.Map, isSort bool, sortKey, order string) (keys []int) {
+func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 	if (sortKey == "InletFlow" || sortKey == "ExportFlow") && isSort {
 		return sortClientByKey(m, sortKey, order)
 	}
@@ -55,7 +54,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 	list := make([]*Client, 0)
 	var cnt int
 	originLength := length
-	keys := GetMapKeys(s.JsonDb.Clients, true, sort, order)
+	keys := GetMapKeys(&s.JsonDb.Clients, true, sort, order)
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Clients.Load(key); ok {
 			v := value.(*Client)
@@ -129,20 +128,74 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 }
 
 func (s *DbUtils) NewTask(t *Tunnel) (err error) {
-	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*Tunnel)
-		if (v.Mode == "secret" || v.Mode == "p2p") && v.Password == t.Password {
-			err = errors.New(fmt.Sprintf("secret mode keys %s must be unique", t.Password))
-			return false
-		}
-		return true
-	})
-	if err != nil {
-		return
+	//s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	//	v := value.(*Tunnel)
+	//	if (v.Mode == "secret" || v.Mode == "p2p") && (t.Mode == "secret" || t.Mode == "p2p") && v.Password == t.Password {
+	//		err = errors.New(fmt.Sprintf("secret mode keys %s must be unique", t.Password))
+	//		return false
+	//	}
+	//	return true
+	//})
+	//if err != nil {
+	//	return
+	//}
+	if (t.Mode == "secret" || t.Mode == "p2p") && t.Password == "" {
+		t.Password = crypt.GetRandomString(16, t.Id)
 	}
+
 	t.Flow = new(Flow)
+
 	if t.Password != "" {
-		TaskPasswordIndex.Add(crypt.Md5(t.Password), t.Id)
+		for {
+			hash := crypt.Md5(t.Password)
+			if idxId, ok := TaskPasswordIndex.Get(hash); !ok || idxId == t.Id {
+				TaskPasswordIndex.Add(hash, t.Id)
+				break
+			}
+			t.Password = crypt.GetRandomString(16, t.Id)
+		}
+	}
+
+	switch t.Mode {
+	case "socks5":
+		t.Mode = "mixProxy"
+		t.HttpProxy = false
+		t.Socks5Proxy = true
+	case "httpProxy":
+		t.Mode = "mixProxy"
+		t.HttpProxy = true
+		t.Socks5Proxy = false
+	}
+	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
+		t.TargetType = common.CONN_ALL
+	}
+	s.JsonDb.Tasks.Store(t.Id, t)
+	s.JsonDb.StoreTasksToJsonFile()
+	return
+}
+
+func (s *DbUtils) UpdateTask(t *Tunnel) error {
+	if (t.Mode == "secret" || t.Mode == "p2p") && t.Password == "" {
+		t.Password = crypt.GetRandomString(16, t.Id)
+	}
+
+	if v, ok := s.JsonDb.Tasks.Load(t.Id); ok {
+		if oldPwd := v.(*Tunnel).Password; oldPwd != "" {
+			if idxId, ok := TaskPasswordIndex.Get(crypt.Md5(oldPwd)); ok && idxId == t.Id {
+				TaskPasswordIndex.Remove(crypt.Md5(oldPwd))
+			}
+		}
+	}
+
+	if t.Password != "" {
+		for {
+			hash := crypt.Md5(t.Password)
+			if idxId, ok := TaskPasswordIndex.Get(hash); !ok || idxId == t.Id {
+				TaskPasswordIndex.Add(hash, t.Id)
+				break
+			}
+			t.Password = crypt.GetRandomString(16, t.Id)
+		}
 	}
 	switch t.Mode {
 	case "socks5":
@@ -154,14 +207,8 @@ func (s *DbUtils) NewTask(t *Tunnel) (err error) {
 		t.HttpProxy = true
 		t.Socks5Proxy = false
 	}
-	s.JsonDb.Tasks.Store(t.Id, t)
-	s.JsonDb.StoreTasksToJsonFile()
-	return
-}
-
-func (s *DbUtils) UpdateTask(t *Tunnel) error {
-	if t.Password != "" {
-		TaskPasswordIndex.Add(crypt.Md5(t.Password), t.Id)
+	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
+		t.TargetType = common.CONN_ALL
 	}
 	s.JsonDb.Tasks.Store(t.Id, t)
 	s.JsonDb.StoreTasksToJsonFile()
@@ -184,7 +231,7 @@ func (s *DbUtils) DelTask(id int) error {
 	return nil
 }
 
-// md5 password
+// GetTaskByMd5Password md5 password
 func (s *DbUtils) GetTaskByMd5Password(p string) (t *Tunnel) {
 	id, ok := TaskPasswordIndex.Get(p)
 	if ok {
@@ -288,7 +335,7 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, in
 	list := make([]*Host, 0)
 	var cnt int
 	originLength := length
-	keys := GetMapKeys(s.JsonDb.Hosts, false, "", "")
+	keys := GetMapKeys(&s.JsonDb.Hosts, false, "", "")
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Hosts.Load(key); ok {
 			v := value.(*Host)
@@ -314,6 +361,9 @@ func (s *DbUtils) DelClient(id int) error {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
 		c := v.(*Client)
 		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		if c.Rate != nil {
+			c.Rate.Stop()
+		}
 	}
 	s.JsonDb.Clients.Delete(id)
 	s.JsonDb.StoreClientsToJsonFile()
@@ -325,10 +375,17 @@ func (s *DbUtils) NewClient(c *Client) error {
 	if c.WebUserName != "" && !s.VerifyUserName(c.WebUserName, c.Id) {
 		return errors.New("web login username duplicate, please reset")
 	}
+	c.EnsureWebPassword()
 reset:
 	if c.VerifyKey == "" || isNotSet {
 		isNotSet = true
 		c.VerifyKey = crypt.GetRandomString(16, c.Id)
+	}
+	if !s.VerifyVkey(c.VerifyKey, c.Id) {
+		if isNotSet {
+			goto reset
+		}
+		return errors.New("vkey duplicate, please reset")
 	}
 	if c.RateLimit == 0 {
 		c.Rate = rate.NewRate(int64(2 << 23))
@@ -336,12 +393,6 @@ reset:
 		c.Rate = rate.NewRate(int64(c.RateLimit * 1024))
 	}
 	c.Rate.Start()
-	if !s.VerifyVkey(c.VerifyKey, c.Id) {
-		if isNotSet {
-			goto reset
-		}
-		return errors.New("Vkey duplicate, please reset")
-	}
 	if c.Id == 0 {
 		c.Id = int(s.JsonDb.GetClientId())
 	}
@@ -381,9 +432,20 @@ func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 }
 
 func (s *DbUtils) UpdateClient(t *Client) error {
+	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
+		c := v.(*Client)
+		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		if c.Rate != nil {
+			c.Rate.Stop()
+		}
+	}
+
 	s.JsonDb.Clients.Store(t.Id, t)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
-	if t.RateLimit == 0 {
+	if t.RateLimit > 0 {
+		t.Rate = rate.NewRate(int64(t.RateLimit * 1024))
+		t.Rate.Start()
+	} else {
 		t.Rate = rate.NewRate(int64(2 << 23))
 		t.Rate.Start()
 	}
@@ -420,7 +482,7 @@ func (s *DbUtils) GetHostById(id int) (h *Host, err error) {
 	return
 }
 
-// get key by host from x
+// GetInfoByHost get key by host from x
 func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err error) {
 	host = common.GetIpByAddr(host)
 	hostLength := len(host)
@@ -511,6 +573,7 @@ func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
 		return nil, errors.New("invalid Host")
 	}
 
+	host = common.GetIpByAddr(host)
 	hostLength := len(host)
 
 	ids := HostIndex.Lookup(host)

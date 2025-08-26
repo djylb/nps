@@ -25,32 +25,56 @@ import (
 
 var (
 	cert       tls.Certificate
+	rsaKey     *rsa.PrivateKey
 	trustedSet sync.Map // key:string -> struct{}
 	vkeyToFp   sync.Map // key:vkey(string) -> fpHex(string)
 	SkipVerify = false
+	tlsCfg     *tls.Config
 )
 
 func InitTls(customCert tls.Certificate) {
 	if len(customCert.Certificate) > 0 {
 		cert = customCert
 		logs.Info("Custom certificate loaded successfully.")
-		return
+	} else {
+		commonName := gofakeit.DomainName()
+		organization := gofakeit.Company()
+		c, k, err := generateKeyPair(commonName, organization)
+		if err == nil {
+			cert, err = tls.X509KeyPair(c, k)
+		}
+		if err != nil {
+			logs.Error("Error initializing crypto certs %v", err)
+		}
 	}
-	commonName := gofakeit.DomainName()
-	organization := gofakeit.Company()
-	c, k, err := generateKeyPair(commonName, organization)
-	if err != nil {
+	tlsCfg = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		NextProtos:   []string{"h3", "h2", "http/1.1"},
 	}
-	if err == nil {
-		cert, err = tls.X509KeyPair(c, k)
+	if key, ok := cert.PrivateKey.(*rsa.PrivateKey); ok {
+		rsaKey = key
+		logs.Info("Using RSA private key from TLS certificate.")
+	} else {
+		var err error
+		rsaKey, err = rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			logs.Error("Failed to generate fallback RSA key: %v", err)
+		} else {
+			logs.Info("Generated fallback RSA private key.")
+		}
 	}
-	if err != nil {
-		logs.Error("Error initializing crypto certs %v", err)
-	}
+}
+
+func GetFakeDomainName() string {
+	return gofakeit.DomainName()
 }
 
 func GetCert() tls.Certificate {
 	return cert
+}
+
+func GetCertCfg() *tls.Config {
+	return tlsCfg
 }
 
 func GetPublicKeyPEM() (string, error) {
@@ -69,18 +93,29 @@ func GetPublicKeyPEM() (string, error) {
 	return string(pem.EncodeToMemory(pemBlock)), nil
 }
 
+func GetRSAPublicKeyPEM() (string, error) {
+	if rsaKey == nil {
+		return "", fmt.Errorf("RSA key not initialized")
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal RSA public key: %w", err)
+	}
+	pemBlock := &pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}
+	return string(pem.EncodeToMemory(pemBlock)), nil
+}
+
 func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
+	if rsaKey == nil {
+		return nil, fmt.Errorf("RSA key not initialized")
+	}
 	// Decode base64
 	cipherBytes, err := base64.StdEncoding.DecodeString(base64Cipher)
 	if err != nil {
 		return nil, fmt.Errorf("base64 decode error: %w", err)
 	}
-	privKey, ok := cert.PrivateKey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("private key is not RSA")
-	}
 	// Decrypt using PKCS#1 v1.5
-	plain, err := rsa.DecryptPKCS1v15(rand.Reader, privKey, cipherBytes)
+	plain, err := rsa.DecryptPKCS1v15(rand.Reader, rsaKey, cipherBytes)
 	if err != nil {
 		return nil, fmt.Errorf("RSA decrypt error: %w", err)
 	}

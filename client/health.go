@@ -14,7 +14,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/sheap"
-	"github.com/pkg/errors"
 )
 
 const minDelay = 10 * time.Millisecond
@@ -38,7 +37,8 @@ func NewHealthChecker(parentCtx context.Context, healths []*file.Health, c *conn
 	now := time.Now()
 	for _, hc := range healths {
 		if hc.HealthMaxFail > 0 && hc.HealthCheckInterval > 0 && hc.HealthCheckTimeout > 0 {
-			hc.HealthNextTime = now.Add(time.Duration(hc.HealthCheckInterval) * time.Second)
+			//hc.HealthNextTime = now.Add(time.Duration(hc.HealthCheckInterval) * time.Second)
+			hc.HealthNextTime = now
 			heap.Push(hq, hc.HealthNextTime.Unix())
 			hc.HealthMap = make(map[string]int)
 		}
@@ -163,7 +163,7 @@ func (hc *HealthChecker) doCheck(h *file.Health) {
 		case "tcp":
 			c, errDial := net.DialTimeout("tcp", target, timeout)
 			if errDial == nil {
-				c.Close()
+				_ = c.Close()
 			} else {
 				err = errDial
 			}
@@ -178,23 +178,23 @@ func (hc *HealthChecker) doCheck(h *file.Health) {
 			if getErr != nil {
 				err = getErr
 			} else {
-				defer resp.Body.Close()
 				if resp.StatusCode != http.StatusOK {
-					err = errors.Errorf("unexpected status %d", resp.StatusCode)
+					err = fmt.Errorf("unexpected status %d", resp.StatusCode)
 				}
+				_ = resp.Body.Close()
 			}
 		default:
-			err = errors.Errorf("unsupported health check type: %s", h.HealthCheckType)
+			err = fmt.Errorf("unsupported health check type: %s", h.HealthCheckType)
 		}
 		h.Lock()
 		if err != nil {
 			h.HealthMap[target]++
 			if h.HealthMap[target]%h.HealthMaxFail == 0 {
-				hc.serverConn.SendHealthInfo(target, "0")
+				_, _ = hc.serverConn.SendHealthInfo(target, "0")
 			}
 		} else {
 			if h.HealthMap[target] >= h.HealthMaxFail {
-				hc.serverConn.SendHealthInfo(target, "1")
+				_, _ = hc.serverConn.SendHealthInfo(target, "1")
 			}
 			h.HealthMap[target] = 0
 		}

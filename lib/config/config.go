@@ -18,16 +18,21 @@ type CommonConfig struct {
 	TlsEnable        bool
 	ProxyUrl         string
 	DnsServer        string
+	NtpServer        string
+	NtpInterval      int
 	Client           *file.Client
 	DisconnectTime   int
 }
 
 type LocalServer struct {
-	Type     string
-	Port     int
-	Ip       string
-	Password string
-	Target   string
+	Type       string
+	Port       int
+	Ip         string
+	Password   string
+	Target     string
+	TargetType string
+	Fallback   bool
+	LocalProxy bool
 }
 
 type Config struct {
@@ -63,22 +68,23 @@ func NewConfig(path string) (c *Config, err error) {
 				nextIndex = len(c.content)
 			}
 			nowContent = c.content[nowIndex:nextIndex]
-
-			if strings.Index(getTitleContent(c.title[i]), "secret") == 0 && !strings.Contains(nowContent, "mode") {
+			nowContent = stripCommentLines(nowContent)
+			if strings.HasPrefix(getTitleContent(c.title[i]), "secret") && !strings.Contains(nowContent, "mode") {
 				local := delLocalService(nowContent)
 				local.Type = "secret"
 				c.LocalServer = append(c.LocalServer, local)
 				continue
 			}
-			//except mode
-			if strings.Index(getTitleContent(c.title[i]), "p2p") == 0 && !strings.Contains(nowContent, "mode") {
+			if strings.HasPrefix(getTitleContent(c.title[i]), "p2p") && !strings.Contains(nowContent, "mode") {
 				local := delLocalService(nowContent)
-				local.Type = "p2p"
+				if local.Type == "" {
+					local.Type = "p2p"
+				}
 				c.LocalServer = append(c.LocalServer, local)
 				continue
 			}
 			//health set
-			if strings.Index(getTitleContent(c.title[i]), "health") == 0 {
+			if strings.HasPrefix(getTitleContent(c.title[i]), "health") {
 				c.Healths = append(c.Healths, dealHealth(nowContent))
 				continue
 			}
@@ -101,13 +107,20 @@ func NewConfig(path string) (c *Config, err error) {
 	return
 }
 
+var bracketRE = regexp.MustCompile(`[\[\]]`)
+
 func getTitleContent(s string) string {
-	re, _ := regexp.Compile(`[\[\]]`)
-	return re.ReplaceAllString(s, "")
+	return bracketRE.ReplaceAllString(s, "")
+}
+
+var commentLineRE = regexp.MustCompile(`(?m)^[ \t]*#.*(\r?\n|$)`)
+
+func stripCommentLines(s string) string {
+	return commentLineRE.ReplaceAllString(s, "")
 }
 
 func dealCommon(s string) *CommonConfig {
-	c := &CommonConfig{}
+	c := new(CommonConfig)
 	c.Client = file.NewClient("", true, true)
 	c.Client.Cnf = new(file.Config)
 	for _, v := range splitStr(s) {
@@ -142,6 +155,10 @@ func dealCommon(s string) *CommonConfig {
 			c.ProxyUrl = item[1]
 		case "dns_server":
 			c.DnsServer = item[1]
+		case "ntp_server":
+			c.NtpServer = item[1]
+		case "ntp_interval":
+			c.NtpInterval = common.GetIntNoErrByStr(item[1])
 		case "rate_limit":
 			c.Client.RateLimit = common.GetIntNoErrByStr(item[1])
 		case "flow_limit":
@@ -153,7 +170,7 @@ func dealCommon(s string) *CommonConfig {
 		case "remark":
 			c.Client.Remark = item[1]
 		case "pprof_addr":
-			common.InitPProfFromArg(item[1])
+			common.InitPProfByAddr(item[1])
 		case "disconnect_timeout":
 			c.DisconnectTime = common.GetIntNoErrByStr(item[1])
 		case "tls_enable":
@@ -164,10 +181,11 @@ func dealCommon(s string) *CommonConfig {
 }
 
 func dealHost(s string) *file.Host {
-	h := &file.Host{}
+	h := new(file.Host)
 	h.Target = new(file.Target)
 	h.Scheme = "all"
-	var headerChange string
+	h.MultiAccount = new(file.MultiAccount)
+	var headerChange, respHeaderChange string
 	for _, v := range splitStr(s) {
 		item := strings.Split(v, "=")
 		if len(item) == 0 {
@@ -186,6 +204,8 @@ func dealHost(s string) *file.Host {
 			h.Scheme = item[1]
 		case "location":
 			h.Location = item[1]
+		case "path_rewrite":
+			h.PathRewrite = item[1]
 		case "cert_file":
 			h.CertFile, _ = common.GetCertContent(item[1], "CERTIFICATE")
 		case "key_file":
@@ -200,10 +220,11 @@ func dealHost(s string) *file.Host {
 			h.AutoCORS = common.GetBoolByStr(item[1])
 		case "compat_mode":
 			h.CompatMode = common.GetBoolByStr(item[1])
+		case "redirect_url":
+			h.RedirectURL = item[1]
 		case "target_is_https":
 			h.TargetIsHttps = common.GetBoolByStr(item[1])
 		case "multi_account":
-			h.MultiAccount = &file.MultiAccount{}
 			if common.FileExists(item[1]) {
 				if b, err := common.ReadAllFromFile(item[1]); err != nil {
 					panic(err)
@@ -217,10 +238,14 @@ func dealHost(s string) *file.Host {
 				}
 			}
 		default:
-			if strings.Contains(item[0], "header") {
+			if strings.Contains(item[0], "header_") {
 				headerChange += strings.Replace(item[0], "header_", "", -1) + ":" + item[1] + "\n"
 			}
+			if strings.Contains(item[0], "response_") {
+				respHeaderChange += strings.Replace(item[0], "response_", "", -1) + ":" + item[1] + "\n"
+			}
 			h.HeaderChange = headerChange
+			h.RespHeaderChange = respHeaderChange
 		}
 	}
 	return h
@@ -254,8 +279,9 @@ func dealHealth(s string) *file.Health {
 }
 
 func dealTunnel(s string) *file.Tunnel {
-	t := &file.Tunnel{}
+	t := new(file.Tunnel)
 	t.Target = new(file.Target)
+	t.MultiAccount = new(file.MultiAccount)
 	for _, v := range splitStr(s) {
 		item := strings.Split(v, "=")
 		if len(item) == 0 {
@@ -278,12 +304,17 @@ func dealTunnel(s string) *file.Tunnel {
 			t.TargetAddr = item[1]
 		case "password":
 			t.Password = item[1]
+		case "socks5_proxy":
+			t.Socks5Proxy = common.GetBoolByStr(item[1])
+		case "http_proxy":
+			t.HttpProxy = common.GetBoolByStr(item[1])
 		case "local_path":
 			t.LocalPath = item[1]
 		case "strip_pre":
 			t.StripPre = item[1]
+		case "read_only":
+			t.ReadOnly = common.GetBoolByStr(item[1])
 		case "multi_account":
-			t.MultiAccount = &file.MultiAccount{}
 			if common.FileExists(item[1]) {
 				if b, err := common.ReadAllFromFile(item[1]); err != nil {
 					panic(err)
@@ -337,12 +368,20 @@ func delLocalService(s string) *LocalServer {
 		switch item[0] {
 		case "local_port":
 			l.Port = common.GetIntNoErrByStr(item[1])
+		case "local_type":
+			l.Type = item[1]
 		case "local_ip":
 			l.Ip = item[1]
 		case "password":
 			l.Password = item[1]
 		case "target_addr":
 			l.Target = item[1]
+		case "target_type":
+			l.TargetType = item[1]
+		case "local_proxy":
+			l.LocalProxy = common.GetBoolByStr(item[1])
+		case "fallback_secret":
+			l.Fallback = common.GetBoolByStr(item[1])
 		}
 	}
 	return l

@@ -2,12 +2,10 @@ package client
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
-	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,156 +15,11 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/nps_mux"
+	"github.com/djylb/nps/lib/mux"
 	"github.com/djylb/nps/server/proxy"
+	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
-	"golang.org/x/net/webdav"
 )
-
-// ------------------------------
-// FileServerManager
-// ------------------------------
-
-type FileServerManager struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	servers []struct {
-		srv        *http.Server
-		listener   *nps_mux.Mux
-		remoteConn *conn.Conn
-	}
-}
-
-func NewFileServerManager(parentCtx context.Context) *FileServerManager {
-	ctx, cancel := context.WithCancel(parentCtx)
-	fsm := &FileServerManager{
-		ctx:    ctx,
-		cancel: cancel,
-	}
-	go func() {
-		<-parentCtx.Done()
-		fsm.CloseAll()
-	}()
-	return fsm
-}
-
-func (fsm *FileServerManager) StartFileServer(cfg *config.CommonConfig, t *file.Tunnel, vkey string) {
-	if fsm.ctx.Err() != nil {
-		logs.Warn("file server manager already closed, skip StartFileServer")
-		return
-	}
-	remoteConn, err := NewConn(cfg.Tp, vkey, cfg.Server, common.WORK_FILE, cfg.ProxyUrl)
-	if err != nil {
-		logs.Error("file server NewConn failed: %v", err)
-		return
-	}
-	registered := false
-	defer func() {
-		if !registered {
-			remoteConn.Close()
-		}
-	}()
-	fs := http.FileServer(http.Dir(t.LocalPath))
-	davHandler := &webdav.Handler{
-		Prefix:     t.StripPre,
-		FileSystem: webdav.Dir(t.LocalPath),
-		LockSystem: webdav.NewMemLS(),
-	}
-	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET", "HEAD":
-			http.StripPrefix(t.StripPre, fs).ServeHTTP(w, r)
-		default:
-			davHandler.ServeHTTP(w, r)
-		}
-	})
-	accounts := make(map[string]string)
-	if t.Client != nil && t.Client.Cnf != nil && t.Client.Cnf.U != "" && t.Client.Cnf.P != "" {
-		accounts[t.Client.Cnf.U] = t.Client.Cnf.P
-	}
-	if t.MultiAccount != nil {
-		for user, pass := range t.MultiAccount.AccountMap {
-			accounts[user] = pass
-		}
-	}
-	if t.UserAuth != nil {
-		for user, pass := range t.UserAuth.AccountMap {
-			accounts[user] = pass
-		}
-	}
-	//logs.Error("%v", accounts)
-	if len(accounts) > 0 {
-		handler = basicAuth(accounts, "WebDAV", handler)
-	}
-	srv := &http.Server{
-		BaseContext: func(_ net.Listener) context.Context { return fsm.ctx },
-		Handler:     handler,
-	}
-	logs.Info("start WebDAV server, local path %s, strip prefix %s, remote port %s", t.LocalPath, t.StripPre, t.Ports)
-	listener := nps_mux.NewMux(remoteConn.Conn, common.CONN_TCP, cfg.DisconnectTime)
-	fsm.mu.Lock()
-	fsm.servers = append(fsm.servers, struct {
-		srv        *http.Server
-		listener   *nps_mux.Mux
-		remoteConn *conn.Conn
-	}{srv, listener, remoteConn})
-	fsm.mu.Unlock()
-	registered = true
-
-	fsm.wg.Add(1)
-	go func() {
-		defer fsm.wg.Done()
-		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-			logs.Error("WebDAV Serve error: %v", err)
-		}
-	}()
-}
-
-func (fsm *FileServerManager) CloseAll() {
-	fsm.cancel()
-	fsm.mu.Lock()
-	entries := fsm.servers
-	fsm.servers = nil
-	fsm.mu.Unlock()
-	for _, e := range entries {
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := e.srv.Shutdown(ctx2); err != nil {
-			logs.Error("FileServer Shutdown error: %v", err)
-		}
-		cancel2()
-		e.listener.Close()
-		e.remoteConn.Close()
-	}
-	fsm.wg.Wait()
-}
-
-func basicAuth(users map[string]string, realm string, next http.Handler) http.Handler {
-	if len(users) == 0 {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Basic ") {
-			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		payload, err := base64.StdEncoding.DecodeString(auth[len("Basic "):])
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		parts := strings.SplitN(string(payload), ":", 2)
-		if len(parts) != 2 || users[parts[0]] != parts[1] {
-			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
 
 // ------------------------------
 // P2PManager
@@ -179,24 +32,58 @@ type P2PManager struct {
 	cancel       context.CancelFunc
 	mu           sync.Mutex
 	wg           sync.WaitGroup
-	tcpLn        []*net.TCPListener
+	cfg          *config.CommonConfig
+	monitor      bool
 	udpConn      net.Conn
-	muxSession   *nps_mux.Mux
-	bridge       *p2pBridge
+	muxSession   *mux.Mux
+	quicConn     *quic.Conn
+	uuid         string
+	secretConn   any
 	statusOK     bool
+	statusCh     chan struct{}
 	proxyServers []Closer
+	lastActive   time.Time
 }
 
-type p2pBridge struct{ mgr *P2PManager }
+type P2pBridge struct {
+	mgr     *P2PManager
+	local   *config.LocalServer
+	p2p     bool
+	secret  bool
+	timeout time.Duration
+}
 
-func NewP2PManager(parentCtx context.Context) *P2PManager {
+func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
+	var p2p, secret bool
+	timeout := time.Second * 5
+	if l.Type != "secret" && !DisableP2P {
+		p2p = true
+		secret = l.Fallback
+	} else {
+		secret = true
+	}
+	if secret && p2p {
+		timeout = 3 * time.Second
+	}
+	return &P2pBridge{
+		mgr:     mgr,
+		local:   l,
+		p2p:     p2p,
+		secret:  secret,
+		timeout: timeout,
+	}
+}
+
+func NewP2PManager(parentCtx context.Context, cfg *config.CommonConfig) *P2PManager {
 	ctx, cancel := context.WithCancel(parentCtx)
 	mgr := &P2PManager{
 		ctx:          ctx,
 		cancel:       cancel,
+		cfg:          cfg,
+		monitor:      false,
+		statusCh:     make(chan struct{}, 1),
 		proxyServers: make([]Closer, 0),
 	}
-	mgr.bridge = &p2pBridge{mgr: mgr}
 	go func() {
 		<-parentCtx.Done()
 		mgr.Close()
@@ -204,59 +91,183 @@ func NewP2PManager(parentCtx context.Context) *P2PManager {
 	return mgr
 }
 
-func (b *p2pBridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (net.Conn, error) {
+func (b *P2pBridge) SendLinkInfo(_ int, link *conn.Link, _ *file.Tunnel) (net.Conn, error) {
+	if link == nil {
+		return nil, errors.New("link is nil")
+	}
 	mgr := b.mgr
-	ctx, cancel := context.WithTimeout(mgr.ctx, 200*time.Millisecond)
+	var lastErr error
+	ctx, cancel := context.WithTimeout(mgr.ctx, 1000*time.Millisecond)
 	defer cancel()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
+	first := true
 	for {
+		var tick <-chan time.Time
+		if first {
+			first = false
+			ch := make(chan time.Time, 1)
+			ch <- time.Time{}
+			tick = ch
+		} else {
+			tick = ticker.C
+		}
 		select {
 		case <-ctx.Done():
 			mgr.mu.Lock()
 			mgr.statusOK = false
 			mgr.mu.Unlock()
-			return nil, errors.New("timeout waiting muxSession")
-		case <-ticker.C:
-			mgr.mu.Lock()
-			session := mgr.muxSession
-			mgr.mu.Unlock()
-			if session == nil || session.IsClose {
-				continue
+			if lastErr != nil {
+				return nil, fmt.Errorf("timeout waiting P2P tunnel; last error: %w", lastErr)
 			}
-			nowConn, err := session.NewConn()
-			if err != nil {
+			return nil, errors.New("timeout waiting P2P tunnel")
+		case <-tick:
+			if b.p2p {
 				mgr.mu.Lock()
-				mgr.statusOK = false
+				qConn := mgr.quicConn
+				session := mgr.muxSession
+				idle := time.Since(mgr.lastActive)
 				mgr.mu.Unlock()
-				return nil, err
+				// ---------- QUIC ----------
+				if qConn != nil {
+					logs.Trace("using P2P[QUIC] for connection")
+					viaQUIC, err := b.sendViaQUIC(link, qConn, idle)
+					if err == nil {
+						return viaQUIC, nil
+					}
+					lastErr = err
+				}
+				// ---------- KCP ----------
+				if session != nil {
+					logs.Trace("using P2P[KCP] for connection")
+					viaKCP, err := b.sendViaKCP(link, session)
+					if err == nil {
+						return viaKCP, nil
+					}
+					lastErr = err
+				}
 			}
-			if _, err := conn.NewConn(nowConn).SendInfo(link, ""); err != nil {
-				nowConn.Close()
-				mgr.mu.Lock()
-				mgr.statusOK = false
-				mgr.mu.Unlock()
-				return nil, err
+			if b.secret {
+				if b.p2p {
+					logs.Warn("P2P not ready, fallback to secret")
+				} else {
+					logs.Trace("using Secret for connection")
+				}
+				viaSecret, err := b.sendViaSecret(link)
+				if err == nil {
+					return viaSecret, nil
+				}
+				lastErr = err
 			}
-			mgr.mu.Lock()
-			mgr.statusOK = true
-			mgr.mu.Unlock()
-			return nowConn, nil
 		}
 	}
 }
 
-func (mgr *P2PManager) StartLocalServer(l *config.LocalServer, cfg *config.CommonConfig) error {
+func (b *P2pBridge) sendViaQUIC(link *conn.Link, qConn *quic.Conn, idle time.Duration) (net.Conn, error) {
+	mgr := b.mgr
+	if idle > b.timeout {
+		logs.Trace("sent ACK before proceeding")
+		link.Option.NeedAck = true
+	}
+	stream, err := qConn.OpenStreamSync(mgr.ctx)
+	if err != nil {
+		logs.Trace("QUIC OpenStreamSync failed, retrying: %v", err)
+		mgr.resetStatus(false)
+		return nil, err
+	}
+	nc := conn.NewQuicStreamConn(stream, qConn)
+	if _, err := conn.NewConn(nc).SendInfo(link, ""); err != nil {
+		_ = nc.Close()
+		logs.Trace("QUIC SendInfo failed, retrying: %v", err)
+		mgr.resetStatus(false)
+		return nil, err
+	}
+	if link.Option.NeedAck {
+		if err := conn.ReadACK(nc, b.timeout); err != nil {
+			_ = nc.Close()
+			logs.Trace("QUIC ReadACK failed, retrying: %v", err)
+			mgr.resetStatus(false)
+			return nil, err
+		}
+		mgr.mu.Lock()
+		mgr.lastActive = time.Now()
+		mgr.mu.Unlock()
+	}
+	mgr.resetStatus(true)
+	return nc, nil
+}
+
+func (b *P2pBridge) sendViaKCP(link *conn.Link, session *mux.Mux) (net.Conn, error) {
+	mgr := b.mgr
+	nowConn, err := session.NewConn()
+	if err != nil {
+		logs.Trace("KCP NewConn failed, retrying: %v", err)
+		mgr.resetStatus(false)
+		return nil, err
+	}
+	link.Option.NeedAck = false
+	if _, err := conn.NewConn(nowConn).SendInfo(link, ""); err != nil {
+		_ = nowConn.Close()
+		logs.Trace("KCP SendInfo failed, retrying: %v", err)
+		mgr.resetStatus(false)
+		return nil, err
+	}
+	mgr.resetStatus(true)
+	return nowConn, nil
+}
+
+func (b *P2pBridge) sendViaSecret(link *conn.Link) (net.Conn, error) {
+	mgr := b.mgr
+	sc, err := mgr.getSecretConn()
+	if err != nil {
+		logs.Trace("getSecretConn failed, retrying: %v", err)
+		return nil, err
+	}
+	if _, err := sc.Write([]byte(crypt.Md5(b.local.Password))); err != nil {
+		logs.Error("secret write password failed: %v", err)
+		_ = sc.Close()
+		return nil, err
+	}
+	if _, err := conn.NewConn(sc).SendInfo(link, ""); err != nil {
+		_ = sc.Close()
+		logs.Trace("Secret SendInfo failed, retrying: %v", err)
+		return nil, err
+	}
+	if link.Option.NeedAck {
+		if err := conn.ReadACK(sc, b.timeout); err != nil {
+			_ = sc.Close()
+			logs.Trace("Secret ReadACK failed, retrying: %v", err)
+			return nil, err
+		}
+	}
+	return sc, nil
+}
+
+func (b *P2pBridge) IsServer() bool {
+	return false
+}
+
+func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 	if mgr.ctx.Err() != nil {
 		return errors.New("parent context canceled")
 	}
-	if l.Type != "secret" {
-		mgr.wg.Add(1)
-		go func() {
-			defer mgr.wg.Done()
-			mgr.handleUdpMonitor(cfg, l)
-		}()
+	pb := NewP2pBridge(mgr, l)
+	if pb.p2p {
+		mgr.mu.Lock()
+		needStart := !mgr.monitor
+		if needStart {
+			mgr.monitor = true
+		}
+		mgr.mu.Unlock()
+		if needStart {
+			mgr.wg.Add(1)
+			go func() {
+				defer mgr.wg.Done()
+				mgr.handleUdpMonitor(mgr.cfg, l)
+			}()
+		}
 	}
+
 	task := &file.Tunnel{
 		Port:     l.Port,
 		ServerIp: "0.0.0.0",
@@ -265,83 +276,176 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer, cfg *config.Commo
 			Cnf: &file.Config{
 				U:        "",
 				P:        "",
-				Compress: cfg.Client.Cnf.Compress,
+				Compress: mgr.cfg.Client.Cnf.Compress,
 			},
 			Status:    true,
+			IsConnect: true,
 			RateLimit: 0,
 			Flow:      &file.Flow{},
 		},
 		HttpProxy:   true,
 		Socks5Proxy: true,
 		Flow:        &file.Flow{},
-		Target:      &file.Target{},
+		Target: &file.Target{
+			TargetStr:  l.Target,
+			LocalProxy: l.LocalProxy,
+		},
 	}
+
 	switch l.Type {
 	case "p2ps":
 		logs.Info("start http/socks5 monitor port %d", l.Port)
-		srv := proxy.NewTunnelModeServer(proxy.ProcessMix, mgr.bridge, task)
+		srv := proxy.NewTunnelModeServer(proxy.ProcessMix, pb, task, true)
 		mgr.mu.Lock()
 		mgr.proxyServers = append(mgr.proxyServers, srv)
 		mgr.mu.Unlock()
 		mgr.wg.Add(1)
 		go func() {
 			defer mgr.wg.Done()
-			srv.Start()
+			_ = srv.Start()
 		}()
 		return nil
 	case "p2pt":
 		logs.Info("start tcp trans monitor port %d", l.Port)
-		srv := proxy.NewTunnelModeServer(proxy.HandleTrans, mgr.bridge, task)
+		srv := proxy.NewTunnelModeServer(proxy.HandleTrans, pb, task, true)
 		mgr.mu.Lock()
 		mgr.proxyServers = append(mgr.proxyServers, srv)
 		mgr.mu.Unlock()
 		mgr.wg.Add(1)
 		go func() {
 			defer mgr.wg.Done()
-			srv.Start()
+			_ = srv.Start()
 		}()
 		return nil
 	}
 
-	listenTCP, errTCP := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4zero, Port: l.Port})
-	if errTCP != nil {
-		logs.Error("local tcp monitoring startup failed port %d, error %v", l.Port, errTCP)
-		return errTCP
-	}
-	mgr.mu.Lock()
-	mgr.tcpLn = append(mgr.tcpLn, listenTCP)
-	mgr.mu.Unlock()
-
-	logs.Info("local tcp monitoring started on port %d", l.Port)
-	if l.Type == "p2p" {
-		task.Target.TargetStr = l.Target
-		logs.Info("local udp monitoring started on port %d", l.Port)
-		srv := proxy.NewUdpModeServer(mgr.bridge, task)
+	if l.TargetType == common.CONN_ALL || l.TargetType == common.CONN_TCP {
+		logs.Info("local tcp monitoring started on port %d", l.Port)
+		srv := proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)
 		mgr.mu.Lock()
 		mgr.proxyServers = append(mgr.proxyServers, srv)
 		mgr.mu.Unlock()
-
 		mgr.wg.Add(1)
 		go func() {
 			defer mgr.wg.Done()
-			srv.Start()
+			_ = srv.Start()
+		}()
+	}
+	if l.TargetType == common.CONN_ALL || l.TargetType == common.CONN_UDP {
+		logs.Info("local udp monitoring started on port %d", l.Port)
+		srv := proxy.NewUdpModeServer(pb, task, true)
+		mgr.mu.Lock()
+		mgr.proxyServers = append(mgr.proxyServers, srv)
+		mgr.mu.Unlock()
+		mgr.wg.Add(1)
+		go func() {
+			defer mgr.wg.Done()
+			_ = srv.Start()
 		}()
 	}
 
-	mgr.wg.Add(1)
-	go func() {
-		defer mgr.wg.Done()
-		conn.Accept(listenTCP, func(c net.Conn) {
-			logs.Trace("new %s connection, remote address %s", l.Type, c.RemoteAddr().String())
-			if l.Type == "secret" {
-				mgr.handleSecret(c, cfg, l)
-			} else if l.Type == "p2p" {
-				mgr.handleP2PVisitor(c, cfg, l)
-			}
-		})
-	}()
-
 	return nil
+}
+
+func (mgr *P2PManager) getSecretConn() (c net.Conn, err error) {
+	mgr.mu.Lock()
+	secretConn := mgr.secretConn
+	mgr.mu.Unlock()
+	if secretConn != nil {
+		switch tun := secretConn.(type) {
+		case *mux.Mux:
+			c, err = tun.NewConn()
+			if err != nil {
+				_ = tun.Close()
+			}
+		case *quic.Conn:
+			var stream *quic.Stream
+			stream, err = tun.OpenStreamSync(context.Background())
+			if err == nil {
+				c = conn.NewQuicStreamConn(stream, tun)
+			} else {
+				_ = tun.CloseWithError(0, err.Error())
+			}
+		default:
+			err = errors.New("the tunnel type error")
+			logs.Error("the tunnel type error")
+		}
+		if err != nil {
+			mgr.mu.Lock()
+			mgr.secretConn = nil
+			mgr.mu.Unlock()
+			secretConn = nil
+		}
+	}
+	if secretConn == nil {
+		pc, uuid, err := NewConn(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl)
+		if err != nil {
+			logs.Error("secret NewConn failed: %v", err)
+			return nil, err
+		}
+		mgr.mu.Lock()
+		if mgr.uuid == "" {
+			mgr.uuid = uuid
+		} else {
+			uuid = mgr.uuid
+		}
+		mgr.mu.Unlock()
+		if Ver > 5 {
+			err = SendType(pc, common.WORK_VISITOR, uuid)
+			if err != nil {
+				logs.Error("secret SendType failed: %v", err)
+				_ = pc.Close()
+				return nil, err
+			}
+			if mgr.cfg.Tp == common.CONN_QUIC {
+				qc, ok := pc.Conn.(*conn.QuicAutoCloseConn)
+				if !ok {
+					logs.Error("failed to get quic session")
+					_ = pc.Close()
+					return nil, errors.New("failed to get quic session")
+				}
+				sess := qc.GetSession()
+				var stream *quic.Stream
+				stream, err := sess.OpenStreamSync(mgr.ctx)
+				if err != nil {
+					logs.Error("secret OpenStreamSync failed: %v", err)
+					_ = pc.Close()
+					return nil, err
+				}
+				c = conn.NewQuicStreamConn(stream, sess)
+				secretConn = sess
+			} else {
+				muxConn := mux.NewMux(pc.Conn, mgr.cfg.Tp, mgr.cfg.DisconnectTime, true)
+				c, err = muxConn.NewConn()
+				if err != nil {
+					logs.Error("secret muxConn failed: %v", err)
+					_ = muxConn.Close()
+					_ = pc.Close()
+					return nil, err
+				}
+				secretConn = muxConn
+			}
+			mgr.mu.Lock()
+			mgr.secretConn = secretConn
+			mgr.mu.Unlock()
+		} else {
+			c = pc
+		}
+	}
+	if c == nil {
+		logs.Error("secret GetConn failed: %v", err)
+		return nil, errors.New("secret conn nil")
+	}
+	mgr.mu.Lock()
+	uuid := mgr.uuid
+	mgr.mu.Unlock()
+	err = SendType(conn.NewConn(c), common.WORK_SECRET, uuid)
+	if err != nil {
+		logs.Error("secret SendType failed: %v", err)
+		_ = c.Close()
+		return nil, err
+	}
+	return c, nil
 }
 
 func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.LocalServer) {
@@ -353,10 +457,12 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 		case <-mgr.ctx.Done():
 			return
 		case <-ticker.C:
+		case <-mgr.statusCh:
 		}
 		mgr.mu.Lock()
-		ok := mgr.statusOK && mgr.udpConn != nil
+		ok := mgr.statusOK && (mgr.udpConn != nil || (mgr.quicConn != nil && mgr.quicConn.Context().Err() == nil))
 		oldConn := mgr.udpConn
+		oldQuicConn := mgr.quicConn
 		mgr.mu.Unlock()
 
 		if ok {
@@ -365,8 +471,12 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 
 		mgr.mu.Lock()
 		if oldConn != nil {
-			oldConn.Close()
+			_ = oldConn.Close()
 			mgr.udpConn = nil
+		}
+		if oldQuicConn != nil {
+			_ = oldQuicConn.CloseWithError(0, "monitor close")
+			mgr.quicConn = nil
 		}
 		mgr.mu.Unlock()
 
@@ -386,9 +496,7 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 
 		if errV4 != nil && errV6 != nil {
 			logs.Error("Both IPv4 and IPv6 address retrieval failed, exiting.")
-			mgr.mu.Lock()
-			mgr.statusOK = false
-			mgr.mu.Unlock()
+			mgr.resetStatus(false)
 			return
 		}
 
@@ -423,19 +531,78 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 }
 
 func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l *config.LocalServer) {
-	remoteConn, err := NewConn(cfg.Tp, cfg.VKey, cfg.Server, common.WORK_P2P, cfg.ProxyUrl)
-	if err != nil {
-		logs.Error("newUdpConn NewConn failed: %v", err)
+	mgr.mu.Lock()
+	secretConn := mgr.secretConn
+	mgr.mu.Unlock()
+	var err error
+	var c net.Conn
+	if secretConn != nil {
+		switch tun := mgr.secretConn.(type) {
+		case *mux.Mux:
+			c, err = tun.NewConn()
+			if err != nil {
+				_ = tun.Close()
+			}
+		case *quic.Conn:
+			var stream *quic.Stream
+			stream, err = tun.OpenStreamSync(context.Background())
+			if err == nil {
+				c = conn.NewQuicStreamConn(stream, tun)
+			} else {
+				_ = tun.CloseWithError(0, err.Error())
+			}
+		default:
+			err = errors.New("the tunnel type error")
+			logs.Error("the tunnel type error")
+		}
+		if err != nil {
+			mgr.mu.Lock()
+			mgr.secretConn = nil
+			mgr.mu.Unlock()
+			secretConn = nil
+		}
+	}
+	if secretConn == nil {
+		var uuid string
+		c, uuid, err = NewConn(cfg.Tp, cfg.VKey, cfg.Server, cfg.ProxyUrl)
+		if err != nil {
+			logs.Error("Failed to connect to server: %v", err)
+			time.Sleep(5 * time.Second)
+			return
+		}
+		defer c.Close()
+		mgr.mu.Lock()
+		if mgr.uuid == "" {
+			mgr.uuid = uuid
+		} else {
+			uuid = mgr.uuid
+		}
+		mgr.mu.Unlock()
+	}
+	if c == nil {
+		logs.Error("Get conn failed: %v", err)
 		return
 	}
+	remoteConn := conn.NewConn(c)
 	defer remoteConn.Close()
+	mgr.mu.Lock()
+	uuid := mgr.uuid
+	mgr.mu.Unlock()
+	err = SendType(remoteConn, common.WORK_P2P, uuid)
+	if err != nil {
+		logs.Error("Failed to send type to server: %v", err)
+		time.Sleep(5 * time.Second)
+		return
+	}
 	if _, err := remoteConn.Write([]byte(crypt.Md5(l.Password))); err != nil {
-		logs.Error("newUdpConn write pwd failed: %v", err)
+		logs.Error("Failed to send password to server: %v", err)
+		time.Sleep(5 * time.Second)
 		return
 	}
 	rAddrBuf, err := remoteConn.GetShortLenContent()
 	if err != nil {
-		logs.Error("newUdpConn GetShortLenContent: %v", err)
+		logs.Error("Target client is offline or tunnel config not found: %v", err)
+		time.Sleep(5 * time.Second)
 		return
 	}
 	rAddr := string(rAddrBuf)
@@ -446,101 +613,129 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 
 	if !common.IsSameIPType(localAddr, rAddr) {
 		logs.Debug("IP type mismatch local=%s remote=%s", localAddr, rAddr)
-		return
+		//return
 	}
 	//logs.Debug("localAddr is %s, rAddr is %s", localAddr, rAddr)
 
-	remoteAddr, localConn, err := handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR)
+	var remoteAddr, role, mode, data string
+	var localConn net.PacketConn
+	localConn, remoteAddr, localAddr, role, mode, data, err = handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, common.CONN_QUIC, "")
 	if err != nil {
-		logs.Error("handleP2PUdp failed: %v", err)
+		logs.Error("Handle P2P failed: %v", err)
 		return
+	}
+	if mode == "" {
+		mode = common.CONN_KCP
+	}
+	//logs.Debug("handleP2PUdp ok")
+
+	var udpTunnel net.Conn
+	var sess *quic.Conn
+	if mode == common.CONN_QUIC {
+		rUDPAddr, err := net.ResolveUDPAddr("udp", remoteAddr)
+		if err != nil {
+			logs.Error("Failed to resolve remote UDP addr: %v", err)
+			_ = localConn.Close()
+			return
+		}
+		sess, err = quic.Dial(mgr.ctx, localConn, rUDPAddr, TlsCfg, QuicConfig)
+		if err != nil {
+			logs.Error("QUIC dial error: %v", err)
+			_ = localConn.Close()
+			return
+		}
+		state := sess.ConnectionState().TLS
+		if len(state.PeerCertificates) == 0 {
+			logs.Error("Failed to get QUIC certificate")
+			_ = localConn.Close()
+			return
+		}
+		leaf := state.PeerCertificates[0]
+		if data != string(crypt.GetHMAC(cfg.VKey, leaf.Raw)) {
+			logs.Error("Failed to verify QUIC certificate")
+			_ = localConn.Close()
+			return
+		}
+	} else {
+		kcpTunnel, err := kcp.NewConn(remoteAddr, nil, 150, 3, localConn)
+		if err != nil || kcpTunnel == nil {
+			logs.Warn("KCP NewConn failed: %v", err)
+			_ = localConn.Close()
+			return
+		}
+		conn.SetUdpSession(kcpTunnel)
+		udpTunnel = kcpTunnel
 	}
 
-	udpTunnel, err := kcp.NewConn(remoteAddr, nil, 150, 3, localConn)
-	if err != nil || udpTunnel == nil {
-		logs.Warn("kcp NewConn failed: %v", err)
-		localConn.Close()
-		return
-	}
-	conn.SetUdpSession(udpTunnel)
-	logs.Info("P2P UDP tunnel established to %s", remoteAddr)
+	logs.Info("P2P UDP[%s] tunnel established to %s, role[%s]", mode, remoteAddr, role)
 
 	mgr.mu.Lock()
+	mgr.lastActive = time.Now()
 	if mgr.udpConn != nil {
-		mgr.udpConn.Close()
+		_ = mgr.udpConn.Close()
 	}
 	if mgr.muxSession != nil {
-		mgr.muxSession.Close()
+		_ = mgr.muxSession.Close()
 	}
-	mgr.udpConn = udpTunnel
-	mgr.muxSession = nps_mux.NewMux(udpTunnel, "kcp", cfg.DisconnectTime)
+	if mgr.quicConn != nil {
+		_ = mgr.quicConn.CloseWithError(0, "new connection")
+	}
+	if mode == common.CONN_QUIC {
+		mgr.quicConn = sess
+		mgr.udpConn = nil
+		mgr.muxSession = nil
+	} else {
+		mgr.udpConn = udpTunnel
+		mgr.muxSession = mux.NewMux(udpTunnel, "kcp", cfg.DisconnectTime, false)
+	}
 	mgr.statusOK = true
 	mgr.mu.Unlock()
 }
 
-func (mgr *P2PManager) handleSecret(c net.Conn, cfg *config.CommonConfig, l *config.LocalServer) {
-	remoteConn, err := NewConn(cfg.Tp, cfg.VKey, cfg.Server, common.WORK_SECRET, cfg.ProxyUrl)
-	if err != nil {
-		logs.Error("secret NewConn failed: %v", err)
-		c.Close()
-		return
-	}
-	defer remoteConn.Close()
-	if _, err := remoteConn.Write([]byte(crypt.Md5(l.Password))); err != nil {
-		logs.Error("secret write failed: %v", err)
-		c.Close()
-		return
-	}
-	conn.CopyWaitGroup(remoteConn.Conn, c, false, false, nil, nil, false, 0, nil, nil)
-}
-
-func (mgr *P2PManager) handleP2PVisitor(c net.Conn, cfg *config.CommonConfig, l *config.LocalServer) {
+func (mgr *P2PManager) resetStatus(ok bool) {
 	mgr.mu.Lock()
-	tunnel := mgr.udpConn
-	ok := mgr.statusOK
+	oldStatus := mgr.statusOK
+	mgr.statusOK = ok
 	mgr.mu.Unlock()
-
-	if tunnel == nil || !ok {
-		logs.Warn("P2P not ready, fallback to secret")
-		mgr.handleSecret(c, cfg, l)
-		return
+	if !ok && oldStatus {
+		select {
+		case mgr.statusCh <- struct{}{}:
+		default:
+		}
 	}
-	logs.Trace("using P2P for connection")
-	//TODO just support compress now because there is not tls file in client packages
-	link := conn.NewLink(common.CONN_TCP, l.Target, false, cfg.Client.Cnf.Compress, c.LocalAddr().String(), false)
-	target, err := mgr.bridge.SendLinkInfo(0, link, nil)
-	if err != nil {
-		logs.Error("SendLinkInfo failed: %v", err)
-		mgr.mu.Lock()
-		mgr.statusOK = false
-		mgr.mu.Unlock()
-		c.Close()
-		return
-	}
-	defer target.Close()
-	conn.CopyWaitGroup(target, c, false, cfg.Client.Cnf.Compress, nil, nil, false, 0, nil, nil)
 }
 
 func (mgr *P2PManager) Close() {
 	mgr.cancel()
 	mgr.mu.Lock()
-	lnList := mgr.tcpLn
 	psList := mgr.proxyServers
 	udp := mgr.udpConn
-	mux := mgr.muxSession
+	muxSess := mgr.muxSession
+	qConn := mgr.quicConn
+	secretConn := mgr.secretConn
 	mgr.mu.Unlock()
 
-	for _, ln := range lnList {
-		ln.Close()
-	}
 	for _, srv := range psList {
-		srv.Close()
+		_ = srv.Close()
 	}
 	if udp != nil {
-		udp.Close()
+		_ = udp.Close()
 	}
-	if mux != nil {
-		mux.Close()
+	if muxSess != nil {
+		_ = muxSess.Close()
+	}
+	if qConn != nil {
+		_ = qConn.CloseWithError(0, "close quic")
+	}
+	if secretConn != nil {
+		switch tun := secretConn.(type) {
+		case *mux.Mux:
+			_ = tun.Close()
+		case *quic.Conn:
+			_ = tun.CloseWithError(0, "p2p close")
+		default:
+			logs.Error("the tunnel type error")
+		}
 	}
 	mgr.wg.Wait()
 }

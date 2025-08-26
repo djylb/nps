@@ -37,6 +37,21 @@
         </div>
     </div>
 </div>
+<div class="modal fade" id="qrModal" tabindex="-1" role="dialog" aria-labelledby="qrModalLabel" aria-hidden="true" data-backdrop="false" data-keyboard="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="qrModalLabel">TOTP</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="qrImg" src="" alt="QR" style="max-width: 100%; height: auto;" />
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
     /*bootstrap table*/
@@ -62,7 +77,7 @@
         onExpandRow: function () {$('body').setLang ('.detail-view');},
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang ('#table'); },
         detailFormatter: function (index, row, element) {
-            return '<b langtag="word-maxconnections"></b>: '
+            tmp = '<b langtag="word-maxconnections"></b>: '
                 {{if eq true .isAdmin}}
                 + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'conn_limit\'})">' + row.MaxConn + '</span>'
                 {{else}}
@@ -102,29 +117,40 @@
                 + '<b langtag="word-lastonlinetime"></b>: ' + row.LastOnlineTime + '&emsp;'
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
-                + '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
+            if (row.WebUserName || row.WebPassword) {
+                tmp += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
                 + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
-                + '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
+            }
+            if (row.WebUserName && row.WebTotpSecret) {
+                tmp += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
+            }
+            if (row.Cnf.U || row.Cnf.P) {
+                tmp += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
                 + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
-                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
+            }
+            tmp += '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
                 + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
                 + '<b langtag="word-blackip"></b>: ' + row.BlackIpList + '&emsp;<br/><br/>'
                 {{if index . "tcp_p"}}
-                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.ip}}:{{.tcp_p}} -vkey=" + row.VerifyKey + " -type=tcp</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.tcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tcp\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "kcp_p"}}
-                + '<b langtag="word-commandclient-kcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.ip}}:{{.kcp_p}} -vkey=" + row.VerifyKey + " -type=kcp</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-kcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.kcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"kcp\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "tls_p"}}
-                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.ip}}:{{.tls_p}} -vkey=" + row.VerifyKey + " -type=tls</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.tls_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tls\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "quic_p"}}
+                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.quic_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"quic\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "ws_p"}}
-                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.ip}}:{{.ws_p}}{{.ws_path}} -vkey=" + row.VerifyKey + " -type=ws</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.ws_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"ws\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "wss_p"}}
-                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.ip}}:{{.wss_p}}{{.ws_path}} -vkey=" + row.VerifyKey + " -type=wss</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ip}}:{{.wss_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"wss\"</code>&emsp;<br/><br/>"
                 {{end}}
+            return tmp
         },
         //表格的列
         columns: [
@@ -245,6 +271,71 @@
                 }
             },
             {
+                field: 'FlowRemain',//域值
+                title: '<span langtag="word-flowremain"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (row.Flow.FlowLimit === 0) {
+                        return '∞'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow) + '</span>'
+                    {{else}}
+                    return changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow)
+                    {{end}}
+                }
+            },
+            {
+                field: 'TimeRemain',//域值
+                title: '<span langtag="word-timeremain"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + getRemainingTime(row.Flow.TimeLimit).formatted + '</span>'
+                    {{else}}
+                    return getRemainingTime(row.Flow.TimeLimit).formatted
+                    {{end}}
+                }
+            },
+            {
+                field: 'Flow.FlowLimit',//域值
+                title: '<span langtag="word-flowlimit"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (value === 0) {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(value * 1024 * 1024) + '</span>'
+                    {{else}}
+                    return changeunit(value * 1024 * 1024)
+                    {{end}}
+                }
+            },
+            {
+                field: 'Flow.TimeLimit',//域值
+                title: '<span langtag="word-timelimit"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (value === "0001-01-01T00:00:00Z") {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + value + '</span>'
+                    {{else}}
+                    return value
+                    {{end}}
+                }
+            },
+            {
                 field: 'NowConn',//域值
                 title: '<span langtag="word-nowconn"></span>',//内容
                 halign: 'center',
@@ -342,4 +433,10 @@
             }
         ]
     });
+
+    function showQr(el) {
+        var url = el.getAttribute('data-url');
+        document.getElementById('qrImg').src = url;
+        $('#qrModal').modal('show');
+    }
 </script>

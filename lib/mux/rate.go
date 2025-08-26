@@ -1,4 +1,4 @@
-package nps_mux
+package mux
 
 import (
 	"net"
@@ -10,7 +10,7 @@ type Rate struct {
 	bucketSize        int64
 	bucketSurplusSize int64
 	bucketAddSize     int64
-	stopChan          chan bool
+	stopChan          chan struct{}
 	NowRate           int64
 }
 
@@ -19,7 +19,7 @@ func NewRate(addSize int64) *Rate {
 		bucketSize:        addSize * 2,
 		bucketSurplusSize: 0,
 		bucketAddSize:     addSize,
-		stopChan:          make(chan bool),
+		stopChan:          make(chan struct{}),
 	}
 }
 
@@ -35,14 +35,12 @@ func (s *Rate) add(size int64) {
 	atomic.AddInt64(&s.bucketSurplusSize, size)
 }
 
-// 回桶
 func (s *Rate) ReturnBucket(size int64) {
 	s.add(size)
 }
 
-// 停止
 func (s *Rate) Stop() {
-	s.stopChan <- true
+	close(s.stopChan)
 }
 
 func (s *Rate) Get(size int64) {
@@ -51,14 +49,16 @@ func (s *Rate) Get(size int64) {
 		return
 	}
 	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			if s.bucketSurplusSize >= size {
 				atomic.AddInt64(&s.bucketSurplusSize, -size)
-				ticker.Stop()
 				return
 			}
+		case <-s.stopChan:
+			return
 		}
 	}
 }
@@ -81,52 +81,52 @@ func (s *Rate) session() {
 	}
 }
 
-type Conn struct {
+type RateConn struct {
 	conn net.Conn
 	rate *Rate
 }
 
-func NewRateConn(rate *Rate, conn net.Conn) *Conn {
-	return &Conn{
+func NewRateConn(rate *Rate, conn net.Conn) *RateConn {
+	return &RateConn{
 		conn: conn,
 		rate: rate,
 	}
 }
 
-func (conn *Conn) Read(b []byte) (n int, err error) {
+func (conn *RateConn) Read(b []byte) (n int, err error) {
 	defer func() {
 		conn.rate.Get(int64(n))
 	}()
 	return conn.conn.Read(b)
 }
 
-func (conn *Conn) Write(b []byte) (n int, err error) {
+func (conn *RateConn) Write(b []byte) (n int, err error) {
 	defer func() {
 		conn.rate.Get(int64(n))
 	}()
 	return conn.conn.Write(b)
 }
 
-func (conn *Conn) LocalAddr() net.Addr {
+func (conn *RateConn) LocalAddr() net.Addr {
 	return conn.conn.LocalAddr()
 }
 
-func (conn *Conn) RemoteAddr() net.Addr {
+func (conn *RateConn) RemoteAddr() net.Addr {
 	return conn.conn.RemoteAddr()
 }
 
-func (conn *Conn) SetDeadline(t time.Time) error {
+func (conn *RateConn) SetDeadline(t time.Time) error {
 	return conn.conn.SetDeadline(t)
 }
 
-func (conn *Conn) SetWriteDeadline(t time.Time) error {
+func (conn *RateConn) SetWriteDeadline(t time.Time) error {
 	return conn.conn.SetWriteDeadline(t)
 }
 
-func (conn *Conn) SetReadDeadline(t time.Time) error {
+func (conn *RateConn) SetReadDeadline(t time.Time) error {
 	return conn.conn.SetReadDeadline(t)
 }
 
-func (conn *Conn) Close() error {
+func (conn *RateConn) Close() error {
 	return conn.conn.Close()
 }

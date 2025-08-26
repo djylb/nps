@@ -14,8 +14,10 @@
     <script src="{{.web_base_url}}/static/js/jquery-3.7.1.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap.min.js"></script>
     <script src="{{.web_base_url}}/static/js/jsencrypt.min.js"></script>
+    <script src="{{.web_base_url}}/static/js/crypto-js.min.js"></script>
     <!-- Latest compiled and minified Locales -->
     <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
+    {{.head_custom_code}}
 </head>
 
 <body class="login-page">
@@ -60,7 +62,7 @@
                     </div>
                 </div>
                 {{end}}
-                <button class="btn btn-primary block full-width m-b" langtag="word-login" onclick="login()" type="submit"></button>
+                <button id="loginBtn" class="btn btn-primary block full-width m-b" langtag="word-login" onclick="if (this.form.reportValidity()) login()" type="submit"></button>
                 {{if eq true .register_allow}}
                 <p class="text-muted text-center">
                     <small langtag="info-noaccount"></small>
@@ -79,54 +81,159 @@
 
     <script type="text/javascript">
         window.nps = {
-            web_base_url: "{{.web_base_url}}",
-            version: "{{.version}}",
-            publicKey: `{{.public_key}}`,
-            loginNonce: "{{.login_nonce}}"
+            web_base_url : "{{.web_base_url}}",
+            version      : "{{.version}}",
+            publicKey    : `{{.public_key}}`,
+            loginNonce   : "{{.login_nonce}}",
+            loginDelay   : {{.login_delay}},
+            totpLen      : {{.totp_len}},
+            powBits      : {{.pow_bits}},
+            powEnable    : {{if .pow_enable}}true{{else}}false{{end}},
+            lastAttempt  : Date.now(),
+            timeOffset: 0
         };
-        function encryptWithRSA(plain) {
-            const crypt = new JSEncrypt();
-            crypt.setPublicKey(window.nps.publicKey);
-            return crypt.encrypt(plain);
-        }
-        function login() {
-            const data = {};
-            $("form").serializeArray().forEach(item => {
-                data[item.name] = item.value;
+        function syncServerTime() {
+            var t0 = Date.now();
+            $.ajax({
+                url: window.nps.web_base_url + "/auth/gettime",
+                dataType: "json",
+                cache: false,
+                timeout: 5000,
+                success: function (res) {
+                    if (!res || res.time == null) return;
+                    var t3 = Date.now();
+                    var server = res.time * 1000;
+                    if (server == null) return;
+                    var rtt = t3 - t0;
+                    var estServerAtT3 = server + Math.floor(rtt / 2);
+                    window.nps.timeOffset = estServerAtT3 - t3;
+                }
             });
-            const ts = Date.now();
+        }
+        const loginBtn = document.getElementById('loginBtn');
+        const rsaEncryptor = new JSEncrypt();
+        rsaEncryptor.setPublicKey(window.nps.publicKey);
+        function encryptWithRSA(plain) {
+            return rsaEncryptor.encrypt(plain);
+        }
+        async function sha256Uint8(encPwd, nonce) {
+            const hex = CryptoJS.SHA256(encPwd + nonce).toString(CryptoJS.enc.Hex);
+            const out = new Uint8Array(hex.length >> 1);
+            for (let i = 0; i < out.length; i++) {
+                out[i] = parseInt(hex.substr(i << 1, 2), 16);
+            }
+            return out;
+        }
+        function prefixZero(hashBytes, bits) {
+            const full = bits >> 3, rem = bits & 7;
+            for (let i = 0; i < full; i++) if (hashBytes[i]) return false;
+            return rem ? (hashBytes[full] & (0xFF << (8 - rem))) === 0 : true;
+        }
+        async function calcPowX(encPwd, bits, timeoutMs = 60000) {
+            if (window.Worker) {
+                return new Promise((resolve, reject) => {
+                    const w = new Worker(window.nps.web_base_url + '/static/js/pow-worker.js');
+                    const timer = setTimeout(() => {
+                        w.terminate();
+                        reject('PoW timeout');
+                    }, timeoutMs + 500);
+                    w.onmessage = ({ data }) => {
+                        if (data.ok) {
+                            clearTimeout(timer);
+                            w.terminate();
+                            resolve(data.nonce.toString());
+                        } else if (!data.progress) {
+                            clearTimeout(timer);
+                            w.terminate();
+                            reject('PoW timeout');
+                        }
+                    };
+                    w.postMessage({ encPwd, bits, timeout: timeoutMs });
+                });
+            } else {
+                const endTime = Date.now() + timeoutMs;
+                let nonce = (Math.random() * 0xFFFFFFFF) >>> 0;
+                while (Date.now() < endTime) {
+                    const hash = await sha256Uint8(encPwd, nonce);
+                    if (prefixZero(hash, bits)) return nonce.toString();
+                    nonce = (nonce + 1) >>> 0;
+                    if ((nonce & 0xFFF) === 0) await Promise.resolve();
+                }
+                throw new Error("PoW timeout");
+            }
+        }
+        $(function () {
+            syncServerTime();
+        });
+        async function login() {
+            loginBtn.disabled = true;
+            showMsg(langreply('Processing'), 'loading', 60000);
+            await new Promise(requestAnimationFrame);
+            await new Promise(resolve => setTimeout(resolve, 600));
+            const data = Object.fromEntries(new FormData(document.querySelector('form')).entries());
+            const ts = Date.now() + window.nps.timeOffset;
             const payload = JSON.stringify({
                 n: window.nps.loginNonce,
                 t: ts,
                 p: data.password
             });
-            data.password = encryptWithRSA(payload);
+            const encPwd  = encryptWithRSA(payload);
+            data.password = encPwd;
+            const needPow = window.nps.powBits > 0 && (window.nps.powEnable || (data.captcha && data.captcha.length === window.nps.totpLen));
+            if (needPow) {
+                try {
+                    data.powx = await calcPowX(encPwd, window.nps.powBits);
+                    data.bits = window.nps.powBits;
+                } catch (e) {
+                    showMsg(e.toString(), 'error', 4000);
+                    return false;
+                }
+            }
+            const now = Date.now();
+            const wait = window.nps.loginDelay - (now - window.nps.lastAttempt);
+            if (wait > 0) {
+              await new Promise(r => setTimeout(r, wait));
+            }
+            window.nps.lastAttempt = Date.now();
             $.ajax({
                 type: "POST",
-                url: window.nps.web_base_url + "/login/verify",
+                url : window.nps.web_base_url + "/login/verify",
                 data: data,
                 success: function (res) {
                     if (res.status) {
-                        showMsg(langreply(res.msg), 'success', 1000, function() {
+                        showMsg(langreply(res.msg), 'success', 1000, function () {
                             window.location.href = window.nps.web_base_url + "/index/index";
                         });
                     } else {
+                        {{if eq true .captcha_open}}
+                        var $img = $('.captcha-img');
+                        if ($img.length) {
+                            $img.trigger('click');
+                        }
+                        $('input[name="captcha"]').val('');
+                        {{end}}
                         showMsg(langreply(res.msg), 'error', 3000, function() {
+                            loginBtn.disabled = false;
                             if (res.nonce) {
                                 window.nps.loginNonce = res.nonce;
                             }
                             if (res.cert) {
                                 window.nps.publicKey = res.cert;
+                                rsaEncryptor.setPublicKey(res.cert);
                             }
-                            {{if eq true .captcha_open}}
-                            var $img = $('.captcha-img');
-                            if ($img.length) {
-                                $img.trigger('click');
+                            if (res.timestamp) {
+                                window.nps.timeOffset = res.timestamp - Date.now();
                             }
-                            $('input[name="captcha"]').val('');
-                            {{end}}
+                            if (res.bits) {
+                                window.nps.powBits = res.bits;
+                                window.nps.powEnable = true;
+                            }
                         });
                     }
+                },
+                error: function (xhr, textStatus) {
+                    console.error("Login request failed:", textStatus);
+                    window.location.reload();
                 }
             });
             return false;

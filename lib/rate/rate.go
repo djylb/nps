@@ -1,6 +1,7 @@
 package rate
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -9,8 +10,11 @@ type Rate struct {
 	bucketSize        int64
 	bucketSurplusSize int64
 	bucketAddSize     int64
-	stopChan          chan bool
 	NowRate           int64
+
+	mu       sync.Mutex
+	stopChan chan struct{}
+	running  bool
 }
 
 func NewRate(addSize int64) *Rate {
@@ -18,12 +22,19 @@ func NewRate(addSize int64) *Rate {
 		bucketSize:        addSize * 2,
 		bucketSurplusSize: 0,
 		bucketAddSize:     addSize,
-		stopChan:          make(chan bool),
+		stopChan:          make(chan struct{}),
 	}
 }
 
+// Start 启动回桶
 func (s *Rate) Start() {
-	go s.session()
+	s.mu.Lock()
+	if !s.running {
+		s.running = true
+		s.stopChan = make(chan struct{})
+		go s.session()
+	}
+	s.mu.Unlock()
 }
 
 func (s *Rate) add(size int64) {
@@ -34,14 +45,19 @@ func (s *Rate) add(size int64) {
 	atomic.AddInt64(&s.bucketSurplusSize, size)
 }
 
-// 回桶
+// ReturnBucket 回桶
 func (s *Rate) ReturnBucket(size int64) {
 	s.add(size)
 }
 
-// 停止
+// Stop 停止回桶
 func (s *Rate) Stop() {
-	s.stopChan <- true
+	s.mu.Lock()
+	if s.running {
+		close(s.stopChan)
+		s.running = false
+	}
+	s.mu.Unlock()
 }
 
 func (s *Rate) Get(size int64) {
@@ -49,32 +65,35 @@ func (s *Rate) Get(size int64) {
 		atomic.AddInt64(&s.bucketSurplusSize, -size)
 		return
 	}
-	ticker := time.NewTicker(time.Millisecond * 100)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			if s.bucketSurplusSize >= size {
 				atomic.AddInt64(&s.bucketSurplusSize, -size)
-				ticker.Stop()
 				return
 			}
+		case <-s.stopChan:
+			return
 		}
 	}
 }
 
 func (s *Rate) session() {
-	ticker := time.NewTicker(time.Second * 1)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			if rs := s.bucketAddSize - s.bucketSurplusSize; rs > 0 {
-				s.NowRate = rs
+			rs := s.bucketAddSize - s.bucketSurplusSize
+			if rs > 0 {
+				atomic.StoreInt64(&s.NowRate, rs)
 			} else {
-				s.NowRate = s.bucketSize - s.bucketSurplusSize
+				atomic.StoreInt64(&s.NowRate, s.bucketSize-s.bucketSurplusSize)
 			}
 			s.add(s.bucketAddSize)
 		case <-s.stopChan:
-			ticker.Stop()
 			return
 		}
 	}

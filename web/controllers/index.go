@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"html/template"
 	"strings"
 
 	"github.com/beego/beego"
@@ -17,6 +18,7 @@ type IndexController struct {
 
 func (s *IndexController) Index() {
 	s.Data["web_base_url"] = beego.AppConfig.String("web_base_url")
+	s.Data["head_custom_code"] = template.HTML(beego.AppConfig.String("head_custom_code"))
 	s.Data["data"] = server.GetDashboardData(true)
 	s.SetInfo("dashboard")
 	s.display("index/index")
@@ -116,14 +118,17 @@ func (s *IndexController) Add() {
 	} else {
 		id := int(file.GetDb().JsonDb.GetTaskId())
 		clientId := s.GetIntNoErr("client_id")
+		isAdmin := s.GetSession("isAdmin").(bool)
+		allowLocal := beego.AppConfig.DefaultBool("allow_user_local", beego.AppConfig.DefaultBool("allow_local_proxy", false)) || isAdmin
 		t := &file.Tunnel{
-			Port:     s.GetIntNoErr("port"),
-			ServerIp: s.getEscapeString("server_ip"),
-			Mode:     s.getEscapeString("type"),
+			Port:       s.GetIntNoErr("port"),
+			ServerIp:   s.getEscapeString("server_ip"),
+			Mode:       s.getEscapeString("type"),
+			TargetType: s.getEscapeString("target_type"),
 			Target: &file.Target{
 				TargetStr:     strings.ReplaceAll(s.getEscapeString("target"), "\r\n", "\n"),
 				ProxyProtocol: s.GetIntNoErr("proxy_protocol"),
-				LocalProxy:    (clientId > 0 && s.GetBoolNoErr("local_proxy")) || clientId <= 0,
+				LocalProxy:    (clientId > 0 && s.GetBoolNoErr("local_proxy") && allowLocal) || clientId <= 0,
 			},
 			UserAuth: &file.MultiAccount{
 				Content:    s.getEscapeString("auth"),
@@ -219,12 +224,15 @@ func (s *IndexController) Edit() {
 					return
 				}
 			}
+			isAdmin := s.GetSession("isAdmin").(bool)
+			allowLocal := beego.AppConfig.DefaultBool("allow_user_local", beego.AppConfig.DefaultBool("allow_local_proxy", false)) || isAdmin
 			t.ServerIp = s.getEscapeString("server_ip")
 			t.Mode = s.getEscapeString("type")
+			t.TargetType = s.getEscapeString("target_type")
 			t.Target = &file.Target{TargetStr: strings.ReplaceAll(s.getEscapeString("target"), "\r\n", "\n")}
 			t.UserAuth = &file.MultiAccount{Content: s.getEscapeString("auth"), AccountMap: common.DealMultiUser(s.getEscapeString("auth"))}
-			t.Password = s.getEscapeString("password")
 			t.Id = id
+			t.Password = s.getEscapeString("password")
 			t.LocalPath = s.getEscapeString("local_path")
 			t.StripPre = s.getEscapeString("strip_pre")
 			t.HttpProxy = s.GetBoolNoErr("enable_http")
@@ -237,10 +245,10 @@ func (s *IndexController) Edit() {
 				t.Flow.InletFlow = 0
 			}
 			t.Target.ProxyProtocol = s.GetIntNoErr("proxy_protocol")
-			t.Target.LocalProxy = (clientId > 0 && s.GetBoolNoErr("local_proxy")) || clientId <= 0
-			file.GetDb().UpdateTask(t)
-			server.StopServer(t.Id)
-			server.StartTask(t.Id)
+			t.Target.LocalProxy = (clientId > 0 && s.GetBoolNoErr("local_proxy") && allowLocal) || clientId <= 0
+			_ = file.GetDb().UpdateTask(t)
+			_ = server.StopServer(t.Id)
+			_ = server.StartTask(t.Id)
 		}
 		s.AjaxOk("modified success")
 	}
@@ -329,7 +337,7 @@ func changeStatus(id int, name, action string) (err error) {
 		if name == "time_limit" && action == "clear" {
 			t.Flow.TimeLimit = common.GetTimeNoErrByStr("")
 		}
-		file.GetDb().UpdateTask(t)
+		_ = file.GetDb().UpdateTask(t)
 		//server.StopServer(t.Id)
 		//server.StartTask(t.Id)
 	}
@@ -369,6 +377,7 @@ func (s *IndexController) GetHost() {
 
 func (s *IndexController) DelHost() {
 	id := s.GetIntNoErr("id")
+	server.HttpProxyCache.Remove(id)
 	if err := file.GetDb().DelHost(id); err != nil {
 		s.AjaxErr("delete error")
 	}
@@ -377,6 +386,7 @@ func (s *IndexController) DelHost() {
 
 func (s *IndexController) StartHost() {
 	id := s.GetIntNoErr("id")
+	server.HttpProxyCache.Remove(id)
 	mode := s.getEscapeString("mode")
 	if mode != "" {
 		if err := changeHostStatus(id, mode, "start"); err != nil {
@@ -396,6 +406,7 @@ func (s *IndexController) StartHost() {
 
 func (s *IndexController) StopHost() {
 	id := s.GetIntNoErr("id")
+	server.HttpProxyCache.Remove(id)
 	mode := s.getEscapeString("mode")
 	if mode != "" {
 		if err := changeHostStatus(id, mode, "stop"); err != nil {
@@ -415,6 +426,7 @@ func (s *IndexController) StopHost() {
 
 func (s *IndexController) ClearHost() {
 	id := s.GetIntNoErr("id")
+	server.HttpProxyCache.Remove(id)
 	mode := s.getEscapeString("mode")
 	if mode != "" {
 		if err := changeHostStatus(id, mode, "clear"); err != nil {
@@ -433,6 +445,8 @@ func (s *IndexController) AddHost() {
 		s.display("index/hadd")
 	} else {
 		id := int(file.GetDb().JsonDb.GetHostId())
+		isAdmin := s.GetSession("isAdmin").(bool)
+		allowLocal := beego.AppConfig.DefaultBool("allow_user_local", beego.AppConfig.DefaultBool("allow_local_proxy", false)) || isAdmin
 		clientId := s.GetIntNoErr("client_id")
 		h := &file.Host{
 			Id:   id,
@@ -440,17 +454,19 @@ func (s *IndexController) AddHost() {
 			Target: &file.Target{
 				TargetStr:     strings.ReplaceAll(s.getEscapeString("target"), "\r\n", "\n"),
 				ProxyProtocol: s.GetIntNoErr("proxy_protocol"),
-				LocalProxy:    (clientId > 0 && s.GetBoolNoErr("local_proxy")) || clientId <= 0,
+				LocalProxy:    (clientId > 0 && s.GetBoolNoErr("local_proxy") && allowLocal) || clientId <= 0,
 			},
 			UserAuth: &file.MultiAccount{
 				Content:    s.getEscapeString("auth"),
 				AccountMap: common.DealMultiUser(s.getEscapeString("auth")),
 			},
-			HeaderChange: s.getEscapeString("header"),
-			HostChange:   s.getEscapeString("hostchange"),
-			Remark:       s.getEscapeString("remark"),
-			Location:     s.getEscapeString("location"),
-			PathRewrite:  s.getEscapeString("path_rewrite"),
+			HeaderChange:     s.getEscapeString("header"),
+			RespHeaderChange: s.getEscapeString("resp_header"),
+			HostChange:       s.getEscapeString("hostchange"),
+			Remark:           s.getEscapeString("remark"),
+			Location:         s.getEscapeString("location"),
+			PathRewrite:      s.getEscapeString("path_rewrite"),
+			RedirectURL:      s.getEscapeString("redirect_url"),
 			Flow: &file.Flow{
 				FlowLimit: int64(s.GetIntNoErr("flow_limit")),
 				TimeLimit: common.GetTimeNoErrByStr(s.getEscapeString("time_limit")),
@@ -482,6 +498,7 @@ func (s *IndexController) AddHost() {
 
 func (s *IndexController) EditHost() {
 	id := s.GetIntNoErr("id")
+	server.HttpProxyCache.Remove(id)
 	if s.Ctx.Request.Method == "GET" {
 		s.Data["menu"] = "host"
 		if h, err := file.GetDb().GetHostById(id); err != nil {
@@ -518,21 +535,25 @@ func (s *IndexController) EditHost() {
 			} else {
 				h.Client = client
 			}
+			isAdmin := s.GetSession("isAdmin").(bool)
+			allowLocal := beego.AppConfig.DefaultBool("allow_user_local", beego.AppConfig.DefaultBool("allow_local_proxy", false)) || isAdmin
 			h.Host = s.getEscapeString("host")
 			h.Target = &file.Target{TargetStr: strings.ReplaceAll(s.getEscapeString("target"), "\r\n", "\n")}
 			h.UserAuth = &file.MultiAccount{Content: s.getEscapeString("auth"), AccountMap: common.DealMultiUser(s.getEscapeString("auth"))}
 			h.HeaderChange = s.getEscapeString("header")
+			h.RespHeaderChange = s.getEscapeString("resp_header")
 			h.HostChange = s.getEscapeString("hostchange")
 			h.Remark = s.getEscapeString("remark")
 			h.Location = s.getEscapeString("location")
 			h.PathRewrite = s.getEscapeString("path_rewrite")
+			h.RedirectURL = s.getEscapeString("redirect_url")
 			h.Scheme = s.getEscapeString("scheme")
 			h.HttpsJustProxy = s.GetBoolNoErr("https_just_proxy")
 			h.AutoSSL = s.GetBoolNoErr("auto_ssl")
 			h.KeyFile = s.getEscapeString("key_file")
 			h.CertFile = s.getEscapeString("cert_file")
 			h.Target.ProxyProtocol = s.GetIntNoErr("proxy_protocol")
-			h.Target.LocalProxy = (clientId > 0 && s.GetBoolNoErr("local_proxy")) || clientId <= 0
+			h.Target.LocalProxy = (clientId > 0 && s.GetBoolNoErr("local_proxy") && allowLocal) || clientId <= 0
 			h.Flow.FlowLimit = int64(s.GetIntNoErr("flow_limit"))
 			h.Flow.TimeLimit = common.GetTimeNoErrByStr(s.getEscapeString("time_limit"))
 			if s.GetBoolNoErr("flow_reset") {

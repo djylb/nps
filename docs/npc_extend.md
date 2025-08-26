@@ -97,6 +97,9 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 | `-password`           | P2P 认证密码                                          | 无                            |
 | `-stun_addr`          | STUN 服务器地址                                        | `stun.stunprotocol.org:3478` |
 | `-dns_server`         | 配置 DNS 服务器                                        | `8.8.8.8`                    |
+| `-ntp_server`         | 配置 NTP 服务器                                        | 无                            |
+| `-ntp_interval`       | NTP 最小查询间隔（分钟）                                    | `5`                          |
+| `-timezone`           | 配置时区（Asia/Shanghai）                               | 无                            |
 | `-time`               | 客户端注册时间（小时）                                       | `2`                          |
 | `-type`               | 服务器连接方式（`tcp` / `tls` / `kcp`）                    | `tcp`                        |
 | `-version`            | 显示当前版本                                            | 无                            |

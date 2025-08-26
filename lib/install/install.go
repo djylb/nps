@@ -1,11 +1,15 @@
 package install
 
 import (
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -17,11 +21,12 @@ import (
 
 	"github.com/c4milo/unpackit"
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/conn"
 )
 
 var BuildTarget string
 
-// Keep it in sync with the template from service_sysv_linux.go file
+// SysvScript Keep it in sync with the template from service_sysv_linux.go file
 // Use "ps | grep -v grep | grep $(get_pid)" because "ps PID" may not work on OpenWrt
 const SysvScript = `#!/bin/sh
 # For RedHat and cousins:
@@ -155,142 +160,244 @@ func UpdateNpc() {
 
 type release struct {
 	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+		Digest             string `json:"digest"`
+	} `json:"assets"`
 }
 
 func downloadLatest(bin string) string {
+	const timeout = 5 * time.Second
+	const idleTimeout = 10 * time.Second
+	const keepAliveTime = 30 * time.Second
+
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout: 5 * time.Second,
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			d := &net.Dialer{
+				Timeout:   timeout,
+				KeepAlive: keepAliveTime,
+			}
+			raw, err := d.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			return conn.NewTimeoutConn(raw, idleTimeout), nil
+		},
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			d := &net.Dialer{
+				Timeout:   timeout,
+				KeepAlive: keepAliveTime,
+			}
+			raw, err := d.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			host, _, _ := net.SplitHostPort(addr)
+			tlsConf := &tls.Config{InsecureSkipVerify: true}
+			if net.ParseIP(host) == nil {
+				tlsConf.ServerName = host
+			}
+			return conn.NewTimeoutTLSConn(raw, tlsConf, idleTimeout, timeout)
+		},
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
 	}
 	httpClient := &http.Client{
 		Transport: transport,
 	}
 
+	useCDNLatest := true
+	rl := new(release)
+	var version string
 	// get version
 	data, err := httpClient.Get("https://api.github.com/repos/djylb/nps/releases/latest")
-	if err != nil {
-		log.Fatal(err.Error())
+	if err == nil {
+		defer data.Body.Close()
+		b, err := io.ReadAll(data.Body)
+		if err == nil {
+			if err := json.Unmarshal(b, &rl); err == nil {
+				version = rl.TagName
+				if version != "" {
+					useCDNLatest = false
+				}
+				fmt.Println("The latest version is", version)
+			}
+		}
 	}
-	defer data.Body.Close()
-
-	b, err := ioutil.ReadAll(data.Body)
-	if err != nil {
-		log.Fatal(err)
+	if useCDNLatest {
+		version = "latest"
+		fmt.Println("GitHub API failed; use CDN @latest (skip hash).")
 	}
-	rl := new(release)
-	if err := json.Unmarshal(b, &rl); err != nil {
-		log.Fatal(err)
-	}
-	version := rl.TagName
-	fmt.Println("The latest version is", version)
 
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
 
 	var filename string
-	if BuildTarget == "win7" {
+	switch {
+	case BuildTarget == "win7":
 		filename = fmt.Sprintf("%s_%s_%s_old.tar.gz", osName, archName, bin)
-	} else if BuildTarget != "" {
+	case BuildTarget != "":
 		filename = fmt.Sprintf("%s_%s_%s_%s.tar.gz", osName, archName, BuildTarget, bin)
-	} else {
+	default:
 		filename = fmt.Sprintf("%s_%s_%s.tar.gz", osName, archName, bin)
 	}
 
-	// download latest package
-	urls := []string{
-		fmt.Sprintf("https://github.com/djylb/nps/releases/download/%s/%s", version, filename),
-		fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-		fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-		fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-		fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-	}
-
-	var resp *http.Response
-	var downloadErr error
-	for _, url := range urls {
-		fmt.Println("Trying:", url)
-		resp, downloadErr = httpClient.Get(url)
-		if downloadErr == nil && resp.StatusCode == http.StatusOK {
+	var expectedHash string
+	if !useCDNLatest {
+		for _, a := range rl.Assets {
+			if a.Name != filename {
+				continue
+			}
+			//fmt.Println("Expected Hash:", a.Digest)
+			if strings.HasPrefix(a.Digest, "sha256:") {
+				expectedHash = strings.TrimPrefix(a.Digest, "sha256:")
+			}
 			break
 		}
-		if resp != nil {
-			resp.Body.Close()
+		//fmt.Println("Expected SHA256:", expectedHash)
+		if expectedHash == "" {
+			fmt.Println("No SHA256 digest found for", filename, "; skipping hash check")
+		}
+	} else {
+		expectedHash = ""
+	}
+
+	// download latest package
+	var urls []string
+	if useCDNLatest {
+		urls = []string{
+			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
+			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
+			fmt.Sprintf("https://github.com/djylb/nps/releases/latest/download/%s", filename),
+			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
+			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
+		}
+	} else {
+		urls = []string{
+			fmt.Sprintf("https://github.com/djylb/nps/releases/download/%s/%s", version, filename),
+			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
+			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
+			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
+			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
 		}
 	}
-	if downloadErr != nil {
-		log.Fatal("Download failed:", downloadErr)
-	}
-	if resp == nil || resp.StatusCode != http.StatusOK {
-		log.Fatalf("All mirrors failed; last status: %v", resp.StatusCode)
-	}
-	defer resp.Body.Close()
 
-	destPath, err := ioutil.TempDir(os.TempDir(), "nps-")
-	if err != nil {
-		log.Fatal("Failed to create temp directory:", err)
-	}
+	var lastErr error
+	for _, url := range urls {
+		fmt.Println("Trying:", url)
+		resp, err := httpClient.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("status %d", resp.StatusCode)
+			_ = resp.Body.Close()
+			continue
+		}
 
-	if err := unpackit.Unpack(resp.Body, destPath); err != nil {
-		log.Fatal(err)
-		return ""
-	}
+		var reader io.Reader = resp.Body
+		var hasher hash.Hash
+		if expectedHash != "" {
+			hasher = sha256.New()
+			reader = io.TeeReader(resp.Body, hasher)
+		}
 
-	if bin == "server" {
-		destPath = strings.Replace(destPath, "/web", "", -1)
-		destPath = strings.Replace(destPath, `\web`, "", -1)
-		destPath = strings.Replace(destPath, "/views", "", -1)
-		destPath = strings.Replace(destPath, `\views`, "", -1)
-	} else {
-		destPath = strings.Replace(destPath, `\conf`, "", -1)
-		destPath = strings.Replace(destPath, "/conf", "", -1)
+		destPath, err := os.MkdirTemp(os.TempDir(), "nps-")
+		if err != nil {
+			_ = resp.Body.Close()
+			lastErr = err
+			//continue
+			log.Fatal("Failed to create temp directory:", err)
+		}
+
+		if err := unpackit.Unpack(reader, destPath); err != nil {
+			_ = resp.Body.Close()
+			_ = os.RemoveAll(destPath)
+			fmt.Println("  → failed:", err)
+			lastErr = err
+			continue
+		}
+		_ = resp.Body.Close()
+
+		if expectedHash != "" {
+			sum := hex.EncodeToString(hasher.Sum(nil))
+			if sum != expectedHash {
+				fmt.Printf("  → checksum mismatch: got %s vs %s\n", sum, expectedHash)
+				_ = os.RemoveAll(destPath)
+				lastErr = fmt.Errorf("checksum mismatch")
+				continue
+			}
+			//fmt.Printf("  → checksum verified: %s\n", sum)
+		}
+
+		if bin == "server" {
+			destPath = strings.Replace(destPath, "/web", "", -1)
+			destPath = strings.Replace(destPath, `\web`, "", -1)
+			destPath = strings.Replace(destPath, "/views", "", -1)
+			destPath = strings.Replace(destPath, `\views`, "", -1)
+		} else {
+			destPath = strings.Replace(destPath, `\conf`, "", -1)
+			destPath = strings.Replace(destPath, "/conf", "", -1)
+		}
+		return destPath
 	}
-	return destPath
+	log.Fatalf("All mirrors failed; last error: %v", lastErr)
+	return ""
 }
 
 func copyStaticFile(srcPath, bin string) string {
 	path := common.GetInstallPath()
 	if bin == "nps" {
 		if err := CopyDir(filepath.Join(srcPath, "web", "views"), filepath.Join(path, "web", "views")); err != nil {
+			if exists, _ := pathExists(filepath.Join(path, "web", "views")); exists {
+				goto ExecPath
+			}
 			log.Fatalln(err)
 		}
 		chMod(filepath.Join(path, "web", "views"), 0766)
 		if err := CopyDir(filepath.Join(srcPath, "web", "static"), filepath.Join(path, "web", "static")); err != nil {
+			if exists, _ := pathExists(filepath.Join(path, "web", "static")); exists {
+				goto ExecPath
+			}
 			log.Fatalln(err)
 		}
 		chMod(filepath.Join(path, "web", "static"), 0766)
 		if _, err := copyFile(filepath.Join(srcPath, "conf", "nps.conf"), filepath.Join(path, "conf", "nps.conf.default")); err != nil {
+			if exists, _ := pathExists(filepath.Join(path, "conf", "nps.conf")); exists {
+				goto ExecPath
+			}
 			log.Fatalln(err)
 		}
 		chMod(filepath.Join(path, "conf", "nps.conf.default"), 0766)
 	}
-
+ExecPath:
 	binPath, err := os.Executable()
 	if err != nil {
 		binPath, _ = filepath.Abs(os.Args[0])
 	}
 
 	if !common.IsWindows() {
-		copyFile(filepath.Join(srcPath, bin), binPath)
+		_, _ = copyFile(filepath.Join(srcPath, bin), binPath)
 		chMod(binPath, 0755)
 		if _, err := copyFile(filepath.Join(srcPath, bin), "/usr/bin/"+bin); err != nil {
 			if _, err := copyFile(filepath.Join(srcPath, bin), "/usr/local/bin/"+bin); err != nil {
 				log.Fatalln(err)
 			} else {
-				copyFile(filepath.Join(srcPath, bin), "/usr/local/bin/"+bin+"-update")
+				_, _ = copyFile(filepath.Join(srcPath, bin), "/usr/local/bin/"+bin+"-update")
 				chMod("/usr/local/bin/"+bin+"-update", 0755)
 				binPath = "/usr/local/bin/" + bin
 			}
 		} else {
-			copyFile(filepath.Join(srcPath, bin), "/usr/bin/"+bin+"-update")
+			_, _ = copyFile(filepath.Join(srcPath, bin), "/usr/bin/"+bin+"-update")
 			chMod("/usr/bin/"+bin+"-update", 0755)
 			binPath = "/usr/bin/" + bin
 		}
 	} else {
-		copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+"-update.exe"))
-		copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+".exe"))
+		_, _ = copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+"-update.exe"))
+		_, _ = copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+".exe"))
 	}
 	chMod(binPath, 0755)
 	return binPath
@@ -299,7 +406,7 @@ func copyStaticFile(srcPath, bin string) string {
 func InstallNpc() {
 	path := common.GetInstallPath()
 	if !common.FileExists(path) {
-		err := os.Mkdir(path, 0755)
+		err := os.MkdirAll(path, 0755)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -336,6 +443,7 @@ now!`)
 	chMod(common.GetLogPath(), 0777)
 	return binPath
 }
+
 func MkidrDirAll(path string, v ...string) {
 	for _, item := range v {
 		if err := os.MkdirAll(filepath.Join(path, item), 0755); err != nil {
@@ -347,20 +455,25 @@ func MkidrDirAll(path string, v ...string) {
 func CopyDir(srcPath string, destPath string) error {
 	//检测目录正确性
 	if srcInfo, err := os.Stat(srcPath); err != nil {
-		fmt.Println(err.Error())
+		//fmt.Println(err.Error())
+		log.Println("Failed to copy source directory.")
 		return err
 	} else {
 		if !srcInfo.IsDir() {
-			e := errors.New("SrcPath is not the right directory!")
-			return e
+			return errors.New("srcPath is not a directory")
 		}
 	}
 	if destInfo, err := os.Stat(destPath); err != nil {
-		return err
+		if os.IsNotExist(err) {
+			if mkErr := os.MkdirAll(destPath, os.ModePerm); mkErr != nil {
+				return mkErr
+			}
+		} else {
+			return err
+		}
 	} else {
 		if !destInfo.IsDir() {
-			e := errors.New("DestInfo is not the right directory!")
-			return e
+			return errors.New("destInfo is not the right directory")
 		}
 	}
 	err := filepath.Walk(srcPath, func(path string, f os.FileInfo, err error) error {
@@ -369,8 +482,8 @@ func CopyDir(srcPath string, destPath string) error {
 		}
 		if !f.IsDir() {
 			destNewPath := strings.Replace(path, srcPath, destPath, -1)
-			log.Println("copy file ::" + path + " to " + destNewPath)
-			copyFile(path, destNewPath)
+			log.Println("copy file: " + path + " -> " + destNewPath)
+			_, _ = copyFile(path, destNewPath)
 			if !common.IsWindows() {
 				chMod(destNewPath, 0766)
 			}
@@ -436,7 +549,7 @@ func copyFile(src, dest string) (w int64, err error) {
 		return n, err
 	}
 
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	if renameErr := os.Rename(tmpPath, dest); renameErr != nil {
 		return n, renameErr
 	}
@@ -457,6 +570,6 @@ func pathExists(path string) (bool, error) {
 
 func chMod(name string, mode os.FileMode) {
 	if !common.IsWindows() {
-		os.Chmod(name, mode)
+		_ = os.Chmod(name, mode)
 	}
 }

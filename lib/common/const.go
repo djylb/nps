@@ -6,6 +6,7 @@ const (
 	VERIFY_SUCCESS    = "sucs"
 	WORK_MAIN         = "main"
 	WORK_CHAN         = "chan"
+	WORK_VISITOR      = "vstr"
 	WORK_CONFIG       = "conf"
 	WORK_REGISTER     = "rgst"
 	WORK_SECRET       = "sert"
@@ -24,9 +25,19 @@ const (
 	NEW_TASK          = "task"
 	NEW_CONF          = "conf"
 	NEW_HOST          = "host"
+	CONN_ALL          = "all"
 	CONN_TCP          = "tcp"
 	CONN_UDP          = "udp"
+	CONN_KCP          = "kcp"
+	CONN_TLS          = "tls"
+	CONN_QUIC         = "quic"
 	CONN_TEST         = "TST"
+	CONN_ACK          = "ACK"
+	PING              = "ping"
+	PONG              = "pong"
+	TEST              = "test"
+
+	TOTP_SEQ = "totp:" // TOTP Separator
 
 	UnauthorizedBytes = "HTTP/1.1 401 Unauthorized\r\n" +
 		"Content-Type: text/plain; charset=utf-8\r\n" +
@@ -45,9 +56,10 @@ const (
 )
 
 var DefaultPort = map[string]string{
-	"tcp": "8024",
-	"kcp": "8024",
-	"tls": "8025",
-	"ws":  "80",
-	"wss": "443",
+	"tcp":  "8024",
+	"kcp":  "8024",
+	"tls":  "8025",
+	"quic": "8025",
+	"ws":   "80",
+	"wss":  "443",
 }

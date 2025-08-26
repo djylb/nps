@@ -89,3 +89,57 @@ func (idx *StringIndex) Clear() {
 	idx.data = make(map[string]string)
 	idx.mu.Unlock()
 }
+
+type AnyStringIndex struct {
+	data sync.Map // map[string]interface{}
+}
+
+func NewAnyStringIndex() *AnyStringIndex {
+	return &AnyStringIndex{}
+}
+
+func (idx *AnyStringIndex) Add(key string, value interface{}) {
+	idx.data.Store(key, value)
+}
+
+func (idx *AnyStringIndex) Get(key string) (value interface{}, ok bool) {
+	return idx.data.Load(key)
+}
+
+func (idx *AnyStringIndex) Remove(key string) {
+	idx.data.Delete(key)
+}
+
+func (idx *AnyStringIndex) Clear() {
+	idx.data.Range(func(k, _ interface{}) bool {
+		idx.data.Delete(k)
+		return true
+	})
+}
+
+type AnyIntIndex struct {
+	data sync.Map // map[int]interface{}
+}
+
+func NewAnyIntIndex() *AnyIntIndex {
+	return &AnyIntIndex{}
+}
+
+func (idx *AnyIntIndex) Add(key int, value interface{}) {
+	idx.data.Store(key, value)
+}
+
+func (idx *AnyIntIndex) Get(key int) (value interface{}, ok bool) {
+	return idx.data.Load(key)
+}
+
+func (idx *AnyIntIndex) Remove(key int) {
+	idx.data.Delete(key)
+}
+
+func (idx *AnyIntIndex) Clear() {
+	idx.data.Range(func(k, _ interface{}) bool {
+		idx.data.Delete(k)
+		return true
+	})
+}

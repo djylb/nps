@@ -1,3 +1,6 @@
+//go:build !sdk
+// +build !sdk
+
 package main
 
 import (
@@ -37,7 +40,11 @@ var (
 	localPort      = flag.Int("local_port", 2000, "P2P local port")
 	password       = flag.String("password", "", "P2P password flag")
 	target         = flag.String("target", "", "P2P target")
+	targetType     = flag.String("target_type", "all", "P2P target connection type (all|tcp|udp)")
+	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	localType      = flag.String("local_type", "p2p", "P2P target type")
+	fallbackSecret = flag.Bool("fallback_secret", true, "P2P fallback secret (true or false)")
+	disableP2P     = flag.Bool("disable_p2p", false, "Disable P2P connection (true or false)")
 	logPath        = flag.String("log_path", "", "NPC log path (empty to use default, 'off' to disable)")
 	logMaxSize     = flag.Int("log_max_size", 5, "Maximum log file size in MB before rotation (0 to disable)")
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
@@ -53,7 +60,10 @@ var (
 	disconnectTime = flag.Int("disconnect_timeout", 60, "Disconnect timeout in seconds")
 	p2pTime        = flag.Int("p2p_timeout", 5, "P2P timeout in seconds")
 	dnsServer      = flag.String("dns_server", "8.8.8.8", "DNS server for domain lookup")
+	ntpServer      = flag.String("ntp_server", "", "NTP server for time synchronization")
+	ntpInterval    = flag.Int("ntp_interval", 5, "interval between NTP synchronizations (minutes)")
 	tlsEnable      = flag.Bool("tls_enable", false, "Enable TLS (Deprecated)")
+	timezone       = flag.String("timezone", "", "Time zone to use for time(eg: Asia/Shanghai)")
 	genTOTP        = flag.Bool("gen2fa", false, "Generate TOTP Secret")
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 )
@@ -71,14 +81,21 @@ func main() {
 	}
 	// 显示版本并退出
 	if *ver {
-		common.PrintVersion(*protoVer)
+		version.PrintVersion(*protoVer)
 		return
 	}
 	client.Ver = *protoVer
 	client.SkipTLSVerify = *skipVerify
+	client.DisableP2P = *disableP2P
 	crypt.SkipVerify = *skipVerify
 	if *protoVer < 2 {
 		crypt.SkipVerify = true
+	}
+
+	// 配置时区
+	err := common.SetTimezone(*timezone)
+	if err != nil {
+		logs.Warn("Set timezone error %v", err)
 	}
 
 	// 配置日志
@@ -86,6 +103,10 @@ func main() {
 
 	// 配置DNS
 	common.SetCustomDNS(*dnsServer)
+
+	// 配置NTP
+	common.SetNtpServer(*ntpServer)
+	common.SetNtpInterval(time.Duration(*ntpInterval) * time.Minute)
 
 	// 初始化服务
 	options := make(service.KeyValue)
@@ -136,19 +157,21 @@ func main() {
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
 		case "status":
-			if len(os.Args) > 2 {
-				path := strings.Replace(os.Args[2], "-config=", "", -1)
-				client.GetTaskStatus(path)
-			}
+			//	if len(os.Args) > 2 {
+			//		path := strings.Replace(os.Args[2], "-config=", "", -1)
+			//		client.GetTaskStatus(path)
+			//	}
+			_ = flag.CommandLine.Parse(os.Args[2:])
+			client.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl)
 		case "register":
-			flag.CommandLine.Parse(os.Args[2:])
+			_ = flag.CommandLine.Parse(os.Args[2:])
 			client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *registerTime)
 		case "update":
 			install.UpdateNpc()
 			return
 		case "nat":
 			c := stun.NewClient()
-			flag.CommandLine.Parse(os.Args[2:])
+			_ = flag.CommandLine.Parse(os.Args[2:])
 			c.SetServerAddr(*stunAddr)
 			//logs.Info(*stunAddr)
 			fmt.Println("STUN Server:", *stunAddr)
@@ -181,8 +204,8 @@ func main() {
 			}
 			return
 		case "install":
-			service.Control(s, "stop")
-			service.Control(s, "uninstall")
+			_ = service.Control(s, "stop")
+			_ = service.Control(s, "uninstall")
 			install.InstallNpc()
 			err := service.Control(s, os.Args[1])
 			if err != nil {
@@ -191,8 +214,8 @@ func main() {
 			if service.Platform() == "unix-systemv" {
 				logs.Info("unix-systemv service")
 				confPath := "/etc/init.d/" + svcConfig.Name
-				os.Symlink(confPath, "/etc/rc.d/S90"+svcConfig.Name)
-				os.Symlink(confPath, "/etc/rc.d/K02"+svcConfig.Name)
+				_ = os.Symlink(confPath, "/etc/rc.d/S90"+svcConfig.Name)
+				_ = os.Symlink(confPath, "/etc/rc.d/K02"+svcConfig.Name)
 			}
 			return
 		case "uninstall":
@@ -202,13 +225,13 @@ func main() {
 			}
 			if service.Platform() == "unix-systemv" {
 				logs.Info("unix-systemv service")
-				os.Remove("/etc/rc.d/S90" + svcConfig.Name)
-				os.Remove("/etc/rc.d/K02" + svcConfig.Name)
+				_ = os.Remove("/etc/rc.d/S90" + svcConfig.Name)
+				_ = os.Remove("/etc/rc.d/K02" + svcConfig.Name)
 			}
 			return
 		}
 	}
-	s.Run()
+	_ = s.Run()
 }
 
 // 配置日志记录
@@ -259,12 +282,12 @@ func NewNpc(pCtx context.Context) *Npc {
 	}
 }
 
-func (p *Npc) Start(s service.Service) error {
+func (p *Npc) Start(_ service.Service) error {
 	go p.run()
 	return nil
 }
 
-func (p *Npc) Stop(s service.Service) error {
+func (p *Npc) Stop(_ service.Service) error {
 	close(p.exit)
 	p.cancel()
 	if service.Interactive() {
@@ -292,27 +315,31 @@ func (p *Npc) run() error {
 
 // 主运行逻辑
 func run(ctx context.Context) {
-	common.InitPProfFromArg(*pprofAddr)
+	common.InitPProfByAddr(*pprofAddr)
 	if *tlsEnable {
 		*connType = "tls"
 	}
 	//p2p or secret command
 	if *password != "" {
 		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion(*protoVer))
+		common.SyncTime()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
 		commonConfig.VKey = *verifyKey
-		commonConfig.Tp = *connType
+		commonConfig.Tp = strings.ToLower(*connType)
 		localServer := new(config.LocalServer)
-		localServer.Type = *localType
+		localServer.Type = strings.ToLower(*localType)
 		localServer.Password = *password
 		localServer.Target = *target
+		localServer.TargetType = strings.ToLower(*targetType)
 		localServer.Port = *localPort
+		localServer.Fallback = *fallbackSecret
+		localServer.LocalProxy = *localProxy
 		commonConfig.Client = new(file.Client)
 		commonConfig.Client.Cnf = new(file.Config)
 		commonConfig.DisconnectTime = *p2pTime
-		p2pm := client.NewP2PManager(ctx)
-		go p2pm.StartLocalServer(localServer, commonConfig)
+		p2pm := client.NewP2PManager(ctx, commonConfig)
+		go p2pm.StartLocalServer(localServer)
 		return
 	}
 	env := common.GetEnvMap()
@@ -322,9 +349,15 @@ func run(ctx context.Context) {
 	if *verifyKey == "" {
 		*verifyKey, _ = env["NPC_SERVER_VKEY"]
 	}
-	if *verifyKey != "" && *serverAddr != "" && *configPath == "" {
+	if *configPath == "" {
+		*configPath, _ = env["NPC_CONFIG_PATH"]
+	}
+	hasCommand := *verifyKey != "" && *serverAddr != ""
+	if hasCommand {
 		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion(*protoVer))
+		common.SyncTime()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
+		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
 		*verifyKey = strings.ReplaceAll(*verifyKey, "，", ",")
 		*connType = strings.ReplaceAll(*connType, "，", ",")
 
@@ -358,14 +391,15 @@ func run(ctx context.Context) {
 
 			go func() {
 				for {
-					logs.Info("Start server: " + serverAddr + " vkey: " + verifyKey + " type: " + connType)
-					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, nil, *disconnectTime).Start()
+					logs.Info("Start server: %s vkey: %s type: %s", serverAddr, verifyKey, connType)
+					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, "", nil, *disconnectTime, nil).Start()
 					logs.Info("Client closed! It will be reconnected in five seconds")
 					time.Sleep(time.Second * 5)
 				}
 			}()
 		}
-	} else {
+	}
+	if *configPath != "" || !hasCommand {
 		if *configPath == "" {
 			*configPath = common.GetConfigPath()
 		}

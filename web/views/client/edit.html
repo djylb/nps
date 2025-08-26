@@ -38,7 +38,6 @@
                     </div>
                     {{end}}
                     {{if eq true .allow_rate_limit}}
-
                     <div class="form-group" id="rate_limit">
                         <label class="control-label font-bold" langtag="word-ratelimit"></label>
                         <div class="col-sm-12">
@@ -48,7 +47,6 @@
                     </div>
                     {{end}}
                     {{if eq true .allow_connection_num_limit}}
-
                     <div class="form-group" id="max_conn">
                         <label class="control-label font-bold" langtag="word-maxconnections"></label>
                         <div class="col-sm-12">
@@ -101,6 +99,12 @@
                         <label class="control-label font-bold" langtag="word-webpassword"></label>
                         <div class="col-sm-12">
                             <input class="form-control" langtag="info-unrestricted" name="web_password" placeholder="" type="text" value="{{.c.WebPassword}}">
+                        </div>
+                    </div>
+                    <div class="form-group" id="web_totp_secret">
+                        <label class="control-label font-bold" langtag="word-webtotpsecret"></label>
+                        <div class="col-sm-12">
+                            <input class="form-control" langtag="info-unrestricted" name="web_totp_secret" placeholder="" type="text" value="{{.c.WebTotpSecret}}">
                         </div>
                     </div>
                     {{end}}

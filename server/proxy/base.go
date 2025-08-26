@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beego/beego"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -22,38 +21,38 @@ type Service interface {
 
 type NetBridge interface {
 	SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error)
+	IsServer() bool
 }
 
 // BaseServer struct
 type BaseServer struct {
-	id              int
-	bridge          NetBridge
-	task            *file.Tunnel
-	errorContent    []byte
-	allowLocalProxy bool
+	Id              int
+	Bridge          NetBridge
+	Task            *file.Tunnel
+	ErrorContent    []byte
+	AllowLocalProxy bool
 	sync.Mutex
 }
 
-func NewBaseServer(bridge NetBridge, task *file.Tunnel) *BaseServer {
-	allowLocalProxy, _ := beego.AppConfig.Bool("allow_local_proxy")
+func NewBaseServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *BaseServer {
 	return &BaseServer{
-		bridge:          bridge,
-		task:            task,
-		errorContent:    nil,
-		allowLocalProxy: allowLocalProxy,
+		Bridge:          bridge,
+		Task:            task,
+		ErrorContent:    nil,
+		AllowLocalProxy: allowLocalProxy,
 		Mutex:           sync.Mutex{},
 	}
 }
 
-// add the flow
+// FlowAdd add the flow
 func (s *BaseServer) FlowAdd(in, out int64) {
 	s.Lock()
 	defer s.Unlock()
-	s.task.Flow.ExportFlow += out
-	s.task.Flow.InletFlow += in
+	s.Task.Flow.ExportFlow += out
+	s.Task.Flow.InletFlow += in
 }
 
-// change the flow
+// FlowAddHost change the flow
 func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
 	s.Lock()
 	defer s.Unlock()
@@ -63,40 +62,40 @@ func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
 
 // write fail bytes to the connection
 func (s *BaseServer) writeConnFail(c net.Conn) {
-	c.Write([]byte(common.ConnectionFailBytes))
-	c.Write(s.errorContent)
+	_, _ = c.Write([]byte(common.ConnectionFailBytes))
+	_, _ = c.Write(s.ErrorContent)
 }
 
-// auth check
-func (s *BaseServer) auth(r *http.Request, c *conn.Conn, u, p string, multiAccount, userAuth *file.MultiAccount) error {
+// Auth check
+func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccount, userAuth *file.MultiAccount) error {
 	if !common.CheckAuth(r, u, p, file.GetAccountMap(multiAccount), file.GetAccountMap(userAuth)) {
 		if c != nil {
-			c.Write([]byte(common.UnauthorizedBytes))
-			c.Close()
+			_, _ = c.Write([]byte(common.UnauthorizedBytes))
+			_ = c.Close()
 		}
 		return errors.New("401 Unauthorized")
 	}
 	return nil
 }
 
-// check flow limit of the client ,and decrease the allow num of client
+// CheckFlowAndConnNum check flow limit of the client ,and decrease the allowed num of client
 func (s *BaseServer) CheckFlowAndConnNum(client *file.Client) error {
 	if !client.Flow.TimeLimit.IsZero() && client.Flow.TimeLimit.Before(time.Now()) {
-		return errors.New("Service access expired.")
+		return errors.New("service access expired")
 	}
 	if client.Flow.FlowLimit > 0 && (client.Flow.FlowLimit<<20) < (client.Flow.ExportFlow+client.Flow.InletFlow) {
-		return errors.New("Traffic limit exceeded.")
+		return errors.New("traffic limit exceeded")
 	}
 	if !client.GetConn() {
-		return errors.New("Connection limit exceeded.")
+		return errors.New("connection limit exceeded")
 	}
 	return nil
 }
 
-func in(target string, str_array []string) bool {
-	sort.Strings(str_array)
-	index := sort.SearchStrings(str_array, target)
-	if index < len(str_array) && str_array[index] == target {
+func in(target string, strArray []string) bool {
+	sort.Strings(strArray)
+	index := sort.SearchStrings(strArray, target)
+	if index < len(strArray) && strArray[index] == target {
 		return true
 	}
 	return false
@@ -106,15 +105,15 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
 
 	if IsGlobalBlackIp(c.RemoteAddr().String()) || common.IsBlackIp(c.RemoteAddr().String(), client.VerifyKey, client.BlackIpList) {
-		c.Close()
+		_ = c.Close()
 		return nil
 	}
-
-	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), s.allowLocalProxy && localProxy)
-	target, err := s.bridge.SendLinkInfo(client.Id, link, s.task)
+	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
+	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
+	target, err := s.Bridge.SendLinkInfo(client.Id, link, s.Task)
 	if err != nil {
-		logs.Warn("get connection from client id %d  error %v", client.Id, err)
-		c.Close()
+		logs.Warn("get connection from client Id %d  error %v", client.Id, err)
+		_ = c.Close()
 		return err
 	}
 
@@ -122,7 +121,7 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 		f()
 	}
 
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task)
+	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal)
 	return nil
 }
 

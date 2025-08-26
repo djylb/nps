@@ -1,4 +1,4 @@
-package nps_mux
+package mux
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ type priorityQueue struct {
 	middleChain  *bufChain
 	lowestChain  *bufChain
 	starving     uint8
-	stop         bool
+	stop         uint32
 	cond         *sync.Cond
 }
 
@@ -47,7 +47,11 @@ func (Self *priorityQueue) push(packager *muxPackager) {
 		// the New conn package need some priority too
 		Self.middleChain.pushHead(unsafe.Pointer(packager))
 	default:
-		Self.lowestChain.pushHead(unsafe.Pointer(packager))
+		if packager.priority {
+			Self.middleChain.pushHead(unsafe.Pointer(packager))
+		} else {
+			Self.lowestChain.pushHead(unsafe.Pointer(packager))
+		}
 	}
 }
 
@@ -60,7 +64,7 @@ func (Self *priorityQueue) Pop() (packager *muxPackager) {
 		if packager != nil {
 			return
 		}
-		if Self.stop {
+		if atomic.LoadUint32(&Self.stop) == 1 {
 			return
 		}
 		if iter {
@@ -73,7 +77,7 @@ func (Self *priorityQueue) Pop() (packager *muxPackager) {
 	Self.cond.L.Lock()
 	defer Self.cond.L.Unlock()
 	for packager = Self.TryPop(); packager == nil; {
-		if Self.stop {
+		if atomic.LoadUint32(&Self.stop) == 1 {
 			return
 		}
 		Self.cond.Wait()
@@ -118,14 +122,14 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 }
 
 func (Self *priorityQueue) Stop() {
-	Self.stop = true
+	atomic.StoreUint32(&Self.stop, 1)
 	Self.cond.Broadcast()
 }
 
 type connQueue struct {
 	chain    *bufChain
 	starving uint8
-	stop     bool
+	stop     uint32
 	cond     *sync.Cond
 }
 
@@ -136,20 +140,20 @@ func (Self *connQueue) New() {
 	Self.cond = sync.NewCond(locker)
 }
 
-func (Self *connQueue) Push(connection *conn) {
+func (Self *connQueue) Push(connection *Conn) {
 	Self.chain.pushHead(unsafe.Pointer(connection))
 	Self.cond.Broadcast()
 	return
 }
 
-func (Self *connQueue) Pop() (connection *conn) {
+func (Self *connQueue) Pop() (connection *Conn) {
 	var iter bool
 	for {
 		connection = Self.TryPop()
 		if connection != nil {
 			return
 		}
-		if Self.stop {
+		if atomic.LoadUint32(&Self.stop) == 1 {
 			return
 		}
 		if iter {
@@ -162,7 +166,7 @@ func (Self *connQueue) Pop() (connection *conn) {
 	Self.cond.L.Lock()
 	defer Self.cond.L.Unlock()
 	for connection = Self.TryPop(); connection == nil; {
-		if Self.stop {
+		if atomic.LoadUint32(&Self.stop) == 1 {
 			return
 		}
 		Self.cond.Wait()
@@ -172,17 +176,17 @@ func (Self *connQueue) Pop() (connection *conn) {
 	return
 }
 
-func (Self *connQueue) TryPop() (connection *conn) {
+func (Self *connQueue) TryPop() (connection *Conn) {
 	ptr, ok := Self.chain.popTail()
 	if ok {
-		connection = (*conn)(ptr)
+		connection = (*Conn)(ptr)
 		return
 	}
 	return
 }
 
 func (Self *connQueue) Stop() {
-	Self.stop = true
+	atomic.StoreUint32(&Self.stop, 1)
 	Self.cond.Broadcast()
 }
 
@@ -199,7 +203,7 @@ func (Self *listElement) Reset() {
 }
 
 func newListElement(buf []byte, l uint16, part bool) (element *listElement, err error) {
-	if uint16(len(buf)) != l {
+	if uint16(len(buf)) < l {
 		err = errors.New("listElement: buf length not match")
 		return
 	}

@@ -73,10 +73,15 @@
         onLoadSuccess:function (data) {$('body').setLang ('.detail-view');},
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang ('#table'); },
         detailFormatter: function (index, row, element) {
+            proxyprotocol = ''
+            if (row.Mode == "tcp" || row.Mode == "udp") {
+                proxyprotocol = '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
+            }
             tmp = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
                 + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>&emsp;'
                 + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
+                + proxyprotocol
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
@@ -89,20 +94,21 @@
             if (row.Mode == "file") {
                 return tmp + "<br/><br>"
                     + '<b langtag="word-localpath"></b>: ' + row.LocalPath + '&emsp;'
-                    + '<b langtag="word-stripprefix"></b>: ' + row.StripPre + '&emsp;'
+                    + '<b langtag="word-stripprefix"></b>: ' + row.StripPre + '&emsp;<br/><br>'
+                    + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;'
             }
             if (row.Mode == "p2p") {
                 return tmp + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.addr}} -vkey=" + row.Client.VerifyKey
-                    + " -type=" + {{.bridgeType}} + " -password=" + row.Password + " -target=" + row.Target.TargetStr + "</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.addr}} -vkey=" + row.Client.VerifyKey
-                    + " -type=" + {{.bridgeType}} + " -password=" + row.Password + " -local_type=p2ps" + "</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.addr}} -vkey=" + row.Client.VerifyKey
-                    + " -type=" + {{.bridgeType}} + " -password=" + row.Password + " -local_type=p2pt" + "</code>"
+                    + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target=\"" + row.Target.TargetStr + "\" -target_type=\"" + row.TargetType + "\"</code>" + "<br/><br>"
+                    + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2ps\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>" + "<br/><br>"
+                    + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2pt\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>"
             }
             if (row.Mode == "secret") {
-                return tmp + "<br/><br>" + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server={{.addr}} -vkey=" + row.Client.VerifyKey
-                    + " -type=" + {{.bridgeType}} + " -password=" + row.Password + " -local_type=secret" + "</code>"
+                return tmp + "<br/><br>" + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target_type=\"" + row.TargetType + "\" -local_type=\"secret\"" + "</code>"
             }
             return tmp
         },
@@ -184,6 +190,16 @@
             },
             {{ end }}
             {{ if or (not .type) (eq .type "secret") (eq .type "p2p") }}
+            {
+                field: 'TargetType', //域值
+                title: '<span langtag="word-targettype"></span>', //标题
+                halign: 'center',
+                visible: true, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + String(value).toUpperCase() + '</span>'
+                }
+            },
             {
                 field: 'Password', //域值
                 title: '<span langtag="word-identificationkey"></span>', //标题
@@ -279,6 +295,59 @@
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                }
+            },
+            {
+                field: 'FlowRemain', //域值
+                title: '<span langtag="word-flowremain"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (row.Flow.FlowLimit === 0) {
+                        return '∞'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow) + '</span>'
+                }
+            },
+            {
+                field: 'TimeRemain', //域值
+                title: '<span langtag="word-timeremain"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + getRemainingTime(row.Flow.TimeLimit).formatted + '</span>'
+                }
+            },
+            {
+                field: 'Flow.FlowLimit', //域值
+                title: '<span langtag="word-flowlimit"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (value === 0) {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(value * 1024 * 1024) + '</span>'
+                }
+            },
+            {
+                field: 'Flow.TimeLimit', //域值
+                title: '<span langtag="word-timelimit"></span>', //内容
+                align: 'center',
+                halign: 'center',
+                visible: false, //false表示不显示
+                sortable: true, //启用排序
+                formatter: function (value, row, index) {
+                    if (value === "0001-01-01T00:00:00Z") {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + value + '</span>'
                 }
             },
             {

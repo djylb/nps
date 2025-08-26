@@ -57,10 +57,10 @@ func (c *WsConn) Write(p []byte) (int, error) {
 }
 
 func (c *WsConn) Close() error         { return c.Conn.Close() }
-func (c *WsConn) LocalAddr() net.Addr  { return c.Conn.UnderlyingConn().LocalAddr() }
-func (c *WsConn) RemoteAddr() net.Addr { return c.Conn.UnderlyingConn().RemoteAddr() }
+func (c *WsConn) LocalAddr() net.Addr  { return c.Conn.NetConn().LocalAddr() }
+func (c *WsConn) RemoteAddr() net.Addr { return c.Conn.NetConn().RemoteAddr() }
 func (c *WsConn) SetDeadline(t time.Time) error {
-	c.Conn.SetReadDeadline(t)
+	_ = c.Conn.SetReadDeadline(t)
 	return c.Conn.SetWriteDeadline(t)
 }
 func (c *WsConn) SetReadDeadline(t time.Time) error  { return c.Conn.SetReadDeadline(t) }
@@ -93,7 +93,7 @@ func NewWSListener(base net.Listener, path string) net.Listener {
 	go srv.Serve(base)
 	go func() {
 		<-hl.closeCh
-		srv.Close()
+		_ = srv.Close()
 	}()
 	return hl
 }
@@ -120,7 +120,7 @@ func NewWSSListener(base net.Listener, path string, cert tls.Certificate) net.Li
 	go srv.Serve(tls.NewListener(base, tlsConfig))
 	go func() {
 		<-hl.closeCh
-		srv.Close()
+		_ = srv.Close()
 	}()
 	return hl
 }

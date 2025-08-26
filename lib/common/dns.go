@@ -65,7 +65,7 @@ func GetFastAddr(addr string, testType string) (string, error) {
 	}
 
 	if len(ipv4List) == 0 && len(ipv6List) == 0 {
-		return addr, fmt.Errorf("Can not resolve %s", host)
+		return addr, fmt.Errorf("can not resolve %s", host)
 	}
 
 	ipList := append(ipv4List, ipv6List...)
@@ -96,7 +96,7 @@ func GetFastAddr(addr string, testType string) (string, error) {
 func resolveDomain(domain string, ipv4List, ipv6List []string, dnsServer string, redirects int) ([]string, []string, error) {
 	//logs.Debug("%s %v %v %s %d", domain, ipv4List, ipv6List, dnsServer, redirects)
 	if redirects <= 0 {
-		return ipv4List, ipv6List, fmt.Errorf("Too many CNAME")
+		return ipv4List, ipv6List, fmt.Errorf("too many CNAME")
 	}
 
 	ipv4s, ipv6s, err := resolveIPs(domain, dnsServer)
@@ -231,9 +231,9 @@ func TestLatency(addr string, testType string) (time.Duration, error) {
 			return 0, err
 		}
 		defer conn.Close()
-		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 	default:
-		return 0, fmt.Errorf("Unsupported test type: %s", testType)
+		return 0, fmt.Errorf("unsupported test type: %s", testType)
 	}
 	return time.Since(start), nil
 }

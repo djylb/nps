@@ -45,7 +45,7 @@
 	</lang>
 	<lang id="scheme-mixproxy">
 		<zh-CN>混合代理</zh-CN>
-		<en-US>Mix Proxy</en-US>
+		<en-US>Proxy</en-US>
 	</lang>
 	<lang id="scheme-secret">
 		<zh-CN>私密代理</zh-CN>
@@ -232,6 +232,10 @@
 		<zh-CN>TLS 启动命令</zh-CN>
 		<en-US>TLS Command</en-US>
 	</lang>
+	<lang id="word-commandclient-quic">
+		<zh-CN>QUIC 启动命令</zh-CN>
+		<en-US>QUIC Command</en-US>
+	</lang>
 	<lang id="word-commandclient-ws">
 		<zh-CN>WS 启动命令</zh-CN>
 		<en-US>WS Command</en-US>
@@ -331,6 +335,14 @@
 	<lang id="word-false">
 		<zh-CN>否</zh-CN>
 		<en-US>False</en-US>
+	</lang>
+	<lang id="word-flowremain">
+		<zh-CN>剩余流量</zh-CN>
+		<en-US>Remaining Flow</en-US>
+	</lang>
+	<lang id="word-timeremain">
+		<zh-CN>剩余时间</zh-CN>
+		<en-US>Remaining Time</en-US>
 	</lang>
 	<lang id="word-flowlimit">
 		<zh-CN>流量限制</zh-CN>
@@ -534,7 +546,15 @@
 		<zh-CN>代理协议 (Proxy Protocol)</zh-CN>
 		<en-US>Proxy Protocol</en-US>
 	</lang>
+	<lang id="word-proxyprotocoltitle">
+		<zh-CN>Proxy Protocol</zh-CN>
+		<en-US>Proxy Protocol</en-US>
+	</lang>
 	<lang id="word-disable">
+		<zh-CN>关闭</zh-CN>
+		<en-US>Disable</en-US>
+	</lang>
+	<lang id="word-proxyprotocolv0">
 		<zh-CN>关闭</zh-CN>
 		<en-US>Disable</en-US>
 	</lang>
@@ -572,11 +592,19 @@
 	</lang>
 	<lang id="word-requestheader">
 		<zh-CN>请求头部信息修改</zh-CN>
-		<en-US>Header Modify</en-US>
+		<en-US>Request Header Modify</en-US>
+	</lang>
+	<lang id="word-responseheader">
+		<zh-CN>返回头部信息修改</zh-CN>
+		<en-US>Response Header Modify</en-US>
 	</lang>
 	<lang id="word-requesthost">
 		<zh-CN>请求域名信息修改</zh-CN>
 		<en-US>Host Modify</en-US>
+	</lang>
+	<lang id="word-redirecturl">
+		<zh-CN>重定向地址</zh-CN>
+		<en-US>Redirect URL</en-US>
 	</lang>
 	<lang id="word-runstatus">
 		<zh-CN>运行状态</zh-CN>
@@ -585,6 +613,38 @@
 	<lang id="word-save">
 		<zh-CN>保存</zh-CN>
 		<en-US>Save</en-US>
+	</lang>
+	<lang id="word-start">
+		<zh-CN>开启</zh-CN>
+		<en-US>Start</en-US>
+	</lang>
+	<lang id="word-stop">
+		<zh-CN>关闭</zh-CN>
+		<en-US>Stop</en-US>
+	</lang>
+	<lang id="word-delete">
+		<zh-CN>删除</zh-CN>
+		<en-US>Delete</en-US>
+	</lang>
+	<lang id="word-execute">
+		<zh-CN>执行</zh-CN>
+		<en-US>Execute</en-US>
+	</lang>
+	<lang id="word-chooseaction">
+		<zh-CN>多选操作</zh-CN>
+		<en-US>Choose Action</en-US>
+	</lang>
+	<lang id="word-clearflow">
+		<zh-CN>清空流量</zh-CN>
+		<en-US>Clear Flow</en-US>
+	</lang>
+	<lang id="word-clearflowlimit">
+		<zh-CN>重置流量限制</zh-CN>
+		<en-US>Clear Flow Limit</en-US>
+	</lang>
+	<lang id="word-cleartimelimit">
+		<zh-CN>重置时间限制</zh-CN>
+		<en-US>Clear Time Limit</en-US>
 	</lang>
 	<lang id="word-scheme">
 		<zh-CN>模式</zh-CN>
@@ -758,6 +818,10 @@
 		<zh-CN>Web登陆密码</zh-CN>
 		<en-US>Password of Web Login</en-US>
 	</lang>
+	<lang id="word-webtotpsecret">
+		<zh-CN>Web登陆TOTP密钥</zh-CN>
+		<en-US>TOTP Secret of Web Login</en-US>
+	</lang>
 	<lang id="word-webusername">
 		<zh-CN>Web登陆用户名</zh-CN>
 		<en-US>Username of Web Login</en-US>
@@ -828,6 +892,10 @@
 	<lang id="info-header">
 		<zh-CN>冒号分割，多个头部请填写多行</zh-CN>
 		<en-US>Colon separated, multiple lines please fill in</en-US>
+	</lang>
+	<lang id="info-httpsjustproxy">
+		<zh-CN>按首个 TLS 握手包的 SNI 分流。注意：当后端支持 H2 时，浏览器可能复用连接导致串站。</zh-CN>
+		<en-US>Routes by the SNI from the first TLS handshake. Note: when the backend supports H2, browsers may reuse the connection and cause misrouting.</en-US>
 	</lang>
 	<lang id="info-identificationkey">
 		<zh-CN>P2P连接和私密代理模式需要</zh-CN>
@@ -944,6 +1012,10 @@
 	<lang id="info-urlrewrite">
 		<zh-CN>路径重写（留空关闭）</zh-CN>
 		<en-US>Path rewrite prefix (leave blank to disable)</en-US>
+	</lang>
+	<lang id="info-redirecturl">
+		<zh-CN>307 临时重定向（留空关闭）</zh-CN>
+		<en-US>307 Temporary Redirect (leave blank to disable)</en-US>
 	</lang>
 	<lang id="word-blackiplist">
 		<zh-CN>IP黑名单（防暴力破解）</zh-CN>
@@ -1089,6 +1161,14 @@
 		<lang id="theverificationcodeiswrongpleasegetitagainandtryagain">
 			<zh-CN>验证码错误，请重新获取并重试</zh-CN>
 			<en-US>The verification code is wrong, please get it again and try again</en-US>
+		</lang>
+		<lang id="processing">
+			<zh-CN>处理中</zh-CN>
+			<en-US>Processing</en-US>
+		</lang>
+		<lang id="powverificationfailed">
+			<zh-CN>PoW验证失败</zh-CN>
+			<en-US>PoW verification failed</en-US>
 		</lang>
 		<lang id="decrypterror">
 			<zh-CN>解密错误</zh-CN>

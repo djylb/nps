@@ -103,7 +103,7 @@
                             </select>
                         </div>
                     </div>
-                    {{if eq true .allow_local_proxy}}
+                    {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
                     <div class="form-group" id="local_proxy">
                         <label class="control-label font-bold" langtag="word-proxytolocal"></label>
                         <div class="col-sm-12">
@@ -119,6 +119,16 @@
                         <div class="col-sm-12">
                             <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4">{{.auth}}</textarea>
                             <span class="help-block m-b-none" langtag="info-targetauth"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="target_type">
+                        <label class="control-label font-bold" langtag="word-targettype"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="target_type">
+                                <option value="all" {{if eq .t.TargetType "all"}}selected{{end}}>ALL</option>
+                                <option value="tcp" {{if eq .t.TargetType "tcp"}}selected{{end}}>TCP</option>
+                                <option value="udp" {{if eq .t.TargetType "udp"}}selected{{end}}>UDP</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-group" id="target">
@@ -171,12 +181,12 @@
     var arr = []
     arr["all"] = ["auth", "server_ip", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy"]
     arr["tcp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["udp"] = ["client_id", "port", "target", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
+    arr["udp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "flow_reset", "flow_limit", "time_limit"]
     //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["secret"] = ["client_id", "target", "password", "flow_reset", "flow_limit", "time_limit"]
-    arr["p2p"] = ["client_id", "target", "password", "flow_reset", "flow_limit", "time_limit"]
+    arr["secret"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
+    arr["p2p"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
     arr["file"] = ["client_id", "port", "local_path", "strip_pre", "server_ip", "flow_reset", "flow_limit", "time_limit"]
 
     function resetForm() {

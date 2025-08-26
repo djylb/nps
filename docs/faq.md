@@ -65,7 +65,7 @@ NPS 默认支持 IPv6，无需额外配置，已在 IPv4/IPv6 双栈协议上监
 - 目标服务器（后端 Web 服务器）可使用：
   - `X-Forwarded-For` 头来获取原始 IP
   - `X-Real-IP` 头获取第一个代理的 IP
-如果是TCP隧道或者配置由后端处理HTTPS (仅转发)的话可以启用Proxy Protocol来传递IP信息，需要后端服务支持该协议。
+如果后端支持Proxy Protocol的话可以启用Proxy Protocol来传递IP信息，需要后端服务支持该协议。
 ```
 
 ### **NPS 作为后端，被 Nginx/Caddy 代理时如何配置？**

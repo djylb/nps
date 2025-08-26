@@ -16,6 +16,7 @@
     <script src="{{.web_base_url}}/static/js/jsencrypt.min.js"></script>
     <!-- Latest compiled and minified Locales -->
     <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
+    {{.head_custom_code}}
 </head>
 
 <body class="login-page">
@@ -60,7 +61,7 @@
                     </div>
                 </div>
                 {{end}}
-                <button class="btn btn-primary block full-width m-b" langtag="word-register" onclick="register()" type="submit"></button>
+                <button class="btn btn-primary block full-width m-b" langtag="word-register" onclick="if (this.form.reportValidity()) register()" type="submit"></button>
                 <p class="text-muted text-center">
                     <small langtag="info-haveaccount"></small>
                     <small><a href="{{.web_base_url}}/login/index" langtag="word-login"></a></small>
@@ -80,19 +81,41 @@
             web_base_url: "{{.web_base_url}}",
             version: "{{.version}}",
             publicKey: `{{.public_key}}`,
-            loginNonce: "{{.login_nonce}}"
+            loginNonce: "{{.login_nonce}}",
+            timeOffset: 0
         };
+        function syncServerTime() {
+            var t0 = Date.now();
+            $.ajax({
+                url: window.nps.web_base_url + "/auth/gettime",
+                dataType: "json",
+                cache: false,
+                timeout: 5000,
+                success: function (res) {
+                    if (!res || res.time == null) return;
+                    var t3 = Date.now();
+                    var server = res.time * 1000;
+                    if (server == null) return;
+                    var rtt = t3 - t0;
+                    var estServerAtT3 = server + Math.floor(rtt / 2);
+                    window.nps.timeOffset = estServerAtT3 - t3;
+                }
+            });
+        }
         function encryptWithRSA(plain) {
             const crypt = new JSEncrypt();
             crypt.setPublicKey(window.nps.publicKey);
             return crypt.encrypt(plain);
         }
+        $(function () {
+            syncServerTime();
+        });
         function register() {
             const data = {};
             $("form").serializeArray().forEach(item => {
                 data[item.name] = item.value;
             });
-            const ts = Date.now();
+            const ts = Date.now() + window.nps.timeOffset;
             const payload = JSON.stringify({
                 n: window.nps.loginNonce,
                 t: ts,
@@ -105,10 +128,17 @@
                 data: data,
                 success: function (res) {
                     if (res.status) {
-                        showMsg(langreply(res.msg), 'success', 1000, function() {
+                        showMsg(langreply(res.msg), 'success', 1000, function () {
                             window.location.href = window.nps.web_base_url + "/login/index";
                         });
                     } else {
+                        {{if eq true .captcha_open}}
+                        var $img = $('.captcha-img');
+                        if ($img.length) {
+                            $img.trigger('click');
+                        }
+                        $('input[name="captcha"]').val('');
+                        {{end}}
                         showMsg(langreply(res.msg), 'error', 5000, function() {
                             if (res.nonce) {
                                 window.nps.loginNonce = res.nonce;
@@ -116,13 +146,9 @@
                             if (res.cert) {
                                 window.nps.publicKey = res.cert;
                             }
-                            {{if eq true .captcha_open}}
-                            var $img = $('.captcha-img');
-                            if ($img.length) {
-                                $img.trigger('click');
+                            if (res.timestamp) {
+                                window.nps.timeOffset = res.timestamp - Date.now();
                             }
-                            $('input[name="captcha"]').val('');
-                            {{end}}
                         });
                     }
                 }

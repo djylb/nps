@@ -5,6 +5,7 @@ package pmux
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -57,7 +57,7 @@ func NewPortMux(port int, managerHost, clientHost string) *PortMux {
 		httpsConn:     nil,
 		managerConn:   nil,
 	}
-	pMux.Start()
+	_ = pMux.Start()
 	return pMux
 }
 
@@ -78,7 +78,7 @@ func (pMux *PortMux) Start() error {
 			if err != nil {
 				logs.Warn("%v", err)
 				//close
-				pMux.Close()
+				_ = pMux.Close()
 			}
 			go pMux.process(conn)
 		}
@@ -117,7 +117,7 @@ func (pMux *PortMux) process(conn net.Conn) {
 				b, _, err := r.ReadLine()
 				if err != nil {
 					logs.Warn("read line error %v", err)
-					conn.Close()
+					_ = conn.Close()
 					break
 				}
 				buffer.Write(b)

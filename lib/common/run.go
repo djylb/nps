@@ -12,7 +12,7 @@ import (
 var ConfPath string
 var StartTime = time.Now()
 
-// Get the currently selected configuration file directory
+// GetRunPath Get the currently selected configuration file directory
 // For non-Windows systems, select the /etc/nps as config directory if exist, or select ./
 // windows system, select the C:\Program Files\nps as config directory if exist, or select ./
 func GetRunPath() string {
@@ -32,7 +32,7 @@ func GetRunPath() string {
 	return path
 }
 
-// Different systems get different installation paths
+// GetInstallPath Different systems get different installation paths
 func GetInstallPath() string {
 	var path string
 
@@ -49,15 +49,18 @@ func GetInstallPath() string {
 	return path
 }
 
-// Get the absolute path to the running directory
+// GetAppPath Get the absolute path to the running directory
 func GetAppPath() string {
+	if exePath, err := os.Executable(); err == nil {
+		return filepath.Dir(exePath)
+	}
 	if path, err := filepath.Abs(filepath.Dir(os.Args[0])); err == nil {
 		return path
 	}
 	return os.Args[0]
 }
 
-// Determine whether the current system is a Windows system?
+// IsWindows Determine whether the current system is a Windows system?
 func IsWindows() bool {
 	if runtime.GOOS == "windows" {
 		return true
@@ -65,7 +68,7 @@ func IsWindows() bool {
 	return false
 }
 
-// interface log file path
+// GetLogPath interface log file path
 func GetLogPath() string {
 	var path string
 	if IsWindows() {
@@ -76,7 +79,7 @@ func GetLogPath() string {
 	return path
 }
 
-// interface npc log file path
+// GetNpcLogPath interface npc log file path
 func GetNpcLogPath() string {
 	var path string
 	if IsWindows() {
@@ -87,7 +90,7 @@ func GetNpcLogPath() string {
 	return path
 }
 
-// interface pid file path
+// GetTmpPath interface pid file path
 func GetTmpPath() string {
 	var path string
 	if IsWindows() {
@@ -98,7 +101,7 @@ func GetTmpPath() string {
 	return path
 }
 
-// config file path
+// GetConfigPath config file path
 func GetConfigPath() string {
 	var path string
 	if IsWindows() {
@@ -124,7 +127,7 @@ func GetRunTime() string {
 	totalSecs %= 3600
 	mins := totalSecs / 60
 	secs := totalSecs % 60
-	parts := []string{}
+	var parts []string
 	if days > 0 {
 		parts = append(parts, fmt.Sprintf("%dd", days))
 	}

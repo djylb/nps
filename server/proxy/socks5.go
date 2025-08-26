@@ -6,11 +6,14 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/transport"
 )
 
 const (
@@ -67,7 +70,7 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 
 	if err != nil {
 		logs.Warn("illegal request %v", err)
-		c.Close()
+		_ = c.Close()
 		return
 	}
 
@@ -80,7 +83,7 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 		s.handleUDP(c)
 	default:
 		s.sendReply(c, commandNotSupported)
-		c.Close()
+		_ = c.Close()
 	}
 }
 
@@ -105,28 +108,28 @@ func (s *TunnelModeServer) sendReply(c net.Conn, rep uint8) {
 	binary.BigEndian.PutUint16(portBytes, uint16(nPort))
 	reply = append(reply, portBytes...)
 
-	c.Write(reply)
+	_, _ = c.Write(reply)
 }
 
 // do conn
 func (s *TunnelModeServer) doConnect(c net.Conn, command uint8) {
 	addrType := make([]byte, 1)
-	c.Read(addrType)
+	_, _ = c.Read(addrType)
 	var host string
 	switch addrType[0] {
 	case ipV4:
 		ipv4 := make(net.IP, net.IPv4len)
-		c.Read(ipv4)
+		_, _ = c.Read(ipv4)
 		host = ipv4.String()
 	case ipV6:
 		ipv6 := make(net.IP, net.IPv6len)
-		c.Read(ipv6)
+		_, _ = c.Read(ipv6)
 		host = ipv6.String()
 	case domainName:
 		var domainLen uint8
-		binary.Read(c, binary.BigEndian, &domainLen)
+		_ = binary.Read(c, binary.BigEndian, &domainLen)
 		domain := make([]byte, domainLen)
-		c.Read(domain)
+		_, _ = c.Read(domain)
 		host = string(domain)
 	default:
 		s.sendReply(c, addrTypeNotSupported)
@@ -134,7 +137,7 @@ func (s *TunnelModeServer) doConnect(c net.Conn, command uint8) {
 	}
 
 	var port uint16
-	binary.Read(c, binary.BigEndian, &port)
+	_ = binary.Read(c, binary.BigEndian, &port)
 	// connect to host
 	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
 	var ltype string
@@ -143,9 +146,9 @@ func (s *TunnelModeServer) doConnect(c net.Conn, command uint8) {
 	} else {
 		ltype = common.CONN_TCP
 	}
-	s.DealClient(conn.NewConn(c), s.task.Client, addr, nil, ltype, func() {
+	_ = s.DealClient(conn.NewConn(c), s.Task.Client, addr, nil, ltype, func() {
 		s.sendReply(c, succeeded)
-	}, []*file.Flow{s.task.Flow, s.task.Client.Flow}, s.task.Target.ProxyProtocol, s.task.Target.LocalProxy, s.task)
+	}, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 	return
 }
 
@@ -156,6 +159,8 @@ func (s *TunnelModeServer) handleConnect(c net.Conn) {
 
 // passive mode
 func (s *TunnelModeServer) handleBind(c net.Conn) {
+	s.sendReply(c, commandNotSupported)
+	_ = c.Close()
 }
 func (s *TunnelModeServer) sendUdpReply(writeConn net.Conn, c net.Conn, rep uint8, serverIp string) {
 	reply := []byte{
@@ -172,119 +177,160 @@ func (s *TunnelModeServer) sendUdpReply(writeConn net.Conn, c net.Conn, rep uint
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(nPort))
 	reply = append(reply, portBytes...)
-	writeConn.Write(reply)
-
+	_, _ = writeConn.Write(reply)
 }
 
 func (s *TunnelModeServer) handleUDP(c net.Conn) {
+	if tcpConn, ok := c.(*net.TCPConn); ok {
+		_ = tcpConn.SetKeepAlive(true)
+		_ = tcpConn.SetKeepAlivePeriod(15 * time.Second)
+		_ = transport.SetTcpKeepAliveParams(tcpConn, 15, 15, 3)
+	}
 	defer c.Close()
 	addrType := make([]byte, 1)
-	c.Read(addrType)
+	_, _ = io.ReadFull(c, addrType)
 	var host string
 	switch addrType[0] {
 	case ipV4:
 		ipv4 := make(net.IP, net.IPv4len)
-		c.Read(ipv4)
+		if _, err := io.ReadFull(c, ipv4); err != nil {
+			s.sendReply(c, addrTypeNotSupported)
+			return
+		}
 		host = ipv4.String()
 	case ipV6:
 		ipv6 := make(net.IP, net.IPv6len)
-		c.Read(ipv6)
+		if _, err := io.ReadFull(c, ipv6); err != nil {
+			s.sendReply(c, addrTypeNotSupported)
+			return
+		}
 		host = ipv6.String()
 	case domainName:
 		var domainLen uint8
-		binary.Read(c, binary.BigEndian, &domainLen)
+		if err := binary.Read(c, binary.BigEndian, &domainLen); err != nil {
+			s.sendReply(c, addrTypeNotSupported)
+			return
+		}
 		domain := make([]byte, domainLen)
-		c.Read(domain)
+		if _, err := io.ReadFull(c, domain); err != nil {
+			s.sendReply(c, addrTypeNotSupported)
+			return
+		}
 		host = string(domain)
 	default:
 		s.sendReply(c, addrTypeNotSupported)
 		return
 	}
-	//读取端口
+	// read port
 	var port uint16
-	binary.Read(c, binary.BigEndian, &port)
-	logs.Trace("%s %d", host, port)
-	replyAddr, err := net.ResolveUDPAddr("udp", s.task.ServerIp+":0")
+	if err := binary.Read(c, binary.BigEndian, &port); err != nil {
+		s.sendReply(c, addrTypeNotSupported)
+		return
+	}
+	logs.Trace("ASSOCIATE %s:%d", host, port)
+	// get listen addr
+	replyAddr, err := net.ResolveUDPAddr("udp", s.Task.ServerIp+":0")
 	if err != nil {
-		logs.Error("build local reply addr error %v", err)
+		s.sendReply(c, addrTypeNotSupported)
+		logs.Error("resolve local udp addr error: %v", err)
 		return
 	}
 	reply, err := net.ListenUDP("udp", replyAddr)
 	if err != nil {
 		s.sendReply(c, addrTypeNotSupported)
-		logs.Error("listen local reply udp port error")
+		logs.Error("listen local reply udp port error: %v", err)
 		return
 	}
+	defer reply.Close()
 	// reply the local addr
 	s.sendUdpReply(c, reply, succeeded, common.GetServerIpByClientIp(c.RemoteAddr().(*net.TCPAddr).IP))
-	defer reply.Close()
 	// new a tunnel to client
-	link := conn.NewLink("udp5", "", s.task.Client.Cnf.Crypt, s.task.Client.Cnf.Compress, c.RemoteAddr().String(), s.allowLocalProxy && s.task.Target.LocalProxy)
-	target, err := s.bridge.SendLinkInfo(s.task.Client.Id, link, s.task)
+	link := conn.NewLink("udp5", "", s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, c.RemoteAddr().String(), s.AllowLocalProxy && s.Task.Target.LocalProxy)
+	link.Option.Timeout = time.Second * 180
+	target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
 	if err != nil {
-		logs.Warn("get connection from client id %d  error %v", s.task.Client.Id, err)
+		logs.Warn("get connection from client Id %d error: %v", s.Task.Client.Id, err)
 		return
 	}
+	defer target.Close()
+	timeoutConn := conn.NewTimeoutConn(target, link.Option.Timeout)
+	defer timeoutConn.Close()
+	flowConn := conn.NewFlowConn(timeoutConn, s.Task.Flow, s.Task.Client.Flow)
 
-	var clientAddr net.Addr
-	// copy buffer
+	var clientIP net.IP
+	var clientAddr atomic.Pointer[net.UDPAddr]
+
+	// local UDP -> tunnel
 	go func() {
 		b := common.BufPoolUdp.Get().([]byte)
 		defer common.BufPoolUdp.Put(b)
-		defer c.Close()
 
 		for {
-			n, laddr, err := reply.ReadFrom(b)
+			n, lAddr, err := reply.ReadFromUDP(b)
 			if err != nil {
 				logs.Debug("read data from %v err %v", reply.LocalAddr(), err)
+				_ = c.Close()
+				_ = flowConn.Close()
 				return
 			}
-			if clientAddr == nil {
-				clientAddr = laddr
+			if clientIP == nil {
+				clientIP = lAddr.IP
 			}
-			if _, err := target.Write(b[:n]); err != nil {
+			if !lAddr.IP.Equal(clientIP) {
+				logs.Debug("ignore udp from unexpected ip: %v", lAddr.IP)
+				continue
+			}
+			clientAddr.Store(lAddr)
+			if _, err := flowConn.Write(b[:n]); err != nil {
 				logs.Debug("write data to client error %v", err)
+				_ = c.Close()
+				_ = flowConn.Close()
 				return
 			}
 		}
 	}()
 
+	// tunnel -> local UDP
 	go func() {
 		var l int32
 		b := common.BufPoolUdp.Get().([]byte)
 		defer common.BufPoolUdp.Put(b)
-		defer c.Close()
+
 		for {
-			if err := binary.Read(target, binary.LittleEndian, &l); err != nil || l >= common.PoolSizeUdp || l <= 0 {
-				logs.Debug("read len bytes error %v", err)
+			if err := binary.Read(flowConn, binary.LittleEndian, &l); err != nil || l <= 0 || l >= common.PoolSizeUdp {
+				logs.Debug("read len error %v", err)
+				_ = c.Close()
+				_ = flowConn.Close()
 				return
 			}
-			binary.Read(target, binary.LittleEndian, b[:l])
-			if err != nil {
+			if _, err := io.ReadFull(flowConn, b[:l]); err != nil {
 				logs.Warn("read data form client error %v", err)
+				_ = c.Close()
+				_ = flowConn.Close()
 				return
 			}
-			if _, err := reply.WriteTo(b[:l], clientAddr); err != nil {
-				logs.Warn("write data to user %v", err)
-				return
+			if addr := clientAddr.Load(); addr != nil {
+				if _, err := reply.WriteTo(b[:l], addr); err != nil {
+					logs.Warn("write data to user %v", err)
+					_ = c.Close()
+					_ = flowConn.Close()
+					return
+				}
 			}
 		}
 	}()
 
 	b := common.BufPoolUdp.Get().([]byte)
 	defer common.BufPoolUdp.Put(b)
-	defer target.Close()
 	for {
-		_, err := c.Read(b)
-		if err != nil {
-			c.Close()
+		if _, err := c.Read(b); err != nil {
+			_ = flowConn.Close()
 			return
 		}
 	}
 }
 
-// socks5 auth
-func (s *TunnelModeServer) Auth(c net.Conn) error {
+func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 	header := []byte{0, 0}
 	if _, err := io.ReadAtLeast(c, header, 2); err != nil {
 		return err
@@ -306,7 +352,7 @@ func (s *TunnelModeServer) Auth(c net.Conn) error {
 		return err
 	}
 
-	if common.CheckAuthWithAccountMap(string(user), string(pass), s.task.Client.Cnf.U, s.task.Client.Cnf.P, file.GetAccountMap(s.task.MultiAccount), file.GetAccountMap(s.task.UserAuth)) {
+	if common.CheckAuthWithAccountMap(string(user), string(pass), s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, file.GetAccountMap(s.Task.MultiAccount), file.GetAccountMap(s.Task.UserAuth)) {
 		if _, err := c.Write([]byte{userAuthVersion, authSuccess}); err != nil {
 			return err
 		}
@@ -320,21 +366,21 @@ func (s *TunnelModeServer) Auth(c net.Conn) error {
 }
 
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
-	switch s.task.Mode {
+	switch s.Task.Mode {
 	case "socks5":
-		s.task.Mode = "mixProxy"
-		s.task.HttpProxy = false
-		s.task.Socks5Proxy = true
+		s.Task.Mode = "mixProxy"
+		s.Task.HttpProxy = false
+		s.Task.Socks5Proxy = true
 	case "httpProxy":
-		s.task.Mode = "mixProxy"
-		s.task.HttpProxy = true
-		s.task.Socks5Proxy = false
+		s.Task.Mode = "mixProxy"
+		s.Task.HttpProxy = true
+		s.Task.Socks5Proxy = false
 	}
 
 	buf := make([]byte, 2)
 	if _, err := io.ReadFull(c, buf); err != nil {
 		logs.Warn("negotiation err %v", err)
-		c.Close()
+		_ = c.Close()
 		return err
 	}
 
@@ -342,82 +388,53 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		method := string(buf)
 		switch method {
 		case "GE", "PO", "HE", "PU ", "DE", "OP", "CO", "TR", "PA", "PR", "MK", "MO", "LO", "UN", "RE", "AC", "SE", "LI":
-			if !s.task.HttpProxy {
-				logs.Warn("http proxy is disable, client %d request from: %v", s.task.Client.Id, c.RemoteAddr())
-				c.Close()
+			if !s.Task.HttpProxy {
+				logs.Warn("http proxy is disable, client %d request from: %v", s.Task.Client.Id, c.RemoteAddr())
+				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
-			nConn := conn.NewConnWithRb(c, buf)
-			ss := NewTunnelModeServer(ProcessHttp, s.bridge, s.task)
-			if err := ProcessHttp(nConn, ss); err != nil {
+
+			//ss := NewTunnelModeServer(ProcessHttp, s.Bridge, s.Task)
+			//defer ss.Close()
+			if err := ProcessHttp(c.SetRb(buf), s); err != nil {
 				logs.Warn("http proxy error: %v", err)
+				_ = c.Close()
 				return err
 			}
-			c.Close()
+			_ = c.Close()
 			return nil
 		}
 		logs.Trace("Socks5 Buf: %s", buf)
 		logs.Warn("only support socks5 and http, request from: %v", c.RemoteAddr())
-		c.Close()
+		_ = c.Close()
 		return errors.New("unknown protocol")
 	}
 
-	if !s.task.Socks5Proxy {
-		logs.Warn("socks5 proxy is disable, client %d request from: %v", s.task.Client.Id, c.RemoteAddr())
-		c.Close()
+	if !s.Task.Socks5Proxy {
+		logs.Warn("socks5 proxy is disable, client %d request from: %v", s.Task.Client.Id, c.RemoteAddr())
+		_ = c.Close()
 		return errors.New("socks5 proxy is disabled")
 	}
 
 	nMethods := buf[1]
 	methods := make([]byte, nMethods)
-	if len, err := c.Read(methods); len != int(nMethods) || err != nil {
+	if l, err := c.Read(methods); l != int(nMethods) || err != nil {
 		logs.Warn("wrong method")
-		c.Close()
+		_ = c.Close()
 		return errors.New("wrong method")
 	}
-	if (s.task.Client.Cnf.U != "" && s.task.Client.Cnf.P != "") || (s.task.MultiAccount != nil && len(s.task.MultiAccount.AccountMap) > 0) || (s.task.UserAuth != nil && len(s.task.UserAuth.AccountMap) > 0) {
+	if (s.Task.Client.Cnf.U != "" && s.Task.Client.Cnf.P != "") || (s.Task.MultiAccount != nil && len(s.Task.MultiAccount.AccountMap) > 0) || (s.Task.UserAuth != nil && len(s.Task.UserAuth.AccountMap) > 0) {
 		buf[1] = UserPassAuth
-		c.Write(buf)
-		if err := s.Auth(c); err != nil {
-			c.Close()
+		_, _ = c.Write(buf)
+		if err := s.SocksAuth(c); err != nil {
+			_ = c.Close()
 			logs.Warn("Validation failed: %v", err)
 			return err
 		}
 	} else {
 		buf[1] = 0
-		c.Write(buf)
+		_, _ = c.Write(buf)
 	}
 	s.handleSocks5Request(c)
 	return nil
 }
-
-/*
-// start
-func (s *TunnelModeServer) Start() error {
-	return conn.NewTcpListenerAndProcess(common.BuildAddress(s.task.ServerIp, strconv.Itoa(s.task.Port)), func(c net.Conn) {
-		if err := s.CheckFlowAndConnNum(s.task.Client); err != nil {
-			logs.Warn("client id %d, task id %d, error %v, when socks5 connection", s.task.Client.Id, s.task.Id, err)
-			c.Close()
-			return
-		}
-		logs.Trace("New proxy (socks5/http) connection,client %d,remote address %v", s.task.Client.Id, c.RemoteAddr())
-		s.handleConn(c)
-		s.task.Client.CutConn()
-	}, &s.listener)
-}
-
-// new
-func NewSock5ModeServer(bridge NetBridge, task *file.Tunnel) *TunnelModeServer {
-	allowLocalProxy, _ := beego.AppConfig.Bool("allow_local_proxy")
-	s := new(Sock5ModeServer)
-	s.bridge = bridge
-	s.task = task
-	s.allowLocalProxy = allowLocalProxy
-	return s
-}
-
-// close
-func (s *TunnelModeServer) Close() error {
-	return s.listener.Close()
-}
-*/

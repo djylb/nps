@@ -84,6 +84,7 @@
                                 <option langtag="word-no" value="0"></option>
                                 <option langtag="word-yes" value="1"></option>
                             </select>
+                            <span class="help-block m-b-none" langtag="info-httpsjustproxy"></span>
                         </div>
                     </div>
                     <div class="form-group" id="proxy_protocol">
@@ -129,7 +130,13 @@
                             <input class="form-control" langtag="info-urlrewrite" name="path_rewrite" placeholder="" type="text">
                         </div>
                     </div>
-                    {{if eq true .allow_local_proxy}}
+                    <div class="form-group">
+                        <label class="control-label font-bold" langtag="word-redirecturl"></label>
+                        <div class="col-sm-12">
+                            <input class="form-control" langtag="info-redirecturl" name="redirect_url" placeholder="" type="text">
+                        </div>
+                    </div>
+                    {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
                     <div class="form-group" id="local_proxy">
                         <label class="control-label font-bold" langtag="word-proxytolocal"></label>
                         <div class="col-sm-12">
@@ -167,6 +174,13 @@
                         <label class="control-label font-bold" langtag="word-requestheader"></label>
                         <div class="col-sm-12">
                             <textarea class="form-control" name="header" placeholder="Cache-Control: no-cache" rows="4" type="text"></textarea>
+                            <span class="help-block m-b-none" langtag="info-header"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="resp_header">
+                        <label class="control-label font-bold" langtag="word-responseheader"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" name="resp_header" placeholder="Strict-Transport-Security: max-age=31536000; includeSubDomains; preload" rows="4" type="text"></textarea>
                             <span class="help-block m-b-none" langtag="info-header"></span>
                         </div>
                     </div>
@@ -233,12 +247,10 @@
                 $("#auto_https").css("display", "block")
                 $("#https_just_proxy").css("display", "block")
                 if ($("#https_just_proxy_select").val() == "1") {
-                    $("#proxy_protocol").css("display", "block")
                     $("#auto_ssl").css("display", "none")
                     $("#cert_file").css("display", "none")
                     $("#key_file").css("display", "none")
                 } else {
-                    $("#proxy_protocol").css("display", "none")
                     $("#auto_ssl").css("display", "block")
                     $("#cert_file").css("display", "block")
                     $("#key_file").css("display", "block")
@@ -247,7 +259,6 @@
                 $("#auto_ssl").css("display", "none")
                 $("#cert_file").css("display", "none")
                 $("#key_file").css("display", "none")
-                $("#proxy_protocol").css("display", "none")
                 $("#https_just_proxy").css("display", "none")
                 $("#auto_https").css("display", "none")
             }
@@ -255,12 +266,10 @@
 
         $("#https_just_proxy_select").on("change", function () {
             if ($("#https_just_proxy_select").val() == "1") {
-                $("#proxy_protocol").css("display", "block")
                 $("#auto_ssl").css("display", "none")
                 $("#cert_file").css("display", "none")
                 $("#key_file").css("display", "none")
             } else {
-                $("#proxy_protocol").css("display", "none")
                 $("#auto_ssl").css("display", "block")
                 $("#cert_file").css("display", "block")
                 $("#key_file").css("display", "block")

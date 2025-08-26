@@ -1,4 +1,4 @@
-package nps_mux
+package mux
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ func Ips() (map[string]string, error) {
 	return ips, nil
 }
 
-// get ip and Eth information by Eth name
+// GetEthByIp get ip and Eth information by Eth name
 func GetEthByIp(ipAddr string) (eth *Eth, err error) {
 	var interfaces []net.Interface
 	interfaces, err = net.Interfaces()
@@ -107,12 +107,12 @@ func NewTrafficControl(ipAddr string) (*TrafficControl, error) {
 	return t, nil
 }
 
-// test the network randomly
+// RunNetRangeTest test the network randomly
 func (tc *TrafficControl) RunNetRangeTest(f func()) error {
 	funcs := tc.getTestVariable()
 	groups := getArrayExhaustivity(funcs)
 	for _, v := range groups {
-		tc.del()
+		_ = tc.del()
 		// execute bandwidth control, not good work
 		//if err := tc.bandwidth("1mbit"); err != nil {
 		//	return err
@@ -185,7 +185,7 @@ func (tc *TrafficControl) clear() {
 
 // remove all tc setting
 func (tc *TrafficControl) bandwidth(bw string) error {
-	runCmd(exec.Command("tc", "qdisc", "add", "dev", tc.Eth.EthName, "root", "handle", "2:", "htb", "default", "30"))
+	_ = runCmd(exec.Command("tc", "qdisc", "add", "dev", tc.Eth.EthName, "root", "handle", "2:", "htb", "default", "30"))
 	return runCmd(exec.Command("tc", "qdisc", "add", "dev", tc.Eth.EthName, "parent", "2:", "classid", "2:30", "htb", "rate", bw))
 }
 
