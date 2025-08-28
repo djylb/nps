@@ -237,8 +237,8 @@ github.com/tklauser/numcpus v0.10.0 h1:18njr6LDBk1zuna922MgdjQuJFjrdppsZG60sHGfj
 github.com/tklauser/numcpus v0.10.0/go.mod h1:BiTKazU708GQTYF4mB+cmlpT2Is1gLk7XVuEeem8LsQ=
 github.com/ugorji/go v0.0.0-20171122102828-84cb69a8af83/go.mod h1:hnLbHMwcvSihnDhEfx2/BzKp2xb0Y+ErdfYcrs9tkJQ=
 github.com/ulikunitz/xz v0.5.6/go.mod h1:2bypXElzHzzJZwzH67Y6wb67pO62Rzfn7BSiF4ABRW8=
-github.com/ulikunitz/xz v0.5.13 h1:ar98gWrjf4H1ev05fYP/o29PDZw9DrI3niHtnEqyuXA=
-github.com/ulikunitz/xz v0.5.13/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
+github.com/ulikunitz/xz v0.5.14 h1:uv/0Bq533iFdnMHZdRBTOlaNMdb1+ZxXIlHDZHIHcvg=
+github.com/ulikunitz/xz v0.5.14/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
 github.com/wendal/errors v0.0.0-20181209125328-7f31f4b264ec/go.mod h1:Q12BUT7DqIlHRmgv3RskH+UCM/4eqVMgI0EMmlSpAXc=
 github.com/xtaci/kcp-go/v5 v5.6.24 h1:0tZL4NfpoESDrhaScrZfVDnYZ/3LhyVAbN/dQ2b4hbI=
 github.com/xtaci/kcp-go/v5 v5.6.24/go.mod h1:7cAxNX/qFGeRUmUSnnDMoOg53FbXDK9IWBXAUfh+aBA=
