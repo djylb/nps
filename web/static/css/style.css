@@ -2892,6 +2892,12 @@ button.dim:active:before {
     text-decoration: none;
 }
 
+.page-item.page-last-separator.disabled .page-link{
+    background-color: inherit;
+    border-color: var(--border-color);
+    color: inherit;
+}
+
 .page-item.active .page-link {
     background-color: #18b090;
     border-color: #18b090;
