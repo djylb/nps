@@ -44,7 +44,7 @@ html[theme="dark-mode"] {
     --active-color: #18b090;
     --scrollbar-hover-color: #1dd3ad;
     --nav-text-color: #c6c6c6;
-    --nav-hover-color: #0C5848;
+    --nav-hover-color: #19877a;
     --icon-saturate: 1.0;
     --icon-brightness: 1.0;
 }
@@ -1243,7 +1243,6 @@ h5 {
 .nav > li.active > a, .nav > li.active > a:hover, .nav > li.active > a:focus {
     color: #ffffff;
     background-color: var(--active-color);
-    border-radius: 8px;
 }
 
 .nav > li.active > a i {
@@ -1254,7 +1253,6 @@ h5 {
 .navbar-default .nav > li > a:focus {
     background-color: var(--nav-hover-color);
     color: white;
-    border-radius: 8px;
     opacity: 0.9;
 }
 
@@ -1535,7 +1533,6 @@ ul.nav-second-level {
 
 .nav > li.active {
     background: var(--active-color);
-    border-radius: 8px;
 }
 
 .nav.nav-second-level > li.active {
@@ -1847,6 +1844,7 @@ body.fixed-nav.fixed-nav-basic #wrapper .navbar-static-side {
 
 body.fixed-nav.fixed-nav-basic.body-small .navbar-fixed-top {
     left: 0;
+    padding: 1px 0;
 }
 
 body.fixed-nav.fixed-nav-basic.fixed-sidebar.mini-navbar.body-small .navbar-fixed-top {
@@ -2884,13 +2882,12 @@ button.dim:active:before {
 
 .pagination > li > a,
 .pagination > li > span {
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
+    background-color: var(--bg);
+    border: 1px solid var(--border-color);
     color: inherit;
     float: left;
     line-height: 1.42857;
     margin-left: -1px;
-    padding: 4px 10px;
     position: relative;
     text-decoration: none;
 }
@@ -2900,12 +2897,18 @@ button.dim:active:before {
     border-color: #18b090;
 }
 
+.page-item.active .page-link:hover {
+    border-color: #18b090;
+}
+
 .page-link:focus {
     box-shadow: none;
 }
 
 .page-link:hover {
-    color: var(--text);
+    color: #fff;
+    background-color: #18b090;
+    border-color: #18b090;
 }
 
 .pagination .footable-page.active a {
@@ -5656,10 +5659,6 @@ body.full-height-layout #page-wrapper {
     min-height: 100vh;
 }
 
-body.boxed-layout {
-    background: url('patterns/shattered.png');
-}
-
 body.boxed-layout #wrapper {
     background-color: #304050;
     max-width: 1200px;
@@ -5718,18 +5717,8 @@ a:focus {
 
 .hr-line-dashed {
     border-top: 1px dashed var(--border-color);
-    color: #ffffff;
-    background-color: #ffffff;
-    height: 1px;
-    margin: 20px 0;
-}
-
-.hr-line-solid {
-    border-bottom: 1px solid var(--border-color);
-    background-color: rgba(0, 0, 0, 0);
-    border-style: solid !important;
-    margin-top: 15px;
-    margin-bottom: 15px;
+    height: 0;
+    margin: 20px 15px;
 }
 
 video {
@@ -6289,6 +6278,7 @@ code {
     border: none;
     border-radius: 0 0 8px 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
 }
 
 .ibox-footer {
@@ -7133,14 +7123,6 @@ body.fullscreen-ibox-mode {
 
 body.modal-open {
     padding-right: inherit !important;
-}
-
-_::-webkit-full-page-media,
-_:future,
-:root body.modal-open .wrapper-content.animated {
-    -webkit-animation: none;
-    -ms-animation-nam: none;
-    animation: none;
 }
 
 body.modal-open .animated {
@@ -10185,14 +10167,6 @@ body.landing-page {
     width: 100%;
 }
 
-.landing-page .header-back.one {
-    background: url('../img/landing/header_one.jpg') 50% 0 no-repeat;
-}
-
-.landing-page .header-back.two {
-    background: url('../img/landing/header_two.jpg') 50% 0 no-repeat;
-}
-
 .landing-page .carousel {
     height: 470px;
     overflow: hidden;
@@ -10438,7 +10412,6 @@ body.landing-page {
     padding-top: 80px;
     padding-bottom: 90px;
     background-color: #18b090;
-    background-image: url('../img/landing/avatar_all.png');
 }
 
 .landing-page .big-icon {
@@ -10450,7 +10423,6 @@ body.landing-page {
 }
 
 .landing-page .contact {
-    background-image: url('../img/landing/word_map.png');
     background-position: 50% 50%;
     background-repeat: no-repeat;
     margin-top: 60px;
@@ -11106,34 +11078,6 @@ body.rtls.top-navigation .footer.fixed {
     background: #203040;
 }
 
-.blue-skin {
-    font-weight: 600;
-    background: url("patterns/header-profile-skin-1.png") repeat scroll 0 0;
-}
-
-.blue-skin:hover {
-    background: #1090d8;
-}
-
-.yellow-skin {
-    font-weight: 600;
-    background: url("patterns/header-profile-skin-3.png") repeat scroll 0 100%;
-}
-
-.yellow-skin:hover {
-    background: #d08838;
-}
-
-.ultra-skin {
-    padding: 20px 10px;
-    font-weight: 600;
-    background: url("patterns/3.png") repeat scroll 0 0;
-}
-
-.ultra-skin:hover {
-    background: url("patterns/4.png") repeat scroll 0 0;
-}
-
 /*
  *
  *   SKIN 1 - INSPINIA - Responsive Admin Theme
@@ -11158,7 +11102,6 @@ body.rtls.top-navigation .footer.fixed {
 
 .skin-1 .nav-header {
     background-color: #1098f0;
-    background-image: url('patterns/header-profile-skin-1.png');
 }
 
 .skin-1.mini-navbar .nav-second-level {
@@ -11294,7 +11237,6 @@ body.skin-2 {
 
 .skin-2 .nav-header {
     background-color: #20c8c8;
-    background-image: url('patterns/header-profile-skin-2.png');
 }
 
 .skin-2.mini-navbar .nav-second-level {
@@ -11408,9 +11350,6 @@ body.skin-2 #wrapper {
 
 .skin-2 #page-wrapper {
     background: #f8f8f8;
-    background: -webkit-radial-gradient(center, ellipse cover, #f8f8f8 20%, #d8d8d8 100%);
-    background: -o-radial-gradient(center, ellipse cover, #f8f8f8 20%, #d8d8d8 100%);
-    background: -ms-radial-gradient(center, ellipse cover, #f8f8f8 20%, #d8d8d8 100%);
     background: radial-gradient(ellipse at center, #f8f8f8 20%, #d8d8d8 100%);
     -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr=#f8f8f8, endColorstr=#d8d8d8)";
 }
@@ -11489,7 +11428,6 @@ body.boxed-layout.skin-3 #wrapper {
 
 .skin-3 .nav-header {
     background-color: #f0b850;
-    background-image: url('patterns/header-profile-skin-3.png');
 }
 
 .skin-3.mini-navbar .nav-second-level {
@@ -11841,10 +11779,6 @@ body.light-skin {
 body.md-skin {
     font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
     background-color: #ffffff;
-}
-
-.md-skin .nav-header {
-    background: url("patterns/4.png") no-repeat;
 }
 
 .md-skin .label,
@@ -12494,4 +12428,12 @@ body.md-skin {
 
 .bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-dot, .bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-wrap::after, .bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-wrap::before {
     background: var(--text) !important;
+}
+
+.pagination-detail {
+    margin-bottom: 0 !important;
+}
+
+.ibox-tools {
+    display: none;
 }
