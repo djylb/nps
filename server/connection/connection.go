@@ -5,9 +5,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/beego/beego"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/mux"
 	"github.com/djylb/nps/lib/pmux"
 )
 
@@ -39,6 +41,7 @@ var QuicAlpn []string
 var QuicKeepAliveSec int
 var QuicIdleTimeoutSec int
 var QuicMaxStreams int64
+var MuxPingIntervalSec int
 
 func InitConnectionService() {
 	BridgeIp = beego.AppConfig.DefaultString("bridge_ip", beego.AppConfig.String("bridge_tcp_ip"))
@@ -69,6 +72,8 @@ func InitConnectionService() {
 	QuicKeepAliveSec = beego.AppConfig.DefaultInt("quic_keep_alive_period", 10)
 	QuicIdleTimeoutSec = beego.AppConfig.DefaultInt("quic_max_idle_timeout", 30)
 	QuicMaxStreams = beego.AppConfig.DefaultInt64("quic_max_incoming_streams", 100000)
+	MuxPingIntervalSec = beego.AppConfig.DefaultInt("mux_ping_interval", 5)
+	mux.PingInterval = time.Duration(MuxPingIntervalSec) * time.Second
 
 	if HttpPort == BridgePort || HttpsPort == BridgePort || WebPort == BridgePort || BridgeTlsPort == BridgePort {
 		port, err := strconv.Atoi(BridgePort)

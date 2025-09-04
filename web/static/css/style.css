@@ -12487,3 +12487,11 @@ body.md-skin {
 .bs-actionsbox, .bs-donebutton, .bs-searchbox {
     padding: 4px !important;
 }
+
+.bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading {
+    background: var(--bg) !important;
+}
+
+.bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-dot, .bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-wrap::after, .bootstrap-table .fixed-table-container .fixed-table-body .fixed-table-loading .loading-wrap .animation-wrap::before {
+    background: var(--text) !important;
+}

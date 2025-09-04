@@ -360,7 +360,7 @@ func (mgr *P2PManager) getSecretConn() (c net.Conn, err error) {
 			}
 		case *quic.Conn:
 			var stream *quic.Stream
-			stream, err = tun.OpenStreamSync(context.Background())
+			stream, err = tun.OpenStreamSync(mgr.ctx)
 			if err == nil {
 				c = conn.NewQuicStreamConn(stream, tun)
 			} else {
@@ -459,23 +459,22 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 		case <-ticker.C:
 		case <-mgr.statusCh:
 		}
+
 		mgr.mu.Lock()
 		ok := mgr.statusOK && (mgr.udpConn != nil || (mgr.quicConn != nil && mgr.quicConn.Context().Err() == nil))
-		oldConn := mgr.udpConn
-		oldQuicConn := mgr.quicConn
-		mgr.mu.Unlock()
-
 		if ok {
+			mgr.mu.Unlock()
 			continue
 		}
-
-		mgr.mu.Lock()
-		if oldConn != nil {
-			_ = oldConn.Close()
+		if mgr.udpConn != nil {
+			_ = mgr.udpConn.Close()
 			mgr.udpConn = nil
 		}
-		if oldQuicConn != nil {
-			_ = oldQuicConn.CloseWithError(0, "monitor close")
+		if mgr.quicConn != nil {
+			if mgr.quicConn.Context().Err() != nil {
+				logs.Debug("quic connection context error: %v", mgr.quicConn.Context().Err())
+			}
+			_ = mgr.quicConn.CloseWithError(0, "monitor close")
 			mgr.quicConn = nil
 		}
 		mgr.mu.Unlock()
@@ -545,7 +544,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 			}
 		case *quic.Conn:
 			var stream *quic.Stream
-			stream, err = tun.OpenStreamSync(context.Background())
+			stream, err = tun.OpenStreamSync(mgr.ctx)
 			if err == nil {
 				c = conn.NewQuicStreamConn(stream, tun)
 			} else {
@@ -619,12 +618,12 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 
 	var remoteAddr, role, mode, data string
 	var localConn net.PacketConn
-	localConn, remoteAddr, localAddr, role, mode, data, err = handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, common.CONN_QUIC, "")
+	localConn, remoteAddr, localAddr, role, mode, data, err = handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, P2PMode, "")
 	if err != nil {
 		logs.Error("Handle P2P failed: %v", err)
 		return
 	}
-	if mode == "" {
+	if mode == "" || mode != P2PMode {
 		mode = common.CONN_KCP
 	}
 	//logs.Debug("handleP2PUdp ok")

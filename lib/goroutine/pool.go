@@ -41,27 +41,34 @@ func CopyBuffer(dst io.Writer, src io.Reader, flows []*file.Flow, task *file.Tun
 	defer common.CopyBuff.Put(buf)
 
 	checkedHTTP := false
+
 	for {
 		nr, er := src.Read(buf)
-		if nr > 0 {
-			if task != nil && !checkedHTTP {
-				checkedHTTP = true
-				firstLine := string(buf[:nr])
-				if len(firstLine) > 3 {
-					method := firstLine[:3]
-					if method == "HTT" || method == "GET" || method == "POS" || method == "HEA" || method == "PUT" || method == "DEL" {
-						if method != "HTT" {
-							heads := strings.Split(firstLine, "\r\n")
-							if len(heads) >= 2 {
-								logs.Info("HTTP Request method %s, %s, remote address %s, target %s", heads[0], heads[1], remote, task.Target.TargetStr)
-							}
+
+		if nr > 0 && task != nil && !checkedHTTP {
+			checkedHTTP = true
+			sample := buf[:nr]
+			if len(sample) > 4096 {
+				sample = sample[:4096]
+			}
+			firstLine := string(sample)
+			if len(firstLine) > 3 {
+				method := firstLine[:3]
+				if method == "HTT" || method == "GET" || method == "POS" || method == "HEA" || method == "PUT" || method == "DEL" {
+					if method != "HTT" {
+						heads := strings.Split(firstLine, "\r\n")
+						if len(heads) >= 2 {
+							logs.Info("HTTP Request method %s, %s, remote address %s, target %s", heads[0], heads[1], remote, task.Target.TargetStr)
 						}
-						task.IsHttp = true
-					} else {
-						task.IsHttp = false
 					}
+					task.IsHttp = true
+				} else {
+					task.IsHttp = false
 				}
 			}
+		}
+
+		if er == nil || nr > 0 {
 			nw, ew := dst.Write(buf[:nr])
 			if nw > 0 {
 				written += int64(nw)
@@ -92,11 +99,13 @@ func CopyBuffer(dst io.Writer, src io.Reader, flows []*file.Flow, task *file.Tun
 				break
 			}
 		}
+
 		if er != nil {
 			err = er
 			break
 		}
 	}
+
 	return written, err
 }
 
@@ -137,15 +146,19 @@ func copyConns(group interface{}) {
 	conns := group.(Conns)
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
+
 	var in, out int64
-	remoteAddr := conns.conn2.RemoteAddr().String()
+	remoteAddr := ""
+	if ra := conns.conn2.RemoteAddr(); ra != nil {
+		remoteAddr = ra.String()
+	}
+
 	_ = connCopyPool.Invoke(newConnGroup(conns.conn1, conns.conn2, wg, &in, conns.flows, conns.task, remoteAddr))
 	_ = connCopyPool.Invoke(newConnGroup(conns.conn2, conns.conn1, wg, &out, conns.flows, conns.task, remoteAddr))
+
 	wg.Wait()
-	if conns.task != nil {
-		if conns.task.Flow != nil {
-			conns.task.Flow.Sub(out, in)
-		}
+	if conns.task != nil && conns.task.Flow != nil {
+		conns.task.Flow.Sub(out, in)
 	}
 	conns.wg.Done()
 }

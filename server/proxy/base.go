@@ -121,7 +121,7 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 		f()
 	}
 
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal)
+	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal, false)
 	return nil
 }
 

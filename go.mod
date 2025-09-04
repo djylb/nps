@@ -6,7 +6,7 @@ require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/beego/beego v1.12.14
 	github.com/beevik/ntp v1.4.3
-	github.com/brianvoe/gofakeit/v7 v7.4.0
+	github.com/brianvoe/gofakeit/v7 v7.5.0
 	github.com/c4milo/unpackit v1.0.0
 	github.com/caddyserver/certmagic v0.24.0
 	github.com/ccding/go-stun v0.1.5
@@ -40,8 +40,8 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/klauspost/reedsolomon v1.12.5 // indirect
-	github.com/libdns/libdns v1.1.0 // indirect
-	github.com/lufia/plan9stats v0.0.0-20250821153705-5981dea3221d // indirect
+	github.com/libdns/libdns v1.1.1 // indirect
+	github.com/lufia/plan9stats v0.0.0-20250827001030-24949be3fa54 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mholt/acmez/v3 v3.1.2 // indirect
@@ -57,7 +57,7 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
-	github.com/ulikunitz/xz v0.5.13 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/xtaci/lossyconn v0.0.0-20200209145036-adba10fffc37 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect

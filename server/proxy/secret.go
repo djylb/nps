@@ -90,6 +90,11 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 		logs.Trace("sent ACK before proceeding")
 	}
 
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, true, s.Task.Target.ProxyProtocol, rb, s.Task, localProxy)
+	if localProxy {
+		isFramed := connType == common.CONN_UDP
+		conn.CopyWaitGroup(c.Conn, target, false, false, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, false, s.Task.Target.ProxyProtocol, rb, s.Task, localProxy, isFramed)
+	} else {
+		conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, true, s.Task.Target.ProxyProtocol, rb, s.Task, localProxy, false)
+	}
 	return nil
 }

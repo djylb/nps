@@ -23,6 +23,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/mux"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
 )
@@ -37,6 +38,7 @@ var (
 	proxyUrl       = flag.String("proxy", "", "Proxy socks5 URL (eg: socks5://user:pass@127.0.0.1:9007)")
 	logLevel       = flag.String("log_level", "trace", "Log level (trace|debug|info|warn|error|fatal|panic|off)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
+	p2pType        = flag.String("p2p_type", "quic", "P2P connection type (quic|kcp)")
 	localPort      = flag.Int("local_port", 2000, "P2P local port")
 	password       = flag.String("password", "", "P2P password flag")
 	target         = flag.String("target", "", "P2P target")
@@ -58,6 +60,7 @@ var (
 	protoVer       = flag.Int("proto_version", version.GetLatestIndex(), fmt.Sprintf("Protocol version (0-%d)", version.GetLatestIndex()))
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
 	disconnectTime = flag.Int("disconnect_timeout", 60, "Disconnect timeout in seconds")
+	keepAlive      = flag.Int("keepalive", 0, "KeepAlive Period in seconds")
 	p2pTime        = flag.Int("p2p_timeout", 5, "P2P timeout in seconds")
 	dnsServer      = flag.String("dns_server", "8.8.8.8", "DNS server for domain lookup")
 	ntpServer      = flag.String("ntp_server", "", "NTP server for time synchronization")
@@ -107,6 +110,22 @@ func main() {
 	// 配置NTP
 	common.SetNtpServer(*ntpServer)
 	common.SetNtpInterval(time.Duration(*ntpInterval) * time.Minute)
+
+	// KeepAlive
+	if *keepAlive > 0 {
+		interval := time.Duration(*keepAlive) * time.Second
+		client.QuicConfig.KeepAlivePeriod = interval
+		mux.PingInterval = interval
+	}
+
+	// P2P Mode
+	switch strings.ToLower(*p2pType) {
+	case common.CONN_QUIC:
+		client.P2PMode = common.CONN_QUIC
+	case common.CONN_KCP:
+		client.P2PMode = common.CONN_KCP
+	default:
+	}
 
 	// 初始化服务
 	options := make(service.KeyValue)
@@ -392,7 +411,7 @@ func run(ctx context.Context) {
 			go func() {
 				for {
 					logs.Info("Start server: %s vkey: %s type: %s", serverAddr, verifyKey, connType)
-					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, "", nil, *disconnectTime, nil).Start()
+					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, "", nil, *disconnectTime, nil).Start(ctx)
 					logs.Info("Client closed! It will be reconnected in five seconds")
 					time.Sleep(time.Second * 5)
 				}
@@ -410,7 +429,7 @@ func run(ctx context.Context) {
 		}
 
 		for _, path := range configPaths {
-			go client.StartFromFile(path)
+			go client.StartFromFile(ctx, path)
 		}
 	}
 }

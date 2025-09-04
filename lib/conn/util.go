@@ -194,8 +194,11 @@ func ReadACK(c net.Conn, timeout time.Duration) error {
 
 // CopyWaitGroup conn1 mux conn
 func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Rate,
-	flows []*file.Flow, isServer bool, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool) {
+	flows []*file.Flow, isServer bool, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal, isFramed bool) {
 	connHandle := GetConn(conn1, crypt, snappy, rate, isServer, isLocal)
+	if isFramed {
+		connHandle = WrapFramed(WrapConn(connHandle, conn1))
+	}
 	proxyHeader := BuildProxyProtocolHeader(conn2, proxyProtocol)
 	if proxyHeader != nil {
 		logs.Debug("Sending Proxy Protocol v%d header to backend: %v", proxyProtocol, proxyHeader)

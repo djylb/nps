@@ -5,6 +5,7 @@ package main
 
 import (
 	"C"
+	"context"
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/common"
@@ -25,7 +26,7 @@ func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) i
 		cl.Close()
 	}
 	cl = client.NewRPClient(C.GoString(serverAddr), C.GoString(verifyKey), C.GoString(connType), C.GoString(proxyUrl), "", nil, 60, nil)
-	cl.Start()
+	cl.Start(context.Background())
 	return 1
 }
 

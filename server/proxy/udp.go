@@ -19,11 +19,11 @@ type packet struct {
 }
 
 type entry struct {
-	ch       chan packet
-	flowConn *conn.FlowConn
-	ctx      context.Context
-	cancel   context.CancelFunc
-	once     sync.Once
+	ch     chan packet
+	conn   net.Conn
+	ctx    context.Context
+	cancel context.CancelFunc
+	once   sync.Once
 }
 
 type UdpModeServer struct {
@@ -68,10 +68,11 @@ func (s *UdpModeServer) Start() error {
 			continue
 		}
 
-		logs.Trace("New udp packet from client %d: %v", s.Task.Client.Id, addr)
+		//logs.Trace("New udp packet from client %d: %v", s.Task.Client.Id, addr)
 		key := addr.String()
 		v, loaded := s.entries.Load(key)
 		if !loaded {
+			logs.Trace("New udp packet from client %d: %v", s.Task.Client.Id, addr)
 			ctx, cancel := context.WithCancel(context.Background())
 			ent := &entry{
 				ch:     make(chan packet, 1024),
@@ -101,8 +102,8 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 	defer func() {
 		ent.cancel()
 		s.entries.Delete(key)
-		if ent.flowConn != nil {
-			_ = ent.flowConn.Close()
+		if ent.conn != nil {
+			_ = ent.conn.Close()
 		}
 		for {
 			select {
@@ -135,7 +136,12 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 		return
 	}
 	target := conn.GetConn(clientConn, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, nil, true, isLocal)
-	ent.flowConn = conn.NewFlowConn(target, s.Task.Flow, s.Task.Client.Flow)
+	flowConn := conn.NewFlowConn(target, s.Task.Flow, s.Task.Client.Flow)
+	if isLocal && s.Bridge.IsServer() {
+		ent.conn = flowConn
+	} else {
+		ent.conn = conn.WrapFramed(flowConn)
+	}
 
 	go func() {
 		buf := common.BufPoolUdp.Get().([]byte)
@@ -149,7 +155,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 			}
 
 			_ = clientConn.SetReadDeadline(time.Now().Add(s.readTimeout))
-			nr, err := ent.flowConn.Read(buf)
+			nr, err := ent.conn.Read(buf)
 			if err != nil {
 				logs.Trace("back-channel read error or idle: %v", err)
 				ent.cancel()
@@ -185,7 +191,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 				}
 			})
 
-			if _, err := ent.flowConn.Write(data); err != nil {
+			if _, err := ent.conn.Write(data); err != nil {
 				common.PutBufPoolUdp(pkt.buf)
 				ent.cancel()
 				return

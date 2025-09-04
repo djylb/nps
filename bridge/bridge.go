@@ -925,6 +925,10 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		}
 	}
 
+	if link.ConnType == "udp" && node.BaseVer < 7 {
+		logs.Warn("UDP connection requires client v%s or newer.", version.GetVersion(7))
+	}
+
 	return
 }
 
