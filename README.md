@@ -51,7 +51,18 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
 
 更多详细配置请参考 [文档](https://d-jy.net/docs/nps/)（部分内容可能未更新）。
 
-### [Android](https://github.com/djylb/npsclient) | [OpenWrt](https://github.com/djylb/nps-openwrt)
+### [Android](https://github.com/djylb/npsclient) | [OpenWrt](https://github.com/djylb/nps-openwrt) | [桌面 GUI](cmd/npc-gui)
+
+### NPC 桌面 GUI 客户端
+
+提供跨平台的桌面图形界面客户端，方便管理 NPC 配置：
+
+- **跨平台支持**：Windows、Linux、macOS
+- **多配置管理**：支持创建和管理多个客户端配置
+- **可视化操作**：图形界面配置，一键启停客户端
+- **实时日志**：查看客户端运行日志
+
+详细使用说明请查看 [NPC GUI 文档](cmd/npc-gui/README.md)
 
 ### Docker 部署
 
