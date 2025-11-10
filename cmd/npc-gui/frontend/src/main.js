@@ -60,6 +60,10 @@ function renderConfigList() {
                 <h2>Client Configurations</h2>
                 <button class="btn btn-primary" onclick="window.showConfigForm()">+ Add New</button>
             </div>
+            <div class="info-banner">
+                <strong>📌 提示 / Tip:</strong> 连接成功后，请访问 <a href="https://jqhl.jqcloudnet.cn" target="_blank">jqhl.jqcloudnet.cn</a> 登录并创建隧道。<br>
+                After successful connection, please visit <a href="https://jqhl.jqcloudnet.cn" target="_blank">jqhl.jqcloudnet.cn</a> to login and create tunnels.
+            </div>
             <div id="config-items" class="config-items">
                 ${currentConfigs.length === 0 ? '<p class="empty-message">No configurations yet. Click "Add New" to create one.</p>' : ''}
             </div>
@@ -118,6 +122,12 @@ function renderConfigForm() {
         dnsServer: '8.8.8.8',
         keepAlive: 0
     };
+    
+    // Extract hostname without port for display in edit mode
+    let displayAddr = config.serverAddr;
+    if (displayAddr && displayAddr.includes(':')) {
+        displayAddr = displayAddr.split(':')[0];
+    }
 
     content.innerHTML = `
         <div class="config-form">
@@ -134,9 +144,9 @@ function renderConfigForm() {
                 <div class="form-group">
                     <label for="serverAddr">Server Address *</label>
                     <input type="text" id="serverAddr" name="serverAddr" 
-                           value="${escapeHtml(config.serverAddr)}" 
-                           placeholder="example.com:8024" required>
-                    <small>Format: host:port (e.g., example.com:8024)</small>
+                           value="${escapeHtml(displayAddr)}" 
+                           placeholder="example.com" required>
+                    <small>Enter server domain or IP (port will use default: 8024)</small>
                 </div>
                 
                 <div class="form-group">
@@ -290,10 +300,17 @@ window.submitConfigForm = function(event) {
     event.preventDefault();
     
     const formData = new FormData(event.target);
+    let serverAddr = formData.get('serverAddr').trim();
+    
+    // If server address doesn't contain a port, append default port 8024
+    if (!serverAddr.includes(':')) {
+        serverAddr = serverAddr + ':8024';
+    }
+    
     const config = {
         id: editingConfig ? editingConfig.id : '',
         name: formData.get('name'),
-        serverAddr: formData.get('serverAddr'),
+        serverAddr: serverAddr,
         vkey: formData.get('vkey'),
         connType: formData.get('connType'),
         proxyUrl: formData.get('proxyUrl'),
@@ -329,6 +346,12 @@ window.toggleClient = function(id, isActive) {
     const action = isActive ? StopClient : StartClient;
     action(id).then(() => {
         setTimeout(() => loadConfigs(), 500);
+        // Show tunnel creation info when starting a client
+        if (!isActive) {
+            setTimeout(() => {
+                alert('连接成功！\n\n要创建隧道，请访问：https://jqhl.jqcloudnet.cn 进行登录和配置。\n\nConnection successful!\n\nTo create tunnels, please visit: https://jqhl.jqcloudnet.cn to login and configure.');
+            }, 1000);
+        }
     }).catch(err => {
         alert(`Failed to ${isActive ? 'stop' : 'start'} client: ` + err);
     });

@@ -105,11 +105,13 @@ wails build -tags webkit2gtk_4_1
 1. 点击"添加新配置"按钮 / Click "Add New" button
 2. 填写配置详情 / Fill in the configuration details:
    - 配置名称（用于识别）/ Configuration name (for identification)
-   - 服务器地址（例如 example.com:8024）/ Server address (e.g., example.com:8024)
+   - 服务器地址（仅输入域名或 IP，例如 example.com）/ Server address (domain or IP only, e.g., example.com)
    - 验证密钥 / Verification key
    - 连接类型 / Connection type
    - 其他可选设置 / Other optional settings
 3. 点击"保存配置"/ Click "Save Configuration"
+
+**注意 / Note**: 端口使用默认值 8024，无需手动输入。/ Port uses default value 8024, no need to enter manually.
 
 ### 启动客户端 / Starting a Client
 
@@ -117,6 +119,9 @@ wails build -tags webkit2gtk_4_1
 2. 点击"启动"按钮 / Click the "Start" button
 3. 状态将变为"运行中"/ The status will change to "Running"
 4. 在"日志"标签中查看日志 / View logs in the "Logs" tab
+
+**重要 / Important**: 连接成功后，访问 [jqhl.jqcloudnet.cn](https://jqhl.jqcloudnet.cn) 登录并创建隧道。  
+After successful connection, visit [jqhl.jqcloudnet.cn](https://jqhl.jqcloudnet.cn) to login and create tunnels.
 
 ### 停止客户端 / Stopping a Client
 

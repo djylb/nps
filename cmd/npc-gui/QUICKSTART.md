@@ -47,8 +47,9 @@ chmod +x npc-gui-darwin-universal
 1. 点击界面中的 **"+ Add New"** 按钮
 2. 填写配置信息：
    - **配置名称**: 给配置起个容易识别的名字（如"公司服务器"）
-   - **服务器地址**: NPS 服务器地址，格式为 `域名:端口` 或 `IP:端口`
-     - 例如：`example.com:8024` 或 `192.168.1.100:8024`
+   - **服务器地址**: 仅输入 NPS 服务器的域名或 IP（**不需要输入端口**）
+     - 例如：`example.com` 或 `192.168.1.100`
+     - 端口将自动使用默认值 8024
    - **验证密钥**: 从 NPS 服务器管理页面获取的客户端 vkey
    - **连接类型**: 选择连接方式（推荐 TLS 或 TCP）
 3. 点击 **"Save Configuration"** 保存
@@ -58,7 +59,10 @@ chmod +x npc-gui-darwin-universal
 1. 在配置列表中找到刚才添加的配置
 2. 点击配置右侧的 **"Start"** 按钮
 3. 状态会变为 **"● Running"** 表示客户端正在运行
-4. 切换到 **"Logs"** 标签页查看连接日志
+4. 系统会提示您访问 **[jqhl.jqcloudnet.cn](https://jqhl.jqcloudnet.cn)** 创建隧道
+5. 切换到 **"Logs"** 标签页查看连接日志
+
+**重要**: 连接成功后，请访问 [jqhl.jqcloudnet.cn](https://jqhl.jqcloudnet.cn) 登录并创建隧道，才能正常使用内网穿透功能。
 
 ### 步骤 5: 停止客户端
 
@@ -71,7 +75,7 @@ chmod +x npc-gui-darwin-universal
 | 配置项 | 说明 | 示例 |
 |--------|------|------|
 | 配置名称 | 用于识别配置的名称 | "办公室服务器" |
-| 服务器地址 | NPS 服务器地址和端口 | `nps.example.com:8024` |
+| 服务器地址 | NPS 服务器域名或 IP（不含端口） | `nps.example.com` |
 | 验证密钥 | 客户端唯一标识符 | `abc123xyz456` |
 | 连接类型 | 与服务器的连接方式 | TCP / TLS / KCP / QUIC / WS / WSS |
 
@@ -100,7 +104,7 @@ chmod +x npc-gui-darwin-universal
 ### Q: 客户端启动后无法连接？
 
 **A**: 请检查：
-1. 服务器地址是否正确（包括端口号）
+1. 服务器地址是否正确（只需输入域名或 IP，端口会自动使用 8024）
 2. 验证密钥是否正确
 3. 服务器是否在运行
 4. 防火墙是否允许连接
@@ -112,6 +116,19 @@ chmod +x npc-gui-darwin-universal
 1. 查看配置状态是否显示 "● Running"（绿色）
 2. 切换到 "Logs" 标签查看日志
 3. 成功连接会显示类似 "Client connected successfully" 的消息
+4. 会弹出提示，引导您访问 jqhl.jqcloudnet.cn 创建隧道
+
+### Q: 连接成功后如何使用内网穿透？
+
+**A**: 
+1. 连接成功后，访问 [jqhl.jqcloudnet.cn](https://jqhl.jqcloudnet.cn)
+2. 使用您的账号登录
+3. 在管理界面中创建隧道配置
+4. 配置完成后即可使用内网穿透功能
+
+### Q: 为什么不需要输入端口号？
+
+**A**: 为了简化配置，端口使用 npc.conf 中的默认值 8024。这样可以避免用户输入错误的端口号。
 
 ### Q: 可以同时运行多个客户端吗？
 

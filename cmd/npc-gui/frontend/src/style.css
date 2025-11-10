@@ -95,6 +95,27 @@ html, body {
     font-weight: 600;
 }
 
+.info-banner {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+    border: 1px solid rgba(102, 126, 234, 0.3);
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    color: #e0e0e0;
+    line-height: 1.6;
+}
+
+.info-banner a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.info-banner a:hover {
+    color: #8899ff;
+    text-decoration: underline;
+}
+
 .config-items {
     display: flex;
     flex-direction: column;
