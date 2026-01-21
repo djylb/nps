@@ -1,6 +1,6 @@
 ![logo](https://cdn.jsdelivr.net/gh/djylb/nps/docs/logo.svg)
 
-# NPS <small>0.33.13</small>
+# NPS <small>0.33.14</small>
 
 > 一款轻量级、高性能、功能强大的内网穿透代理服务器
 

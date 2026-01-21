@@ -549,7 +549,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string) (*conn.Conn
 		if !bytes.Equal(b, crypt.ComputeHMAC(vkey, ts, hmacBuf, []byte(version.GetVersion(Ver)))) {
 			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
 			_ = c.Close()
-			return nil, "", fmt.Errorf("client does not match the server version %s", version.GetVersion(Ver))
+			return nil, "", fmt.Errorf("the client does not match the server version %s", version.GetVersion(Ver))
 		}
 		if Ver > 1 {
 			fpBuf, err := c.GetShortLenContent()

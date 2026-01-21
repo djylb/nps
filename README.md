@@ -139,6 +139,13 @@ npc update && npc restart
 
 ### Stable
 
+- **v0.33.14 (2026-01-22)**
+  - 调整限速逻辑
+  - 修复pprof配置不生效 [#199](https://github.com/djylb/nps/issues/199)
+  - 优化程序稳定性 [#201](https://github.com/djylb/nps/pull/201)
+  - 优化高压转发场景
+  - 更新相关依赖包
+
 - **v0.33.13 (2026-01-05)**
   - 优化程序稳定性
   - 优化吞吐性能
