@@ -281,6 +281,7 @@ func (s *Mux) readSession() {
 			s.connMap.Set(connection.connId, connection) //it has been Set before send ok
 			select {
 			case <-s.closeChan:
+				return
 			case s.newConnCh <- connection:
 			}
 			s.sendInfo(muxNewConnOk, connection.connId, false, nil)
@@ -431,7 +432,7 @@ func (s *Mux) Close() (err error) {
 		s.connMap.Close()
 		//s.connMap = nil
 		//s.closeChan <- struct{}{}
-		close(s.newConnCh)
+		// do not close newConnCh to avoid racing send on closed channel
 		// while target host close socket without finish steps, conn.Close method maybe blocked
 		// and tcp status change to CLOSE WAIT or TIME WAIT, so we close it in other goroutine
 		_ = s.conn.SetDeadline(time.Now().Add(time.Second * 5))
