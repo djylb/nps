@@ -37,6 +37,11 @@ var (
 	PingMaxPad   = 16
 )
 
+const (
+	writeQueueHighWater uint64 = 2048
+	writeQueueLowWater  uint64 = 1024
+)
+
 type Mux struct {
 	latency uint64 // we store latency in bits, but it's float64
 	net.Listener
@@ -142,6 +147,13 @@ func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) {
 	if s.IsClosed() {
 		return
 	}
+
+	s.applyWriteBackpressure(flag, priority)
+
+	if s.IsClosed() {
+		return
+	}
+
 	pack := muxPack.Get()
 	pack.priority = priority
 	if err := pack.Set(flag, id, data); err != nil {
@@ -152,6 +164,27 @@ func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) {
 	}
 	s.writeQueue.Push(pack)
 	return
+}
+
+func (s *Mux) applyWriteBackpressure(flag uint8, priority bool) {
+	if priority {
+		return
+	}
+	if flag != muxNewMsg && flag != muxNewMsgPart {
+		return
+	}
+
+	if s.writeQueue.Len() < writeQueueHighWater {
+		return
+	}
+
+	q := &s.writeQueue
+	q.cond.L.Lock()
+	defer q.cond.L.Unlock()
+
+	for !s.IsClosed() && atomic.LoadUint32(&q.stop) == 0 && q.Len() >= writeQueueLowWater {
+		q.cond.Wait()
+	}
 }
 
 func (s *Mux) writeSession() {
@@ -173,6 +206,9 @@ func (s *Mux) writeSession() {
 			if pack == nil {
 				break
 			}
+
+			flag := pack.flag
+
 			//if pack.flag == muxNewMsg || pack.flag == muxNewMsgPart {
 			//	if pack.length >= 100 {
 			//		logs.Println("write session id", pack.id, "\n", string(pack.content[:100]))
@@ -180,12 +216,17 @@ func (s *Mux) writeSession() {
 			//		logs.Println("write session id", pack.id, "\n", string(pack.content[:pack.length]))
 			//	}
 			//}
+
 			err := pack.Pack(fw)
 			muxPack.Put(pack)
 			if err != nil {
 				logs.Println("mux: Pack err", err)
 				_ = s.Close()
 				break
+			}
+
+			if flag == muxPingFlag || flag == muxPingReturn {
+				_ = fw.Flush()
 			}
 		}
 	}()
@@ -237,7 +278,8 @@ func (s *Mux) ping() {
 			case pack := <-s.pingCh:
 				data, _ := pack.GetContent()
 				//logs.Println("mux: Ping Pack err", data, pack.length, pack.content)
-				atomic.StoreUint32(&s.pingCheckTime, 0)
+				//atomic.StoreUint32(&s.pingCheckTime, 0)
+
 				if len(data) >= 8 {
 					sent := int64(binary.BigEndian.Uint64(data[:8]))
 					rtt := time.Now().UnixNano() - sent
@@ -281,6 +323,7 @@ func (s *Mux) readSession() {
 			s.connMap.Set(connection.connId, connection) //it has been Set before send ok
 			select {
 			case <-s.closeChan:
+				return
 			case s.newConnCh <- connection:
 			}
 			s.sendInfo(muxNewConnOk, connection.connId, false, nil)
@@ -341,6 +384,7 @@ func (s *Mux) readSession() {
 				continue
 			default:
 			}
+
 			if connection, ok := s.connMap.Get(pack.id); ok && !connection.IsClosed() {
 				switch pack.flag {
 				case muxNewMsg, muxNewMsgPart: //New msg from remote connection
@@ -431,7 +475,7 @@ func (s *Mux) Close() (err error) {
 		s.connMap.Close()
 		//s.connMap = nil
 		//s.closeChan <- struct{}{}
-		close(s.newConnCh)
+		//close(s.newConnCh)
 		// while target host close socket without finish steps, conn.Close method maybe blocked
 		// and tcp status change to CLOSE WAIT or TIME WAIT, so we close it in other goroutine
 		_ = s.conn.SetDeadline(time.Now().Add(time.Second * 5))

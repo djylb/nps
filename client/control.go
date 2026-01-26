@@ -433,6 +433,10 @@ func NewConn(tp string, vkey string, server string, proxyUrl string) (*conn.Conn
 	defer connection.SetDeadline(time.Time{})
 
 	c := conn.NewConn(connection)
+	if c == nil {
+		_ = connection.Close()
+		return nil, "", fmt.Errorf("conn.NewConn returned nil (tp=%q server=%q)", tp, server)
+	}
 	if _, err := c.BufferWrite([]byte(common.CONN_TEST)); err != nil {
 		_ = c.Close()
 		return nil, "", err
@@ -545,7 +549,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string) (*conn.Conn
 		if !bytes.Equal(b, crypt.ComputeHMAC(vkey, ts, hmacBuf, []byte(version.GetVersion(Ver)))) {
 			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
 			_ = c.Close()
-			return nil, "", err
+			return nil, "", fmt.Errorf("the client does not match the server version %s", version.GetVersion(Ver))
 		}
 		if Ver > 1 {
 			fpBuf, err := c.GetShortLenContent()
@@ -588,6 +592,9 @@ func NewConn(tp string, vkey string, server string, proxyUrl string) (*conn.Conn
 }
 
 func SendType(c *conn.Conn, connType, uuid string) error {
+	if c == nil {
+		return fmt.Errorf("SendType: nil conn (connType=%s uuid=%s)", connType, uuid)
+	}
 	if _, err := c.BufferWrite([]byte(connType)); err != nil {
 		_ = c.Close()
 		return err

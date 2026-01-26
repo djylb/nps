@@ -364,6 +364,9 @@ func (s *Conn) Write(b []byte) (n int, err error) {
 }
 
 func (s *Conn) BufferWrite(b []byte) (int, error) {
+	if s == nil || s.IsClosed() {
+		return 0, errors.New("connection error")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.wBuf.Write(b)

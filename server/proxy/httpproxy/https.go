@@ -117,7 +117,7 @@ func (s *HttpsServer) Start() error {
 		}
 
 		var tlsConfig *tls.Config
-		if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443) {
+		if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
 			logs.Debug("Auto SSL is enabled")
 			tlsConfig = s.certMagicTls
 		} else {

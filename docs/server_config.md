@@ -61,6 +61,7 @@ nps.exe -conf_path=D:\test\nps
 | `http_proxy_port`           | HTTP 代理监听端口（默认 `80`，留空不启用）                                                              |
 | `https_proxy_port`          | HTTPS 代理监听端口（默认 `443`，留空不启用）                                                            |
 | `http3_proxy_port`          | HTTP/3 代理监听端口（默认 `https_proxy_port`，配置`0`关闭）                                            |
+| `force_auto_ssl`            | 强制自动申请证书，需自行解决80、443端口问题（默认 `false`）                                                    |
 | `ssl_path`                  | 自动申请证书保存路径（默认 `ssl`）                                                                    |
 | `ssl_email`                 | 自动申请证书使用的邮箱                                                                             |
 | `ssl_ca`                    | 自动申请证书使用的 CA（`LetsEncrypt`、`ZeroSSL`、`GoogleTrust`，默认 `LetsEncrypt`）                    |

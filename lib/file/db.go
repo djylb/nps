@@ -391,9 +391,9 @@ reset:
 		return errors.New("vkey duplicate, please reset")
 	}
 	if c.RateLimit == 0 {
-		c.Rate = rate.NewRate(int64(2 << 23))
+		c.Rate = rate.NewRate(0)
 	} else if c.Rate == nil {
-		c.Rate = rate.NewRate(int64(c.RateLimit * 1024))
+		c.Rate = rate.NewRate(int64(c.RateLimit) * 1024)
 	}
 	c.Rate.Start()
 	if c.Id == 0 {
@@ -438,18 +438,27 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
 		c := v.(*Client)
 		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
-		if c.Rate != nil {
-			c.Rate.Stop()
+		if t.Rate == nil {
+			t.Rate = c.Rate
 		}
 	}
 
 	s.JsonDb.Clients.Store(t.Id, t)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
+	var limit int64
 	if t.RateLimit > 0 {
-		t.Rate = rate.NewRate(int64(t.RateLimit * 1024))
-		t.Rate.Start()
+		limit = int64(t.RateLimit) * 1024
 	} else {
-		t.Rate = rate.NewRate(int64(2 << 23))
+		limit = 0
+	}
+	if t.Rate != nil {
+		if t.Rate.Limit() != limit {
+			t.Rate.ResetLimit(limit)
+		} else {
+			t.Rate.Start()
+		}
+	} else {
+		t.Rate = rate.NewRate(limit)
 		t.Rate.Start()
 	}
 	return nil

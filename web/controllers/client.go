@@ -169,14 +169,19 @@ func (s *ClientController) Edit() {
 			c.WebTotpSecret = s.getEscapeString("web_totp_secret")
 			c.EnsureWebPassword()
 			c.ConfigConnAllow = s.GetBoolNoErr("config_conn_allow")
-			if c.Rate != nil {
-				c.Rate.Stop()
-			}
+			var limit int64
 			if c.RateLimit > 0 {
-				c.Rate = rate.NewRate(int64(c.RateLimit * 1024))
+				limit = int64(c.RateLimit) * 1024
+			} else {
+				limit = 0
+			}
+			if c.Rate == nil {
+				c.Rate = rate.NewRate(limit)
 				c.Rate.Start()
 			} else {
-				c.Rate = rate.NewRate(int64(2 << 23))
+				if c.Rate.Limit() != limit {
+					c.Rate.SetLimit(limit)
+				}
 				c.Rate.Start()
 			}
 
@@ -238,15 +243,21 @@ func clearClientStatus(c *file.Client, name string) {
 	case "tunnel_limit":
 		c.MaxTunnelNum = 0
 	}
-	if c.Rate != nil {
-		c.Rate.Stop()
-	}
+	var limit int64
 	if c.RateLimit > 0 {
-		c.Rate = rate.NewRate(int64(c.RateLimit * 1024))
+		limit = int64(c.RateLimit) * 1024
+	} else {
+		limit = 0
+	}
+	if c.Rate == nil {
+		c.Rate = rate.NewRate(limit)
 		c.Rate.Start()
 	} else {
-		c.Rate = rate.NewRate(int64(2 << 23))
-		c.Rate.Start()
+		if c.Rate.Limit() != limit {
+			c.Rate.ResetLimit(limit)
+		} else {
+			c.Rate.Start()
+		}
 	}
 	return
 }

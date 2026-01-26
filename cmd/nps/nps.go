@@ -82,10 +82,14 @@ func main() {
 			log.Fatalln("load config file error", err.Error())
 		}
 	}
+
 	pprofIp := beego.AppConfig.String("pprof_ip")
-	pprofPort := beego.AppConfig.String("pprof_port")
-	pprofAddr := common.BuildAddress(pprofIp, pprofPort)
-	common.InitPProfByAddr(pprofAddr)
+	pprofPort := beego.AppConfig.DefaultString("pprof_port", "0")
+	if pprofPort != "0" {
+		pprofAddr := common.BuildAddress(pprofIp, pprofPort)
+		common.InitPProfByAddr(pprofAddr)
+	}
+
 	err := common.SetTimezone(beego.AppConfig.String("timezone"))
 	if err != nil {
 		logs.Warn("Set timezone error %v", err)

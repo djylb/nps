@@ -12,6 +12,7 @@ import (
 )
 
 type priorityQueue struct {
+	length       uint64
 	highestChain *bufChain
 	middleChain  *bufChain
 	lowestChain  *bufChain
@@ -32,8 +33,13 @@ func (Self *priorityQueue) New() {
 }
 
 func (Self *priorityQueue) Push(packager *muxPackager) {
+	atomic.AddUint64(&Self.length, 1)
 	Self.push(packager)
-	Self.cond.Broadcast()
+
+	Self.cond.L.Lock()
+	//Self.cond.Broadcast()
+	Self.cond.Signal()
+	Self.cond.L.Unlock()
 	return
 }
 
@@ -41,16 +47,36 @@ func (Self *priorityQueue) push(packager *muxPackager) {
 	switch packager.flag {
 	case muxPingFlag, muxPingReturn:
 		Self.highestChain.pushHead(unsafe.Pointer(packager))
-	// the ping package need highest priority
-	// prevent ping calculation error
+		// ping packages need highest priority
 	case muxNewConn, muxNewConnOk, muxNewConnFail:
-		// the New conn package need some priority too
+		// new conn packages need some priority too
 		Self.middleChain.pushHead(unsafe.Pointer(packager))
 	default:
 		if packager.priority {
 			Self.middleChain.pushHead(unsafe.Pointer(packager))
 		} else {
 			Self.lowestChain.pushHead(unsafe.Pointer(packager))
+		}
+	}
+}
+
+func (Self *priorityQueue) Len() uint64 {
+	return atomic.LoadUint64(&Self.length)
+}
+
+func (Self *priorityQueue) afterPop() {
+	// atomic length--
+	newLen := atomic.AddUint64(&Self.length, ^uint64(0))
+
+	// Wake up backpressure waiters only when crossing below low water:
+	// oldLen >= lowWater && newLen < lowWater
+	// (oldLen is newLen+1 because we just decremented)
+	if newLen < writeQueueLowWater {
+		oldLen := newLen + 1
+		if oldLen >= writeQueueLowWater {
+			Self.cond.L.Lock()
+			Self.cond.Broadcast()
+			Self.cond.L.Unlock()
 		}
 	}
 }
@@ -91,6 +117,7 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 	ptr, ok := Self.highestChain.popTail()
 	if ok {
 		packager = (*muxPackager)(ptr)
+		Self.afterPop()
 		return
 	}
 	if Self.starving < maxStarving {
@@ -99,6 +126,7 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 		if ok {
 			packager = (*muxPackager)(ptr)
 			Self.starving++
+			Self.afterPop()
 			return
 		}
 	}
@@ -108,6 +136,7 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 		if Self.starving > 0 {
 			Self.starving = Self.starving / 2
 		}
+		Self.afterPop()
 		return
 	}
 	if Self.starving > 0 {
@@ -115,6 +144,7 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 		if ok {
 			packager = (*muxPackager)(ptr)
 			Self.starving++
+			Self.afterPop()
 			return
 		}
 	}
@@ -123,7 +153,9 @@ func (Self *priorityQueue) TryPop() (packager *muxPackager) {
 
 func (Self *priorityQueue) Stop() {
 	atomic.StoreUint32(&Self.stop, 1)
+	Self.cond.L.Lock()
 	Self.cond.Broadcast()
+	Self.cond.L.Unlock()
 }
 
 type connQueue struct {

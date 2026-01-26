@@ -326,6 +326,11 @@ func (s *TRPClient) newChan() {
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
 		return
 	}
+	if tunnel == nil {
+		HasFailed = true
+		logs.Error("NewConn returned nil tunnel without error (server=%s tp=%s)", s.svrAddr, s.bridgeConnType)
+		return
+	}
 	if s.uuid == "" {
 		s.uuid = uuid
 	}

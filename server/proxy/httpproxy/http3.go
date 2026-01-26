@@ -128,7 +128,7 @@ func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config
 		return nil, nil
 	}
 
-	if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443) {
+	if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
 		return s.certMagicTls, nil
 	}
 

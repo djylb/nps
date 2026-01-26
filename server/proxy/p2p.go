@@ -121,18 +121,18 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 		var toProvider []byte
 		if sess.visitorMode != "" && sess.providerMode != "" {
 			if sess.visitorData != "" || sess.providerData != "" {
-				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal, sess.providerMode, sess.providerData)
-				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal, sess.visitorMode, sess.visitorData)
+				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.visitorAddr.String(), sess.providerLocal, sess.providerMode, sess.providerData)
+				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.providerAddr.String(), sess.visitorLocal, sess.visitorMode, sess.visitorData)
 			} else {
-				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal, sess.providerMode)
-				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal, sess.visitorMode)
+				toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.visitorAddr.String(), sess.providerLocal, sess.providerMode)
+				toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.providerAddr.String(), sess.visitorLocal, sess.visitorMode)
 			}
 		} else if sess.visitorLocal != "" && sess.providerLocal != "" {
-			toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.providerLocal)
-			toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.visitorLocal)
+			toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.visitorAddr.String(), sess.providerLocal)
+			toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.providerAddr.String(), sess.visitorLocal)
 		} else {
-			toVisitor = []byte(sess.providerAddr.String())
-			toProvider = []byte(sess.visitorAddr.String())
+			toVisitor = common.GetWriteStr(sess.providerAddr.String(), sess.visitorAddr.String())
+			toProvider = common.GetWriteStr(sess.visitorAddr.String(), sess.providerAddr.String())
 		}
 		for i := 0; i < 3; i++ {
 			if _, err := s.listener.WriteTo(toVisitor, sess.visitorAddr); err != nil {

@@ -63,7 +63,7 @@ func InitFromDb() {
 			local.Addr = "127.0.0.1"
 			local.Cnf = new(file.Config)
 			local.Flow = new(file.Flow)
-			local.Rate = rate.NewRate(int64(2 << 23))
+			local.Rate = rate.NewRate(0)
 			local.Rate.Start()
 			local.NowConn = 0
 			local.Status = true
@@ -808,9 +808,9 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 		}
 	} else if sortField == "Rate.NowRate" {
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Rate.NowRate < list[j].Rate.NowRate })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].Rate.Now() < list[j].Rate.Now() })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Rate.NowRate > list[j].Rate.NowRate })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].Rate.Now() > list[j].Rate.Now() })
 		}
 	} else if sortField == "Flow.FlowLimit" {
 		if order == "asc" {

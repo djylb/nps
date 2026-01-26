@@ -37,6 +37,7 @@ type HttpProxy struct {
 	Http3PortStr   string
 	Http3Bridge    bool
 	ErrorAlways    bool
+	ForceAutoSsl   bool
 	Magic          *certmagic.Config
 	Acme           *certmagic.ACMEIssuer
 }
@@ -54,6 +55,7 @@ func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort
 		HttpsPortStr:   strconv.Itoa(httpsPort),
 		Http3PortStr:   strconv.Itoa(http3Port),
 		Http3Bridge:    false,
+		ForceAutoSsl:   false,
 	}
 	return httpProxy
 }
@@ -69,6 +71,8 @@ func (s *HttpProxy) Start() error {
 	if s.Bridge.IsServer() {
 		s.Http3Bridge = beego.AppConfig.DefaultBool("bridge_http3", true)
 	}
+
+	s.ForceAutoSsl = beego.AppConfig.DefaultBool("force_auto_ssl", false)
 
 	certmagic.Default.Logger = logs.ZapLogger
 	certmagic.DefaultACME.Agreed = true

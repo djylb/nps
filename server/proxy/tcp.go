@@ -219,7 +219,9 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		proxy.ServeHTTP(w, req)
 	})
 	server = &http.Server{
-		Handler: handler,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 	//httpNum++
 	//logs.Error("HTTP Proxy Number: %d", httpNum)

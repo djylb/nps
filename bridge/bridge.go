@@ -566,6 +566,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		}
 		uuid = crypt.GenerateUUID(uuid).String()
 	}
+	c.SetAlive()
 	isPub := file.GetDb().IsPubClient(id)
 	switch flag {
 	case common.WORK_MAIN:

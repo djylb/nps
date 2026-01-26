@@ -1,4 +1,4 @@
-# NPS Intranet Tunneling
+# NPS Intranet Tunneling (Enhanced)
 
 [![GitHub Stars](https://img.shields.io/github/stars/djylb/nps.svg)](https://github.com/djylb/nps)
 [![GitHub Forks](https://img.shields.io/github/forks/djylb/nps.svg)](https://github.com/djylb/nps)
@@ -15,7 +15,7 @@
 
 NPS is a lightweight and efficient intranet tunneling proxy server that supports forwarding multiple protocols (TCP, UDP, HTTP, HTTPS, SOCKS5, etc.). It features an intuitive web management interface that allows secure and convenient access to intranet resources from external networks, addressing a wide range of complex scenarios.
 
-Due to the long-term discontinuation of updates for [NPS](https://github.com/ehang-io/nps), this repository continues development based on community contributions and updates.
+Since the original [NPS](https://github.com/ehang-io/nps) project has been inactive for a long time, this repository continues its development as one of the actively maintained community versions, featuring extensive refactoring, improved stability, and enhanced functionality.
 
 - **Before asking questions, please check:** [Documentation](https://d-jy.net/docs/nps/) and [Issues](https://github.com/djylb/nps/issues)
 - **Contributions welcome:** Submit PRs, provide feedback or suggestions, and help drive the project forward.

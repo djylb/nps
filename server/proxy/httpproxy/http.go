@@ -103,7 +103,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// AutoSSL
-	if host.AutoSSL && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") && (s.HttpPort == 80 || s.HttpsPort == 443) {
+	if host.AutoSSL && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
 		s.Acme.HandleHTTPChallenge(w, r)
 		return
 	}
