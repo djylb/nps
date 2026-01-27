@@ -86,10 +86,16 @@
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
             if (row.Mode == "mixProxy") {
+                var whitelistText = row.Whitelist ? row.Whitelist.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>") : ""
+                var whitelistInfo = '<b langtag="word-whitelist"></b>: <span langtag="word-' + row.WhitelistEnable + '"></span>&emsp;'
+                if (row.WhitelistEnable && whitelistText) {
+                    whitelistInfo += '<br/><br><b langtag="word-whitelistentries"></b>: <span>' + whitelistText + '</span>&emsp;'
+                }
                 return tmp + "<br/><br>"
                     + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
                     + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
                     + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
+                    + whitelistInfo + '<br/><br>'
             }
             if (row.Mode == "file") {
                 return tmp + "<br/><br>"

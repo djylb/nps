@@ -159,6 +159,15 @@ func (s *TunnelModeServer) handleConnect(c net.Conn) {
 	}
 
 	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.WhitelistEnable {
+		entries := common.ParseWhitelistEntries(s.Task.Whitelist)
+		if !common.WhitelistAllows(entries, addr) {
+			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
+			s.sendReply(c, notAllowed)
+			_ = c.Close()
+			return
+		}
+	}
 
 	_ = s.DealClient(conn.NewConn(c), s.Task.Client, addr, nil, common.CONN_TCP, func() {
 		s.sendReply(c, succeeded)
@@ -236,6 +245,13 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 		_ = tcpConn.SetKeepAlive(true)
 		_ = tcpConn.SetKeepAlivePeriod(15 * time.Second)
 		_ = transport.SetTcpKeepAliveParams(tcpConn, 15, 15, 3)
+	}
+	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.WhitelistEnable {
+		// We tunnel SOCKS5 UDP frames as-is and do not inspect per-datagram destinations.
+		// To preserve deny-by-default semantics, reject UDP associate when whitelist is enabled.
+		s.sendReply(c, notAllowed)
+		_ = c.Close()
+		return
 	}
 	defer c.Close()
 

@@ -177,30 +177,32 @@ func (s *Client) EnsureWebPassword() {
 }
 
 type Tunnel struct {
-	Id           int
-	Port         int
-	ServerIp     string
-	Mode         string
-	Status       bool
-	RunStatus    bool
-	Client       *Client
-	Ports        string
-	Flow         *Flow
-	NowConn      int32
-	Password     string
-	Remark       string
-	TargetAddr   string
-	TargetType   string
-	NoStore      bool
-	IsHttp       bool
-	HttpProxy    bool
-	Socks5Proxy  bool
-	LocalPath    string
-	StripPre     string
-	ReadOnly     bool
-	Target       *Target
-	UserAuth     *MultiAccount
-	MultiAccount *MultiAccount
+	Id              int
+	Port            int
+	ServerIp        string
+	Mode            string
+	Status          bool
+	RunStatus       bool
+	Client          *Client
+	Ports           string
+	Flow            *Flow
+	NowConn         int32
+	Password        string
+	Remark          string
+	TargetAddr      string
+	TargetType      string
+	WhitelistEnable bool
+	Whitelist       string
+	NoStore         bool
+	IsHttp          bool
+	HttpProxy       bool
+	Socks5Proxy     bool
+	LocalPath       string
+	StripPre        string
+	ReadOnly        bool
+	Target          *Target
+	UserAuth        *MultiAccount
+	MultiAccount    *MultiAccount
 	Health
 	sync.RWMutex
 }
@@ -229,6 +231,8 @@ func (s *Tunnel) Update(t *Tunnel) {
 	s.TargetType = t.TargetType
 	s.HttpProxy = t.HttpProxy
 	s.Socks5Proxy = t.Socks5Proxy
+	s.WhitelistEnable = t.WhitelistEnable
+	s.Whitelist = t.Whitelist
 	s.LocalPath = t.LocalPath
 	s.StripPre = t.StripPre
 	s.ReadOnly = t.ReadOnly

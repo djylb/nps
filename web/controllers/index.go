@@ -139,14 +139,16 @@ func (s *IndexController) Add() {
 				Content:    s.getEscapeString("auth"),
 				AccountMap: common.DealMultiUser(s.getEscapeString("auth")),
 			},
-			Id:          id,
-			Status:      true,
-			Remark:      s.getEscapeString("remark"),
-			Password:    s.getEscapeString("password"),
-			LocalPath:   s.getEscapeString("local_path"),
-			StripPre:    s.getEscapeString("strip_pre"),
-			HttpProxy:   s.GetBoolNoErr("enable_http"),
-			Socks5Proxy: s.GetBoolNoErr("enable_socks5"),
+			Id:              id,
+			Status:          true,
+			Remark:          s.getEscapeString("remark"),
+			Password:        s.getEscapeString("password"),
+			LocalPath:       s.getEscapeString("local_path"),
+			StripPre:        s.getEscapeString("strip_pre"),
+			HttpProxy:       s.GetBoolNoErr("enable_http"),
+			Socks5Proxy:     s.GetBoolNoErr("enable_socks5"),
+			WhitelistEnable: s.GetBoolNoErr("whitelist_enable"),
+			Whitelist:       strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s.getEscapeString("whitelist"), "\r\n", "\n"))),
 			Flow: &file.Flow{
 				FlowLimit: int64(s.GetIntNoErr("flow_limit")),
 				TimeLimit: common.GetTimeNoErrByStr(s.getEscapeString("time_limit")),
@@ -250,6 +252,8 @@ func (s *IndexController) Edit() {
 			t.StripPre = s.getEscapeString("strip_pre")
 			t.HttpProxy = s.GetBoolNoErr("enable_http")
 			t.Socks5Proxy = s.GetBoolNoErr("enable_socks5")
+			t.WhitelistEnable = s.GetBoolNoErr("whitelist_enable")
+			t.Whitelist = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s.getEscapeString("whitelist"), "\r\n", "\n")))
 			t.Remark = s.getEscapeString("remark")
 			t.Flow.FlowLimit = int64(s.GetIntNoErr("flow_limit"))
 			t.Flow.TimeLimit = common.GetTimeNoErrByStr(s.getEscapeString("time_limit"))
