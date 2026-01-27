@@ -68,6 +68,20 @@
                             <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
                         </div>
                     </div>
+                    <div class="form-group" id="whitelist_enable">
+                        <label class="control-label font-bold" langtag="word-whitelist"></label>
+                        <div class="col-sm-12">
+                            <input name="whitelist_enable" type="checkbox" value="1" {{if .t.WhitelistEnable}}checked{{end}}>
+                            <span class="help-block m-b-none" langtag="info-whitelist-enable"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="whitelist">
+                        <label class="control-label font-bold" langtag="word-whitelistentries"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" name="whitelist" rows="5" placeholder="">{{.t.Whitelist}}</textarea>
+                            <span class="help-block m-b-none" langtag="info-whitelist"></span>
+                        </div>
+                    </div>
                     <div class="form-group" id="flow_reset">
                         <label class="control-label font-bold" langtag="word-flowreset"></label>
                         <div class="col-sm-12">
@@ -182,7 +196,7 @@
     arr["all"] = ["auth", "server_ip", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy"]
     arr["tcp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["udp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "flow_reset", "flow_limit", "time_limit"]
+    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "whitelist_enable", "whitelist", "flow_reset", "flow_limit", "time_limit"]
     //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["secret"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
@@ -197,6 +211,16 @@
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }
+        toggleWhitelist()
+    }
+
+    function toggleWhitelist() {
+        if ($("#type").val() != "mixProxy") {
+            $("#whitelist").css("display", "none")
+            return
+        }
+        var enabled = $("input[name='whitelist_enable']").is(":checked")
+        $("#whitelist").css("display", enabled ? "block" : "none")
     }
 
     $(function () {
@@ -204,6 +228,9 @@
         resetForm()
         $("#type").on("change", function () {
             resetForm()
+        })
+        $("input[name='whitelist_enable']").on("change", function () {
+            toggleWhitelist()
         })
         $("#use_client").on("change", function () {
             resetForm()

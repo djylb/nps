@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +109,15 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	if IsGlobalBlackIp(c.RemoteAddr().String()) || common.IsBlackIp(c.RemoteAddr().String(), client.VerifyKey, client.BlackIpList) {
 		_ = c.Close()
 		return nil
+	}
+	if task != nil && task.Mode == "mixProxy" && task.WhitelistEnable {
+		entries := common.ParseWhitelistEntries(task.Whitelist)
+		if !common.WhitelistAllows(entries, addr) {
+			hostPort := common.ExtractHost(addr)
+			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", client.Id, task.Id, strings.TrimSpace(hostPort))
+			_ = c.Close()
+			return errors.New("destination not in whitelist")
+		}
 	}
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
