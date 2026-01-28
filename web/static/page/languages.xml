@@ -558,6 +558,22 @@
 		<zh-CN>Proxy Protocol</zh-CN>
 		<en-US>Proxy Protocol</en-US>
 	</lang>
+	<lang id="word-whitelist">
+		<zh-CN>白名单</zh-CN>
+		<en-US>Whitelist</en-US>
+	</lang>
+	<lang id="word-whitelistentries">
+		<zh-CN>白名单条目</zh-CN>
+		<en-US>Whitelist entries</en-US>
+	</lang>
+	<lang id="info-whitelist-enable">
+		<zh-CN>启用后仅允许访问白名单中的 IP/域名（默认拒绝）</zh-CN>
+		<en-US>When enabled, only allow destinations in the whitelist (deny by default)</en-US>
+	</lang>
+	<lang id="info-whitelist">
+		<zh-CN>每行一个：IP、CIDR、域名或通配符域名（如 *.example.com）</zh-CN>
+		<en-US>One per line: IP, CIDR, hostname, or wildcard domain (e.g. *.example.com)</en-US>
+	</lang>
 	<lang id="word-disable">
 		<zh-CN>关闭</zh-CN>
 		<en-US>Disable</en-US>
