@@ -129,8 +129,11 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		return err
 	}
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.WhitelistEnable {
-		entries := common.ParseWhitelistEntries(s.Task.Whitelist)
-		if !common.WhitelistAllows(entries, addr) {
+		rules := s.Task.WhitelistRules
+		if rules == nil {
+			rules = common.ParseWhitelistRuleSet(s.Task.Whitelist)
+		}
+		if !rules.Allows(addr) {
 			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
 			_, _ = c.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"))
 			_ = c.Close()
@@ -169,8 +172,11 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			//DisableKeepAlives:     true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.WhitelistEnable {
-					entries := common.ParseWhitelistEntries(s.Task.Whitelist)
-					if !common.WhitelistAllows(entries, addr) {
+					rules := s.Task.WhitelistRules
+					if rules == nil {
+						rules = common.ParseWhitelistRuleSet(s.Task.Whitelist)
+					}
+					if !rules.Allows(addr) {
 						logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
 						return nil, errors.New("destination not in whitelist")
 					}

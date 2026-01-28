@@ -68,6 +68,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 		if post.TargetType != common.CONN_TCP && post.TargetType != common.CONN_UDP {
 			post.TargetType = common.CONN_ALL
 		}
+		post.WhitelistRules = common.ParseWhitelistRuleSet(post.Whitelist)
 		s.Tasks.Store(post.Id, post)
 		if post.Id > int(s.TaskIncreaseId) {
 			s.TaskIncreaseId = int32(post.Id)

@@ -111,8 +111,11 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 		return nil
 	}
 	if task != nil && task.Mode == "mixProxy" && task.WhitelistEnable {
-		entries := common.ParseWhitelistEntries(task.Whitelist)
-		if !common.WhitelistAllows(entries, addr) {
+		rules := task.WhitelistRules
+		if rules == nil {
+			rules = common.ParseWhitelistRuleSet(task.Whitelist)
+		}
+		if !rules.Allows(addr) {
 			hostPort := common.ExtractHost(addr)
 			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", client.Id, task.Id, strings.TrimSpace(hostPort))
 			_ = c.Close()

@@ -160,8 +160,11 @@ func (s *TunnelModeServer) handleConnect(c net.Conn) {
 
 	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.WhitelistEnable {
-		entries := common.ParseWhitelistEntries(s.Task.Whitelist)
-		if !common.WhitelistAllows(entries, addr) {
+		rules := s.Task.WhitelistRules
+		if rules == nil {
+			rules = common.ParseWhitelistRuleSet(s.Task.Whitelist)
+		}
+		if !rules.Allows(addr) {
 			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
 			s.sendReply(c, notAllowed)
 			_ = c.Close()

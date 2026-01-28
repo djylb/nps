@@ -149,6 +149,7 @@ func (s *IndexController) Add() {
 			Socks5Proxy:     s.GetBoolNoErr("enable_socks5"),
 			WhitelistEnable: s.GetBoolNoErr("whitelist_enable"),
 			Whitelist:       strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s.getEscapeString("whitelist"), "\r\n", "\n"))),
+			WhitelistRules:  common.ParseWhitelistRuleSet(strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s.getEscapeString("whitelist"), "\r\n", "\n")))),
 			Flow: &file.Flow{
 				FlowLimit: int64(s.GetIntNoErr("flow_limit")),
 				TimeLimit: common.GetTimeNoErrByStr(s.getEscapeString("time_limit")),
@@ -254,6 +255,7 @@ func (s *IndexController) Edit() {
 			t.Socks5Proxy = s.GetBoolNoErr("enable_socks5")
 			t.WhitelistEnable = s.GetBoolNoErr("whitelist_enable")
 			t.Whitelist = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s.getEscapeString("whitelist"), "\r\n", "\n")))
+			t.WhitelistRules = common.ParseWhitelistRuleSet(t.Whitelist)
 			t.Remark = s.getEscapeString("remark")
 			t.Flow.FlowLimit = int64(s.GetIntNoErr("flow_limit"))
 			t.Flow.TimeLimit = common.GetTimeNoErrByStr(s.getEscapeString("time_limit"))

@@ -193,6 +193,7 @@ type Tunnel struct {
 	TargetType      string
 	WhitelistEnable bool
 	Whitelist       string
+	WhitelistRules  *common.WhitelistRuleSet `json:"-"`
 	NoStore         bool
 	IsHttp          bool
 	HttpProxy       bool
@@ -233,6 +234,7 @@ func (s *Tunnel) Update(t *Tunnel) {
 	s.Socks5Proxy = t.Socks5Proxy
 	s.WhitelistEnable = t.WhitelistEnable
 	s.Whitelist = t.Whitelist
+	s.WhitelistRules = t.WhitelistRules
 	s.LocalPath = t.LocalPath
 	s.StripPre = t.StripPre
 	s.ReadOnly = t.ReadOnly
