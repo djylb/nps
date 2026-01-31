@@ -12,11 +12,18 @@ import (
 	"github.com/djylb/nps/lib/rate"
 )
 
+// ACLMode: 0=off, 1=whitelist(deny-by-default), 2=blacklist(allow-by-default)
+const (
+	AclOff       = 0
+	AclWhitelist = 1
+	AclBlacklist = 2
+)
+
 type Flow struct {
-	ExportFlow int64     // 传出流量
-	InletFlow  int64     // 传入流量
-	FlowLimit  int64     // 流量限制
-	TimeLimit  time.Time // 连接到期时间
+	ExportFlow int64     // outbound traffic
+	InletFlow  int64     // inbound traffic
+	FlowLimit  int64     // traffic limit
+	TimeLimit  time.Time // expire time
 	sync.RWMutex
 }
 
@@ -49,27 +56,27 @@ type Config struct {
 
 type Client struct {
 	Cnf             *Config
-	Id              int        //id
-	VerifyKey       string     //verify key
-	Mode            string     //bridge mode
-	Addr            string     //the ip of client
-	LocalAddr       string     //the local ip of client
-	Remark          string     //remark
-	Status          bool       //is allowed connect
-	IsConnect       bool       //is the client connect
-	RateLimit       int        //rate /kb
-	Flow            *Flow      //flow setting
-	ExportFlow      int64      //flow out
-	InletFlow       int64      //flow in
-	Rate            *rate.Rate //rate limit
-	NoStore         bool       //no store to file
-	NoDisplay       bool       //no display on web
-	MaxConn         int        //the max connection num of client allow
-	NowConn         int32      //the connection num of now
-	WebUserName     string     //the username of web login
-	WebPassword     string     //the password of web login
-	WebTotpSecret   string     //the totp secret of web login
-	ConfigConnAllow bool       //is allowed connected by config file
+	Id              int        // id
+	VerifyKey       string     // verify key
+	Mode            string     // bridge mode
+	Addr            string     // client ip
+	LocalAddr       string     // client local ip
+	Remark          string     // remark
+	Status          bool       // allowed to connect
+	IsConnect       bool       // connected now
+	RateLimit       int        // rate limit (KB/s)
+	Flow            *Flow      // flow
+	ExportFlow      int64      // outbound flow
+	InletFlow       int64      // inbound flow
+	Rate            *rate.Rate // rate limiter
+	NoStore         bool       // do not store to file
+	NoDisplay       bool       // do not display on web
+	MaxConn         int        // max concurrent connections
+	NowConn         int32      // current connections
+	WebUserName     string     // web username
+	WebPassword     string     // web password
+	WebTotpSecret   string     // web totp secret
+	ConfigConnAllow bool       // allowed by config file
 	MaxTunnelNum    int
 	Version         string
 	BlackIpList     []string
@@ -177,35 +184,123 @@ func (s *Client) EnsureWebPassword() {
 }
 
 type Tunnel struct {
-	Id              int
-	Port            int
-	ServerIp        string
-	Mode            string
-	Status          bool
-	RunStatus       bool
-	Client          *Client
-	Ports           string
-	Flow            *Flow
-	NowConn         int32
-	Password        string
-	Remark          string
-	TargetAddr      string
-	TargetType      string
-	WhitelistEnable bool
-	Whitelist       string
-	WhitelistRules  *common.WhitelistRuleSet `json:"-"`
-	NoStore         bool
-	IsHttp          bool
-	HttpProxy       bool
-	Socks5Proxy     bool
-	LocalPath       string
-	StripPre        string
-	ReadOnly        bool
-	Target          *Target
-	UserAuth        *MultiAccount
-	MultiAccount    *MultiAccount
+	Id           int
+	Port         int
+	ServerIp     string
+	Mode         string
+	Status       bool
+	RunStatus    bool
+	Client       *Client
+	Ports        string
+	Flow         *Flow
+	NowConn      int32
+	Password     string
+	Remark       string
+	TargetAddr   string
+	TargetType   string
+	DestAclMode  int              // 0=off, 1=whitelist, 2=blacklist
+	DestAclRules string           // raw rules text
+	DestAclSet   *common.ProxyACL `json:"-"`
+	NoStore      bool
+	IsHttp       bool
+	HttpProxy    bool
+	Socks5Proxy  bool
+	LocalPath    string
+	StripPre     string
+	ReadOnly     bool
+	Target       *Target
+	UserAuth     *MultiAccount
+	MultiAccount *MultiAccount
 	Health
 	sync.RWMutex
+}
+
+func (t *Tunnel) CompileDestACL() {
+	if t == nil {
+		return
+	}
+
+	t.Lock()
+	defer t.Unlock()
+
+	// Invalid mode => off
+	if t.DestAclMode != AclOff && t.DestAclMode != AclWhitelist && t.DestAclMode != AclBlacklist {
+		t.DestAclMode = AclOff
+	}
+
+	// Normalize rules (store normalized form)
+	t.DestAclRules = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(t.DestAclRules, "\r\n", "\n")))
+
+	if t.DestAclMode == AclOff {
+		t.DestAclSet = nil
+		return
+	}
+
+	// Semantics:
+	// - whitelist + empty rules => deny all
+	// - blacklist + empty rules => allow all
+	if t.DestAclRules == "" {
+		if t.DestAclMode == AclWhitelist {
+			t.DestAclSet = &common.ProxyACL{} // empty => never match => deny all
+		} else {
+			t.DestAclSet = nil // allow all
+		}
+		return
+	}
+
+	t.DestAclSet = common.ParseProxyACL(t.DestAclRules)
+}
+
+func (t *Tunnel) AllowsDestination(addr string) bool {
+	if t == nil {
+		return true
+	}
+
+	t.RLock()
+	mode := t.DestAclMode
+	rules := t.DestAclRules
+	set := t.DestAclSet
+	t.RUnlock()
+
+	if mode != AclOff && mode != AclWhitelist && mode != AclBlacklist {
+		mode = AclOff
+	}
+
+	if mode == AclOff {
+		return true
+	}
+
+	// If not compiled (should be compiled at load/new/update), fall back safely.
+	if set == nil {
+		if rules == "" {
+			return mode == AclBlacklist
+		}
+		// Compile once on-demand (rare path)
+		t.CompileDestACL()
+		t.RLock()
+		mode = t.DestAclMode
+		rules = t.DestAclRules
+		set = t.DestAclSet
+		t.RUnlock()
+
+		if mode == AclOff {
+			return true
+		}
+
+		// if still nil:
+		// - whitelist => deny all
+		// - blacklist => allow all
+		if set == nil {
+			return mode == AclBlacklist
+		}
+	}
+
+	matched := set.Allows(addr)
+	if mode == AclWhitelist {
+		return matched
+	}
+	// blacklist
+	return !matched
 }
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {
@@ -232,9 +327,9 @@ func (s *Tunnel) Update(t *Tunnel) {
 	s.TargetType = t.TargetType
 	s.HttpProxy = t.HttpProxy
 	s.Socks5Proxy = t.Socks5Proxy
-	s.WhitelistEnable = t.WhitelistEnable
-	s.Whitelist = t.Whitelist
-	s.WhitelistRules = t.WhitelistRules
+	s.DestAclMode = t.DestAclMode
+	s.DestAclRules = t.DestAclRules
+	s.DestAclSet = t.DestAclSet
 	s.LocalPath = t.LocalPath
 	s.StripPre = t.StripPre
 	s.ReadOnly = t.ReadOnly
@@ -265,14 +360,14 @@ type Health struct {
 
 type Host struct {
 	Id               int
-	Host             string //host
-	HeaderChange     string //request header change
-	RespHeaderChange string //response header change
-	HostChange       string //host change
-	Location         string //url router
-	PathRewrite      string //url rewrite
-	Remark           string //remark
-	Scheme           string //http https all
+	Host             string // host
+	HeaderChange     string // request header change
+	RespHeaderChange string // response header change
+	HostChange       string // host change
+	Location         string // url router
+	PathRewrite      string // url rewrite
+	Remark           string // remark
+	Scheme           string // http/https/all
 	RedirectURL      string // 307
 	HttpsJustProxy   bool
 	TlsOffload       bool
@@ -290,7 +385,7 @@ type Host struct {
 	NowConn          int32
 	Client           *Client
 	TargetIsHttps    bool
-	Target           *Target //目标
+	Target           *Target
 	UserAuth         *MultiAccount
 	MultiAccount     *MultiAccount
 	Health           `json:"-"`
@@ -331,7 +426,7 @@ type Target struct {
 	TargetStr     string
 	TargetArr     []string
 	LocalProxy    bool
-	ProxyProtocol int // Proxy Protocol 配置：0=关闭, 1=v1, 2=v2
+	ProxyProtocol int // 0=off, 1=v1, 2=v2
 	sync.RWMutex
 }
 
@@ -351,7 +446,7 @@ func GetAccountMap(multiAccount *MultiAccount) map[string]string {
 }
 
 func (s *Target) GetRandomTarget() (string, error) {
-	// 初始化 TargetArr 并过滤空行
+	// Init TargetArr and filter empty lines
 	if s.TargetArr == nil {
 		s.TargetStr = strings.ReplaceAll(s.TargetStr, "：", ":")
 		normalized := strings.ReplaceAll(s.TargetStr, "\r\n", "\n")
@@ -364,7 +459,6 @@ func (s *Target) GetRandomTarget() (string, error) {
 		}
 	}
 
-	// 确保 TargetArr 中有有效内容
 	if len(s.TargetArr) == 1 {
 		return s.TargetArr[0], nil
 	}
@@ -372,7 +466,6 @@ func (s *Target) GetRandomTarget() (string, error) {
 		return "", errors.New("all inward-bending targets are offline")
 	}
 
-	// 锁定并更新索引
 	s.Lock()
 	defer s.Unlock()
 	if s.nowIndex >= len(s.TargetArr)-1 {

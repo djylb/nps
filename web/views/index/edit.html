@@ -68,18 +68,22 @@
                             <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
                         </div>
                     </div>
-                    <div class="form-group" id="whitelist_enable">
-                        <label class="control-label font-bold" langtag="word-whitelist"></label>
+                    <div class="form-group" id="dest_acl_mode">
+                        <label class="control-label font-bold" langtag="word-destacl"></label>
                         <div class="col-sm-12">
-                            <input name="whitelist_enable" type="checkbox" value="1" {{if .t.WhitelistEnable}}checked{{end}}>
-                            <span class="help-block m-b-none" langtag="info-whitelist-enable"></span>
+                            <select class="form-control selectpicker" name="dest_acl_mode">
+                                <option value="0" {{if eq .t.DestAclMode 0}}selected{{end}} langtag="word-disable"></option>
+                                <option value="1" {{if eq .t.DestAclMode 1}}selected{{end}} langtag="word-whitelist"></option>
+                                <option value="2" {{if eq .t.DestAclMode 2}}selected{{end}} langtag="word-blacklist"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-destacl"></span>
                         </div>
                     </div>
-                    <div class="form-group" id="whitelist">
-                        <label class="control-label font-bold" langtag="word-whitelistentries"></label>
+                    <div class="form-group" id="dest_acl_rules">
+                        <label class="control-label font-bold" langtag="word-destaclrules"></label>
                         <div class="col-sm-12">
-                            <textarea class="form-control" name="whitelist" rows="5" placeholder="">{{.t.Whitelist}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-whitelist"></span>
+                            <textarea class="form-control" name="dest_acl_rules" rows="5" placeholder="">{{.t.DestAclRules}}</textarea>
+                            <span class="help-block m-b-none" langtag="info-destaclrules"></span>
                         </div>
                     </div>
                     <div class="form-group" id="flow_reset">
@@ -196,7 +200,7 @@
     arr["all"] = ["auth", "server_ip", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy"]
     arr["tcp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["udp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "whitelist_enable", "whitelist", "flow_reset", "flow_limit", "time_limit"]
+    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "time_limit"]
     //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["secret"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
@@ -211,16 +215,17 @@
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }
-        toggleWhitelist()
+        toggleDestAclRules()
     }
 
-    function toggleWhitelist() {
+    function toggleDestAclRules() {
         if ($("#type").val() != "mixProxy") {
-            $("#whitelist").css("display", "none")
+            $("#dest_acl_rules").css("display", "none")
             return
         }
-        var enabled = $("input[name='whitelist_enable']").is(":checked")
-        $("#whitelist").css("display", enabled ? "block" : "none")
+        var modeVal = $("select[name='dest_acl_mode']").val()
+        var mode = parseInt(modeVal ? modeVal : "0", 10)
+        $("#dest_acl_rules").css("display", mode === 0 ? "none" : "block")
     }
 
     $(function () {
@@ -229,8 +234,8 @@
         $("#type").on("change", function () {
             resetForm()
         })
-        $("input[name='whitelist_enable']").on("change", function () {
-            toggleWhitelist()
+        $("select[name='dest_acl_mode']").on("change", function () {
+            toggleDestAclRules()
         })
         $("#use_client").on("change", function () {
             resetForm()

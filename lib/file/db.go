@@ -169,7 +169,7 @@ func (s *DbUtils) NewTask(t *Tunnel) (err error) {
 	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
 		t.TargetType = common.CONN_ALL
 	}
-	t.WhitelistRules = common.ParseWhitelistRuleSet(t.Whitelist)
+	t.CompileDestACL()
 	s.JsonDb.Tasks.Store(t.Id, t)
 	s.JsonDb.StoreTasksToJsonFile()
 	return
@@ -211,7 +211,7 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
 		t.TargetType = common.CONN_ALL
 	}
-	t.WhitelistRules = common.ParseWhitelistRuleSet(t.Whitelist)
+	t.CompileDestACL()
 	s.JsonDb.Tasks.Store(t.Id, t)
 	s.JsonDb.StoreTasksToJsonFile()
 	return nil

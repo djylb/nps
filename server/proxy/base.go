@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -110,16 +109,12 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 		_ = c.Close()
 		return nil
 	}
-	if task != nil && task.Mode == "mixProxy" && task.WhitelistEnable {
-		rules := task.WhitelistRules
-		if rules == nil {
-			rules = common.ParseWhitelistRuleSet(task.Whitelist)
-		}
-		if !rules.Allows(addr) {
-			hostPort := common.ExtractHost(addr)
-			logs.Warn("mixProxy whitelist deny: client=%d task=%d dest=%s", client.Id, task.Id, strings.TrimSpace(hostPort))
+	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != file.AclOff {
+		if !task.AllowsDestination(addr) {
+			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s",
+				client.Id, task.Id, common.ExtractHost(addr))
 			_ = c.Close()
-			return errors.New("destination not in whitelist")
+			return errors.New("destination denied by dest acl")
 		}
 	}
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0

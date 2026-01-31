@@ -86,16 +86,32 @@
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
             if (row.Mode == "mixProxy") {
-                var whitelistText = row.Whitelist ? row.Whitelist.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>") : ""
-                var whitelistInfo = '<b langtag="word-whitelist"></b>: <span langtag="word-' + row.WhitelistEnable + '"></span>&emsp;'
-                if (row.WhitelistEnable && whitelistText) {
-                    whitelistInfo += '<br/><br><b langtag="word-whitelistentries"></b>: <span>' + whitelistText + '</span>&emsp;'
+                // 0=off, 1=whitelist, 2=blacklist
+                var destMode = Number(row.DestAclMode || 0)
+                var rulesRaw = row.DestAclRules ? String(row.DestAclRules) : ""
+                var rulesText = rulesRaw ? escapeHtml(rulesRaw).replace(/\r\n/g, "\n").replace(/\n/g, "<br/>") : ""
+                var modeSpan = ''
+                if (destMode === 1) {
+                    modeSpan = '<span langtag="word-whitelist"></span>'
+                } else if (destMode === 2) {
+                    modeSpan = '<span langtag="word-blacklist"></span>'
+                } else {
+                    modeSpan = '<span langtag="word-disable"></span>'
+                }
+                var destAclInfo = '<b langtag="word-destacl"></b>: ' + modeSpan + '&emsp;'
+                if (destMode !== 0) {
+                    destAclInfo += '<br/><br><b langtag="word-destaclrules"></b>: '
+                    if (rulesText) {
+                        destAclInfo += '<span>' + rulesText + '</span>&emsp;'
+                    } else {
+                        destAclInfo += '<span langtag="word-empty"></span>&emsp;'
+                    }
                 }
                 return tmp + "<br/><br>"
                     + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
                     + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
                     + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
-                    + whitelistInfo + '<br/><br>'
+                    + destAclInfo + '<br/><br>'
             }
             if (row.Mode == "file") {
                 return tmp + "<br/><br>"

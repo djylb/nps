@@ -137,6 +137,8 @@ npc update && npc restart
 - **Main**
   - 待定，优先修BUG，新功能随缘更新
   - 增强P2P打洞能力（不再兼容旧版） [#198](https://github.com/djylb/nps/pull/198) (感谢[cr4n5](https://github.com/cr4n5))
+  - 混合代理添加白名单功能 [205](https://github.com/djylb/nps/pull/205) (感谢[Yourdaylight](https://github.com/Yourdaylight))
+  - 混合代理同时支持黑白名单功能
 
 ### Stable
 

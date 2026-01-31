@@ -558,21 +558,25 @@
 		<zh-CN>Proxy Protocol</zh-CN>
 		<en-US>Proxy Protocol</en-US>
 	</lang>
+	<lang id="word-destacl">
+		<zh-CN>目标访问控制</zh-CN>
+		<en-US>Destination ACL</en-US>
+	</lang>
 	<lang id="word-whitelist">
 		<zh-CN>白名单</zh-CN>
 		<en-US>Whitelist</en-US>
 	</lang>
-	<lang id="word-whitelistentries">
-		<zh-CN>白名单条目</zh-CN>
-		<en-US>Whitelist entries</en-US>
+	<lang id="word-blacklist">
+		<zh-CN>黑名单</zh-CN>
+		<en-US>Blacklist</en-US>
 	</lang>
-	<lang id="info-whitelist-enable">
-		<zh-CN>启用后仅允许访问白名单中的 IP/域名（默认拒绝）</zh-CN>
-		<en-US>When enabled, only allow destinations in the whitelist (deny by default)</en-US>
+	<lang id="word-destaclrules">
+		<zh-CN>目标访问控制条目</zh-CN>
+		<en-US>Dest ACL Rules</en-US>
 	</lang>
-	<lang id="info-whitelist">
-		<zh-CN>每行一个：IP、CIDR、域名或通配符域名（如 *.example.com）</zh-CN>
-		<en-US>One per line: IP, CIDR, hostname, or wildcard domain (e.g. *.example.com)</en-US>
+	<lang id="word-empty">
+		<zh-CN>（空）</zh-CN>
+		<en-US>(empty)</en-US>
 	</lang>
 	<lang id="word-disable">
 		<zh-CN>关闭</zh-CN>
@@ -916,6 +920,14 @@
 	<lang id="info-header">
 		<zh-CN>冒号分割，多个头部请填写多行</zh-CN>
 		<en-US>Colon separated, multiple lines please fill in</en-US>
+	</lang>
+	<lang id="info-destacl">
+		<zh-CN>启用黑/白名单后，SOCKS5 不支持 UDP（将禁用 UDP Associate）。</zh-CN>
+		<en-US>When whitelist/blacklist is enabled, SOCKS5 does not support UDP (UDP Associate will be disabled).</en-US>
+	</lang>
+	<lang id="info-destaclrules">
+		<zh-CN>每行一个：IP、CIDR、域名或通配符域名（如 *.example.com）。</zh-CN>
+		<en-US>One per line: IP, CIDR, hostname, or wildcard domain (e.g. *.example.com).</en-US>
 	</lang>
 	<lang id="info-httpsjustproxy">
 		<zh-CN>按域名（SNI）分流；不在此解密 TLS，数据原样转给后端。提示：后端启用 HTTP/2 时，浏览器可能复用连接，导致偶发串站。</zh-CN>

@@ -314,6 +314,10 @@ func dealTunnel(s string) *file.Tunnel {
 			t.Socks5Proxy = common.GetBoolByStr(item[1])
 		case "http_proxy":
 			t.HttpProxy = common.GetBoolByStr(item[1])
+		case "dest_acl_mode":
+			t.DestAclMode = common.GetIntNoErrByStr(item[1])
+		case "dest_acl_rules":
+			t.DestAclRules = strings.Replace(item[1], ",", "\n", -1)
 		case "local_path":
 			t.LocalPath = item[1]
 		case "strip_pre":
