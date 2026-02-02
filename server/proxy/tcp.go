@@ -52,6 +52,9 @@ func (s *TunnelModeServer) Close() error {
 		return true
 	})
 	s.activeConnections = sync.Map{}
+	if s.listener == nil {
+		return nil
+	}
 	return s.listener.Close()
 }
 
