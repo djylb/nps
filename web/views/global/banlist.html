@@ -1,0 +1,153 @@
+<div class="wrapper wrapper-content animated fadeInRight">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5 langtag="word-banlist"></h5>
+                    <div class="ibox-tools">
+                        <a class="collapse-link">
+                            <i class="fa fa-chevron-up"></i>
+                        </a>
+                        <a class="close-link">
+                            <i class="fa fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="table-responsive">
+                        <div id="toolbar">
+                            <div class="d-flex w-100">
+                                <a class="btn btn-danger dim" onclick="unbanAll()">
+                                    <i class="fa fa-fw fa-lg fa-eraser"></i>
+                                    <span langtag="word-unbanall"></span></a>
+                                <a class="btn btn-primary dim ml-2" onclick="refreshTable()">
+                                    <i class="fa fa-fw fa-lg fa-sync"></i>
+                                    <span langtag="word-refresh"></span></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="ibox-content">
+                    <table id="banTable"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function refreshTable() {
+        $('#banTable').bootstrapTable('refresh');
+    }
+
+    function unbanAll() {
+        var langobj = languages['content']['confirm']['unbanall'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to clear all ban records?');
+        if (!confirm(msg)) return;
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/global/unbanall",
+            success: function (res) {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function() {
+                        refreshTable();
+                    });
+                } else {
+                    showMsg(langreply(res.msg), 'error', 5000);
+                }
+            }
+        });
+    }
+
+    function unbanItem(key) {
+        var langobj = languages['content']['confirm']['unban'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to unban this record?');
+        if (!confirm(msg)) return;
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/global/unban",
+            data: {key: key},
+            success: function (res) {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function() {
+                        refreshTable();
+                    });
+                } else {
+                    showMsg(langreply(res.msg), 'error', 5000);
+                }
+            }
+        });
+    }
+
+    $('#banTable').bootstrapTable({
+        toolbar: "#toolbar",
+        method: 'post',
+        url: "{{.web_base_url}}/global/banlist",
+        contentType: "application/x-www-form-urlencoded",
+        striped: true,
+        search: true,
+        showHeader: true,
+        showColumns: true,
+        showRefresh: true,
+        pagination: true,
+        sidePagination: 'client',
+        pageNumber: 1,
+        pageList: [10, 20, 50, 100, 'all'],
+        smartDisplay: true,
+        onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#banTable'); },
+        columns: [
+            {
+                field: 'key',
+                title: '<span langtag="word-bankey"></span>',
+                sortable: true
+            },
+            {
+                field: 'ban_type',
+                title: '<span langtag="word-bantype"></span>',
+                sortable: true,
+                formatter: function (value) {
+                    if (value === 'ip') {
+                        return '<span class="badge badge-info">IP</span>';
+                    } else {
+                        return '<span class="badge badge-warning" langtag="word-username"></span>';
+                    }
+                }
+            },
+            {
+                field: 'fail_times',
+                title: '<span langtag="word-failtimes"></span>',
+                sortable: true
+            },
+            {
+                field: 'is_banned',
+                title: '<span langtag="word-banstatus"></span>',
+                sortable: true,
+                formatter: function (value) {
+                    if (value) {
+                        return '<span class="badge badge-danger" langtag="word-banned"></span>';
+                    } else {
+                        return '<span class="badge badge-success" langtag="word-normal"></span>';
+                    }
+                }
+            },
+            {
+                field: 'last_login_time',
+                title: '<span langtag="word-lastfailtime"></span>',
+                sortable: true
+            },
+            {
+                field: 'key',
+                title: '<span langtag="word-operation"></span>',
+                formatter: function (value) {
+                    return '<a class="btn btn-danger btn-sm" onclick="unbanItem(\'' + value + '\')"><i class="fa fa-unlock"></i> <span langtag="word-unban"></span></a>';
+                }
+            }
+        ]
+    });
+
+    window.addEventListener('resize', () => {
+        for (var key in charts) {
+            charts[key].resize();
+        }
+    });
+</script>

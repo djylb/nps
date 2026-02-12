@@ -1159,6 +1159,14 @@
 			<zh-CN>你确定你要停止它吗？</zh-CN>
 			<en-US>Are you sure you want to stop it?</en-US>
 		</lang>
+		<lang id="unban">
+			<zh-CN>你确定要解除该封禁吗？</zh-CN>
+			<en-US>Are you sure you want to unban this record?</en-US>
+		</lang>
+		<lang id="unbanall">
+			<zh-CN>你确定要清除所有封禁记录吗？</zh-CN>
+			<en-US>Are you sure you want to clear all ban records?</en-US>
+		</lang>
 	</confirm>
 
 	<reply>
@@ -1289,6 +1297,22 @@
 		<lang id="copied">
 			<zh-CN>已复制</zh-CN>
 			<en-US>Copied</en-US>
+		</lang>
+		<lang id="unbansuccess">
+			<zh-CN>解封成功</zh-CN>
+			<en-US>Unban Success</en-US>
+		</lang>
+		<lang id="recordnotfound">
+			<zh-CN>记录未找到</zh-CN>
+			<en-US>Record Not Found</en-US>
+		</lang>
+		<lang id="keyisrequired">
+			<zh-CN>参数缺失</zh-CN>
+			<en-US>Key Is Required</en-US>
+		</lang>
+		<lang id="allrecordscleared">
+			<zh-CN>所有记录已清除</zh-CN>
+			<en-US>All Records Cleared</en-US>
 		</lang>
 	</reply>
 
