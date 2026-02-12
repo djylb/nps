@@ -372,6 +372,10 @@
 		<zh-CN>刷新</zh-CN>
 		<en-US>Refresh</en-US>
 	</lang>
+	<lang id="word-username">
+		<zh-CN>用户名</zh-CN>
+		<en-US>Username</en-US>
+	</lang>
 	<lang id="word-exportflow">
 		<zh-CN>出口流量</zh-CN>
 		<en-US>Export Flow</en-US>

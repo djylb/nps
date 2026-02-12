@@ -13,22 +13,22 @@
                         </a>
                     </div>
                 </div>
+
                 <div class="content">
                     <div class="table-responsive">
                         <div id="toolbar">
                             <div class="d-flex w-100">
                                 <a class="btn btn-danger dim" onclick="unbanAll()">
                                     <i class="fa fa-fw fa-lg fa-eraser"></i>
-                                    <span langtag="word-unbanall"></span></a>
-                                <a class="btn btn-primary dim ml-2" onclick="refreshTable()">
-                                    <i class="fa fa-fw fa-lg fa-sync"></i>
-                                    <span langtag="word-refresh"></span></a>
+                                    <span langtag="word-unbanall"></span>
+                                </a>
                             </div>
                         </div>
                     </div>
                 </div>
+
                 <div class="ibox-content">
-                    <table id="banTable"></table>
+                    <table id="table"></table>
                 </div>
             </div>
         </div>
@@ -36,70 +36,43 @@
 </div>
 
 <script>
-    function refreshTable() {
-        $('#banTable').bootstrapTable('refresh');
-    }
-
-    function unbanAll() {
-        var langobj = languages['content']['confirm']['unbanall'];
-        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to clear all ban records?');
-        if (!confirm(msg)) return;
-        $.ajax({
-            type: "POST",
-            url: "{{.web_base_url}}/global/unbanall",
-            success: function (res) {
-                if (res.status) {
-                    showMsg(langreply(res.msg), 'success', 1000, function() {
-                        refreshTable();
-                    });
-                } else {
-                    showMsg(langreply(res.msg), 'error', 5000);
-                }
-            }
-        });
-    }
-
-    function unbanItem(key) {
-        var langobj = languages['content']['confirm']['unban'];
-        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to unban this record?');
-        if (!confirm(msg)) return;
-        $.ajax({
-            type: "POST",
-            url: "{{.web_base_url}}/global/unban",
-            data: {key: key},
-            success: function (res) {
-                if (res.status) {
-                    showMsg(langreply(res.msg), 'success', 1000, function() {
-                        refreshTable();
-                    });
-                } else {
-                    showMsg(langreply(res.msg), 'error', 5000);
-                }
-            }
-        });
-    }
-
-    $('#banTable').bootstrapTable({
+    $('#table').bootstrapTable({
         toolbar: "#toolbar",
         method: 'post',
-        url: "{{.web_base_url}}/global/banlist",
+        url: window.location,
+        search: true,
         contentType: "application/x-www-form-urlencoded",
         striped: true,
-        search: true,
         showHeader: true,
         showColumns: true,
         showRefresh: true,
-        pagination: true,
+        pagination: false,
         sidePagination: 'client',
-        pageNumber: 1,
-        pageList: [10, 20, 50, 100, 'all'],
+        cookie: true,
+        cookieIdTable: 'banlist',
+        cookieStorage: 'localStorage',
         smartDisplay: true,
-        onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#banTable'); },
+        responseHandler: function (res) {
+            if (res && Array.isArray(res.rows)) {
+                return res.rows;
+            }
+            if (Array.isArray(res)) {
+                return res;
+            }
+            return [];
+        },
+        onExpandRow: function () { $('body').setLang('.detail-view'); },
+        onLoadSuccess: function () { $('body').setLang('.detail-view'); },
+        onPostBody: function () { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
+
         columns: [
             {
                 field: 'key',
                 title: '<span langtag="word-bankey"></span>',
-                sortable: true
+                sortable: true,
+                formatter: function (value) {
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value == null ? '' : value) + '</span>';
+                }
             },
             {
                 field: 'ban_type',
@@ -109,7 +82,7 @@
                     if (value === 'ip') {
                         return '<span class="badge badge-info">IP</span>';
                     } else {
-                        return '<span class="badge badge-warning" langtag="word-username"></span>';
+                        return '<span class="badge badge-warning" langtag="word-username">User</span>';
                     }
                 }
             },
@@ -136,14 +109,60 @@
                 sortable: true
             },
             {
-                field: 'key',
-                title: '<span langtag="word-operation"></span>',
-                formatter: function (value) {
-                    return '<a class="btn btn-danger btn-sm" onclick="unbanItem(\'' + value + '\')"><i class="fa fa-unlock"></i> <span langtag="word-unban"></span></a>';
+                field: 'operate',
+                title: '<span langtag="word-option"></span>',
+                formatter: function (value, row) {
+                    var k = (row && row.key != null) ? String(row.key) : '';
+                    return '<a class="btn btn-danger btn-sm btn-unban" data-key="' + escapeHtml(k) + '">'
+                        + '<i class="fa fa-trash"></i> <span langtag="word-delete"></span></a>';
                 }
             }
         ]
     });
+
+    $('#table').on('click', '.btn-unban', function () {
+        var key = $(this).data('key');
+        unbanItem(key);
+    });
+
+    function unbanAll() {
+        var langobj = languages['content']['confirm']['unbanall'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to clear all ban records?');
+        if (!confirm(msg)) return;
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/global/unbanall",
+            success: function (res) {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function () {
+                        $('#table').bootstrapTable('refresh');
+                    });
+                } else {
+                    showMsg(langreply(res.msg), 'error', 5000);
+                }
+            }
+        });
+    }
+
+    function unbanItem(key) {
+        var langobj = languages['content']['confirm']['unban'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to unban this record?');
+        if (!confirm(msg)) return;
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/global/unban",
+            data: { key: key },
+            success: function (res) {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function () {
+                        $('#table').bootstrapTable('refresh');
+                    });
+                } else {
+                    showMsg(langreply(res.msg), 'error', 5000);
+                }
+            }
+        });
+    }
 
     window.addEventListener('resize', () => {
         for (var key in charts) {

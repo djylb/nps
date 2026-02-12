@@ -35,7 +35,7 @@ var secureMode bool
 var forcePow bool
 
 type record struct {
-	mu               sync.Mutex
+	mu                sync.Mutex
 	hasLoginFailTimes int
 	lastLoginTime     time.Time
 }
