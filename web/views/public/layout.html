@@ -99,6 +99,11 @@
                     <i class="fa fa-cog fa-lg fa-fw"></i>
                     <span class="nav-label" langtag="word-globalparam"></span></a>
                 </li>
+                <li class="{{if eq "banlist" .menu}}active{{end}}">
+                    <a href="{{.web_base_url}}/global/banlist" class="d-flex align-items-center">
+                    <i class="fa fa-ban fa-lg fa-fw"></i>
+                    <span class="nav-label" langtag="word-banlist"></span></a>
+                </li>
                 {{end}}
                 <li class="{{if eq "help" .menu}}active{{end}}">
                     <a href="https://d-jy.net/docs/nps/" target="_blank" class="d-flex align-items-center">

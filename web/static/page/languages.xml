@@ -328,6 +328,50 @@
 		<zh-CN>全局参数</zh-CN>
 		<en-US>Global Params</en-US>
 	</lang>
+	<lang id="word-banlist">
+		<zh-CN>封禁管理</zh-CN>
+		<en-US>Ban List</en-US>
+	</lang>
+	<lang id="word-bankey">
+		<zh-CN>封禁对象</zh-CN>
+		<en-US>Banned Key</en-US>
+	</lang>
+	<lang id="word-bantype">
+		<zh-CN>类型</zh-CN>
+		<en-US>Type</en-US>
+	</lang>
+	<lang id="word-failtimes">
+		<zh-CN>失败次数</zh-CN>
+		<en-US>Fail Times</en-US>
+	</lang>
+	<lang id="word-banstatus">
+		<zh-CN>封禁状态</zh-CN>
+		<en-US>Ban Status</en-US>
+	</lang>
+	<lang id="word-banned">
+		<zh-CN>已封禁</zh-CN>
+		<en-US>Banned</en-US>
+	</lang>
+	<lang id="word-normal">
+		<zh-CN>正常</zh-CN>
+		<en-US>Normal</en-US>
+	</lang>
+	<lang id="word-lastfailtime">
+		<zh-CN>最后失败时间</zh-CN>
+		<en-US>Last Fail Time</en-US>
+	</lang>
+	<lang id="word-unban">
+		<zh-CN>解封</zh-CN>
+		<en-US>Unban</en-US>
+	</lang>
+	<lang id="word-unbanall">
+		<zh-CN>清除所有记录</zh-CN>
+		<en-US>Clear All</en-US>
+	</lang>
+	<lang id="word-refresh">
+		<zh-CN>刷新</zh-CN>
+		<en-US>Refresh</en-US>
+	</lang>
 	<lang id="word-exportflow">
 		<zh-CN>出口流量</zh-CN>
 		<en-US>Export Flow</en-US>

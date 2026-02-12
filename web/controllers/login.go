@@ -21,12 +21,12 @@ type LoginController struct {
 	beego.Controller
 }
 
-const BanTime int64 = 5
-const IpBanTime int64 = 180
-const UserBanTime int64 = 3600
-const MaxFailTimes int = 10
-const MaxLoginBody = 1024
-const MaxSkew int64 = 5 * 60 * 1000
+var BanTime int64 = 5
+var IpBanTime int64 = 180
+var UserBanTime int64 = 3600
+var MaxFailTimes int = 10
+var MaxLoginBody int64 = 1024
+var MaxSkew int64 = 5 * 60 * 1000
 
 var loginRecord sync.Map
 var cpt *captcha.Captcha
@@ -39,10 +39,25 @@ type record struct {
 	lastLoginTime     time.Time
 }
 
+// BanRecord 封禁记录，用于展示给管理员
+type BanRecord struct {
+	Key           string `json:"key"`
+	FailTimes     int    `json:"fail_times"`
+	LastLoginTime string `json:"last_login_time"`
+	IsBanned      bool   `json:"is_banned"`
+	BanType       string `json:"ban_type"`
+}
+
 func InitLogin() {
 	secureMode = beego.AppConfig.DefaultBool("secure_mode", false)
 	forcePow = beego.AppConfig.DefaultBool("force_pow", false)
 	powBits = beego.AppConfig.DefaultInt("pow_bits", 20)
+	BanTime = int64(beego.AppConfig.DefaultInt("login_ban_time", 5))
+	IpBanTime = int64(beego.AppConfig.DefaultInt("login_ip_ban_time", 180))
+	UserBanTime = int64(beego.AppConfig.DefaultInt("login_user_ban_time", 3600))
+	MaxFailTimes = beego.AppConfig.DefaultInt("login_max_fail_times", 10)
+	MaxLoginBody = int64(beego.AppConfig.DefaultInt("login_max_body", 1024))
+	MaxSkew = int64(beego.AppConfig.DefaultInt("login_max_skew", 5*60*1000))
 	// use beego cache system store the captcha data
 	store := cache.NewMemoryCache()
 	cpt = captcha.NewWithFilter(beego.AppConfig.String("web_base_url")+"/captcha/", store)
@@ -361,6 +376,66 @@ func (s *LoginController) Register() {
 func (s *LoginController) Out() {
 	s.SetSession("auth", false)
 	s.Redirect(beego.AppConfig.String("web_base_url")+"/login/index", 302)
+}
+
+// GetLoginBanList 获取当前所有封禁记录
+func GetLoginBanList() []BanRecord {
+	var list []BanRecord
+	now := time.Now()
+	loginRecord.Range(func(key, value interface{}) bool {
+		k := key.(string)
+		v := value.(*record)
+		duration := now.Unix() - v.lastLoginTime.Unix()
+		// 判断是否处于封禁状态
+		isBanned := false
+		banType := "ip"
+		// 如果失败次数达到上限且未超过IP封禁时间，视为IP封禁
+		if v.hasLoginFailTimes >= MaxFailTimes && duration < IpBanTime {
+			isBanned = true
+			banType = "ip"
+		}
+		// 如果失败次数达到上限且未超过用户名封禁时间，视为用户名封禁
+		if v.hasLoginFailTimes >= MaxFailTimes && duration < UserBanTime {
+			isBanned = true
+			banType = "username"
+		}
+		// 请求频率过高也视为封禁
+		if duration < BanTime {
+			isBanned = true
+		}
+		// 判断key是否像IP地址
+		if net.ParseIP(k) != nil {
+			banType = "ip"
+		} else {
+			banType = "username"
+		}
+		list = append(list, BanRecord{
+			Key:           k,
+			FailTimes:     v.hasLoginFailTimes,
+			LastLoginTime: v.lastLoginTime.Format("2006-01-02 15:04:05"),
+			IsBanned:      isBanned,
+			BanType:       banType,
+		})
+		return true
+	})
+	return list
+}
+
+// RemoveLoginBan 手动解除指定key的封禁
+func RemoveLoginBan(key string) bool {
+	if _, ok := loginRecord.Load(key); ok {
+		loginRecord.Delete(key)
+		return true
+	}
+	return false
+}
+
+// RemoveAllLoginBan 清除所有封禁记录
+func RemoveAllLoginBan() {
+	loginRecord.Range(func(key, value interface{}) bool {
+		loginRecord.Delete(key)
+		return true
+	})
 }
 
 func clearIpRecord() {
