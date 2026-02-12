@@ -11,13 +11,11 @@ type GlobalController struct {
 }
 
 func (s *GlobalController) Index() {
-	//if s.Ctx.Request.Method == "GET" {
-	//
-	//	return
-	//}
-	if !s.GetSession("isAdmin").(bool) {
+	isAdmin, ok := s.GetSession("isAdmin").(bool)
+	if !ok || !isAdmin {
 		return
 	}
+
 	s.Data["menu"] = "global"
 	s.SetInfo("global")
 	s.display("global/index")
@@ -30,51 +28,52 @@ func (s *GlobalController) Index() {
 }
 
 func (s *GlobalController) Save() {
-	//global, err := file.GetDb().GetGlobal()
-	//if err != nil {
-	//	return
-	//}
-	if !s.GetSession("isAdmin").(bool) {
+	isAdmin, ok := s.GetSession("isAdmin").(bool)
+	if !ok || !isAdmin {
 		return
 	}
+
 	if s.Ctx.Request.Method == "GET" {
 		s.Data["menu"] = "global"
 		s.SetInfo("save global")
 		s.display()
-	} else {
-
-		t := &file.Glob{BlackIpList: RemoveRepeatedElement(strings.Split(s.getEscapeString("globalBlackIpList"), "\r\n"))}
-
-		if err := file.GetDb().SaveGlobal(t); err != nil {
-			s.AjaxErr(err.Error())
-		}
-		s.AjaxOk("save success")
+		return
 	}
+
+	t := &file.Glob{BlackIpList: RemoveRepeatedElement(strings.Split(s.getEscapeString("globalBlackIpList"), "\r\n"))}
+	if err := file.GetDb().SaveGlobal(t); err != nil {
+		s.AjaxErr(err.Error())
+		return
+	}
+	s.AjaxOk("save success")
 }
 
 // BanList 封禁列表管理页面
 func (s *GlobalController) BanList() {
-	if !s.GetSession("isAdmin").(bool) {
+	isAdmin, ok := s.GetSession("isAdmin").(bool)
+	if !ok || !isAdmin {
 		return
 	}
+
 	if s.Ctx.Request.Method == "GET" {
 		s.Data["menu"] = "banlist"
 		s.SetInfo("banlist")
 		s.display("global/banlist")
-	} else {
-		// POST 返回封禁列表JSON数据
-		list := GetLoginBanList()
-		s.Data["json"] = map[string]interface{}{
-			"rows":  list,
-			"total": len(list),
-		}
-		s.ServeJSON()
+		return
 	}
+
+	list := GetLoginBanList()
+	s.Data["json"] = map[string]interface{}{
+		"rows":  list,
+		"total": len(list),
+	}
+	s.ServeJSON()
 }
 
 // Unban 解除指定key的封禁
 func (s *GlobalController) Unban() {
-	if !s.GetSession("isAdmin").(bool) {
+	isAdmin, ok := s.GetSession("isAdmin").(bool)
+	if !ok || !isAdmin {
 		return
 	}
 	key := s.GetString("key")
@@ -91,9 +90,11 @@ func (s *GlobalController) Unban() {
 
 // UnbanAll 清除所有封禁记录
 func (s *GlobalController) UnbanAll() {
-	if !s.GetSession("isAdmin").(bool) {
+	isAdmin, ok := s.GetSession("isAdmin").(bool)
+	if !ok || !isAdmin {
 		return
 	}
+
 	RemoveAllLoginBan()
 	s.AjaxOk("all records cleared")
 }
