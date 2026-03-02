@@ -61,6 +61,13 @@ curl -X POST \
 - **接口：** `GET /index/index`
 - **功能**：渲染仪表盘页面，展示服务概览。
 
+### 仪表盘数据（仅管理员）
+
+- **接口：** `POST /index/stats`
+- **返回示例：**
+  - 成功：`{"code":1,"data":{...}}`
+  - 失败（非管理员）：`{"code":0}`
+
 ### 帮助页面
 
 - **接口：** `GET /index/help`
@@ -76,6 +83,7 @@ curl -X POST \
 | `/index/udp`    | UDP 隧道    |
 | `/index/socks5` | Socks5 隧道 |
 | `/index/http`   | HTTP 代理   |
+| `/index/mix`    | 混合代理（HTTP+SOCKS5） |
 | `/index/file`   | 文件服务      |
 | `/index/secret` | 私密代理      |
 | `/index/p2p`    | P2P 隧道    |
@@ -115,6 +123,12 @@ curl -X POST \
   | `time_limit` | 时间限制（字符串，空则不限制） |
   | `proxy_protocol` | 代理协议标识（整数） |
   | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
+  | `target_type` | 目标类型（字符串） |
+  | `auth` | 多用户认证信息（多行 `账号:密码`） |
+  | `enable_http` | 是否启用 HTTP 代理能力（`0/1` 或 `true/false`） |
+  | `enable_socks5` | 是否启用 SOCKS5 代理能力（`0/1` 或 `true/false`） |
+  | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单） |
+  | `dest_acl_rules` | 出站 ACL 规则（多行） |
   | `remark` | 隧道备注（字符串） |
   | `password` | 访问隧道的密码（字符串） |
   | `local_path` | 本地路径（适用于文件服务） |
@@ -127,6 +141,9 @@ curl -X POST \
 - **启动隧道**：`POST /index/start`，参数 `id`（隧道 ID）
 - **停止隧道**：`POST /index/stop`，参数 `id`（隧道 ID）
 - **删除隧道**：`POST /index/del`，参数 `id`（隧道 ID）
+- **清理/切换隧道属性**：`POST /index/clear`，参数：
+  - `id`：隧道 ID
+  - `mode`：`http` / `socks5` / `flow` / `flow_limit` / `time_limit`
 
 ## 域名解析管理接口
 
@@ -157,21 +174,33 @@ curl -X POST \
   | `proxy_protocol` | 代理协议标识（整数） |
   | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
   | `header` | 修改的请求头（字符串） |
+  | `resp_header` | 修改的响应头（字符串） |
+  | `auth` | 多用户认证信息（多行 `账号:密码`） |
   | `hostchange` | 修改的 `Host` 值（字符串） |
   | `remark` | 备注信息（字符串） |
   | `location` | URL 路由（字符串，空则不限制） |
+  | `path_rewrite` | 路径重写规则（字符串） |
+  | `redirect_url` | 重定向 URL（字符串） |
   | `scheme` | 协议类型（`all`、`http`、`https`） |
   | `https_just_proxy` | 是否仅代理 HTTPS（`0` 否，`1` 是） |
+  | `tls_offload` | 是否启用 TLS 卸载（`0` 否，`1` 是） |
+  | `auto_ssl` | 是否启用自动 SSL（`0` 否，`1` 是） |
   | `key_file` | HTTPS 证书密钥文本或路径（字符串） |
   | `cert_file` | HTTPS 证书公钥文本或路径（字符串） |
   | `auto_https` | 是否自动启用 HTTPS（`0` 否，`1` 是） |
   | `auto_cors` | 是否自动添加 CORS 头（`0` 否，`1` 是） |
+  | `compat_mode` | 是否启用兼容模式（`0` 否，`1` 是） |
   | `target_is_https` | 目标是否为 HTTPS（`0` 否，`1` 是） |
   | `id` | 域名解析 ID（修改时必填） |
 
 ### 单个域名解析操作
 
 - **获取详情**：`POST /index/gethost`（参数 `id`）
+- **启动**：`POST /index/starthost`（参数 `id`）
+- **停止**：`POST /index/stophost`（参数 `id`）
+- **清理/切换属性**：`POST /index/clearhost`，参数：
+  - `id`：域名解析 ID
+  - `mode`：`flow` / `flow_limit` / `time_limit` / `auto_ssl` / `https_just_proxy` / `tls_offload` / `auto_https` / `auto_cors` / `compat_mode` / `target_is_https`
 - **删除域名解析**：`POST /index/delhost`（参数 `id`）
 
 ## 客户端管理接口
@@ -207,6 +236,10 @@ curl -X POST \
   | `rate_limit` | 带宽限制（单位 KB/s，空则不限制） |
   | `max_conn` | 最大连接数量（整数，空则不限制） |
   | `max_tunnel` | 最大隧道数量（整数，空则不限制） |
+  | `web_username` | 客户端 Web 登录用户名（字符串） |
+  | `web_password` | 客户端 Web 登录密码（字符串） |
+  | `web_totp_secret` | 客户端 Web 登录 TOTP 密钥（字符串） |
+  | `blackiplist` | 客户端黑名单 IP（多行） |
   | `id` | 客户端 ID（修改时必填） |
 
 ### 单个客户端操作
@@ -214,7 +247,18 @@ curl -X POST \
 - **获取详情**：`POST /client/getclient`（参数 `id`）
 - **延迟检查**：`POST /client/pingclient`（参数 `id`）
 - **修改状态**：`POST /client/changestatus`（参数 `id`、`status`）（`0` 否，`1` 是）
+- **清理客户端配额/统计**：`POST /client/clear`，参数：
+  - `id`：客户端 ID，传 `0` 表示对所有客户端生效
+  - `mode`：`flow` / `flow_limit` / `time_limit` / `rate_limit` / `conn_limit` / `tunnel_limit`
 - **删除客户端**：`POST /client/del`（参数 `id`）
+
+### 二维码接口
+
+- **接口：** `GET /client/qr`
+- **用途：** 返回 PNG 图片（常用于 TOTP 二维码）。
+- **参数（两种方式二选一）**：
+  1. `text`：完整二维码内容（URL 编码字符串）。
+  2. `account` + `secret`：由服务端生成 otpauth URL。
 
 ## 用户认证接口
 
@@ -225,8 +269,9 @@ curl -X POST \
   | 参数 | 说明 |
   |------|------|
   | `username` | 登录用户名（字符串） |
-  | `password` | 通过 RSA 公钥加密的 JSON 字符串（包含 n: nonce、t: 毫秒级时间戳、p: 明文密码） |
-  | `captcha` | 验证码（可选，依据配置决定是否需要） |
+  | `password` | 通过 RSA 公钥加密的 JSON 字符串（包含 `n`=nonce、`t`=毫秒级时间戳、`p`=明文密码） |
+  | `captcha_id` / `captcha` | 验证码 ID 与验证码（启用验证码时必填） |
+  | `powx` / `bits` | PoW 参数（启用强制 PoW 或命中风控时必填） |
 
 ### 用户登出
 
@@ -239,5 +284,20 @@ curl -X POST \
   | 参数 | 说明 |
   |------|------|
   | `username` | 注册用户名（字符串） |
-  | `password` | 注册密码（字符串） |
+  | `password` | 通过 RSA 公钥加密的 JSON 字符串（与登录接口一致） |
+  | `captcha_id` / `captcha` | 验证码 ID 与验证码（启用验证码时必填） |
 
+## 全局管理接口（仅管理员）
+
+### 全局黑名单
+
+- **查看页面：** `GET /global/index`
+- **保存配置：** `POST /global/save`
+  - 参数：`globalBlackIpList`（多行 IP）
+
+### 登录封禁管理
+
+- **获取封禁列表：** `POST /global/banlist`
+- **解除指定封禁：** `POST /global/unban`（参数：`key`）
+- **解除全部封禁：** `POST /global/unbanall`
+- **立即清理过期封禁：** `POST /global/banclean`
