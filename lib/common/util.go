@@ -30,6 +30,11 @@ import (
 	"github.com/djylb/nps/lib/logs"
 )
 
+var (
+	domainCheckWithPathRegexp = regexp.MustCompile(`^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}(/)`)
+	domainCheckRegexp         = regexp.MustCompile(`^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}`)
+)
+
 // ExtractHost
 // return "[2001:db8::1]:80"
 func ExtractHost(input string) string {
@@ -201,14 +206,7 @@ func GetHostByName(hostname string) string {
 
 // DomainCheck Check the legality of domain
 func DomainCheck(domain string) bool {
-	var match bool
-	IsLine := "^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,6}(/)"
-	NotLine := "^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,6}"
-	match, _ = regexp.MatchString(IsLine, domain)
-	if !match {
-		match, _ = regexp.MatchString(NotLine, domain)
-	}
-	return match
+	return domainCheckWithPathRegexp.MatchString(domain) || domainCheckRegexp.MatchString(domain)
 }
 
 func Max(values ...int) int {
