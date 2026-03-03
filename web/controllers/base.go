@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"html"
 	"html/template"
 	"math"
@@ -36,10 +37,7 @@ func (s *BaseController) Prepare() {
 	timestamp := s.GetIntNoErr("timestamp")
 	configKey := beego.AppConfig.String("auth_key")
 	timeNowUnix := common.TimeNow().Unix()
-	if configKey == "" {
-		configKey = crypt.GetRandomString(64)
-	}
-	if !(md5Key != "" && (math.Abs(float64(timeNowUnix-int64(timestamp))) <= 20) && (crypt.Md5(configKey+strconv.Itoa(timestamp)) == md5Key)) {
+	if !isValidAuthKey(configKey, md5Key, timestamp, timeNowUnix) {
 		if s.GetSession("auth") != true {
 			s.Redirect(beego.AppConfig.String("web_base_url")+"/login/index", 302)
 		}
@@ -71,6 +69,20 @@ func (s *BaseController) Prepare() {
 	s.Data["allow_user_local"] = beego.AppConfig.DefaultBool("allow_user_local", allowLocalProxy)
 	s.Data["allow_secret_link"], _ = beego.AppConfig.Bool("allow_secret_link")
 	s.Data["allow_user_change_username"], _ = beego.AppConfig.Bool("allow_user_change_username")
+}
+
+func isValidAuthKey(configKey, md5Key string, timestamp int, nowUnix int64) bool {
+	if configKey == "" || md5Key == "" {
+		return false
+	}
+	if math.Abs(float64(nowUnix-int64(timestamp))) > 20 {
+		return false
+	}
+	expected := crypt.Md5(configKey + strconv.Itoa(timestamp))
+	if len(expected) != len(md5Key) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(md5Key)) == 1
 }
 
 func (s *BaseController) display(tpl ...string) {
