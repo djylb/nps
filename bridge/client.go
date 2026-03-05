@@ -363,7 +363,7 @@ func (c *Client) CheckNode() *Node {
 		return nil
 	}
 	first := true
-	graceChecksLeft := size
+	graceChecked := make(map[string]struct{}, size)
 	for {
 		var lastUUID string
 		c.mu.RLock()
@@ -402,8 +402,8 @@ func (c *Client) CheckNode() *Node {
 				}
 				if c.InConnectGraceWindow(connectGraceProtectWindow) {
 					first = false
-					graceChecksLeft--
-					if graceChecksLeft <= 0 {
+					graceChecked[lastUUID] = struct{}{}
+					if len(graceChecked) >= size {
 						return nil
 					}
 					c.mu.Lock()
