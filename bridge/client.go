@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
@@ -91,6 +92,7 @@ func SetClientSelectMode(v any) error {
 }
 
 const retryTimeMax = 3
+const connectGraceProtectWindow = 3 * time.Second
 
 type Node struct {
 	mu        sync.RWMutex
@@ -242,14 +244,15 @@ func (n *Node) closeTunnel(err string) error {
 }
 
 type Client struct {
-	mu        sync.RWMutex
-	Id        int
-	LastUUID  string
-	nodeList  *pool.Pool[string] // nodeUUID
-	nodes     sync.Map           // map[nodeUUID]*Node
-	files     sync.Map           // map[fileUUID]nodeUUID
-	retryTime int                // it will add 1 when ping not ok until to 3 will close the client
-	closed    uint32
+	mu              sync.RWMutex
+	Id              int
+	LastUUID        string
+	nodeList        *pool.Pool[string] // nodeUUID
+	nodes           sync.Map           // map[nodeUUID]*Node
+	files           sync.Map           // map[fileUUID]nodeUUID
+	retryTime       int                // it will add 1 when ping not ok until to 3 will close the client
+	closed          uint32
+	lastConnectNano int64
 }
 
 func NewClient(id int, n *Node) *Client {
@@ -258,6 +261,7 @@ func NewClient(id int, n *Node) *Client {
 		LastUUID: n.UUID,
 		nodeList: pool.New[string](),
 	}
+	c.MarkConnectedNow()
 	n.Client = c
 	c.nodes.Store(n.UUID, n)
 	c.nodeList.Add(n.UUID)
@@ -284,6 +288,21 @@ func (c *Client) AddNode(n *Node) {
 	c.nodes.Store(n.UUID, n)
 	c.nodeList.Add(n.UUID)
 	c.LastUUID = n.UUID
+}
+
+func (c *Client) MarkConnectedNow() {
+	atomic.StoreInt64(&c.lastConnectNano, time.Now().UnixNano())
+}
+
+func (c *Client) InConnectGraceWindow(window time.Duration) bool {
+	if window <= 0 {
+		return false
+	}
+	v := atomic.LoadInt64(&c.lastConnectNano)
+	if v <= 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, v)) < window
 }
 
 func (c *Client) AddFile(key, uuid string) error {
@@ -323,6 +342,9 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 	if ok {
 		if node.IsOnline() {
 			return node, true
+		}
+		if c.InConnectGraceWindow(connectGraceProtectWindow) {
+			return nil, false
 		}
 		_ = node.Close()
 		c.mu.Lock()
@@ -377,6 +399,9 @@ func (c *Client) CheckNode() *Node {
 					}
 					return node
 				}
+				if c.InConnectGraceWindow(connectGraceProtectWindow) {
+					return nil
+				}
 				_ = node.Close()
 			}
 		}
@@ -428,6 +453,9 @@ func (c *Client) NodeCount() int {
 
 func (c *Client) RemoveOfflineNodes() (removed int) {
 	if c.nodeList.Size() == 0 {
+		return 0
+	}
+	if c.InConnectGraceWindow(connectGraceProtectWindow) {
 		return 0
 	}
 	type pair struct {

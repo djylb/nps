@@ -147,6 +147,28 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	}
 	var server *http.Server
 
+	transport := &http.Transport{
+		ResponseHeaderTimeout: 100 * time.Second,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
+				if !s.Task.AllowsDestination(addr) {
+					logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
+					return nil, errors.New("destination denied by dest acl")
+				}
+			}
+			isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
+			link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
+			target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, nil)
+			if err != nil {
+				logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)
+				return nil, err
+			}
+			rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal)
+			return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
+		},
+	}
+	defer transport.CloseIdleConnections()
+
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			//req.RequestURI = ""
@@ -166,27 +188,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			//}
 			req.Header["X-Forwarded-For"] = nil
 		},
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: 60 * time.Second,
-			//DisableKeepAlives:     true,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
-					if !s.Task.AllowsDestination(addr) {
-						logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
-						return nil, errors.New("destination denied by dest acl")
-					}
-				}
-				isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
-				link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
-				target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, nil)
-				if err != nil {
-					logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)
-					return nil, err
-				}
-				rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal)
-				return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
-			},
-		},
+		Transport: transport,
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			if err == io.EOF {
 				//logs.Info("ErrorHandler: io.EOF encountered, writing 521")
