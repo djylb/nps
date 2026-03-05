@@ -304,6 +304,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		sni := r.Context().Value(ctxSNI).(string)
 		netConn, err = conn.GetTlsConn(netConn, sni)
 		if err != nil {
+			_ = netConn.Close()
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusBadGateway)
 			_, _ = w.Write(s.ErrorContent)
@@ -315,12 +316,14 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		_ = netConn.Close()
 		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
 		logs.Error("handleWebsocket: Hijack not supported")
 		return
 	}
 	clientConn, clientBuf, err := hijacker.Hijack()
 	if err != nil {
+		_ = netConn.Close()
 		http.Error(w, "Hijack failed", http.StatusInternalServerError)
 		logs.Error("handleWebsocket: Hijack failed")
 		return
@@ -449,6 +452,7 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 	sni := ctx.Value(ctxSNI).(string)
 	c, err = conn.GetTlsConn(c, sni)
 	if err != nil {
+		_ = c.Close()
 		return nil, err
 	}
 	return c, nil
