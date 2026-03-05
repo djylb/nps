@@ -29,6 +29,7 @@ var MaxLoginBody int64 = 1024
 var MaxSkew int64 = 5 * 60 * 1000
 
 var loginRecord sync.Map
+var loginRecordCleanerOnce sync.Once
 var cpt *captcha.Captcha
 var powBits int
 var secureMode bool
@@ -62,6 +63,7 @@ func InitLogin() {
 	MaxSkew = beego.AppConfig.DefaultInt64("login_max_skew", 5*60*1000)
 
 	rand.Seed(time.Now().UnixNano())
+	startLoginRecordCleaner()
 
 	// use beego cache system store the captcha data
 	store := cache.NewMemoryCache()
@@ -69,6 +71,18 @@ func InitLogin() {
 	cpt.ChallengeNums = 4
 	cpt.StdWidth = 100
 	cpt.StdHeight = 50
+}
+
+func startLoginRecordCleaner() {
+	loginRecordCleanerOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				CleanBanRecord(true)
+			}
+		}()
+	})
 }
 
 func (s *LoginController) Index() {
