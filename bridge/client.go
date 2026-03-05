@@ -363,6 +363,7 @@ func (c *Client) CheckNode() *Node {
 		return nil
 	}
 	first := true
+	graceChecksLeft := size
 	for {
 		var lastUUID string
 		c.mu.RLock()
@@ -401,6 +402,10 @@ func (c *Client) CheckNode() *Node {
 				}
 				if c.InConnectGraceWindow(connectGraceProtectWindow) {
 					first = false
+					graceChecksLeft--
+					if graceChecksLeft <= 0 {
+						return nil
+					}
 					c.mu.Lock()
 					c.LastUUID = ""
 					c.mu.Unlock()
