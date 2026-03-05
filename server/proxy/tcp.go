@@ -24,6 +24,8 @@ type TunnelModeServer struct {
 	address           string
 	listener          net.Listener
 	activeConnections sync.Map
+	httpTransportOnce sync.Once
+	httpTransport     *http.Transport
 }
 
 // NewTunnelModeServer tcp|host|mixproxy
@@ -44,6 +46,9 @@ func (s *TunnelModeServer) Start() error {
 }
 
 func (s *TunnelModeServer) Close() error {
+	if s.httpTransport != nil {
+		s.httpTransport.CloseIdleConnections()
+	}
 	s.activeConnections.Range(func(key, value interface{}) bool {
 		if c, ok := key.(net.Conn); ok {
 			_ = c.Close()
@@ -101,6 +106,40 @@ func (s *TunnelModeServer) handleConn(c net.Conn) {
 	_ = s.process(conn.NewConn(c), s)
 }
 
+const httpProxyRemoteAddrCtxKey = "nps_http_proxy_remote_addr"
+
+func (s *TunnelModeServer) getHTTPTransport() *http.Transport {
+	s.httpTransportOnce.Do(func() {
+		s.httpTransport = &http.Transport{
+			ResponseHeaderTimeout: 60 * time.Second,
+			MaxIdleConns:          256,
+			MaxIdleConnsPerHost:   64,
+			IdleConnTimeout:       90 * time.Second,
+			DialContext:           s.dialHTTPProxyContext,
+		}
+	})
+	return s.httpTransport
+}
+
+func (s *TunnelModeServer) dialHTTPProxyContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
+		if !s.Task.AllowsDestination(addr) {
+			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
+			return nil, errors.New("destination denied by dest acl")
+		}
+	}
+	remoteAddr, _ := ctx.Value(httpProxyRemoteAddrCtxKey).(string)
+	isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
+	link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
+	target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, nil)
+	if err != nil {
+		logs.Trace("DialContext: connection target %s failed: %v", addr, err)
+		return nil, err
+	}
+	rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal)
+	return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
+}
+
 type process func(c *conn.Conn, s *TunnelModeServer) error
 
 // ProcessTunnel tcp proxy
@@ -146,6 +185,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		return s.DealClient(c, s.Task.Client, addr, nil, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
 	}
 	var server *http.Server
+	transport := s.getHTTPTransport()
 
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -166,27 +206,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			//}
 			req.Header["X-Forwarded-For"] = nil
 		},
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: 60 * time.Second,
-			//DisableKeepAlives:     true,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
-					if !s.Task.AllowsDestination(addr) {
-						logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
-						return nil, errors.New("destination denied by dest acl")
-					}
-				}
-				isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
-				link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
-				target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, nil)
-				if err != nil {
-					logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)
-					return nil, err
-				}
-				rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal)
-				return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
-			},
-		},
+		Transport: transport,
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			if err == io.EOF {
 				//logs.Info("ErrorHandler: io.EOF encountered, writing 521")
@@ -233,6 +253,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			})
 			shutdownTimerMu.Unlock()
 		}()
+		req = req.WithContext(context.WithValue(req.Context(), httpProxyRemoteAddrCtxKey, remoteAddr))
 		proxy.ServeHTTP(w, req)
 	})
 	server = &http.Server{
