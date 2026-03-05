@@ -400,7 +400,11 @@ func (c *Client) CheckNode() *Node {
 					return node
 				}
 				if c.InConnectGraceWindow(connectGraceProtectWindow) {
-					return nil
+					first = false
+					c.mu.Lock()
+					c.LastUUID = ""
+					c.mu.Unlock()
+					continue
 				}
 				_ = node.Close()
 			}
