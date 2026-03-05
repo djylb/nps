@@ -587,6 +587,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
+			client.MarkConnectedNow()
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
@@ -596,6 +597,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 				client.AddNode(node)
 			}
 		}
+		client.MarkConnectedNow()
 		go s.GetHealthFromClient(id, c, client, node)
 		logs.Info("ClientId %d connection succeeded, address:%v ", id, addr)
 
@@ -622,6 +624,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
+			client.MarkConnectedNow()
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
@@ -631,6 +634,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 				client.AddNode(node)
 			}
 		}
+		client.MarkConnectedNow()
 		if ver > 4 {
 			go func() {
 				defer func() {
@@ -843,6 +847,8 @@ func (s *Bridge) register(c *conn.Conn) {
 	_ = c.Close()
 }
 
+const clientConnectGraceWindow = 3 * time.Second
+
 func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error) {
 	if link == nil {
 		return nil, errors.New("link is nil")
@@ -945,9 +951,32 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		}
 	}
 
-	if tunnel == nil || node == nil {
+	if node == nil {
+		if client.InConnectGraceWindow(clientConnectGraceWindow) {
+			err = errors.New("client is connecting, please retry")
+			return
+		}
 		s.DelClient(clientId)
 		err = errors.New("the client connect error")
+		return
+	}
+	if tunnel == nil {
+		sig := node.GetSignal()
+		if sig == nil || sig.IsClosed() {
+			if client.InConnectGraceWindow(clientConnectGraceWindow) {
+				err = errors.New("client is connecting, please retry")
+				return
+			}
+			s.DelClient(clientId)
+			err = errors.New("the client is offline")
+			return
+		}
+		if client.InConnectGraceWindow(clientConnectGraceWindow) {
+			err = errors.New("client tunnel is reconnecting, please retry")
+			return
+		}
+		s.DelClient(clientId)
+		err = errors.New("the client tunnel is unavailable")
 		return
 	}
 
