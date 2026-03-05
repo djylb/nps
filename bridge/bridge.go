@@ -971,7 +971,12 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 			err = errors.New("the client is offline")
 			return
 		}
-		err = errors.New("client tunnel is reconnecting, please retry")
+		if client.InConnectGraceWindow(clientConnectGraceWindow) {
+			err = errors.New("client tunnel is reconnecting, please retry")
+			return
+		}
+		s.DelClient(clientId)
+		err = errors.New("the client tunnel is unavailable")
 		return
 	}
 
