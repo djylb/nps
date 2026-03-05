@@ -207,6 +207,15 @@ func (n *Node) IsOffline() bool {
 	return !n.isOnline()
 }
 
+func (n *Node) IsDefinitelyOffline() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.Client == nil || n.Client.Id <= 0 {
+		return false
+	}
+	return n.isTunnelClosed() && (n.signal == nil || n.signal.IsClosed())
+}
+
 func (n *Node) Retry() bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -461,10 +470,18 @@ func (c *Client) NodeCount() int {
 }
 
 func (c *Client) RemoveOfflineNodes() (removed int) {
+	return c.removeOfflineNodes("", false, false)
+}
+
+func (c *Client) RemoveOfflineNodesExcept(keepUUID string) (removed int) {
+	return c.removeOfflineNodes(keepUUID, true, false)
+}
+
+func (c *Client) removeOfflineNodes(keepUUID string, ignoreGrace bool, force bool) (removed int) {
 	if c.nodeList.Size() == 0 {
 		return 0
 	}
-	if c.InConnectGraceWindow(connectGraceProtectWindow) {
+	if !ignoreGrace && c.InConnectGraceWindow(connectGraceProtectWindow) {
 		return 0
 	}
 	type pair struct {
@@ -475,8 +492,11 @@ func (c *Client) RemoveOfflineNodes() (removed int) {
 	c.nodes.Range(func(key, value any) bool {
 		uuid, ok1 := key.(string)
 		node, ok2 := value.(*Node)
-		if ok1 && ok2 && node.IsOffline() {
-			if !node.Retry() {
+		if !ok1 || !ok2 || uuid == keepUUID {
+			return true
+		}
+		if node.IsOffline() {
+			if force || node.IsDefinitelyOffline() || !node.Retry() {
 				toRemove = append(toRemove, pair{uuid: uuid, node: node})
 			}
 		}
