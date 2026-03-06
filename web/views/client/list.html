@@ -75,7 +75,10 @@
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () {$('body').setLang ('.detail-view');},
-        onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang ('#table'); },
+        onPostBody: function (data) {
+            if ($(this)[0].locale != undefined) $('body').setLang('#table');
+            autoPingVisibleClients();
+        },
         detailFormatter: function (index, row, element) {
             tmp = '<b langtag="word-maxconnections"></b>: '
                 {{if eq true .isAdmin}}
@@ -379,7 +382,7 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (value) {
-                        return '<span class="badge badge-primary" langtag="word-online" style="cursor:pointer;" onclick="pingClient(this,' + row.Id + ')"></span>'
+                        return '<span class="badge badge-primary" langtag="word-online" data-id="' + row.Id + '" style="cursor:pointer;" onclick="pingClient(this,' + row.Id + ')"></span>'
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
@@ -461,6 +464,15 @@
             $el.data('pinging', false)
                 .removeClass('disabled')
                 .removeAttr('title');
+        });
+    }
+
+    function autoPingVisibleClients() {
+        $('#table').find('span[langtag="word-online"]').each(function () {
+            var id = parseInt($(this).attr('data-id'), 10);
+            if (!isNaN(id) && id > 0) {
+                pingClient(this, id);
+            }
         });
     }
 
