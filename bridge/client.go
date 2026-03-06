@@ -495,6 +495,9 @@ func (c *Client) removeOfflineNodes(keepUUID string, force bool) (removed int) {
 	if c.nodeList.Size() == 0 {
 		return 0
 	}
+	if !force && c.InConnectGraceWindow(connectGraceProtectWindow) {
+		return 0
+	}
 	type pair struct {
 		uuid string
 		node *Node
