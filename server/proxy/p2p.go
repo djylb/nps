@@ -57,7 +57,14 @@ func (s *P2PServer) Start() error {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 		common.BufPoolUdp.Put(buf)
-		go s.handleP2P(addr, data)
+		s.handleP2P(addr, data)
+	}
+	return nil
+}
+
+func (s *P2PServer) Close() error {
+	if s.listener != nil {
+		return s.listener.Close()
 	}
 	return nil
 }
@@ -152,6 +159,7 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 		logs.Trace("sent P2P addresses visitor=%v (%q) provider=%v (%q)", sess.visitorAddr, sess.visitorLocal, sess.providerAddr, sess.providerLocal)
 		if sess.timer != nil {
 			sess.timer.Stop()
+			sess.timer = nil
 		}
 		s.sessions.Delete(key)
 	} else {
