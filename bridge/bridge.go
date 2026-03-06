@@ -587,12 +587,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
-			client.MarkConnectedNow()
+			client.RemoveOfflineNodes()
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
 				node.AddSignal(c)
-				client.RemoveOfflineNodes()
 			} else {
 				client.AddNode(node)
 			}
@@ -624,12 +623,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
-			client.MarkConnectedNow()
+			client.RemoveOfflineNodes()
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
 				node.AddTunnel(anyConn)
-				client.RemoveOfflineNodes()
 			} else {
 				client.AddNode(node)
 			}
@@ -1000,6 +998,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	if _, err = conn.NewConn(target).SendInfo(link, ""); err != nil {
 		logs.Info("new connection error, the target %s refused to connect", link.Host)
+		_ = target.Close()
 		return
 	}
 
