@@ -444,7 +444,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			localIP := localIPs[i]
 			connType = strings.ToLower(connType)
 
-			go func() {
+			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
 					logs.Info("Start server: %s vkey: %s type: %s local_ip: %s", serverAddr, verifyKey, connType, localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
@@ -458,7 +458,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 						return
 					}
 				}
-			}()
+			}(serverAddr, verifyKey, connType, localIP)
 		}
 	}
 	if *configPath != "" || !hasCommand {
