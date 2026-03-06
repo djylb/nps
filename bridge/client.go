@@ -423,7 +423,7 @@ func (c *Client) CheckNode() *Node {
 					}
 					return node
 				}
-				if c.InConnectGraceWindow(connectGraceProtectWindow) {
+				if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
 					first = false
 					graceChecksLeft--
 					if graceChecksLeft <= 0 {
@@ -484,18 +484,15 @@ func (c *Client) NodeCount() int {
 }
 
 func (c *Client) RemoveOfflineNodes() (removed int) {
-	return c.removeOfflineNodes("", false, false)
+	return c.removeOfflineNodes("", false)
 }
 
 func (c *Client) RemoveOfflineNodesExcept(keepUUID string) (removed int) {
-	return c.removeOfflineNodes(keepUUID, false, false)
+	return c.removeOfflineNodes(keepUUID, false)
 }
 
-func (c *Client) removeOfflineNodes(keepUUID string, ignoreGrace bool, force bool) (removed int) {
+func (c *Client) removeOfflineNodes(keepUUID string, force bool) (removed int) {
 	if c.nodeList.Size() == 0 {
-		return 0
-	}
-	if !ignoreGrace && c.InConnectGraceWindow(connectGraceProtectWindow) {
 		return 0
 	}
 	type pair struct {
