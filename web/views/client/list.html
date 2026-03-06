@@ -382,7 +382,7 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (value) {
-                        return '<span class="badge badge-primary" langtag="word-online" data-id="' + row.Id + '" style="cursor:pointer;" onclick="pingClient(this,' + row.Id + ')"></span>'
+                        return '<span class="badge badge-primary client-online-ping" langtag="word-online" data-id="' + row.Id + '" style="cursor:pointer;" onclick="pingClient(this,' + row.Id + ')"></span>'
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
@@ -468,7 +468,7 @@
     }
 
     function autoPingVisibleClients() {
-        $('#table').find('span[langtag="word-online"]').each(function () {
+        $('#table').find('span.client-online-ping[data-id]').each(function () {
             var id = parseInt($(this).attr('data-id'), 10);
             if (!isNaN(id) && id > 0) {
                 pingClient(this, id);
