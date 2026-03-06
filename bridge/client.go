@@ -423,18 +423,7 @@ func (c *Client) CheckNode() *Node {
 					}
 					return node
 				}
-				if c.InConnectGraceWindow(connectGraceProtectWindow) {
-					first = false
-					graceChecksLeft--
-					if graceChecksLeft <= 0 {
-						return nil
-					}
-					c.mu.Lock()
-					c.LastUUID = ""
-					c.mu.Unlock()
-					continue
-				}
-				if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+				if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
 					first = false
 					graceChecksLeft--
 					if graceChecksLeft <= 0 {
