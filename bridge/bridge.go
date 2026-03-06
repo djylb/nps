@@ -588,7 +588,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
-			client.RemoveOfflineNodes()
+			client.RemoveOfflineNodesExcept(uuid)
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
@@ -625,7 +625,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
-			client.RemoveOfflineNodes()
+			client.RemoveOfflineNodesExcept(uuid)
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n

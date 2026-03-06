@@ -484,10 +484,14 @@ func (c *Client) NodeCount() int {
 }
 
 func (c *Client) RemoveOfflineNodes() (removed int) {
-	return c.removeOfflineNodes(false)
+	return c.removeOfflineNodes("", false)
 }
 
-func (c *Client) removeOfflineNodes(force bool) (removed int) {
+func (c *Client) RemoveOfflineNodesExcept(keepUUID string) (removed int) {
+	return c.removeOfflineNodes(keepUUID, false)
+}
+
+func (c *Client) removeOfflineNodes(keepUUID string, force bool) (removed int) {
 	if c.nodeList.Size() == 0 {
 		return 0
 	}
@@ -499,7 +503,7 @@ func (c *Client) removeOfflineNodes(force bool) (removed int) {
 	c.nodes.Range(func(key, value any) bool {
 		uuid, ok1 := key.(string)
 		node, ok2 := value.(*Node)
-		if !ok1 || !ok2 {
+		if !ok1 || !ok2 || uuid == keepUUID {
 			return true
 		}
 		if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
