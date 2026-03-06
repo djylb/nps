@@ -230,15 +230,6 @@ func (n *Node) IsOffline() bool {
 	return !n.isOnline()
 }
 
-func (n *Node) IsDefinitelyOffline() bool {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if n.Client == nil || n.Client.Id <= 0 {
-		return false
-	}
-	return n.isTunnelClosed() && (n.signal == nil || n.signal.IsClosed())
-}
-
 func (n *Node) Retry() bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -522,7 +513,7 @@ func (c *Client) removeOfflineNodes(keepUUID string, ignoreGrace bool, force boo
 			return true
 		}
 		if node.IsOffline() {
-			if force || node.IsDefinitelyOffline() || !node.Retry() {
+			if force || !node.Retry() {
 				toRemove = append(toRemove, pair{uuid: uuid, node: node})
 			}
 		}
