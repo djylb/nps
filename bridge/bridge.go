@@ -278,7 +278,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	//s.DelClient(id)
 	//_ = c.Close()
 	_ = node.Close()
-	client.RemoveOfflineNodes()
+	client.RemoveOfflineNodes(false)
 }
 
 func (s *Bridge) verifyError(c *conn.Conn) {
@@ -588,11 +588,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
+			client.RemoveOfflineNodesExcept(uuid, true)
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
 				node.AddSignal(c)
-				client.RemoveOfflineNodes()
 			} else {
 				client.AddNode(node)
 			}
@@ -625,11 +625,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
+			client.RemoveOfflineNodesExcept(uuid, true)
 			n, ok := client.GetNodeByUUID(uuid)
 			if ok {
 				node = n
 				node.AddTunnel(anyConn)
-				client.RemoveOfflineNodes()
 			} else {
 				client.AddNode(node)
 			}
@@ -641,7 +641,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs string, first bool) {
 					logs.Trace("Tunnel connection closed, client %d, remote %v", id, addr)
 					_ = c.Close()
 					_ = node.Close()
-					client.RemoveOfflineNodes()
+					client.RemoveOfflineNodes(false)
 				}()
 				switch t := anyConn.(type) {
 				case *mux.Mux:
@@ -941,7 +941,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		} else {
 			logs.Warn("Failed to find tunnel for host: %s", link.Host)
 			err = fmt.Errorf("failed to find tunnel for host: %s", link.Host)
-			client.RemoveOfflineNodes()
+			client.RemoveOfflineNodes(false)
 			return
 		}
 	} else {
@@ -1000,6 +1000,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	if _, err = conn.NewConn(target).SendInfo(link, ""); err != nil {
 		logs.Info("new connection error, the target %s refused to connect", link.Host)
+		_ = target.Close()
 		return
 	}
 
@@ -1038,7 +1039,7 @@ func (s *Bridge) ping() {
 					closedClients = append(closedClients, clientID)
 					return true
 				}
-				client.RemoveOfflineNodes()
+				client.RemoveOfflineNodes(false)
 				node := client.CheckNode()
 				if node == nil || node.IsOffline() {
 					client.retryTime++

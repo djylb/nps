@@ -93,6 +93,7 @@ func SetClientSelectMode(v any) error {
 
 const retryTimeMax = 3
 const connectGraceProtectWindow = 3 * time.Second
+const nodeJoinGraceProtectWindow = 3 * time.Second
 
 type Node struct {
 	mu        sync.RWMutex
@@ -103,14 +104,20 @@ type Node struct {
 	signal    *conn.Conn
 	tunnel    any //*mux.Mux or *quic.Conn
 	retryTime int
+	joinNano  int64
 }
 
 func NewNode(uuid, vs string, bv int) *Node {
 	return &Node{
-		UUID:    uuid,
-		Version: vs,
-		BaseVer: bv,
+		UUID:     uuid,
+		Version:  vs,
+		BaseVer:  bv,
+		joinNano: time.Now().UnixNano(),
 	}
+}
+
+func (n *Node) touchJoinTime() {
+	n.joinNano = time.Now().UnixNano()
 }
 
 func (n *Node) AddNode(node *Node) {
@@ -122,6 +129,7 @@ func (n *Node) AddNode(node *Node) {
 	if node.BaseVer != 0 {
 		n.BaseVer = node.BaseVer
 	}
+	n.touchJoinTime()
 	if node.signal != nil {
 		n.addSignal(node.signal)
 	}
@@ -141,6 +149,7 @@ func (n *Node) addSignal(signal *conn.Conn) {
 		_ = n.signal.Close()
 	}
 	n.signal = signal
+	n.touchJoinTime()
 }
 
 func (n *Node) AddTunnel(tunnel any) {
@@ -153,7 +162,21 @@ func (n *Node) addTunnel(tunnel any) {
 	if n.tunnel != tunnel {
 		_ = n.closeTunnel("override")
 		n.tunnel = tunnel
+		n.touchJoinTime()
 	}
+}
+
+func (n *Node) InJoinGraceWindow(window time.Duration) bool {
+	if window <= 0 {
+		return false
+	}
+	n.mu.RLock()
+	v := n.joinNano
+	n.mu.RUnlock()
+	if v <= 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, v)) < window
 }
 
 func (n *Node) GetSignal() *conn.Conn {
@@ -400,7 +423,7 @@ func (c *Client) CheckNode() *Node {
 					}
 					return node
 				}
-				if c.InConnectGraceWindow(connectGraceProtectWindow) {
+				if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
 					first = false
 					graceChecksLeft--
 					if graceChecksLeft <= 0 {
@@ -460,11 +483,19 @@ func (c *Client) NodeCount() int {
 	return c.nodeList.Size()
 }
 
-func (c *Client) RemoveOfflineNodes() (removed int) {
+func (c *Client) RemoveOfflineNodes(ignoreClientGrace bool) (removed int) {
+	return c.removeOfflineNodes("", false, ignoreClientGrace)
+}
+
+func (c *Client) RemoveOfflineNodesExcept(keepUUID string, ignoreClientGrace bool) (removed int) {
+	return c.removeOfflineNodes(keepUUID, false, ignoreClientGrace)
+}
+
+func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGrace bool) (removed int) {
 	if c.nodeList.Size() == 0 {
 		return 0
 	}
-	if c.InConnectGraceWindow(connectGraceProtectWindow) {
+	if !force && !ignoreClientGrace && c.InConnectGraceWindow(connectGraceProtectWindow) {
 		return 0
 	}
 	type pair struct {
@@ -475,8 +506,14 @@ func (c *Client) RemoveOfflineNodes() (removed int) {
 	c.nodes.Range(func(key, value any) bool {
 		uuid, ok1 := key.(string)
 		node, ok2 := value.(*Node)
-		if ok1 && ok2 && node.IsOffline() {
-			if !node.Retry() {
+		if !ok1 || !ok2 || uuid == keepUUID {
+			return true
+		}
+		if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+			return true
+		}
+		if node.IsOffline() {
+			if force || !node.Retry() {
 				toRemove = append(toRemove, pair{uuid: uuid, node: node})
 			}
 		}
