@@ -55,8 +55,8 @@ const (
 // |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
 // +----+-----+-------+------+----------+----------+
 func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
-	header := make([]byte, 3)
-	if _, err := io.ReadFull(c, header); err != nil {
+	var header [3]byte
+	if _, err := io.ReadFull(c, header[:]); err != nil {
 		logs.Warn("illegal request (head) %v", err)
 		_ = c.Close()
 		return
@@ -102,20 +102,19 @@ func (s *TunnelModeServer) sendReply(c net.Conn, rep uint8) {
 	}
 
 	nPort, _ := strconv.Atoi(localPort)
-	portBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(portBytes, uint16(nPort))
 
 	// VER, REP, RSV, ATYP, BND.ADDR, BND.PORT
-	reply := []byte{5, rep, 0, atype}
-	reply = append(reply, addrBytes...)
-	reply = append(reply, portBytes...)
+	reply := make([]byte, 6+len(addrBytes))
+	reply[0], reply[1], reply[2], reply[3] = 5, rep, 0, atype
+	copy(reply[4:], addrBytes)
+	binary.BigEndian.PutUint16(reply[4+len(addrBytes):], uint16(nPort))
 	_, _ = c.Write(reply)
 }
 
 // CONNECT command handler: parse target and bridge TCP through DealClient.
 func (s *TunnelModeServer) handleConnect(c net.Conn) {
-	addrType := make([]byte, 1)
-	if _, err := io.ReadFull(c, addrType); err != nil {
+	var addrType [1]byte
+	if _, err := io.ReadFull(c, addrType[:]); err != nil {
 		s.sendReply(c, addrTypeNotSupported)
 		return
 	}
@@ -226,16 +225,15 @@ func (s *TunnelModeServer) sendUdpReply(writeConn net.Conn, replyUDP *net.UDPCon
 	}
 
 	la := replyUDP.LocalAddr().(*net.UDPAddr)
-	portBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(portBytes, uint16(la.Port))
 
 	logs.Debug("send udp reply: chosen=%v atype=%d bndPort=%d wantV6=%v tcpLocal=%v udpLocal=%v clientIP=%v",
 		ipToUse, atype, la.Port, wantV6, writeConn.LocalAddr(), replyUDP.LocalAddr(), clientIP)
 
 	// VER, REP, RSV, ATYP, BND.ADDR, BND.PORT
-	reply := []byte{5, rep, 0, atype}
-	reply = append(reply, addrBytes...)
-	reply = append(reply, portBytes...)
+	reply := make([]byte, 6+len(addrBytes))
+	reply[0], reply[1], reply[2], reply[3] = 5, rep, 0, atype
+	copy(reply[4:], addrBytes)
+	binary.BigEndian.PutUint16(reply[4+len(addrBytes):], uint16(la.Port))
 	_, _ = writeConn.Write(reply)
 }
 
@@ -255,8 +253,8 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 	}
 	defer c.Close()
 
-	addrType := make([]byte, 1)
-	if _, err := io.ReadFull(c, addrType); err != nil {
+	var addrType [1]byte
+	if _, err := io.ReadFull(c, addrType[:]); err != nil {
 		s.sendReply(c, addrTypeNotSupported)
 		return
 	}
@@ -422,8 +420,8 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 }
 
 func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
-	header := []byte{0, 0}
-	if _, err := io.ReadFull(c, header); err != nil {
+	var header [2]byte
+	if _, err := io.ReadFull(c, header[:]); err != nil {
 		return err
 	}
 	if header[0] != userAuthVersion {
@@ -468,15 +466,15 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		s.Task.Socks5Proxy = false
 	}
 
-	buf := make([]byte, 2)
-	if _, err := io.ReadFull(c, buf); err != nil {
+	var buf [2]byte
+	if _, err := io.ReadFull(c, buf[:]); err != nil {
 		logs.Warn("negotiation err %v", err)
 		_ = c.Close()
 		return err
 	}
 
 	if version := buf[0]; version != 5 {
-		method := string(buf)
+		method := string(buf[:])
 		switch method {
 		case "GE", "PO", "HE", "PU ", "DE", "OP", "CO", "TR", "PA", "PR", "MK", "MO", "LO", "UN", "RE", "AC", "SE", "LI":
 			if !s.Task.HttpProxy {
@@ -484,7 +482,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
-			if err := ProcessHttp(c.SetRb(buf), s); err != nil {
+			if err := ProcessHttp(c.SetRb(buf[:]), s); err != nil {
 				logs.Warn("http proxy error: %v", err)
 				_ = c.Close()
 				return err
