@@ -507,6 +507,7 @@ func (s *Mux) release() {
 		if connection == nil {
 			break
 		}
+		connection = nil
 	}
 	s.writeQueue.Stop()
 	s.newConnQueue.Stop()

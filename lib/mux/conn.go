@@ -354,6 +354,7 @@ copyData:
 	pOff += l
 	Self.off += uint32(l)
 	n += l
+	l = 0
 	if Self.off == uint32(Self.element.L) {
 		windowBuff.Put(Self.element.Buf)
 		Self.sendStatus(id, Self.element.L)

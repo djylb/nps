@@ -53,6 +53,7 @@ var QuicConfig = &quic.Config{
 }
 
 func init() {
+	rand.Seed(time.Now().UnixNano())
 	crypt.InitTls(tls.Certificate{})
 }
 
@@ -421,7 +422,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string, localIP str
 	}
 
 	if connection == nil {
-		return nil, "", fmt.Errorf("NewConn: unexpected nil connection for tp=%q server=%q", tp, server)
+		return nil, "", fmt.Errorf("newConn: unexpected nil connection for tp=%q server=%q", tp, server)
 	}
 
 	if err != nil {
@@ -479,7 +480,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string, localIP str
 			return nil, "", err
 		} else if s == common.VERIFY_EER {
 			_ = c.Close()
-			return nil, "", fmt.Errorf("Validation key %s incorrect", vkey)
+			return nil, "", fmt.Errorf("validation key %s incorrect", vkey)
 		}
 	} else {
 		// 0.27.0
@@ -545,7 +546,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string, localIP str
 		if err != nil {
 			logs.Error("error reading server response: %v", err)
 			_ = c.Close()
-			return nil, "", fmt.Errorf("Validation key %s incorrect", vkey)
+			return nil, "", fmt.Errorf("validation key %s incorrect", vkey)
 		}
 		if !bytes.Equal(b, crypt.ComputeHMAC(vkey, ts, hmacBuf, []byte(version.GetVersion(Ver)))) {
 			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
@@ -594,7 +595,7 @@ func NewConn(tp string, vkey string, server string, proxyUrl string, localIP str
 
 func SendType(c *conn.Conn, connType, uuid string) error {
 	if c == nil {
-		return fmt.Errorf("SendType: nil conn (connType=%s uuid=%s)", connType, uuid)
+		return fmt.Errorf("sendType: nil conn (connType=%s uuid=%s)", connType, uuid)
 	}
 	if _, err := c.BufferWrite([]byte(connType)); err != nil {
 		_ = c.Close()

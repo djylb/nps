@@ -308,6 +308,7 @@ func downloadLatest(bin string) string {
 		destPath, err := os.MkdirTemp(os.TempDir(), "nps-")
 		if err != nil {
 			_ = resp.Body.Close()
+			lastErr = err
 			//continue
 			log.Fatal("Failed to create temp directory:", err)
 		}
