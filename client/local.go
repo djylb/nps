@@ -401,6 +401,8 @@ func (mgr *P2PManager) getSecretConn() (c net.Conn, err error) {
 		mgr.mu.Lock()
 		if mgr.uuid == "" {
 			mgr.uuid = uuid
+		} else {
+			uuid = mgr.uuid
 		}
 		mgr.mu.Unlock()
 		if Ver > 5 {

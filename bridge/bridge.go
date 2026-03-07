@@ -1264,12 +1264,12 @@ loop:
 			}
 		}
 
-		if fail && client != nil {
-			s.DelClient(client.Id)
-		}
-		_ = c.Close()
 	}
 
+	if fail && client != nil {
+		s.DelClient(client.Id)
+	}
+	_ = c.Close()
 }
 
 func (s *Bridge) IsServer() bool {
