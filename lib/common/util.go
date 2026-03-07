@@ -274,7 +274,7 @@ func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[
 // CheckAuth Check if the Request request is validated
 func CheckAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
 	// Bypass authentication only if user, passwd are empty and multiAccount is nil or empty
-	if user == "" && passwd == "" && (len(accountMap) == 0) && (len(authMap) == 0) {
+	if user == "" && passwd == "" && len(accountMap) == 0 && len(authMap) == 0 {
 		return true
 	}
 
