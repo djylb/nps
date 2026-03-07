@@ -62,3 +62,82 @@ func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
 		t.Fatalf("expected regenerated secret to be valid, got %q", c.WebTotpSecret)
 	}
 }
+
+func TestTunnelCompileDestACLNormalizesAndHandlesEmptyRules(t *testing.T) {
+	t.Run("invalid mode falls back to off", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: 99, DestAclRules: "Allow all"}
+		tn.CompileDestACL()
+
+		if tn.DestAclMode != AclOff {
+			t.Fatalf("expected mode to fallback to off, got %d", tn.DestAclMode)
+		}
+		if tn.DestAclSet != nil {
+			t.Fatalf("expected acl set to be nil in off mode")
+		}
+	})
+
+	t.Run("whitelist with empty rules denies all", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "  \r\n\t "}
+		tn.CompileDestACL()
+
+		if tn.DestAclRules != "" {
+			t.Fatalf("expected normalized empty rules, got %q", tn.DestAclRules)
+		}
+		if tn.DestAclSet == nil {
+			t.Fatalf("expected acl set to be created for empty whitelist")
+		}
+	})
+
+	t.Run("blacklist with empty rules allows all", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: ""}
+		tn.CompileDestACL()
+
+		if tn.DestAclSet != nil {
+			t.Fatalf("expected acl set to stay nil for empty blacklist")
+		}
+	})
+}
+
+func TestTunnelAllowsDestination(t *testing.T) {
+	t.Run("nil tunnel allows all", func(t *testing.T) {
+		var tn *Tunnel
+		if !tn.AllowsDestination("example.com:443") {
+			t.Fatalf("expected nil tunnel to allow destination")
+		}
+	})
+
+	t.Run("whitelist allows matched and blocks unmatched", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "example.com"}
+		tn.CompileDestACL()
+
+		if !tn.AllowsDestination("example.com:443") {
+			t.Fatalf("expected matched destination to be allowed in whitelist mode")
+		}
+		if tn.AllowsDestination("blocked.com:443") {
+			t.Fatalf("expected unmatched destination to be denied in whitelist mode")
+		}
+	})
+
+	t.Run("blacklist denies matched and allows unmatched", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: "blocked.com"}
+		tn.CompileDestACL()
+
+		if tn.AllowsDestination("blocked.com:80") {
+			t.Fatalf("expected matched destination to be denied in blacklist mode")
+		}
+		if !tn.AllowsDestination("safe.com:80") {
+			t.Fatalf("expected unmatched destination to be allowed in blacklist mode")
+		}
+	})
+
+	t.Run("on demand compile path works", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "allow.me", DestAclSet: nil}
+
+		if !tn.AllowsDestination("allow.me:8080") {
+			t.Fatalf("expected destination to be allowed after on-demand compile")
+		}
+		if tn.DestAclSet == nil {
+			t.Fatalf("expected on-demand compile to populate acl set")
+		}
+	})
+}
