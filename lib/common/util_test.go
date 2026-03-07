@@ -6,6 +6,78 @@ import (
 	"testing"
 )
 
+func TestValidateAddr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "valid ipv4", input: "127.0.0.1:80", want: "127.0.0.1:80"},
+		{name: "valid ipv6", input: "[2001:db8::1]:443", want: "[2001:db8::1]:443"},
+		{name: "domain not allowed", input: "example.com:443", want: ""},
+		{name: "invalid port", input: "127.0.0.1:70000", want: ""},
+		{name: "missing port", input: "127.0.0.1", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ValidateAddr(tc.input); got != tc.want {
+				t.Fatalf("ValidateAddr(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSplitServerAndPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantServer string
+		wantPath   string
+	}{
+		{name: "with path", input: "example.com/api", wantServer: "example.com", wantPath: "/api"},
+		{name: "without path", input: "example.com", wantServer: "example.com", wantPath: ""},
+		{name: "path only", input: "/api", wantServer: "", wantPath: "/api"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, path := SplitServerAndPath(tc.input)
+			if server != tc.wantServer || path != tc.wantPath {
+				t.Fatalf("SplitServerAndPath(%q) = (%q, %q), want (%q, %q)", tc.input, server, path, tc.wantServer, tc.wantPath)
+			}
+		})
+	}
+}
+
+func TestMathHelpers(t *testing.T) {
+	if got := Max(-3, 0, 10, 2); got != 10 {
+		t.Fatalf("Max() = %d, want %d", got, 10)
+	}
+	if got := Min(-3, 0, 10, 2); got != -3 {
+		t.Fatalf("Min() = %d, want %d", got, -3)
+	}
+
+	tests := []struct {
+		name  string
+		input int
+		want  int
+	}{
+		{name: "positive in range", input: 8080, want: 8080},
+		{name: "positive overflow", input: 70000, want: 4464},
+		{name: "negative", input: -1, want: 65535},
+		{name: "negative large", input: -70000, want: 61072},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := GetPort(tc.input); got != tc.want {
+				t.Fatalf("GetPort(%d) = %d, want %d", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDomainCheck(t *testing.T) {
 	tests := []struct {
 		name  string
