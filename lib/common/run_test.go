@@ -92,3 +92,45 @@ func TestRunTimeAndSecs(t *testing.T) {
 		t.Fatalf("GetStartTime() = %d, want %d", got, StartTime.Unix())
 	}
 }
+
+func TestRunTimeZeroValueShowsSeconds(t *testing.T) {
+	oldStart := StartTime
+	defer func() { StartTime = oldStart }()
+
+	StartTime = time.Now()
+	if got := GetRunTime(); !strings.Contains(got, "s") {
+		t.Fatalf("GetRunTime() = %q, want seconds suffix", got)
+	}
+}
+
+func TestLogAndTmpPaths(t *testing.T) {
+	if IsWindows() {
+		appPath := GetAppPath()
+		if got := GetLogPath(); got != filepath.Join(appPath, "nps.log") {
+			t.Fatalf("GetLogPath() = %q, want %q", got, filepath.Join(appPath, "nps.log"))
+		}
+		if got := GetNpcLogPath(); got != filepath.Join(appPath, "npc.log") {
+			t.Fatalf("GetNpcLogPath() = %q, want %q", got, filepath.Join(appPath, "npc.log"))
+		}
+		if got := GetTmpPath(); got != appPath {
+			t.Fatalf("GetTmpPath() = %q, want %q", got, appPath)
+		}
+		if got := GetConfigPath(); got != filepath.Join(appPath, "conf/npc.conf") {
+			t.Fatalf("GetConfigPath() = %q, want %q", got, filepath.Join(appPath, "conf/npc.conf"))
+		}
+		return
+	}
+
+	if got := GetLogPath(); got != "/var/log/nps.log" {
+		t.Fatalf("GetLogPath() = %q, want %q", got, "/var/log/nps.log")
+	}
+	if got := GetNpcLogPath(); got != "/var/log/npc.log" {
+		t.Fatalf("GetNpcLogPath() = %q, want %q", got, "/var/log/npc.log")
+	}
+	if got := GetTmpPath(); got != "/tmp" {
+		t.Fatalf("GetTmpPath() = %q, want %q", got, "/tmp")
+	}
+	if got := GetConfigPath(); got != "conf/npc.conf" {
+		t.Fatalf("GetConfigPath() = %q, want %q", got, "conf/npc.conf")
+	}
+}

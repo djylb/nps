@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -324,5 +327,136 @@ func TestIPAndBindHelpers(t *testing.T) {
 
 	if !IsPublicHost("8.8.8.8:53") || IsPublicHost("127.0.0.1:53") || !IsPublicHost("example.com:443") || IsPublicHost(":bad") {
 		t.Fatalf("IsPublicHost() returned unexpected result")
+	}
+}
+
+
+func TestCheckAuthWithAccountMap(t *testing.T) {
+	if !CheckAuthWithAccountMap("admin", "pass", "admin", "pass", nil, nil) {
+		t.Fatal("CheckAuthWithAccountMap() = false, want true for global account")
+	}
+	if CheckAuthWithAccountMap("", "pass", "admin", "pass", map[string]string{"u": "p"}, nil) {
+		t.Fatal("CheckAuthWithAccountMap() = true, want false for empty user in multi-account mode")
+	}
+	if !CheckAuthWithAccountMap("u", "p", "admin", "pass", map[string]string{"u": "p"}, nil) {
+		t.Fatal("CheckAuthWithAccountMap() = false, want true for account map match")
+	}
+	if !CheckAuthWithAccountMap("u2", "p2", "admin", "pass", nil, map[string]string{"u2": "p2"}) {
+		t.Fatal("CheckAuthWithAccountMap() = false, want true for auth map match")
+	}
+	if CheckAuthWithAccountMap("u", "bad", "admin", "pass", map[string]string{"u": "p"}, nil) {
+		t.Fatal("CheckAuthWithAccountMap() = true, want false for wrong password")
+	}
+}
+
+func TestDealMultiUserAndBoolHelpers(t *testing.T) {
+	got := DealMultiUser(" user1 = pass1\nuser2=pass2\nlonely ")
+	if len(got) != 3 || got["user1"] != "pass1" || got["user2"] != "pass2" || got["lonely"] != "" {
+		t.Fatalf("DealMultiUser() = %#v, want parsed map", got)
+	}
+	if DealMultiUser("   ") != nil {
+		t.Fatal("DealMultiUser(empty) != nil")
+	}
+
+	if !GetBoolByStr("1") || !GetBoolByStr("true") || GetBoolByStr("TRUE") {
+		t.Fatal("GetBoolByStr() returned unexpected result")
+	}
+	if GetStrByBool(true) != "1" || GetStrByBool(false) != "0" {
+		t.Fatal("GetStrByBool() returned unexpected result")
+	}
+}
+
+func TestTimeAndStringHelpers(t *testing.T) {
+	if got := GetIntNoErrByStr(" 42 "); got != 42 {
+		t.Fatalf("GetIntNoErrByStr() = %d, want 42", got)
+	}
+	if got := GetIntNoErrByStr("bad"); got != 0 {
+		t.Fatalf("GetIntNoErrByStr(invalid) = %d, want 0", got)
+	}
+
+	if tm := GetTimeNoErrByStr("1700000000"); tm.IsZero() {
+		t.Fatal("GetTimeNoErrByStr(unix-seconds) returned zero time")
+	}
+	if tm := GetTimeNoErrByStr("1700000000000"); tm.IsZero() {
+		t.Fatal("GetTimeNoErrByStr(unix-millis) returned zero time")
+	}
+	if tm := GetTimeNoErrByStr("2024-01-01 00:00:00"); tm.IsZero() {
+		t.Fatal("GetTimeNoErrByStr(datetime) returned zero time")
+	}
+	if tm := GetTimeNoErrByStr("not-a-time"); !tm.IsZero() {
+		t.Fatalf("GetTimeNoErrByStr(invalid) = %v, want zero time", tm)
+	}
+
+	if !ContainsFold("HelloWorld", "world") || ContainsFold("abc", "XYZ") {
+		t.Fatal("ContainsFold() returned unexpected result")
+	}
+}
+
+func TestPathAndFileHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	f := filepath.Join(tmpDir, "sample.txt")
+	if err := os.WriteFile(f, []byte("abc"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !FileExists(f) || FileExists(filepath.Join(tmpDir, "missing.txt")) {
+		t.Fatal("FileExists() returned unexpected result")
+	}
+	if got, err := ReadAllFromFile(f); err != nil || string(got) != "abc" {
+		t.Fatalf("ReadAllFromFile() = (%q, %v), want (abc, nil)", string(got), err)
+	}
+
+	oldConf := ConfPath
+	oldArgs := append([]string(nil), os.Args...)
+	defer func() { ConfPath = oldConf; os.Args = oldArgs }()
+	ConfPath = tmpDir
+	os.Args = []string{"nps", "-c", "conf/nps.conf"}
+
+	if got := GetPath("conf/a.conf"); !strings.HasSuffix(got, filepath.Join("conf", "a.conf")) {
+		t.Fatalf("GetPath(relative) = %q, want suffix conf/a.conf", got)
+	}
+}
+
+func TestCertHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	cert := "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+	key := "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----"
+	if err := os.WriteFile(certPath, []byte(cert), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, []byte(key), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := GetCertContent(cert, "CERTIFICATE"); err != nil || got != cert {
+		t.Fatalf("GetCertContent(text) = (%q, %v), want text,nil", got, err)
+	}
+	if got, err := GetCertContent(certPath, "CERTIFICATE"); err != nil || !strings.Contains(got, "BEGIN CERTIFICATE") {
+		t.Fatalf("GetCertContent(file) err=%v got=%q", err, got)
+	}
+	if got, err := GetCertContent(filepath.Join(tmpDir, "missing.pem"), "CERTIFICATE"); err == nil || got != "" {
+		t.Fatalf("GetCertContent(missing) = (%q, %v), want empty,error", got, err)
+	}
+
+	if c, k, ok := LoadCertPair(certPath, keyPath); !ok || c == "" || k == "" {
+		t.Fatal("LoadCertPair(valid files) failed")
+	}
+	if _, _, ok := LoadCertPair(certPath, filepath.Join(tmpDir, "missing.key")); ok {
+		t.Fatal("LoadCertPair(missing key) = ok, want false")
+	}
+
+	if got := GetCertType(""); got != "empty" {
+		t.Fatalf("GetCertType(empty) = %q, want empty", got)
+	}
+	if got := GetCertType(cert); got != "text" {
+		t.Fatalf("GetCertType(text) = %q, want text", got)
+	}
+	if got := GetCertType(certPath); got != "file" {
+		t.Fatalf("GetCertType(file) = %q, want file", got)
+	}
+	if got := GetCertType("non-existent.pem"); got != "invalid" {
+		t.Fatalf("GetCertType(invalid) = %q, want invalid", got)
 	}
 }
