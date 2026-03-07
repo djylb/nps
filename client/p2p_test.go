@@ -132,3 +132,89 @@ func TestP2PHelpers(t *testing.T) {
 		t.Fatal("has=false should not be regular")
 	}
 }
+
+func TestFillTripletByPortDiff(t *testing.T) {
+	tests := []struct {
+		name       string
+		a1, a2, a3 string
+		want1      string
+		want2      string
+		want3      string
+	}{
+		{
+			name:  "keep complete triplet",
+			a1:    "1.1.1.1:1000",
+			a2:    "1.1.1.1:1003",
+			a3:    "1.1.1.1:1006",
+			want1: "1.1.1.1:1000",
+			want2: "1.1.1.1:1003",
+			want3: "1.1.1.1:1006",
+		},
+		{
+			name:  "fill missing first",
+			a2:    "1.1.1.1:2003",
+			a3:    "1.1.1.1:2006",
+			want1: "1.1.1.1:2000",
+			want2: "1.1.1.1:2003",
+			want3: "1.1.1.1:2006",
+		},
+		{
+			name:  "fill missing middle",
+			a1:    "1.1.1.1:2000",
+			a3:    "1.1.1.1:2006",
+			want1: "1.1.1.1:2000",
+			want2: "1.1.1.1:2003",
+			want3: "1.1.1.1:2006",
+		},
+		{
+			name:  "fill missing last",
+			a1:    "1.1.1.1:2000",
+			a2:    "1.1.1.1:2003",
+			want1: "1.1.1.1:2000",
+			want2: "1.1.1.1:2003",
+			want3: "1.1.1.1:2006",
+		},
+		{
+			name:  "zero diff uses existing endpoint",
+			a2:    "1.1.1.1:3000",
+			a3:    "1.1.1.1:3000",
+			want1: "1.1.1.1:3000",
+			want2: "1.1.1.1:3000",
+			want3: "1.1.1.1:3000",
+		},
+		{
+			name:  "invalid input keeps original",
+			a2:    "bad",
+			a3:    "1.1.1.1:3000",
+			want1: "",
+			want2: "bad",
+			want3: "1.1.1.1:3000",
+		},
+		{
+			name:  "clamp low port",
+			a2:    "1.1.1.1:2",
+			a3:    "1.1.1.1:1",
+			want1: "1.1.1.1:3",
+			want2: "1.1.1.1:2",
+			want3: "1.1.1.1:1",
+		},
+		{
+			name:  "clamp high port",
+			a1:    "1.1.1.1:65534",
+			a2:    "1.1.1.1:65535",
+			want1: "1.1.1.1:65534",
+			want2: "1.1.1.1:65535",
+			want3: "1.1.1.1:65535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got1, got2, got3 := fillTripletByPortDiff(tt.a1, tt.a2, tt.a3)
+			if got1 != tt.want1 || got2 != tt.want2 || got3 != tt.want3 {
+				t.Fatalf("fillTripletByPortDiff(%q,%q,%q)=(%q,%q,%q), want (%q,%q,%q)",
+					tt.a1, tt.a2, tt.a3, got1, got2, got3, tt.want1, tt.want2, tt.want3)
+			}
+		})
+	}
+}
