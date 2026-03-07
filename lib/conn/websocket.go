@@ -14,36 +14,45 @@ import (
 
 type WsConn struct {
 	*websocket.Conn
-	RealIP  string
-	readBuf []byte
+	RealIP    string
+	readFrame io.Reader
 }
 
 func NewWsConn(ws *websocket.Conn) *WsConn {
-	return &WsConn{Conn: ws, readBuf: make([]byte, 0)}
+	return &WsConn{Conn: ws}
 }
 
 func (c *WsConn) Read(p []byte) (int, error) {
-	if len(c.readBuf) > 0 {
-		n := copy(p, c.readBuf)
-		c.readBuf = c.readBuf[n:]
-		return n, nil
+	if len(p) == 0 {
+		return 0, nil
 	}
-	mt, r, err := c.NextReader()
-	if err != nil {
-		return 0, err
+
+	for {
+		if c.readFrame == nil {
+			mt, r, err := c.NextReader()
+			if err != nil {
+				return 0, err
+			}
+			if mt == websocket.CloseMessage {
+				return 0, io.EOF
+			}
+			c.readFrame = r
+		}
+
+		n, err := c.readFrame.Read(p)
+		switch {
+		case n > 0 && err == io.EOF:
+			c.readFrame = nil
+			return n, nil
+		case n > 0:
+			return n, err
+		case err == io.EOF:
+			c.readFrame = nil
+			continue
+		default:
+			return 0, err
+		}
 	}
-	if mt == websocket.CloseMessage {
-		return 0, io.EOF
-	}
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, err
-	}
-	n := copy(p, data)
-	if n < len(data) {
-		c.readBuf = append(c.readBuf, data[n:]...)
-	}
-	return n, nil
 }
 
 func (c *WsConn) Write(p []byte) (int, error) {
