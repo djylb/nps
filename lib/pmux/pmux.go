@@ -76,8 +76,9 @@ func (pMux *PortMux) Start() error {
 			conn, err := pMux.Listener.Accept()
 			if err != nil {
 				logs.Warn("%v", err)
-				//close
+				// close and stop processing when listener is no longer available.
 				_ = pMux.Close()
+				return
 			}
 			go pMux.process(conn)
 		}
@@ -86,6 +87,9 @@ func (pMux *PortMux) Start() error {
 }
 
 func (pMux *PortMux) process(conn net.Conn) {
+	if conn == nil {
+		return
+	}
 	// Recognition according to different signs
 	// read 3 byte
 	buf := make([]byte, 3)
@@ -196,12 +200,31 @@ func (pMux *PortMux) Close() error {
 		return errors.New("the port pmux has closed")
 	}
 	pMux.isClose = true
-	close(pMux.clientConn)
-	close(pMux.clientTlsConn)
-	close(pMux.httpsConn)
-	close(pMux.httpConn)
-	close(pMux.managerConn)
-	return pMux.Listener.Close()
+	if pMux.clientConn != nil {
+		close(pMux.clientConn)
+	}
+	if pMux.clientTlsConn != nil {
+		close(pMux.clientTlsConn)
+	}
+	if pMux.clientWsConn != nil {
+		close(pMux.clientWsConn)
+	}
+	if pMux.clientWssConn != nil {
+		close(pMux.clientWssConn)
+	}
+	if pMux.httpsConn != nil {
+		close(pMux.httpsConn)
+	}
+	if pMux.httpConn != nil {
+		close(pMux.httpConn)
+	}
+	if pMux.managerConn != nil {
+		close(pMux.managerConn)
+	}
+	if pMux.Listener != nil {
+		return pMux.Listener.Close()
+	}
+	return nil
 }
 
 func parseHostHeader(line []byte) (string, bool) {

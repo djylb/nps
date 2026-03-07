@@ -50,3 +50,15 @@ func TestPortMux_ListenersAndClose(t *testing.T) {
 		t.Fatalf("close failed: %v", err)
 	}
 }
+
+func TestPortMux_CloseWithoutListeners(t *testing.T) {
+	pMux := &PortMux{}
+	if err := pMux.Close(); err != nil {
+		t.Fatalf("close without listeners failed: %v", err)
+	}
+}
+
+func TestPortMux_ProcessNilConn(t *testing.T) {
+	pMux := &PortMux{}
+	pMux.process(nil)
+}
