@@ -503,20 +503,27 @@ func TestUdpPort(port int) bool {
 // # Characters are used to separate data
 func BinaryWrite(raw *bytes.Buffer, v ...string) {
 	b := GetWriteStr(v...)
-	_ = binary.Write(raw, binary.LittleEndian, int32(len(b)))
-	_ = binary.Write(raw, binary.LittleEndian, b)
+	var lenBuf [4]byte
+	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(b)))
+	_, _ = raw.Write(lenBuf[:])
+	_, _ = raw.Write(b)
 }
 
 // GetWriteStr get seq str
 func GetWriteStr(v ...string) []byte {
-	buffer := new(bytes.Buffer)
-	var l int32
-	for _, v := range v {
-		l += int32(len([]byte(v))) + int32(len([]byte(CONN_DATA_SEQ)))
-		_ = binary.Write(buffer, binary.LittleEndian, []byte(v))
-		_ = binary.Write(buffer, binary.LittleEndian, []byte(CONN_DATA_SEQ))
+	sep := CONN_DATA_SEQ
+	sepLen := len(sep)
+	total := 0
+	for _, s := range v {
+		total += len(s) + sepLen
 	}
-	return buffer.Bytes()
+
+	buffer := make([]byte, 0, total)
+	for _, s := range v {
+		buffer = append(buffer, s...)
+		buffer = append(buffer, sep...)
+	}
+	return buffer
 }
 
 // InStrArr inArray str interface
