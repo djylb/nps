@@ -331,11 +331,16 @@ func DelTask(id int) error {
 
 // GetTunnel get task list by page num
 func GetTunnel(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*file.Tunnel, int) {
-	allList := make([]*file.Tunnel, 0) //store all Tunnel
-	list := make([]*file.Tunnel, 0)
-	originLength := length
-	var cnt int
 	keys := file.GetMapKeys(&file.GetDb().JsonDb.Tasks, false, "", "")
+	allList := make([]*file.Tunnel, 0, len(keys)) //store all Tunnel
+	resultCap := 0
+	if length > 0 {
+		resultCap = length
+	}
+	list := make([]*file.Tunnel, 0, resultCap)
+	originLength := length
+	searchInt := common.GetIntNoErrByStr(search)
+	var cnt int
 
 	//get all Tunnel and sort
 	for _, key := range keys {
@@ -506,7 +511,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 			if (typeVal != "" && v.Mode != typeVal || (clientId != 0 && v.Client.Id != clientId)) || (typeVal == "" && clientId != v.Client.Id) {
 				continue
 			}
-			if search != "" && !(v.Id == common.GetIntNoErrByStr(search) || v.Port == common.GetIntNoErrByStr(search) || common.ContainsFold(v.Password, search) || common.ContainsFold(v.Remark, search) || common.ContainsFold(v.Target.TargetStr, search)) {
+			if search != "" && !(v.Id == searchInt || v.Port == searchInt || common.ContainsFold(v.Password, search) || common.ContainsFold(v.Remark, search) || common.ContainsFold(v.Target.TargetStr, search)) {
 				continue
 			}
 			cnt++

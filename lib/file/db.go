@@ -51,9 +51,14 @@ func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 }
 
 func (s *DbUtils) GetClientList(start, length int, search, sort, order string, clientId int) ([]*Client, int) {
-	list := make([]*Client, 0)
+	resultCap := 0
+	if length > 0 {
+		resultCap = length
+	}
+	list := make([]*Client, 0, resultCap)
 	var cnt int
 	originLength := length
+	searchInt := common.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Clients, true, sort, order)
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Clients.Load(key); ok {
@@ -64,7 +69,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 			if clientId != 0 && clientId != v.Id {
 				continue
 			}
-			if search != "" && !(v.Id == common.GetIntNoErrByStr(search) || common.ContainsFold(v.VerifyKey, search) || common.ContainsFold(v.Remark, search)) {
+			if search != "" && !(v.Id == searchInt || common.ContainsFold(v.VerifyKey, search) || common.ContainsFold(v.Remark, search)) {
 				continue
 			}
 			cnt++
@@ -337,14 +342,19 @@ func (s *DbUtils) NewHost(t *Host) error {
 }
 
 func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, int) {
-	list := make([]*Host, 0)
+	resultCap := 0
+	if length > 0 {
+		resultCap = length
+	}
+	list := make([]*Host, 0, resultCap)
 	var cnt int
 	originLength := length
+	searchInt := common.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Hosts, false, "", "")
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Hosts.Load(key); ok {
 			v := value.(*Host)
-			if search != "" && !(v.Id == common.GetIntNoErrByStr(search) || common.ContainsFold(v.Host, search) || common.ContainsFold(v.Remark, search) || common.ContainsFold(v.Client.VerifyKey, search)) {
+			if search != "" && !(v.Id == searchInt || common.ContainsFold(v.Host, search) || common.ContainsFold(v.Remark, search) || common.ContainsFold(v.Client.VerifyKey, search)) {
 				continue
 			}
 			if id == 0 || v.Client.Id == id {
