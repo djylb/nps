@@ -40,7 +40,6 @@ type Conn struct {
 func NewConn(conn net.Conn) *Conn {
 	return &Conn{
 		Conn: conn,
-		wBuf: new(bytes.Buffer),
 	}
 }
 
@@ -349,7 +348,7 @@ func (s *Conn) Write(b []byte) (n int, err error) {
 	}
 
 	s.mu.Lock()
-	if s.wBuf.Len() == 0 {
+	if s.wBuf == nil || s.wBuf.Len() == 0 {
 		s.mu.Unlock()
 		return s.Conn.Write(b)
 	}
@@ -371,6 +370,9 @@ func (s *Conn) BufferWrite(b []byte) (int, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.wBuf == nil {
+		s.wBuf = new(bytes.Buffer)
+	}
 	return s.wBuf.Write(b)
 }
 
@@ -380,7 +382,7 @@ func (s *Conn) FlushBuf() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.wBuf.Len() == 0 {
+	if s.wBuf == nil || s.wBuf.Len() == 0 {
 		return nil
 	}
 	_, err := s.Conn.Write(s.wBuf.Bytes())
