@@ -330,7 +330,6 @@ func TestIPAndBindHelpers(t *testing.T) {
 	}
 }
 
-
 func TestCheckAuthWithAccountMap(t *testing.T) {
 	if !CheckAuthWithAccountMap("admin", "pass", "admin", "pass", nil, nil) {
 		t.Fatal("CheckAuthWithAccountMap() = false, want true for global account")
@@ -458,5 +457,108 @@ func TestCertHelpers(t *testing.T) {
 	}
 	if got := GetCertType("non-existent.pem"); got != "invalid" {
 		t.Fatalf("GetCertType(invalid) = %q, want invalid", got)
+	}
+}
+
+func TestTimestampAndPowHelpers(t *testing.T) {
+	ts := int64(1700000000123)
+	if got := BytesToTimestamp(TimestampToBytes(ts)); got != ts {
+		t.Fatalf("timestamp roundtrip = %d, want %d", got, ts)
+	}
+
+	if ValidatePoW(0, "abc") {
+		t.Fatal("ValidatePoW(bits<1) = true, want false")
+	}
+	found := false
+	for i := 0; i < 64; i++ {
+		if ValidatePoW(1, "seed", string(rune('A'+i))) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("ValidatePoW(1, seed+suffix) never succeeded in search window")
+	}
+	if ValidatePoW(256, "abc") {
+		t.Fatal("ValidatePoW(256, abc) = true, want false")
+	}
+}
+
+func TestTrustedProxyAndAddrSelectionHelpers(t *testing.T) {
+	if !IsTrustedProxy("*", "203.0.113.1:80") {
+		t.Fatal("IsTrustedProxy wildcard = false, want true")
+	}
+	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "10.0.5.9:1234") {
+		t.Fatal("IsTrustedProxy wildcard IPv4 = false, want true")
+	}
+	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "[2001:db8::1]:443") {
+		t.Fatal("IsTrustedProxy exact IPv6 = false, want true")
+	}
+	if IsTrustedProxy("192.168.1.0/24", "bad-ip") {
+		t.Fatal("IsTrustedProxy(invalid ip) = true, want false")
+	}
+
+	got := SplitCommaAddrList(" 127.0.0.1:80, [::1]:443,bad,127.0.0.1:80 ")
+	if len(got) != 2 || got[0] != "127.0.0.1:80" || got[1] != "[::1]:443" {
+		t.Fatalf("SplitCommaAddrList() = %v, want [127.0.0.1:80 [::1]:443]", got)
+	}
+
+	if ip := ParseIPFromAddr("[fe80::1%eth0]:8080"); ip == nil || ip.String() != "fe80::1" {
+		t.Fatalf("ParseIPFromAddr(v6 with zone) = %v, want fe80::1", ip)
+	}
+	if ip := ParseIPFromAddr("not-an-addr"); ip != nil {
+		t.Fatalf("ParseIPFromAddr(invalid) = %v, want nil", ip)
+	}
+
+	bestV4, bestV6, fallback := PickBestV4V6FromLocalList("10.0.0.2:80,8.8.8.8:80,[fd00::1]:80,[2001:4860:4860::8888]:80")
+	if bestV4 != "8.8.8.8:80" || bestV6 != "[2001:4860:4860::8888]:80" || fallback != "10.0.0.2:80" {
+		t.Fatalf("PickBestV4V6FromLocalList() = (%q,%q,%q)", bestV4, bestV6, fallback)
+	}
+	if !HasIPv6InLocalList("10.0.0.2:80,[fd00::1]:80") || HasIPv6InLocalList("10.0.0.2:80") {
+		t.Fatal("HasIPv6InLocalList() returned unexpected result")
+	}
+
+	if got := ChooseLocalAddrForPeer("10.0.0.2:80,[2001:4860:4860::8888]:80", "[2404:6800:4008::200e]:90"); got != "[2001:4860:4860::8888]:80" {
+		t.Fatalf("ChooseLocalAddrForPeer(with peer v6) = %q", got)
+	}
+	if got := ChooseLocalAddrForPeer("10.0.0.2:80,[2001:4860:4860::8888]:80", "10.0.0.9:90"); got != "10.0.0.2:80" {
+		t.Fatalf("ChooseLocalAddrForPeer(peer no v6) = %q", got)
+	}
+}
+
+func TestNetEncodingAndUdpFixHelpers(t *testing.T) {
+	v4 := net.ParseIP("1.2.3.4")
+	if got := DecodeIP(EncodeIP(v4)); got == nil || !got.Equal(v4) {
+		t.Fatalf("DecodeIP(EncodeIP(v4)) = %v, want %v", got, v4)
+	}
+	v6 := net.ParseIP("2001:db8::1")
+	if got := DecodeIP(EncodeIP(v6)); got == nil || !got.Equal(v6) {
+		t.Fatalf("DecodeIP(EncodeIP(v6)) = %v, want %v", got, v6)
+	}
+	if got := DecodeIP([]byte{0x01, 1, 2, 3}); got != nil {
+		t.Fatalf("DecodeIP(short) = %v, want nil", got)
+	}
+
+	if got := JoinHostPort("2001:db8::1", "443"); got != "[2001:db8::1]:443" {
+		t.Fatalf("JoinHostPort(v6) = %q, want [2001:db8::1]:443", got)
+	}
+
+	if b, err := RandomBytes(32); err != nil || len(b) > 32 {
+		t.Fatalf("RandomBytes(32) = len %d err %v, want len<=32 and nil err", len(b), err)
+	}
+
+	network, fixed, err := FixUdpListenAddrForRemote("1.2.3.4:9000", "127.0.0.1:8080")
+	if err != nil || network != "udp4" || fixed != "127.0.0.1:8080" {
+		t.Fatalf("FixUdpListenAddrForRemote(v4) = (%q,%q,%v)", network, fixed, err)
+	}
+	network, fixed, err = FixUdpListenAddrForRemote("[2001:db8::1]:9000", "[::1]:8080")
+	if err != nil || network != "udp6" || fixed != "[::1]:8080" {
+		t.Fatalf("FixUdpListenAddrForRemote(v6) = (%q,%q,%v)", network, fixed, err)
+	}
+	if _, _, err = FixUdpListenAddrForRemote("bad-remote", "127.0.0.1:8080"); err == nil {
+		t.Fatal("FixUdpListenAddrForRemote(invalid remote) err=nil, want non-nil")
+	}
+	if _, _, err = FixUdpListenAddrForRemote("1.2.3.4:9000", "127.0.0.1:0"); err == nil {
+		t.Fatal("FixUdpListenAddrForRemote(invalid local port) err=nil, want non-nil")
 	}
 }
