@@ -490,7 +490,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 			_ = c.Close()
 			return nil
 		}
-		logs.Trace("Socks5 Buf: %s", buf)
+		logs.Trace("Socks5 Buf: %s", buf[:])
 		logs.Warn("only support socks5 and http, request from: %v", c.RemoteAddr())
 		_ = c.Close()
 		return errors.New("unknown protocol")
