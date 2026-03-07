@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -218,16 +217,42 @@ func (d *UDPDatagram) Write(w io.Writer) error {
 	if h == nil {
 		h = &UDPHeader{}
 	}
-	buf := bytes.Buffer{}
-	if err := h.Write(&buf); err != nil {
-		return err
+
+	b := BufPoolUdp.Get().([]byte)
+	defer BufPoolUdp.Put(b)
+
+	binary.BigEndian.PutUint16(b[:2], h.Rsv)
+	b[2] = h.Frag
+
+	addr := h.Addr
+	if addr == nil {
+		addr = &Addr{}
 	}
-	if _, err := buf.Write(d.Data); err != nil {
-		return err
+	headerLen, _ := addr.Encode(b[3:])
+	headerLen += 3
+	total := headerLen + len(d.Data)
+
+	var packet []byte
+	if total <= len(b) {
+		packet = b[:total]
+	} else {
+		packet = make([]byte, total)
+		copy(packet[:headerLen], b[:headerLen])
 	}
 
-	_, err := buf.WriteTo(w)
-	return err
+	copy(packet[headerLen:], d.Data)
+
+	for len(packet) > 0 {
+		n, err := w.Write(packet)
+		if err != nil {
+			return err
+		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
+		packet = packet[n:]
+	}
+	return nil
 }
 
 // trim IPv6 zone if any (e.g., "fe80::1%eth0" -> "fe80::1")
