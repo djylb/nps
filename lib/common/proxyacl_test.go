@@ -82,3 +82,45 @@ func TestProxyACLDisabledAndNil(t *testing.T) {
 		t.Fatalf("empty acl should not allow any addr")
 	}
 }
+
+func TestNormalizeHostToken(t *testing.T) {
+	tests := []struct {
+		name  string
+		in    string
+		want  string
+		valid bool
+	}{
+		{name: "hostname with port", in: "Example.COM:443", want: "example.com", valid: true},
+		{name: "ipv6 with brackets", in: "[2001:db8::1]:443", want: "2001:db8::1", valid: true},
+		{name: "trailing dot", in: "example.com.", want: "example.com", valid: true},
+		{name: "reject path", in: "example.com/path", want: "", valid: false},
+		{name: "reject query", in: "example.com?x=1", want: "", valid: false},
+		{name: "reject spaces", in: "example .com", want: "", valid: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := normalizeHostToken(tc.in)
+			if ok != tc.valid {
+				t.Fatalf("normalizeHostToken(%q) validity = %v, want %v", tc.in, ok, tc.valid)
+			}
+			if got != tc.want {
+				t.Fatalf("normalizeHostToken(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseProxyACLSkipsInvalidWildcard(t *testing.T) {
+	acl := ParseProxyACL("*\n*.\n*  \n")
+
+	if !acl.Enabled() {
+		t.Fatalf("expected acl to be enabled because entries are present")
+	}
+	if len(acl.WildcardSuffixes) != 0 {
+		t.Fatalf("expected invalid wildcard entries to be ignored, got %v", acl.WildcardSuffixes)
+	}
+	if acl.Allows("example.com:443") {
+		t.Fatalf("acl with only invalid wildcard entries should deny all addresses")
+	}
+}
