@@ -149,9 +149,9 @@ func ValidateAddr(s string) string {
 
 func BuildAddress(host string, port string) string {
 	if strings.Contains(host, ":") { // IPv6
-		return fmt.Sprintf("[%s]:%s", host, port)
+		return "[" + host + "]:" + port
 	}
-	return fmt.Sprintf("%s:%s", host, port)
+	return host + ":" + port
 }
 
 func SplitServerAndPath(s string) (server, path string) {
@@ -895,14 +895,14 @@ func GetMatchingLocalAddr(remoteAddr, localAddr string) (string, error) {
 			return localAddr, fmt.Errorf("get local ipv6 addr: %w", err)
 		}
 		ip6 := tmpConn.LocalAddr().(*net.UDPAddr).IP.String()
-		return fmt.Sprintf("[%s]:%s", ip6, port), nil
+		return "[" + ip6 + "]:" + port, nil
 	} else {
 		tmpConn, err := GetLocalUdp4Addr()
 		if err != nil {
 			return localAddr, fmt.Errorf("get local ipv4 addr: %w", err)
 		}
 		ip4 := tmpConn.LocalAddr().(*net.UDPAddr).IP.String()
-		return fmt.Sprintf("%s:%s", ip4, port), nil
+		return ip4 + ":" + port, nil
 	}
 }
 
