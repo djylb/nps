@@ -8,9 +8,12 @@ import (
 func withPorts(t *testing.T, p []int) {
 	t.Helper()
 	original := ports
+	originalSet := portSet
 	ports = p
+	buildAllowPortSet()
 	t.Cleanup(func() {
 		ports = original
+		portSet = originalSet
 	})
 }
 

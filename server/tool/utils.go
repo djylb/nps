@@ -16,6 +16,7 @@ import (
 
 var (
 	ports []int
+	portSet map[int]struct{}
 
 	statusCap  = 1440
 	ssMu       sync.RWMutex
@@ -41,6 +42,19 @@ func StartSystemInfo() {
 func InitAllowPort() {
 	p := beego.AppConfig.String("allow_ports")
 	ports = common.GetPorts(p)
+	buildAllowPortSet()
+}
+
+func buildAllowPortSet() {
+	if len(ports) == 0 {
+		portSet = nil
+		return
+	}
+	set := make(map[int]struct{}, len(ports))
+	for _, p := range ports {
+		set[p] = struct{}{}
+	}
+	portSet = set
 }
 
 func TestServerPort(p int, m string) (b bool) {
@@ -50,8 +64,10 @@ func TestServerPort(p int, m string) (b bool) {
 	if p > 65535 || p < 0 {
 		return false
 	}
-	if len(ports) != 0 && !common.InIntArr(ports, p) {
-		return false
+	if len(portSet) != 0 {
+		if _, ok := portSet[p]; !ok {
+			return false
+		}
 	}
 	if m == "udp" {
 		b = common.TestUdpPort(p)
