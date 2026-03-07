@@ -60,13 +60,13 @@ const (
 	p2pMaxSuccPacketsPerPeer = 20
 	p2pMaxEndPacketsPerPeer  = 20
 
-	p2pSprayTick        = 200 * time.Millisecond
-	p2pSpraySuccMax     = 6
-	p2pSprayEndMax      = 6
-	p2pSpraySuccWindow  = 1600 * time.Millisecond
-	p2pSprayEndWindow   = 1600 * time.Millisecond
-	p2pSpraySeedSucc    = 2
-	p2pSpraySeedWindow  = 900 * time.Millisecond
+	p2pSprayTick       = 200 * time.Millisecond
+	p2pSpraySuccMax    = 6
+	p2pSprayEndMax     = 6
+	p2pSpraySuccWindow = 1600 * time.Millisecond
+	p2pSprayEndWindow  = 1600 * time.Millisecond
+	p2pSpraySeedSucc   = 2
+	p2pSpraySeedWindow = 900 * time.Millisecond
 )
 
 var (
@@ -708,6 +708,7 @@ func waitP2PHandshake(parentCtx context.Context, localConn net.PacketConn, sendR
 func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketConn, sendRole string, readTimeout int, seed net.Addr) (remoteAddr, localAddr, role string, err error) {
 	buf := common.BufPoolUdp.Get().([]byte)
 	defer common.PutBufPoolUdp(buf)
+	localAddrStr := localConn.LocalAddr().String()
 
 	isServerAnnounce := func(pkt []byte) bool {
 		return bytes.Contains(pkt, bConnDataSeq)
@@ -854,7 +855,7 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 	if readTimeout <= 0 {
 		readTimeout = 10
 	}
-	logs.Trace("[P2P] handshake wait role=%s local=%s timeout=%ds", sendRole, localConn.LocalAddr().String(), readTimeout)
+	logs.Trace("[P2P] handshake wait role=%s local=%s timeout=%ds", sendRole, localAddrStr, readTimeout)
 
 	wantRole := common.WORK_P2P_PROVIDER
 	if sendRole == common.WORK_P2P_VISITOR {
@@ -864,8 +865,8 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 	for {
 		select {
 		case <-parentCtx.Done():
-			logs.Error("[P2P] handshake fail role=%s local=%s err=%v", sendRole, localConn.LocalAddr().String(), parentCtx.Err())
-			return "", localConn.LocalAddr().String(), sendRole, errors.New("connect to the target failed, maybe the nat type is not support p2p")
+			logs.Error("[P2P] handshake fail role=%s local=%s err=%v", sendRole, localAddrStr, parentCtx.Err())
+			return "", localAddrStr, sendRole, errors.New("connect to the target failed, maybe the nat type is not support p2p")
 		default:
 		}
 
@@ -877,8 +878,8 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 			if errors.As(rerr, &ne) && (ne.Timeout() || ne.Temporary()) {
 				continue
 			}
-			logs.Error("[P2P] handshake read fail role=%s local=%s err=%v", sendRole, localConn.LocalAddr().String(), rerr)
-			return "", localConn.LocalAddr().String(), sendRole, rerr
+			logs.Error("[P2P] handshake read fail role=%s local=%s err=%v", sendRole, localAddrStr, rerr)
+			return "", localAddrStr, sendRole, rerr
 		}
 
 		pkt := buf[:n]
@@ -886,26 +887,27 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 			continue
 		}
 
-		from := addr.String()
-		st := getState(from)
-
 		switch {
 		case bytes.Equal(pkt, bConnect):
+			from := addr.String()
+			st := getState(from)
 			// CONNECT -> SUCCESS (reply immediately + short spray window)
 			st.seenConnect = true
 
-			logs.Trace("[P2P] recv CONNECT from=%s local=%s -> send SUCCESS burst=%d + spray", from, localConn.LocalAddr().String(), p2pSuccBurstOnConnect)
+			logs.Trace("[P2P] recv CONNECT from=%s local=%s -> send SUCCESS burst=%d + spray", from, localAddrStr, p2pSuccBurstOnConnect)
 
 			trySendSucc(st, addr, p2pSuccBurstOnConnect)
 			startSpray(st, addr, bSuccess, p2pSpraySuccWindow, p2pSprayTick, p2pSpraySuccMax, false)
 
 		case bytes.Equal(pkt, bSuccess):
+			from := addr.String()
+			st := getState(from)
 			// SUCCESS handling diverges by role, but BOTH SIDES now push END to avoid deadlock.
 
 			if sendRole == common.WORK_P2P_VISITOR {
 				// visitor: SUCCESS -> END (strong redundancy: burst + spray)
 				logs.Trace("[P2P] visitor recv SUCCESS from=%s local=%s -> send END burst=%d + spray",
-					from, localConn.LocalAddr().String(), p2pEndBurstOnSuccess)
+					from, localAddrStr, p2pEndBurstOnSuccess)
 
 				trySendEnd(st, addr, p2pEndBurstOnSuccess)
 				startSpray(st, addr, bEnd, p2pSprayEndWindow, p2pSprayTick, p2pSprayEndMax, true)
@@ -914,13 +916,13 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 			}
 
 			// provider:
-			logs.Trace("[P2P] provider recv SUCCESS from=%s local=%s -> echo SUCCESS=%d + push END=%d", from, localConn.LocalAddr().String(), p2pSuccEchoOnSuccess, p2pEndBurstOnSuccess)
+			logs.Trace("[P2P] provider recv SUCCESS from=%s local=%s -> echo SUCCESS=%d + push END=%d", from, localAddrStr, p2pSuccEchoOnSuccess, p2pEndBurstOnSuccess)
 
 			trySendSucc(st, addr, p2pSuccEchoOnSuccess)
 			trySendEnd(st, addr, p2pEndBurstOnSuccess)
 			startSpray(st, addr, bEnd, p2pSprayEndWindow, p2pSprayTick, p2pSprayEndMax, true)
 
-			_, fixedLocal, ferr := common.FixUdpListenAddrForRemote(from, localConn.LocalAddr().String())
+			_, fixedLocal, ferr := common.FixUdpListenAddrForRemote(from, localAddrStr)
 			if ferr != nil {
 				return "", "", sendRole, ferr
 			}
@@ -928,12 +930,14 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 			return from, fixedLocal, wantRole, nil
 
 		case bytes.Equal(pkt, bEnd):
+			from := addr.String()
+			st := getState(from)
 			// END: strongest evidence. ack a little then accept.
-			logs.Trace("[P2P] recv END from=%s local=%s -> ack END=%d then accept", from, localConn.LocalAddr().String(), p2pEndBurstOnEndAck)
+			logs.Trace("[P2P] recv END from=%s local=%s -> ack END=%d then accept", from, localAddrStr, p2pEndBurstOnEndAck)
 
 			trySendEnd(st, addr, p2pEndBurstOnEndAck)
 
-			_, fixedLocal, ferr := common.FixUdpListenAddrForRemote(from, localConn.LocalAddr().String())
+			_, fixedLocal, ferr := common.FixUdpListenAddrForRemote(from, localAddrStr)
 			if ferr != nil {
 				return "", "", sendRole, ferr
 			}
