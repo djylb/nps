@@ -1,38 +1,52 @@
 package pmux
 
 import (
+	"net"
 	"testing"
-	"time"
 
 	"github.com/djylb/nps/lib/logs"
 )
 
-func TestPortMux_Close(t *testing.T) {
+func getFreePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen free port failed: %v", err)
+	}
+	defer l.Close()
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected addr type: %T", l.Addr())
+	}
+	return addr.Port
+}
+
+func TestPortMux_ListenersAndClose(t *testing.T) {
 	logs.Init("stdout", "trace", "", 0, 0, 0, false, true)
 
-	pMux := NewPortMux(8888, "Ds", "Cs")
-	go func() {
-		if pMux.Start() != nil {
-			logs.Warn("Error")
-		}
-	}()
-	time.Sleep(time.Second * 3)
-	go func() {
-		l := pMux.GetHttpListener()
-		conn, err := l.Accept()
-		logs.Warn("%v %v", conn, err)
-	}()
-	go func() {
-		l := pMux.GetHttpListener()
-		conn, err := l.Accept()
-		logs.Warn("%v %v", conn, err)
-	}()
-	go func() {
-		l := pMux.GetHttpListener()
-		conn, err := l.Accept()
-		logs.Warn("%v %v", conn, err)
-	}()
-	l := pMux.GetHttpListener()
-	conn, err := l.Accept()
-	logs.Warn("%v %v", conn, err)
+	port := getFreePort(t)
+	pMux := NewPortMux(port, "Ds", "Cs")
+	if pMux.Listener == nil {
+		t.Fatal("port mux listener not initialized")
+	}
+
+	if pMux.GetClientListener() == nil {
+		t.Fatal("client listener is nil")
+	}
+	if pMux.GetClientTlsListener() == nil {
+		t.Fatal("client tls listener is nil")
+	}
+	if pMux.GetHttpListener() == nil {
+		t.Fatal("http listener is nil")
+	}
+	if pMux.GetHttpsListener() == nil {
+		t.Fatal("https listener is nil")
+	}
+	if pMux.GetManagerListener() == nil {
+		t.Fatal("manager listener is nil")
+	}
+
+	if err := pMux.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
 }

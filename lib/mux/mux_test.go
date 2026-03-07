@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,20 @@ var network = "172.18.0.0/16"
 var fileSavePath = "/usr/src/myapp/"
 var dataSize = 1024 * 1024 * 100
 
+func requireIntegrationEnv(t *testing.T) {
+	t.Helper()
+	if os.Getenv("NPS_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("integration test skipped: set NPS_RUN_INTEGRATION_TESTS=1 to enable")
+	}
+	for _, tool := range []string{"docker", "tc"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("integration test skipped: missing required tool %q", tool)
+		}
+	}
+}
+
 func TestMux(t *testing.T) {
+	requireIntegrationEnv(t)
 	pwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +112,7 @@ func appendResult(values []float64, outfile string) error {
 }
 
 func TestServer(t *testing.T) {
+	requireIntegrationEnv(t)
 	tc, err := NewTrafficControl(serverIp)
 	if err != nil {
 		t.Fatal(err, tc)
@@ -162,6 +177,7 @@ func TestServer(t *testing.T) {
 	}
 }
 func TestClient(t *testing.T) {
+	requireIntegrationEnv(t)
 	tc, err := NewTrafficControl(clientIp)
 	if err != nil {
 		t.Fatal(err, tc)
@@ -214,6 +230,7 @@ func TestClient(t *testing.T) {
 	}
 }
 func TestApp(t *testing.T) {
+	requireIntegrationEnv(t)
 	tc, err := NewTrafficControl(appIp)
 	if err != nil {
 		t.Fatal(err, tc)
@@ -281,6 +298,7 @@ func TestApp(t *testing.T) {
 	}
 }
 func TestUser(t *testing.T) {
+	requireIntegrationEnv(t)
 	tc, err := NewTrafficControl(userIp)
 	if err != nil {
 		t.Fatal(err, tc)
@@ -338,6 +356,7 @@ func TestUser(t *testing.T) {
 	}
 }
 func TestNewMux2(t *testing.T) {
+	requireIntegrationEnv(t)
 	tc, err := NewTrafficControl("")
 	if err != nil {
 		t.Fatal(err)
@@ -389,6 +408,7 @@ func TestNewMux2(t *testing.T) {
 	log.Println(err)
 }
 func TestNewMux(t *testing.T) {
+	t.Skip("manual long-running test; not suitable for automated unit test runs")
 	go func() {
 		_ = http.ListenAndServe("0.0.0.0:8889", nil)
 	}()
@@ -619,6 +639,7 @@ func TestDQueue(t *testing.T) {
 }
 
 func TestChain(t *testing.T) {
+	t.Skip("stress/manual test; not suitable for automated unit test runs")
 	go func() {
 		log.Println(http.ListenAndServe("0.0.0.0:8889", nil))
 	}()
