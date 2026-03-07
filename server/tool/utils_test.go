@@ -1,6 +1,18 @@
 package tool
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
+
+func withPorts(t *testing.T, p []int) {
+	t.Helper()
+	original := ports
+	ports = p
+	t.Cleanup(func() {
+		ports = original
+	})
+}
 
 func resetStatusState() {
 	ssMu.Lock()
@@ -103,5 +115,52 @@ func TestChartDecilesEdgeCasesAndSampling(t *testing.T) {
 		if deciles[i]["id"].(int) != expected {
 			t.Fatalf("deciles[%d].id=%v, want %d", i, deciles[i]["id"], expected)
 		}
+	}
+}
+
+func TestTestServerPortShortCircuitAndValidation(t *testing.T) {
+	withPorts(t, []int{12345})
+
+	if !TestServerPort(-1, "p2p") {
+		t.Fatal("TestServerPort() should short-circuit for p2p mode")
+	}
+	if !TestServerPort(70000, "secret") {
+		t.Fatal("TestServerPort() should short-circuit for secret mode")
+	}
+	if TestServerPort(70000, "tcp") {
+		t.Fatal("TestServerPort() should reject ports > 65535")
+	}
+	if TestServerPort(-1, "udp") {
+		t.Fatal("TestServerPort() should reject ports < 0")
+	}
+	if TestServerPort(54321, "tcp") {
+		t.Fatal("TestServerPort() should reject port not in allow list")
+	}
+}
+
+func TestGenerateServerPortWithAllowList(t *testing.T) {
+	withPorts(t, []int{0, 10001, 10002})
+	rand.Seed(1)
+
+	got := GenerateServerPort("p2p")
+	if got != 10001 && got != 10002 {
+		t.Fatalf("GenerateServerPort()=%d, want one of configured non-zero ports", got)
+	}
+}
+
+func TestGenerateServerPortWithOnlyZeroAllowList(t *testing.T) {
+	withPorts(t, []int{0, 0})
+	if got := GenerateServerPort("p2p"); got != 0 {
+		t.Fatalf("GenerateServerPort()=%d, want 0 when allow list has no usable ports", got)
+	}
+}
+
+func TestGenerateServerPortWithoutAllowListUsesDynamicRange(t *testing.T) {
+	withPorts(t, nil)
+	rand.Seed(1)
+
+	got := GenerateServerPort("p2p")
+	if got < 1024 || got > 65535 {
+		t.Fatalf("GenerateServerPort()=%d, want in [1024, 65535]", got)
 	}
 }
