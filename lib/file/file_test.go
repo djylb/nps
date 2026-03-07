@@ -108,8 +108,8 @@ func TestStoreSyncMapToFileSkipsNoStoreEntries(t *testing.T) {
 	}
 
 	found := map[int]bool{}
-	for _, c := range clients {
-		found[c.Id] = true
+	for i := range clients {
+		found[clients[i].Id] = true
 	}
 	if !found[1] || !found[3] || found[2] {
 		t.Fatalf("unexpected persisted ids: %+v", found)
