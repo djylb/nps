@@ -585,6 +585,9 @@ func (Self *Bandwidth) Get() (bw float64) {
 }
 
 func (Self *Bandwidth) Close() error {
+	if Self.fd == nil {
+		return nil
+	}
 	return Self.fd.Close()
 }
 
