@@ -13,6 +13,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -37,7 +38,7 @@ var serverResultFileName = "server.txt"
 var clientResultFileName = "client.txt"
 var dockerNetWorkName = "test"
 var network = "172.18.0.0/16"
-var fileSavePath = "/usr/src/myapp/"
+var fileSavePath = filepath.Join(os.TempDir(), "nps_mux_integration") + string(os.PathSeparator)
 var dataSize = 1024 * 1024 * 100
 
 func requireIntegrationEnv(t *testing.T) {
@@ -53,6 +54,12 @@ func requireIntegrationEnv(t *testing.T) {
 			t.Skipf("integration test skipped: missing required tool %q", tool)
 		}
 	}
+	if err := os.MkdirAll(fileSavePath, 0o755); err != nil {
+		t.Fatalf("failed to create integration result directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(fileSavePath)
+	})
 }
 
 func TestMux(t *testing.T) {
@@ -625,21 +632,29 @@ func TestNewConn(t *testing.T) {
 func TestDQueue(t *testing.T) {
 	d := new(bufDequeue)
 	d.vals = make([]unsafe.Pointer, 8)
-	go func() {
-		time.Sleep(time.Second)
-		for i := 0; i < 10; i++ {
-			log.Println(i)
-			log.Println(d.popTail())
+
+	values := []string{"test-1", "test-2", "test-3"}
+	for i := range values {
+		v := values[i]
+		if ok := d.pushHead(unsafe.Pointer(&v)); !ok {
+			t.Fatalf("pushHead(%d) failed", i)
 		}
-	}()
-	go func() {
-		time.Sleep(time.Second)
-		for i := 0; i < 10; i++ {
-			data := "test"
-			go log.Println(i, unsafe.Pointer(&data), d.pushHead(unsafe.Pointer(&data)))
+	}
+
+	for i, want := range values {
+		raw, ok := d.popTail()
+		if !ok {
+			t.Fatalf("popTail(%d) reported empty queue", i)
 		}
-	}()
-	time.Sleep(time.Second * 3)
+		got := *(*string)(raw)
+		if got != want {
+			t.Fatalf("popTail(%d) = %q, want %q", i, got, want)
+		}
+	}
+
+	if _, ok := d.popTail(); ok {
+		t.Fatal("popTail() should report empty queue after consuming all values")
+	}
 }
 
 func TestChain(t *testing.T) {
