@@ -45,6 +45,12 @@ func (w *BufferWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	if len(p) >= w.cap {
+		w.buf.Reset()
+		w.buf.Write(p[len(p)-w.cap:])
+		return len(p), nil
+	}
+
 	if w.buf.Len()+len(p) > w.cap {
 		drop := w.buf.Len() + len(p) - w.cap
 		data := w.buf.Bytes()
