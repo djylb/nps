@@ -222,29 +222,43 @@ func SetLevel(levelStr string) {
 
 type zapAdapter struct{}
 
+var (
+	lineEndingBytes  = []byte(zapcore.DefaultLineEnding)
+	debugLevelBytes  = []byte("DEBUG")
+	infoLevelBytes   = []byte("INFO")
+	warnLevelBytes   = []byte("WARN")
+	warningBytes     = []byte("WARNING")
+	errorLevelBytes  = []byte("ERROR")
+	dpanicLevelBytes = []byte("DPANIC")
+	panicLevelBytes  = []byte("PANIC")
+	fatalLevelBytes  = []byte("FATAL")
+)
+
 func (zapAdapter) Write(p []byte) (n int, err error) {
-	s := strings.TrimSuffix(string(p), zapcore.DefaultLineEnding)
-	parts := strings.SplitN(s, "\t", 2)
-	levelStr, msg := "INFO", s
-	if len(parts) == 2 {
-		levelStr = parts[0]
-		msg = parts[1]
+	line := bytes.TrimSuffix(p, lineEndingBytes)
+	level := infoLevelBytes
+	msg := line
+	if i := bytes.IndexByte(line, '\t'); i >= 0 {
+		level = line[:i]
+		msg = line[i+1:]
 	}
-	switch levelStr {
-	case "DEBUG":
-		Logger.Debug().Msg(msg)
-	case "INFO":
-		Logger.Info().Msg(msg)
-	case "WARN", "WARNING":
-		Logger.Warn().Msg(msg)
-	case "ERROR":
-		Logger.Error().Msg(msg)
-	case "DPANIC", "PANIC":
-		Logger.Panic().Msg(msg)
-	case "FATAL":
-		Logger.Fatal().Msg(msg)
+
+	msgStr := string(msg)
+	switch {
+	case bytes.Equal(level, debugLevelBytes):
+		Logger.Debug().Msg(msgStr)
+	case bytes.Equal(level, infoLevelBytes):
+		Logger.Info().Msg(msgStr)
+	case bytes.Equal(level, warnLevelBytes), bytes.Equal(level, warningBytes):
+		Logger.Warn().Msg(msgStr)
+	case bytes.Equal(level, errorLevelBytes):
+		Logger.Error().Msg(msgStr)
+	case bytes.Equal(level, dpanicLevelBytes), bytes.Equal(level, panicLevelBytes):
+		Logger.Panic().Msg(msgStr)
+	case bytes.Equal(level, fatalLevelBytes):
+		Logger.Fatal().Msg(msgStr)
 	default:
-		Logger.Info().Msg(msg)
+		Logger.Info().Msg(msgStr)
 	}
 	return len(p), nil
 }
