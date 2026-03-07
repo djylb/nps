@@ -28,6 +28,76 @@ func TestDomainCheck(t *testing.T) {
 	}
 }
 
+func TestHostAndPortHelpers(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		extract    string
+		removePort string
+		ip         string
+		port       int
+	}{
+		{name: "domain with path", input: "example.com:8080/path", extract: "example.com:8080", removePort: "example.com", ip: "example.com", port: 8080},
+		{name: "url with domain", input: "https://example.com:8443/api", extract: "example.com:8443", removePort: "example.com", ip: "example.com", port: 8443},
+		{name: "ipv6 address", input: "[2001:db8::1]:443", extract: "[2001:db8::1]:443", removePort: "[2001:db8::1]", ip: "2001:db8::1", port: 443},
+		{name: "invalid ipv6", input: "[2001:db8::1", extract: "[2001:db8::1", removePort: "", ip: "", port: 0},
+		{name: "without port", input: "localhost", extract: "localhost", removePort: "localhost", ip: "localhost", port: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ExtractHost(tc.input); got != tc.extract {
+				t.Fatalf("ExtractHost(%q) = %q, want %q", tc.input, got, tc.extract)
+			}
+			if got := RemovePortFromHost(tc.extract); got != tc.removePort {
+				t.Fatalf("RemovePortFromHost(%q) = %q, want %q", tc.extract, got, tc.removePort)
+			}
+			if got := GetIpByAddr(tc.extract); got != tc.ip {
+				t.Fatalf("GetIpByAddr(%q) = %q, want %q", tc.extract, got, tc.ip)
+			}
+			if got := GetPortByAddr(tc.extract); got != tc.port {
+				t.Fatalf("GetPortByAddr(%q) = %d, want %d", tc.extract, got, tc.port)
+			}
+		})
+	}
+}
+
+func TestSplitAddrAndHost(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantAddr     string
+		wantHost     string
+		wantSNI      string
+		wantPortText string
+	}{
+		{name: "no separator", input: "example.com:443", wantAddr: "example.com:443", wantHost: "example.com:443", wantSNI: "example.com", wantPortText: "443"},
+		{name: "explicit host", input: "127.0.0.1:8080@example.com:443", wantAddr: "127.0.0.1:8080", wantHost: "example.com:443", wantSNI: "example.com", wantPortText: "443"},
+		{name: "empty host fallback", input: "127.0.0.1:8080@", wantAddr: "127.0.0.1:8080", wantHost: "127.0.0.1:8080", wantSNI: "", wantPortText: "8080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr, host, sni := SplitAddrAndHost(tc.input)
+			if addr != tc.wantAddr || host != tc.wantHost || sni != tc.wantSNI {
+				t.Fatalf("SplitAddrAndHost(%q) = (%q, %q, %q), want (%q, %q, %q)", tc.input, addr, host, sni, tc.wantAddr, tc.wantHost, tc.wantSNI)
+			}
+			if got := GetPortStrByAddr(host); got != tc.wantPortText {
+				t.Fatalf("GetPortStrByAddr(%q) = %q, want %q", host, got, tc.wantPortText)
+			}
+		})
+	}
+}
+
+func TestBuildAddress(t *testing.T) {
+	if got := BuildAddress("127.0.0.1", "80"); got != "127.0.0.1:80" {
+		t.Fatalf("BuildAddress IPv4 = %q, want %q", got, "127.0.0.1:80")
+	}
+	if got := BuildAddress("2001:db8::1", "443"); got != "[2001:db8::1]:443" {
+		t.Fatalf("BuildAddress IPv6 = %q, want %q", got, "[2001:db8::1]:443")
+	}
+}
+
 func TestGetWriteStr(t *testing.T) {
 	got := GetWriteStr("alpha", "beta")
 	want := []byte("alpha" + CONN_DATA_SEQ + "beta" + CONN_DATA_SEQ)
