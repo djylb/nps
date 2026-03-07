@@ -394,13 +394,13 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	env := common.GetEnvMap()
 	if *serverAddr == "" {
-		*serverAddr = env["NPC_SERVER_ADDR"]
+		*serverAddr, _ = env["NPC_SERVER_ADDR"]
 	}
 	if *verifyKey == "" {
-		*verifyKey = env["NPC_SERVER_VKEY"]
+		*verifyKey, _ = env["NPC_SERVER_VKEY"]
 	}
 	if *configPath == "" {
-		*configPath = env["NPC_CONFIG_PATH"]
+		*configPath, _ = env["NPC_CONFIG_PATH"]
 	}
 	if *localIP == "" {
 		*localIP, _ = env["NPC_LOCAL_IP"]
