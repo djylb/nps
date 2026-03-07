@@ -48,16 +48,14 @@ func (s *P2PServer) Start() error {
 		buf := common.BufPoolUdp.Get().([]byte)
 		n, addr, err := s.listener.ReadFromUDP(buf)
 		if err != nil {
-			common.BufPoolUdp.Put(buf)
+			common.PutBufPoolUdp(buf)
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
 			}
 			continue
 		}
-		data := make([]byte, n)
-		copy(data, buf[:n])
-		common.BufPoolUdp.Put(buf)
-		s.handleP2P(addr, data)
+		s.handleP2P(addr, buf[:n])
+		common.PutBufPoolUdp(buf)
 	}
 	return nil
 }
