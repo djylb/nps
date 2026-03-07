@@ -251,8 +251,7 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 		_ = c.Close()
 		return
 	}
-	defer c.Close()
-
+	defer func() { _ = c.Close() }()
 	var addrType [1]byte
 	if _, err := io.ReadFull(c, addrType[:]); err != nil {
 		s.sendReply(c, addrTypeNotSupported)
@@ -310,8 +309,7 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 		logs.Error("listen local reply udp port error: %v (network=%s, localAddr=%v)", err, network, localAddr)
 		return
 	}
-	defer reply.Close()
-
+	defer func() { _ = reply.Close() }()
 	// Reply BND.ADDR/PORT to client.
 	s.sendUdpReply(c, reply, succeeded, clientIP)
 
@@ -324,10 +322,9 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 		logs.Warn("get connection from client Id %d error: %v", s.Task.Client.Id, err)
 		return
 	}
-	defer target.Close()
-
+	defer func() { _ = target.Close() }()
 	timeoutConn := conn.NewTimeoutConn(target, link.Option.Timeout)
-	defer timeoutConn.Close()
+	defer func() { _ = timeoutConn.Close() }()
 	flowConn := conn.NewFlowConn(timeoutConn, s.Task.Flow, s.Task.Client.Flow)
 	framed := conn.WrapFramed(flowConn)
 

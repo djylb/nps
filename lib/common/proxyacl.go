@@ -234,10 +234,10 @@ func normalizeHostToken(s string) (string, bool) {
 	if s == "" {
 		return "", false
 	}
-	if strings.IndexAny(s, " \t\r\n") != -1 {
+	if strings.ContainsAny(s, " \t\r\n") {
 		return "", false
 	}
-	if strings.IndexAny(s, "?#") != -1 {
+	if strings.ContainsAny(s, "?#") {
 		return "", false
 	}
 	if strings.Contains(s, "/") {

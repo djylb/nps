@@ -63,9 +63,8 @@ func (c *closeSpyConn) isClosed() bool {
 
 func TestTimeoutConnReadWriteSetsDeadline(t *testing.T) {
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
-
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
 	spy := &deadlineSpyConn{Conn: client}
 	idle := 300 * time.Millisecond
 	conn := NewTimeoutConn(spy, idle)
@@ -131,13 +130,11 @@ func TestNewTimeoutTLSConnSuccess(t *testing.T) {
 	cert := testSelfSignedCert(t)
 
 	clientRaw, serverRaw := net.Pipe()
-	defer serverRaw.Close()
-
+	defer func() { _ = serverRaw.Close() }()
 	serverErr := make(chan error, 1)
 	go func() {
 		tlsServer := tls.Server(serverRaw, &tls.Config{Certificates: []tls.Certificate{cert}})
-		defer tlsServer.Close()
-
+		defer func() { _ = tlsServer.Close() }()
 		if err := tlsServer.Handshake(); err != nil {
 			serverErr <- err
 			return
@@ -156,8 +153,7 @@ func TestNewTimeoutTLSConnSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTimeoutTLSConn failed: %v", err)
 	}
-	defer conn.Close()
-
+	defer func() { _ = conn.Close() }()
 	if _, ok := conn.(*TimeoutConn); !ok {
 		t.Fatalf("expected *TimeoutConn, got %T", conn)
 	}
@@ -183,13 +179,12 @@ func TestNewTimeoutTLSConnHandshakeFailureClosesRaw(t *testing.T) {
 
 	clientRaw, serverRaw := net.Pipe()
 	spy := &closeSpyConn{Conn: clientRaw}
-	defer serverRaw.Close()
-
+	defer func() { _ = serverRaw.Close() }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		tlsServer := tls.Server(serverRaw, &tls.Config{Certificates: []tls.Certificate{cert}})
-		defer tlsServer.Close()
+		defer func() { _ = tlsServer.Close() }()
 		_ = tlsServer.Handshake()
 	}()
 
@@ -219,10 +214,10 @@ func generateSelfSignedCert(t *testing.T) tls.Certificate {
 
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{CommonName: "localhost"},
-		NotBefore: time.Now().Add(-time.Hour),
-		NotAfter:  time.Now().Add(time.Hour),
-		KeyUsage:  x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageServerAuth,
 		},

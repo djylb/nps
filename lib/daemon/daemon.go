@@ -75,7 +75,7 @@ func status(f string, pidPath string) bool {
 			cmd = exec.Command("tasklist")
 		}
 		out, _ := cmd.Output()
-		if strings.Index(string(out), string(b)) > -1 {
+		if strings.Contains(string(out), string(b)) {
 			return true
 		}
 	}

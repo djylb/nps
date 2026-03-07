@@ -224,13 +224,13 @@ func TestLatency(addr string, testType string) (time.Duration, error) {
 		if err != nil {
 			return 0, err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 	case "kcp", "udp":
 		conn, err := kcp.DialWithOptions(addr, nil, 0, 0)
 		if err != nil {
 			return 0, err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 	default:
 		return 0, fmt.Errorf("unsupported test type: %s", testType)

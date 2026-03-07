@@ -80,9 +80,9 @@ func IsTempOrTimeout(err error) bool {
 
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
 	// Wrap the TCP tunnel with timeout and framed I/O.
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 	timeoutConn := NewTimeoutConn(serverConn, timeout)
-	defer timeoutConn.Close()
+	defer func() { _ = timeoutConn.Close() }()
 	framed := WrapFramed(timeoutConn)
 
 	// Bind one local UDP socket for all outbound UDP traffic.
@@ -92,8 +92,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 		logs.Error("bind local udp port error %v", err)
 		return
 	}
-	defer local.Close()
-
+	defer func() { _ = local.Close() }()
 	relayCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

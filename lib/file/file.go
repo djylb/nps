@@ -320,7 +320,7 @@ func createEmptyFile(filePath string) error {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 	}
 
 	return nil
@@ -404,8 +404,10 @@ func storeGlobalToFile(m *Glob, filePath string) {
 		panic(err)
 	}
 
-	var b []byte
-	b, err = json.Marshal(m)
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
 	_, err = file.Write(b)
 	if err != nil {
 		panic(err)

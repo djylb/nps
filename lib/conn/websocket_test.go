@@ -18,7 +18,7 @@ func TestWsConnReadStreamsAcrossCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upgrade failed: %v", err)
 		}
-		defer ws.Close()
+		defer func() { _ = ws.Close() }()
 		_ = ws.SetWriteDeadline(time.Now().Add(2 * time.Second))
 		if err = ws.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 			t.Fatalf("write message failed: %v", err)
@@ -26,15 +26,13 @@ func TestWsConnReadStreamsAcrossCalls(t *testing.T) {
 		_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	}))
 	defer server.Close()
-
 	dialer := websocket.Dialer{}
 	url := "ws" + server.URL[len("http"):]
 	client, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
 	}
-	defer client.Close()
-
+	defer func() { _ = client.Close() }()
 	conn := NewWsConn(client)
 	buf := make([]byte, 4)
 

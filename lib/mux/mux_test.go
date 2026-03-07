@@ -96,7 +96,7 @@ func writeResult(values []float64, outfile string) error {
 		fmt.Println("writer", err)
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	writer := bufio.NewWriter(file)
 	for _, v := range values {
 		_, _ = writer.WriteString(fmt.Sprintf("%.2f", v))
@@ -112,7 +112,7 @@ func appendResult(values []float64, outfile string) error {
 		fmt.Println("writer", err)
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	writer := bufio.NewWriter(file)
 	for _, v := range values {
 		_, _ = writer.WriteString(fmt.Sprintf("%.2f", v))
@@ -142,7 +142,7 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer clientBridgeConn.Close()
+	defer func() { _ = clientBridgeConn.Close() }()
 	// new mux
 	mux := NewMux(clientBridgeConn, "tcp", 60, true)
 	// start server port
@@ -150,7 +150,7 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer serverListener.Close()
+	defer func() { _ = serverListener.Close() }()
 	for {
 		// accept user connection
 		userConn, err := serverListener.Accept()
@@ -164,7 +164,7 @@ func TestServer(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			go io.Copy(userConn, clientConn)
+			go func() { _, _ = io.Copy(userConn, clientConn) }()
 			go func() {
 				_ = writeResult([]float64{
 					mux.bw.Get() / 1024 / 1024,
@@ -216,9 +216,9 @@ func TestClient(t *testing.T) {
 				t.Error()
 				return
 			}
-			defer appConn.Close()
-			defer userConn.Close()
-			go io.Copy(userConn, appConn)
+			defer func() { _ = appConn.Close() }()
+			defer func() { _ = userConn.Close() }()
+			go func() { _, _ = io.Copy(userConn, appConn) }()
 			go func() {
 				_ = writeResult([]float64{
 					mux.bw.Get() / 1024 / 1024,

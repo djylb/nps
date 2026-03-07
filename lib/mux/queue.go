@@ -335,7 +335,7 @@ func (Self *receiveWindowQueue) allowPop() (closed bool) {
 }
 
 func (Self *receiveWindowQueue) waitPush() (err error) {
-	t := Self.timeout.Sub(time.Now())
+	t := time.Until(Self.timeout)
 	if t <= 0 {
 		// not Set the timeout, so wait for it without timeout, just like a tcp connection
 		select {

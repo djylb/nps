@@ -159,7 +159,7 @@ func handleP2PUdp(
 
 		if rerr != nil {
 			var ne net.Error
-			if errors.As(rerr, &ne) && (ne.Timeout() || ne.Temporary()) {
+			if errors.As(rerr, &ne) && ne.Timeout() {
 				if !gotFirstAt.IsZero() && time.Now().After(collectUntil) {
 					break
 				}
@@ -875,7 +875,7 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 		_ = localConn.SetReadDeadline(time.Time{})
 		if rerr != nil {
 			var ne net.Error
-			if errors.As(rerr, &ne) && (ne.Timeout() || ne.Temporary()) {
+			if errors.As(rerr, &ne) && ne.Timeout() {
 				continue
 			}
 			logs.Error("[P2P] handshake read fail role=%s local=%s err=%v", sendRole, localAddrStr, rerr)

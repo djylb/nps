@@ -108,8 +108,7 @@ func TestAuth(t *testing.T) {
 		r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("bad:creds")))
 
 		serverSide, clientSide := net.Pipe()
-		defer clientSide.Close()
-
+		defer func() { _ = clientSide.Close() }()
 		c := conn.NewConn(serverSide)
 		errCh := make(chan error, 1)
 		go func() {
@@ -134,8 +133,7 @@ func TestAuth(t *testing.T) {
 func TestWriteConnFail(t *testing.T) {
 	s := &BaseServer{ErrorContent: []byte("detail")}
 	serverSide, clientSide := net.Pipe()
-	defer clientSide.Close()
-
+	defer func() { _ = clientSide.Close() }()
 	go s.writeConnFail(serverSide)
 
 	buf := make([]byte, len(common.ConnectionFailBytes)+len(s.ErrorContent))
@@ -177,8 +175,7 @@ func TestAuthWithMultiAccount(t *testing.T) {
 func TestWriteConnFailWithNilErrorContent(t *testing.T) {
 	s := &BaseServer{}
 	serverSide, clientSide := net.Pipe()
-	defer clientSide.Close()
-
+	defer func() { _ = clientSide.Close() }()
 	go s.writeConnFail(serverSide)
 
 	buf := make([]byte, len(common.ConnectionFailBytes))

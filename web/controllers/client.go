@@ -305,7 +305,7 @@ func (s *ClientController) ChangeStatus() {
 	id := s.GetIntNoErr("id")
 	if client, err := file.GetDb().GetClient(id); err == nil {
 		client.Status = s.GetBoolNoErr("status")
-		if client.Status == false {
+		if !client.Status {
 			server.DelClientConnect(client.Id)
 		}
 		s.AjaxOk("modified success")

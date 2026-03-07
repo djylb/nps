@@ -93,7 +93,7 @@ func NewConfig(path string) (c *Config, err error) {
 			case "[common]":
 				c.CommonConfig = dealCommon(nowContent)
 			default:
-				if strings.Index(nowContent, "host") > -1 {
+				if strings.Contains(nowContent, "host") {
 					h := dealHost(nowContent)
 					h.Remark = getTitleContent(c.title[i])
 					c.Hosts = append(c.Hosts, h)

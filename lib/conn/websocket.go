@@ -119,7 +119,7 @@ func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net
 		ch <- c
 	})
 	srv := &http.Server{Handler: mux}
-	go srv.Serve(base)
+	go func() { _ = srv.Serve(base) }()
 	go func() {
 		<-hl.closeCh
 		_ = srv.Close()
@@ -154,7 +154,7 @@ func NewWSSListener(base net.Listener, path string, cert tls.Certificate, truste
 	})
 	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
 	srv := &http.Server{Handler: mux, TLSConfig: tlsConfig}
-	go srv.Serve(tls.NewListener(base, tlsConfig))
+	go func() { _ = srv.Serve(tls.NewListener(base, tlsConfig)) }()
 	go func() {
 		<-hl.closeCh
 		_ = srv.Close()

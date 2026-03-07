@@ -62,10 +62,7 @@ func GetAppPath() string {
 
 // IsWindows Determine whether the current system is a Windows system?
 func IsWindows() bool {
-	if runtime.GOOS == "windows" {
-		return true
-	}
-	return false
+	return runtime.GOOS == "windows"
 }
 
 // GetLogPath interface log file path

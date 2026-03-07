@@ -401,8 +401,6 @@ func (mgr *P2PManager) getSecretConn() (c net.Conn, err error) {
 		mgr.mu.Lock()
 		if mgr.uuid == "" {
 			mgr.uuid = uuid
-		} else {
-			uuid = mgr.uuid
 		}
 		mgr.mu.Unlock()
 		if Ver > 5 {
@@ -616,7 +614,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 			}
 			return
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		mgr.mu.Lock()
 		if mgr.uuid == "" {
 			mgr.uuid = uuid
@@ -630,7 +628,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 		return
 	}
 	remoteConn := conn.NewConn(c)
-	defer remoteConn.Close()
+	defer func() { _ = remoteConn.Close() }()
 	mgr.mu.Lock()
 	uuid := mgr.uuid
 	mgr.mu.Unlock()
@@ -677,7 +675,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 
 	var remoteAddr, role, mode, data string
 	var localConn net.PacketConn
-	localConn, remoteAddr, localAddr, role, mode, data, err = handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, P2PMode, "")
+	localConn, remoteAddr, _, role, mode, data, err = handleP2PUdp(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, P2PMode, "")
 	if err != nil {
 		logs.Error("Handle P2P failed: %v", err)
 		return

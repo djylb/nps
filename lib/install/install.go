@@ -214,7 +214,7 @@ func downloadLatest(bin string) string {
 	// get version
 	data, err := httpClient.Get("https://api.github.com/repos/djylb/nps/releases/latest")
 	if err == nil {
-		defer data.Body.Close()
+		defer func() { _ = data.Body.Close() }()
 		b, err := io.ReadAll(data.Body)
 		if err == nil {
 			if err := json.Unmarshal(b, &rl); err == nil {
@@ -308,7 +308,6 @@ func downloadLatest(bin string) string {
 		destPath, err := os.MkdirTemp(os.TempDir(), "nps-")
 		if err != nil {
 			_ = resp.Body.Close()
-			lastErr = err
 			//continue
 			log.Fatal("Failed to create temp directory:", err)
 		}
@@ -511,8 +510,7 @@ func copyFile(src, dest string) (w int64, err error) {
 	if err != nil {
 		return
 	}
-	defer srcFile.Close()
-
+	defer func() { _ = srcFile.Close() }()
 	// 确保目录存在
 	dirPath := filepath.Dir(dest)
 	if exists, _ := pathExists(dirPath); !exists {
@@ -524,7 +522,7 @@ func copyFile(src, dest string) (w int64, err error) {
 
 	dstFile, err := os.Create(dest)
 	if err == nil {
-		defer dstFile.Close()
+		defer func() { _ = dstFile.Close() }()
 		if n, copyErr := io.Copy(dstFile, srcFile); copyErr == nil {
 			return n, nil
 		}
@@ -539,8 +537,7 @@ func copyFile(src, dest string) (w int64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tmpFile.Close()
-
+	defer func() { _ = tmpFile.Close() }()
 	if _, err = srcFile.Seek(0, io.SeekStart); err != nil {
 		return 0, err
 	}

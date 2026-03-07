@@ -13,7 +13,7 @@ func getFreePort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("listen free port failed: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	addr, ok := l.Addr().(*net.TCPAddr)
 	if !ok {
 		t.Fatalf("unexpected addr type: %T", l.Addr())

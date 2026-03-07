@@ -7,7 +7,6 @@ import (
 	"net"
 	"testing"
 	"time"
-
 )
 
 type fakeNetError struct {
@@ -68,9 +67,8 @@ func TestIsTempOrTimeout(t *testing.T) {
 
 func TestWriteACKAndReadACK(t *testing.T) {
 	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
-
+	defer func() { _ = server.Close() }()
+	defer func() { _ = client.Close() }()
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- WriteACK(server, 2*time.Second)
@@ -86,9 +84,8 @@ func TestWriteACKAndReadACK(t *testing.T) {
 
 func TestReadACKUnexpectedValue(t *testing.T) {
 	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
-
+	defer func() { _ = server.Close() }()
+	defer func() { _ = client.Close() }()
 	errCh := make(chan error, 1)
 	go func() {
 		_ = server.SetWriteDeadline(time.Now().Add(2 * time.Second))

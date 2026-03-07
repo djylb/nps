@@ -118,14 +118,12 @@ func TestGetWebServerConnDialSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWebServerConn() err=%v, want nil", err)
 	}
-	defer c.Close()
-
+	defer func() { _ = c.Close() }()
 	accepted, err := l.Accept()
 	if err != nil {
 		t.Fatalf("VirtualListener.Accept() err=%v, want nil", err)
 	}
-	defer accepted.Close()
-
+	defer func() { _ = accepted.Close() }()
 	payload := []byte("ok")
 	go func() {
 		_, _ = accepted.Write(payload)

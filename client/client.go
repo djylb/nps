@@ -200,7 +200,7 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 		logs.Error("handle P2P error: %v", err)
 		return
 	}
-	defer localConn.Close()
+	defer func() { _ = localConn.Close() }()
 	if mode == "" || mode != P2PMode {
 		mode = common.CONN_KCP
 	}
@@ -233,14 +233,14 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 			logs.Error("quic.Listen err: %v", err)
 			return
 		}
-		defer quicListener.Close()
+		defer func() { _ = quicListener.Close() }()
 	} else {
 		kcpListener, err = kcp.ServeConn(nil, 150, 3, localConn)
 		if err != nil {
 			logs.Error("kcp.ServeConn err: %v", err)
 			return
 		}
-		defer kcpListener.Close()
+		defer func() { _ = kcpListener.Close() }()
 		preConnDone = make(chan struct{})
 		go func() {
 			select {
@@ -358,7 +358,7 @@ func (s *TRPClient) newChan() {
 	}
 
 	go func() {
-		defer tunnel.Close()
+		defer func() { _ = tunnel.Close() }()
 		for {
 			select {
 			case <-s.ctx.Done():

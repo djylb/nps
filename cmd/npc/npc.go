@@ -357,10 +357,8 @@ func (p *Npc) run() error {
 		}
 	}()
 	run(p.ctx, p.cancel)
-	select {
-	case <-p.exit:
-		logs.Warn("stop...")
-	}
+	<-p.exit
+	logs.Warn("stop...")
 	return nil
 }
 
@@ -396,13 +394,13 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	env := common.GetEnvMap()
 	if *serverAddr == "" {
-		*serverAddr, _ = env["NPC_SERVER_ADDR"]
+		*serverAddr = env["NPC_SERVER_ADDR"]
 	}
 	if *verifyKey == "" {
-		*verifyKey, _ = env["NPC_SERVER_VKEY"]
+		*verifyKey = env["NPC_SERVER_VKEY"]
 	}
 	if *configPath == "" {
-		*configPath, _ = env["NPC_CONFIG_PATH"]
+		*configPath = env["NPC_CONFIG_PATH"]
 	}
 	if *localIP == "" {
 		*localIP, _ = env["NPC_LOCAL_IP"]
