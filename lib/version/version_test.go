@@ -34,6 +34,23 @@ func TestVersionRangeHelpers(t *testing.T) {
 	}
 }
 
+func TestVersionRangeHelpers_EmptyMinVersions(t *testing.T) {
+	origin := MinVersions
+	defer func() { MinVersions = origin }()
+
+	MinVersions = nil
+
+	if got := GetCount(); got != 0 {
+		t.Fatalf("GetCount() = %d, want 0", got)
+	}
+	if got := GetLatest(); got != "" {
+		t.Fatalf("GetLatest() = %q, want empty string", got)
+	}
+	if got := GetLatestIndex(); got != 0 {
+		t.Fatalf("GetLatestIndex() = %d, want 0", got)
+	}
+}
+
 func TestGetMinVersion(t *testing.T) {
 	if got := GetMinVersion(true); got != MinVersions[MinVer] {
 		t.Fatalf("GetMinVersion(true) = %q, want %q", got, MinVersions[MinVer])
