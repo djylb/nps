@@ -12,7 +12,7 @@ func TestGetInstallPathWithConfPath(t *testing.T) {
 	oldConf := ConfPath
 	defer func() { ConfPath = oldConf }()
 
-	ConfPath = "/tmp/custom-nps"
+	ConfPath = filepath.Join(t.TempDir(), "custom-nps")
 	if got := GetInstallPath(); got != ConfPath {
 		t.Fatalf("GetInstallPath() = %q, want %q", got, ConfPath)
 	}
@@ -49,7 +49,10 @@ func TestGetRunPathFallsBackToAppPathWhenInstallPathMissing(t *testing.T) {
 }
 
 func TestResolvePath(t *testing.T) {
-	abs := "/var/log/nps.log"
+	abs, err := filepath.Abs(filepath.Join(".", "nps.log"))
+	if err != nil {
+		t.Fatalf("filepath.Abs() error = %v", err)
+	}
 	if got := ResolvePath(abs); got != abs {
 		t.Fatalf("ResolvePath() absolute = %q, want %q", got, abs)
 	}

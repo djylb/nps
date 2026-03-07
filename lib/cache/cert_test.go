@@ -7,6 +7,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -42,7 +43,10 @@ func TestCertManagerFileNotFoundAndIdleEviction(t *testing.T) {
 	m := NewCertManager(10, 0, 0)
 	defer m.Stop()
 
-	_, err := m.Get("/tmp/not-exists-cert.pem", "/tmp/not-exists-key.pem", "file", "missing")
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "not-exists-cert.pem")
+	keyPath := filepath.Join(tmpDir, "not-exists-key.pem")
+	_, err := m.Get(certPath, keyPath, "file", "missing")
 	if err == nil || !strings.Contains(err.Error(), "cert file not found") {
 		t.Fatalf("expected cert file not found error, got %v", err)
 	}

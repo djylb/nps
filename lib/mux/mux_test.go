@@ -13,6 +13,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,9 @@ var dataSize = 1024 * 1024 * 100
 
 func requireIntegrationEnv(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skipf("integration test skipped: requires linux, current GOOS=%s", runtime.GOOS)
+	}
 	if os.Getenv("NPS_RUN_INTEGRATION_TESTS") != "1" {
 		t.Skip("integration test skipped: set NPS_RUN_INTEGRATION_TESTS=1 to enable")
 	}
