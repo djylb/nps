@@ -76,10 +76,8 @@ func (Self *copyBufferPool) Get() []byte {
 }
 
 func (Self *copyBufferPool) Put(x []byte) {
-	if len(x) == PoolSizeCopy {
-		Self.pool.Put(x)
-	} else {
-		x = nil // buf is not full, not allowed, New method returns a full buf
+	if cap(x) == PoolSizeCopy {
+		Self.pool.Put(x[:PoolSizeCopy])
 	}
 }
 
