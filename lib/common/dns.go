@@ -200,7 +200,7 @@ func resolveRecords(domain string, qtype uint16, server string, recurse bool) ([
 		return nil, err
 	}
 
-	var out []string
+	out := make([]string, 0, len(resp.Answer))
 	for _, ans := range resp.Answer {
 		switch rr := ans.(type) {
 		case *dns.A:

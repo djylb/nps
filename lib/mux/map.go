@@ -42,8 +42,8 @@ func (s *ConnMap) Set(id int32, v *Conn) {
 
 func (s *ConnMap) Close() {
 	// first copy cMap, because conn close will call Delete to trigger dead lock
-	var copyMap []*Conn
 	s.RLock()
+	copyMap := make([]*Conn, 0, len(s.cMap))
 	for _, v := range s.cMap {
 		copyMap = append(copyMap, v)
 	}
