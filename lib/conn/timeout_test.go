@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+var (
+	testCertOnce sync.Once
+	testCert     tls.Certificate
+)
+
 type deadlineSpyConn struct {
 	net.Conn
 	mu            sync.Mutex
@@ -123,7 +128,7 @@ func TestTimeoutConnReadWriteSetsDeadline(t *testing.T) {
 }
 
 func TestNewTimeoutTLSConnSuccess(t *testing.T) {
-	cert := generateSelfSignedCert(t)
+	cert := testSelfSignedCert(t)
 
 	clientRaw, serverRaw := net.Pipe()
 	defer serverRaw.Close()
@@ -174,7 +179,7 @@ func TestNewTimeoutTLSConnSuccess(t *testing.T) {
 }
 
 func TestNewTimeoutTLSConnHandshakeFailureClosesRaw(t *testing.T) {
-	cert := generateSelfSignedCert(t)
+	cert := testSelfSignedCert(t)
 
 	clientRaw, serverRaw := net.Pipe()
 	spy := &closeSpyConn{Conn: clientRaw}
@@ -241,4 +246,12 @@ func generateSelfSignedCert(t *testing.T) tls.Certificate {
 		t.Fatalf("load key pair failed: %v", err)
 	}
 	return cert
+}
+
+func testSelfSignedCert(t *testing.T) tls.Certificate {
+	t.Helper()
+	testCertOnce.Do(func() {
+		testCert = generateSelfSignedCert(t)
+	})
+	return testCert
 }
