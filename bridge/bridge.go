@@ -1266,7 +1266,6 @@ loop:
 				_ = c.WriteAddOk()
 			}
 		}
-
 	}
 
 	if fail && client != nil {
