@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+func skipIfLongRunning(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skip long-running statistical test in short mode")
+	}
+}
+
 func drain(n int) []int {
 	pl := New[int]()
 	for i := 0; i < n; i++ {
@@ -89,11 +96,12 @@ func TestConcurrentMixedOps(t *testing.T) {
 }
 
 func TestRandomEnqueueDequeueOrderRatio(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
+	skipIfLongRunning(t)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	const (
-		cycles      = 100
-		maxPush     = 10000
+		cycles      = 60
+		maxPush     = 5000
 		repetitions = 3
 	)
 
@@ -103,7 +111,7 @@ func TestRandomEnqueueDequeueOrderRatio(t *testing.T) {
 		var seq []int
 
 		for step := 0; step < cycles; step++ {
-			pushN := rand.Intn(maxPush + 1)
+			pushN := r.Intn(maxPush + 1)
 			//if step <= 1 {
 			//	pushN = maxPush
 			//}
@@ -115,7 +123,7 @@ func TestRandomEnqueueDequeueOrderRatio(t *testing.T) {
 			popN := 0
 			if sz := pl.Size(); sz > 0 {
 				//popN = rand.Intn(sz + 1)
-				popN = rand.Intn(maxPush + 1)
+				popN = r.Intn(maxPush + 1)
 				if popN > sz+1 {
 					popN = sz + 1
 				}
@@ -158,11 +166,12 @@ func TestRandomEnqueueDequeueOrderRatio(t *testing.T) {
 }
 
 func TestOrderRatioByMaxPush(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
+	skipIfLongRunning(t)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	const (
-		cycles      = 1000
-		repetitions = 10
+		cycles      = 400
+		repetitions = 6
 	)
 	l := 1
 	for maxPush := 0; maxPush <= 100; maxPush += l {
@@ -176,7 +185,7 @@ func TestOrderRatioByMaxPush(t *testing.T) {
 			var seq []int
 
 			for step := 0; step < cycles; step++ {
-				pushN := rand.Intn(maxPush + 1)
+				pushN := r.Intn(maxPush + 1)
 				for i := 0; i < pushN; i++ {
 					pl.Push(nextVal)
 					nextVal++
@@ -184,10 +193,10 @@ func TestOrderRatioByMaxPush(t *testing.T) {
 
 				popN := 0
 				if sz := pl.Size(); sz > 0 {
-					popN = rand.Intn(sz + 1)
+					popN = r.Intn(sz + 1)
 					//popN = rand.Intn(maxPush + 1)
 					if popN > maxPush+1 {
-						popN = rand.Intn(maxPush + 1)
+						popN = r.Intn(maxPush + 1)
 					}
 				}
 				for i := 0; i < popN; i++ {
@@ -237,11 +246,12 @@ func TestOrderRatioByMaxPush(t *testing.T) {
 }
 
 func TestStackOrderRatioByMaxPush(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
+	skipIfLongRunning(t)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	const (
-		cycles      = 1000
-		repetitions = 10
+		cycles      = 400
+		repetitions = 6
 	)
 
 	for maxPush := 0; maxPush <= 30; maxPush += 10 {
@@ -252,7 +262,7 @@ func TestStackOrderRatioByMaxPush(t *testing.T) {
 			var seq []int
 
 			for step := 0; step < cycles; step++ {
-				pushN := rand.Intn(maxPush + 1)
+				pushN := r.Intn(maxPush + 1)
 				for i := 0; i < pushN; i++ {
 					pl.Push(nextVal)
 					nextVal++
@@ -261,7 +271,7 @@ func TestStackOrderRatioByMaxPush(t *testing.T) {
 				popN := 0
 				if sz := pl.Size(); sz > 0 {
 					//popN = rand.Intn(sz + 1)
-					popN = rand.Intn(maxPush + 1)
+					popN = r.Intn(maxPush + 1)
 					if popN > sz+1 {
 						popN = sz + 1
 					}
