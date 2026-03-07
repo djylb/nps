@@ -1024,36 +1024,39 @@ func (s *Bridge) ping() {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		closedClients := make([]int, 0)
-		s.Client.Range(func(key, value interface{}) bool {
-			clientID := key.(int)
-			if clientID <= 0 {
-				return true
-			}
-			client, ok := value.(*Client)
-			if !ok || client == nil {
-				logs.Trace("Client %d is nil", clientID)
-				closedClients = append(closedClients, clientID)
-				return true
-			}
-			client.RemoveOfflineNodes(false)
-			node := client.CheckNode()
-			if node == nil || node.IsOffline() {
-				client.retryTime++
-				if client.retryTime >= 3 {
-					logs.Trace("Stop client %d", clientID)
-					closedClients = append(closedClients, clientID)
+	for {
+		select {
+		case <-ticker.C:
+			closedClients := make([]int, 0)
+			s.Client.Range(func(key, value interface{}) bool {
+				clientID := key.(int)
+				if clientID <= 0 {
+					return true
 				}
-			} else {
-				client.retryTime = 0 // Reset retry count when the state is normal
-			}
-			return true
-		})
+				client, ok := value.(*Client)
+				if !ok || client == nil {
+					logs.Trace("Client %d is nil", clientID)
+					closedClients = append(closedClients, clientID)
+					return true
+				}
+				client.RemoveOfflineNodes(false)
+				node := client.CheckNode()
+				if node == nil || node.IsOffline() {
+					client.retryTime++
+					if client.retryTime >= 3 {
+						logs.Trace("Stop client %d", clientID)
+						closedClients = append(closedClients, clientID)
+					}
+				} else {
+					client.retryTime = 0 // Reset retry count when the state is normal
+				}
+				return true
+			})
 
-		for _, clientId := range closedClients {
-			logs.Info("the client %d closed", clientId)
-			s.DelClient(clientId)
+			for _, clientId := range closedClients {
+				logs.Info("the client %d closed", clientId)
+				s.DelClient(clientId)
+			}
 		}
 	}
 }
