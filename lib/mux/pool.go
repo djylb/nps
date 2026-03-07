@@ -43,6 +43,9 @@ func (Self *windowBufferPool) Get() (buf []byte) {
 
 func (Self *windowBufferPool) Put(x []byte) {
 	//trace(x, "put")
+	if cap(x) != poolSizeWindowBuffer {
+		return
+	}
 	Self.pool.Put(x[:poolSizeWindowBuffer]) // make buf to full
 }
 
