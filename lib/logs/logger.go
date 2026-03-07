@@ -23,6 +23,7 @@ var (
 )
 
 const defaultBufSize = 64 * 1024 // 64KB
+const maxRetainedBufferMultiple = 4
 
 type BufferWriter struct {
 	mu  sync.Mutex
@@ -59,7 +60,15 @@ func (w *BufferWriter) GetAndClear() string {
 	defer w.mu.Unlock()
 	s := w.buf.String()
 	w.buf.Reset()
+	w.shrinkIfNeeded()
 	return s
+}
+
+func (w *BufferWriter) shrinkIfNeeded() {
+	if w.buf.Cap() <= w.cap*maxRetainedBufferMultiple {
+		return
+	}
+	w.buf = bytes.NewBuffer(make([]byte, 0, w.cap))
 }
 
 // EnableInMemoryBuffer activates an in-memory circular buffer of given capacity
