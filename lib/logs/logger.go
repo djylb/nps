@@ -23,12 +23,13 @@ var (
 )
 
 const defaultBufSize = 64 * 1024 // 64KB
-const maxRetainedBufferMultiple = 4
 
 type BufferWriter struct {
-	mu  sync.Mutex
-	buf *bytes.Buffer
-	cap int
+	mu    sync.Mutex
+	buf   []byte
+	cap   int
+	start int
+	size  int
 }
 
 func NewBufferWriter(capacity int) *BufferWriter {
@@ -36,7 +37,7 @@ func NewBufferWriter(capacity int) *BufferWriter {
 		capacity = defaultBufSize
 	}
 	return &BufferWriter{
-		buf: bytes.NewBuffer(make([]byte, 0, capacity)),
+		buf: make([]byte, capacity),
 		cap: capacity,
 	}
 }
@@ -46,35 +47,47 @@ func (w *BufferWriter) Write(p []byte) (n int, err error) {
 	defer w.mu.Unlock()
 
 	if len(p) >= w.cap {
-		w.buf.Reset()
-		w.buf.Write(p[len(p)-w.cap:])
+		copy(w.buf, p[len(p)-w.cap:])
+		w.start = 0
+		w.size = w.cap
 		return len(p), nil
 	}
 
-	if w.buf.Len()+len(p) > w.cap {
-		drop := w.buf.Len() + len(p) - w.cap
-		data := w.buf.Bytes()
-		w.buf.Reset()
-		w.buf.Write(data[drop:])
+	if w.size+len(p) > w.cap {
+		drop := w.size + len(p) - w.cap
+		w.start = (w.start + drop) % w.cap
+		w.size -= drop
 	}
-	w.buf.Write(p)
+
+	writePos := (w.start + w.size) % w.cap
+	written := copy(w.buf[writePos:], p)
+	if written < len(p) {
+		copy(w.buf, p[written:])
+	}
+	w.size += len(p)
 	return len(p), nil
 }
 
 func (w *BufferWriter) GetAndClear() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	s := w.buf.String()
-	w.buf.Reset()
-	w.shrinkIfNeeded()
-	return s
-}
-
-func (w *BufferWriter) shrinkIfNeeded() {
-	if w.buf.Cap() <= w.cap*maxRetainedBufferMultiple {
-		return
+	if w.size == 0 {
+		return ""
 	}
-	w.buf = bytes.NewBuffer(make([]byte, 0, w.cap))
+
+	var s string
+	if w.start+w.size <= w.cap {
+		s = string(w.buf[w.start : w.start+w.size])
+	} else {
+		tmp := make([]byte, w.size)
+		n := copy(tmp, w.buf[w.start:])
+		copy(tmp[n:], w.buf[:w.size-n])
+		s = string(tmp)
+	}
+
+	w.start = 0
+	w.size = 0
+	return s
 }
 
 // EnableInMemoryBuffer activates an in-memory circular buffer of given capacity

@@ -53,7 +53,7 @@ func TestBufferWriterWriteWithLargePayload(t *testing.T) {
 	}
 }
 
-func TestBufferWriterGetAndClearShrinksOversizedBuffer(t *testing.T) {
+func TestBufferWriterGetAndClearResetsState(t *testing.T) {
 	w := NewBufferWriter(16)
 	large := strings.Repeat("x", 128)
 
@@ -62,8 +62,11 @@ func TestBufferWriterGetAndClearShrinksOversizedBuffer(t *testing.T) {
 	}
 
 	_ = w.GetAndClear()
-	if gotCap := w.buf.Cap(); gotCap > 16*maxRetainedBufferMultiple {
-		t.Fatalf("buffer should be shrunk, got cap=%d", gotCap)
+	if w.start != 0 || w.size != 0 {
+		t.Fatalf("buffer state should be reset, start=%d size=%d", w.start, w.size)
+	}
+	if gotCap := len(w.buf); gotCap != 16 {
+		t.Fatalf("buffer capacity should remain fixed, got=%d", gotCap)
 	}
 }
 
