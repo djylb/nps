@@ -193,18 +193,24 @@ func (s *ClientController) Edit() {
 }
 
 func RemoveRepeatedElement(arr []string) (newArr []string) {
-	newArr = make([]string, 0)
-	for i := 0; i < len(arr); i++ {
-		repeat := false
-		for j := i + 1; j < len(arr); j++ {
-			if arr[i] == arr[j] {
-				repeat = true
-				break
-			}
+	if len(arr) == 0 {
+		return nil
+	}
+
+	// Keep the same behavior as before: preserve the *last* occurrence
+	// of each element (e.g. [a,b,a] -> [b,a]).
+	seen := make(map[string]struct{}, len(arr))
+	newArr = make([]string, 0, len(arr))
+	for i := len(arr) - 1; i >= 0; i-- {
+		if _, ok := seen[arr[i]]; ok {
+			continue
 		}
-		if !repeat {
-			newArr = append(newArr, arr[i])
-		}
+		seen[arr[i]] = struct{}{}
+		newArr = append(newArr, arr[i])
+	}
+
+	for i, j := 0, len(newArr)-1; i < j; i, j = i+1, j-1 {
+		newArr[i], newArr[j] = newArr[j], newArr[i]
 	}
 	return
 }
