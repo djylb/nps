@@ -8,6 +8,10 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"crypto/tls"
+
+	"github.com/djylb/nps/lib/crypt"
 )
 
 type fakeNetError struct {
@@ -43,17 +47,18 @@ func TestGetLenBytes(t *testing.T) {
 	}
 }
 
-func TestIsTempOrTimeout(t *testing.T) {
+func TestIsTimeout(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want bool
 	}{
 		{name: "nil", err: nil, want: false},
-		{name: "net temporary", err: fakeNetError{msg: "temp", temporary: true}, want: true},
+		{name: "net temporary", err: fakeNetError{msg: "temp", temporary: true}, want: false},
 		{name: "net timeout", err: fakeNetError{msg: "timeout", timeout: true}, want: true},
-		{name: "plain timeout text", err: io.EOF, want: false},
-		{name: "plain timeout text", err: io.ErrNoProgress, want: false},
+		{name: "plain timeout text", err: errors.New("request timeout"), want: true},
+		{name: "plain non-timeout text", err: io.EOF, want: false},
+		{name: "plain non-timeout text", err: io.ErrNoProgress, want: false},
 		{name: "net.Error without timeout flag", err: &net.DNSError{Err: "i/o timeout"}, want: false},
 	}
 
@@ -63,6 +68,43 @@ func TestIsTempOrTimeout(t *testing.T) {
 				t.Fatalf("IsTimeout(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadACKTimeout(t *testing.T) {
+	server, client := net.Pipe()
+	defer func() { _ = server.Close() }()
+	defer func() { _ = client.Close() }()
+
+	err := ReadACK(client, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("ReadACK() error = nil, want timeout error")
+	}
+	if !IsTimeout(err) {
+		t.Fatalf("ReadACK() error = %v, want timeout-compatible error", err)
+	}
+}
+
+func TestGetTlsConn(t *testing.T) {
+	crypt.InitTls(tls.Certificate{})
+	serverConn, clientConn := net.Pipe()
+	defer func() { _ = serverConn.Close() }()
+	defer func() { _ = clientConn.Close() }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		tlsServer := crypt.NewTlsServerConn(serverConn)
+		errCh <- tlsServer.(*tls.Conn).Handshake()
+	}()
+
+	tlsClient, err := GetTlsConn(clientConn, "example.com:443")
+	if err != nil {
+		t.Fatalf("GetTlsConn() error = %v", err)
+	}
+	defer func() { _ = tlsClient.Close() }()
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("server TLS handshake error = %v", err)
 	}
 }
 
