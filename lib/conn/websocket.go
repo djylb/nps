@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
@@ -88,9 +89,10 @@ func (c *WsConn) SetReadDeadline(t time.Time) error  { return c.Conn.SetReadDead
 func (c *WsConn) SetWriteDeadline(t time.Time) error { return c.Conn.SetWriteDeadline(t) }
 
 type httpListener struct {
-	acceptCh chan net.Conn
-	closeCh  chan struct{}
-	addr     net.Addr
+	acceptCh  chan net.Conn
+	closeCh   chan struct{}
+	addr      net.Addr
+	closeOnce sync.Once
 }
 
 func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net.Listener {
@@ -116,7 +118,11 @@ func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net
 		if common.IsTrustedProxy(trustedIps, r.RemoteAddr) {
 			c.RealIP = realIP
 		}
-		ch <- c
+		select {
+		case ch <- c:
+		case <-hl.closeCh:
+			_ = c.Close()
+		}
 	})
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(base) }()
@@ -150,7 +156,11 @@ func NewWSSListener(base net.Listener, path string, cert tls.Certificate, truste
 		if common.IsTrustedProxy(trustedIps, r.RemoteAddr) {
 			c.RealIP = realIP
 		}
-		ch <- c
+		select {
+		case ch <- c:
+		case <-hl.closeCh:
+			_ = c.Close()
+		}
 	})
 	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
 	srv := &http.Server{Handler: mux, TLSConfig: tlsConfig}
@@ -172,7 +182,9 @@ func (hl *httpListener) Accept() (net.Conn, error) {
 }
 
 func (hl *httpListener) Close() error {
-	close(hl.closeCh)
+	hl.closeOnce.Do(func() {
+		close(hl.closeCh)
+	})
 	return nil
 }
 
