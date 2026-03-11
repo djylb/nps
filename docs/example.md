@@ -8,7 +8,7 @@
 - 内网客户端运行（windows使用cmd运行加.exe）
 
 ```shell
-./npc -server=1.1.1.1:8024 -vkey=客户端的密钥
+./npc -server=1.1.1.1:8024 -vkey=YOUR_CLIENT_VKEY
 ```
 
 **注意：运行服务端后，请确保能从客户端设备上正常访问配置文件中所配置的`bridge_tcp_port`端口，telnet，netcat这类的来检查**

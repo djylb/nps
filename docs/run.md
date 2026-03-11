@@ -9,7 +9,7 @@
 ```bash
 sudo ./nps install
 
-# 支持指定配置文件路径
+# Support custom config path
 ./nps -conf_path="/app/nps"
 ./nps install -conf_path="/app/nps"
 ```
@@ -18,7 +18,7 @@ sudo ./nps install
 ```powershell
 nps.exe install
 
-# 支持指定配置文件路径
+# Support custom config path
 .\nps.exe -conf_path="D:\test\nps"
 .\nps.exe install -conf_path="D:\test\nps"
 ```
@@ -45,8 +45,8 @@ nps.exe start
 
 📌 **停止/重启服务**
 ```bash
-nps stop      # 停止服务
-nps restart   # 重启服务
+nps stop      # Stop service
+nps restart   # Restart service
 ```
 
 📌 **卸载 NPS**
@@ -98,7 +98,7 @@ nps uninstall
 创建 `systemd` 配置文件（路径：`/etc/systemd/system/nps.service`）：
 ```ini
 [Unit]
-Description=NPS 内网穿透服务端
+Description=NPS Intranet Penetration Server
 ConditionFileIsExecutable=/usr/bin/nps
 Requires=network.target
 After=network-online.target syslog.target
@@ -134,7 +134,7 @@ systemctl daemon-reload
 📌 **Windows 手动注册服务**
 以 **管理员身份** 运行 `PowerShell`：
 ```powershell
-cmd /c 'sc create Nps1 binPath= "D:\NPS\nps.exe -conf_path=D:\NPS\" DisplayName= "NPS内网穿透服务端1" start= auto'
+cmd /c 'sc create Nps1 binPath= "D:\NPS\nps.exe -conf_path=D:\NPS\" DisplayName= "NPS Server 1" start= auto'
 ```
 **启动服务**
 ```powershell
@@ -215,7 +215,7 @@ npc uninstall
 创建 `systemd` 配置文件（路径：`/etc/systemd/system/npc.service`）：
 ```ini
 [Unit]
-Description=NPS 内网穿透客户端
+Description=NPS Intranet Penetration Client
 ConditionFileIsExecutable=/usr/bin/npc
 Requires=network.target
 After=network-online.target syslog.target
@@ -251,7 +251,7 @@ systemctl daemon-reload
 📌 **Windows 手动注册服务**
 以 **管理员身份** 运行 `PowerShell`：
 ```powershell
-cmd /c 'sc create Npc1 binPath= "D:\tools\npc.exe -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off -debug=false" DisplayName= "NPS内网穿透客户端1" start= auto'
+cmd /c 'sc create Npc1 binPath= "D:\tools\npc.exe -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off -debug=false" DisplayName= "NPS Client 1" start= auto'
 ```
 **启动服务**
 ```powershell
@@ -283,4 +283,3 @@ sc delete Npc1
 ## 4. 配置管理
 - **客户端连接后，在 Web 界面配置穿透服务**
 - 参考 [使用示例](/example)
-

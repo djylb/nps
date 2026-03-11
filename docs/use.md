@@ -15,13 +15,13 @@
 📌 **普通连接（TCP 模式）**
 
 ```bash
-./npc -server=ip:8024 -vkey=web界面中显示的密钥 -type=tcp
+./npc -server=ip:8024 -vkey=YOUR_CLIENT_VKEY -type=tcp
 ```
 
 📌 **TLS 加密连接（安全模式）**
 
 ```bash
-./npc -server=ip:8025 -vkey=web界面中显示的密钥 -type=tls
+./npc -server=ip:8025 -vkey=YOUR_CLIENT_VKEY -type=tls
 ```
 
 📌 **连接多个服务端**
@@ -46,38 +46,38 @@
 ### **Linux/macOS**
 
 ```bash
-# 普通连接（TCP）
+# Standard connection (TCP)
 sudo ./npc install -server=ip:8024 -vkey=xxx -type=tcp -log=off
-# TLS 加密连接（安全模式）
+# TLS connection (secure mode)
 sudo ./npc install -server=ip:8025 -vkey=xxx -type=tls -log=off
-# 连接多个服务端
+# Connect to multiple servers
 sudo ./npc install -server=xx:12,yy:34 -vkey=xx,yy -type=tcp,tls -log=off
 
-# 启动服务
+# Start service
 sudo npc start
-# 停止服务
+# Stop service
 sudo npc stop
-# 卸载（修改参数时需要先卸载再重新注册）
+# Uninstall (reinstall after changing parameters)
 sudo npc uninstall
 ```
 
 ### **Windows**
 
 ```powershell
-# 普通连接（TCP）
+# Standard connection (TCP)
 npc.exe install -server=ip:8024 -vkey=xxx -type=tcp -log=off
-# TLS 加密连接（安全模式）
+# TLS connection (secure mode)
 npc.exe install -server=ip:8025 -vkey=xxx -type=tls -log=off
-# 连接多个服务端
+# Connect to multiple servers
 npc.exe install -server=xx:12,yy:34 -vkey=xx,yy -type=tcp,tls -log=off
 
-# 启动服务
+# Start service
 npc.exe start
-# 停止服务
+# Stop service
 npc.exe stop
-# 安装
-npc.exe install 其他参数（例如 -server=xx,yy -vkey=xx,yy -type=tcp,tls或者-config=xxx,yyy  -log=off）
-# 卸载（修改参数时需要先卸载再重新注册）
+# Install with custom args
+npc.exe install -server=xx,yy -vkey=xx,yy -type=tcp,tls -config=xxx,yyy -log=off
+# Uninstall (reinstall after changing parameters)
 npc.exe uninstall
 ```
 
@@ -130,7 +130,7 @@ npc.exe uninstall
 
 ```bash
 ./npc -config=/path/to/npc.conf
-# 支持传入多个配置文件多开
+# Support multiple config files for multi-instance
 ./npc -config=/path/to/npc1.conf,/path/to/npc2.conf
 ```
 

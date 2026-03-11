@@ -53,14 +53,14 @@ nps.exe reload
 
 ### **Linux/macOS**
 ```bash
-sudo nps stop   # 停止 NPS
-sudo nps restart # 重启 NPS
+sudo nps stop    # Stop NPS
+sudo nps restart # Restart NPS
 ```
 
 ### **Windows**
 ```powershell
-nps.exe stop   # 停止 NPS
-nps.exe restart # 重启 NPS
+nps.exe stop    # Stop NPS
+nps.exe restart # Restart NPS
 ```
 
 ---
@@ -74,17 +74,17 @@ nps.exe restart # 重启 NPS
 ### **步骤**
 1. **先停止 `nps`**
    ```bash
-   sudo nps stop  # Linux/macOS
+   sudo nps stop # Linux/macOS
    nps.exe stop  # Windows
    ```
 2. **执行更新**
    ```bash
-   sudo nps-update update  # Linux/macOS
+   sudo nps-update update # Linux/macOS
    nps-update.exe update  # Windows
    ```
 3. **重新启动 `nps`**
    ```bash
-   sudo nps start  # Linux/macOS
+   sudo nps start # Linux/macOS
    nps.exe start  # Windows
    ```
 
@@ -106,18 +106,18 @@ nps.exe restart # 重启 NPS
 
 ### **Linux/macOS**
 ```bash
-sudo systemctl stop nps  # 停止 nps
-whereis nps              # 查找 nps 安装位置
-sudo cp nps /usr/bin/nps # 替换旧版二进制文件
-sudo chmod +x /usr/bin/nps # 确保 nps 可执行
-sudo systemctl start nps # 启动 nps
+sudo systemctl stop nps   # Stop nps
+whereis nps               # Find nps install path
+sudo cp nps /usr/bin/nps  # Replace old binary
+sudo chmod +x /usr/bin/nps # Ensure executable permission
+sudo systemctl start nps  # Start nps
 ```
 
 ### **Windows**
 ```powershell
-Stop-Service nps   # 停止 nps
-Copy-Item -Path "新下载的 nps.exe 路径" -Destination "原 nps.exe 目录" -Force
-Start-Service nps  # 启动 nps
+Stop-Service nps   # Stop nps
+Copy-Item -Path "PATH_TO_NEW_NPS_EXE" -Destination "PATH_TO_OLD_NPS_EXE_DIR" -Force
+Start-Service nps  # Start nps
 ```
 
 📌 **如遇 `权限不足`，请以管理员身份运行 `PowerShell` 终端执行。**
