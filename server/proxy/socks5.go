@@ -16,6 +16,21 @@ import (
 	"github.com/djylb/nps/lib/transport"
 )
 
+func readLenPrefixedString(r io.Reader) (string, error) {
+	var n [1]byte
+	if _, err := io.ReadFull(r, n[:]); err != nil {
+		return "", err
+	}
+	if n[0] == 0 {
+		return "", errors.New("empty field")
+	}
+	b := make([]byte, int(n[0]))
+	if _, err := io.ReadFull(r, b); err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 const (
 	ipV4            = 1
 	domainName      = 3
@@ -135,17 +150,12 @@ func (s *TunnelModeServer) handleConnect(c net.Conn) {
 		}
 		host = ipv6.String()
 	case domainName:
-		var domainLen uint8
-		if err := binary.Read(c, binary.BigEndian, &domainLen); err != nil || domainLen == 0 {
+		domain, err := readLenPrefixedString(c)
+		if err != nil {
 			s.sendReply(c, addrTypeNotSupported)
 			return
 		}
-		domain := make([]byte, domainLen)
-		if _, err := io.ReadFull(c, domain); err != nil {
-			s.sendReply(c, addrTypeNotSupported)
-			return
-		}
-		host = string(domain)
+		host = domain
 	default:
 		s.sendReply(c, addrTypeNotSupported)
 		return
@@ -274,17 +284,12 @@ func (s *TunnelModeServer) handleUDP(c net.Conn) {
 		}
 		host = ipv6.String()
 	case domainName:
-		var domainLen uint8
-		if err := binary.Read(c, binary.BigEndian, &domainLen); err != nil || domainLen == 0 {
+		domain, err := readLenPrefixedString(c)
+		if err != nil {
 			s.sendReply(c, addrTypeNotSupported)
 			return
 		}
-		domain := make([]byte, domainLen)
-		if _, err := io.ReadFull(c, domain); err != nil {
-			s.sendReply(c, addrTypeNotSupported)
-			return
-		}
-		host = string(domain)
+		host = domain
 	default:
 		s.sendReply(c, addrTypeNotSupported)
 		return
@@ -499,7 +504,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		return errors.New("socks5 proxy is disabled")
 	}
 
-	nMethods := buf[1]
+	nMethods := int(buf[1])
 	methods := make([]byte, nMethods)
 	if _, err := io.ReadFull(c, methods); err != nil {
 		logs.Warn("wrong method")

@@ -6,7 +6,7 @@ import (
 
 const (
 	PoolSize      = 64 << 10
-	PoolSizeSmall = 100
+	PoolSizeSmall = 255
 	PoolSizeUdp   = 1472 + 200
 	PoolSizeCopy  = 32 << 10
 )
