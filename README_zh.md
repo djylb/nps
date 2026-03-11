@@ -69,11 +69,15 @@ docker pull duan2001/nps
 docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /etc/localtime:/etc/localtime:ro duan2001/nps
 ```
 
+> **提示：** NPS 安装完成后，请先修改 `nps.conf`（如监听端口、Web 管理账号等）再启动服务。
+
 #### NPC 客户端
 ```bash
 docker pull duan2001/npc
 docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:123,yyy:456 -vkey=key1,key2 -type=tls,tcp -log=off
 ```
+
+> **提示：** `-server`、`-vkey`、`-type` 等参数请从 NPS Web 管理端的客户端页面复制，避免手动填写错误。
 
 ### 服务端安装
 
@@ -87,6 +91,8 @@ nps start|stop|restart|uninstall
 # 更新
 nps update && nps restart
 ```
+
+> **提示：** 首次安装后请先编辑 `/etc/nps/nps.conf`，确认配置无误后再执行 `nps start`。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
@@ -111,6 +117,8 @@ npc start|stop|restart|uninstall
 # 更新
 npc update && npc restart
 ```
+
+> **提示：** `npc install` 命令中的参数请以 NPS Web 管理端客户端页面生成的命令为准。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)

@@ -15,7 +15,7 @@ A high-performance NAT traversal and reverse proxy server with Web UI.
 
 ## Introduction
 
-NPS is a lightweight and efficient NAT traversal and reverse proxy system for exposing services behind NAT or firewall. It supports multiple protocols such as TCP, UDP, HTTP, HTTPS, and SOCKS5, and provides a Web management interface for convenient deployment and monitoring.
+NPS is a lightweight and efficient NAT traversal and reverse proxy system for exposing services behind NAT or firewalls. It supports multiple protocols such as TCP, UDP, HTTP, HTTPS, and SOCKS5, and provides a Web management interface for convenient deployment and monitoring.
 
 Since the original [NPS](https://github.com/ehang-io/nps) project has been inactive for a long time, this repository continues its development as an actively maintained community version with extensive refactoring, improved stability, and enhanced functionality.
 
@@ -33,7 +33,7 @@ Since the original [NPS](https://github.com/ehang-io/nps) project has been inact
 ## Key Features
 
 - **Multi-Protocol Support**  
-  Supports TCP/UDP forwarding, HTTP/HTTPS reverse proxy, HTTP/SOCKS5 proxy, P2P mode, Proxy Protocol support, HTTP/3 support, and more for different intranet access scenarios.
+  Supports TCP/UDP forwarding, HTTP/HTTPS reverse proxy, HTTP/SOCKS5 proxy, P2P mode, Proxy Protocol support, HTTP/3 support, and more for different private-network access scenarios.
 
 - **Cross-Platform Deployment**  
   Compatible with major platforms such as Linux and Windows, and can be easily installed as a system service.
@@ -42,7 +42,7 @@ Since the original [NPS](https://github.com/ehang-io/nps) project has been inact
   Provides real-time monitoring of traffic, connection status, and client states with an intuitive and user-friendly interface.
 
 - **Security and Extensibility**  
-  Built-in features such as encrypted transmission, traffic limiting, expiration restrictions, certificate management, and certificate renewal help improve security and manageability.
+  Built-in features such as encrypted transmission, traffic limiting, access expiration controls, certificate management, and certificate renewal help improve security and manageability.
 
 - **Multiple Connection Protocols**  
   Supports connecting to the server using TCP, KCP, TLS, QUIC, WS, and WSS protocols.
@@ -70,12 +70,16 @@ docker pull duan2001/nps
 docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /etc/localtime:/etc/localtime:ro duan2001/nps
 ```
 
+> **Tip:** After installing NPS, edit `nps.conf` (for example: listening ports and Web admin credentials) before starting the service.
+
 #### NPC Client
 
 ```bash
 docker pull duan2001/npc
 docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:123,yyy:456 -vkey=key1,key2 -type=tls,tcp -log=off
 ```
+
+> **Tip:** Get `-server`, `-vkey`, and `-type` from the client page in the NPS Web UI to avoid manual input mistakes.
 
 ### Server Installation
 
@@ -90,6 +94,8 @@ nps start|stop|restart|uninstall
 # Update
 nps update && nps restart
 ```
+
+> **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
 
 #### Windows
 
@@ -117,6 +123,8 @@ npc start|stop|restart|uninstall
 # Update
 npc update && npc restart
 ```
+
+> **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
 
 #### Windows
 
