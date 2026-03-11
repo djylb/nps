@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -178,6 +179,7 @@ func (hc *HealthChecker) doCheck(h *file.Health) {
 			if getErr != nil {
 				err = getErr
 			} else {
+				_, _ = io.Copy(io.Discard, resp.Body)
 				if resp.StatusCode != http.StatusOK {
 					err = fmt.Errorf("unexpected status %d", resp.StatusCode)
 				}
