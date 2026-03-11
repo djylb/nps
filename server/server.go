@@ -150,7 +150,7 @@ func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 	go func() {
 		if err := Bridge.StartTunnel(); err != nil {
 			logs.Error("start server bridge error %v", err)
-			os.Exit(0)
+			os.Exit(1)
 		}
 	}()
 	if p, err := beego.AppConfig.Int("p2p_port"); err == nil {
