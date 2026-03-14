@@ -41,6 +41,7 @@ type HttpProxy struct {
 	Magic                 *certmagic.Config
 	Acme                  *certmagic.ACMEIssuer
 	ResponseHeaderTimeout time.Duration
+	TooManyRequestsPage  []byte // 429错误页面
 }
 
 func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
@@ -69,6 +70,12 @@ func (s *HttpProxy) Start() error {
 		s.ErrorContent = []byte("nps 404")
 	}
 	s.ErrorAlways = beego.AppConfig.DefaultBool("error_always", false)
+
+	// 加载429错误页面
+	s.TooManyRequestsPage, err = common.ReadAllFromFile(common.ResolvePath(beego.AppConfig.DefaultString("toomanyrequests_page", "web/static/page/toomanyrequests.html")))
+	if err != nil {
+		s.TooManyRequestsPage = []byte("nps 429")
+	}
 
 	if s.Bridge.IsServer() {
 		s.Http3Bridge = beego.AppConfig.DefaultBool("bridge_http3", true)
