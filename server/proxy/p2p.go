@@ -122,6 +122,9 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 	}
 
 	if sess.visitorAddr != nil && sess.providerAddr != nil {
+		s.sendAltPortProbe(sess.visitorAddr, sess.providerAddr, common.WORK_P2P_VISITOR)
+		s.sendAltPortProbe(sess.providerAddr, sess.visitorAddr, common.WORK_P2P_PROVIDER)
+
 		var visitorLocalChosen string
 		var providerLocalChosen string
 		if sess.visitorLocal != "" && sess.providerLocal != "" {
@@ -166,5 +169,28 @@ func (s *P2PServer) handleP2P(addr *net.UDPAddr, data []byte) {
 				s.sessions.Delete(key)
 			})
 		})
+	}
+}
+
+func (s *P2PServer) sendAltPortProbe(target *net.UDPAddr, peer *net.UDPAddr, role string) {
+	if target == nil {
+		return
+	}
+	probeConn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		logs.Warn("[P2P] failed to create nat-probe socket for %v: %v", target, err)
+		return
+	}
+	defer func() { _ = probeConn.Close() }()
+
+	peerAddr := ""
+	if peer != nil {
+		peerAddr = peer.String()
+	}
+	payload := common.GetWriteStr(common.WORK_P2P_NAT_PROBE, role, peerAddr)
+	for i := 0; i < 2; i++ {
+		if _, err := probeConn.WriteToUDP(payload, target); err != nil {
+			logs.Trace("[P2P] nat-probe send failed to %v: %v", target, err)
+		}
 	}
 }

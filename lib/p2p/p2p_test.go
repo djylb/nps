@@ -218,3 +218,12 @@ func TestFillTripletByPortDiff(t *testing.T) {
 		})
 	}
 }
+
+func TestIsP2PNATProbePacket(t *testing.T) {
+	if !isP2PNATProbePacket([]byte("p2px*#*p2pv*#*1.1.1.1:1*#*")) {
+		t.Fatal("expected nat-probe packet to be recognized")
+	}
+	if isP2PNATProbePacket([]byte("p2pc")) {
+		t.Fatal("non-probe packet should not be recognized as nat-probe")
+	}
+}

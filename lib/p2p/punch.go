@@ -21,6 +21,7 @@ func sendP2PTestMsg(
 	selfExt1, selfExt2, selfExt3 string,
 	punchedAddr net.Addr,
 	forceHard bool,
+	portRestrictedByProbe bool,
 ) (winConn net.PacketConn, remoteAddr, localAddr, role string, err error) {
 	parentCtx, parentCancel := context.WithCancel(pCtx)
 
@@ -104,11 +105,14 @@ func sendP2PTestMsg(
 	if forceHard {
 		selfHard = true
 	}
+	if portRestrictedByProbe {
+		selfHard = true
+	}
 
-	logs.Info("[P2P] nat peer=%s(%d,%v) self=%s(%d) peerLocal=%v forceHard=%v",
+	logs.Info("[P2P] nat peer=%s(%d,%v) self=%s(%d) peerLocal=%v forceHard=%v probePortRestricted=%v",
 		natHintByInterval(peerInterval, hasPeerExt), peerInterval, peerRegular,
 		natHintByInterval(selfInterval, hasSelfExt), selfInterval,
-		peerLocal != "", forceHard)
+		peerLocal != "", forceHard, portRestrictedByProbe)
 
 	predictedStr := ""
 	if peerExt3 != "" {
