@@ -279,24 +279,30 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 						hasOriginalTTL = true
 					}
 
-					if err := pc4.SetTTL(p2pLowTTLValue); err == nil {
+					if aborted := func() bool {
+						if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
+							return false
+						}
+						if hasOriginalTTL {
+							defer func() { _ = pc4.SetTTL(originalTTL) }()
+						}
 						sentLowTTL = true
 						for i := 0; i < p2pLowTTLBurst; i++ {
 							select {
 							case <-ctx.Done():
-								return
+								return true
 							default:
 							}
 							if atomic.LoadUint32(closed) != 0 {
-								return
+								return true
 							}
 							_, _ = localConn.WriteTo(msg, target)
 							time.Sleep(p2pLowTTLGAP)
 						}
 						time.Sleep(p2pLowTTLPause)
-						if hasOriginalTTL {
-							_ = pc4.SetTTL(originalTTL)
-						}
+						return false
+					}(); aborted {
+						return
 					}
 				}
 			} else {
@@ -308,24 +314,30 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 						hasOriginalHop = true
 					}
 
-					if err := pc6.SetHopLimit(p2pLowTTLValue); err == nil {
+					if aborted := func() bool {
+						if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
+							return false
+						}
+						if hasOriginalHop {
+							defer func() { _ = pc6.SetHopLimit(originalHop) }()
+						}
 						sentLowTTL = true
 						for i := 0; i < p2pLowTTLBurst; i++ {
 							select {
 							case <-ctx.Done():
-								return
+								return true
 							default:
 							}
 							if atomic.LoadUint32(closed) != 0 {
-								return
+								return true
 							}
 							_, _ = localConn.WriteTo(msg, target)
 							time.Sleep(p2pLowTTLGAP)
 						}
 						time.Sleep(p2pLowTTLPause)
-						if hasOriginalHop {
-							_ = pc6.SetHopLimit(originalHop)
-						}
+						return false
+					}(); aborted {
+						return
 					}
 				}
 			}
