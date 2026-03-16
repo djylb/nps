@@ -113,6 +113,7 @@ func (s *SmartUdpConn) UDPConns() []*net.UDPConn {
 	}
 	return out
 }
+
 func (s *SmartUdpConn) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.quit)
@@ -146,12 +147,14 @@ func (s *SmartUdpConn) SetDeadline(t time.Time) error {
 	}
 	return nil
 }
+
 func (s *SmartUdpConn) SetReadDeadline(t time.Time) error {
 	for _, c := range s.conns {
 		_ = c.SetReadDeadline(t)
 	}
 	return nil
 }
+
 func (s *SmartUdpConn) SetWriteDeadline(t time.Time) error {
 	for _, c := range s.conns {
 		_ = c.SetWriteDeadline(t)
