@@ -264,29 +264,27 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 		return
 	}
 
-	go func() {
-		msg := bConnect
+	msg := bConnect
 
-		if udpConn, ok := localConn.(*net.UDPConn); ok {
-			sentLowTTL, aborted := false, false
-			if target.IP != nil && target.IP.To4() != nil {
-				sentLowTTL, aborted = runIPv4LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
-			} else {
-				sentLowTTL, aborted = runIPv6LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
-			}
-			if aborted {
-				return
-			}
-
-			if !sentLowTTL {
-				if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
-					return
-				}
-			}
+	if udpConn, ok := localConn.(*net.UDPConn); ok {
+		sentLowTTL, aborted := false, false
+		if target.IP != nil && target.IP.To4() != nil {
+			sentLowTTL, aborted = runIPv4LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
+		} else {
+			sentLowTTL, aborted = runIPv6LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
+		}
+		if aborted {
+			return
 		}
 
-		_ = sendWarmupBurst(ctx, closed, localConn, msg, target, p2pConeBurstCount+2, 150*time.Millisecond)
-	}()
+		if !sentLowTTL {
+			if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+				return
+			}
+		}
+	}
+
+	_ = sendWarmupBurst(ctx, closed, localConn, msg, target, p2pConeBurstCount+2, 150*time.Millisecond)
 }
 
 func sendWarmupBurst(
