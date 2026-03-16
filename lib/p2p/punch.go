@@ -379,7 +379,7 @@ func sendP2PTestMsg(
 			winner = res.Conn
 			return res.Conn, res.RemoteAddr, res.LocalAddr, res.Role, nil
 		case <-parentCtx.Done():
-			return nil, "", localConn.LocalAddr().String(), sendRole, ErrNATNotSupportP2P
+			return nil, "", localConn.LocalAddr().String(), sendRole, mapP2PContextError(parentCtx.Err())
 		}
 	}
 

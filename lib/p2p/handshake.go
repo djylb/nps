@@ -178,7 +178,7 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 		select {
 		case <-parentCtx.Done():
 			logs.Error("[P2P] handshake fail role=%s local=%s err=%v", sendRole, localAddrStr, parentCtx.Err())
-			return "", localAddrStr, sendRole, ErrNATNotSupportP2P
+			return "", localAddrStr, sendRole, mapP2PContextError(parentCtx.Err())
 		default:
 		}
 
