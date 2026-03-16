@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/logs"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 func getNextAddr(addr string, n int) (string, error) {
@@ -255,6 +258,178 @@ func startFallbackRandomScan(
 			}
 		}
 	}()
+}
+
+func pickUDPConnForTarget(localConn net.PacketConn, target *net.UDPAddr) *net.UDPConn {
+	if localConn == nil || target == nil {
+		return nil
+	}
+	if uc, ok := localConn.(*net.UDPConn); ok {
+		return uc
+	}
+	type udpConnsProvider interface {
+		UDPConns() []*net.UDPConn
+	}
+	provider, ok := localConn.(udpConnsProvider)
+	if !ok {
+		return nil
+	}
+
+	all := provider.UDPConns()
+	if len(all) == 0 {
+		return nil
+	}
+
+	want4 := target.IP != nil && target.IP.To4() != nil
+	for _, uc := range all {
+		if uc == nil {
+			continue
+		}
+		la, ok := uc.LocalAddr().(*net.UDPAddr)
+		if !ok || la == nil {
+			continue
+		}
+		is4 := la.IP == nil || la.IP.To4() != nil
+		if is4 == want4 {
+			return uc
+		}
+	}
+	return all[0]
+}
+
+func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr) {
+	if target == nil || localConn == nil {
+		return
+	}
+
+	msg := bConnect
+	if udpConn := pickUDPConnForTarget(localConn, target); udpConn != nil {
+		usedLowTTL, aborted := runLowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
+		if aborted {
+			return
+		}
+		if !usedLowTTL {
+			if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+				return
+			}
+		}
+	}
+
+	_ = sendWarmupBurst(ctx, closed, localConn, msg, target, p2pConeBurstCount+2, 150*time.Millisecond)
+}
+
+func sendWarmupBurst(
+	ctx context.Context,
+	closed *uint32,
+	localConn net.PacketConn,
+	msg []byte,
+	target *net.UDPAddr,
+	count int,
+	gap time.Duration,
+) (aborted bool) {
+	for i := 0; i < count; i++ {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+		}
+		if atomic.LoadUint32(closed) != 0 {
+			return true
+		}
+		_, _ = localConn.WriteTo(msg, target)
+		if gap > 0 {
+			time.Sleep(gap)
+		}
+	}
+	return false
+}
+
+func runLowTTLWarmup(
+	ctx context.Context,
+	closed *uint32,
+	localConn net.PacketConn,
+	target *net.UDPAddr,
+	udpConn *net.UDPConn,
+	msg []byte,
+) (used, aborted bool) {
+	isIPv4 := target.IP != nil && target.IP.To4() != nil
+	if isIPv4 {
+		pc4 := ipv4.NewPacketConn(udpConn)
+		if pc4 == nil {
+			return false, false
+		}
+		origTTL := p2pDefaultTTL
+		if ttl, err := pc4.TTL(); err == nil && ttl > 0 {
+			origTTL = ttl
+		}
+		if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
+			return false, false
+		}
+		defer restoreIPv4TTL(pc4, target, origTTL)
+
+		if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+			return true, true
+		}
+		time.Sleep(p2pLowTTLPause)
+		return true, false
+	}
+
+	pc6 := ipv6.NewPacketConn(udpConn)
+	if pc6 == nil {
+		return false, false
+	}
+	origHop := p2pDefaultHopLimit
+	if hop, err := pc6.HopLimit(); err == nil && hop > 0 {
+		origHop = hop
+	}
+	if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
+		return false, false
+	}
+	defer restoreIPv6HopLimit(pc6, target, origHop)
+
+	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+		return true, true
+	}
+	time.Sleep(p2pLowTTLPause)
+	return true, false
+}
+
+func restoreIPv4TTL(pc4 *ipv4.PacketConn, target *net.UDPAddr, wantTTL int) {
+	if pc4 == nil {
+		return
+	}
+	if wantTTL <= 0 {
+		wantTTL = p2pDefaultTTL
+	}
+	if err := pc4.SetTTL(wantTTL); err == nil {
+		return
+	} else {
+		logs.Warn("[P2P] restore IPv4 TTL failed target=%v want=%d err=%v fallback=%d", target, wantTTL, err, p2pDefaultTTL)
+	}
+	if wantTTL != p2pDefaultTTL {
+		if err := pc4.SetTTL(p2pDefaultTTL); err != nil {
+			logs.Warn("[P2P] fallback restore IPv4 TTL failed target=%v fallback=%d err=%v", target, p2pDefaultTTL, err)
+		}
+	}
+}
+
+func restoreIPv6HopLimit(pc6 *ipv6.PacketConn, target *net.UDPAddr, wantHop int) {
+	if pc6 == nil {
+		return
+	}
+	if wantHop <= 0 {
+		wantHop = p2pDefaultHopLimit
+	}
+	if err := pc6.SetHopLimit(wantHop); err == nil {
+		return
+	} else {
+		logs.Warn("[P2P] restore IPv6 HopLimit failed target=%v want=%d err=%v fallback=%d", target, wantHop, err, p2pDefaultHopLimit)
+	}
+	if wantHop != p2pDefaultHopLimit {
+		if err := pc6.SetHopLimit(p2pDefaultHopLimit); err != nil {
+			logs.Warn("[P2P] fallback restore IPv6 HopLimit failed target=%v fallback=%d err=%v", target, p2pDefaultHopLimit, err)
+		}
+	}
 }
 
 func fillTripletByPortDiff(a1, a2, a3 string) (b1, b2, b3 string) {

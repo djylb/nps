@@ -57,29 +57,6 @@ func sendP2PTestMsg(
 		logs.Info("[P2P] fast-path failed punched=%s err=%v, fallback to normal strategy", punchedAddr.String(), rErr)
 	}
 
-	if peerLocal != "" {
-		logs.Debug("[P2P] peerLocal=%s", peerLocal)
-		go func() {
-			remoteUdpLocal, rerr := net.ResolveUDPAddr("udp", peerLocal)
-			if rerr != nil {
-				logs.Error("[P2P] resolve peerLocal failed peerLocal=%s err=%v", peerLocal, rerr)
-				return
-			}
-			for i := 20; i > 0; i-- {
-				select {
-				case <-parentCtx.Done():
-					return
-				default:
-				}
-				if atomic.LoadUint32(&closed) != 0 {
-					return
-				}
-				_, _ = localConn.WriteTo(bConnect, remoteUdpLocal)
-				time.Sleep(100 * time.Millisecond)
-			}
-		}()
-	}
-
 	hasPeerExt := peerExt1 != "" && peerExt2 != "" && peerExt3 != ""
 	peerInterval := 0
 	if hasPeerExt {
@@ -129,6 +106,16 @@ func sendP2PTestMsg(
 	}
 	targets := uniqAddrStrs(predictedStr, peerExt1, peerExt2, peerExt3)
 
+	var peerLocalUDP *net.UDPAddr
+	if peerLocal != "" {
+		logs.Debug("[P2P] peerLocal=%s", peerLocal)
+		peerLocalUDP, err = net.ResolveUDPAddr("udp", peerLocal)
+		if err != nil {
+			logs.Error("[P2P] resolve peerLocal failed peerLocal=%s err=%v", peerLocal, err)
+			peerLocalUDP = nil
+		}
+	}
+
 	startTickerSender := func(interval time.Duration, fn func()) {
 		go func() {
 			ticker := time.NewTicker(interval)
@@ -148,6 +135,28 @@ func sendP2PTestMsg(
 	}
 
 	baseUDP := resolveUDPAddr(predictedStr)
+	if peerLocalUDP != nil {
+		// 优先尝试局域网直连，不阻塞在公网 warmup 上。
+		go func(remoteUDP *net.UDPAddr) {
+			for i := 20; i > 0; i-- {
+				select {
+				case <-parentCtx.Done():
+					return
+				default:
+				}
+				if atomic.LoadUint32(&closed) != 0 {
+					return
+				}
+				_, _ = localConn.WriteTo(bConnect, remoteUDP)
+				time.Sleep(100 * time.Millisecond)
+			}
+		}(peerLocalUDP)
+	}
+
+	if baseUDP != nil && (forceHard || portRestrictedByProbe) {
+		logs.Debug("[P2P] start low-ttl warmup target=%s forceHard=%v probePortRestricted=%v", baseUDP.String(), forceHard, portRestrictedByProbe)
+		startPortRestrictedWarmup(parentCtx, &closed, localConn, baseUDP)
+	}
 	if len(targets) > 0 {
 		go func() {
 			for _, t := range targets {

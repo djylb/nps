@@ -19,9 +19,15 @@ const (
 	p2pStrategyAConnCount = 256
 
 	// base send
-	p2pConeSendTick   = 500 * time.Millisecond
-	p2pConeBurstCount = 3
-	p2pConeBurstGap   = 80 * time.Millisecond
+	p2pConeSendTick    = 500 * time.Millisecond
+	p2pConeBurstCount  = 3
+	p2pConeBurstGap    = 80 * time.Millisecond
+	p2pLowTTLBurst     = 3
+	p2pLowTTLGAP       = 20 * time.Millisecond
+	p2pLowTTLValue     = 3
+	p2pLowTTLPause     = 150 * time.Millisecond
+	p2pDefaultTTL      = 64
+	p2pDefaultHopLimit = 64
 
 	// near scan (regular ports change)
 	p2pConeNearScanCount = 128

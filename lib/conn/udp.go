@@ -104,6 +104,15 @@ func (s *SmartUdpConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	return s.conns[0].WriteTo(p, addr)
 }
 
+func (s *SmartUdpConn) UDPConns() []*net.UDPConn {
+	out := make([]*net.UDPConn, 0, len(s.conns))
+	for _, c := range s.conns {
+		if uc, ok := c.(*net.UDPConn); ok && uc != nil {
+			out = append(out, uc)
+		}
+	}
+	return out
+}
 func (s *SmartUdpConn) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.quit)
