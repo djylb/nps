@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"errors"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -380,7 +379,7 @@ func sendP2PTestMsg(
 			winner = res.Conn
 			return res.Conn, res.RemoteAddr, res.LocalAddr, res.Role, nil
 		case <-parentCtx.Done():
-			return nil, "", localConn.LocalAddr().String(), sendRole, errors.New("connect to the target failed, maybe the nat type is not support p2p")
+			return nil, "", localConn.LocalAddr().String(), sendRole, ErrNATNotSupportP2P
 		}
 	}
 

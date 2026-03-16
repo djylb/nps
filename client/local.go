@@ -468,8 +468,11 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 	defer ticker.Stop()
 
 	const maxRetry = 300
+	const natHardFailLimit = 6
 	var addrRetry int
 	var notReadyRetry int
+	var natHardFailCount int
+	var hardNATPunchDisabled bool
 
 	for {
 		select {
@@ -484,6 +487,8 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 		if ok {
 			addrRetry = 0
 			notReadyRetry = 0
+			natHardFailCount = 0
+			hardNATPunchDisabled = false
 			mgr.mu.Unlock()
 			continue
 		}
@@ -499,6 +504,10 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 			mgr.quicConn = nil
 		}
 		mgr.mu.Unlock()
+
+		if hardNATPunchDisabled {
+			continue
+		}
 
 		addrV4, errV4 := common.GetLocalUdp4Addr()
 		if errV4 != nil {
@@ -534,7 +543,10 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 			default:
 			}
 			if errV4 == nil {
-				mgr.newUdpConn(addrV4.String(), cfg, l)
+				tryErr := mgr.newUdpConn(addrV4.String(), cfg, l)
+				if errors.Is(tryErr, p2p.ErrNATNotSupportP2P) {
+					natHardFailCount++
+				}
 				mgr.mu.Lock()
 				if mgr.statusOK {
 					mgr.mu.Unlock()
@@ -544,7 +556,10 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 				notReadyRetry++
 			}
 			if errV6 == nil {
-				mgr.newUdpConn(addrV6.String(), cfg, l)
+				tryErr := mgr.newUdpConn(addrV6.String(), cfg, l)
+				if errors.Is(tryErr, p2p.ErrNATNotSupportP2P) {
+					natHardFailCount++
+				}
 				mgr.mu.Lock()
 				if mgr.statusOK {
 					mgr.mu.Unlock()
@@ -560,6 +575,13 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 		stillBad := !mgr.statusOK
 		mgr.mu.Unlock()
 		if stillBad {
+			if natHardFailCount >= natHardFailLimit {
+				if !hardNATPunchDisabled {
+					logs.Warn("P2P hard-NAT handshake failed %d times, disable punching and keep relay/secret available.", natHardFailCount)
+				}
+				hardNATPunchDisabled = true
+				continue
+			}
 			if notReadyRetry >= maxRetry {
 				logs.Error("P2P connection not established after %d retries (~%ds), exiting.", notReadyRetry, maxRetry)
 				mgr.resetStatus(false)
@@ -572,7 +594,7 @@ func (mgr *P2PManager) handleUdpMonitor(cfg *config.CommonConfig, l *config.Loca
 	}
 }
 
-func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l *config.LocalServer) {
+func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l *config.LocalServer) error {
 	mgr.mu.Lock()
 	secretConn := mgr.secretConn
 	mgr.mu.Unlock()
@@ -614,7 +636,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 			} else {
 				mgr.pCancel()
 			}
-			return
+			return nil
 		}
 		defer func() { _ = c.Close() }()
 		mgr.mu.Lock()
@@ -625,7 +647,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 	}
 	if c == nil {
 		logs.Error("Get conn failed: %v", err)
-		return
+		return nil
 	}
 	remoteConn := conn.NewConn(c)
 	defer func() { _ = remoteConn.Close() }()
@@ -640,7 +662,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 		} else {
 			mgr.pCancel()
 		}
-		return
+		return nil
 	}
 	if _, err := remoteConn.Write([]byte(crypt.Md5(l.Password))); err != nil {
 		logs.Error("Failed to send password to server: %v", err)
@@ -649,7 +671,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 		} else {
 			mgr.pCancel()
 		}
-		return
+		return nil
 	}
 	rAddrBuf, err := remoteConn.GetShortLenContent()
 	if err != nil {
@@ -659,7 +681,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 		} else {
 			mgr.pCancel()
 		}
-		return
+		return nil
 	}
 	rAddr := string(rAddrBuf)
 	remoteIP := net.ParseIP(common.GetIpByAddr(remoteConn.RemoteAddr().String()))
@@ -678,7 +700,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 	localConn, remoteAddr, localAddr, role, mode, data, err = p2p.HandleUDP(mgr.ctx, localAddr, rAddr, crypt.Md5(l.Password), common.WORK_P2P_VISITOR, P2PMode, "")
 	if err != nil {
 		logs.Error("Handle P2P failed: %v", err)
-		return
+		return err
 	}
 	if mode == "" || mode != P2PMode {
 		mode = common.CONN_KCP
@@ -693,7 +715,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 	if err != nil {
 		logs.Error("Failed to resolve remote UDP addr: %v", err)
 		_ = localConn.Close()
-		return
+		return nil
 	}
 
 	if mode == common.CONN_QUIC {
@@ -701,26 +723,26 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 		if err != nil {
 			logs.Error("QUIC dial error: %v", err)
 			_ = localConn.Close()
-			return
+			return nil
 		}
 		state := sess.ConnectionState().TLS
 		if len(state.PeerCertificates) == 0 {
 			logs.Error("Failed to get QUIC certificate")
 			_ = localConn.Close()
-			return
+			return nil
 		}
 		leaf := state.PeerCertificates[0]
 		if data != string(crypt.GetHMAC(cfg.VKey, leaf.Raw)) {
 			logs.Error("Failed to verify QUIC certificate")
 			_ = localConn.Close()
-			return
+			return nil
 		}
 	} else {
 		kcpTunnel, err := conn.NewKCPSessionWithConn(rUDPAddr, localConn)
 		if err != nil {
 			logs.Warn("KCP create failed: %v", err)
 			_ = localConn.Close()
-			return
+			return nil
 		}
 		udpTunnel = kcpTunnel
 	}
@@ -748,6 +770,7 @@ func (mgr *P2PManager) newUdpConn(localAddr string, cfg *config.CommonConfig, l 
 	}
 	mgr.statusOK = true
 	mgr.mu.Unlock()
+	return nil
 }
 
 func (mgr *P2PManager) resetStatus(ok bool) {

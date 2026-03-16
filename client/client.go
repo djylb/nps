@@ -192,23 +192,32 @@ func (s *TRPClient) handleMain() {
 }
 
 func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
+	wait := time.Duration(s.disconnectTime) * time.Second
+	if wait <= 0 {
+		wait = 30 * time.Second
+	}
+	p2pCtx, cancelP2P := context.WithTimeout(s.ctx, wait)
+	defer cancelP2P()
+
 	var localConn net.PacketConn
 	var err error
 	var remoteAddress, role, mode, data string
 	sendData := string(crypt.GetHMAC(s.vKey, crypt.GetCert().Certificate[0]))
 	//logs.Debug("newUdpConn %s %s", localAddr, rAddr)
-	if localConn, remoteAddress, localAddr, role, mode, data, err = p2p.HandleUDP(s.ctx, localAddr, rAddr, md5Password, common.WORK_P2P_PROVIDER, P2PMode, sendData); err != nil {
+	if localConn, remoteAddress, localAddr, role, mode, data, err = p2p.HandleUDP(p2pCtx, localAddr, rAddr, md5Password, common.WORK_P2P_PROVIDER, P2PMode, sendData); err != nil {
 		logs.Error("handle P2P error: %v", err)
 		return
 	}
 	defer func() { _ = localConn.Close() }()
+	watchdog := time.AfterFunc(wait, func() {
+		logs.Warn("P2P provider punch timeout, closing local socket %v", localConn.LocalAddr())
+		_ = localConn.Close()
+	})
+	defer watchdog.Stop()
 	if mode == "" || mode != P2PMode {
 		mode = common.CONN_KCP
 	}
-	wait := time.Duration(s.disconnectTime) * time.Second
-	if wait <= 0 {
-		wait = 30 * time.Second
-	}
+
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
 	timer := time.AfterFunc(wait, func() {
@@ -275,6 +284,7 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 				_ = sess.CloseWithError(0, "unexpected peer")
 				continue
 			}
+			watchdog.Stop()
 			if !timer.Stop() {
 				logs.Warn("QUIC pre-connection timer already fired")
 				_ = sess.CloseWithError(0, "timer already fired")
@@ -300,6 +310,7 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 				_ = udpTunnel.Close()
 				continue
 			}
+			watchdog.Stop()
 			if !timer.Stop() {
 				logs.Warn("KCP pre-connection timer already fired")
 				_ = udpTunnel.Close()
