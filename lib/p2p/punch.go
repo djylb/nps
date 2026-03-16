@@ -279,11 +279,22 @@ func sendP2PTestMsg(
 		go func() {
 			ip := hostOnly(peerExt2)
 			if ip == "" {
+				ip = hostOnly(peerExt3)
+			}
+			if ip == "" {
+				ip = hostOnly(peerExt1)
+			}
+			if ip == "" {
 				return
 			}
 
 			var udpAddrs []*net.UDPAddr
 			predPort := common.GetPortByAddr(baseAddrStr)
+			if len(predictionTargets) > 0 {
+				if pp := common.GetPortByAddr(predictionTargets[0]); pp > 0 {
+					predPort = pp
+				}
+			}
 
 			if predPort > 0 {
 				minP := common.Max(1, predPort-300)
