@@ -93,6 +93,10 @@ func getRandomUniquePorts(count, min, max int) []int {
 	return out
 }
 
+func shouldRunFallbackRandomScan(allowAggressivePrediction, forceHard, portRestrictedByProbe bool) bool {
+	return allowAggressivePrediction || forceHard || portRestrictedByProbe
+}
+
 func pickPrimaryPunchTarget(exactTargets, predictionTargets []string, allowAggressivePrediction bool) string {
 	if allowAggressivePrediction && len(predictionTargets) > 0 {
 		return predictionTargets[0]

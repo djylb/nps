@@ -277,7 +277,7 @@ func sendP2PTestMsg(
 	if forceHard {
 		fallbackDelay = 0
 	}
-	if allowAggressivePrediction {
+	if shouldRunFallbackRandomScan(allowAggressivePrediction, forceHard, portRestrictedByProbe) {
 		startFallbackRandomScan(parentCtx, &closed, localConn, peerExt1, peerExt2, peerExt3, fallbackDelay)
 	}
 

@@ -80,6 +80,26 @@ func TestGetRandomUniquePorts(t *testing.T) {
 	}
 }
 
+func TestShouldRunFallbackRandomScan(t *testing.T) {
+	tests := []struct {
+		name                      string
+		aggressive, forceHard, pr bool
+		want                      bool
+	}{
+		{name: "all false", aggressive: false, forceHard: false, pr: false, want: false},
+		{name: "aggressive", aggressive: true, forceHard: false, pr: false, want: true},
+		{name: "force-hard", aggressive: false, forceHard: true, pr: false, want: true},
+		{name: "port-restricted", aggressive: false, forceHard: false, pr: true, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRunFallbackRandomScan(tt.aggressive, tt.forceHard, tt.pr); got != tt.want {
+				t.Fatalf("shouldRunFallbackRandomScan(%v,%v,%v)=%v, want %v", tt.aggressive, tt.forceHard, tt.pr, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPickPrimaryPunchTarget(t *testing.T) {
 	exact := []string{"1.1.1.1:1000", "1.1.1.1:1001"}
 	pred := []string{"1.1.1.1:1003", "1.1.1.1:1002"}
