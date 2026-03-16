@@ -283,6 +283,8 @@ func TestIsIgnorableUDPIcmpError(t *testing.T) {
 		{name: "linux connection refused", err: errors.New("read udp 1.1.1.1:1->2.2.2.2:2: connection refused"), want: true},
 		{name: "connection reset by peer", err: errors.New("connection reset by peer"), want: true},
 		{name: "other error", err: errors.New("use of closed network connection"), want: false},
+		{name: "port contains 10054 only", err: errors.New("read udp 127.0.0.1:10054: use of closed network connection"), want: false},
+		{name: "winsock symbolic", err: errors.New("WSARecvFrom failed with WSAECONNRESET"), want: true},
 	}
 
 	for _, tt := range tests {

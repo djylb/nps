@@ -23,10 +23,13 @@ func isIgnorableUDPIcmpError(err error) bool {
 		return false
 	}
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "10054") ||
-		strings.Contains(errStr, "wsarecvfrom") ||
-		strings.Contains(errStr, "connection reset by peer")
+	if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "connection reset by peer") {
+		return true
+	}
+	if strings.Contains(errStr, "wsarecvfrom") && (strings.Contains(errStr, "10054") || strings.Contains(errStr, "wsaeconnreset")) {
+		return true
+	}
+	return false
 }
 
 func getNextAddr(addr string, n int) (string, error) {

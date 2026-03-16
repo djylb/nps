@@ -274,7 +274,7 @@ func sendP2PTestMsg(
 		startFallbackRandomScan(parentCtx, &closed, localConn, peerExt1, peerExt2, peerExt3, fallbackDelay)
 	}
 
-	if allowAggressivePrediction && hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval == 0 {
+	if hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval == 0 {
 		logs.Debug("[P2P] strategy=B peer hard-ish, self easy-ish => broad random scan")
 		go func() {
 			ip := hostOnly(peerExt2)
