@@ -14,6 +14,7 @@ import (
 
 	"github.com/djylb/nps/lib/common"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 func getNextAddr(addr string, n int) (string, error) {
@@ -267,31 +268,80 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 		msg := bConnect
 
 		if udpConn, ok := localConn.(*net.UDPConn); ok {
-			if pc := ipv4.NewPacketConn(udpConn); pc != nil {
-				originalTTL := 0
-				hasOriginalTTL := false
-				if ttl, err := pc.TTL(); err == nil {
-					originalTTL = ttl
-					hasOriginalTTL = true
-				}
+			sentLowTTL := false
 
-				if err := pc.SetTTL(p2pLowTTLValue); err == nil {
-					for i := 0; i < p2pLowTTLBurst; i++ {
-						select {
-						case <-ctx.Done():
-							return
-						default:
-						}
-						if atomic.LoadUint32(closed) != 0 {
-							return
-						}
-						_, _ = localConn.WriteTo(msg, target)
-						time.Sleep(p2pLowTTLGAP)
+			if target.IP != nil && target.IP.To4() != nil {
+				if pc4 := ipv4.NewPacketConn(udpConn); pc4 != nil {
+					originalTTL := 0
+					hasOriginalTTL := false
+					if ttl, err := pc4.TTL(); err == nil {
+						originalTTL = ttl
+						hasOriginalTTL = true
 					}
-					time.Sleep(p2pLowTTLPause)
-					if hasOriginalTTL {
-						_ = pc.SetTTL(originalTTL)
+
+					if err := pc4.SetTTL(p2pLowTTLValue); err == nil {
+						sentLowTTL = true
+						for i := 0; i < p2pLowTTLBurst; i++ {
+							select {
+							case <-ctx.Done():
+								return
+							default:
+							}
+							if atomic.LoadUint32(closed) != 0 {
+								return
+							}
+							_, _ = localConn.WriteTo(msg, target)
+							time.Sleep(p2pLowTTLGAP)
+						}
+						time.Sleep(p2pLowTTLPause)
+						if hasOriginalTTL {
+							_ = pc4.SetTTL(originalTTL)
+						}
 					}
+				}
+			} else {
+				if pc6 := ipv6.NewPacketConn(udpConn); pc6 != nil {
+					originalHop := 0
+					hasOriginalHop := false
+					if hop, err := pc6.HopLimit(); err == nil {
+						originalHop = hop
+						hasOriginalHop = true
+					}
+
+					if err := pc6.SetHopLimit(p2pLowTTLValue); err == nil {
+						sentLowTTL = true
+						for i := 0; i < p2pLowTTLBurst; i++ {
+							select {
+							case <-ctx.Done():
+								return
+							default:
+							}
+							if atomic.LoadUint32(closed) != 0 {
+								return
+							}
+							_, _ = localConn.WriteTo(msg, target)
+							time.Sleep(p2pLowTTLGAP)
+						}
+						time.Sleep(p2pLowTTLPause)
+						if hasOriginalHop {
+							_ = pc6.SetHopLimit(originalHop)
+						}
+					}
+				}
+			}
+
+			if !sentLowTTL {
+				for i := 0; i < p2pLowTTLBurst; i++ {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					if atomic.LoadUint32(closed) != 0 {
+						return
+					}
+					_, _ = localConn.WriteTo(msg, target)
+					time.Sleep(p2pLowTTLGAP)
 				}
 			}
 		}
