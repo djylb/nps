@@ -284,7 +284,11 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 				_ = sess.CloseWithError(0, "unexpected peer")
 				continue
 			}
-			watchdog.Stop()
+			if !watchdog.Stop() {
+				logs.Warn("QUIC watchdog already fired, abort promoting accepted session")
+				_ = sess.CloseWithError(0, "watchdog already fired")
+				return
+			}
 			if !timer.Stop() {
 				logs.Warn("QUIC pre-connection timer already fired")
 				_ = sess.CloseWithError(0, "timer already fired")
@@ -310,7 +314,11 @@ func (s *TRPClient) newUdpConn(localAddr, rAddr string, md5Password string) {
 				_ = udpTunnel.Close()
 				continue
 			}
-			watchdog.Stop()
+			if !watchdog.Stop() {
+				logs.Warn("KCP watchdog already fired, abort promoting accepted tunnel")
+				_ = udpTunnel.Close()
+				return
+			}
 			if !timer.Stop() {
 				logs.Warn("KCP pre-connection timer already fired")
 				_ = udpTunnel.Close()
