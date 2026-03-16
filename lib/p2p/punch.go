@@ -94,14 +94,11 @@ func sendP2PTestMsg(
 		peerLocal != "", forceHard, portRestrictedByProbe, allowAggressivePrediction, allowConservativePrediction)
 
 	exactTargets := uniqAddrStrs(peerExt3, peerExt2, peerExt1)
-	baseAddrStr := ""
-	if len(exactTargets) > 0 {
-		baseAddrStr = exactTargets[0]
-	}
 	predictionTargets := buildPredictedPeerAddrs(peerExt1, peerExt2, peerExt3, peerInterval)
+	baseAddrStr := pickPrimaryPunchTarget(exactTargets, predictionTargets, allowAggressivePrediction)
 	targets := append([]string{}, exactTargets...)
 	if allowAggressivePrediction {
-		targets = uniqAddrStrs(append(targets, predictionTargets...)...)
+		targets = uniqAddrStrs(append(append([]string{}, predictionTargets...), exactTargets...)...)
 	} else if allowConservativePrediction && len(predictionTargets) > 0 {
 		// keep exact endpoint as primary in NAT3/unknown cases; add only a tiny prediction probe set
 		targets = uniqAddrStrs(append(targets, predictionTargets[0])...)

@@ -80,6 +80,24 @@ func TestGetRandomUniquePorts(t *testing.T) {
 	}
 }
 
+func TestPickPrimaryPunchTarget(t *testing.T) {
+	exact := []string{"1.1.1.1:1000", "1.1.1.1:1001"}
+	pred := []string{"1.1.1.1:1003", "1.1.1.1:1002"}
+
+	if got := pickPrimaryPunchTarget(exact, pred, true); got != "1.1.1.1:1003" {
+		t.Fatalf("aggressive primary = %q, want %q", got, "1.1.1.1:1003")
+	}
+	if got := pickPrimaryPunchTarget(exact, pred, false); got != "1.1.1.1:1000" {
+		t.Fatalf("conservative primary = %q, want %q", got, "1.1.1.1:1000")
+	}
+	if got := pickPrimaryPunchTarget(nil, pred, false); got != "1.1.1.1:1003" {
+		t.Fatalf("fallback prediction primary = %q, want %q", got, "1.1.1.1:1003")
+	}
+	if got := pickPrimaryPunchTarget(nil, nil, true); got != "" {
+		t.Fatalf("empty primary = %q, want empty", got)
+	}
+}
+
 func TestBuildSmallContiguousPorts(t *testing.T) {
 	ports := buildSmallContiguousPorts(100, 2)
 	want := []int{100, 101, 99, 102, 98}

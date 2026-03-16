@@ -93,6 +93,19 @@ func getRandomUniquePorts(count, min, max int) []int {
 	return out
 }
 
+func pickPrimaryPunchTarget(exactTargets, predictionTargets []string, allowAggressivePrediction bool) string {
+	if allowAggressivePrediction && len(predictionTargets) > 0 {
+		return predictionTargets[0]
+	}
+	if len(exactTargets) > 0 {
+		return exactTargets[0]
+	}
+	if len(predictionTargets) > 0 {
+		return predictionTargets[0]
+	}
+	return ""
+}
+
 func buildPredictedPeerAddrs(peerExt1, peerExt2, peerExt3 string, interval int) []string {
 	if interval == 0 {
 		return nil
