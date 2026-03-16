@@ -18,6 +18,17 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+func isIgnorableUDPIcmpError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "10054") ||
+		strings.Contains(errStr, "wsarecvfrom") ||
+		strings.Contains(errStr, "connection reset by peer")
+}
+
 func getNextAddr(addr string, n int) (string, error) {
 	lastColonIndex := strings.LastIndex(addr, ":")
 	if lastColonIndex == -1 {

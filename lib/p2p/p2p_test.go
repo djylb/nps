@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"net"
 	"testing"
 )
@@ -214,6 +215,28 @@ func TestFillTripletByPortDiff(t *testing.T) {
 			if got1 != tt.want1 || got2 != tt.want2 || got3 != tt.want3 {
 				t.Fatalf("fillTripletByPortDiff(%q,%q,%q)=(%q,%q,%q), want (%q,%q,%q)",
 					tt.a1, tt.a2, tt.a3, got1, got2, got3, tt.want1, tt.want2, tt.want3)
+			}
+		})
+	}
+}
+
+func TestIsIgnorableUDPIcmpError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "windows 10054", err: errors.New("wsarecvfrom: An existing connection was forcibly closed by the remote host. 10054"), want: true},
+		{name: "linux connection refused", err: errors.New("read udp 1.1.1.1:1->2.2.2.2:2: connection refused"), want: true},
+		{name: "connection reset by peer", err: errors.New("connection reset by peer"), want: true},
+		{name: "other error", err: errors.New("use of closed network connection"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isIgnorableUDPIcmpError(tt.err); got != tt.want {
+				t.Fatalf("isIgnorableUDPIcmpError(%v)=%v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

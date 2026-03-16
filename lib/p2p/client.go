@@ -104,6 +104,10 @@ func HandleUDP(
 				}
 				continue
 			}
+			if isIgnorableUDPIcmpError(rerr) {
+				logs.Debug("[P2P] ignore transient udp read error local=%s err=%v", localConn.LocalAddr().String(), rerr)
+				continue
+			}
 			err = rerr
 			logs.Error("[P2P] read server reply failed local=%s err=%v", localConn.LocalAddr().String(), err)
 			return

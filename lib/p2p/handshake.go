@@ -190,6 +190,10 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 			if errors.As(rerr, &ne) && ne.Timeout() {
 				continue
 			}
+			if isIgnorableUDPIcmpError(rerr) {
+				logs.Debug("[P2P] ignore transient udp read error role=%s local=%s err=%v", sendRole, localAddrStr, rerr)
+				continue
+			}
 			logs.Error("[P2P] handshake read fail role=%s local=%s err=%v", sendRole, localAddrStr, rerr)
 			return "", localAddrStr, sendRole, rerr
 		}
