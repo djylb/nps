@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/logs"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -349,6 +350,44 @@ func sendWarmupBurst(
 	return false
 }
 
+func restoreIPv4TTL(pc4 *ipv4.PacketConn, target *net.UDPAddr, wantTTL int) {
+	if pc4 == nil {
+		return
+	}
+	if wantTTL <= 0 {
+		wantTTL = p2pDefaultTTL
+	}
+	if err := pc4.SetTTL(wantTTL); err == nil {
+		return
+	} else {
+		logs.Warn("[P2P] restore IPv4 TTL failed target=%v want=%d err=%v, fallback=%d", target, wantTTL, err, p2pDefaultTTL)
+	}
+	if wantTTL != p2pDefaultTTL {
+		if err := pc4.SetTTL(p2pDefaultTTL); err != nil {
+			logs.Warn("[P2P] fallback restore IPv4 TTL failed target=%v fallback=%d err=%v", target, p2pDefaultTTL, err)
+		}
+	}
+}
+
+func restoreIPv6HopLimit(pc6 *ipv6.PacketConn, target *net.UDPAddr, wantHop int) {
+	if pc6 == nil {
+		return
+	}
+	if wantHop <= 0 {
+		wantHop = p2pDefaultHopLimit
+	}
+	if err := pc6.SetHopLimit(wantHop); err == nil {
+		return
+	} else {
+		logs.Warn("[P2P] restore IPv6 HopLimit failed target=%v want=%d err=%v, fallback=%d", target, wantHop, err, p2pDefaultHopLimit)
+	}
+	if wantHop != p2pDefaultHopLimit {
+		if err := pc6.SetHopLimit(p2pDefaultHopLimit); err != nil {
+			logs.Warn("[P2P] fallback restore IPv6 HopLimit failed target=%v fallback=%d err=%v", target, p2pDefaultHopLimit, err)
+		}
+	}
+}
+
 func runIPv4LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr, udpConn *net.UDPConn, msg []byte) (used, aborted bool) {
 	pc4 := ipv4.NewPacketConn(udpConn)
 	if pc4 == nil {
@@ -363,7 +402,7 @@ func runIPv4LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.Pack
 	if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
 		return false, false
 	}
-	defer func() { _ = pc4.SetTTL(originalTTL) }()
+	defer restoreIPv4TTL(pc4, target, originalTTL)
 
 	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
 		return true, true
@@ -386,7 +425,7 @@ func runIPv6LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.Pack
 	if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
 		return false, false
 	}
-	defer func() { _ = pc6.SetHopLimit(originalHop) }()
+	defer restoreIPv6HopLimit(pc6, target, originalHop)
 
 	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
 		return true, true
