@@ -136,7 +136,6 @@ func sendP2PTestMsg(
 
 	baseUDP := resolveUDPAddr(predictedStr)
 	if peerLocalUDP != nil {
-		// 优先尝试局域网直连，不阻塞在公网 warmup 上。
 		go func(remoteUDP *net.UDPAddr) {
 			for i := 20; i > 0; i-- {
 				select {
