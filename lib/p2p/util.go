@@ -259,6 +259,42 @@ func startFallbackRandomScan(
 	}()
 }
 
+func pickUDPConnForTarget(localConn net.PacketConn, target *net.UDPAddr) *net.UDPConn {
+	if localConn == nil || target == nil {
+		return nil
+	}
+	if uc, ok := localConn.(*net.UDPConn); ok {
+		return uc
+	}
+	type udpConnsProvider interface {
+		UDPConns() []*net.UDPConn
+	}
+	provider, ok := localConn.(udpConnsProvider)
+	if !ok {
+		return nil
+	}
+
+	all := provider.UDPConns()
+	if len(all) == 0 {
+		return nil
+	}
+	want4 := target.IP != nil && target.IP.To4() != nil
+	for _, uc := range all {
+		if uc == nil {
+			continue
+		}
+		la, ok := uc.LocalAddr().(*net.UDPAddr)
+		if !ok || la == nil {
+			continue
+		}
+		is4 := la.IP == nil || la.IP.To4() != nil
+		if is4 == want4 {
+			return uc
+		}
+	}
+	return all[0]
+}
+
 func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr) {
 	if target == nil || localConn == nil {
 		return
@@ -266,7 +302,7 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 
 	msg := bConnect
 
-	if udpConn, ok := localConn.(*net.UDPConn); ok {
+	if udpConn := pickUDPConnForTarget(localConn, target); udpConn != nil {
 		sentLowTTL, aborted := false, false
 		if target.IP != nil && target.IP.To4() != nil {
 			sentLowTTL, aborted = runIPv4LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
