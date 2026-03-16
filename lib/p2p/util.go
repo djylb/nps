@@ -268,109 +268,103 @@ func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn ne
 		msg := bConnect
 
 		if udpConn, ok := localConn.(*net.UDPConn); ok {
-			sentLowTTL := false
-
+			sentLowTTL, aborted := false, false
 			if target.IP != nil && target.IP.To4() != nil {
-				if pc4 := ipv4.NewPacketConn(udpConn); pc4 != nil {
-					originalTTL := 0
-					hasOriginalTTL := false
-					if ttl, err := pc4.TTL(); err == nil {
-						originalTTL = ttl
-						hasOriginalTTL = true
-					}
-
-					if aborted := func() bool {
-						if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
-							return false
-						}
-						if hasOriginalTTL {
-							defer func() { _ = pc4.SetTTL(originalTTL) }()
-						}
-						sentLowTTL = true
-						for i := 0; i < p2pLowTTLBurst; i++ {
-							select {
-							case <-ctx.Done():
-								return true
-							default:
-							}
-							if atomic.LoadUint32(closed) != 0 {
-								return true
-							}
-							_, _ = localConn.WriteTo(msg, target)
-							time.Sleep(p2pLowTTLGAP)
-						}
-						time.Sleep(p2pLowTTLPause)
-						return false
-					}(); aborted {
-						return
-					}
-				}
+				sentLowTTL, aborted = runIPv4LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
 			} else {
-				if pc6 := ipv6.NewPacketConn(udpConn); pc6 != nil {
-					originalHop := 0
-					hasOriginalHop := false
-					if hop, err := pc6.HopLimit(); err == nil {
-						originalHop = hop
-						hasOriginalHop = true
-					}
-
-					if aborted := func() bool {
-						if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
-							return false
-						}
-						if hasOriginalHop {
-							defer func() { _ = pc6.SetHopLimit(originalHop) }()
-						}
-						sentLowTTL = true
-						for i := 0; i < p2pLowTTLBurst; i++ {
-							select {
-							case <-ctx.Done():
-								return true
-							default:
-							}
-							if atomic.LoadUint32(closed) != 0 {
-								return true
-							}
-							_, _ = localConn.WriteTo(msg, target)
-							time.Sleep(p2pLowTTLGAP)
-						}
-						time.Sleep(p2pLowTTLPause)
-						return false
-					}(); aborted {
-						return
-					}
-				}
+				sentLowTTL, aborted = runIPv6LowTTLWarmup(ctx, closed, localConn, target, udpConn, msg)
+			}
+			if aborted {
+				return
 			}
 
 			if !sentLowTTL {
-				for i := 0; i < p2pLowTTLBurst; i++ {
-					select {
-					case <-ctx.Done():
-						return
-					default:
-					}
-					if atomic.LoadUint32(closed) != 0 {
-						return
-					}
-					_, _ = localConn.WriteTo(msg, target)
-					time.Sleep(p2pLowTTLGAP)
+				if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+					return
 				}
 			}
 		}
 
-		for i := 0; i < p2pConeBurstCount+2; i++ {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			if atomic.LoadUint32(closed) != 0 {
-				return
-			}
-			_, _ = localConn.WriteTo(msg, target)
-			time.Sleep(150 * time.Millisecond)
-		}
+		_ = sendWarmupBurst(ctx, closed, localConn, msg, target, p2pConeBurstCount+2, 150*time.Millisecond)
 	}()
+}
+
+func sendWarmupBurst(
+	ctx context.Context,
+	closed *uint32,
+	localConn net.PacketConn,
+	msg []byte,
+	target *net.UDPAddr,
+	count int,
+	gap time.Duration,
+) (aborted bool) {
+	for i := 0; i < count; i++ {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+		}
+		if atomic.LoadUint32(closed) != 0 {
+			return true
+		}
+		_, _ = localConn.WriteTo(msg, target)
+		if gap > 0 {
+			time.Sleep(gap)
+		}
+	}
+	return false
+}
+
+func runIPv4LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr, udpConn *net.UDPConn, msg []byte) (used, aborted bool) {
+	pc4 := ipv4.NewPacketConn(udpConn)
+	if pc4 == nil {
+		return false, false
+	}
+
+	originalTTL, hasOriginalTTL := 0, false
+	if ttl, err := pc4.TTL(); err == nil {
+		originalTTL = ttl
+		hasOriginalTTL = true
+	}
+
+	if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
+		return false, false
+	}
+	if hasOriginalTTL {
+		defer func() { _ = pc4.SetTTL(originalTTL) }()
+	}
+
+	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+		return true, true
+	}
+	time.Sleep(p2pLowTTLPause)
+	return true, false
+}
+
+func runIPv6LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr, udpConn *net.UDPConn, msg []byte) (used, aborted bool) {
+	pc6 := ipv6.NewPacketConn(udpConn)
+	if pc6 == nil {
+		return false, false
+	}
+
+	originalHop, hasOriginalHop := 0, false
+	if hop, err := pc6.HopLimit(); err == nil {
+		originalHop = hop
+		hasOriginalHop = true
+	}
+
+	if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
+		return false, false
+	}
+	if hasOriginalHop {
+		defer func() { _ = pc6.SetHopLimit(originalHop) }()
+	}
+
+	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
+		return true, true
+	}
+	time.Sleep(p2pLowTTLPause)
+	return true, false
 }
 
 func fillTripletByPortDiff(a1, a2, a3 string) (b1, b2, b3 string) {
