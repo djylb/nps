@@ -321,18 +321,15 @@ func runIPv4LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.Pack
 		return false, false
 	}
 
-	originalTTL, hasOriginalTTL := 0, false
-	if ttl, err := pc4.TTL(); err == nil {
+	originalTTL := p2pDefaultTTL
+	if ttl, err := pc4.TTL(); err == nil && ttl > 0 {
 		originalTTL = ttl
-		hasOriginalTTL = true
 	}
 
 	if err := pc4.SetTTL(p2pLowTTLValue); err != nil {
 		return false, false
 	}
-	if hasOriginalTTL {
-		defer func() { _ = pc4.SetTTL(originalTTL) }()
-	}
+	defer func() { _ = pc4.SetTTL(originalTTL) }()
 
 	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
 		return true, true
@@ -347,18 +344,15 @@ func runIPv6LowTTLWarmup(ctx context.Context, closed *uint32, localConn net.Pack
 		return false, false
 	}
 
-	originalHop, hasOriginalHop := 0, false
-	if hop, err := pc6.HopLimit(); err == nil {
+	originalHop := p2pDefaultHopLimit
+	if hop, err := pc6.HopLimit(); err == nil && hop > 0 {
 		originalHop = hop
-		hasOriginalHop = true
 	}
 
 	if err := pc6.SetHopLimit(p2pLowTTLValue); err != nil {
 		return false, false
 	}
-	if hasOriginalHop {
-		defer func() { _ = pc6.SetHopLimit(originalHop) }()
-	}
+	defer func() { _ = pc6.SetHopLimit(originalHop) }()
 
 	if aborted := sendWarmupBurst(ctx, closed, localConn, msg, target, p2pLowTTLBurst, p2pLowTTLGAP); aborted {
 		return true, true
