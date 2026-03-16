@@ -154,16 +154,26 @@ func sendP2PTestMsg(
 		logs.Debug("[P2P] start low-ttl warmup target=%s forceHard=%v probePortRestricted=%v", baseUDP.String(), forceHard, portRestrictedByProbe)
 		startPortRestrictedWarmup(parentCtx, &closed, localConn, baseUDP)
 	}
-	if len(targets) > 0 {
+	targetUDPAddrs := make([]*net.UDPAddr, 0, len(targets))
+	for _, t := range targets {
+		ua := resolveUDPAddr(t)
+		if ua != nil {
+			targetUDPAddrs = append(targetUDPAddrs, ua)
+		}
+	}
+	if len(targetUDPAddrs) > 0 {
 		go func() {
-			for _, t := range targets {
-				ua := resolveUDPAddr(t)
-				if ua == nil {
-					continue
-				}
+			for _, ua := range targetUDPAddrs {
 				_ = sendBurstWithGap(localConn, bConnect, ua, p2pConeBurstCount, p2pConeBurstGap)
 			}
 		}()
+		if len(targetUDPAddrs) > 1 {
+			startTickerSender(p2pConeMultiSendTick, func() {
+				for _, ua := range targetUDPAddrs {
+					_, _ = localConn.WriteTo(bConnect, ua)
+				}
+			})
+		}
 	}
 	if baseUDP != nil {
 		startTickerSender(p2pConeSendTick, func() {
