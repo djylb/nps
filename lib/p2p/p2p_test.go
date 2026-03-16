@@ -80,6 +80,33 @@ func TestGetRandomUniquePorts(t *testing.T) {
 	}
 }
 
+func TestBuildSmallContiguousPorts(t *testing.T) {
+	ports := buildSmallContiguousPorts(100, 2)
+	want := []int{100, 101, 99, 102, 98}
+	if len(ports) != len(want) {
+		t.Fatalf("len(ports)=%d, want %d (%#v)", len(ports), len(want), ports)
+	}
+	for i := range want {
+		if ports[i] != want[i] {
+			t.Fatalf("ports[%d]=%d, want %d (%#v)", i, ports[i], want[i], ports)
+		}
+	}
+
+	edge := buildSmallContiguousPorts(1, 2)
+	if len(edge) == 0 || edge[0] != 1 {
+		t.Fatalf("unexpected edge result: %#v", edge)
+	}
+	for _, p := range edge {
+		if p < 1 || p > 65535 {
+			t.Fatalf("out-of-range port in edge result: %#v", edge)
+		}
+	}
+
+	if got := buildSmallContiguousPorts(0, 3); len(got) != 0 {
+		t.Fatalf("invalid base should return empty, got %#v", got)
+	}
+}
+
 func TestBuildPredictedPeerAddrs(t *testing.T) {
 	pred := buildPredictedPeerAddrs("1.1.1.1:1000", "1.1.1.1:1002", "2.2.2.2:1004", 2)
 	if len(pred) == 0 {

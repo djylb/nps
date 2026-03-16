@@ -174,6 +174,31 @@ func sendP2PTestMsg(
 		})
 	}
 
+	if allowConservativePrediction && !allowAggressivePrediction && baseUDP != nil {
+		ip := hostOnly(baseUDP.String())
+		basePort := common.GetPortByAddr(baseUDP.String())
+		contigPorts := buildSmallContiguousPorts(basePort, p2pConeSmallContigRange)
+		contigAddrs := make([]*net.UDPAddr, 0, len(contigPorts))
+		for _, p := range contigPorts {
+			ua, e := net.ResolveUDPAddr("udp", net.JoinHostPort(ip, strconv.Itoa(p)))
+			if e == nil && ua != nil {
+				contigAddrs = append(contigAddrs, ua)
+			}
+		}
+		if len(contigAddrs) > 0 {
+			go func() {
+				for _, ua := range contigAddrs {
+					_, _ = localConn.WriteTo(bConnect, ua)
+				}
+			}()
+			startTickerSender(p2pConeSmallContigSendTick, func() {
+				for _, ua := range contigAddrs {
+					_, _ = localConn.WriteTo(bConnect, ua)
+				}
+			})
+		}
+	}
+
 	isStrategyA := hasPeerExt && hasSelfExt && peerInterval == 0 && selfInterval != 0 && baseUDP != nil
 	if isStrategyA {
 		logs.Debug("[P2P] strategy=A open-many-listen target=%s", baseUDP.String())

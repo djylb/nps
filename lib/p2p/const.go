@@ -30,9 +30,11 @@ const (
 	p2pDefaultHopLimit = 64
 
 	// near scan (regular ports change)
-	p2pConeNearScanCount = 128
-	p2pConeNearScanRange = 256
-	p2pConeNearScanTick  = 1500 * time.Millisecond
+	p2pConeNearScanCount       = 128
+	p2pConeNearScanRange       = 256
+	p2pConeNearScanTick        = 1500 * time.Millisecond
+	p2pConeSmallContigRange    = 6
+	p2pConeSmallContigSendTick = 1200 * time.Millisecond
 
 	// heavy random scan fallback
 	p2pConeFallbackDelay = 1800 * time.Millisecond

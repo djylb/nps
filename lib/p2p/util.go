@@ -109,6 +109,31 @@ func buildPredictedPeerAddrs(peerExt1, peerExt2, peerExt3 string, interval int) 
 	return uniqAddrStrs(out...)
 }
 
+func buildSmallContiguousPorts(basePort, scanRange int) []int {
+	if basePort <= 0 || scanRange <= 0 {
+		return nil
+	}
+	out := make([]int, 0, scanRange*2+1)
+	for d := 0; d <= scanRange; d++ {
+		for _, p := range []int{basePort + d, basePort - d} {
+			if p < 1 || p > 65535 {
+				continue
+			}
+			out = append(out, p)
+		}
+	}
+	uniq := make([]int, 0, len(out))
+	seen := make(map[int]struct{}, len(out))
+	for _, p := range out {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		uniq = append(uniq, p)
+	}
+	return uniq
+}
+
 func natHintByInterval(interval int, has bool) string {
 	if !has {
 		return "unknown"
