@@ -90,6 +90,25 @@ func getRandomUniquePorts(count, min, max int) []int {
 	return out
 }
 
+func buildPredictedPeerAddrs(peerExt1, peerExt2, peerExt3 string, interval int) []string {
+	if interval == 0 {
+		return nil
+	}
+	out := make([]string, 0, 6)
+	for _, base := range []string{peerExt3, peerExt2, peerExt1} {
+		if base == "" {
+			continue
+		}
+		if next, err := getNextAddr(base, interval); err == nil && next != "" {
+			out = append(out, next)
+		}
+		if prev, err := getNextAddr(base, -interval); err == nil && prev != "" {
+			out = append(out, prev)
+		}
+	}
+	return uniqAddrStrs(out...)
+}
+
 func natHintByInterval(interval int, has bool) string {
 	if !has {
 		return "unknown"

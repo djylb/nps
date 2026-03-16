@@ -80,6 +80,31 @@ func TestGetRandomUniquePorts(t *testing.T) {
 	}
 }
 
+func TestBuildPredictedPeerAddrs(t *testing.T) {
+	pred := buildPredictedPeerAddrs("1.1.1.1:1000", "1.1.1.1:1002", "2.2.2.2:1004", 2)
+	if len(pred) == 0 {
+		t.Fatal("expected predicted addrs")
+	}
+	want := map[string]bool{
+		"2.2.2.2:1006": true,
+		"2.2.2.2:1002": true,
+		"1.1.1.1:1004": true,
+		"1.1.1.1:1000": true,
+		"1.1.1.1:1002": true,
+		"1.1.1.1:998":  true,
+	}
+	for _, a := range pred {
+		delete(want, a)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing predicted addrs: %#v", want)
+	}
+
+	if got := buildPredictedPeerAddrs("1.1.1.1:1000", "", "", 0); len(got) != 0 {
+		t.Fatalf("interval 0 should return empty, got %#v", got)
+	}
+}
+
 func TestP2PHelpers(t *testing.T) {
 	if got := natHintByInterval(0, false); got != "unknown" {
 		t.Fatalf("natHintByInterval unknown = %q", got)

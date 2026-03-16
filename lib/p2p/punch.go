@@ -79,7 +79,8 @@ func sendP2PTestMsg(
 
 	peerRegular := isRegularStep(peerInterval, hasPeerExt)
 	selfHard := hasSelfExt && selfInterval != 0
-	allowPortPrediction := hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval != 0
+	allowAggressivePrediction := hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval != 0
+	allowConservativePrediction := hasPeerExt && peerInterval != 0
 	if forceHard {
 		selfHard = true
 	}
@@ -87,28 +88,23 @@ func sendP2PTestMsg(
 		selfHard = true
 	}
 
-	logs.Info("[P2P] nat peer=%s(%d,%v) self=%s(%d) peerLocal=%v forceHard=%v probePortRestricted=%v allowPortPrediction=%v",
+	logs.Info("[P2P] nat peer=%s(%d,%v) self=%s(%d) peerLocal=%v forceHard=%v probePortRestricted=%v allowAggressivePrediction=%v allowConservativePrediction=%v",
 		natHintByInterval(peerInterval, hasPeerExt), peerInterval, peerRegular,
 		natHintByInterval(selfInterval, hasSelfExt), selfInterval,
-		peerLocal != "", forceHard, portRestrictedByProbe, allowPortPrediction)
+		peerLocal != "", forceHard, portRestrictedByProbe, allowAggressivePrediction, allowConservativePrediction)
 
+	exactTargets := uniqAddrStrs(peerExt3, peerExt2, peerExt1)
 	baseAddrStr := ""
-	if peerExt3 != "" {
-		baseAddrStr = peerExt3
-	} else if peerExt2 != "" {
-		baseAddrStr = peerExt2
-	} else if peerExt1 != "" {
-		baseAddrStr = peerExt1
+	if len(exactTargets) > 0 {
+		baseAddrStr = exactTargets[0]
 	}
-	predictedStr := baseAddrStr
-	if allowPortPrediction && peerExt3 != "" {
-		if s, e := getNextAddr(peerExt3, peerInterval); e == nil && s != "" {
-			predictedStr = s
-		}
-	}
-	targets := uniqAddrStrs(predictedStr)
-	if allowPortPrediction {
-		targets = uniqAddrStrs(predictedStr, peerExt1, peerExt2, peerExt3)
+	predictionTargets := buildPredictedPeerAddrs(peerExt1, peerExt2, peerExt3, peerInterval)
+	targets := append([]string{}, exactTargets...)
+	if allowAggressivePrediction {
+		targets = uniqAddrStrs(append(targets, predictionTargets...)...)
+	} else if allowConservativePrediction && len(predictionTargets) > 0 {
+		// keep exact endpoint as primary in NAT3/unknown cases; add only a tiny prediction probe set
+		targets = uniqAddrStrs(append(targets, predictionTargets[0])...)
 	}
 
 	var peerLocalUDP *net.UDPAddr
@@ -139,7 +135,7 @@ func sendP2PTestMsg(
 		}()
 	}
 
-	baseUDP := resolveUDPAddr(predictedStr)
+	baseUDP := resolveUDPAddr(baseAddrStr)
 	if peerLocalUDP != nil {
 		go func(remoteUDP *net.UDPAddr) {
 			for i := 20; i > 0; i-- {
@@ -209,7 +205,7 @@ func sendP2PTestMsg(
 		})
 	}
 
-	if allowPortPrediction && baseUDP != nil && peerRegular {
+	if allowAggressivePrediction && baseUDP != nil && peerRegular {
 		ip := hostOnly(peerExt2)
 		if ip == "" {
 			ip = hostOnly(peerExt3)
@@ -249,11 +245,11 @@ func sendP2PTestMsg(
 	if forceHard {
 		fallbackDelay = 0
 	}
-	if allowPortPrediction {
+	if allowAggressivePrediction {
 		startFallbackRandomScan(parentCtx, &closed, localConn, peerExt1, peerExt2, peerExt3, fallbackDelay)
 	}
 
-	if allowPortPrediction && hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval == 0 {
+	if allowAggressivePrediction && hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval == 0 {
 		logs.Debug("[P2P] strategy=B peer hard-ish, self easy-ish => broad random scan")
 		go func() {
 			ip := hostOnly(peerExt2)
@@ -262,7 +258,7 @@ func sendP2PTestMsg(
 			}
 
 			var udpAddrs []*net.UDPAddr
-			predPort := common.GetPortByAddr(predictedStr)
+			predPort := common.GetPortByAddr(baseAddrStr)
 
 			if predPort > 0 {
 				minP := common.Max(1, predPort-300)
