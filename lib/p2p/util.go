@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/common"
+	"golang.org/x/net/ipv4"
 )
 
 func getNextAddr(addr string, n int) (string, error) {
@@ -253,6 +254,59 @@ func startFallbackRandomScan(
 					_, _ = localConn.WriteTo(bConnect, ua)
 				}
 			}
+		}
+	}()
+}
+
+func startPortRestrictedWarmup(ctx context.Context, closed *uint32, localConn net.PacketConn, target *net.UDPAddr) {
+	if target == nil || localConn == nil {
+		return
+	}
+
+	go func() {
+		msg := bConnect
+
+		if udpConn, ok := localConn.(*net.UDPConn); ok {
+			if pc := ipv4.NewPacketConn(udpConn); pc != nil {
+				originalTTL := 0
+				hasOriginalTTL := false
+				if ttl, err := pc.TTL(); err == nil {
+					originalTTL = ttl
+					hasOriginalTTL = true
+				}
+
+				if err := pc.SetTTL(p2pLowTTLValue); err == nil {
+					for i := 0; i < p2pLowTTLBurst; i++ {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+						if atomic.LoadUint32(closed) != 0 {
+							return
+						}
+						_, _ = localConn.WriteTo(msg, target)
+						time.Sleep(p2pLowTTLGAP)
+					}
+					time.Sleep(p2pLowTTLPause)
+					if hasOriginalTTL {
+						_ = pc.SetTTL(originalTTL)
+					}
+				}
+			}
+		}
+
+		for i := 0; i < p2pConeBurstCount+2; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if atomic.LoadUint32(closed) != 0 {
+				return
+			}
+			_, _ = localConn.WriteTo(msg, target)
+			time.Sleep(150 * time.Millisecond)
 		}
 	}()
 }

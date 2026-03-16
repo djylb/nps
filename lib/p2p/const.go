@@ -22,6 +22,10 @@ const (
 	p2pConeSendTick   = 500 * time.Millisecond
 	p2pConeBurstCount = 3
 	p2pConeBurstGap   = 80 * time.Millisecond
+	p2pLowTTLBurst    = 3
+	p2pLowTTLGAP      = 20 * time.Millisecond
+	p2pLowTTLValue    = 3
+	p2pLowTTLPause    = 150 * time.Millisecond
 
 	// near scan (regular ports change)
 	p2pConeNearScanCount = 128

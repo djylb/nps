@@ -165,6 +165,11 @@ func sendP2PTestMsg(
 		})
 	}
 
+	if baseUDP != nil && (forceHard || portRestrictedByProbe) {
+		logs.Debug("[P2P] start low-ttl warmup target=%s forceHard=%v probePortRestricted=%v", baseUDP.String(), forceHard, portRestrictedByProbe)
+		startPortRestrictedWarmup(parentCtx, &closed, localConn, baseUDP)
+	}
+
 	isStrategyA := hasPeerExt && hasSelfExt && peerInterval == 0 && selfInterval != 0 && baseUDP != nil
 	if isStrategyA {
 		logs.Debug("[P2P] strategy=A open-many-listen target=%s", baseUDP.String())
