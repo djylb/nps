@@ -135,6 +135,24 @@ func sendP2PTestMsg(
 	}
 
 	baseUDP := resolveUDPAddr(predictedStr)
+	if peerLocalUDP != nil {
+		// 优先尝试局域网直连，不阻塞在公网 warmup 上。
+		go func(remoteUDP *net.UDPAddr) {
+			for i := 20; i > 0; i-- {
+				select {
+				case <-parentCtx.Done():
+					return
+				default:
+				}
+				if atomic.LoadUint32(&closed) != 0 {
+					return
+				}
+				_, _ = localConn.WriteTo(bConnect, remoteUDP)
+				time.Sleep(100 * time.Millisecond)
+			}
+		}(peerLocalUDP)
+	}
+
 	if baseUDP != nil && (forceHard || portRestrictedByProbe) {
 		logs.Debug("[P2P] start low-ttl warmup target=%s forceHard=%v probePortRestricted=%v", baseUDP.String(), forceHard, portRestrictedByProbe)
 		startPortRestrictedWarmup(parentCtx, &closed, localConn, baseUDP)
@@ -154,23 +172,6 @@ func sendP2PTestMsg(
 		startTickerSender(p2pConeSendTick, func() {
 			_, _ = localConn.WriteTo(bConnect, baseUDP)
 		})
-	}
-
-	if peerLocalUDP != nil {
-		go func(remoteUDP *net.UDPAddr) {
-			for i := 20; i > 0; i-- {
-				select {
-				case <-parentCtx.Done():
-					return
-				default:
-				}
-				if atomic.LoadUint32(&closed) != 0 {
-					return
-				}
-				_, _ = localConn.WriteTo(bConnect, remoteUDP)
-				time.Sleep(100 * time.Millisecond)
-			}
-		}(peerLocalUDP)
 	}
 
 	isStrategyA := hasPeerExt && hasSelfExt && peerInterval == 0 && selfInterval != 0 && baseUDP != nil
