@@ -93,8 +93,32 @@ func getRandomUniquePorts(count, min, max int) []int {
 	return out
 }
 
-func shouldRunFallbackRandomScan(allowAggressivePrediction, forceHard, portRestrictedByProbe bool) bool {
-	return allowAggressivePrediction || forceHard || portRestrictedByProbe
+func shouldRunFallbackRandomScan(allowAggressivePrediction, allowConservativePrediction, forceHard, portRestrictedByProbe bool) bool {
+	return allowAggressivePrediction || allowConservativePrediction || forceHard || portRestrictedByProbe
+}
+
+func normalizePredictionInterval(interval int, allowAggressivePrediction bool) int {
+	if !allowAggressivePrediction {
+		return interval
+	}
+	if interval == 0 {
+		return 1
+	}
+	return interval
+}
+
+func shouldEnableConservativePrediction(hasPeerExt bool, peerInterval int, forceHard, portRestrictedByProbe bool) bool {
+	if forceHard || portRestrictedByProbe {
+		return true
+	}
+	return hasPeerExt && peerInterval != 0
+}
+
+func shouldEnableAggressivePrediction(hasPeerExt, hasSelfExt bool, peerInterval, selfInterval int, forceHard, portRestrictedByProbe bool) bool {
+	if forceHard || portRestrictedByProbe {
+		return hasPeerExt
+	}
+	return hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval != 0
 }
 
 func pickPrimaryPunchTarget(exactTargets, predictionTargets []string, allowAggressivePrediction bool) string {
@@ -276,6 +300,7 @@ func startFallbackRandomScan(
 	closed *uint32,
 	localConn net.PacketConn,
 	peerExt1, peerExt2, peerExt3 string,
+	interval int,
 	delay time.Duration,
 ) {
 	ip := hostOnly(peerExt2)
@@ -304,7 +329,15 @@ func startFallbackRandomScan(
 			return
 		}
 
-		ports := getRandomUniquePorts(p2pConeFallbackCount, 1, 65535)
+		basePort := common.GetPortByAddr(peerExt3)
+		if basePort == 0 {
+			basePort = common.GetPortByAddr(peerExt2)
+		}
+		if basePort == 0 {
+			basePort = common.GetPortByAddr(peerExt1)
+		}
+
+		ports := buildTargetSprayPorts(basePort, interval, p2pConeFallbackCount)
 		udpAddrs := make([]*net.UDPAddr, 0, len(ports))
 		for _, p := range ports {
 			ua, e := net.ResolveUDPAddr("udp", net.JoinHostPort(ip, strconv.Itoa(p)))
@@ -330,6 +363,102 @@ func startFallbackRandomScan(
 				for _, ua := range udpAddrs {
 					_, _ = localConn.WriteTo(bConnect, ua)
 				}
+			}
+		}
+	}()
+}
+
+func buildTargetSprayPorts(basePort, interval, count int) []int {
+	if basePort <= 0 {
+		return getRandomUniquePorts(count, 1, 65535)
+	}
+	if count <= 0 {
+		return nil
+	}
+	if interval == 0 {
+		interval = 1
+	}
+	if interval < 0 {
+		interval = -interval
+	}
+
+	out := make([]int, 0, count)
+	seen := make(map[int]struct{}, count)
+	appendPort := func(p int) {
+		if p < 1 || p > 65535 {
+			return
+		}
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+
+	appendPort(basePort)
+	for step := 1; len(out) < count; step++ {
+		offset := step * interval
+		appendPort(basePort + offset)
+		if len(out) >= count {
+			break
+		}
+		appendPort(basePort - offset)
+		if basePort+offset > 65535 && basePort-offset < 1 {
+			break
+		}
+	}
+
+	if len(out) < count {
+		extra := getRandomUniquePorts(count-len(out), 1, 65535)
+		for _, p := range extra {
+			appendPort(p)
+			if len(out) >= count {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func startTargetPortSpray(ctx context.Context, closed *uint32, localConn net.PacketConn, baseTarget *net.UDPAddr, interval, count int, tick time.Duration) {
+	if localConn == nil || baseTarget == nil || count <= 0 {
+		return
+	}
+	if tick <= 0 {
+		tick = p2pConeNearScanTick
+	}
+	ports := buildTargetSprayPorts(baseTarget.Port, interval, count)
+	if len(ports) == 0 {
+		return
+	}
+
+	addrs := make([]*net.UDPAddr, 0, len(ports))
+	for _, p := range ports {
+		addrs = append(addrs, &net.UDPAddr{IP: baseTarget.IP, Port: p, Zone: baseTarget.Zone})
+	}
+
+	go func() {
+		sendBatch := func() {
+			for i, ua := range addrs {
+				_, _ = localConn.WriteTo(bConnect, ua)
+				if i > 0 && i%40 == 0 {
+					time.Sleep(2 * time.Millisecond)
+				}
+			}
+		}
+
+		sendBatch()
+		ticker := time.NewTicker(tick)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if atomic.LoadUint32(closed) != 0 {
+					return
+				}
+				sendBatch()
 			}
 		}
 	}()

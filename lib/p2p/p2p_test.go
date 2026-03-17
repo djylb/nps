@@ -93,8 +93,8 @@ func TestShouldRunFallbackRandomScan(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRunFallbackRandomScan(tt.aggressive, tt.forceHard, tt.pr); got != tt.want {
-				t.Fatalf("shouldRunFallbackRandomScan(%v,%v,%v)=%v, want %v", tt.aggressive, tt.forceHard, tt.pr, got, tt.want)
+			if got := shouldRunFallbackRandomScan(tt.aggressive, false, tt.forceHard, tt.pr); got != tt.want {
+				t.Fatalf("shouldRunFallbackRandomScan(%v,%v,%v,%v)=%v, want %v", tt.aggressive, false, tt.forceHard, tt.pr, got, tt.want)
 			}
 		})
 	}
@@ -340,5 +340,55 @@ func TestIsP2PNATProbePacket(t *testing.T) {
 	}
 	if isP2PNATProbePacket([]byte("p2pc")) {
 		t.Fatal("non-probe packet should not be recognized as nat-probe")
+	}
+}
+
+func TestPredictionStrategyFlags(t *testing.T) {
+	if !shouldEnableConservativePrediction(false, 0, true, false) {
+		t.Fatal("forceHard should enable conservative prediction")
+	}
+	if !shouldEnableConservativePrediction(false, 0, false, true) {
+		t.Fatal("portRestrictedByProbe should enable conservative prediction")
+	}
+	if shouldEnableConservativePrediction(false, 0, false, false) {
+		t.Fatal("insufficient signal should not enable conservative prediction")
+	}
+
+	if !shouldEnableAggressivePrediction(true, false, 0, 0, true, false) {
+		t.Fatal("forceHard with peer ext should enable aggressive prediction")
+	}
+	if !shouldEnableAggressivePrediction(true, false, 0, 0, false, true) {
+		t.Fatal("portRestrictedByProbe with peer ext should enable aggressive prediction")
+	}
+	if shouldEnableAggressivePrediction(false, true, 2, 2, true, false) {
+		t.Fatal("without peer ext aggressive prediction should stay disabled")
+	}
+
+	if got := normalizePredictionInterval(0, true); got != 1 {
+		t.Fatalf("normalizePredictionInterval(0,true)=%d, want 1", got)
+	}
+	if got := normalizePredictionInterval(3, true); got != 3 {
+		t.Fatalf("normalizePredictionInterval(3,true)=%d, want 3", got)
+	}
+	if got := normalizePredictionInterval(0, false); got != 0 {
+		t.Fatalf("normalizePredictionInterval(0,false)=%d, want 0", got)
+	}
+}
+
+func TestBuildTargetSprayPorts(t *testing.T) {
+	ports := buildTargetSprayPorts(1000, 2, 5)
+	wantPrefix := []int{1000, 1002, 998, 1004, 996}
+	if len(ports) != 5 {
+		t.Fatalf("len(ports)=%d, want 5", len(ports))
+	}
+	for i := range wantPrefix {
+		if ports[i] != wantPrefix[i] {
+			t.Fatalf("ports[%d]=%d, want %d", i, ports[i], wantPrefix[i])
+		}
+	}
+
+	ports = buildTargetSprayPorts(10, 0, 3)
+	if len(ports) != 3 || ports[0] != 10 {
+		t.Fatalf("unexpected interval=0 ports: %#v", ports)
 	}
 }
