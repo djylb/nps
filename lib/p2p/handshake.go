@@ -173,6 +173,7 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 	if sendRole == common.WORK_P2P_VISITOR {
 		wantRole = common.WORK_P2P_VISITOR
 	}
+	confirmedRemote := ""
 
 	for {
 		select {
@@ -217,6 +218,10 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 		case bytes.Equal(pkt, bSuccess):
 			from := addr.String()
 			st := getState(from)
+			if confirmedRemote != "" && confirmedRemote != from {
+				logs.Debug("[P2P] remote corrected old=%s new=%s local=%s", confirmedRemote, from, localAddrStr)
+			}
+			confirmedRemote = from
 
 			if sendRole == common.WORK_P2P_VISITOR {
 				logs.Trace("[P2P] visitor recv SUCCESS from=%s local=%s -> send END burst=%d + spray",
@@ -243,6 +248,10 @@ func waitP2PHandshakeWithSeed(parentCtx context.Context, localConn net.PacketCon
 		case bytes.Equal(pkt, bEnd):
 			from := addr.String()
 			st := getState(from)
+			if confirmedRemote != "" && confirmedRemote != from {
+				logs.Debug("[P2P] remote corrected old=%s new=%s local=%s", confirmedRemote, from, localAddrStr)
+			}
+			confirmedRemote = from
 			logs.Trace("[P2P] recv END from=%s local=%s -> ack END=%d then accept", from, localAddrStr, p2pEndBurstOnEndAck)
 
 			trySendEnd(st, addr, p2pEndBurstOnEndAck)

@@ -30,6 +30,10 @@ const (
 
 	// near scan (regular ports change)
 	p2pConeNearScanCount       = 128
+	p2pTargetSprayRounds       = 2
+	p2pTargetSprayBurst        = 16
+	p2pTargetSprayInterval     = 3 * time.Millisecond
+	p2pTargetSprayPhaseGap     = 40 * time.Millisecond
 	p2pConeNearScanRange       = 256
 	p2pConeNearScanTick        = 1500 * time.Millisecond
 	p2pConeSmallContigRange    = 6

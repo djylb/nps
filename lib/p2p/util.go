@@ -93,6 +93,33 @@ func getRandomUniquePorts(count, min, max int) []int {
 	return out
 }
 
+type punchPlan struct {
+	MappingConfidenceLow      bool
+	EnableConservativePredict bool
+	EnableAggressivePredict   bool
+	UseTargetSpray            bool
+	UseBirthdayAttack         bool
+	NormalizedInterval        int
+	HandshakeTimeoutSec       int
+}
+
+func selectPunchPlan(hasPeerExt, hasSelfExt bool, peerInterval, selfInterval int, forceHard, portRestrictedByProbe bool) punchPlan {
+	mappingConfidenceLow := !hasPeerExt || peerInterval == 0
+	enableConservative := shouldEnableConservativePrediction(hasPeerExt, peerInterval, forceHard, portRestrictedByProbe, mappingConfidenceLow)
+	enableAggressive := shouldEnableAggressivePrediction(hasPeerExt, hasSelfExt, peerInterval, selfInterval, forceHard, portRestrictedByProbe, mappingConfidenceLow)
+	normalized := normalizePredictionInterval(peerInterval, enableAggressive)
+
+	return punchPlan{
+		MappingConfidenceLow:      mappingConfidenceLow,
+		EnableConservativePredict: enableConservative,
+		EnableAggressivePredict:   enableAggressive,
+		UseTargetSpray:            forceHard || portRestrictedByProbe || mappingConfidenceLow,
+		UseBirthdayAttack:         false,
+		NormalizedInterval:        normalized,
+		HandshakeTimeoutSec:       p2pHandshakeTimeout,
+	}
+}
+
 func shouldRunFallbackRandomScan(allowAggressivePrediction, allowConservativePrediction, forceHard, portRestrictedByProbe bool) bool {
 	return allowAggressivePrediction || allowConservativePrediction || forceHard || portRestrictedByProbe
 }
@@ -107,15 +134,18 @@ func normalizePredictionInterval(interval int, allowAggressivePrediction bool) i
 	return interval
 }
 
-func shouldEnableConservativePrediction(hasPeerExt bool, peerInterval int, forceHard, portRestrictedByProbe bool) bool {
-	if forceHard || portRestrictedByProbe {
+func shouldEnableConservativePrediction(hasPeerExt bool, peerInterval int, forceHard, portRestrictedByProbe, mappingConfidenceLow bool) bool {
+	if forceHard || portRestrictedByProbe || mappingConfidenceLow {
 		return true
 	}
 	return hasPeerExt && peerInterval != 0
 }
 
-func shouldEnableAggressivePrediction(hasPeerExt, hasSelfExt bool, peerInterval, selfInterval int, forceHard, portRestrictedByProbe bool) bool {
+func shouldEnableAggressivePrediction(hasPeerExt, hasSelfExt bool, peerInterval, selfInterval int, forceHard, portRestrictedByProbe, mappingConfidenceLow bool) bool {
 	if forceHard || portRestrictedByProbe {
+		return hasPeerExt
+	}
+	if mappingConfidenceLow {
 		return hasPeerExt
 	}
 	return hasPeerExt && hasSelfExt && peerInterval != 0 && selfInterval != 0
@@ -369,11 +399,11 @@ func startFallbackRandomScan(
 }
 
 func buildTargetSprayPorts(basePort, interval, count int) []int {
-	if basePort <= 0 {
-		return getRandomUniquePorts(count, 1, 65535)
-	}
 	if count <= 0 {
 		return nil
+	}
+	if basePort <= 0 {
+		return getRandomUniquePorts(count, 1, 65535)
 	}
 	if interval == 0 {
 		interval = 1
@@ -382,42 +412,92 @@ func buildTargetSprayPorts(basePort, interval, count int) []int {
 		interval = -interval
 	}
 
-	out := make([]int, 0, count)
-	seen := make(map[int]struct{}, count)
-	appendPort := func(p int) {
-		if p < 1 || p > 65535 {
-			return
-		}
-		if _, ok := seen[p]; ok {
-			return
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
+	deltaCount := count / 2
+	if deltaCount <= 0 {
+		deltaCount = 1
 	}
+	phase1 := buildSymmetricDeltaPorts(basePort, interval, deltaCount)
+	phase2 := buildNeighborhoodPorts(basePort, count-len(phase1))
+	out := mergeUniquePorts(append(phase1, phase2...)...)
+	if len(out) < count {
+		out = append(out, getRandomUniquePorts(count-len(out), 1, 65535)...)
+		out = mergeUniquePorts(out...)
+	}
+	if len(out) > count {
+		out = out[:count]
+	}
+	return out
+}
 
-	appendPort(basePort)
-	for step := 1; len(out) < count; step++ {
+func buildSymmetricDeltaPorts(basePort, interval, count int) []int {
+	if basePort <= 0 || count <= 0 {
+		return nil
+	}
+	if interval == 0 {
+		interval = 1
+	}
+	if interval < 0 {
+		interval = -interval
+	}
+	ports := make([]int, 0, count)
+	ports = append(ports, basePort)
+	for step := 1; len(ports) < count; step++ {
 		offset := step * interval
-		appendPort(basePort + offset)
-		if len(out) >= count {
+		ports = append(ports, basePort+offset)
+		if len(ports) >= count {
 			break
 		}
-		appendPort(basePort - offset)
+		ports = append(ports, basePort-offset)
 		if basePort+offset > 65535 && basePort-offset < 1 {
 			break
 		}
 	}
+	return mergeUniquePorts(ports...)
+}
 
-	if len(out) < count {
-		extra := getRandomUniquePorts(count-len(out), 1, 65535)
-		for _, p := range extra {
-			appendPort(p)
-			if len(out) >= count {
-				break
-			}
+func buildNeighborhoodPorts(basePort, count int) []int {
+	if basePort <= 0 || count <= 0 {
+		return nil
+	}
+	return buildSmallContiguousPorts(basePort, count/2+1)
+}
+
+func mergeUniquePorts(ports ...int) []int {
+	out := make([]int, 0, len(ports))
+	seen := make(map[int]struct{}, len(ports))
+	for _, p := range ports {
+		if p < 1 || p > 65535 {
+			continue
 		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
 	}
 	return out
+}
+
+func sendPacedToAddrs(ctx context.Context, closed *uint32, localConn net.PacketConn, addrs []*net.UDPAddr) {
+	if len(addrs) == 0 || localConn == nil {
+		return
+	}
+	for i, ua := range addrs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if atomic.LoadUint32(closed) != 0 {
+			return
+		}
+		_, _ = localConn.WriteTo(bConnect, ua)
+		if (i+1)%p2pTargetSprayBurst == 0 {
+			time.Sleep(p2pTargetSprayPhaseGap)
+		} else {
+			time.Sleep(p2pTargetSprayInterval)
+		}
+	}
 }
 
 func startTargetPortSpray(ctx context.Context, closed *uint32, localConn net.PacketConn, baseTarget *net.UDPAddr, interval, count int, tick time.Duration) {
@@ -438,16 +518,12 @@ func startTargetPortSpray(ctx context.Context, closed *uint32, localConn net.Pac
 	}
 
 	go func() {
-		sendBatch := func() {
-			for i, ua := range addrs {
-				_, _ = localConn.WriteTo(bConnect, ua)
-				if i > 0 && i%40 == 0 {
-					time.Sleep(2 * time.Millisecond)
-				}
+		for round := 1; round <= p2pTargetSprayRounds; round++ {
+			sendPacedToAddrs(ctx, closed, localConn, addrs)
+			if round < p2pTargetSprayRounds {
+				time.Sleep(p2pTargetSprayPhaseGap)
 			}
 		}
-
-		sendBatch()
 		ticker := time.NewTicker(tick)
 		defer ticker.Stop()
 		for {
@@ -458,7 +534,7 @@ func startTargetPortSpray(ctx context.Context, closed *uint32, localConn net.Pac
 				if atomic.LoadUint32(closed) != 0 {
 					return
 				}
-				sendBatch()
+				sendPacedToAddrs(ctx, closed, localConn, addrs)
 			}
 		}
 	}()
