@@ -6,3 +6,8 @@ npc
 *.tar.gz
 *.json
 *.tmp
+*.zip
+*.bat
+*.ps1
+nps-linux-*
+nps-windows-*

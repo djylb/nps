@@ -238,95 +238,48 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 			logs.Debug("ErrorHandler: proxy error: method=%s, URL=%s, error=%v", req.Method, req.URL.String(), err)
 
 			errMsg := err.Error()
+			// logs.Debug("ErrorHandler: 我这是报错内容: %s", errMsg)
+			//  ErrorHandler: 我这是报错内容: net/http: HTTP/1.x transport connection broken: Task: time limit exceeded
+			// ErrorHandler: 我这是报错内容: net/http: HTTP/1.x transport connection broken: Task: flow limit exceeded
 			idx := strings.Index(errMsg, "Task")
 			if idx == -1 {
 				idx = strings.Index(errMsg, "Client")
 			}
 
-			// 获取用户名和隧道名称
-			host, _ := r.Context().Value(ctxHost).(*file.Host)
-			clientName := ""
-			if host != nil && host.Client != nil && host.Client.Cnf != nil {
-				clientName = host.Client.Cnf.U
-			}
-			tunnelName := ""
-			if host != nil {
-				tunnelName = host.Host
-			}
-
-			// 获取隧道有效时间（剩余时间）
-			tunnelDuration := ""
-			if host != nil && host.Client != nil && host.Client.Flow != nil {
-				host.Client.Flow.RLock()
-				expireTime := host.Client.Flow.TimeLimit
-				host.Client.Flow.RUnlock()
-
-				if !expireTime.IsZero() {
-					now := time.Now()
-					duration := time.Until(expireTime)
-
-					if duration > 0 {
-						hours := int(duration.Hours())
-						minutes := int(duration.Minutes()) % 60
-						seconds := int(duration.Seconds()) % 60
-
-						if hours > 0 {
-							if minutes > 0 {
-								tunnelDuration = fmt.Sprintf("剩余 %d小时%d分钟", hours, minutes)
-							} else {
-								tunnelDuration = fmt.Sprintf("剩余 %d小时", hours)
-							}
-						} else if minutes > 0 {
-							if seconds > 0 {
-								tunnelDuration = fmt.Sprintf("剩余 %d分钟%d秒", minutes, seconds)
-							} else {
-								tunnelDuration = fmt.Sprintf("剩余 %d分钟", minutes)
-							}
-						} else {
-							tunnelDuration = fmt.Sprintf("剩余 %d秒", seconds)
-						}
-					} else {
-						tunnelDuration = "已过期"
-					}
-				}
-			}
-
 			if idx != -1 {
-				// 用HTML替换占位符，显示隧道有效时间而不是原始错误信息
-				pageContent := string(s.TooManyRequestsPage)
-				pageContent = strings.ReplaceAll(pageContent, "{error}", tunnelDuration)
-				pageContent = strings.ReplaceAll(pageContent, "{username}", clientName)
-				pageContent = strings.ReplaceAll(pageContent, "{tunnel}", tunnelName)
+				// 提取 Task/Client 后面的具体错误内容
+				errorDetail := errMsg[idx:]
+				
+				// 提取冒号后的内容
+				if colonIdx := strings.Index(errorDetail, ":"); colonIdx != -1 && len(errorDetail) > colonIdx+2 {
+					errorDetail = strings.TrimSpace(errorDetail[colonIdx+1:])
+				}
+				
+				// 使用启动时加载的 HTML 模板字符串（避免每次请求都转换）
+				pageContent := s.TooManyRequestsTpl
+				// 替换占位符，如果 HTML 中没有这些占位符，strings.ReplaceAll 会返回原字符串
+				pageContent = strings.ReplaceAll(pageContent, "{error}", errorDetail)
 
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusTooManyRequests)
-				_, _ = w.Write([]byte(pageContent))
+				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+				rw.WriteHeader(http.StatusTooManyRequests)
+				_, _ = rw.Write([]byte(pageContent))
 			} else {
-				// 其他错误返回502
 				//http.Error(rw, "502 Bad Gateway", http.StatusBadGateway)
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusBadGateway)
-				_, _ = w.Write(s.ErrorContent)
-			}
-				//http.Error(rw, "502 Bad Gateway", http.StatusBadGateway)
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusBadGateway)
-				_, _ = w.Write(s.ErrorContent)
+				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+				rw.WriteHeader(http.StatusBadGateway)
+				_, _ = rw.Write(s.ErrorContent)
 			}
 		},
 	}
+
 	rp.ServeHTTP(w, r)
 }
 
 func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest bool) {
-	// Get target addr
 	targetAddr, err := host.Target.GetRandomTarget()
 	if err != nil {
-		logs.Warn("No backend found for host: %s Err: %v", r.Host, err)
-		//http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write(s.ErrorContent)
+		logs.Warn("No backend found for h: %d Err: %v", host.Id, err)
+		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
 

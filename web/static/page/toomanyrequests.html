@@ -1,72 +1,23 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
-    <title>请求过多 - {tunnel}</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            text-align: center;
-            padding: 60px 20px;
-            background-color: #f5f7fa;
-        }
-        .error-box {
-            background-color: white;
-            padding: 50px 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        .error-code {
-            font-size: 80px;
-            font-weight: bold;
-            color: #e74c3c;
-            line-height: 1;
-            margin-bottom: 10px;
-        }
-        .error-title {
-            font-size: 28px;
-            color: #2c3e50;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-        .error-message {
-            font-size: 18px;
-            color: #7f8c8d;
-            margin-bottom: 30px;
-        }
-        .error-detail {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .error-detail strong {
-            color: #3498db;
-        }
-        .user-info {
-            color: #95a5a6;
-            font-size: 14px;
-            margin-top: 25px;
-        }
-        .user-info span {
-            margin: 0 10px;
-        }
-    </style>
 </head>
+
 <body>
-    <div class="error-box">
-        <div class="error-code">429</div>
-        <div class="error-title">请求过多</div>
-        <div class="error-message">⚠️ 隧道已到期或请求过于频繁</div>
-        <div class="error-detail">
-            <p>隧道剩余有效时间: <strong>{error}</strong></p>
-        </div>
-        <div class="user-info">
-            <span>👤 用户: {username}</span>
-            <span>🌐 隧道: {tunnel}</span>
-        </div>
-    </div>
+    <p id="msg"></p>
+    <script>
+        var e = "{error}";
+        var m = document.getElementById("msg");
+        if (e.indexOf("time limit exceeded") !== -1) {
+            m.textContent = "Tunnel expired (time limit exceeded)";
+        } else if (e.indexOf("flow limit exceeded") !== -1) {
+            m.textContent = "Tunnel flow limit exceeded";
+        } else {
+            m.textContent = e;
+        }
+    </script>
 </body>
+
 </html>
