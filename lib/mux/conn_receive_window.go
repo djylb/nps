@@ -17,6 +17,7 @@ type receiveWindow struct {
 	buffered uint32
 	count    int8
 	sizeMu   sync.Mutex
+	readMu   sync.Mutex
 	bw       *writeBandwidth
 	priority bool
 	once     sync.Once
@@ -197,6 +198,8 @@ start:
 }
 
 func (Self *receiveWindow) Read(p []byte, id int32) (n int, err error) {
+	Self.readMu.Lock()
+	defer Self.readMu.Unlock()
 	if Self.IsClosed() {
 		return 0, io.EOF
 	}
@@ -218,7 +221,6 @@ copyData:
 		Self.element, err = Self.bufQueue.Pop()
 		Self.off = 0
 		if err != nil {
-			Self.CloseWindow()
 			return
 		}
 	}
@@ -282,6 +284,8 @@ func (Self *receiveWindow) CloseWindow() {
 }
 
 func (Self *receiveWindow) release() {
+	Self.readMu.Lock()
+	defer Self.readMu.Unlock()
 	for {
 		ele := Self.bufQueue.TryPop()
 		if ele == nil {
