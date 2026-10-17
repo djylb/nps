@@ -1092,3 +1092,60 @@ func TestSocks5ReplyAddrIPv6Client(t *testing.T) {
 		t.Fatalf("IPv6 client without IPv6 local address: encoded %x, want the IPv6 zero address", b)
 	}
 }
+
+// TestTunnelModeServerSocks5UDPRelaysLargeDatagram sends client datagrams
+// larger than a typical MTU, between small ones, and checks that each enters
+// the tunnel whole.
+func TestTunnelModeServerSocks5UDPRelaysLargeDatagram(t *testing.T) {
+	port := freeTCPPort(t)
+	task := newTestSocks5Task(port, "socks5")
+	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
+	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	defer stopTestTunnelModeServer(t, server, errCh)
+
+	tcpConn := dialSocks5NoAuth(t, port)
+	defer func() { _ = tcpConn.Close() }()
+	requestUDPAssociate(t, tcpConn)
+
+	var peerConn net.Conn
+	select {
+	case peerConn = <-bridge.peers:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for udp5 tunnel")
+	}
+	defer func() { _ = peerConn.Close() }()
+	peerFramed := netx.NewFramedConn(peerConn, netx.WithFramedDatagrams())
+
+	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	if err != nil {
+		t.Fatalf("ListenUDP() error = %v", err)
+	}
+	defer func() { _ = udpConn.Close() }()
+
+	targetAddr, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
+	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}
+	frameBuf := make([]byte, netx.MaxFramePayload)
+	// 8000 bytes stay under the smallest loopback datagram limit (macOS).
+	for i, size := range []int{4, 8000, 2000, 8000, 4} {
+		payload := bytes.Repeat([]byte{byte('a' + i)}, size)
+		var outbound bytes.Buffer
+		if err := writeSocks5Datagram(&outbound, targetAddr, payload); err != nil {
+			t.Fatalf("build outbound udp datagram: %v", err)
+		}
+		if _, err := udpConn.WriteToUDP(outbound.Bytes(), serverAddr); err != nil {
+			t.Fatalf("WriteToUDP(%d bytes) error = %v", outbound.Len(), err)
+		}
+		_ = peerConn.SetReadDeadline(time.Now().Add(time.Second))
+		n, err := peerFramed.Read(frameBuf)
+		if err != nil {
+			t.Fatalf("read framed udp payload %d: %v", i, err)
+		}
+		tunneled, err := readSocks5Datagram(frameBuf[:n])
+		if err != nil {
+			t.Fatalf("parse tunneled udp datagram %d: %v", i, err)
+		}
+		if !bytes.Equal(tunneled.data, payload) {
+			t.Fatalf("datagram %d: tunneled %d bytes, want %d", i, len(tunneled.data), size)
+		}
+	}
+}

@@ -34,6 +34,64 @@ func (s *Flow) Add(in, out int64) {
 	s.Unlock()
 }
 
+// ResetTraffic zeroes the inbound and outbound traffic.
+func (s *Flow) ResetTraffic() {
+	s.Lock()
+	s.InletFlow = 0
+	s.ExportFlow = 0
+	s.Unlock()
+}
+
+// SetFlowLimit sets the traffic limit in MiB, 0 for none.
+func (s *Flow) SetFlowLimit(limit int64) {
+	s.Lock()
+	s.FlowLimit = limit
+	s.Unlock()
+}
+
+// SetTimeLimit sets the time limit, the zero time for none.
+func (s *Flow) SetTimeLimit(limit time.Time) {
+	s.Lock()
+	s.TimeLimit = limit
+	s.Unlock()
+}
+
+// SetLimits sets the traffic limit in MiB and the time limit together.
+func (s *Flow) SetLimits(flowLimit int64, timeLimit time.Time) {
+	s.Lock()
+	s.FlowLimit = flowLimit
+	s.TimeLimit = timeLimit
+	s.Unlock()
+}
+
+// AddOver adds like Add and reports, under the same lock, whether the flow
+// is then over its traffic limit or past its time limit.
+func (s *Flow) AddOver(in, out int64) (traffic, expired bool) {
+	s.Lock()
+	s.InletFlow += in
+	s.ExportFlow += out
+	traffic, expired = s.overLocked()
+	s.Unlock()
+	return traffic, expired
+}
+
+// Over reports whether the flow is over its traffic limit (FlowLimit MiB of
+// inbound and outbound traffic together) or past its time limit. The fields
+// are read under the lock, so that a 64-bit counter is never seen half
+// written on 32-bit platforms.
+func (s *Flow) Over() (traffic, expired bool) {
+	s.RLock()
+	traffic, expired = s.overLocked()
+	s.RUnlock()
+	return traffic, expired
+}
+
+func (s *Flow) overLocked() (traffic, expired bool) {
+	traffic = s.FlowLimit > 0 && (s.FlowLimit<<20) < (s.ExportFlow+s.InletFlow)
+	expired = !s.TimeLimit.IsZero() && s.TimeLimit.Before(time.Now())
+	return traffic, expired
+}
+
 func (s *Flow) Sub(in, out int64) {
 	s.Lock()
 	s.InletFlow -= in

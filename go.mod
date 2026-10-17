@@ -20,7 +20,6 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/kardianos/service v1.3.0
 	github.com/miekg/dns v1.1.73
-	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/quic-go/quic-go v0.64.0
 	github.com/rs/zerolog v1.35.1
 	github.com/shirou/gopsutil/v4 v4.26.9

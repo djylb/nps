@@ -156,11 +156,13 @@ func (r *socks5UDPRegistry) sessionCount() int {
 func (r *socks5UDPRegistry) readLoop() {
 	defer r.wg.Done()
 
+	// Datagrams are read whole into a 64 KiB buffer, as the client side
+	// reads them, and queued in a buffer that fits them.
+	buf := common.BufPool.Get()
+	defer func() { common.BufPool.Put(buf) }()
 	for {
-		buf := common.BufPoolUdp.Get()
 		n, addr, err := r.listener.ReadFrom(buf)
 		if err != nil {
-			common.BufPoolUdp.Put(buf)
 			if r.ctx.Err() != nil || isClosedPacketConnError(err) {
 				return
 			}
@@ -170,22 +172,21 @@ func (r *socks5UDPRegistry) readLoop() {
 
 		udpAddr, ok := addr.(*net.UDPAddr)
 		if !ok || udpAddr == nil {
-			common.BufPoolUdp.Put(buf)
 			continue
 		}
 		if r.shouldDropClientDatagram(udpAddr) {
-			common.BufPoolUdp.Put(buf)
 			continue
 		}
 
 		session := r.pickSession(udpAddr)
 		if session == nil {
-			common.BufPoolUdp.Put(buf)
 			logs.Debug("drop socks5 udp datagram from %v without active associate", udpAddr)
 			continue
 		}
-		if !session.enqueue(buf, n) {
-			common.BufPoolUdp.Put(buf)
+		var pkt []byte
+		pkt, buf = takeUDPPacket(buf, n)
+		if !session.enqueue(pkt, n) {
+			putUDPPacketBuf(pkt)
 		}
 	}
 }
@@ -505,28 +506,28 @@ func (s *socks5UDPSession) writeToTunnelLoop() {
 		// The client endpoint decodes the datagram; checking it here
 		// keeps malformed and fragmented ones out of the tunnel.
 		if _, _, err := socks5.DecodeDatagram(pkt.buf[:pkt.n]); err != nil {
-			common.BufPoolUdp.Put(pkt.buf)
+			putUDPPacketBuf(pkt.buf)
 			logs.Debug("drop socks5 udp datagram from %s: %v", s.controlRemoteAddr(), err)
 			continue
 		}
 		if pkt.n > netx.MaxFramePayload {
-			common.BufPoolUdp.Put(pkt.buf)
+			putUDPPacketBuf(pkt.buf)
 			logs.Debug("socks5 udp datagram too large: %d > %d", pkt.n, netx.MaxFramePayload)
 			continue
 		}
 		if discardOnly {
-			common.BufPoolUdp.Put(pkt.buf)
+			putUDPPacketBuf(pkt.buf)
 			continue
 		}
 		if _, err := s.framed.Write(pkt.buf[:pkt.n]); err != nil {
-			common.BufPoolUdp.Put(pkt.buf)
+			putUDPPacketBuf(pkt.buf)
 			logs.Debug("write socks5 udp frame to tunnel error: %v", err)
 			discardOnly = true
 			s.Close()
 			continue
 		}
 		s.touch()
-		common.BufPoolUdp.Put(pkt.buf)
+		putUDPPacketBuf(pkt.buf)
 	}
 }
 

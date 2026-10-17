@@ -12,7 +12,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/djylb/netx"
@@ -21,7 +20,6 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/goroutine"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -246,19 +244,20 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Ra
 			return
 		}
 	}
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	err := goroutine.CopyConnsPool.Invoke(goroutine.NewConns(connHandle, conn2, flows, wg, task))
-	if err != nil {
-		logs.Error("CopyConnsPool.Invoke failed: %v", err)
-		wg.Done()
-		_ = conn1.Close()
-		_ = conn2.Close()
+	remote := ""
+	if task != nil {
+		if ra := conn2.RemoteAddr(); ra != nil {
+			remote = ra.String()
+		}
 	}
-	wg.Wait()
+	out, in := relay(connHandle, conn2, flows, task, remote)
+	// Each flow counted every byte both ways; the task's own flow keeps
+	// only the inbound bytes as inlet and the outbound ones as export.
+	if task != nil && task.Flow != nil {
+		task.Flow.Sub(out, in)
+	}
 	_ = conn1.Close()
 	_ = conn2.Close()
-	//return
 }
 
 func ParseAddr(addr string) net.Addr {

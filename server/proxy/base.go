@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -84,18 +83,12 @@ func NewBaseServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *B
 
 // FlowAdd add the flow
 func (s *BaseServer) FlowAdd(in, out int64) {
-	s.Lock()
-	defer s.Unlock()
-	s.Task.Flow.ExportFlow += out
-	s.Task.Flow.InletFlow += in
+	s.Task.Flow.Add(in, out)
 }
 
 // FlowAddHost change the flow
 func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
-	s.Lock()
-	defer s.Unlock()
-	host.Flow.ExportFlow += out
-	host.Flow.InletFlow += in
+	host.Flow.Add(in, out)
 }
 
 // write fail bytes to the connection
@@ -118,10 +111,11 @@ func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccou
 
 // CheckFlowAndConnNum check flow limit of the client ,and decrease the allowed num of client
 func (s *BaseServer) CheckFlowAndConnNum(client *file.Client) error {
-	if !client.Flow.TimeLimit.IsZero() && client.Flow.TimeLimit.Before(time.Now()) {
+	traffic, expired := client.Flow.Over()
+	if expired {
 		return errors.New("service access expired")
 	}
-	if client.Flow.FlowLimit > 0 && (client.Flow.FlowLimit<<20) < (client.Flow.ExportFlow+client.Flow.InletFlow) {
+	if traffic {
 		return errors.New("traffic limit exceeded")
 	}
 	if !client.GetConn() {

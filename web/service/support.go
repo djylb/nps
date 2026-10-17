@@ -134,18 +134,17 @@ func changeTunnelStatus(id int, name, action string) error {
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		tunnel.Flow.ExportFlow = 0
-		tunnel.Flow.InletFlow = 0
+		tunnel.Flow.ResetTraffic()
 	case "flow_limit":
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		tunnel.Flow.FlowLimit = 0
+		tunnel.Flow.SetFlowLimit(0)
 	case "time_limit":
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		tunnel.Flow.TimeLimit = common.GetTimeNoErrByStr("")
+		tunnel.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
 	default:
 		return fmt.Errorf("unknown name: %q", name)
 	}
@@ -164,18 +163,17 @@ func changeHostStatus(id int, name, action string) error {
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		host.Flow.ExportFlow = 0
-		host.Flow.InletFlow = 0
+		host.Flow.ResetTraffic()
 	case "flow_limit":
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		host.Flow.FlowLimit = 0
+		host.Flow.SetFlowLimit(0)
 	case "time_limit":
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		host.Flow.TimeLimit = common.GetTimeNoErrByStr("")
+		host.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
 	case "auto_ssl":
 		if err := applyBoolAction(&host.AutoSSL, action); err != nil {
 			return err
@@ -233,28 +231,25 @@ func clearClientStatusByID(id int, name string) error {
 func clearClientStatus(client *file.Client, name string) {
 	switch strings.TrimSpace(name) {
 	case "flow":
-		client.Flow.ExportFlow = 0
-		client.Flow.InletFlow = 0
+		client.Flow.ResetTraffic()
 		client.ExportFlow = 0
 		client.InletFlow = 0
 		DefaultBackend().repo().RangeHosts(func(host *file.Host) bool {
 			if host.Client.Id == client.Id {
-				host.Flow.InletFlow = 0
-				host.Flow.ExportFlow = 0
+				host.Flow.ResetTraffic()
 			}
 			return true
 		})
 		DefaultBackend().repo().RangeTunnels(func(tunnel *file.Tunnel) bool {
 			if tunnel.Client.Id == client.Id {
-				tunnel.Flow.InletFlow = 0
-				tunnel.Flow.ExportFlow = 0
+				tunnel.Flow.ResetTraffic()
 			}
 			return true
 		})
 	case "flow_limit":
-		client.Flow.FlowLimit = 0
+		client.Flow.SetFlowLimit(0)
 	case "time_limit":
-		client.Flow.TimeLimit = common.GetTimeNoErrByStr("")
+		client.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
 	case "rate_limit":
 		client.RateLimit = 0
 	case "conn_limit":

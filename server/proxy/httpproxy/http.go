@@ -17,7 +17,6 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/goroutine"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/proxy"
 )
@@ -437,7 +436,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		clientConn = conn.NewConn(clientConn).SetRb(pending)
 	}
 
-	goroutine.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
+	conn.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
 }
 
 // isTunnelRequest reports whether r asks to turn the connection into a tunnel:

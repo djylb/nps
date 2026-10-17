@@ -302,11 +302,9 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.DestAclMode = normalizeACLMode(input.DestACLMode)
 	tunnel.DestAclRules = normalizeRules(input.DestACLRules)
 	tunnel.Remark = input.Remark
-	tunnel.Flow.FlowLimit = input.FlowLimit
-	tunnel.Flow.TimeLimit = common.GetTimeNoErrByStr(input.TimeLimit)
+	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
-		tunnel.Flow.ExportFlow = 0
-		tunnel.Flow.InletFlow = 0
+		tunnel.Flow.ResetTraffic()
 	}
 
 	if err := s.repo().SaveTunnel(tunnel); err != nil {
@@ -528,11 +526,9 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.AutoSSL = input.AutoSSL
 	host.KeyFile = input.KeyFile
 	host.CertFile = input.CertFile
-	host.Flow.FlowLimit = input.FlowLimit
-	host.Flow.TimeLimit = common.GetTimeNoErrByStr(input.TimeLimit)
+	host.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
-		host.Flow.ExportFlow = 0
-		host.Flow.InletFlow = 0
+		host.Flow.ResetTraffic()
 	}
 	host.AutoHttps = input.AutoHTTPS
 	host.AutoCORS = input.AutoCORS

@@ -77,11 +77,13 @@ func (s *UdpModeServer) Start() error {
 		return err
 	}
 
+	// Datagrams are read whole into a 64 KiB buffer and queued in a buffer
+	// that fits them.
+	buf := common.BufPool.Get()
+	defer func() { common.BufPool.Put(buf) }()
 	for {
-		buf := common.BufPoolUdp.Get()
 		n, addr, err := s.listener.ReadFromUDP(buf)
 		if err != nil {
-			common.BufPoolUdp.Put(buf)
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
 			}
@@ -90,7 +92,6 @@ func (s *UdpModeServer) Start() error {
 
 		// IP blacklist check
 		if s.Bridge.IsServer() && (IsGlobalBlackIp(addr.String()) || common.IsBlackIp(addr.String(), s.Task.Client.VerifyKey, s.Task.Client.BlackIpList)) {
-			common.BufPoolUdp.Put(buf)
 			continue
 		}
 
@@ -111,12 +112,14 @@ func (s *UdpModeServer) Start() error {
 		}
 		ent := v.(*entry)
 
+		var pkt []byte
+		pkt, buf = takeUDPPacket(buf, n)
 		select {
 		case <-ent.ctx.Done():
-			common.BufPoolUdp.Put(buf)
-		case ent.ch <- packet{buf: buf, n: n}:
+			putUDPPacketBuf(pkt)
+		case ent.ch <- packet{buf: pkt, n: n}:
 		default:
-			common.BufPoolUdp.Put(buf)
+			putUDPPacketBuf(pkt)
 		}
 	}
 
@@ -134,7 +137,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 		for {
 			select {
 			case pkt := <-ent.ch:
-				common.BufPoolUdp.Put(pkt.buf)
+				putUDPPacketBuf(pkt.buf)
 			default:
 				return
 			}
@@ -146,7 +149,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
 			return
 		}
-		if err := conn.CheckFlowLimits(s.Task.Flow, "Task", time.Now()); err != nil {
+		if err := conn.CheckFlowLimits(s.Task.Flow, "Task"); err != nil {
 			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
 			return
 		}
@@ -172,8 +175,9 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 	// The back-channel reader blocks without a deadline; it is released by
 	// closing ent.conn when the worker returns.
 	go func() {
-		buf := common.BufPoolUdp.Get()
-		defer common.BufPoolUdp.Put(buf)
+		// One datagram per read, which a short buffer would truncate.
+		buf := common.BufPool.Get()
+		defer common.BufPool.Put(buf)
 
 		for {
 			nr, err := ent.conn.Read(buf)
@@ -224,11 +228,11 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 			})
 
 			if _, err := ent.conn.Write(data); err != nil {
-				common.BufPoolUdp.Put(pkt.buf)
+				putUDPPacketBuf(pkt.buf)
 				ent.cancel()
 				return
 			}
-			common.BufPoolUdp.Put(pkt.buf)
+			putUDPPacketBuf(pkt.buf)
 		}
 	}
 }
@@ -245,4 +249,26 @@ func (s *UdpModeServer) Close() error {
 		return true
 	})
 	return nil
+}
+
+// takeUDPPacket returns a buffer holding the n-byte datagram read into buf,
+// a small pooled copy for a datagram that fits one, or else buf itself, and
+// the buffer to read the next datagram into. buf is from common.BufPool.
+func takeUDPPacket(buf []byte, n int) (pkt, next []byte) {
+	if n <= common.PoolSizeUdp {
+		pkt = common.BufPoolUdp.Get()
+		copy(pkt, buf[:n])
+		return pkt, buf
+	}
+	// Hand the large buffer over instead of copying it.
+	return buf, common.BufPool.Get()
+}
+
+// putUDPPacketBuf returns a buffer of takeUDPPacket to the pool it came from.
+func putUDPPacketBuf(buf []byte) {
+	if cap(buf) == common.PoolSize {
+		common.BufPool.Put(buf)
+		return
+	}
+	common.BufPoolUdp.Put(buf)
 }

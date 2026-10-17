@@ -18,6 +18,9 @@
 - 优化MUX稳定性
 - 优化管理后台逻辑
 - 优化HTTP代理、Socks5、端口复用处理逻辑
+- 使用[netx](https://github.com/djylb/netx)和[byterate](https://github.com/djylb/byterate)重构连接转发、限速、透明代理、Socks5与PROXY协议处理
+- 修复UDP大包被截断的问题
+- 过期证书不再使用，自动回退到默认证书；`ssl_cache_reload`改为检测文件变更后重新加载
 - 修复多处性能问题
 - 移除Qodana自动化
 - 升级Go到1.27

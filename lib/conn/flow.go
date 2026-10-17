@@ -41,11 +41,18 @@ func NewFlowConn(conn io.ReadWriteCloser, task, client *file.Flow) *FlowConn {
 	}
 }
 
-func CheckFlowLimits(f *file.Flow, label string, now time.Time) error {
-	if f.FlowLimit > 0 && (f.InletFlow+f.ExportFlow) > (f.FlowLimit<<20) {
+// CheckFlowLimits returns an error naming label if f is over its traffic
+// limit or past its time limit.
+func CheckFlowLimits(f *file.Flow, label string) error {
+	traffic, expired := f.Over()
+	return flowLimitError(traffic, expired, label)
+}
+
+func flowLimitError(traffic, expired bool, label string) error {
+	if traffic {
 		return fmt.Errorf("%s: flow limit exceeded", label)
 	}
-	if !f.TimeLimit.IsZero() && f.TimeLimit.Before(now) {
+	if expired {
 		return fmt.Errorf("%s: time limit exceeded", label)
 	}
 	return nil
@@ -54,29 +61,25 @@ func CheckFlowLimits(f *file.Flow, label string, now time.Time) error {
 func (c *FlowConn) Read(p []byte) (int, error) {
 	n, err := c.RWConn.Read(p)
 	n64 := int64(n)
-	c.taskFlow.Add(0, n64)
-	c.clientFlow.Add(n64, n64)
-	now := time.Now()
-	if err := CheckFlowLimits(c.taskFlow, "Task", now); err != nil {
-		return n, err
-	}
-	if err := CheckFlowLimits(c.clientFlow, "Client", now); err != nil {
-		return n, err
-	}
-	return n, err
+	return n, c.account(0, n64, n64, err)
 }
 
 func (c *FlowConn) Write(p []byte) (int, error) {
 	n, err := c.RWConn.Write(p)
 	n64 := int64(n)
-	c.taskFlow.Add(n64, 0)
-	c.clientFlow.Add(n64, n64)
-	now := time.Now()
-	if err := CheckFlowLimits(c.taskFlow, "Task", now); err != nil {
-		return n, err
+	return n, c.account(n64, 0, n64, err)
+}
+
+// account adds in and out to the task flow and both to the client flow, and
+// returns the first limit error, or else err.
+func (c *FlowConn) account(in, out, both int64, err error) error {
+	taskTraffic, taskExpired := c.taskFlow.AddOver(in, out)
+	clientTraffic, clientExpired := c.clientFlow.AddOver(both, both)
+	if lerr := flowLimitError(taskTraffic, taskExpired, "Task"); lerr != nil {
+		return lerr
 	}
-	if err := CheckFlowLimits(c.clientFlow, "Client", now); err != nil {
-		return n, err
+	if lerr := flowLimitError(clientTraffic, clientExpired, "Client"); lerr != nil {
+		return lerr
 	}
-	return n, err
+	return err
 }
