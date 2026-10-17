@@ -42,7 +42,7 @@ P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filteri
 
 ## 4. 通过代理连接 NPS
 
-如果 NPC 运行的机器无法直接访问外网，可以通过 **Socks5 / HTTP 代理** 连接 NPS 服务器。
+如果 NPC 运行的机器无法直接访问外网，可以通过 **Socks5 / Socks4 / HTTP(S) 代理** 连接 NPS 服务器。
 
 ### **4.1 配置文件方式**
 在 `npc.conf` 文件中添加：
@@ -60,8 +60,12 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 
 | 代理类型       | 示例格式                                 |
 |------------|--------------------------------------|
-| **Socks5** | `socks5://username:password@ip:port` |
-| **HTTP**   | `http://username:password@ip:port`   |
+| **Socks5** | `socks5://username:password@ip:port`（`socks5h://` 同义，均由代理解析域名） |
+| **Socks4** | `socks4://userid@ip:port`（本地解析域名）、`socks4a://userid@ip:port`（代理解析域名） |
+| **HTTP**   | `http://username:password@ip:port`；省略协议的 `ip:port` 视为 HTTP 代理 |
+| **HTTPS**  | `https://username:password@host:port`（与代理之间使用 TLS，并校验代理证书） |
+
+未配置 `proxy_url` 时，NPC 读取环境变量 `ALL_PROXY`（或 `all_proxy`），并按 `NO_PROXY` 跳过匹配的服务器地址。
 
 ---
 

@@ -1,26 +1,24 @@
 package client
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"net/netip"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/proxydial"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -30,7 +28,6 @@ import (
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
-	"golang.org/x/net/proxy"
 )
 
 const MaxPad = 64
@@ -669,78 +666,34 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 }
 
 // GetProxyConn dials server directly, through proxyUrl, or through the proxy
-// configured in the environment. The whole dial, including any proxy
-// handshake, is bounded by timeout.
+// configured in ALL_PROXY and NO_PROXY. proxyUrl may use the http, https,
+// socks5, socks5h, socks4 and socks4a schemes, or be a bare host:port, which
+// is taken as an http proxy. The whole dial, including any proxy handshake,
+// is bounded by timeout.
 func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (net.Conn, error) {
+	forward := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
+	var d netx.ContextDialer
+	if proxyUrl == "" {
+		var err error
+		if d, err = proxydial.FromEnvironment(forward, nil); err != nil {
+			return nil, err
+		}
+	} else {
+		u, err := proxydial.ParseURL(proxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		if d, err = proxydial.FromURL(u, forward, nil); err != nil {
+			return nil, err
+		}
+	}
 	ctx := context.Background()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-	if proxyUrl == "" {
-		return dialProxyContext(ctx, proxy.FromEnvironmentUsing(dialer), server)
-	}
-	u, err := url.Parse(proxyUrl)
-	if err != nil {
-		return nil, err
-	}
-	if u.Scheme == "socks5" {
-		d, err := proxy.FromURL(u, dialer)
-		if err != nil {
-			return nil, err
-		}
-		return dialProxyContext(ctx, d, server)
-	}
-	return newHttpProxyConnContext(ctx, dialer, u, server)
-}
-
-// dialProxyContext dials through d honouring ctx. Every dialer built by
-// golang.org/x/net/proxy implements ContextDialer, which applies the ctx
-// deadline to the SOCKS5 handshake as well.
-func dialProxyContext(ctx context.Context, d proxy.Dialer, server string) (net.Conn, error) {
-	if cd, ok := d.(proxy.ContextDialer); ok {
-		return cd.DialContext(ctx, "tcp", server)
-	}
-	return d.Dial("tcp", server)
-}
-
-func newHttpProxyConnContext(ctx context.Context, dialer *net.Dialer, proxyURL *url.URL, remoteAddr string) (net.Conn, error) {
-	proxyConn, err := dialer.DialContext(ctx, "tcp", proxyURL.Host)
-	if err != nil {
-		return nil, err
-	}
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = proxyConn.SetDeadline(deadline)
-	}
-	req := &http.Request{
-		Method: http.MethodConnect,
-		URL:    &url.URL{Opaque: remoteAddr},
-		Host:   remoteAddr,
-		Header: make(http.Header),
-	}
-	if proxyURL.User != nil {
-		username := proxyURL.User.Username()
-		password, _ := proxyURL.User.Password()
-		req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
-	}
-	if err := req.Write(proxyConn); err != nil {
-		_ = proxyConn.Close()
-		return nil, err
-	}
-	resp, err := http.ReadResponse(bufio.NewReader(proxyConn), req)
-	if err != nil {
-		_ = proxyConn.Close()
-		return nil, err
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		_ = proxyConn.Close()
-		return nil, errors.New("proxy CONNECT failed: " + resp.Status)
-	}
-	_ = proxyConn.SetDeadline(time.Time{})
-	return proxyConn, nil
+	return d.DialContext(ctx, "tcp", server)
 }
 
 // get a basic auth string

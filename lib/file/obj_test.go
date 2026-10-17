@@ -1,12 +1,15 @@
 package file
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/rate"
 )
 
 func TestFlowSubDoesNotGoNegative(t *testing.T) {
@@ -237,5 +240,59 @@ func TestConfigTaskPorts(t *testing.T) {
 		if ok != tc.ok || !reflect.DeepEqual(ports, tc.ports) {
 			t.Errorf("%s: got %v %v, want %v %v", tc.name, ports, ok, tc.ports, tc.ok)
 		}
+	}
+}
+
+// TestClientJSONGolden pins the JSON form of a Client, as stored in
+// clients.json and returned by the web API.
+func TestClientJSONGolden(t *testing.T) {
+	c := &Client{
+		Cnf:        &Config{U: "u", P: "p", Compress: true},
+		Id:         7,
+		VerifyKey:  "vkey",
+		Status:     true,
+		RateLimit:  256,
+		Flow:       &Flow{ExportFlow: 1, InletFlow: 2, FlowLimit: 3},
+		Rate:       rate.NewRate(256 * 1024),
+		MaxConn:    10,
+		CreateTime: "2026-01-02 03:04:05",
+	}
+	const golden = `{"Cnf":{"U":"u","P":"p","Compress":true,"Crypt":false},"Id":7,"VerifyKey":"vkey","Mode":"","Addr":"","LocalAddr":"","Remark":"","Status":true,"IsConnect":false,"RateLimit":256,"Flow":{"ExportFlow":1,"InletFlow":2,"FlowLimit":3,"TimeLimit":"0001-01-01T00:00:00Z"},"ExportFlow":0,"InletFlow":0,"Rate":{"NowRate":0,"Limit":262144},"NoStore":false,"NoDisplay":false,"MaxConn":10,"NowConn":0,"WebUserName":"","WebPassword":"","WebTotpSecret":"","ConfigConnAllow":false,"MaxTunnelNum":0,"Version":"","BlackIpList":null,"CreateTime":"2026-01-02 03:04:05","LastOnlineTime":""}`
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(b) != golden {
+		t.Fatalf("Client JSON changed:\n got %s\nwant %s", b, golden)
+	}
+
+	c.Rate = nil
+	b, err = json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `,"Rate":null,`) {
+		t.Fatalf("nil Rate JSON: %s", b)
+	}
+
+	// Decoding ignores the stored rate: it yields an unlimited Rate.
+	var back Client
+	if err := json.Unmarshal([]byte(golden), &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if back.Rate == nil || back.Rate.Limit() != 0 || back.Rate.Now() != 0 {
+		t.Fatalf("decoded Rate = %+v, want an unlimited Rate", back.Rate)
+	}
+	back.Rate.Start()
+	if back.Rate.Limit() != 0 {
+		t.Fatalf("decoded Rate limit after Start = %d, want 0", back.Rate.Limit())
+	}
+
+	var none Client
+	if err := json.Unmarshal(b, &none); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if none.Rate != nil {
+		t.Fatalf("decoded null Rate = %+v, want nil", none.Rate)
 	}
 }

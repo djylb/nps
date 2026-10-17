@@ -14,6 +14,7 @@
 - P2P直连失效时快速切换到私密代理中转（`fallback_secret`），并在后台继续尝试直连
 - 恢复P2P端口映射开关（默认关闭）
 - Socks5仅配置用户名时也开启认证
+- NPC上游代理支持socks5h/socks4/https，`https://`代理改为先与代理建立TLS（明文HTTP代理请使用`http://`）
 - 优化MUX稳定性
 - 优化管理后台逻辑
 - 优化HTTP代理、Socks5、端口复用处理逻辑
