@@ -130,6 +130,18 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 	return
 }
 
+// newEntryFlow returns the counter of a new task or host: zeroed traffic that
+// keeps the flow and time limits requested in f. A fresh Flow is always
+// allocated so the counter is never shared with the caller's object.
+func newEntryFlow(f *Flow) *Flow {
+	if f == nil {
+		return new(Flow)
+	}
+	f.RLock()
+	defer f.RUnlock()
+	return &Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
+}
+
 // NewTask adds t. A password explicitly set on a task created through the
 // web or API that is already used by another task is rejected; for tasks
 // delivered by a client configuration (NoStore) it is replaced by a random one,
@@ -138,7 +150,7 @@ func (s *DbUtils) NewTask(t *Tunnel) error {
 	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
 		return err
 	}
-	t.Flow = new(Flow)
+	t.Flow = newEntryFlow(t.Flow)
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
@@ -372,7 +384,7 @@ func (s *DbUtils) NewHost(t *Host) error {
 	HostIndex.Add(t.Host, t.Id)
 	t.CertType = common.GetCertType(t.CertFile)
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
-	t.Flow = new(Flow)
+	t.Flow = newEntryFlow(t.Flow)
 	s.JsonDb.Hosts.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	return nil

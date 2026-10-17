@@ -25,6 +25,7 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
@@ -241,7 +242,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 				logs.Error("%v", err)
 				continue
 			}
-			if !c.GetAddStatus() {
+			if !readTaskAddStatus(c, v) {
 				logs.Error("%v %s %s", errAdd, v.Ports, v.Remark)
 				continue
 			}
@@ -261,6 +262,22 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 		fsm.CloseAll()
 		cancel()
 	}
+}
+
+// readTaskAddStatus reads the add statuses the server reports for a NEW_TASK:
+// one per port the task expands to, or a single failure. It stops at the first
+// failure, after which the server closes the connection.
+func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) bool {
+	n := 1
+	if ports, _, ok := file.ConfigTaskPorts(t); ok {
+		n = len(ports)
+	}
+	for i := 0; i < n; i++ {
+		if !c.GetAddStatus() {
+			return false
+		}
+	}
+	return true
 }
 
 func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, verified bool) {

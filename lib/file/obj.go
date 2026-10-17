@@ -107,19 +107,35 @@ func (s *Client) AddConn() {
 	atomic.AddInt32(&s.NowConn, 1)
 }
 
+// CutConn releases a connection taken by GetConn or AddConn; the count never
+// drops below zero.
 func (s *Client) CutConn() {
-	atomic.AddInt32(&s.NowConn, -1)
+	for {
+		n := atomic.LoadInt32(&s.NowConn)
+		if n <= 0 {
+			return
+		}
+		if atomic.CompareAndSwapInt32(&s.NowConn, n, n-1) {
+			return
+		}
+	}
 }
 
+// GetConn takes a connection slot, reporting false when MaxConn is reached.
 func (s *Client) GetConn() bool {
-	if s.NowConn < 0 {
-		s.NowConn = 0
+	for {
+		n := atomic.LoadInt32(&s.NowConn)
+		next := n + 1
+		if n < 0 {
+			next = 1
+		}
+		if s.MaxConn != 0 && int(next) > s.MaxConn {
+			return false
+		}
+		if atomic.CompareAndSwapInt32(&s.NowConn, n, next) {
+			return true
+		}
 	}
-	if s.MaxConn == 0 || int(s.NowConn) < s.MaxConn {
-		s.AddConn()
-		return true
-	}
-	return false
 }
 
 func (s *Client) HasTunnel(t *Tunnel) (tt *Tunnel, exist bool) {
@@ -301,6 +317,31 @@ func (t *Tunnel) AllowsDestination(addr string) bool {
 	}
 	// blacklist
 	return !matched
+}
+
+// ConfigTaskPorts expands a task delivered by a client configuration into the
+// server ports it is opened on and, for multi-port tcp/udp tasks, the matching
+// target ports. The server reports one add status per returned port, or a
+// single failure status when ok is false, so both sides use this to stay in
+// step on the configuration connection.
+func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
+	if t == nil || t.Target == nil {
+		return nil, nil, false
+	}
+	ports = common.GetPorts(t.Ports)
+	targets = common.GetPorts(t.Target.TargetStr)
+	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && len(ports) != len(targets) {
+		return nil, nil, false
+	} else if t.Mode == "secret" || t.Mode == "p2p" {
+		ports = append(ports, 0)
+	}
+	if t.Mode == "file" && len(ports) == 0 {
+		ports = append(ports, 0)
+	}
+	if len(ports) == 0 {
+		return nil, nil, false
+	}
+	return ports, targets, true
 }
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {

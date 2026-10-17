@@ -91,11 +91,21 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 		logs.Trace("sent ACK before proceeding")
 	}
 
-	if localProxy {
-		isFramed := connType == common.CONN_UDP
-		conn.CopyWaitGroup(c.Conn, target, false, false, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, false, s.Task.Target.ProxyProtocol, rb, s.Task, localProxy, isFramed)
-	} else {
-		conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, true, s.Task.Target.ProxyProtocol, rb, s.Task, localProxy, false)
+	// The target is the backend side: the PROXY header and the bytes read
+	// while probing for link information go to it. Encryption and
+	// compression only apply to links through the client and are skipped
+	// for local ones.
+	proxyProtocol := s.Task.Target.ProxyProtocol
+	visitor := c.Conn
+	if connType == common.CONN_UDP {
+		// The visitor stream carries length-framed datagrams, where a single
+		// stream-level PROXY header would be taken for a frame.
+		proxyProtocol = 0
+		if localProxy {
+			// The target is a UDP socket: unframe on the visitor side.
+			visitor = conn.WrapFramed(c.Conn)
+		}
 	}
+	conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, true, proxyProtocol, rb, s.Task, localProxy, false)
 	return nil
 }

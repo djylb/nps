@@ -13,6 +13,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/rate"
 )
 
 type socks5UDPPacket struct {
@@ -443,7 +444,8 @@ func (s *socks5UDPSession) openTunnel() error {
 		return err
 	}
 	timeoutConn := conn.NewTimeoutConn(target, link.Option.Timeout)
-	flowConn := conn.NewFlowConn(timeoutConn, task.Flow, task.Client.Flow)
+	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate)
+	flowConn := conn.NewFlowConn(rateConn, task.Flow, task.Client.Flow)
 	s.framed = conn.WrapFramed(flowConn)
 	return nil
 }

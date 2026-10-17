@@ -1,6 +1,7 @@
 package file
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 
@@ -179,5 +180,62 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	}
 	if !target.RemoveTarget("a:1") || target.RemoveTarget("a:1") {
 		t.Fatalf("unexpected RemoveTarget result")
+	}
+}
+
+func TestClientGetConnHonoursMaxConn(t *testing.T) {
+	c := &Client{MaxConn: 5}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	got := 0
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if c.GetConn() {
+				mu.Lock()
+				got++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if got != 5 || c.NowConn != 5 {
+		t.Fatalf("granted %d, NowConn %d, want 5", got, c.NowConn)
+	}
+	for i := 0; i < 10; i++ {
+		c.CutConn()
+	}
+	if c.NowConn != 0 {
+		t.Fatalf("NowConn = %d after over-release, want 0", c.NowConn)
+	}
+	c.NowConn = -3
+	if !c.GetConn() || c.NowConn != 1 {
+		t.Fatalf("negative count must restart at 1, got %d", c.NowConn)
+	}
+}
+
+func TestConfigTaskPorts(t *testing.T) {
+	cases := []struct {
+		name  string
+		task  *Tunnel
+		ports []int
+		ok    bool
+	}{
+		{"single tcp", &Tunnel{Mode: "tcp", Ports: "8000", Target: &Target{TargetStr: "127.0.0.1:80"}}, []int{8000}, true},
+		{"multi tcp", &Tunnel{Mode: "tcp", Ports: "8000-8002", Target: &Target{TargetStr: "80,81,82"}}, []int{8000, 8001, 8002}, true},
+		{"multi tcp mismatch", &Tunnel{Mode: "tcp", Ports: "8000-8002", Target: &Target{TargetStr: "80,81"}}, nil, false},
+		{"multi httpProxy", &Tunnel{Mode: "httpProxy", Ports: "8000,8001", Target: &Target{}}, []int{8000, 8001}, true},
+		{"secret", &Tunnel{Mode: "secret", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{0}, true},
+		{"secret with port", &Tunnel{Mode: "secret", Ports: "9000", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{9000, 0}, true},
+		{"file", &Tunnel{Mode: "file", Target: &Target{}}, []int{0}, true},
+		{"no port", &Tunnel{Mode: "tcp", Target: &Target{TargetStr: "80"}}, nil, false},
+		{"no target", &Tunnel{Mode: "tcp", Ports: "8000"}, nil, false},
+	}
+	for _, tc := range cases {
+		ports, _, ok := ConfigTaskPorts(tc.task)
+		if ok != tc.ok || !reflect.DeepEqual(ports, tc.ports) {
+			t.Errorf("%s: got %v %v, want %v %v", tc.name, ports, ok, tc.ports, tc.ok)
+		}
 	}
 }

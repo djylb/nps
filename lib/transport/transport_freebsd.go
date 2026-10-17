@@ -1,9 +1,11 @@
 package transport
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"syscall"
 	"unsafe"
 
@@ -24,10 +26,10 @@ type pfiocNatlook struct {
 	Daddr     [16]byte /* pf_addr */
 	Rsaddr    [16]byte /* pf_addr */
 	Rdaddr    [16]byte /* pf_addr */
-	Sport     uint16
-	Dport     uint16
-	Rsport    uint16
-	Rdport    uint16
+	Sport     [2]byte  /* network byte order */
+	Dport     [2]byte
+	Rsport    [2]byte
+	Rdport    [2]byte
 	Af        uint8
 	Proto     uint8
 	Direction uint8
@@ -89,13 +91,13 @@ func GetAddress(conn net.Conn) (string, error) {
 		if laIP.IsUnspecified() {
 			laIP = net.ParseIP("::1")
 		}
-		copy(nl.Saddr[:], raIP)
-		copy(nl.Daddr[:], laIP)
+		copy(nl.Saddr[:], raIP.To16())
+		copy(nl.Daddr[:], laIP.To16())
 		nl.Af = syscall.AF_INET6
 	}
 
-	nl.Sport = uint16(raPort)
-	nl.Dport = uint16(laPort)
+	binary.BigEndian.PutUint16(nl.Sport[:], uint16(raPort))
+	binary.BigEndian.PutUint16(nl.Dport[:], uint16(laPort))
 
 	ioc := uintptr(sysDIOCNATLOOK)
 	for _, dir := range []byte{sysPFOUT, sysPFIN} {
@@ -110,7 +112,7 @@ func GetAddress(conn net.Conn) (string, error) {
 		return "", fmt.Errorf("ioctl failed: %v", err)
 	}
 
-	odPort := nl.Rdport
+	odPort := binary.BigEndian.Uint16(nl.Rdport[:])
 	var odIP net.IP
 	switch nl.Af {
 	case syscall.AF_INET:
@@ -119,7 +121,9 @@ func GetAddress(conn net.Conn) (string, error) {
 	case syscall.AF_INET6:
 		odIP = make(net.IP, net.IPv6len)
 		copy(odIP, nl.Rdaddr[:])
+	default:
+		return "", fmt.Errorf("unsupported address family for %v", conn.RemoteAddr())
 	}
 
-	return fmt.Sprintf("%s:%d", odIP.String(), odPort), nil
+	return net.JoinHostPort(odIP.String(), strconv.Itoa(int(odPort))), nil
 }

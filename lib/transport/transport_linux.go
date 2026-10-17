@@ -13,6 +13,13 @@ import (
 const SO_ORIGINAL_DST = 80
 const TCP_KEEPIDLE = unix.TCP_KEEPIDLE
 
+// networkPort reads a sockaddr port, which the kernel stores in network byte
+// order regardless of the host's endianness.
+func networkPort(p *uint16) int {
+	b := (*[2]byte)(unsafe.Pointer(p))
+	return int(b[0])<<8 | int(b[1])
+}
+
 func GetAddress(conn net.Conn) (string, error) {
 	sysconn, ok := conn.(syscall.Conn)
 	if !ok {
@@ -41,8 +48,7 @@ func GetAddress(conn net.Conn) (string, error) {
 		)
 		if errno4 == 0 {
 			ip := net.IPv4(sa4.Addr[0], sa4.Addr[1], sa4.Addr[2], sa4.Addr[3])
-			port := int(sa4.Port>>8)&0xff | int(sa4.Port&0xff)<<8
-			dst = ip.String() + ":" + strconv.Itoa(port)
+			dst = net.JoinHostPort(ip.String(), strconv.Itoa(networkPort(&sa4.Port)))
 			return
 		}
 
@@ -60,8 +66,7 @@ func GetAddress(conn net.Conn) (string, error) {
 		)
 		if errno6 == 0 {
 			ip := net.IP(sa6.Addr[:])
-			port := int(sa6.Port>>8)&0xff | int(sa6.Port&0xff)<<8
-			dst = "[" + ip.String() + "]:" + strconv.Itoa(port)
+			dst = net.JoinHostPort(ip.String(), strconv.Itoa(networkPort(&sa6.Port)))
 			return
 		}
 

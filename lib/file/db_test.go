@@ -197,3 +197,38 @@ func fill(t *testing.T, v reflect.Value) {
 		}
 	}
 }
+
+func TestNewTaskAndHostKeepLimits(t *testing.T) {
+	db := newTestDb(t)
+	db.JsonDb.HostFilePath = filepath.Join(t.TempDir(), "hosts.json")
+	expire := time.Now().Add(time.Hour).Truncate(time.Second)
+
+	reqFlow := &Flow{FlowLimit: 100, TimeLimit: expire, InletFlow: 7, ExportFlow: 9}
+	task := &Tunnel{Id: 1, Mode: "tcp", Port: 1, Flow: reqFlow}
+	if err := db.NewTask(task); err != nil {
+		t.Fatalf("NewTask: %v", err)
+	}
+	if task.Flow == reqFlow {
+		t.Fatalf("task counter must not be shared with the request")
+	}
+	if task.Flow.FlowLimit != 100 || !task.Flow.TimeLimit.Equal(expire) || task.Flow.InletFlow != 0 || task.Flow.ExportFlow != 0 {
+		t.Fatalf("task flow = %+v", task.Flow)
+	}
+
+	host := &Host{Id: 1, Host: "a.example", Client: &Client{Id: 1}, Flow: &Flow{FlowLimit: 200, TimeLimit: expire}}
+	if err := db.NewHost(host); err != nil {
+		t.Fatalf("NewHost: %v", err)
+	}
+	t.Cleanup(func() { HostIndex.Remove(host.Host, host.Id) })
+	if host.Flow.FlowLimit != 200 || !host.Flow.TimeLimit.Equal(expire) {
+		t.Fatalf("host flow = %+v", host.Flow)
+	}
+
+	bare := &Tunnel{Id: 2, Mode: "tcp", Port: 2}
+	if err := db.NewTask(bare); err != nil {
+		t.Fatalf("NewTask(bare): %v", err)
+	}
+	if bare.Flow == nil {
+		t.Fatalf("task without flow must get a counter")
+	}
+}

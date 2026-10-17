@@ -36,7 +36,7 @@ func (s *Http3Server) Start() error {
 	if s.http3Status {
 		return errors.New("http3 server is already running")
 	}
-	s.httpStatus = true
+	s.http3Status = true
 	s.http3NextProtos = []string{http3.NextProtoH3}
 	tlsConfig := &tls.Config{
 		NextProtos:         s.http3NextProtos,
@@ -52,10 +52,10 @@ func (s *Http3Server) Start() error {
 
 		if err := s.http3Server.Serve(s.http3Listener); err != nil {
 			logs.Error("HTTP/3 Serve error: %v", err)
-			s.httpsStatus = false
+			s.http3Status = false
 			return err
 		}
-		s.httpsStatus = false
+		s.http3Status = false
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (s *Http3Server) Start() error {
 	tr := &quic.Transport{Conn: s.http3Listener}
 	ln, err := tr.ListenEarly(tlsConfig, quicConfig)
 	if err != nil {
-		s.httpsStatus = false
+		s.http3Status = false
 		return err
 	}
 	s.http3Server = &http3.Server{
@@ -93,13 +93,15 @@ func (s *Http3Server) Start() error {
 		go s.HandleQUIC(qc, alpn, sni)
 	}
 	_ = ln.Close()
-	s.httpsStatus = false
+	s.http3Status = false
 	return nil
 }
 
 func (s *Http3Server) Close() error {
-	_ = s.http3Server.Close()
-	s.httpsStatus = false
+	if s.http3Server != nil {
+		_ = s.http3Server.Close()
+	}
+	s.http3Status = false
 	return s.http3Listener.Close()
 }
 
@@ -124,7 +126,9 @@ func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 
 func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config, error) {
 	host, err := file.GetDb().FindCertByHost(info.ServerName)
-	if err != nil || host.HttpsJustProxy || host.IsClose {
+	// TLS offload hosts forward the decrypted stream as raw TCP, which an
+	// HTTP/3 server cannot provide.
+	if err != nil || host == nil || host.HttpsJustProxy || host.TlsOffload || host.IsClose {
 		return nil, nil
 	}
 

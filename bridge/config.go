@@ -118,20 +118,8 @@ loop:
 				break loop
 			}
 
-			ports := common.GetPorts(t.Ports)
-			targets := common.GetPorts(t.Target.TargetStr)
-			if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && (len(ports) != len(targets)) {
-				fail = true
-				_ = c.WriteAddFail()
-				break loop
-			} else if t.Mode == "secret" || t.Mode == "p2p" {
-				ports = append(ports, 0)
-			}
-			if t.Mode == "file" && len(ports) == 0 {
-				ports = append(ports, 0)
-			}
-
-			if len(ports) == 0 {
+			ports, targets, ok := file.ConfigTaskPorts(t)
+			if !ok {
 				fail = true
 				_ = c.WriteAddFail()
 				break loop
