@@ -136,17 +136,14 @@ func (s *HttpProxy) autoSSL(host *file.Host) bool {
 
 // serverTLSConfig returns the configuration to terminate TLS for sni with:
 // that of AutoSSL if host enables it, a fresh one holding the certificate
-// selectCert picks otherwise, or, if host is nil because no entry serves
-// sni, one holding the default certificate when it covers sni, so the HTTP
-// layer can answer that the host is not found. It returns nil if there is no
-// fitting certificate.
+// selectCert picks otherwise. It returns nil if no enabled entry serves sni,
+// so no certificate is ever handed out for an unconfigured name, or if there
+// is no fitting certificate.
 func (s *HttpsServer) serverTLSConfig(host *file.Host, sni string) (cfg *tls.Config, autoSSL bool) {
 	var cert *tls.Certificate
 	switch {
 	case host == nil:
-		if cert = s.defaultCertFor(sni); cert == nil {
-			return nil, false
-		}
+		return nil, false
 	case s.autoSSL(host):
 		return s.certMagicTls, true
 	default:

@@ -126,15 +126,11 @@ func httpsGet(addr, sni string, cert testCert) (*http.Response, []byte, error) {
 	return resp, body, err
 }
 
-func TestHttpsNoEntryServesErrorPageWithDefaultCert(t *testing.T) {
+func TestHttpsNoEntryClosesEvenIfDefaultCertCovers(t *testing.T) {
 	e := newCertSelectEnv(t)
 	addr := startHTTPS(t, e)
-	resp, body, err := httpsGet(addr, "default.test", e.deflt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusNotFound || string(body) != "nps 404" {
-		t.Fatalf("got %d %q, want the error page", resp.StatusCode, body)
+	if _, _, err := httpsGet(addr, "default.test", e.deflt); err == nil {
+		t.Fatal("handshake succeeded for a name without an entry")
 	}
 }
 
@@ -144,14 +140,5 @@ func TestHttpsNoEntryWithoutDefaultCertCloses(t *testing.T) {
 	addr := startHTTPS(t, e)
 	if _, _, err := httpsGet(addr, "default.test", e.deflt); err == nil {
 		t.Fatal("handshake succeeded without an entry or a default certificate")
-	}
-}
-
-func TestHttpsNoEntryAbortsWithoutErrorPage(t *testing.T) {
-	e := newCertSelectEnv(t)
-	addr := startHTTPS(t, e)
-	e.s.ErrorAlways = false
-	if resp, _, err := httpsGet(addr, "default.test", e.deflt); err == nil {
-		t.Fatalf("got %d, want the request aborted", resp.StatusCode)
 	}
 }

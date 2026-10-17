@@ -228,9 +228,10 @@ func TestCertSelectAutoSSLByScheme(t *testing.T) {
 	e.expectNone("http.example.com")
 }
 
-func TestCertSelectNoEntryUsesDefaultCert(t *testing.T) {
+func TestCertSelectNoEntryOffersNoCert(t *testing.T) {
 	e := newCertSelectEnv(t)
-	e.expect("default.test", e.deflt)
+	// Even a name the default certificate covers needs an entry.
+	e.expectNone("default.test")
 	e.expectNone("unknown.test")
 	closed := e.addHost(1, 1, "closed.test", "/", nil)
 	closed.IsClose = true
