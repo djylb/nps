@@ -65,9 +65,10 @@ func certCovers(cert *tls.Certificate, name string) certMatch {
 //  2. the certificate of another entry of the same client that covers sni,
 //     an exact name before a wildcard; certificates never cross clients;
 //  3. the default certificate, if it covers sni;
-//  4. otherwise host's own certificate, then the default one, as configured.
+//  4. otherwise host's own certificate, as configured.
 //
-// It fails if none of them loads.
+// The default certificate is never served for a name it does not cover, so
+// arbitrary server names cannot fetch it. It fails if no certificate fits.
 func (s *HttpsServer) selectCert(host *file.Host, sni string) (*tls.Certificate, error) {
 	var own *tls.Certificate
 	if host.HasCert() {
@@ -101,23 +102,29 @@ func (s *HttpsServer) selectCert(host *file.Host, sni string) (*tls.Certificate,
 		return best, nil
 	}
 
-	var deflt *tls.Certificate
-	if s.hasDefaultCert {
-		cert, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
-		if err != nil {
-			logs.Error("Failed to load certificate: %v", err)
-		} else if certCovers(cert, sni) != matchNone || own == nil {
-			return cert, nil
-		}
-		deflt = cert
+	if cert := s.defaultCertFor(sni); cert != nil {
+		return cert, nil
 	}
 	if own != nil {
 		return own, nil
 	}
-	if deflt != nil {
-		return deflt, nil
-	}
 	return nil, errors.New("no certificate for " + sni)
+}
+
+// defaultCertFor returns the default certificate if it covers sni.
+func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
+	if !s.hasDefaultCert {
+		return nil
+	}
+	cert, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
+	if err != nil {
+		logs.Error("Failed to load certificate: %v", err)
+		return nil
+	}
+	if certCovers(cert, sni) == matchNone {
+		return nil
+	}
+	return cert
 }
 
 // autoSSL reports whether TLS for host is terminated with certificates
@@ -130,21 +137,16 @@ func (s *HttpProxy) autoSSL(host *file.Host) bool {
 // serverTLSConfig returns the configuration to terminate TLS for sni with:
 // that of AutoSSL if host enables it, a fresh one holding the certificate
 // selectCert picks otherwise, or, if host is nil because no entry serves
-// sni, one holding the default certificate, so the HTTP layer can answer
-// that the host is not found. It returns nil if there is no certificate.
+// sni, one holding the default certificate when it covers sni, so the HTTP
+// layer can answer that the host is not found. It returns nil if there is no
+// fitting certificate.
 func (s *HttpsServer) serverTLSConfig(host *file.Host, sni string) (cfg *tls.Config, autoSSL bool) {
 	var cert *tls.Certificate
 	switch {
 	case host == nil:
-		if !s.hasDefaultCert {
+		if cert = s.defaultCertFor(sni); cert == nil {
 			return nil, false
 		}
-		c, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
-		if err != nil {
-			logs.Error("Failed to load certificate: %v", err)
-			return nil, false
-		}
-		cert = c
 	case s.autoSSL(host):
 		return s.certMagicTls, true
 	default:

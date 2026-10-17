@@ -83,6 +83,15 @@ func (e *certSelectEnv) expect(sni string, want testCert) {
 	}
 }
 
+// expectNone checks that no certificate is offered for sni, so the default
+// certificate does not leak to names it does not cover.
+func (e *certSelectEnv) expectNone(sni string) {
+	e.t.Helper()
+	if cfg, err := e.s.GetConfigForClient(&tls.ClientHelloInfo{ServerName: sni}); cfg != nil || err != nil {
+		e.t.Fatalf("%s: config = %v, %v, want none", sni, cfg, err)
+	}
+}
+
 func TestCertSelectMultiSANCertCoversSiblingHost(t *testing.T) {
 	e := newCertSelectEnv(t)
 	multi := newTestCert(t, "a.example.com", "b.example.org")
@@ -103,8 +112,9 @@ func TestCertSelectWildcardDoesNotCoverApexOrDeeperNames(t *testing.T) {
 	e.addHost(4, 1, "sub.example.com", "/", nil)
 	// The entry's own wildcard certificate does not cover the apex.
 	e.expect("example.com", apex)
-	// Neither certificate covers a name two labels below the apex.
-	e.expect("x.a.example.com", e.deflt)
+	// Neither certificate covers a name two labels below the apex, nor does
+	// the default one, so none is offered.
+	e.expectNone("x.a.example.com")
 	// The apex certificate does not cover subdomains.
 	e.expect("sub.example.com", wild)
 }
@@ -146,7 +156,7 @@ func TestCertSelectNoCrossClientReuse(t *testing.T) {
 	multi := newTestCert(t, "a.example.com", "b.example.org")
 	e.addHost(1, 1, "a.example.com", "/", &multi)
 	e.addHost(2, 2, "b.example.org", "/", nil)
-	e.expect("b.example.org", e.deflt)
+	e.expectNone("b.example.org")
 }
 
 func TestCertSelectFallsBackToOwnCert(t *testing.T) {
@@ -155,7 +165,7 @@ func TestCertSelectFallsBackToOwnCert(t *testing.T) {
 	e.addHost(1, 1, "a.example.com", "/", &own)
 	e.expect("a.example.com", own)
 	e.addHost(2, 1, "c.example.com", "/", nil)
-	e.expect("c.example.com", e.deflt)
+	e.expectNone("c.example.com")
 }
 
 // newAutoSSLEnv is a certSelectEnv whose AutoSSL depends on the HTTPS port
@@ -215,16 +225,16 @@ func TestCertSelectAutoSSLByScheme(t *testing.T) {
 	// An HTTP-only entry never terminates TLS.
 	h := e.addHost(3, 1, "http.example.com", "/", nil)
 	h.Scheme, h.AutoSSL = "http", true
-	e.expect("http.example.com", e.deflt)
+	e.expectNone("http.example.com")
 }
 
 func TestCertSelectNoEntryUsesDefaultCert(t *testing.T) {
 	e := newCertSelectEnv(t)
 	e.expect("default.test", e.deflt)
-	e.expect("unknown.test", e.deflt)
+	e.expectNone("unknown.test")
 	closed := e.addHost(1, 1, "closed.test", "/", nil)
 	closed.IsClose = true
-	e.expect("closed.test", e.deflt)
+	e.expectNone("closed.test")
 
 	e.s.hasDefaultCert = false
 	if cfg, err := e.s.GetConfigForClient(&tls.ClientHelloInfo{ServerName: "unknown.test"}); cfg != nil || err != nil {
