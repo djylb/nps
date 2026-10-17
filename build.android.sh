@@ -132,8 +132,7 @@ build_one() {
   local EXTLD="-Wl,-z,max-page-size=16384"
   [[ -n "$LZ_COMMON" ]] && EXTLD+=" ${LZ_COMMON}"
 
-  # github.com/wlynxg/anet (interface listing on Android) links to net internals.
-  local LDFLAGS="-s -w -buildid= -checklinkname=0 -linkmode=external -extldflags \"${EXTLD}\""
+  local LDFLAGS="-s -w -buildid= -linkmode=external -extldflags \"${EXTLD}\""
 
   local -a ENVV=(CGO_ENABLED=1 GOOS=android GOARCH="$goarch" CC="$cc")
   [[ -n "$extra_env" ]] && ENVV+=("$extra_env")

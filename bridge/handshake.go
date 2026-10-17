@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
-	"github.com/djylb/nps/lib/p2p"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
 )
@@ -133,7 +131,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			_ = c.Close()
 			return
 		}
-		client.Addr = common.GetIpByAddr(c.RemoteAddr().String())
+		remoteIP := common.GetIpByAddr(c.RemoteAddr().String())
 		infoBuf, err := c.GetShortLenContent()
 		if err != nil {
 			logs.Error("Failed to read encrypted IP from %v: %v", c.Conn.RemoteAddr(), err)
@@ -148,8 +146,9 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		}
 		if ver < 3 {
 			// --- protocol 0.27.0 - 0.28.0 path ---
-			client.LocalAddr = common.DecodeIP(infoDec).String()
-			client.Mode = tunnelType
+			client.Lock()
+			client.Addr, client.LocalAddr, client.Mode = remoteIP, common.DecodeIP(infoDec).String(), tunnelType
+			client.Unlock()
 		} else {
 			// --- protocol 0.29.0+ path ---
 			// infoDec = [17-byte IP][1-byte L][L-byte tp]
@@ -171,9 +170,11 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 				_ = c.Close()
 				return
 			}
-			client.LocalAddr = ip.String()
 			tp := string(infoDec[18 : 18+l])
-			client.Mode = fmt.Sprintf("%s,%s", tunnelType, tp)
+			// Several connections of one client may shake hands at once.
+			client.Lock()
+			client.Addr, client.LocalAddr, client.Mode = remoteIP, ip.String(), fmt.Sprintf("%s,%s", tunnelType, tp)
+			client.Unlock()
 		}
 		randBuf, err := c.GetShortLenContent()
 		if err != nil {
@@ -490,86 +491,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		//}
 
 	case common.WORK_P2P:
-		// read md5 secret
-		b, err := c.GetShortContent(32)
-		if err != nil {
-			logs.Error("p2p error, %v", err)
-			_ = c.Close()
-			return
-		}
-		t := file.GetDb().GetTaskByMd5Password(string(b))
-		if t == nil {
-			logs.Error("p2p error, failed to match the key successfully")
-			_ = c.Close()
-			return
-		}
-		if t.Mode != "p2p" {
-			logs.Error("p2p is not supported in %s mode", t.Mode)
-			_ = c.Close()
-			return
-		}
-		v, ok := s.Client.Load(t.Client.Id)
-		if !ok {
-			_ = c.Close()
-			return
-		}
-		client := v.(*Client)
-		node := client.GetNode()
-		if node == nil {
-			s.DelClient(t.Client.Id)
-			_ = c.Close()
-			return
-		}
-		signal := node.GetSignal()
-		if signal == nil {
-			s.DelClient(t.Client.Id)
-			_ = c.Close()
-			return
-		}
-		visitorProbe := buildProbeConfig(c)
-		providerProbe := buildProbeConfig(signal)
-		session, err := s.p2pSessions.create(id, t.Client.Id, t, c, visitorProbe, providerProbe)
-		if err != nil {
-			logs.Warn("create p2p session failed: %v", err)
-			_ = c.Close()
-			return
-		}
-		if err := p2p.WriteBridgeMessage(c, common.P2P_PUNCH_START, session.visitorStart); err != nil {
-			logs.Warn("send visitor p2p start failed: %v", err)
-			session.abort("send visitor start failed")
-			_ = c.Close()
-			return
-		}
-		if err := p2p.WriteBridgeMessage(signal, common.P2P_PUNCH_START, session.providerStart); err != nil {
-			logs.Warn("send provider p2p start failed: %v", err)
-			session.abort("send provider start failed")
-			_ = c.Close()
-			return
-		}
-		go session.serve(common.WORK_P2P_VISITOR, c)
+		s.handleP2PVisitor(c, id, ver, vs, uuid, tunnelType)
 		return
 
 	case common.WORK_P2P_SESSION:
-		raw, err := c.GetShortLenContent()
-		if err != nil {
-			_ = c.Close()
-			return
-		}
-		var join p2p.P2PSessionJoin
-		if err := json.Unmarshal(raw, &join); err != nil {
-			_ = c.Close()
-			return
-		}
-		session, ok := s.p2pSessions.get(join.SessionID)
-		if !ok || session == nil || session.token != join.Token || session.providerID != id {
-			_ = c.Close()
-			return
-		}
-		if !session.attachProvider(c) {
-			_ = c.Close()
-			return
-		}
-		go session.serve(common.WORK_P2P_PROVIDER, c)
+		s.handleP2PJoin(c, id, ver, vs, tunnelType)
 		return
 	}
 

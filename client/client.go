@@ -5,20 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/holepunch"
+	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
-	"github.com/djylb/nps/lib/p2p"
+	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/quic-go/quic-go"
-	"github.com/xtaci/kcp-go/v5"
 )
 
 type TRPClient struct {
@@ -28,11 +29,11 @@ type TRPClient struct {
 	localIP        string
 	vKey           string
 	uuid           string
-	p2pSTUNServers []string
+	mapper         *portmapper.Mapper
+	server         serverInfo // of the tunnel's bridge connection; set before handleMain
 	tunnel         any
 	signal         *conn.Conn
 	fsm            *FileServerManager
-	ticker         *time.Ticker
 	cnf            *config.Config
 	disconnectTime int
 	ctx            context.Context
@@ -45,7 +46,7 @@ type TRPClient struct {
 }
 
 // NewRPClient new client
-func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, cnf *config.Config, disconnectTime int, fsm *FileServerManager, p2pSTUNServers []string) *TRPClient {
+func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, cnf *config.Config, disconnectTime int, fsm *FileServerManager) *TRPClient {
 	return &TRPClient{
 		svrAddr:        svrAddr,
 		vKey:           vKey,
@@ -53,7 +54,7 @@ func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, 
 		proxyUrl:       proxyUrl,
 		localIP:        localIP,
 		uuid:           uuid,
-		p2pSTUNServers: append([]string{}, p2pSTUNServers...),
+		mapper:         portmapper.New(portmapper.Config{Network: holepunch.SystemNetwork()}),
 		cnf:            cnf,
 		disconnectTime: disconnectTime,
 		fsm:            fsm,
@@ -89,14 +90,14 @@ func (s *TRPClient) Start(ctx context.Context) {
 		s.signal = c
 	}
 	//start a channel connection
-	s.newChan()
+	tunnel := s.newChan()
 	if Ver > 4 {
 		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, common.WORK_MAIN, s.proxyUrl)
-		if s.tunnel == nil {
+		if tunnel == nil {
 			logs.Error("The tunnel is not connected")
 			return
 		}
-		switch t := s.tunnel.(type) {
+		switch t := tunnel.(type) {
 		case *mux.Mux:
 			mc, err := t.NewConn()
 			if err != nil {
@@ -145,11 +146,11 @@ func (s *TRPClient) Start(ctx context.Context) {
 	NowStatus = 1
 	s.markConnected()
 	//msg connection, eg udp
-	s.handleMain()
+	s.handleMain(tunnel)
 }
 
 // handle main connection
-func (s *TRPClient) handleMain() {
+func (s *TRPClient) handleMain(tunnel any) {
 	defer s.Close()
 	for {
 		select {
@@ -170,309 +171,61 @@ func (s *TRPClient) handleMain() {
 				logs.Warn("%v", err)
 				return
 			}
-			var start p2p.P2PPunchStart
-			if err := json.Unmarshal(raw, &start); err != nil {
-				logs.Warn("decode p2p start failed: %v", err)
+			var invite p2pproto.Invite
+			if err := json.Unmarshal(raw, &invite); err != nil {
+				logs.Warn("decode p2p invite failed: %v", err)
 				continue
 			}
-			if !DisableP2P {
-				go s.joinP2PSession(start)
-			}
-		}
-	}
-}
-
-func (s *TRPClient) joinP2PSession(start p2p.P2PPunchStart) {
-	wait := time.Duration(s.disconnectTime) * time.Second
-	if wait <= 0 {
-		wait = 30 * time.Second
-	}
-	p2pCtx, cancelP2P := context.WithTimeout(s.ctx, wait)
-	defer cancelP2P()
-
-	preferredLocalAddr := preferredP2PLocalAddr(s.localIP)
-	controlConn, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
-	if err != nil {
-		logs.Error("provider join new conn failed: %v", err)
-		return
-	}
-	defer func() {
-		if controlConn != nil {
-			_ = controlConn.Close()
-		}
-	}()
-	closeControl := func() {
-		if controlConn == nil {
-			return
-		}
-		_ = controlConn.Close()
-		controlConn = nil
-	}
-	if s.uuid == "" {
-		s.uuid = uuid
-	}
-	if err := SendType(controlConn, common.WORK_P2P_SESSION, s.uuid); err != nil {
-		logs.Error("provider join send type failed: %v", err)
-		return
-	}
-	if _, err := controlConn.SendInfo(&p2p.P2PSessionJoin{
-		SessionID: start.SessionID,
-		Token:     start.Token,
-	}, ""); err != nil {
-		logs.Error("provider join send session info failed: %v", err)
-		return
-	}
-
-	var localConn net.PacketConn
-	var remoteAddress, sessionID, role, mode, data string
-	var transportTimeout time.Duration
-	sendData := ""
-	if P2PMode == common.CONN_QUIC {
-		sendData = crypt.EncodePeerTransportData(crypt.GetCert().Certificate[0])
-	}
-	if localConn, remoteAddress, preferredLocalAddr, sessionID, role, mode, data, transportTimeout, err = p2p.RunProviderSession(p2pCtx, controlConn, start, preferredLocalAddr, P2PMode, sendData, s.p2pSTUNServers); err != nil {
-		logs.Error("run provider P2P session error: %v", err)
-		return
-	}
-	defer func() { _ = localConn.Close() }()
-	if transportTimeout <= 0 {
-		transportTimeout = 10 * time.Second
-	}
-	watchdog := time.AfterFunc(transportTimeout, func() {
-		logs.Warn("P2P provider punch timeout, closing local socket %v", localConn.LocalAddr())
-		_ = localConn.Close()
-	})
-	defer watchdog.Stop()
-	if mode == "" || mode != P2PMode {
-		mode = common.CONN_KCP
-	}
-	_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-		SessionID:  sessionID,
-		Role:       role,
-		Stage:      "transport_start",
-		Status:     "ok",
-		LocalAddr:  preferredLocalAddr,
-		RemoteAddr: remoteAddress,
-		Detail:     mode,
-		Meta: map[string]string{
-			"transport_mode": mode,
-		},
-	})
-
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-	timer := time.AfterFunc(transportTimeout, func() {
-		cancel()
-	})
-	defer timer.Stop()
-	var kcpListener *kcp.Listener
-	var quicListener *quic.Listener
-
-	var preConnDone chan struct{}
-	var preConnDoneOnce sync.Once
-	done := func() {
-		preConnDoneOnce.Do(func() {
-			if preConnDone != nil {
-				close(preConnDone)
-			}
-		})
-	}
-
-	if mode == common.CONN_QUIC {
-		quicListener, err = quic.Listen(localConn, crypt.GetCertCfg(), QuicConfig)
-		if err != nil {
-			logs.Error("quic.Listen err: %v", err)
-			_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-				SessionID:  sessionID,
-				Role:       role,
-				Stage:      "transport_fail_stage",
-				Status:     "fail",
-				LocalAddr:  preferredLocalAddr,
-				RemoteAddr: remoteAddress,
-				Detail:     "quic_listen",
-			})
-			return
-		}
-		defer func() { _ = quicListener.Close() }()
-	} else {
-		kcpListener, err = kcp.ServeConn(nil, 10, 3, localConn)
-		if err != nil {
-			logs.Error("kcp.ServeConn err: %v", err)
-			_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-				SessionID:  sessionID,
-				Role:       role,
-				Stage:      "transport_fail_stage",
-				Status:     "fail",
-				LocalAddr:  preferredLocalAddr,
-				RemoteAddr: remoteAddress,
-				Detail:     "kcp_listen",
-			})
-			return
-		}
-		defer func() { _ = kcpListener.Close() }()
-		preConnDone = make(chan struct{})
-		go func() {
-			select {
-			case <-ctx.Done():
-				_ = kcpListener.Close()
-			case <-preConnDone:
-				return
-			}
-		}()
-		defer done()
-	}
-
-	logs.Trace("start local p2p udp[%s] listen, role[%s], local address %s %v", mode, role, preferredLocalAddr, localConn.LocalAddr())
-	if data != "" {
-		logs.Trace("P2P udp data is %s", data)
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return
+			go s.serveP2P(tunnel, invite)
 		default:
-		}
-		switch mode {
-		case common.CONN_QUIC:
-			sess, err := quicListener.Accept(ctx)
-			if err != nil {
-				logs.Warn("QUIC accept session error: %v", err)
-				_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-					SessionID:  sessionID,
-					Role:       role,
-					Stage:      "transport_fail_stage",
-					Status:     "fail",
-					LocalAddr:  preferredLocalAddr,
-					RemoteAddr: remoteAddress,
-					Detail:     "quic_accept",
-				})
-				return
-			}
-			if sess.RemoteAddr().String() != remoteAddress {
-				_ = sess.CloseWithError(0, "unexpected peer")
-				continue
-			}
-			if !watchdog.Stop() {
-				logs.Warn("QUIC watchdog already fired, abort promoting accepted session")
-				_ = sess.CloseWithError(0, "watchdog already fired")
-				return
-			}
-			if !timer.Stop() {
-				logs.Warn("QUIC pre-connection timer already fired")
-				_ = sess.CloseWithError(0, "timer already fired")
-				return
-			}
-			_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-				SessionID:  sessionID,
-				Role:       role,
-				Stage:      "transport_established",
-				Status:     "ok",
-				LocalAddr:  preferredLocalAddr,
-				RemoteAddr: remoteAddress,
-				Detail:     mode,
-			})
-			closeControl()
-			for {
-				stream, err := sess.AcceptStream(ctx)
-				if err != nil {
-					logs.Trace("QUIC accept stream error: %v", err)
-					_ = sess.CloseWithError(0, "accept stream error")
-					return
-				}
-				c := conn.NewQuicStreamConn(stream, sess)
-				go s.handleChan(c)
-			}
-		default: // KCP
-			udpTunnel, err := kcpListener.AcceptKCP()
-			if err != nil {
-				logs.Error("acceptKCP failed on listener %v waiting for remote %s: %v", localConn.LocalAddr(), remoteAddress, err)
-				_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-					SessionID:  sessionID,
-					Role:       role,
-					Stage:      "transport_fail_stage",
-					Status:     "fail",
-					LocalAddr:  preferredLocalAddr,
-					RemoteAddr: remoteAddress,
-					Detail:     "kcp_accept",
-				})
-				return
-			}
-			if udpTunnel.RemoteAddr().String() != remoteAddress {
-				_ = udpTunnel.Close()
-				continue
-			}
-			if !watchdog.Stop() {
-				logs.Warn("KCP watchdog already fired, abort promoting accepted tunnel")
-				_ = udpTunnel.Close()
-				return
-			}
-			if !timer.Stop() {
-				logs.Warn("KCP pre-connection timer already fired")
-				_ = udpTunnel.Close()
-				return
-			}
-			_ = p2p.WritePunchProgress(controlConn, p2p.P2PPunchProgress{
-				SessionID:  sessionID,
-				Role:       role,
-				Stage:      "transport_established",
-				Status:     "ok",
-				LocalAddr:  preferredLocalAddr,
-				RemoteAddr: remoteAddress,
-				Detail:     mode,
-			})
-			closeControl()
-			done()
-			conn.SetUdpSession(udpTunnel)
-			logs.Trace("successful connection with client ,address %v", udpTunnel.RemoteAddr())
-			//read link info from remote
-			tunnel := mux.NewMux(udpTunnel, "kcp", s.disconnectTime, true)
-			conn.Accept(tunnel, func(c net.Conn) {
-				go s.handleChan(c)
-			})
-			logs.Trace("P2P connection closed, remote %v", udpTunnel.RemoteAddr())
-			_ = tunnel.Close()
+			// The bridge sends nothing else here: an unknown flag means the
+			// stream is out of step, and reconnecting is the only way back.
+			s.noteCloseReason("unexpected signal message " + strconv.Quote(flags))
+			logs.Error("Unexpected message %q on the signal connection, reconnecting", flags)
 			return
 		}
 	}
 }
 
-// mux tunnel
-func (s *TRPClient) newChan() {
-	tunnel, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
+// newChan connects the mux tunnel and returns it; nil on failure.
+func (s *TRPClient) newChan() any {
+	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
 		logs.Error("Failed to connect to server %s error: %v", s.svrAddr, err)
 		HasFailed = true
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
-		return
+		return nil
 	}
 	if tunnel == nil {
 		HasFailed = true
 		logs.Error("NewConn returned nil tunnel without error (server=%s tp=%s)", s.svrAddr, s.bridgeConnType)
-		return
+		return nil
 	}
 	if s.uuid == "" {
 		s.uuid = uuid
 	}
+	s.server = server
 	err = SendType(tunnel, common.WORK_CHAN, s.uuid)
 	if err != nil {
 		logs.Error("Failed to send type to server %s error: %v", s.svrAddr, err)
 		HasFailed = true
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
 		_ = tunnel.Close()
-		return
+		return nil
 	}
+	var tun any
 	if Ver > 4 && s.bridgeConnType == common.CONN_QUIC {
 		qc, ok := tunnel.Conn.(*conn.QuicAutoCloseConn)
 		if !ok {
 			logs.Error("failed to get quic session")
 			_ = tunnel.Close()
-			return
+			return nil
 		}
-		sess := qc.GetSession()
-		s.tunnel = sess
+		tun = qc.GetSession()
 	} else {
-		s.tunnel = mux.NewMux(tunnel.Conn, s.bridgeConnType, s.disconnectTime, true)
+		tun = mux.NewMux(tunnel.Conn, s.bridgeConnType, s.disconnectTime, true)
 	}
+	s.tunnel = tun
 
 	go func() {
 		defer func() { _ = tunnel.Close() }()
@@ -484,7 +237,7 @@ func (s *TRPClient) newChan() {
 			}
 			var err error
 			var src net.Conn
-			switch t := s.tunnel.(type) {
+			switch t := tun.(type) {
 			case *mux.Mux:
 				src, err = t.Accept()
 			case *quic.Conn:
@@ -506,6 +259,7 @@ func (s *TRPClient) newChan() {
 			go s.handleChan(src)
 		}
 	}()
+	return tun
 }
 
 func (s *TRPClient) handleChan(src net.Conn) {
@@ -581,10 +335,11 @@ func (s *TRPClient) handleChan(src net.Conn) {
 
 // Whether the monitor channel is closed
 func (s *TRPClient) ping() {
-	s.ticker = time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-s.ticker.C:
+		case <-ticker.C:
 			if s.isTunnelClosed() {
 				s.noteCloseReason(s.snapshotCloseReason())
 				s.Close()
@@ -630,8 +385,8 @@ func (s *TRPClient) closing() {
 	if s.signal != nil {
 		_ = s.signal.Close()
 	}
-	if s.ticker != nil {
-		s.ticker.Stop()
+	if s.mapper != nil {
+		_ = s.mapper.Close()
 	}
 }
 

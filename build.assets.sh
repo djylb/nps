@@ -93,10 +93,6 @@ build_binary() {
   if [[ -n "$arch_tag" ]]; then
     build_ldflags+=" -X 'github.com/djylb/nps/lib/install.BuildTarget=${arch_tag}'"
   fi
-  # github.com/wlynxg/anet (interface listing on Android) links to net internals.
-  if [[ "$os" == "android" ]]; then
-    build_ldflags+=" -checklinkname=0"
-  fi
 
   if [[ -n "$envstr" ]]; then
     eval "CGO_ENABLED=0 GOOS=\"$os\" GOARCH=\"$arch\" $envstr go build -trimpath -ldflags \"$build_ldflags\" -o \"$name$ext\" \"./cmd/$name/$name.go\""

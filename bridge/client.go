@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -97,6 +98,7 @@ const nodeJoinGraceProtectWindow = 3 * time.Second
 
 type Node struct {
 	mu        sync.RWMutex
+	sendMu    sync.Mutex // serializes bridge-initiated writes on the signal connection
 	Client    *Client
 	UUID      string
 	Version   string
@@ -114,6 +116,33 @@ func NewNode(uuid, vs string, bv int) *Node {
 		BaseVer:  bv,
 		joinNano: time.Now().UnixNano(),
 	}
+}
+
+// sendSignal writes one message to the node's signal connection within
+// timeout. Writers are serialized, so that messages never interleave; a
+// failed or late write may have left part of a message behind, so it closes
+// the signal connection and the client reconnects.
+func (n *Node) sendSignal(flag string, v any, timeout time.Duration) error {
+	signal := n.GetSignal()
+	if signal == nil {
+		return errors.New("no signal connection")
+	}
+	n.sendMu.Lock()
+	defer n.sendMu.Unlock()
+	_ = signal.SetWriteDeadline(time.Now().Add(timeout))
+	_, err := signal.SendInfo(v, flag)
+	_ = signal.SetWriteDeadline(time.Time{})
+	if err != nil {
+		_ = signal.Close()
+	}
+	return err
+}
+
+// versions returns the node's protocol index and npc version.
+func (n *Node) versions() (int, string) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.BaseVer, n.Version
 }
 
 func (n *Node) touchJoinTime() {

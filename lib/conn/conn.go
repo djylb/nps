@@ -309,10 +309,8 @@ func (s *Conn) Close() error {
 				h(s)
 			}()
 		}
-		for i := range s.rbs {
-			s.rbs[i] = nil
-		}
-		s.rbs = nil
+		// rbs is left alone: a Read running concurrently, as on any conn
+		// closed by another goroutine, may still be looking at it.
 		s.mu.Lock()
 		if s.wBuf != nil {
 			s.wBuf.Reset()

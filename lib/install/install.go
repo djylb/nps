@@ -1,7 +1,6 @@
 package install
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -195,7 +194,7 @@ func update(kind, bin string) ([]string, error) {
 		}
 		tag = rl.TagName
 		fmt.Println("The latest version is", tag)
-		if compareVersions(tag, version.VERSION) <= 0 {
+		if version.Compare(tag, version.VERSION) <= 0 {
 			fmt.Println("Already up to date, current version is", version.VERSION)
 			return nil, nil
 		}
@@ -257,47 +256,6 @@ func update(kind, bin string) ([]string, error) {
 	return targets, nil
 }
 
-// compareVersions compares two dotted versions numerically segment by segment.
-// A leading "v" and build metadata are ignored; a pre-release suffix sorts
-// before the release with the same numbers.
-func compareVersions(a, b string) int {
-	an, ap := splitVersion(a)
-	bn, bp := splitVersion(b)
-	for i := 0; i < max(len(an), len(bn)); i++ {
-		var x, y int
-		if i < len(an) {
-			x = an[i]
-		}
-		if i < len(bn) {
-			y = bn[i]
-		}
-		if x != y {
-			return cmp.Compare(x, y)
-		}
-	}
-	switch {
-	case ap == bp:
-		return 0
-	case ap == "":
-		return 1
-	case bp == "":
-		return -1
-	}
-	return strings.Compare(ap, bp)
-}
-
-func splitVersion(v string) ([]int, string) {
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	v, _, _ = strings.Cut(v, "+")
-	core, pre, _ := strings.Cut(v, "-")
-	parts := strings.Split(core, ".")
-	nums := make([]int, len(parts))
-	for i, p := range parts {
-		nums[i], _ = strconv.Atoi(p)
-	}
-	return nums, pre
-}
-
 // packageIsNewer reports whether the downloaded executable is newer than the
 // running one. It asks the executable for its version and, when that fails,
 // treats it as new unless its content equals the running executable.
@@ -305,7 +263,7 @@ func packageIsNewer(src string) bool {
 	v, err := executableVersion(src)
 	if err == nil {
 		fmt.Println("The downloaded version is", v)
-		return compareVersions(v, version.VERSION) > 0
+		return version.Compare(v, version.VERSION) > 0
 	}
 	fmt.Println("Cannot read the downloaded version:", err)
 	exe, err := currentExecutable()

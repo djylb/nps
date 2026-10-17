@@ -2,17 +2,13 @@
 
 ## 1. NAT 类型检测
 
-使用 STUN 服务器检测 NAT 类型：
-```bash
-./npc nat -stun_addr=stun.stunprotocol.org:3478
+NAT 类型由 NPS 服务端的 NAT 观测端在每次 P2P 打洞时测量（多端口观测并校验回程地址），访问端与提供端都会在日志中输出本端的测量结果，例如：
+
 ```
-如果 **P2P 双方都是 `Symmetric NAT`** ，则 **无法穿透**，其他 NAT 组合通常可以成功。
+P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filtering=pdf ports=preserving
+```
 
-📌 **可选参数**
-
-| 参数           | 说明            | 默认值                          |
-|--------------|---------------|------------------------------|
-| `-stun_addr` | 指定 STUN 服务器地址 | `stun.stunprotocol.org:3478` |
+打洞失败时日志给出失败原因与下一次尝试的时间。Android 11 及以上系统限制应用读取网卡列表，npc 在这些系统上无法提供局域网候选地址，同一局域网内的两端只能经公网路径打洞。两端都是随机端口分配的对称型 NAT 时通常无法直连，开启 `fallback_secret` 后会自动走私密代理中转，并在后台以低速率继续尝试直连。
 
 ---
 
@@ -104,10 +100,8 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 | `-target`             | P2P 目标（如目标客户端 ID/标识）                                                  | 无         |
 | `-target_type`        | P2P 目标连接类型（`all` / `tcp` / `udp`）                                     | `all`     |
 | `-p2p_timeout`        | P2P 超时时间（秒）                                                           | `5`       |
-| `-p2p_type`           | P2P 连接类型（`quic` / `kcp`）                                              | `quic`    |
 | `-disable_p2p`        | 禁用 P2P 连接                                                             | `false`   |
 | `-fallback_secret`    | 当 P2P 不可用时回退到 Secret 直连模式                                             | `true`    |
-| `-stun_addr`          | STUN 服务器地址                                                            | 无         |
 | `-dns_server`         | 配置 DNS 服务器                                                            | `8.8.8.8` |
 | `-ntp_server`         | 配置 NTP 服务器                                                            | 无         |
 | `-ntp_interval`       | NTP 最小查询间隔（分钟）                                                        | `5`       |

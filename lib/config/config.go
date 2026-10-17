@@ -20,7 +20,6 @@ type CommonConfig struct {
 	DnsServer        string
 	NtpServer        string
 	NtpInterval      int
-	P2PStunServers   string
 	Client           *file.Client
 	DisconnectTime   int
 }
@@ -163,8 +162,6 @@ func dealCommon(s string) *CommonConfig {
 			c.NtpServer = item[1]
 		case "ntp_interval":
 			c.NtpInterval = common.GetIntNoErrByStr(item[1])
-		case "p2p_stun_servers", "stun_servers", "stun_addr":
-			c.P2PStunServers = item[1]
 		case "rate_limit":
 			c.Client.RateLimit = common.GetIntNoErrByStr(item[1])
 		case "flow_limit":

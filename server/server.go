@@ -143,33 +143,13 @@ func DealBridgeTask() {
 func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 	cfg := servercfg.Current()
 	Bridge = bridge.NewTunnel(common.GetBoolByStr(cfg.Runtime.IPLimit), &RunList, bridgeDisconnect)
+	startP2P(Bridge, cfg)
 	go func() {
 		if err := Bridge.StartTunnel(); err != nil {
 			logs.Error("start server bridge error %v", err)
 			os.Exit(1)
 		}
 	}()
-	if p := cfg.Network.P2PPort; p > 0 {
-		extraReply := cfg.P2P.ProbeExtraReply
-		ok := true
-		for i := 0; i < 3; i++ {
-			port := p + i
-			if common.TestUdpPort(port) {
-				logs.Info("P2P probe port %d available", port)
-			} else {
-				logs.Error("Port %d is unavailable.", port)
-				ok = false
-			}
-		}
-		if ok {
-			go func(basePort int, enableExtraReply bool) {
-				if err := proxy.NewP2PServer(basePort, enableExtraReply).Start(); err != nil {
-					logs.Error("p2p probe server stopped unexpectedly: %v", err)
-				}
-			}(p, extraReply)
-			logs.Info("Started P2P probe server on ports %d-%d", p, p+2)
-		}
-	}
 	go DealBridgeTask()
 	go dealClientFlow()
 	if minute := cfg.Runtime.FlowStoreInterval; minute > 0 {

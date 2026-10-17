@@ -21,10 +21,8 @@ import (
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
-	"github.com/djylb/nps/lib/p2p"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
-	pionstun "github.com/pion/stun/v3"
 	flag "github.com/spf13/pflag"
 )
 
@@ -43,7 +41,6 @@ var (
 	password       = flag.String("password", "", "P2P password flag")
 	target         = flag.String("target", "", "P2P target")
 	targetType     = flag.String("target_type", "all", "P2P target connection type (all|tcp|udp)")
-	p2pType        = flag.String("p2p_type", "quic", "P2P connection type (quic|kcp)")
 	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	fallbackSecret = flag.Bool("fallback_secret", true, "P2P fallback secret (true or false)")
 	disableP2P     = flag.Bool("disable_p2p", false, "Disable P2P connection (true or false)")
@@ -58,7 +55,6 @@ var (
 	logColor       = flag.Bool("log_color", true, "Enable ANSI color codes in console output (true or false)")
 	debug          = flag.Bool("debug", true, "Enable debug mode")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
-	stunAddr       = flag.String("stun_addr", "stun.miwifi.com:3478", "STUN server address")
 	protoVer       = flag.Int("proto_version", version.GetLatestIndex(), fmt.Sprintf("Protocol version (0-%d)", version.GetLatestIndex()))
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
 	disconnectTime = flag.Int("disconnect_timeout", 30, "Disconnect timeout in seconds")
@@ -139,15 +135,6 @@ func main() {
 		mux.PingInterval = interval
 	}
 
-	// P2P Mode
-	switch strings.ToLower(*p2pType) {
-	case common.CONN_QUIC:
-		client.P2PMode = common.CONN_QUIC
-	case common.CONN_KCP:
-		client.P2PMode = common.CONN_KCP
-	default:
-	}
-
 	// Init
 	options := make(service.KeyValue)
 	svcConfig := &service.Config{
@@ -170,7 +157,7 @@ func main() {
 	for _, v := range os.Args[1:] {
 		switch v {
 		case "install", "start", "stop", "uninstall", "restart",
-			"status", "register", "nat", "update":
+			"status", "register", "update":
 			continue
 		}
 		if !strings.Contains(v, "-service=") && !strings.Contains(v, "-debug=") {
@@ -217,55 +204,6 @@ func main() {
 	case "register":
 		client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime)
 		return
-	case "nat":
-		c, err := pionstun.Dial("udp", *stunAddr)
-		if err != nil {
-			logs.Error("Error: %v", err)
-			return
-		}
-		defer func() { _ = c.Close() }()
-		request := pionstun.MustBuild(pionstun.TransactionID, pionstun.BindingRequest, pionstun.Fingerprint)
-		var observedAddr string
-		err = c.Do(request, func(res pionstun.Event) {
-			if res.Error != nil {
-				err = res.Error
-				return
-			}
-			if res.Message.Contains(pionstun.AttrFingerprint) {
-				if ferr := pionstun.Fingerprint.Check(res.Message); ferr != nil {
-					err = ferr
-					return
-				}
-			}
-			var xorAddr pionstun.XORMappedAddress
-			if derr := xorAddr.GetFrom(res.Message); derr == nil {
-				observedAddr = xorAddr.String()
-				return
-			}
-			var mappedAddr pionstun.MappedAddress
-			if derr := mappedAddr.GetFrom(res.Message); derr == nil {
-				observedAddr = mappedAddr.String()
-				return
-			}
-			err = fmt.Errorf("stun response missing mapped address")
-		})
-		fmt.Println("STUN Server:", *stunAddr)
-		if err != nil {
-			logs.Error("Error: %v", err)
-			return
-		}
-		fmt.Println("Observed Address:", observedAddr)
-		if ip := common.GetIpByAddr(observedAddr); ip != "" {
-			if parsed := common.GetIpByAddr(observedAddr); parsed != "" {
-				family := "IPv4"
-				if p := strings.Trim(parsed, "[]"); strings.Contains(p, ":") && !strings.Contains(p, ".") {
-					family = "IPv6"
-				}
-				fmt.Println("Observed IP Family:", family)
-			}
-		}
-		fmt.Println("Note: a single STUN binding request only returns the observed external address; reliable NAT behavior classification still requires multi-endpoint probing.")
-		os.Exit(0)
 	case "start", "stop", "restart":
 		if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
 			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
@@ -421,7 +359,6 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		commonConfig.VKey = *verifyKey
 		commonConfig.Tp = strings.ToLower(*connType)
 		commonConfig.LocalIP = strings.TrimSpace(*localIP)
-		commonConfig.P2PStunServers = strings.TrimSpace(*stunAddr)
 		localServer := new(config.LocalServer)
 		localServer.Type = strings.ToLower(*localType)
 		localServer.Password = *password
@@ -490,7 +427,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
 					logs.Info("Start server: %s vkey: %s type: %s local_ip: %s", serverAddr, verifyKey, connType, localIP)
-					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil, p2p.ParseSTUNServerList(*stunAddr)).Start(ctx)
+					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
 						logs.Info("Client closed! It will be reconnected in five seconds")
 						time.Sleep(time.Second * 5)
@@ -515,7 +452,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 		for _, path := range configPaths {
-			go client.StartFromFile(ctx, cancel, path, p2p.ParseSTUNServerList(*stunAddr))
+			go client.StartFromFile(ctx, cancel, path)
 		}
 	}
 }

@@ -58,7 +58,11 @@ func CopyBuffer(dst io.Writer, src io.Reader, flows []*file.Flow, task *file.Tun
 					if method != "HTT" {
 						heads := strings.Split(firstLine, "\r\n")
 						if len(heads) >= 2 {
-							logs.Info("HTTP Request method %s, %s, remote address %s, target %s", heads[0], heads[1], remote, task.Target.TargetStr)
+							target := ""
+							if task.Target != nil {
+								target = task.Target.TargetStr
+							}
+							logs.Info("HTTP Request method %s, %s, remote address %s, target %s", heads[0], heads[1], remote, target)
 						}
 					}
 					task.IsHttp = true

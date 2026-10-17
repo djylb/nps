@@ -183,3 +183,30 @@ func TestIsSupportedConfigPath(t *testing.T) {
 		t.Fatalf("nps.toml should not be supported yet")
 	}
 }
+
+func TestLoadP2PSettingsIgnoresRemovedKeys(t *testing.T) {
+	resetTestState(t)
+	path := writeConfig(t, "nps.conf", "p2p_port=6000\np2p_ip=nps.example.com,::\n"+
+		"p2p_probe_extra_reply=true\np2p_force_predict_on_restricted=true\np2p_enable_target_spray=true\n"+
+		"p2p_target_spray_span=64\np2p_birthday_listen_ports=8\np2p_enable_birthday_attack=true\n"+
+		"p2p_enable_pcp_portmap=true\np2p_portmap_lease_seconds=600\np2p_probe_timeout_ms=3000\n")
+	if err := Load(path); err != nil {
+		t.Fatalf("Load() with removed P2P keys = %v", err)
+	}
+	cfg := Current()
+	if cfg.Network.P2PPort != 6000 || cfg.Network.P2PIP != "nps.example.com,::" {
+		t.Fatalf("network P2P settings = %d %q", cfg.Network.P2PPort, cfg.Network.P2PIP)
+	}
+	p := cfg.P2P
+	if p.EnableUPNPPortmap || !p.EnablePCPPortmap || p.EnableNATPMPPortmap || p.PortmapLeaseSeconds != 600 || p.ProbeTimeoutMs != 3000 {
+		t.Fatalf("P2P settings = %+v", p)
+	}
+}
+
+func TestP2PDefaults(t *testing.T) {
+	resetTestState(t)
+	cfg := Current()
+	if cfg.Network.P2PIP != "" || cfg.P2P.EnableUPNPPortmap || cfg.P2P.EnablePCPPortmap || cfg.P2P.EnableNATPMPPortmap || cfg.P2P.PortmapLeaseSeconds != 3600 {
+		t.Fatalf("defaults: p2p_ip %q, %+v", cfg.Network.P2PIP, cfg.P2P)
+	}
+}

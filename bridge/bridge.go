@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
@@ -36,7 +37,7 @@ type Bridge struct {
 	ipVerify           bool
 	runList            *sync.Map //map[int]interface{}
 	disconnectTime     int
-	p2pSessions        *p2pSessionManager
+	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 }
 
 func NewTunnel(ipVerify bool, runList *sync.Map, disconnectTime int) *Bridge {
@@ -51,7 +52,6 @@ func NewTunnel(ipVerify bool, runList *sync.Map, disconnectTime int) *Bridge {
 		ipVerify:       ipVerify,
 		runList:        runList,
 		disconnectTime: disconnectTime,
-		p2pSessions:    newP2PSessionManager(),
 	}
 }
 

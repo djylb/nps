@@ -1,53 +1,19 @@
 package crypt
 
-import (
-	"encoding/json"
-	"testing"
-)
+import "testing"
 
-func TestPeerTransportDataRoundTrip(t *testing.T) {
+func TestPeerTransportDataPin(t *testing.T) {
 	certDER := []byte("test-cert-der")
-	encoded := EncodePeerTransportData(certDER)
-	if encoded == "" {
-		t.Fatal("expected encoded transport data")
+	pin := EncodePeerTransportData(certDER)
+	if !VerifyPeerTransportData(pin, certDER) {
+		t.Fatal("pin of the certificate does not verify")
 	}
-
-	payload := struct {
-		TransportData string `json:"transport_data"`
-	}{
-		TransportData: encoded,
+	for _, bad := range []string{"", "not-hex", pin[:len(pin)-2], EncodePeerTransportData([]byte("other"))} {
+		if VerifyPeerTransportData(bad, certDER) {
+			t.Fatalf("pin %q verified", bad)
+		}
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("marshal payload: %v", err)
-	}
-
-	var decoded struct {
-		TransportData string `json:"transport_data"`
-	}
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
-	}
-	if decoded.TransportData != encoded {
-		t.Fatalf("transport data changed after json round trip: got %q want %q", decoded.TransportData, encoded)
-	}
-	if !VerifyPeerTransportData("test-vkey", decoded.TransportData, certDER) {
-		t.Fatal("expected encoded transport data to verify")
-	}
-	if !VerifyPeerTransportData("another-vkey", decoded.TransportData, certDER) {
-		t.Fatal("expected fingerprint transport data to verify across different vkeys")
-	}
-}
-
-func TestVerifyPeerTransportDataCompatibility(t *testing.T) {
-	vkey := "test-vkey"
-	certDER := []byte("test-cert-der")
-	legacy := string(GetHMAC(vkey, certDER))
-
-	if !VerifyPeerTransportData(vkey, legacy, certDER) {
-		t.Fatal("expected legacy raw hmac payload to verify")
-	}
-	if VerifyPeerTransportData(vkey, "not-a-match", certDER) {
-		t.Fatal("expected mismatched payload to fail verification")
+	if VerifyPeerTransportData(pin, nil) {
+		t.Fatal("empty certificate verified")
 	}
 }

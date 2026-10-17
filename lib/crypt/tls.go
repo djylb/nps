@@ -30,7 +30,6 @@ var (
 	trustedSet sync.Map // key:string -> struct{}
 	vkeyToFp   sync.Map // key:vkey(string) -> fpHex(string)
 	SkipVerify = false
-	tlsCfg     *tls.Config
 )
 
 func InitTls(customCert tls.Certificate) {
@@ -47,10 +46,6 @@ func InitTls(customCert tls.Certificate) {
 		if err != nil {
 			logs.Error("Error initializing crypto certs %v", err)
 		}
-	}
-	tlsCfg = &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"h3", "h2", "http/1.1"},
 	}
 	if key, ok := cert.PrivateKey.(*rsa.PrivateKey); ok {
 		rsaKey = key
@@ -72,10 +67,6 @@ func GetFakeDomainName() string {
 
 func GetCert() tls.Certificate {
 	return cert
-}
-
-func GetCertCfg() *tls.Config {
-	return tlsCfg
 }
 
 func GetPublicKeyPEM() (string, error) {
@@ -162,6 +153,8 @@ func GetCertFingerprint(certificate tls.Certificate) []byte {
 	return sum[:]
 }
 
+// EncodePeerTransportData returns the pin of a certificate: the hex SHA-256
+// of its DER encoding.
 func EncodePeerTransportData(certificateDER []byte) string {
 	if len(certificateDER) == 0 {
 		return ""
@@ -170,38 +163,15 @@ func EncodePeerTransportData(certificateDER []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func VerifyPeerTransportData(vkey, transportData string, certificateDER []byte) bool {
-	if transportData == "" || len(certificateDER) == 0 {
+// VerifyPeerTransportData reports whether certificateDER has the pin
+// transportData (EncodePeerTransportData).
+func VerifyPeerTransportData(transportData string, certificateDER []byte) bool {
+	want, err := hex.DecodeString(transportData)
+	if err != nil || len(want) != sha256.Size || len(certificateDER) == 0 {
 		return false
 	}
 	sum := sha256.Sum256(certificateDER)
-	if decoded, err := hex.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-	if decoded, err := base64.RawStdEncoding.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-
-	expected := GetHMAC(vkey, certificateDER)
-	if decoded, err := hex.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	if decoded, err := base64.RawStdEncoding.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	return subtle.ConstantTimeCompare([]byte(transportData), expected) == 1
+	return subtle.ConstantTimeCompare(want, sum[:]) == 1
 }
 
 func AddTrustedCert(vkey string, fp []byte) {
@@ -237,18 +207,40 @@ func NewTlsClientConn(conn net.Conn) net.Conn {
 
 	return tls.Client(conn, &tls.Config{
 		InsecureSkipVerify: true,
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if len(rawCerts) == 0 {
-				return errors.New("no server certificate")
-			}
-			sum := sha256.Sum256(rawCerts[0])
-			fp := hex.EncodeToString(sum[:])
-			if _, ok := trustedSet.Load(fp); ok {
-				return nil
-			}
-			return errors.New("untrusted server certificate")
-		},
+		VerifyPeerCertificate: verifyFingerprint(func(fp string) bool {
+			_, ok := trustedSet.Load(fp)
+			return ok
+		}),
 	})
+}
+
+// NewPinnedTlsClientConfig returns a TLS client configuration that accepts
+// only the server certificate with fingerprint (its SHA-256), as the server
+// sent it, encrypted with the vkey, during the bridge handshake. It ignores
+// SkipVerify: the fingerprint is authenticated by the vkey itself.
+func NewPinnedTlsClientConfig(fingerprint []byte) *tls.Config {
+	want := hex.EncodeToString(fingerprint)
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		InsecureSkipVerify: true, // the fingerprint replaces the chain verification
+		VerifyPeerCertificate: verifyFingerprint(func(fp string) bool {
+			return len(fingerprint) > 0 && subtle.ConstantTimeCompare([]byte(want), []byte(fp)) == 1
+		}),
+	}
+}
+
+// verifyFingerprint checks the leaf certificate's hex SHA-256 with trusted.
+func verifyFingerprint(trusted func(fp string) bool) func([][]byte, [][]*x509.Certificate) error {
+	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return errors.New("no server certificate")
+		}
+		sum := sha256.Sum256(rawCerts[0])
+		if trusted(hex.EncodeToString(sum[:])) {
+			return nil
+		}
+		return errors.New("untrusted server certificate")
+	}
 }
 
 func generateKeyPair(commonName, organization string) (rawCert, rawKey []byte, err error) {

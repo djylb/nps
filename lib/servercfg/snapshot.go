@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-
-	"github.com/djylb/nps/lib/p2p"
 )
 
 type Snapshot struct {
@@ -204,27 +202,14 @@ type SSLConfig struct {
 }
 
 type P2PConfig struct {
-	STUNServers               string
-	ProbeExtraReply           bool
-	ForcePredictOnRestricted  bool
-	EnableTargetSpray         bool
-	EnableBirthdayAttack      bool
-	EnableUPNPPortmap         bool
-	EnablePCPPortmap          bool
-	EnableNATPMPPortmap       bool
-	PortmapLeaseSeconds       int
-	DefaultPredictionInterval int
-	TargetSpraySpan           int
-	TargetSprayRounds         int
-	TargetSprayBurst          int
-	TargetSprayPacketSleepMs  int
-	TargetSprayBurstGapMs     int
-	TargetSprayPhaseGapMs     int
-	BirthdayListenPorts       int
-	BirthdayTargetsPerPort    int
-	ProbeTimeoutMs            int
-	HandshakeTimeoutMs        int
-	TransportTimeoutMs        int
+	STUNServers         string
+	EnableUPNPPortmap   bool
+	EnablePCPPortmap    bool
+	EnableNATPMPPortmap bool
+	PortmapLeaseSeconds int
+	ProbeTimeoutMs      int
+	HandshakeTimeoutMs  int
+	TransportTimeoutMs  int
 }
 
 type valueReader struct {
@@ -358,7 +343,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.HTTP3ProxyPort = r.intDefault(cfg.Network.HTTPSProxyPort, "http3_proxy_port")
 	cfg.Network.WebIP = cfg.Web.IP
 	cfg.Network.WebPort = cfg.Web.Port
-	cfg.Network.P2PIP = r.stringDefault("0.0.0.0", "p2p_ip")
+	cfg.Network.P2PIP = r.stringValue("p2p_ip")
 	cfg.Network.P2PPort = r.intDefault(0, "p2p_port")
 	cfg.Network.QUICALPN = r.stringDefault("nps", "quic_alpn")
 	cfg.Network.QUICALPNList = splitAndTrimCSV(cfg.Network.QUICALPN)
@@ -454,27 +439,14 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	cfg.P2P = P2PConfig{
-		STUNServers:               r.stringValue("p2p_stun_servers"),
-		ProbeExtraReply:           r.boolDefault(true, "p2p_probe_extra_reply"),
-		ForcePredictOnRestricted:  r.boolDefault(true, "p2p_force_predict_on_restricted"),
-		EnableTargetSpray:         r.boolDefault(true, "p2p_enable_target_spray"),
-		EnableBirthdayAttack:      r.boolDefault(false, "p2p_enable_birthday_attack"),
-		EnableUPNPPortmap:         r.boolDefault(false, "p2p_enable_upnp_portmap"),
-		EnablePCPPortmap:          r.boolDefault(false, "p2p_enable_pcp_portmap"),
-		EnableNATPMPPortmap:       r.boolDefault(false, "p2p_enable_natpmp_portmap"),
-		PortmapLeaseSeconds:       r.intDefault(3600, "p2p_portmap_lease_seconds"),
-		DefaultPredictionInterval: r.intDefault(p2p.DefaultPredictionInterval, "p2p_default_prediction_interval"),
-		TargetSpraySpan:           r.intDefault(p2p.DefaultSpraySpan, "p2p_target_spray_span"),
-		TargetSprayRounds:         r.intDefault(p2p.DefaultSprayRounds, "p2p_target_spray_rounds"),
-		TargetSprayBurst:          r.intDefault(p2p.DefaultSprayBurst, "p2p_target_spray_burst"),
-		TargetSprayPacketSleepMs:  r.intDefault(3, "p2p_target_spray_packet_sleep_ms"),
-		TargetSprayBurstGapMs:     r.intDefault(10, "p2p_target_spray_burst_gap_ms"),
-		TargetSprayPhaseGapMs:     r.intDefault(40, "p2p_target_spray_phase_gap_ms"),
-		BirthdayListenPorts:       r.intDefault(p2p.DefaultBirthdayPorts, "p2p_birthday_listen_ports"),
-		BirthdayTargetsPerPort:    r.intDefault(p2p.DefaultBirthdayTargets, "p2p_birthday_targets_per_port"),
-		ProbeTimeoutMs:            r.intDefault(5000, "p2p_probe_timeout_ms"),
-		HandshakeTimeoutMs:        r.intDefault(20000, "p2p_handshake_timeout_ms"),
-		TransportTimeoutMs:        r.intDefault(10000, "p2p_transport_timeout_ms"),
+		STUNServers:         r.stringValue("p2p_stun_servers"),
+		EnableUPNPPortmap:   r.boolDefault(false, "p2p_enable_upnp_portmap"),
+		EnablePCPPortmap:    r.boolDefault(false, "p2p_enable_pcp_portmap"),
+		EnableNATPMPPortmap: r.boolDefault(false, "p2p_enable_natpmp_portmap"),
+		PortmapLeaseSeconds: r.intDefault(3600, "p2p_portmap_lease_seconds"),
+		ProbeTimeoutMs:      r.intDefault(0, "p2p_probe_timeout_ms"),
+		HandshakeTimeoutMs:  r.intDefault(0, "p2p_handshake_timeout_ms"),
+		TransportTimeoutMs:  r.intDefault(0, "p2p_transport_timeout_ms"),
 	}
 
 	return cfg
