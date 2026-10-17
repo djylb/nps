@@ -7,7 +7,7 @@
 
 ## Stable
 
-### v0.34.8 (2026-10-17)
+### v0.34.8 (2026-10-18)
 - 使用[holepunch](https://github.com/djylb/holepunch)重写P2P打洞（P2P不再兼容旧版，服务端与客户端需同时升级）
 - P2P支持IPv4/IPv6双栈，`p2p_ip`支持填写域名，留空自动识别
 - P2P直连仅使用QUIC，移除`p2p_type`、`stun_addr`参数与`nat`命令
@@ -20,7 +20,8 @@
 - 优化HTTP代理、Socks5、端口复用处理逻辑
 - 使用[netx](https://github.com/djylb/netx)和[byterate](https://github.com/djylb/byterate)重构连接转发、限速、透明代理、Socks5与PROXY协议处理
 - 修复UDP大包被截断的问题
-- 过期证书不再使用，自动回退到默认证书；`ssl_cache_reload`改为检测文件变更后重新加载
+- 优化HTTPS证书选择，支持多域名证书，默认证书仅用于已配置且被其覆盖的域名
+- 过期证书不再使用；`ssl_cache_reload`改为检测文件变更后重新加载
 - 修复多处性能问题
 - 移除Qodana自动化
 - 升级Go到1.27
