@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -80,9 +81,9 @@ func IsTimeout(err error) bool {
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
 	// Wrap the TCP tunnel with timeout and framed I/O.
 	defer func() { _ = serverConn.Close() }()
-	timeoutConn := NewTimeoutConn(serverConn, timeout)
+	timeoutConn := netx.NewTimeoutConn(serverConn, timeout)
 	defer func() { _ = timeoutConn.Close() }()
-	framed := WrapFramed(timeoutConn)
+	framed := netx.NewFramedConn(timeoutConn, netx.WithFramedDatagrams())
 
 	// Bind one local UDP socket for all outbound UDP traffic.
 	// Using nil lets the kernel pick family/port.
@@ -207,7 +208,7 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Ra
 	if isFramed {
 		// connHandle only wraps conn1, which every path below closes.
 		//noinspection GoResourceLeak
-		connHandle = WrapFramed(WrapConn(connHandle, conn1))
+		connHandle = netx.NewFramedConn(netx.WrapConn(connHandle, conn1, netx.WithWrapParentClose()), netx.WithFramedDatagrams())
 	}
 	proxyHeader := BuildProxyProtocolHeader(conn2, proxyProtocol)
 	if proxyHeader != nil {
@@ -462,15 +463,4 @@ func GetRealIP(r *http.Request, header string) string {
 		return host
 	}
 	return r.RemoteAddr
-}
-
-func parseTCPAddrMaybe(s string) (*net.TCPAddr, error) {
-	if s == "" {
-		return nil, nil
-	}
-	a, err := net.ResolveTCPAddr("tcp", s)
-	if err != nil {
-		return nil, err
-	}
-	return a, nil
 }

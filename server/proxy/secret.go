@@ -3,6 +3,7 @@ package proxy
 import (
 	"net"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -107,7 +108,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 			// The target is a UDP socket: unframe on the visitor side.
 			// CopyWaitGroup closes visitor.
 			//noinspection GoResourceLeak
-			visitor = conn.WrapFramed(c.Conn)
+			visitor = netx.NewFramedConn(c.Conn, netx.WithFramedDatagrams())
 		}
 	}
 	conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, true, proxyProtocol, rb, s.Task, localProxy, false)

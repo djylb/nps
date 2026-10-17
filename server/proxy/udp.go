@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -165,7 +166,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 	if isLocal && s.Bridge.IsServer() {
 		ent.conn = flowConn
 	} else {
-		ent.conn = conn.WrapFramed(flowConn)
+		ent.conn = netx.NewFramedConn(flowConn, netx.WithFramedDatagrams())
 	}
 
 	// The back-channel reader blocks without a deadline; it is released by

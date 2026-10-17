@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -359,7 +360,7 @@ func (r *socks5UDPRegistry) collectIdleSessions(now time.Time, idleTimeout time.
 type socks5UDPSession struct {
 	registry      *socks5UDPRegistry
 	control       net.Conn
-	framed        *conn.FramedConn
+	framed        *netx.FramedConn
 	timeout       time.Duration
 	clientIPKey   string
 	requestedPort int
@@ -443,12 +444,12 @@ func (s *socks5UDPSession) openTunnel() error {
 	if err != nil {
 		return err
 	}
-	timeoutConn := conn.NewTimeoutConn(target, link.Option.Timeout)
+	timeoutConn := netx.NewTimeoutConn(target, link.Option.Timeout)
 	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate)
 	// The session owns the framed connection and closes it in Close.
 	//noinspection GoResourceLeak
 	flowConn := conn.NewFlowConn(rateConn, task.Flow, task.Client.Flow)
-	s.framed = conn.WrapFramed(flowConn)
+	s.framed = netx.NewFramedConn(flowConn, netx.WithFramedDatagrams())
 	return nil
 }
 
@@ -505,9 +506,9 @@ func (s *socks5UDPSession) writeToTunnelLoop() {
 			logs.Warn("socks5 udp frag not supported, drop (frag=%d)", pkt.buf[2])
 			continue
 		}
-		if pkt.n > conn.MaxFramePayload {
+		if pkt.n > netx.MaxFramePayload {
 			common.BufPoolUdp.Put(pkt.buf)
-			logs.Debug("socks5 udp datagram too large: %d > %d", pkt.n, conn.MaxFramePayload)
+			logs.Debug("socks5 udp datagram too large: %d > %d", pkt.n, netx.MaxFramePayload)
 			continue
 		}
 		if discardOnly {

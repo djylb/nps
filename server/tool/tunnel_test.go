@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -99,7 +100,7 @@ func TestGetWebServerConnWhenListenerNotSet(t *testing.T) {
 	WebServerListener = nil
 	t.Cleanup(func() { WebServerListener = orig })
 
-	_, err := GetWebServerConn("127.0.0.1:8080")
+	_, err := GetWebServerConn(context.Background(), "127.0.0.1:8080")
 	if err == nil || !strings.Contains(err.Error(), "web server not set") {
 		t.Fatalf("GetWebServerConn() err=%v, want web server not set", err)
 	}
@@ -114,14 +115,14 @@ func TestGetWebServerConnDialSuccess(t *testing.T) {
 		WebServerListener = orig
 	})
 
-	c, err := GetWebServerConn("127.0.0.1:8080")
+	c, err := GetWebServerConn(context.Background(), "127.0.0.1:8080")
 	if err != nil {
 		t.Fatalf("GetWebServerConn() err=%v, want nil", err)
 	}
 	defer func() { _ = c.Close() }()
 	accepted, err := l.Accept()
 	if err != nil {
-		t.Fatalf("VirtualListener.Accept() err=%v, want nil", err)
+		t.Fatalf("Accept() err=%v, want nil", err)
 	}
 	defer func() { _ = accepted.Close() }()
 	payload := []byte("ok")

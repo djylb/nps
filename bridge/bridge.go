@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -46,10 +47,10 @@ func dispatch[T any](ch chan<- T, v T) bool {
 type Bridge struct {
 	Client             *sync.Map
 	Register           *sync.Map
-	VirtualTcpListener *conn.VirtualListener
-	VirtualTlsListener *conn.VirtualListener
-	VirtualWsListener  *conn.VirtualListener
-	VirtualWssListener *conn.VirtualListener
+	VirtualTcpListener *netx.ChanListener
+	VirtualTlsListener *netx.ChanListener
+	VirtualWsListener  *netx.ChanListener
+	VirtualWssListener *netx.ChanListener
 	OpenHost           chan *file.Host
 	OpenTask           chan *file.Tunnel
 	CloseTask          chan *file.Tunnel

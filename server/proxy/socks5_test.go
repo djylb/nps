@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -276,7 +277,7 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 		t.Fatal("timed out waiting for udp5 tunnel")
 	}
 	defer func() { _ = peerConn.Close() }()
-	peerFramed := conn.WrapFramed(peerConn)
+	peerFramed := netx.NewFramedConn(peerConn, netx.WithFramedDatagrams())
 
 	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
@@ -293,7 +294,7 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 		t.Fatalf("WriteToUDP() error = %v", err)
 	}
 
-	frameBuf := make([]byte, conn.MaxFramePayload)
+	frameBuf := make([]byte, netx.MaxFramePayload)
 	_ = peerConn.SetReadDeadline(time.Now().Add(time.Second))
 	n, err := peerFramed.Read(frameBuf)
 	if err != nil {
@@ -515,7 +516,7 @@ func TestTunnelModeServerSocks5UDPAssociateAllowsSinglePendingPortMismatch(t *te
 		t.Fatal("timed out waiting for udp5 tunnel")
 	}
 	defer func() { _ = peerConn.Close() }()
-	peerFramed := conn.WrapFramed(peerConn)
+	peerFramed := netx.NewFramedConn(peerConn, netx.WithFramedDatagrams())
 
 	targetAddr, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound bytes.Buffer
@@ -525,7 +526,7 @@ func TestTunnelModeServerSocks5UDPAssociateAllowsSinglePendingPortMismatch(t *te
 	if _, err := udpConn.WriteToUDP(outbound.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
 		t.Fatalf("WriteToUDP() error = %v", err)
 	}
-	frameBuf := make([]byte, conn.MaxFramePayload)
+	frameBuf := make([]byte, netx.MaxFramePayload)
 	_ = peerConn.SetReadDeadline(time.Now().Add(time.Second))
 	n, err := peerFramed.Read(frameBuf)
 	if err != nil {
@@ -587,10 +588,10 @@ func TestTunnelModeServerSocks5UDPDisambiguatesSameIPSessionsByRequestedPort(t *
 	defer func() { _ = peerConn1.Close() }()
 	defer func() { _ = peerConn2.Close() }()
 
-	peerFramed1 := conn.WrapFramed(peerConn1)
-	peerFramed2 := conn.WrapFramed(peerConn2)
-	frameBuf1 := make([]byte, conn.MaxFramePayload)
-	frameBuf2 := make([]byte, conn.MaxFramePayload)
+	peerFramed1 := netx.NewFramedConn(peerConn1, netx.WithFramedDatagrams())
+	peerFramed2 := netx.NewFramedConn(peerConn2, netx.WithFramedDatagrams())
+	frameBuf1 := make([]byte, netx.MaxFramePayload)
+	frameBuf2 := make([]byte, netx.MaxFramePayload)
 
 	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outbound2 bytes.Buffer
@@ -672,7 +673,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 		t.Fatal("timed out waiting for first udp5 tunnel")
 	}
 	defer func() { _ = peerConn1.Close() }()
-	peerFramed1 := conn.WrapFramed(peerConn1)
+	peerFramed1 := netx.NewFramedConn(peerConn1, netx.WithFramedDatagrams())
 
 	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound1 bytes.Buffer
@@ -683,7 +684,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 		t.Fatalf("WriteToUDP() first socket error = %v", err)
 	}
 
-	frameBuf1 := make([]byte, conn.MaxFramePayload)
+	frameBuf1 := make([]byte, netx.MaxFramePayload)
 	_ = peerConn1.SetReadDeadline(time.Now().Add(time.Second))
 	n1, err := peerFramed1.Read(frameBuf1)
 	if err != nil {
@@ -709,7 +710,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 		t.Fatal("timed out waiting for second udp5 tunnel")
 	}
 	defer func() { _ = peerConn2.Close() }()
-	peerFramed2 := conn.WrapFramed(peerConn2)
+	peerFramed2 := netx.NewFramedConn(peerConn2, netx.WithFramedDatagrams())
 
 	udpConn1b, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
@@ -730,7 +731,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 	if _, err := peerFramed1.Read(frameBuf1); err == nil {
 		t.Fatal("active session should not be rebound while another pending session exists on the same IP")
 	}
-	frameBuf2 := make([]byte, conn.MaxFramePayload)
+	frameBuf2 := make([]byte, netx.MaxFramePayload)
 	_ = peerConn2.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
 	if _, err := peerFramed2.Read(frameBuf2); err == nil {
 		t.Fatal("pending session should not steal ambiguous datagram from active session")
@@ -800,8 +801,8 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 	}
 	defer func() { _ = peerConn1.Close() }()
 
-	peerFramed1 := conn.WrapFramed(peerConn1)
-	frameBuf1 := make([]byte, conn.MaxFramePayload)
+	peerFramed1 := netx.NewFramedConn(peerConn1, netx.WithFramedDatagrams())
+	frameBuf1 := make([]byte, netx.MaxFramePayload)
 
 	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound1 bytes.Buffer
@@ -840,8 +841,8 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 	}
 	defer func() { _ = peerConn2.Close() }()
 
-	peerFramed2 := conn.WrapFramed(peerConn2)
-	frameBuf2 := make([]byte, conn.MaxFramePayload)
+	peerFramed2 := netx.NewFramedConn(peerConn2, netx.WithFramedDatagrams())
+	frameBuf2 := make([]byte, netx.MaxFramePayload)
 
 	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outbound2 bytes.Buffer

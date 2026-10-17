@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -33,7 +34,7 @@ type FileServerManager struct {
 
 type fileServer struct {
 	srv      *http.Server
-	listener *conn.VirtualListener
+	listener *netx.ChanListener
 }
 
 func NewFileServerManager(parentCtx context.Context) *FileServerManager {
@@ -134,7 +135,7 @@ func (fsm *FileServerManager) StartFileServer(t *file.Tunnel, vkey string) {
 	}()
 }
 
-func (fsm *FileServerManager) GetListenerByKey(key string) (*conn.VirtualListener, bool) {
+func (fsm *FileServerManager) GetListenerByKey(key string) (*netx.ChanListener, bool) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	entry, ok := fsm.servers[key]

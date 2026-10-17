@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -126,16 +128,14 @@ func (s *TunnelModeServer) ServeVirtual(c net.Conn) {
 }
 
 func (s *TunnelModeServer) DialVirtual(rAddr string) (net.Conn, error) {
-	a, b := net.Pipe()
-	// handleConn owns c and closes it.
-	//noinspection GoResourceLeak
-	c, err := conn.NewAddrOverrideConn(b, rAddr, s.address)
+	remote, err := conn.ParseTCPAddr(rAddr)
 	if err != nil {
-		_ = a.Close()
-		_ = b.Close()
-		return nil, err
+		return nil, fmt.Errorf("invalid remote addr %q: %w", rAddr, err)
 	}
-	go s.handleConn(c)
+	local, _ := conn.ParseTCPAddr(s.address)
+	a, b := net.Pipe()
+	// handleConn owns the server end and closes it.
+	go s.handleConn(netx.NewAddrOverrideConn(b, local, remote))
 	return a, nil
 }
 
@@ -283,31 +283,37 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			//go server.Close()
 		},
 	}
-	// Replay the parsed header and everything read after it (body, pipelined requests).
-	listener := conn.NewOneConnListener(c.SetRb(head, rest))
-	var shutdownTimerMu sync.Mutex
-	var shutdownTimer *time.Timer
+	// Replay the parsed header and everything read after it (body, pipelined
+	// requests). Serve returns once this single connection is closed.
+	listener := netx.NewSingleConnListener(c.SetRb(head, rest))
+	// The idle timer closes the server once no request has arrived for a
+	// while; it is never armed after ProcessHttp has returned.
+	var idleMu sync.Mutex
+	var idleTimer *time.Timer
+	done := false
 	defer func() {
 		_ = listener.Close()
-		shutdownTimerMu.Lock()
-		if shutdownTimer != nil {
-			shutdownTimer.Stop()
+		idleMu.Lock()
+		done = true
+		if idleTimer != nil {
+			idleTimer.Stop()
 		}
-		shutdownTimerMu.Unlock()
+		idleMu.Unlock()
 	}()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		shutdownTimerMu.Lock()
-		if shutdownTimer != nil {
-			shutdownTimer.Stop()
+		idleMu.Lock()
+		if idleTimer != nil {
+			idleTimer.Stop()
 		}
-		shutdownTimerMu.Unlock()
+		idleMu.Unlock()
 		defer func() {
-			//logs.Error("HTTP Proxy Number: %d, Reset timeout", httpNum)
-			shutdownTimerMu.Lock()
-			shutdownTimer = time.AfterFunc(30*time.Second, func() {
-				_ = server.Close()
-			})
-			shutdownTimerMu.Unlock()
+			idleMu.Lock()
+			if !done {
+				idleTimer = time.AfterFunc(30*time.Second, func() {
+					_ = server.Close()
+				})
+			}
+			idleMu.Unlock()
 		}()
 		proxy.ServeHTTP(w, req)
 	})
@@ -315,12 +321,6 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		Handler:           handler,
 		ReadHeaderTimeout: httpProxyHeaderTimeout,
 		IdleTimeout:       90 * time.Second,
-		// The listener serves a single connection; stop serving once it is gone.
-		ConnState: func(_ net.Conn, state http.ConnState) {
-			if state == http.StateClosed {
-				_ = server.Close()
-			}
-		},
 	}
 	//httpNum++
 	//logs.Error("HTTP Proxy Number: %d", httpNum)
@@ -328,7 +328,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	//	httpNum--
 	//	logs.Error("HTTP Proxy Number: %d", httpNum)
 	//}()
-	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
 		return err
 	}
 	//logs.Error("HTTP Proxy Close")

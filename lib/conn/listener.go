@@ -5,11 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
@@ -98,130 +97,49 @@ func Accept(l net.Listener, f func(c net.Conn)) {
 	}
 }
 
-type OneConnListener struct {
-	conn      net.Conn
-	accepted  bool
-	mu        sync.Mutex
-	done      chan struct{}
-	closeOnce sync.Once
-}
+// virtualQueue is how many connections a virtual listener holds before
+// Accept takes them.
+const virtualQueue = 1024
 
-func NewOneConnListener(c net.Conn) *OneConnListener {
-	return &OneConnListener{
-		conn: c,
-		done: make(chan struct{}),
-	}
-}
-
-func (l *OneConnListener) Accept() (net.Conn, error) {
-	//logs.Trace("OneConnListener Accept")
-	l.mu.Lock()
-	if !l.accepted {
-		l.accepted = true
-		l.mu.Unlock()
-		return l.conn, nil
-	}
-	l.mu.Unlock()
-	<-l.done
-	return nil, io.EOF
-}
-
-func (l *OneConnListener) Close() error {
-	err := l.conn.Close()
-	l.closeOnce.Do(func() {
-		close(l.done)
-		//logs.Trace("OneConnListener Close")
-	})
-	return err
-}
-
-func (l *OneConnListener) Addr() net.Addr {
-	return l.conn.LocalAddr()
-}
-
-type VirtualListener struct {
-	conns     chan net.Conn
-	closed    chan struct{}
-	addr      net.Addr
-	closeOnce sync.Once
-}
-
-func NewVirtualListener(addr net.Addr) *VirtualListener {
+// NewVirtualListener returns an in-memory listener that reports addr, or
+// LocalTCPAddr when addr is nil.
+func NewVirtualListener(addr net.Addr) *netx.ChanListener {
 	if addr == nil {
 		addr = LocalTCPAddr
 	}
-	return &VirtualListener{
-		conns:  make(chan net.Conn, 1024),
-		closed: make(chan struct{}),
-		addr:   addr,
-	}
+	return netx.NewChanListener(addr, virtualQueue)
 }
 
-func (l *VirtualListener) SetAddr(addr net.Addr) {
-	if addr != nil {
-		l.addr = addr
-	}
-}
-
-func (l *VirtualListener) Addr() net.Addr {
-	return l.addr
-}
-
-func (l *VirtualListener) Accept() (net.Conn, error) {
-	select {
-	case <-l.closed:
-		return nil, net.ErrClosed
-	default:
-	}
-	select {
-	case c := <-l.conns:
-		return c, nil
-	case <-l.closed:
-		return nil, net.ErrClosed
-	}
-}
-
-func (l *VirtualListener) Close() error {
-	l.closeOnce.Do(func() {
-		close(l.closed)
-		for {
-			select {
-			case c := <-l.conns:
-				if c != nil {
-					_ = c.Close()
-				}
-			default:
-				return
-			}
-		}
-	})
-	return nil
-}
-
-func (l *VirtualListener) ServeVirtual(c net.Conn) {
-	select {
-	case <-l.closed:
-		_ = c.Close()
-	case l.conns <- c:
-	default:
+// ServeVirtual hands c to l, closing c if l is closed or its queue is full.
+func ServeVirtual(l *netx.ChanListener, c net.Conn) {
+	if !l.TryDeliver(c) {
 		_ = c.Close()
 	}
 }
 
-func (l *VirtualListener) DialVirtual(rAddr string) (net.Conn, error) {
-	select {
-	case <-l.closed:
-		return nil, net.ErrClosed
-	default:
+// DialVirtual connects to l through an in-memory pipe, with remote, a
+// host:port address, as the address of the dialing side. It waits for queue
+// space until ctx is done or l is closed.
+func DialVirtual(ctx context.Context, l *netx.ChanListener, remote string) (net.Conn, error) {
+	addr, err := ParseTCPAddr(remote)
+	if err == nil && addr == nil {
+		err = errors.New("empty address")
 	}
-	a, b := net.Pipe()
-	remoteAddr, err := parseTCPAddrMaybe(rAddr)
-	if err != nil || remoteAddr == nil {
-		_ = a.Close()
-		_ = b.Close()
-		return nil, fmt.Errorf("invalid remote addr %q: %w", rAddr, err)
+	if err != nil {
+		return nil, fmt.Errorf("invalid remote addr %q: %w", remote, err)
 	}
-	c := NewAddrOverrideFromAddr(b, remoteAddr, l.addr)
-	l.ServeVirtual(c)
+	return l.Dial(ctx, addr)
+}
+
+// ParseTCPAddr resolves s, a host:port address. An empty s yields a nil
+// address and no error.
+func ParseTCPAddr(s string) (net.Addr, error) {
+	if s == "" {
+		return nil, nil
+	}
+	a, err := net.ResolveTCPAddr("tcp", s)
+	if err != nil {
+		return nil, err
+	}
 	return a, nil
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -142,14 +143,14 @@ func TestFileServerManagerStartAndCloseAll(t *testing.T) {
 	}
 
 	fsm.CloseAll()
-	if _, err := listener.DialVirtual("127.0.0.1:12345"); err == nil {
+	if _, err := conn.DialVirtual(context.Background(), listener, "127.0.0.1:12345"); err == nil {
 		t.Fatal("expected listener dial to fail after CloseAll")
 	}
 }
 
-func doVirtualRequest(t *testing.T, listener *conn.VirtualListener, raw string) *http.Response {
+func doVirtualRequest(t *testing.T, listener *netx.ChanListener, raw string) *http.Response {
 	t.Helper()
-	c, err := listener.DialVirtual("127.0.0.1:9000")
+	c, err := conn.DialVirtual(context.Background(), listener, "127.0.0.1:9000")
 	if err != nil {
 		t.Fatalf("dial virtual failed: %v", err)
 	}
@@ -165,7 +166,7 @@ func doVirtualRequest(t *testing.T, listener *conn.VirtualListener, raw string) 
 	return resp
 }
 
-func waitListener(fsm *FileServerManager, timeout time.Duration) (*conn.VirtualListener, bool) {
+func waitListener(fsm *FileServerManager, timeout time.Duration) (*netx.ChanListener, bool) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		fsm.mu.Lock()

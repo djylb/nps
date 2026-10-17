@@ -10,7 +10,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/transport"
 )
 
 const (
@@ -114,9 +113,12 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 
 func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dest socks5Address) {
 	if tcpConn, ok := c.(*net.TCPConn); ok {
-		_ = tcpConn.SetKeepAlive(true)
-		_ = tcpConn.SetKeepAlivePeriod(15 * time.Second)
-		_ = transport.SetTcpKeepAliveParams(tcpConn, 15, 15, 3)
+		_ = tcpConn.SetKeepAliveConfig(net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     15 * time.Second,
+			Interval: 15 * time.Second,
+			Count:    3,
+		})
 	}
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
 		logs.Warn("mixProxy dest acl active, reject socks5 udp associate: client=%d task=%d", s.Task.Client.Id, s.Task.Id)

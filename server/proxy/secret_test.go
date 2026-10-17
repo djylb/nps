@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -189,7 +190,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 	if link := <-bridge.links; link.ConnType != "udp" || !link.LocalProxy {
 		t.Fatalf("unexpected link %+v", link)
 	}
-	framed := conn.WrapFramed(visitor)
+	framed := netx.NewFramedConn(visitor, netx.WithFramedDatagrams())
 	if _, err := framed.Write([]byte("ping")); err != nil {
 		t.Fatal(err)
 	}

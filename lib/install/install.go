@@ -23,8 +23,9 @@ import (
 	"time"
 
 	"github.com/c4milo/unpackit"
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/version"
 )
 
@@ -362,7 +363,7 @@ func newTransportClient(insecure bool) *http.Client {
 			if err != nil {
 				return nil, err
 			}
-			return conn.NewTimeoutConn(raw, idleTimeout), nil
+			return netx.NewTimeoutConn(raw, idleTimeout), nil
 		},
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			d := &net.Dialer{
@@ -379,7 +380,13 @@ func newTransportClient(insecure bool) *http.Client {
 				return nil, err
 			}
 			cfg := &tls.Config{ServerName: host, InsecureSkipVerify: insecure}
-			return conn.NewTimeoutTLSConn(raw, cfg, idleTimeout, timeout)
+			hsCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			tlsConn, err := tlsconn.Client(hsCtx, raw, cfg)
+			if err != nil {
+				return nil, err
+			}
+			return netx.NewTimeoutConn(tlsConn, idleTimeout), nil
 		},
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,

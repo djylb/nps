@@ -1,10 +1,12 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"net"
 	"sync/atomic"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 )
 
@@ -32,11 +34,12 @@ func GetTunnelConn(id int, remote string) (net.Conn, error) {
 	return d.DialVirtual(remote)
 }
 
-var WebServerListener *conn.VirtualListener
+var WebServerListener *netx.ChanListener
 
-func GetWebServerConn(remote string) (net.Conn, error) {
+// GetWebServerConn connects to the web server's in-memory listener as remote.
+func GetWebServerConn(ctx context.Context, remote string) (net.Conn, error) {
 	if WebServerListener == nil {
 		return nil, errors.New("web server not set")
 	}
-	return WebServerListener.DialVirtual(remote)
+	return conn.DialVirtual(ctx, WebServerListener, remote)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -302,8 +303,8 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		rwc := conn.GetConn(src, lk.Crypt, lk.Compress, nil, false, false)
 		// The virtual listener owns c from here on.
 		//noinspection GoResourceLeak
-		c := conn.WrapConn(rwc, src)
-		vl.ServeVirtual(c)
+		c := netx.WrapConn(rwc, src, netx.WithWrapParentClose())
+		conn.ServeVirtual(vl, c)
 		return
 	}
 	//host for target processing

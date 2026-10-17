@@ -84,17 +84,19 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 				return tool.GetTunnelConn(id, link.RemoteAddr)
 			case "bridge":
 				// bridge://tcp|tls|ws|wss|web
+				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
+				defer cancel()
 				switch strings.ToLower(targetStr) {
 				case common.ConnTCP:
-					return s.VirtualTcpListener.DialVirtual(link.RemoteAddr)
+					return conn.DialVirtual(ctx, s.VirtualTcpListener, link.RemoteAddr)
 				case common.ConnTLS:
-					return s.VirtualTlsListener.DialVirtual(link.RemoteAddr)
+					return conn.DialVirtual(ctx, s.VirtualTlsListener, link.RemoteAddr)
 				case common.ConnWS:
-					return s.VirtualWsListener.DialVirtual(link.RemoteAddr)
+					return conn.DialVirtual(ctx, s.VirtualWsListener, link.RemoteAddr)
 				case common.ConnWSS:
-					return s.VirtualWssListener.DialVirtual(link.RemoteAddr)
+					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
 				case common.ConnWeb:
-					return tool.GetWebServerConn(link.RemoteAddr)
+					return tool.GetWebServerConn(ctx, link.RemoteAddr)
 				default:
 					return nil, fmt.Errorf("invalid bridge target %q in %q", targetStr, raw)
 				}
