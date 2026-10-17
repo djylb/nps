@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/djylb/holepunch"
-	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -185,14 +184,10 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	if err != nil {
 		return nil, err
 	}
-	var mode protocol.SessionMode
-	if background {
-		mode = protocol.ModeBackground
-	}
 	logs.Debug("%s: punching in session %s (%s)", p.label, sessionID, p2pModeName(background))
 	// tc is closed right below; on success the session is handed to the transport.
 	//noinspection GoResourceLeak
-	sess, err := holepunch.AttachSession(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, mode))
+	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background))
 	_ = tc.Close()
 	if err != nil {
 		var herr *holepunch.Error

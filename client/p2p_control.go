@@ -22,11 +22,11 @@ import (
 
 // p2pControlTimeout bounds sending the request and the TLS handshake of a
 // P2P control stream; p2pReplyTimeout the wait for the bridge's reply, which
-// a visitor gets only once the provider joined: the invitation write and the
-// join wait take up to 10 s each on the bridge.
+// a visitor gets once the bridge has sent the provider its invitation, in up
+// to 10 s.
 const (
 	p2pControlTimeout = 10 * time.Second
-	p2pReplyTimeout   = 25 * time.Second
+	p2pReplyTimeout   = 15 * time.Second
 )
 
 // errP2PServerIncompatible is a P2P request the server closed or answered
@@ -83,14 +83,14 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 }
 
 // p2pOptions are the holepunch options of both sides: this side's pin as
-// transport data, the local address of local_ip, the port mapper and the
-// mode this side accepts.
-func p2pOptions(localIP string, mapper *portmapper.Mapper, mode protocol.SessionMode) holepunch.Options {
+// transport data, the local address of local_ip, the port mapper and
+// whether this side accepts a background session.
+func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool) holepunch.Options {
 	opts := holepunch.Options{
-		LocalAddr:     p2pLocalAddr(localIP),
-		TransportMode: p2pproto.TransportMode,
-		TransportData: p2pLocalPin(),
-		Mode:          mode,
+		LocalAddr:        p2pLocalAddr(localIP),
+		TransportMode:    p2pproto.TransportMode,
+		TransportData:    p2pLocalPin(),
+		AcceptBackground: background,
 		OnProgress: func(p protocol.Progress) {
 			logs.Trace("P2P session %s %s: %s %s %s", p.SessionID, p.Role, p.Stage, p.Status, p.Detail)
 		},

@@ -2,12 +2,15 @@ package client
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,6 +28,64 @@ func TestP2PEndToEnd(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end")
 	}
+	env := startP2PTestEnv(t)
+	target := serveTCP(t, func(c net.Conn) {
+		defer func() { _ = c.Close() }()
+		_, _ = io.Copy(c, c)
+	})
+	// Two devices run the same visitor command at once: each gets its own
+	// direct path to the provider.
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() { runVisitor(t, env.ctx, env.cancel, env.bridgeAddr, p2pTestVisitorKey, p2pTestPassword, target) })
+	}
+	wg.Wait()
+}
+
+// TestP2PDeclinedByProvider checks that a visitor whose provider has P2P
+// disabled fails with the provider's answer and backs off as from a
+// configuration problem.
+func TestP2PDeclinedByProvider(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	old := DisableP2P
+	DisableP2P = true
+	t.Cleanup(func() { DisableP2P = old })
+	env := startP2PTestEnv(t)
+	mgr := NewP2PManager(env.ctx, env.cancel, &config.CommonConfig{
+		Server: env.bridgeAddr, VKey: p2pTestVisitorKey, Tp: "tcp", DisconnectTime: 30,
+		Client: &file.Client{Cnf: &file.Config{}},
+	})
+	t.Cleanup(mgr.Close)
+	ctx, cancel := context.WithTimeout(env.ctx, 30*time.Second)
+	defer cancel()
+	tr, err := newP2PPeer(mgr, p2pTestPassword, "test").punch(ctx, false)
+	if err == nil {
+		tr.Close(p2pCodeClosed, "closed")
+		t.Fatal("punched a direct path to a provider with P2P disabled")
+	}
+	if class, _, _ := classifyP2PError(err); class != p2pBackoffFatal || !strings.Contains(err.Error(), "declined") {
+		t.Fatalf("punch = %v (backoff class %d), want the provider's refusal", err, class)
+	}
+}
+
+const (
+	p2pTestProviderKey = "e2e-provider-key"
+	p2pTestVisitorKey  = "e2e-visitor-key"
+	p2pTestPassword    = "e2e-password"
+)
+
+type p2pTestEnv struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	bridgeAddr string
+}
+
+// startP2PTestEnv runs a bridge with its P2P service on loopback, a
+// provider client registered on it and the p2p task of p2pTestPassword.
+func startP2PTestEnv(t *testing.T) p2pTestEnv {
+	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
@@ -33,15 +94,14 @@ func TestP2PEndToEnd(t *testing.T) {
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 	t.Cleanup(func() { file.Db = oldDb })
 
-	const providerKey, visitorKey, password = "e2e-provider-key", "e2e-visitor-key", "e2e-password"
-	provider := file.NewClient(providerKey, true, false)
-	visitor := file.NewClient(visitorKey, true, false)
+	provider := file.NewClient(p2pTestProviderKey, true, false)
+	visitor := file.NewClient(p2pTestVisitorKey, true, false)
 	for _, c := range []*file.Client{provider, visitor} {
 		if err := file.GetDb().NewClient(c); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := file.GetDb().NewTask(&file.Tunnel{Id: 1, Mode: "p2p", Password: password, Status: true, Client: provider, Target: &file.Target{}}); err != nil {
+	if err := file.GetDb().NewTask(&file.Tunnel{Id: 1, Mode: "p2p", Password: p2pTestPassword, Status: true, Client: provider, Target: &file.Target{}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,14 +111,10 @@ func TestP2PEndToEnd(t *testing.T) {
 	}
 	t.Cleanup(b.StopP2P)
 	bridgeAddr := serveTCP(t, func(c net.Conn) { b.CliProcess(conn.NewConn(c), "tcp") })
-	target := serveTCP(t, func(c net.Conn) {
-		defer func() { _ = c.Close() }()
-		_, _ = io.Copy(c, c)
-	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	rp := NewRPClient(bridgeAddr, providerKey, "tcp", "", "", "", nil, 30, nil)
+	rp := NewRPClient(bridgeAddr, p2pTestProviderKey, "tcp", "", "", "", nil, 30, nil)
 	rpDone := make(chan struct{})
 	go func() {
 		defer close(rpDone)
@@ -72,14 +128,7 @@ func TestP2PEndToEnd(t *testing.T) {
 		v, ok := b.Client.Load(provider.Id)
 		return ok && v.(*bridge.Client).GetNode() != nil && v.(*bridge.Client).GetNode().GetSignal() != nil
 	})
-
-	// Two devices run the same visitor command at once: each gets its own
-	// direct path to the provider.
-	var wg sync.WaitGroup
-	for range 2 {
-		wg.Go(func() { runVisitor(t, ctx, cancel, bridgeAddr, visitorKey, password, target) })
-	}
-	wg.Wait()
+	return p2pTestEnv{ctx: ctx, cancel: cancel, bridgeAddr: bridgeAddr}
 }
 
 // runVisitor starts a visitor with the relay disabled, waits for its direct
@@ -90,10 +139,19 @@ func runVisitor(t *testing.T, ctx context.Context, cancel context.CancelFunc, br
 		Client: &file.Client{Cnf: &file.Config{}},
 	})
 	t.Cleanup(mgr.Close)
-	port := freePort(t)
-	if err := mgr.StartLocalServer(&config.LocalServer{Type: "p2p", Port: port, Password: password, Target: target, TargetType: "tcp"}); err != nil {
-		t.Error(err)
-		return
+	// A free port may be taken by another test before the local server
+	// binds it: try another one then.
+	var port int
+	for attempt := 0; ; attempt++ {
+		port = freePort(t)
+		err := mgr.StartLocalServer(&config.LocalServer{Type: "p2p", Port: port, Password: password, Target: target, TargetType: "tcp"})
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || attempt == 4 {
+			t.Error(err)
+			return
+		}
 	}
 	mgr.mu.Lock()
 	peer := mgr.peers[password]

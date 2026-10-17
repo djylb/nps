@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/holepunch/natprobe"
-	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
 )
@@ -28,7 +26,8 @@ const (
 // p2pAnnouncer chooses the addresses each client probes the observers at,
 // for IPv4 and IPv6 independently. A natprobe listener answers only the
 // observer id it was started with, so a ProbeSpec carries one address per
-// listener: per address family, the first usable candidate of
+// listener (natprobe.Server.ProbeSpecAt): per address family, the first
+// usable candidate of
 //
 //  1. the explicit addresses of p2p_ip (IPs or host names, comma separated;
 //     a name gives its A and AAAA records),
@@ -164,12 +163,8 @@ func (a *p2pAnnouncer) detected(wildcards []netip.Addr) []netip.Addr {
 	return out
 }
 
-// p2pCandidates is a client's candidate addresses, in order of preference.
-type p2pCandidates struct {
-	addrs []netip.Addr
-}
-
-// candidates lists the addresses one client may probe the observers at.
+// candidates lists the addresses one client may probe the observers at, in
+// order of preference.
 // reported is the server address the client says it connected to, used when
 // trusted; client and local are the addresses of its control connection as
 // this server sees them. The explicit addresses of p2p_ip come first. Then a
@@ -180,7 +175,7 @@ type p2pCandidates struct {
 // address means a 1:1 NAT, DNAT or port mapping in between; then the private
 // ones and the detected addresses. Loopback and link-local addresses are
 // kept from p2p_ip alone, where the operator wrote them.
-func (a *p2pAnnouncer) candidates(ctx context.Context, reported string, trusted bool, client, local net.Addr) p2pCandidates {
+func (a *p2pAnnouncer) candidates(ctx context.Context, reported string, trusted bool, client, local net.Addr) []netip.Addr {
 	configured, wildcards, families := a.configured(ctx)
 	clientIP, localIP := addrIP(client), addrIP(local)
 	egress := a.egress(clientIP)
@@ -195,7 +190,7 @@ func (a *p2pAnnouncer) candidates(ctx context.Context, reported string, trusted 
 	}
 	auto = append(auto, localIP, egress)
 	auto = append(auto, a.detected(wildcards)...)
-	return p2pCandidates{addrs: orderCandidates(configured, auto, clientIP, families)}
+	return orderCandidates(configured, auto, clientIP, families)
 }
 
 // orderCandidates joins the explicit and the automatic candidates, drops
@@ -246,28 +241,6 @@ func addrIP(a net.Addr) netip.Addr {
 		return netip.Addr{}
 	}
 	return ap.Addr().Unmap().WithZone("")
-}
-
-// selectObservers returns the observers of each family announced at the
-// first candidate of the family; a family without a candidate is left out.
-// groups are natprobe's groups by index (ObserverSpec.Group), one
-// wildcard-bound group per family.
-func selectObservers(obs []protocol.ObserverSpec, groups []natprobe.ObserverGroup, c p2pCandidates) []protocol.ObserverSpec {
-	var pick [2]netip.Addr
-	for _, a := range c.addrs {
-		if f := p2pFamily(a); !pick[f].IsValid() {
-			pick[f] = a
-		}
-	}
-	var out []protocol.ObserverSpec
-	for _, o := range obs {
-		f := p2pFamily(o.Addr.Addr())
-		if pick[f].IsValid() && int(o.Group) < len(groups) && p2pFamily(groups[o.Group].Bind) == f {
-			o.Addr = netip.AddrPortFrom(pick[f], o.Addr.Port())
-			out = append(out, o)
-		}
-	}
-	return out
 }
 
 // p2pFamily is 0 for IPv4 and 1 for IPv6.

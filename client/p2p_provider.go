@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/djylb/holepunch"
-	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
@@ -44,7 +43,7 @@ func (s *TRPClient) serveP2P(tunnel any, invite p2pproto.Invite) {
 	}
 	// The provider accepts a background session whenever the server offers
 	// one: the visitor relays meanwhile.
-	sess, err := holepunch.AttachSession(s.ctx, tc, p2pOptions(s.localIP, s.mapper, protocol.ModeBackground))
+	sess, err := holepunch.Punch(s.ctx, tc, p2pOptions(s.localIP, s.mapper, true))
 	_ = tc.Close()
 	if err != nil {
 		var herr *holepunch.Error

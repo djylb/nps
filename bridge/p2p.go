@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/djylb/holepunch/coord"
+	"github.com/djylb/holepunch/hostaddr"
 	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/common"
@@ -36,9 +36,6 @@ const (
 	p2pHandshakeTimeout = 10 * time.Second
 	// p2pJoinTimeout bounds the wait for the invited provider's join.
 	p2pJoinTimeout = 10 * time.Second
-	// p2pWatchStop bounds the end of the visitor-stream watch of the join
-	// wait once its read deadline is set.
-	p2pWatchStop = time.Second
 	// p2pSTUNRefresh is how often the STUN servers' names are resolved again,
 	// p2pSTUNRetry while the last resolution found none.
 	p2pSTUNRefresh = 6 * time.Hour
@@ -67,7 +64,6 @@ type p2pService struct {
 	probe    *natprobe.Server
 	co       *coord.Coordinator
 	tlsCfg   *tls.Config
-	groups   []natprobe.ObserverGroup // natprobe's groups by index
 	announce *p2pAnnouncer
 	stun     atomic.Pointer[[]netip.AddrPort]
 	ctx      context.Context // ends when the service closes
@@ -192,7 +188,7 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}
-	reg, probe, groups, err := startObservers(cfg.BasePort, cfg.IP, p2pLogger())
+	reg, probe, err := startObservers(cfg.BasePort, cfg.IP, p2pLogger())
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +196,6 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	svc := &p2pService{
 		probe:    probe,
 		tlsCfg:   &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}},
-		groups:   groups,
 		announce: newP2PAnnouncer(cfg.IP),
 		ctx:      ctx,
 		cancel:   cancel,
@@ -210,11 +205,10 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 		inflight: make(map[int]int),
 	}
 	svc.co, err = coord.New(coord.Config{
-		Registry:     reg,
-		DefaultProbe: probe.ProbeSpec(),
-		Timeouts:     cfg.Timeouts,
-		Policy:       &protocol.Policy{PortMapping: cfg.PortMapping},
-		OnResult:     svc.onResult,
+		Registry: reg,
+		Timeouts: cfg.Timeouts,
+		Policy:   &protocol.Policy{PortMapping: cfg.PortMapping},
+		OnResult: svc.onResult,
 	})
 	if err != nil {
 		cancel()
@@ -228,14 +222,15 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 // startObservers starts natprobe on UDP basePort..basePort+2 of the
 // wildcard addresses of both families, or of IPv4 alone when the host has no
 // IPv6. Binding the wildcard follows an address that changes at run time (a
-// dynamic public address on the host's interface). Without IP_PKTINFO a
-// reply leaves from the address the host routes it from: on a host with
-// several addresses of a family that is the source address towards the
-// client, which the announcer therefore prefers (p2pAnnouncer), and the
-// configuration is logged. The groups returned are natprobe's, by index.
-func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.Registry, *natprobe.Server, []natprobe.ObserverGroup, error) {
-	v4 := natprobe.ObserverGroup{Bind: netip.IPv4Unspecified(), Advertise: p2pScopeHint(netip.IPv4Unspecified(), p2pIP)}
-	v6 := natprobe.ObserverGroup{Bind: netip.IPv6Unspecified(), Advertise: p2pScopeHint(netip.IPv6Unspecified(), p2pIP)}
+// dynamic public address on the host's interface); every session announces
+// the observers at the address its client reaches (p2pAnnouncer,
+// natprobe.Server.ProbeSpecAt). A reply leaves from the address the host
+// routes it from: on a host with several addresses of a family that is the
+// source address towards the client, which the announcer therefore prefers,
+// and the configuration is logged.
+func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.Registry, *natprobe.Server, error) {
+	v4 := natprobe.ObserverGroup{Bind: netip.IPv4Unspecified(), Scope: p2pScope(netip.IPv4Unspecified(), p2pIP)}
+	v6 := natprobe.ObserverGroup{Bind: netip.IPv6Unspecified(), Scope: p2pScope(netip.IPv6Unspecified(), p2pIP)}
 	for f, addrs := range hostAddrs() {
 		if len(addrs) > 1 {
 			logs.Warn("P2P: this host has %d %s addresses %v; observer replies leave from the address the host routes to each client, which is the address announced unless p2p_ip names one",
@@ -247,40 +242,31 @@ func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.
 		reg := natprobe.NewRegistry(natprobe.RegistryConfig{})
 		probe, err := natprobe.NewServer(natprobe.ServerConfig{Registry: reg, Groups: groups, BasePort: basePort, Logger: logger})
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		if err = probe.Start(); err == nil {
 			if dualErr != nil {
 				logs.Info("P2P observers listen on IPv4 only: %v", dualErr)
 			}
-			return reg, probe, groups, nil
+			return reg, probe, nil
 		}
 		_ = probe.Close()
 		if dualErr != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		dualErr = err
 	}
-	return nil, nil, nil, dualErr
+	return nil, nil, dualErr
 }
 
 var p2pFamilyNames = [2]string{"IPv4", "IPv6"}
 
-// Stand-ins for the groups' Advertise, which never reaches a client: holepunch counts the first two as public, the last two as private.
-var (
-	p2pPublicHint4  = netip.MustParseAddr("203.0.113.1")
-	p2pPublicHint6  = netip.MustParseAddr("2001:db8::1")
-	p2pPrivateHint4 = netip.MustParseAddr("10.255.255.1")
-	p2pPrivateHint6 = netip.MustParseAddr("fd00::1")
-)
-
-// p2pScopeHint is a stand-in address of the wildcard's family whose scope is
-// the deployment's: that of p2p_ip's first explicit address of the family,
-// else of the detected outbound address; public when neither is known. A
-// server on a private network announces private observers, so that its
-// clients are classified by their NAT rather than taken for clients on the
-// server's LAN.
-func p2pScopeHint(wildcard netip.Addr, p2pIP string) netip.Addr {
+// p2pScope is the scope of the observers of the wildcard's family: that of
+// p2p_ip's first explicit address of the family, else of the detected
+// outbound address; public when neither is known. A server on a private
+// network announces private observers, so that its clients are classified
+// by their NAT rather than taken for clients on the server's LAN.
+func p2pScope(wildcard netip.Addr, p2pIP string) natprobe.Scope {
 	f := p2pFamily(wildcard)
 	var scopeOf netip.Addr
 	for _, v := range strings.Split(p2pIP, ",") {
@@ -294,33 +280,23 @@ func p2pScopeHint(wildcard netip.Addr, p2pIP string) netip.Addr {
 			scopeOf = d
 		}
 	}
-	public := !scopeOf.IsValid() || p2pPublic(scopeOf)
-	switch {
-	case f == 0 && public:
-		return p2pPublicHint4
-	case f == 0:
-		return p2pPrivateHint4
-	case public:
-		return p2pPublicHint6
+	if !scopeOf.IsValid() || p2pPublic(scopeOf) {
+		return natprobe.ScopePublic
 	}
-	return p2pPrivateHint6
+	return natprobe.ScopePrivate
 }
 
-// hostAddrs returns the host's global unicast addresses by family, for the
-// start-up log.
+// hostAddrs returns the global unicast addresses of the host's live
+// interfaces by family, for the start-up log.
 func hostAddrs() [2][]netip.Addr {
 	var out [2][]netip.Addr
-	addrs, err := net.InterfaceAddrs()
+	list, err := hostaddr.List()
 	if err != nil {
 		return out
 	}
-	for _, ia := range addrs {
-		p, err := netip.ParsePrefix(ia.String())
-		if err != nil {
-			continue
-		}
-		if a := p.Addr().Unmap(); a.IsGlobalUnicast() {
-			out[p2pFamily(a)] = append(out[p2pFamily(a)], a)
+	for _, a := range list {
+		if ip := a.Addr(); a.Usable() && ip.IsGlobalUnicast() {
+			out[p2pFamily(ip)] = append(out[p2pFamily(ip)], ip)
 		}
 	}
 	return out
@@ -376,8 +352,13 @@ func (p *p2pService) close() {
 // the client's first candidate address of each family, and the STUN servers
 // as last resolved.
 func (p *p2pService) spec(c *conn.Conn, reportedServerIP string, trusted bool) *protocol.ProbeSpec {
-	spec := p.probe.ProbeSpec()
-	spec.Observers = selectObservers(spec.Observers, p.groups, p.announce.candidates(p.ctx, reportedServerIP, trusted, c.RemoteAddr(), c.LocalAddr()))
+	return p.specAt(p.announce.candidates(p.ctx, reportedServerIP, trusted, c.RemoteAddr(), c.LocalAddr())...)
+}
+
+// specAt is the ProbeSpec with the observers announced at the first of addrs
+// of each family; a family without an address has no observers.
+func (p *p2pService) specAt(addrs ...netip.Addr) *protocol.ProbeSpec {
+	spec := p.probe.ProbeSpecAt(addrs...)
 	if s := p.stun.Load(); s != nil {
 		spec.STUN = *s
 	}
@@ -479,12 +460,11 @@ func (p *p2pService) onResult(r coord.Result) {
 	}
 	n := p.failed.Add(1)
 	logs.Warn("P2P session %s of task %s between client %s and client %s %s: %s %s (side %q, advice %q; %d connected, %d failed in total)",
-		r.SessionID, task, visitor, provider, r.Outcome, r.Code, r.Detail, r.FailedRole, r.Retry.Advice, p.succeeded.Load(), n)
+		r.SessionID, task, visitor, provider, r.Outcome, r.Reason, r.Detail, r.FailedRole, r.Retry.Advice, p.succeeded.Load(), n)
 }
 
-// handleP2PVisitor serves a WorkP2P stream: it checks the request, invites
-// the provider, waits for its join, opens the session with each side's probe
-// addresses and attaches both streams, turned into TLS, to it.
+// handleP2PVisitor serves a WorkP2P stream: it checks the request and
+// admits it to the visitor's budgets, then opens the session.
 func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelType string) {
 	if !version.SupportsP2P(ver, vs) {
 		logs.Error("P2P request of client %d from %v refused: npc %s (protocol %s) does not speak the P2P protocol of this server, upgrade npc to %s or newer",
@@ -516,9 +496,11 @@ func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelTyp
 }
 
 // openP2PSession runs an admitted visitor request: it invites the provider,
-// waits for its join, opens the session with each side's probe addresses and
-// attaches both streams, turned into TLS, to it. It reports whether a
-// session was opened, which releases the request in onResult.
+// opens the session and attaches the visitor's stream, turned into TLS, at
+// once, so that the visitor measures its NAT while the provider joins; the
+// provider's stream follows when it joins, its observers announced at the
+// server address it reports then. It reports whether a session was opened,
+// which releases the request in onResult.
 func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tunnelType string, req p2pproto.Request) bool {
 	t, node, code, msg := s.resolveP2PTarget(req.Password)
 	if code != "" {
@@ -535,25 +517,13 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 		refuseP2P(c, id, p2pproto.CodeOffline, fmt.Sprintf("client %d unreachable: %v", t.Client.Id, err))
 		return false
 	}
-	joined, ok := waitJoin(svc, c, inv)
-	if !ok {
-		if c.IsClosed() {
-			return false
-		}
-		refuseP2P(c, id, p2pproto.CodeOffline, fmt.Sprintf("client %d did not answer the invitation", t.Client.Id))
-		return false
-	}
-	if joined.decline != "" {
-		refuseP2P(c, id, p2pproto.CodeRefused, fmt.Sprintf("client %d declined: %s", t.Client.Id, joined.decline))
-		return false
-	}
-	pc := joined.c
 	opts := coord.SessionOptions{
 		// The visitor's key is its node, so that devices sharing a vkey do
 		// not share the coordinator's per-key limits.
 		ClientKeys:     [2]string{"client:" + strconv.Itoa(id) + "/" + uuid, "client:" + strconv.Itoa(t.Client.Id)},
 		InitiatorProbe: svc.spec(c, req.ServerIP, p2pDirect(tunnelType)),
-		ResponderProbe: svc.spec(pc, joined.serverIP, joined.trusted),
+		// Replaced when the provider joins (AttachOptions.Probe).
+		ResponderProbe: svc.specAt(),
 		Labels: map[string]string{
 			"task":     strconv.Itoa(t.Id),
 			"visitor":  strconv.Itoa(id),
@@ -565,75 +535,50 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 	}
 	cs, err := svc.co.NewSession(opts)
 	if err != nil {
-		msg := "cannot open a session now: " + err.Error()
-		refuseP2P(pc, t.Client.Id, p2pproto.CodeBusy, msg)
-		refuseP2P(c, id, p2pproto.CodeBusy, msg)
+		refuseP2P(c, id, p2pproto.CodeBusy, "cannot open a session now: "+err.Error())
 		return false
 	}
-	logs.Debug("P2P session %s of task %d: client %d with client %d, probing %v and %v",
-		cs.ID(), t.Id, id, t.Client.Id, opts.InitiatorProbe.Observers, opts.ResponderProbe.Observers)
-	var wg sync.WaitGroup
-	wg.Go(func() { replyAndAttach(pc, cs, protocol.RoleResponder, svc.tlsCfg) })
-	replyAndAttach(c, cs, protocol.RoleInitiator, svc.tlsCfg)
-	wg.Wait()
+	logs.Debug("P2P session %s of task %d: client %d with client %d, probing %v", cs.ID(), t.Id, id, t.Client.Id, opts.InitiatorProbe.Observers)
+	attached := make(chan struct{})
+	go func() {
+		defer close(attached)
+		replyAndAttach(c, cs, protocol.RoleInitiator, svc.tlsCfg, nil)
+	}()
+	defer func() { <-attached }()
+
+	joined, ok := waitJoin(svc, cs, inv)
+	switch {
+	case !ok:
+		// The abort reaches an attached visitor as the session's answer; it
+		// is a no-op when the session has ended already.
+		<-attached
+		cs.Abort(protocol.ReasonPeerOffline, fmt.Sprintf("client %d did not answer the invitation", t.Client.Id))
+	case joined.decline != "":
+		// A provider without P2P offers no direct transport: the visitor
+		// backs off as from a configuration problem.
+		<-attached
+		cs.Abort(protocol.ReasonTransportMismatch, fmt.Sprintf("client %d declined: %s", t.Client.Id, joined.decline))
+	default:
+		probe := svc.spec(joined.c, joined.serverIP, joined.trusted)
+		logs.Debug("P2P session %s: client %d joined, probing %v", cs.ID(), t.Client.Id, probe.Observers)
+		replyAndAttach(joined.c, cs, protocol.RoleResponder, svc.tlsCfg, probe)
+	}
 	return true
 }
 
-// waitJoin waits up to p2pJoinTimeout for the provider's join. The visitor
-// sends nothing until it is answered, so a read on its stream returns only
-// when the stream ends: then the wait ends at once and c is closed.
-func waitJoin(svc *p2pService, c *conn.Conn, inv *p2pInvite) (p2pJoined, bool) {
-	gone := make(chan struct{})
-	watching := make(chan struct{})
-	_ = c.SetReadDeadline(time.Time{})
-	go func() {
-		defer close(watching)
-		var b [1]byte
-		if _, err := c.Read(b[:]); !isTimeout(err) {
-			close(gone) // ended, or broke the protocol
-		}
-	}()
+// waitJoin waits up to p2pJoinTimeout for the provider's join, while the
+// session lasts.
+func waitJoin(svc *p2pService, cs *coord.Session, inv *p2pInvite) (p2pJoined, bool) {
 	timer := time.NewTimer(p2pJoinTimeout)
 	defer timer.Stop()
-	var joined p2pJoined
-	ok := false
 	select {
-	case joined = <-inv.join:
-		ok = true
-	case <-gone:
+	case j := <-inv.join:
+		return j, true
+	case <-cs.Done():
 	case <-timer.C:
 	case <-svc.ctx.Done():
 	}
-	_ = c.SetReadDeadline(time.Now()) // stop the watcher
-	select {
-	case <-watching:
-	case <-time.After(p2pWatchStop):
-		// The stream did not honour the deadline: the watcher might still
-		// take bytes of the TLS handshake, so the stream cannot be used.
-		logs.Warn("P2P: the visitor stream from %v ignored its read deadline", c.RemoteAddr())
-		_ = c.Close()
-		<-watching
-		if ok {
-			_ = joined.c.Close()
-		}
-		return p2pJoined{}, false
-	}
-	select {
-	case <-gone:
-		_ = c.Close()
-		if ok {
-			_ = joined.c.Close()
-		}
-		return p2pJoined{}, false
-	default:
-	}
-	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
-	return joined, ok
-}
-
-func isTimeout(err error) bool {
-	var ne net.Error
-	return errors.As(err, &ne) && ne.Timeout()
+	return p2pJoined{}, false
 }
 
 // handleP2PJoin serves a WorkP2PSession stream: the provider answers an
@@ -704,11 +649,20 @@ func refuseP2P(c *conn.Conn, id int, code, msg string) {
 	_ = c.Close()
 }
 
-// replyAndAttach accepts a control stream, runs the TLS server handshake on
-// it and hands the TLS stream to the session, which owns it from then on. A
-// failure closes the stream and aborts the session, which cannot finish
-// without this side.
-func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tls.Config) {
+// replyAndAttach accepts a control stream and hands it, turned into TLS, to
+// the session, which completes the TLS server handshake and owns the stream
+// from then on; probe, when set, replaces the role's ProbeSpec. A failure
+// closes the stream and aborts the session, which cannot finish without
+// this side.
+func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tls.Config, probe *protocol.ProbeSpec) {
+	select {
+	case <-cs.Done():
+		logs.Debug("P2P session %s ended before the %s at %v attached", cs.ID(), role, c.RemoteAddr())
+		_ = p2pproto.Write(c, p2pproto.Reply{Code: p2pproto.CodeOffline, Message: "the P2P session has ended"})
+		_ = c.Close()
+		return
+	default:
+	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
 	if err := p2pproto.Write(c, p2pproto.Reply{SessionID: cs.ID()}); err != nil {
 		logs.Warn("P2P session %s: the %s at %v is gone: %v", cs.ID(), role, c.RemoteAddr(), err)
@@ -716,18 +670,12 @@ func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tl
 		cs.Abort(protocol.ReasonPeerOffline, "gone_"+string(role))
 		return
 	}
+	_ = c.SetDeadline(time.Time{})
 	// Every failure closes tc; on success the session owns it.
 	//noinspection GoResourceLeak
 	tc := tls.Server(c, cfg)
-	if err := tc.Handshake(); err != nil {
-		logs.Warn("P2P session %s: TLS handshake with the %s at %v failed: %v", cs.ID(), role, c.RemoteAddr(), err)
-		_ = tc.Close()
-		cs.Abort(protocol.ReasonControlInterrupted, "tls_"+string(role))
-		return
-	}
-	_ = c.SetDeadline(time.Time{})
-	if err := cs.Attach(role, tc, coord.AttachOptions{}); err != nil {
-		logs.Warn("P2P session %s: attaching the %s failed: %v", cs.ID(), role, err)
+	if err := cs.Attach(role, tc, coord.AttachOptions{Probe: probe}); err != nil {
+		logs.Warn("P2P session %s: attaching the %s at %v failed: %v", cs.ID(), role, c.RemoteAddr(), err)
 		_ = tc.Close()
 		cs.Abort(protocol.ReasonControlInterrupted, "attach_"+string(role))
 	}

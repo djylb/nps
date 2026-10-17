@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -137,33 +136,15 @@ func GetCertFingerprint(certificate tls.Certificate) []byte {
 	return sum[:]
 }
 
-// EncodePeerTransportData returns the pin of a certificate: the hex SHA-256
-// of its DER encoding.
-func EncodePeerTransportData(certificateDER []byte) string {
-	if len(certificateDER) == 0 {
-		return ""
-	}
-	sum := tlsconn.Fingerprint(certificateDER)
-	return hex.EncodeToString(sum[:])
-}
-
-// PinPeerTransportData returns the pin set holding the certificate pin
-// transportData (EncodePeerTransportData), or an empty set, which trusts no
-// certificate, if transportData is not a pin.
-func PinPeerTransportData(transportData string) *tlsconn.PinSet {
+// PinFingerprint returns the pin set holding the certificate with
+// fingerprint, its SHA-256 (GetCertFingerprint), or an empty set, which
+// trusts no certificate, if fingerprint is not a SHA-256.
+func PinFingerprint(fingerprint []byte) *tlsconn.PinSet {
 	pins := &tlsconn.PinSet{}
-	if pin, ok := parsePin(transportData); ok {
-		pins.Add(pin)
+	if len(fingerprint) == sha256.Size {
+		pins.Add([sha256.Size]byte(fingerprint))
 	}
 	return pins
-}
-
-func parsePin(s string) (pin [sha256.Size]byte, ok bool) {
-	if hex.DecodedLen(len(s)) != len(pin) {
-		return pin, false
-	}
-	_, err := hex.Decode(pin[:], []byte(s))
-	return pin, err == nil
 }
 
 // AddTrustedCert trusts the bridge certificate with fingerprint fp for the
@@ -217,11 +198,7 @@ func NewTlsClientConn(conn net.Conn) net.Conn {
 // sent it, encrypted with the vkey, during the bridge handshake. It ignores
 // SkipVerify: the fingerprint is authenticated by the vkey itself.
 func NewPinnedTlsClientConfig(fingerprint []byte) *tls.Config {
-	pins := &tlsconn.PinSet{}
-	if len(fingerprint) == sha256.Size {
-		pins.Add([sha256.Size]byte(fingerprint))
-	}
-	return pins.ClientConfig(&tls.Config{MinVersion: tls.VersionTLS13})
+	return PinFingerprint(fingerprint).ClientConfig(&tls.Config{MinVersion: tls.VersionTLS13})
 }
 
 // newSelfSigned returns a ten-year self-signed server certificate with a

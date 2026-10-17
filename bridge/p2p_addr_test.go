@@ -130,7 +130,7 @@ func TestP2PCandidates(t *testing.T) {
 		if tc.local != "" {
 			local = udp(tc.local)
 		}
-		got := tc.a.candidates(context.Background(), tc.reported, tc.trusted, udp(tc.client), local).addrs
+		got := tc.a.candidates(context.Background(), tc.reported, tc.trusted, udp(tc.client), local)
 		if !slices.Equal(got, tc.want) {
 			t.Errorf("%s:\n got %v\nwant %v", tc.name, got, tc.want)
 		}
@@ -152,23 +152,31 @@ func TestP2PResolveFailureIsCached(t *testing.T) {
 	}
 }
 
-func TestP2PSelectObservers(t *testing.T) {
-	obs := func(group uint8, id uint8, addr string) protocol.ObserverSpec {
-		return protocol.ObserverSpec{ID: id, Group: group, Addr: netip.MustParseAddrPort(addr)}
+// TestP2PSpecAt checks that a client probes every observer at the first
+// candidate of its family, and no observer of a family without a candidate.
+func TestP2PSpecAt(t *testing.T) {
+	svc := newTestP2PBridge(t).p2p.Load()
+	for _, tc := range []struct {
+		cands []netip.Addr
+		want  map[int]netip.Addr // by family
+	}{
+		{addrs("1.1.1.1", "8.8.8.8", "2606:4700::1111"), map[int]netip.Addr{0: netip.MustParseAddr("1.1.1.1"), 1: netip.MustParseAddr("2606:4700::1111")}},
+		{addrs("1.1.1.1"), map[int]netip.Addr{0: netip.MustParseAddr("1.1.1.1")}},
+		{nil, nil},
+	} {
+		spec := svc.specAt(tc.cands...)
+		var seen [2]bool
+		for _, o := range spec.Observers {
+			f := p2pFamily(o.Addr.Addr())
+			seen[f] = true
+			if want, ok := tc.want[f]; !ok || o.Addr.Addr() != want {
+				t.Errorf("candidates %v: observer %s, want family %d at %v", tc.cands, fmtObservers(spec.Observers), f, tc.want[f])
+			}
+		}
+		if !seen[0] && tc.want[0].IsValid() {
+			t.Errorf("candidates %v: no IPv4 observer", tc.cands)
+		}
 	}
-	wildcard := []natprobe.ObserverGroup{
-		{Bind: netip.IPv4Unspecified(), Advertise: p2pPublicHint4},
-		{Bind: netip.IPv6Unspecified(), Advertise: p2pPublicHint6},
-	}
-	all := []protocol.ObserverSpec{obs(0, 0, "203.0.113.1:6000"), obs(0, 1, "203.0.113.1:6001"), obs(1, 8, "[2001:db8::1]:6000")}
-	dual := selectObservers(all, wildcard, p2pCandidates{addrs: addrs("1.1.1.1", "8.8.8.8", "2606:4700::1111")})
-	if got := fmtObservers(dual); got != "0@1.1.1.1:6000 1@1.1.1.1:6001 8@[2606:4700::1111]:6000" {
-		t.Fatalf("dual stack = %s", got)
-	}
-	if got := fmtObservers(selectObservers(all, wildcard, p2pCandidates{addrs: addrs("1.1.1.1")})); got != "0@1.1.1.1:6000 1@1.1.1.1:6001" {
-		t.Fatalf("IPv4 only = %s", got)
-	}
-
 }
 
 func fmtObservers(obs []protocol.ObserverSpec) string {
@@ -179,14 +187,14 @@ func fmtObservers(obs []protocol.ObserverSpec) string {
 	return strings.Join(out, " ")
 }
 
-func TestP2PScopeHint(t *testing.T) {
-	if got := p2pScopeHint(netip.IPv4Unspecified(), "1.1.1.1"); got != p2pPublicHint4 {
-		t.Errorf("public IPv4 hint = %s", got)
+func TestP2PScope(t *testing.T) {
+	if got := p2pScope(netip.IPv4Unspecified(), "1.1.1.1"); got != natprobe.ScopePublic {
+		t.Errorf("public IPv4 scope = %d", got)
 	}
-	if got := p2pScopeHint(netip.IPv4Unspecified(), "192.168.1.2,::"); got != p2pPrivateHint4 {
-		t.Errorf("private IPv4 hint = %s", got)
+	if got := p2pScope(netip.IPv4Unspecified(), "192.168.1.2,::"); got != natprobe.ScopePrivate {
+		t.Errorf("private IPv4 scope = %d", got)
 	}
-	if got := p2pScopeHint(netip.IPv6Unspecified(), "fd12::1"); got != p2pPrivateHint6 {
-		t.Errorf("private IPv6 hint = %s", got)
+	if got := p2pScope(netip.IPv6Unspecified(), "fd12::1"); got != natprobe.ScopePrivate {
+		t.Errorf("private IPv6 scope = %d", got)
 	}
 }

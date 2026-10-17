@@ -182,21 +182,18 @@ func p2pTransportTimeout(res holepunch.Result) time.Duration {
 	return p2pDefaultTransportTimeout
 }
 
-// p2pLocalPin is this side's certificate pin, sent to the peer as
+// p2pLocalPin is this side's certificate fingerprint, sent to the peer as
 // TransportData.
-func p2pLocalPin() string {
-	cert := crypt.GetCert()
-	if len(cert.Certificate) == 0 {
-		return ""
-	}
-	return crypt.EncodePeerTransportData(cert.Certificate[0])
+func p2pLocalPin() []byte {
+	return crypt.GetCertFingerprint(crypt.GetCert())
 }
 
 // p2pServerTLS is the provider's QUIC TLS configuration: the visitor must
-// present the certificate with pin, the one the visitor sent through the
-// coordinator. No session tickets: every connection authenticates afresh.
-func p2pServerTLS(pin string) *tls.Config {
-	return crypt.PinPeerTransportData(pin).ServerConfig(&tls.Config{
+// present the certificate with pin, the fingerprint the visitor sent through
+// the coordinator. No session tickets: every connection authenticates
+// afresh.
+func p2pServerTLS(pin []byte) *tls.Config {
+	return crypt.PinFingerprint(pin).ServerConfig(&tls.Config{
 		MinVersion:             tls.VersionTLS13,
 		Certificates:           []tls.Certificate{crypt.GetCert()},
 		SessionTicketsDisabled: true,
@@ -204,10 +201,11 @@ func p2pServerTLS(pin string) *tls.Config {
 	})
 }
 
-// p2pClientTLS is the visitor's QUIC TLS configuration: the provider's pin,
-// sent through the coordinator, replaces the chain verification.
-func p2pClientTLS(pin string) *tls.Config {
-	return crypt.PinPeerTransportData(pin).ClientConfig(&tls.Config{
+// p2pClientTLS is the visitor's QUIC TLS configuration: the provider's
+// fingerprint, sent through the coordinator, replaces the chain
+// verification.
+func p2pClientTLS(pin []byte) *tls.Config {
+	return crypt.PinFingerprint(pin).ClientConfig(&tls.Config{
 		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{crypt.GetCert()},
 		ServerName:   crypt.GetFakeDomainName(),
@@ -216,17 +214,14 @@ func p2pClientTLS(pin string) *tls.Config {
 }
 
 // p2pSocket checks that sess settled on a pinned QUIC transport and returns
-// the peer's pin and the punched socket with clear deadlines.
-func p2pSocket(sess *holepunch.Session) (holepunch.Result, string, net.PacketConn, error) {
+// the peer's pin and the punched socket, whose deadlines the session has
+// cleared.
+func p2pSocket(sess *holepunch.Session) (holepunch.Result, []byte, net.PacketConn, error) {
 	res := sess.Result()
-	if res.TransportMode != p2pproto.TransportMode || res.TransportData == "" {
-		return res, "", nil, fmt.Errorf("%w: mode %q", errP2PTransportMode, res.TransportMode)
+	if res.TransportMode != p2pproto.TransportMode || len(res.PeerTransportData) == 0 {
+		return res, nil, nil, fmt.Errorf("%w: mode %q", errP2PTransportMode, res.TransportMode)
 	}
-	pc := sess.PacketConn()
-	if err := pc.SetDeadline(time.Time{}); err != nil {
-		return res, "", nil, err
-	}
-	return res, res.TransportData, pc, nil
+	return res, res.PeerTransportData, sess.PacketConn(), nil
 }
 
 // dialP2PTransport connects QUIC to the provider over the punched path, in

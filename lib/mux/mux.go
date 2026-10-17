@@ -249,7 +249,7 @@ func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) bo
 // also ends when the mux or the stream closes or the write deadline passes.
 func (s *Mux) applyWriteBackpressure(w *sendWindow) error {
 	q := &s.writeQueue
-	if w.priority || q.Len() < writeQueueHighWater {
+	if w.priority.Load() || q.Len() < writeQueueHighWater {
 		return nil
 	}
 	drainSignal(w.deadlineCh)

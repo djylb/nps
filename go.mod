@@ -9,9 +9,9 @@ require (
 	github.com/c4milo/unpackit v1.0.0
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261016223843-a8bfa226a53a
-	github.com/djylb/holepunch v0.0.0-20261016104910-e6c377a36939
-	github.com/djylb/netx v0.0.0-20261017061838-5d6bdc027772
+	github.com/djylb/byterate v0.0.0-20261017115745-d48e971d8f7c
+	github.com/djylb/holepunch v0.0.0-20261017115923-4b347387b08d
+	github.com/djylb/netx v0.0.0-20261017115315-fe2acbb47e36
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/golang/snappy v1.0.0

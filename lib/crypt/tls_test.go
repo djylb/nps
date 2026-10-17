@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"net"
 	"slices"
@@ -13,23 +12,16 @@ import (
 	"time"
 )
 
-func TestPeerTransportDataPin(t *testing.T) {
-	certDER := []byte("test-cert-der")
-	sum := sha256.Sum256(certDER)
-	pin := EncodePeerTransportData(certDER)
-	if pin != hex.EncodeToString(sum[:]) {
-		t.Fatalf("pin %q is not the hex SHA-256 of the certificate", pin)
+func TestPinFingerprint(t *testing.T) {
+	sum := sha256.Sum256([]byte("test-cert-der"))
+	if !PinFingerprint(sum[:]).Contains(sum) {
+		t.Fatal("fingerprint of the certificate is not trusted")
 	}
-	if !PinPeerTransportData(pin).Contains(sum) {
-		t.Fatal("pin of the certificate is not trusted")
-	}
-	for _, bad := range []string{"", "not-hex", pin[:len(pin)-2], pin + "00", EncodePeerTransportData([]byte("other"))} {
-		if PinPeerTransportData(bad).Contains(sum) {
-			t.Fatalf("pin %q trusts the certificate", bad)
+	other := sha256.Sum256([]byte("other"))
+	for _, bad := range [][]byte{nil, sum[:len(sum)-1], append(sum[:], 0), other[:]} {
+		if PinFingerprint(bad).Contains(sum) {
+			t.Fatalf("fingerprint %x trusts the certificate", bad)
 		}
-	}
-	if EncodePeerTransportData(nil) != "" {
-		t.Fatal("empty certificate has a pin")
 	}
 }
 

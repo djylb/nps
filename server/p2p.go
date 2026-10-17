@@ -5,8 +5,8 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
+	"github.com/djylb/holepunch/stun"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
@@ -63,7 +63,7 @@ func p2pSTUNServers(v string) []string {
 	v = strings.TrimSpace(v)
 	switch {
 	case v == "":
-		return natprobe.DefaultSTUNServers()
+		return stun.DefaultServers()
 	case strings.EqualFold(v, p2pSTUNOff):
 		return nil
 	}
