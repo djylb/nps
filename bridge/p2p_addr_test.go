@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
 )
 
@@ -65,13 +64,13 @@ func TestP2PCandidates(t *testing.T) {
 		want     []netip.Addr
 	}{
 		{
-			name:     "explicit p2p_ip first, then the public egress and local addresses before the reported one, detected",
+			name:     "explicit p2p_ip first, then the reported, local, egress and detected addresses",
 			a:        testAnnouncer("9.9.9.9,::", nil, "8.8.4.4", "2001:4860::8844", "8.8.8.8"),
 			reported: "1.0.0.1", trusted: true, client: "4.4.4.4:5000", local: "9.9.9.10:8024",
-			want: addrs("9.9.9.9", "8.8.8.8", "9.9.9.10", "1.0.0.1", "2001:4860::8844"),
+			want: addrs("9.9.9.9", "1.0.0.1", "9.9.9.10", "8.8.8.8", "2001:4860::8844"),
 		},
 		{
-			name:     "behind a NAT the reported address comes before the private local one",
+			name:     "private candidates go last for a public client",
 			a:        testAnnouncer("", nil, "192.168.1.2", "", "10.0.0.5"),
 			reported: "1.0.0.1", trusted: true, client: "4.4.4.4:5000", local: "10.0.0.5:8024",
 			want: addrs("1.0.0.1", "10.0.0.5", "192.168.1.2"),
@@ -152,29 +151,32 @@ func TestP2PResolveFailureIsCached(t *testing.T) {
 	}
 }
 
-// TestP2PSpecAt checks that a client probes every observer at the first
-// candidate of its family, and no observer of a family without a candidate.
+// TestP2PSpecAt checks that a client probes the observers at every
+// candidate of a served family, the first candidate in the first observer
+// group, and no observer of a family without a candidate.
 func TestP2PSpecAt(t *testing.T) {
 	svc := newTestP2PBridge(t).p2p.Load()
-	for _, tc := range []struct {
-		cands []netip.Addr
-		want  map[int]netip.Addr // by family
-	}{
-		{addrs("1.1.1.1", "8.8.8.8", "2606:4700::1111"), map[int]netip.Addr{0: netip.MustParseAddr("1.1.1.1"), 1: netip.MustParseAddr("2606:4700::1111")}},
-		{addrs("1.1.1.1"), map[int]netip.Addr{0: netip.MustParseAddr("1.1.1.1")}},
-		{nil, nil},
+	ipv6 := len(svc.probe.ProbeSpecAt(netip.IPv6Loopback()).Observers) > 0 // false on a host without IPv6
+	for _, cands := range [][]netip.Addr{
+		addrs("1.1.1.1", "8.8.8.8", "2606:4700::1111"),
+		addrs("1.1.1.1"),
+		nil,
 	} {
-		spec := svc.specAt(tc.cands...)
-		var seen [2]bool
-		for _, o := range spec.Observers {
-			f := p2pFamily(o.Addr.Addr())
-			seen[f] = true
-			if want, ok := tc.want[f]; !ok || o.Addr.Addr() != want {
-				t.Errorf("candidates %v: observer %s, want family %d at %v", tc.cands, fmtObservers(spec.Observers), f, tc.want[f])
+		spec := svc.specAt(cands...)
+		var got []netip.Addr
+		for _, o := range spec.Observers { // ordered by family, then id
+			if a := o.Addr.Addr(); !slices.Contains(got, a) {
+				got = append(got, a)
 			}
 		}
-		if !seen[0] && tc.want[0].IsValid() {
-			t.Errorf("candidates %v: no IPv4 observer", tc.cands)
+		var want []netip.Addr
+		for _, c := range cands {
+			if c.Is4() || ipv6 {
+				want = append(want, c)
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("candidates %v: observers %s, want them at %v", cands, fmtObservers(spec.Observers), want)
 		}
 	}
 }
@@ -185,16 +187,4 @@ func fmtObservers(obs []protocol.ObserverSpec) string {
 		out = append(out, fmt.Sprintf("%d@%s", o.ID, o.Addr))
 	}
 	return strings.Join(out, " ")
-}
-
-func TestP2PScope(t *testing.T) {
-	if got := p2pScope(netip.IPv4Unspecified(), "1.1.1.1"); got != natprobe.ScopePublic {
-		t.Errorf("public IPv4 scope = %d", got)
-	}
-	if got := p2pScope(netip.IPv4Unspecified(), "192.168.1.2,::"); got != natprobe.ScopePrivate {
-		t.Errorf("private IPv4 scope = %d", got)
-	}
-	if got := p2pScope(netip.IPv6Unspecified(), "fd12::1"); got != natprobe.ScopePrivate {
-		t.Errorf("private IPv6 scope = %d", got)
-	}
 }

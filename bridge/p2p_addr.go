@@ -23,31 +23,27 @@ const (
 	p2pResolveRetry = 30 * time.Second
 )
 
-// p2pAnnouncer chooses the addresses each client probes the observers at,
-// for IPv4 and IPv6 independently. A natprobe listener answers only the
-// observer id it was started with, so a ProbeSpec carries one address per
-// listener (natprobe.Server.ProbeSpecAt): per address family, the first
-// usable candidate of
+// p2pAnnouncer lists the addresses each client probes the observers at, in
+// order of preference:
 //
 //  1. the explicit addresses of p2p_ip (IPs or host names, comma separated;
 //     a name gives its A and AAAA records),
-//  2. the source address this host sends to the client from and the local
-//     address of the client's control connection on this server, when they
-//     are public,
-//  3. the server address the client itself connected to, when it reports
+//  2. the server address the client itself connected to, when it reports
 //     one and reached the bridge directly (not through a WebSocket proxy),
-//     then the private ones of 2,
+//  3. the local address of the client's control connection on this server
+//     and the source address this host sends to the client from,
 //  4. the host's outbound address for the wildcards of p2p_ip, asked again
 //     for every session: IPv4 for 0.0.0.0, IPv6 for ::.
 //
 // Automatic candidates that are loopback or link-local are dropped.
 //
 // The families are those p2p_ip names (by address, wildcard or resolved
-// name), both when p2p_ip is empty, which detects both. For a client at a
-// public address, candidates that are not public (common.IsPublicIPStrict)
-// go last: behind a port mapping or a 1:1 NAT they are this host's view, not
-// the client's. One address per family means no observer of a family is
-// announced at an address the client cannot reach while another is.
+// name), both when p2p_ip is empty, which detects both. Every candidate is
+// announced, as its own observer group, up to natprobe's limits, which keep
+// the first: a client probes them all and an unreachable one costs nothing
+// but its probes. For a client at a public address, candidates that are not
+// public (common.IsPublicIPStrict) go last: behind a port mapping or a 1:1
+// NAT they are this host's view, not the client's.
 type p2pAnnouncer struct {
 	p2pIP  string
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -164,31 +160,18 @@ func (a *p2pAnnouncer) detected(wildcards []netip.Addr) []netip.Addr {
 }
 
 // candidates lists the addresses one client may probe the observers at, in
-// order of preference.
-// reported is the server address the client says it connected to, used when
-// trusted; client and local are the addresses of its control connection as
-// this server sees them. The explicit addresses of p2p_ip come first. Then a
-// public egress address, the source this host replies to the client from,
-// which on a host with several addresses is where every observer reply
-// comes from; a public local address, the address the client reached; the
-// reported address, which comes first when both are private, as a private
-// address means a 1:1 NAT, DNAT or port mapping in between; then the private
-// ones and the detected addresses. Loopback and link-local addresses are
-// kept from p2p_ip alone, where the operator wrote them.
+// order of preference. reported is the server address the client says it
+// connected to, used when trusted; client and local are the addresses of its
+// control connection as this server sees them. Loopback and link-local
+// addresses are kept from p2p_ip alone, where the operator wrote them.
 func (a *p2pAnnouncer) candidates(ctx context.Context, reported string, trusted bool, client, local net.Addr) []netip.Addr {
 	configured, wildcards, families := a.configured(ctx)
-	clientIP, localIP := addrIP(client), addrIP(local)
-	egress := a.egress(clientIP)
+	clientIP := addrIP(client)
 	var auto []netip.Addr
-	for _, own := range []netip.Addr{egress, localIP} {
-		if p2pPublic(own) {
-			auto = append(auto, own)
-		}
-	}
 	if ip, err := netip.ParseAddr(reported); trusted && err == nil {
-		auto = append(auto, ip.Unmap())
+		auto = append(auto, ip)
 	}
-	auto = append(auto, localIP, egress)
+	auto = append(auto, addrIP(local), a.egress(clientIP))
 	auto = append(auto, a.detected(wildcards)...)
 	return orderCandidates(configured, auto, clientIP, families)
 }

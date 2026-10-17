@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/djylb/holepunch/coord"
-	"github.com/djylb/holepunch/hostaddr"
 	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/common"
@@ -188,7 +187,7 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}
-	reg, probe, err := startObservers(cfg.BasePort, cfg.IP, p2pLogger())
+	reg, probe, err := startObservers(cfg.BasePort, p2pLogger())
 	if err != nil {
 		return nil, err
 	}
@@ -219,24 +218,22 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	return svc, nil
 }
 
+// p2pSlots is how many addresses one session announces the observers at per
+// address family: natprobe allows 16 observers of a family, three ports each.
+const p2pSlots = 5
+
 // startObservers starts natprobe on UDP basePort..basePort+2 of the
 // wildcard addresses of both families, or of IPv4 alone when the host has no
-// IPv6. Binding the wildcard follows an address that changes at run time (a
-// dynamic public address on the host's interface); every session announces
-// the observers at the address its client reaches (p2pAnnouncer,
-// natprobe.Server.ProbeSpecAt). A reply leaves from the address the host
-// routes it from: on a host with several addresses of a family that is the
-// source address towards the client, which the announcer therefore prefers,
-// and the configuration is logged.
-func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.Registry, *natprobe.Server, error) {
-	v4 := natprobe.ObserverGroup{Bind: netip.IPv4Unspecified(), Scope: p2pScope(netip.IPv4Unspecified(), p2pIP)}
-	v6 := natprobe.ObserverGroup{Bind: netip.IPv6Unspecified(), Scope: p2pScope(netip.IPv6Unspecified(), p2pIP)}
-	for f, addrs := range hostAddrs() {
-		if len(addrs) > 1 {
-			logs.Warn("P2P: this host has %d %s addresses %v; observer replies leave from the address the host routes to each client, which is the address announced unless p2p_ip names one",
-				len(addrs), p2pFamilyNames[f], addrs)
-		}
-	}
+// IPv6. Binding the wildcard follows addresses that change at run time, and
+// a wildcard socket replies from the address each probe was sent to, so one
+// set of sockets serves every address of the host: each session announces
+// the observers at up to p2pSlots addresses of each family that its client
+// may reach (p2pAnnouncer, natprobe.Server.ProbeSpecAt). Whether an
+// observation counts as public or LAN evidence follows each announced
+// address.
+func startObservers(basePort int, logger *slog.Logger) (*natprobe.Registry, *natprobe.Server, error) {
+	v4 := natprobe.ObserverGroup{Bind: netip.IPv4Unspecified(), Slots: p2pSlots}
+	v6 := natprobe.ObserverGroup{Bind: netip.IPv6Unspecified(), Slots: p2pSlots}
 	var dualErr error
 	for _, groups := range [][]natprobe.ObserverGroup{{v4, v6}, {v4}} {
 		reg := natprobe.NewRegistry(natprobe.RegistryConfig{})
@@ -259,51 +256,8 @@ func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.
 	return nil, nil, dualErr
 }
 
-var p2pFamilyNames = [2]string{"IPv4", "IPv6"}
-
-// p2pScope is the scope of the observers of the wildcard's family: that of
-// p2p_ip's first explicit address of the family, else of the detected
-// outbound address; public when neither is known. A server on a private
-// network announces private observers, so that its clients are classified
-// by their NAT rather than taken for clients on the server's LAN.
-func p2pScope(wildcard netip.Addr, p2pIP string) natprobe.Scope {
-	f := p2pFamily(wildcard)
-	var scopeOf netip.Addr
-	for _, v := range strings.Split(p2pIP, ",") {
-		if ip, err := netip.ParseAddr(strings.Trim(strings.TrimSpace(v), "[]")); err == nil && !ip.Unmap().IsUnspecified() && p2pFamily(ip) == f {
-			scopeOf = ip.Unmap()
-			break
-		}
-	}
-	if !scopeOf.IsValid() {
-		if d := newP2PAnnouncer("").detect(wildcard); d.IsValid() && !d.IsLoopback() {
-			scopeOf = d
-		}
-	}
-	if !scopeOf.IsValid() || p2pPublic(scopeOf) {
-		return natprobe.ScopePublic
-	}
-	return natprobe.ScopePrivate
-}
-
-// hostAddrs returns the global unicast addresses of the host's live
-// interfaces by family, for the start-up log.
-func hostAddrs() [2][]netip.Addr {
-	var out [2][]netip.Addr
-	list, err := hostaddr.List()
-	if err != nil {
-		return out
-	}
-	for _, a := range list {
-		if ip := a.Addr(); a.Usable() && ip.IsGlobalUnicast() {
-			out[p2pFamily(ip)] = append(out[p2pFamily(ip)], ip)
-		}
-	}
-	return out
-}
-
-// p2pLogger passes natprobe's log lines (a wildcard bind on a host with
-// several addresses, stopped listeners) to the nps log.
+// p2pLogger passes natprobe's log lines (stopped listeners, a wildcard bind
+// that cannot reply from the probed address) to the nps log.
 func p2pLogger() *slog.Logger { return slog.New(p2pLogHandler{}) }
 
 type p2pLogHandler struct{ attrs []slog.Attr }
@@ -349,14 +303,16 @@ func (p *p2pService) close() {
 }
 
 // spec is the ProbeSpec of one client: natprobe's observers announced at
-// the client's first candidate address of each family, and the STUN servers
-// as last resolved.
+// the client's candidate addresses in order of preference, and the STUN
+// servers as last resolved.
 func (p *p2pService) spec(c *conn.Conn, reportedServerIP string, trusted bool) *protocol.ProbeSpec {
 	return p.specAt(p.announce.candidates(p.ctx, reportedServerIP, trusted, c.RemoteAddr(), c.LocalAddr())...)
 }
 
-// specAt is the ProbeSpec with the observers announced at the first of addrs
-// of each family; a family without an address has no observers.
+// specAt is the ProbeSpec with the observers announced at addrs, up to
+// p2pSlots of each family in order (natprobe.Server.ProbeSpecAt keeps the
+// first addresses when the spec is full); a family without an address has
+// no observers.
 func (p *p2pService) specAt(addrs ...netip.Addr) *protocol.ProbeSpec {
 	spec := p.probe.ProbeSpecAt(addrs...)
 	if s := p.stun.Load(); s != nil {
