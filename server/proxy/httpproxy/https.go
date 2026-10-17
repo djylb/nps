@@ -161,20 +161,12 @@ func (s *HttpsServer) Start() error {
 			tlsConfig = s.certMagicTls
 			handshakeTimeout = autoSSLHandshakeTimeout
 		} else {
-			cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
+			cert, err := s.selectCert(host, serverName)
 			if err != nil {
-				if s.hasDefaultCert {
-					cert, err = s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
-					if err != nil {
-						logs.Error("Failed to load certificate: %v", err)
-					}
-				}
-				if err != nil {
-					logs.Debug("Certificate handled by backend")
-					_ = c.SetDeadline(time.Time{})
-					s.handleHttpsProxy(host, c, rb, serverName)
-					return
-				}
+				logs.Debug("Certificate handled by backend")
+				_ = c.SetDeadline(time.Time{})
+				s.handleHttpsProxy(host, c, rb, serverName)
+				return
 			}
 			tlsConfig = &tls.Config{
 				Certificates: []tls.Certificate{*cert},

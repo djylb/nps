@@ -553,6 +553,11 @@ type Host struct {
 	sync.RWMutex
 }
 
+// HasCert reports whether the entry has a certificate configured.
+func (s *Host) HasCert() bool {
+	return s.CertFile != "" && s.KeyFile != ""
+}
+
 func (s *Host) Update(h *Host) {
 	s.HeaderChange = h.HeaderChange
 	s.RespHeaderChange = h.RespHeaderChange

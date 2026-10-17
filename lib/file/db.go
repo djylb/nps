@@ -553,7 +553,7 @@ func (s *DbUtils) GetHostById(id int) (h *Host, err error) {
 
 // GetInfoByHost get key by host from x
 func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err error) {
-	host = common.GetIpByAddr(host)
+	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
 	hostLength := len(host)
 
 	requestPath := r.RequestURI
@@ -587,8 +587,9 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 			continue
 		}
 
-		equaled := v.Host == host
-		matched := equaled || (strings.HasPrefix(v.Host, "*") && strings.HasSuffix(host, v.Host[1:]))
+		name := strings.ToLower(v.Host)
+		equaled := name == host
+		matched := equaled || (strings.HasPrefix(name, "*") && strings.HasSuffix(host, name[1:]))
 		if !matched {
 			continue
 		}
@@ -637,78 +638,92 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 	return nil, errors.New("the host could not be parsed")
 }
 
+// FindCertByHost returns the host entry that terminates TLS for the server
+// name host. An entry for the exact name beats a wildcard one, and a longer
+// wildcard suffix a shorter one; among entries for the same name, one with
+// TLS configured (a certificate or AutoSSL) wins, then the one with the
+// shortest location, then the lowest id, so the choice never depends on map
+// order. Names compare case-insensitively, ignoring a trailing dot.
 func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
+	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
 	if host == "" {
 		return nil, errors.New("invalid Host")
 	}
 
-	host = common.GetIpByAddr(host)
-	hostLength := len(host)
-
-	ids := HostIndex.Lookup(host)
-	if len(ids) == 0 {
-		return nil, errors.New("the host could not be parsed")
-	}
-
-	var bestMatch *Host
-	var bestDomainLength int
-	for _, id := range ids {
+	var best *Host
+	var bestRank certHostRank
+	for _, id := range HostIndex.Lookup(host) {
 		value, ok := s.JsonDb.Hosts.Load(id)
 		if !ok {
 			continue
 		}
 		v := value.(*Host)
-
-		if v.IsClose || (v.Scheme == "http") {
+		if v.IsClose || v.Scheme == "http" {
 			continue
 		}
-
-		curDomainLength := len(strings.TrimPrefix(v.Host, "*"))
-		if hostLength < curDomainLength {
-			continue
-		}
-
-		equaled := v.Host == host
-		matched := false
-		location := v.Location == "/" || v.Location == ""
-		if equaled {
-			if location {
-				bestMatch = v
-				break
-			}
-			matched = true
-		} else if strings.HasPrefix(v.Host, "*") && strings.HasSuffix(host, v.Host[1:]) {
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-
-		if bestMatch == nil {
-			bestMatch = v
-			bestDomainLength = curDomainLength
-			continue
-		}
-		if curDomainLength > bestDomainLength {
-			bestMatch = v
-			bestDomainLength = curDomainLength
-			continue
-		}
-		if curDomainLength == bestDomainLength {
-			if equaled && (len(v.Location) <= len(bestMatch.Location) || strings.HasPrefix(bestMatch.Host, "*")) {
-				bestMatch = v
-				bestDomainLength = curDomainLength
-				continue
-			}
-			if (len(v.Location) <= len(bestMatch.Location)) && strings.HasPrefix(bestMatch.Host, "*") {
-				bestMatch = v
-				bestDomainLength = curDomainLength
-				continue
-			}
+		rank, ok := rankCertHost(v, host)
+		if ok && (best == nil || rank.better(bestRank)) {
+			best, bestRank = v, rank
 		}
 	}
-	if bestMatch != nil {
-		return bestMatch, nil
+	if best != nil {
+		return best, nil
 	}
 	return nil, errors.New("the host could not be parsed")
+}
+
+type certHostRank struct {
+	exact    bool
+	suffix   int
+	tls      bool
+	location int
+	id       int
+}
+
+func (r certHostRank) better(o certHostRank) bool {
+	switch {
+	case r.exact != o.exact:
+		return r.exact
+	case r.suffix != o.suffix:
+		return r.suffix > o.suffix
+	case r.tls != o.tls:
+		return r.tls
+	case r.location != o.location:
+		return r.location < o.location
+	default:
+		return r.id < o.id
+	}
+}
+
+// rankCertHost reports whether the entry v serves the lower-case name host
+// and how specifically: "*.example.com" serves any name below example.com,
+// at any depth, but never example.com itself.
+func rankCertHost(v *Host, host string) (certHostRank, bool) {
+	name := strings.TrimSuffix(strings.ToLower(v.Host), ".")
+	r := certHostRank{id: v.Id, location: len(v.Location), tls: v.HasCert() || v.AutoSSL}
+	if v.Location == "" {
+		r.location = 1
+	}
+	if name == host {
+		r.exact = true
+		return r, true
+	}
+	suffix, ok := strings.CutPrefix(name, "*")
+	if !ok || !strings.HasSuffix(host, suffix) {
+		return r, false
+	}
+	r.suffix = len(suffix)
+	return r, true
+}
+
+// RangeClientCertHosts calls fn, until it returns false, for each host entry
+// of the client clientID with a certificate configured.
+func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*Host) bool) {
+	s.JsonDb.Hosts.Range(func(_, value any) bool {
+		v := value.(*Host)
+		if v.Client == nil || v.Client.Id != clientID || !v.HasCert() {
+			return true
+		}
+		return fn(v)
+	})
 }
