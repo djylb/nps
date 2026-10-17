@@ -28,16 +28,13 @@ const (
 	socks5HandshakeTimeout = 10 * time.Second
 )
 
+// SOCKS5 reply codes (RFC 1928 section 6).
 const (
-	succeeded uint8 = iota
-	serverFailure
-	notAllowed
-	networkUnreachable
-	hostUnreachable
-	connectionRefused
-	ttlExpired
-	commandNotSupported
-	addrTypeNotSupported
+	succeeded            uint8 = 0
+	serverFailure        uint8 = 1
+	notAllowed           uint8 = 2
+	commandNotSupported  uint8 = 7
+	addrTypeNotSupported uint8 = 8
 )
 
 const (
@@ -87,8 +84,10 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 		return
 	}
 
+	// clientConn wraps c only, which every path below closes or relays.
+	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(c)
-	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.CONN_TCP, s.Task.Target.LocalProxy, s.Task)
+	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
 		replyCode := serverFailure
@@ -110,7 +109,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 		_ = c.Close()
 		return
 	}
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.CONN_TCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
 }
 
 func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dest socks5Address) {
@@ -159,7 +158,8 @@ func (s *TunnelModeServer) waitForSocks5AssociateControl(c net.Conn, session *so
 			logs.Debug("set socks5 associate control deadline error: %v", err)
 		}
 		if _, err := c.Read(buf[:]); err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				select {
 				case <-session.Done():
 					session.Wait()

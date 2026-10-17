@@ -185,6 +185,8 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 		logs.Error("secret write password failed: %v", err)
 		return nil, err
 	}
+	// The wrapper only writes to sc, which the deferred cleanup closes on failure.
+	//noinspection GoResourceLeak
 	if _, err := conn.NewConn(sc).SendInfo(&link, ""); err != nil {
 		logs.Trace("Secret SendInfo failed: %v", err)
 		return nil, err
@@ -240,17 +242,25 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 	switch l.Type {
 	case "p2ps":
 		task.Mode = "mixProxy"
+		// serve owns the server and closes it on failure or shutdown.
+		//noinspection GoResourceLeak
 		return mgr.serve(fmt.Sprintf("http/socks5 proxy on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessMix, pb, task, true))
 	case "p2pt":
 		task.Mode = "p2pt"
+		// serve owns the server and closes it on failure or shutdown.
+		//noinspection GoResourceLeak
 		return mgr.serve(fmt.Sprintf("tcp trans on port %d", l.Port), proxy.NewTunnelModeServer(proxy.HandleTrans, pb, task, true))
 	}
 
 	var errs []error
-	if l.TargetType == common.CONN_ALL || l.TargetType == common.CONN_TCP {
+	if l.TargetType == common.ConnAll || l.TargetType == common.ConnTCP {
+		// serve owns the server and closes it on failure or shutdown.
+		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local tcp listener on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)))
 	}
-	if l.TargetType == common.CONN_ALL || l.TargetType == common.CONN_UDP {
+	if l.TargetType == common.ConnAll || l.TargetType == common.ConnUDP {
+		// serve owns the server and closes it on failure or shutdown.
+		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local udp listener on port %d", l.Port), proxy.NewUdpModeServer(pb, task, true)))
 	}
 	return errors.Join(errs...)
@@ -340,6 +350,8 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	if err := mgr.ctx.Err(); err != nil {
 		return nil, serverInfo{}, err
 	}
+	// Every failure closes pc; otherwise it is returned or owned by the tunnel stored in mgr.
+	//noinspection GoResourceLeak
 	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP)
 	if err != nil {
 		logs.Error("secret NewConn failed: %v", err)
@@ -358,14 +370,14 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	if Ver <= 5 {
 		return pc, server, nil
 	}
-	if err = SendType(pc, common.WORK_VISITOR, uuid); err != nil {
+	if err = SendType(pc, common.WorkVisitor, uuid); err != nil {
 		logs.Error("secret SendType failed: %v", err)
 		_ = pc.Close()
 		return nil, serverInfo{}, err
 	}
 	var c net.Conn
 	var tunnel any
-	if mgr.cfg.Tp == common.CONN_QUIC {
+	if mgr.cfg.Tp == common.ConnQUIC {
 		qc, ok := pc.Conn.(*conn.QuicAutoCloseConn)
 		if !ok {
 			_ = pc.Close()
@@ -408,7 +420,9 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := SendType(conn.NewConn(c), common.WORK_SECRET, mgr.getUUID()); err != nil {
+	// The wrapper only writes to c, which is closed on failure and returned otherwise.
+	//noinspection GoResourceLeak
+	if err := SendType(conn.NewConn(c), common.WorkSecret, mgr.getUUID()); err != nil {
 		logs.Error("secret SendType failed: %v", err)
 		_ = c.Close()
 		return nil, err

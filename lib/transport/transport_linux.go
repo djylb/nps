@@ -10,8 +10,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const SO_ORIGINAL_DST = 80
-const TCP_KEEPIDLE = unix.TCP_KEEPIDLE
+const SoOriginalDst = 80
+const TCPKeepIdle = unix.TCP_KEEPIDLE
 
 // networkPort reads a sockaddr port, which the kernel stores in network byte
 // order regardless of the host's endianness.
@@ -41,7 +41,7 @@ func GetAddress(conn net.Conn) (string, error) {
 			unix.SYS_GETSOCKOPT,
 			fd,
 			uintptr(unix.SOL_IP),
-			uintptr(SO_ORIGINAL_DST),
+			uintptr(SoOriginalDst),
 			uintptr(unsafe.Pointer(&sa4)),
 			uintptr(unsafe.Pointer(&sz4)),
 			0,
@@ -59,7 +59,7 @@ func GetAddress(conn net.Conn) (string, error) {
 			unix.SYS_GETSOCKOPT,
 			fd,
 			uintptr(unix.SOL_IPV6),
-			uintptr(SO_ORIGINAL_DST),
+			uintptr(SoOriginalDst),
 			uintptr(unsafe.Pointer(&sa6)),
 			uintptr(unsafe.Pointer(&sz6)),
 			0,

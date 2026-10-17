@@ -175,7 +175,7 @@ func TestBuildAddress(t *testing.T) {
 
 func TestGetWriteStr(t *testing.T) {
 	got := GetWriteStr("alpha", "beta")
-	want := []byte("alpha" + CONN_DATA_SEQ + "beta" + CONN_DATA_SEQ)
+	want := []byte("alpha" + ConnDataSeq + "beta" + ConnDataSeq)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("GetWriteStr() = %q, want %q", string(got), string(want))
 	}

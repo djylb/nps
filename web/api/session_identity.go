@@ -7,20 +7,8 @@ import (
 	webservice "github.com/djylb/nps/web/service"
 )
 
-func currentSessionIdentity(c Context) *webservice.SessionIdentity {
-	return currentSessionIdentityWithResolverAndFallback(c, webservice.DefaultPermissionResolver(), "")
-}
-
 func ApplySessionIdentity(c Context, identity *webservice.SessionIdentity) {
 	applySessionIdentity(c, identity)
-}
-
-func ClearSessionIdentity(c Context) {
-	clearSessionIdentity(c)
-}
-
-func currentSessionIdentityWithResolver(c Context, resolver webservice.PermissionResolver) *webservice.SessionIdentity {
-	return currentSessionIdentityWithResolverAndFallback(c, resolver, "")
 }
 
 func currentSessionIdentityWithResolverAndFallback(c Context, resolver webservice.PermissionResolver, fallbackAdminUsername string) *webservice.SessionIdentity {

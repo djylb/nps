@@ -85,15 +85,15 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 			case "bridge":
 				// bridge://tcp|tls|ws|wss|web
 				switch strings.ToLower(targetStr) {
-				case common.CONN_TCP:
+				case common.ConnTCP:
 					return s.VirtualTcpListener.DialVirtual(link.RemoteAddr)
-				case common.CONN_TLS:
+				case common.ConnTLS:
 					return s.VirtualTlsListener.DialVirtual(link.RemoteAddr)
-				case common.CONN_WS:
+				case common.ConnWS:
 					return s.VirtualWsListener.DialVirtual(link.RemoteAddr)
-				case common.CONN_WSS:
+				case common.ConnWSS:
 					return s.VirtualWssListener.DialVirtual(link.RemoteAddr)
-				case common.CONN_WEB:
+				case common.ConnWeb:
 					return tool.GetWebServerConn(link.RemoteAddr)
 				default:
 					return nil, fmt.Errorf("invalid bridge target %q in %q", targetStr, raw)
@@ -103,7 +103,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 			}
 		}
 		network := "tcp"
-		if link.ConnType == common.CONN_UDP {
+		if link.ConnType == common.ConnUDP {
 			network = "udp"
 		}
 		target, err = net.DialTimeout(network, common.FormatAddress(link.Host), linkOpenTimeout(link))

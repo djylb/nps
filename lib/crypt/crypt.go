@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -35,34 +34,11 @@ func AesEncrypt(origData, key []byte) ([]byte, error) {
 	return crypted, nil
 }
 
-func AesDecrypt(crypted, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	blockSize := block.BlockSize()
-	blockMode := cipher.NewCBCDecrypter(block, key[:blockSize])
-	origData := make([]byte, len(crypted))
-	blockMode.CryptBlocks(origData, crypted)
-	origData, err = PKCS5UnPadding(origData)
-	return origData, err
-}
-
 // PKCS5Padding Completion when the length is insufficient
 func PKCS5Padding(ciphertext []byte, blockSize int) []byte {
 	padding := blockSize - len(ciphertext)%blockSize
 	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
 	return append(ciphertext, padtext...)
-}
-
-// PKCS5UnPadding Remove excess
-func PKCS5UnPadding(origData []byte) ([]byte, error) {
-	length := len(origData)
-	unpadding := int(origData[length-1])
-	if (length - unpadding) < 0 {
-		return nil, errors.New("len error")
-	}
-	return origData[:(length - unpadding)], nil
 }
 
 // EncryptBytes AES-GCM

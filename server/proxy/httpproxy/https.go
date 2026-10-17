@@ -32,18 +32,18 @@ const (
 
 type HttpsServer struct {
 	*HttpServer
-	httpsStatus        bool
 	httpsListener      net.Listener
 	httpsServeListener *HttpsListener
 	httpsServer        *http.Server
 	cert               *cache.CertManager
 	certMagicTls       *tls.Config
-	hasDefaultCert     bool
 	defaultCertHash    string
 	defaultCertFile    string
 	defaultKeyFile     string
 	ticketKeys         [][32]byte
 	tlsNextProtos      []string
+	httpsStatus        bool
+	hasDefaultCert     bool
 }
 
 func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
@@ -230,7 +230,9 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 	}
 	logs.Info("New HTTPS connection, clientId %d, host %s, remote address %v", host.Client.Id, sni, c.RemoteAddr())
 	task := file.NewTunnelByHost(host, s.HttpsPort)
-	_ = s.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.CONN_TCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
+	// DealClient owns the connection and closes it.
+	//noinspection GoResourceLeak
+	_ = s.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
 }
 
 func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni string) {
@@ -251,7 +253,9 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 	}
 	logs.Info("New TLS offload connection, clientId %d, host %s, remote %v -> %s", host.Client.Id, sni, tlsConn.RemoteAddr(), targetAddr)
 	task := file.NewTunnelByHost(host, s.HttpsPort)
-	_ = s.DealClient(conn.NewConn(tlsConn), host.Client, targetAddr, nil, common.CONN_TCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
+	// DealClient owns the connection and closes it.
+	//noinspection GoResourceLeak
+	_ = s.DealClient(conn.NewConn(tlsConn), host.Client, targetAddr, nil, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
 }
 
 func (s *HttpsServer) Close() error {

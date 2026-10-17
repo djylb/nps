@@ -258,8 +258,8 @@ func normalizeTask(t *Tunnel) {
 		t.HttpProxy = true
 		t.Socks5Proxy = false
 	}
-	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
-		t.TargetType = common.CONN_ALL
+	if t.TargetType != common.ConnTCP && t.TargetType != common.ConnUDP {
+		t.TargetType = common.ConnAll
 	}
 	t.CompileDestACL()
 }

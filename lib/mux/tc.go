@@ -20,30 +20,6 @@ type TrafficControl struct {
 	params []string
 }
 
-func listIPs() (map[string]string, error) {
-
-	ips := make(map[string]string)
-
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, i := range interfaces {
-		byName, err := net.InterfaceByName(i.Name)
-		if err != nil {
-			return nil, err
-		}
-		if !strings.Contains(byName.Name, "Loopback") && !strings.Contains(byName.Name, "isatap") {
-			addresses, _ := byName.Addrs()
-			for _, v := range addresses {
-				ips[byName.Name] = v.String()
-			}
-		}
-	}
-	return ips, nil
-}
-
 // GetEthByIp get ip and Eth information by Eth name
 func GetEthByIp(ipAddr string) (eth *Eth, err error) {
 	var interfaces []net.Interface

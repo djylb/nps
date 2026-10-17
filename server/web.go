@@ -27,7 +27,7 @@ type httpServeTarget struct {
 	serve    func(net.Listener) error
 }
 
-var webHandler http.Handler = http.NotFoundHandler()
+var webHandler = http.NotFoundHandler()
 
 func SetWebHandler(handler http.Handler) {
 	if handler == nil {

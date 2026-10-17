@@ -31,18 +31,18 @@ type HttpProxy struct {
 	Http3Port             int
 	HttpProxyCache        *index.AnyIntIndex
 	HttpOnlyPass          string
-	AddOrigin             bool
 	HttpPortStr           string
 	HttpsPortStr          string
 	Http3PortStr          string
-	Http3Bridge           bool
-	ErrorAlways           bool
 	TimeLimitErrorContent []byte
 	FlowLimitErrorContent []byte
-	ForceAutoSsl          bool
 	Magic                 *certmagic.Config
 	Acme                  *certmagic.ACMEIssuer
 	ResponseHeaderTimeout time.Duration
+	AddOrigin             bool
+	Http3Bridge           bool
+	ErrorAlways           bool
+	ForceAutoSsl          bool
 }
 
 func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
@@ -205,6 +205,13 @@ func (s *HttpProxy) Close() error {
 
 // ChangeHostAndHeader Change headers and host of request
 func (s *HttpProxy) ChangeHostAndHeader(r *http.Request, host string, header string, httpOnly bool) {
+	s.changeHostAndHeader(r, r.Header, host, header, httpOnly)
+}
+
+// changeHostAndHeader applies the host and header rules to r. The
+// ${http_upgrade} and ${http_connection} variables read conn, the header the
+// client sent, since connection-scoped headers may already be gone from r.
+func (s *HttpProxy) changeHostAndHeader(r *http.Request, conn http.Header, host string, header string, httpOnly bool) {
 	cfg := servercfg.Current()
 	// 设置 Host 头部信息
 	scheme := "http"
@@ -292,8 +299,8 @@ func (s *HttpProxy) ChangeHostAndHeader(r *http.Request, host string, header str
 			"${scheme_host}", scheme+"://"+origHost, // 组合变量
 
 			// 连接头
-			"${http_upgrade}", r.Header.Get("Upgrade"),
-			"${http_connection}", r.Header.Get("Connection"),
+			"${http_upgrade}", conn.Get("Upgrade"),
+			"${http_connection}", conn.Get("Connection"),
 
 			// 端口
 			"${server_port}", serverPort,

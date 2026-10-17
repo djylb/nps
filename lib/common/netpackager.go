@@ -35,9 +35,9 @@ func NewUDPHeader(rsv uint16, frag uint8, addr *Addr) *UDPHeader {
 }
 
 type Addr struct {
-	Type uint8
 	Host string
 	Port uint16
+	Type uint8
 }
 
 func (addr *Addr) String() string {

@@ -46,7 +46,7 @@ func useTestDb(t *testing.T) {
 	t.Cleanup(func() { file.Db = old })
 }
 
-// visitorRequest sends req on a WORK_P2P stream served by b and returns the
+// visitorRequest sends req on a WorkP2P stream served by b and returns the
 // reply.
 func visitorRequest(t *testing.T, b *Bridge, vs string, req p2pproto.Request) (p2pproto.Reply, error) {
 	t.Helper()

@@ -2,9 +2,9 @@
 // control stream before it turns into a TLS stream for the hole punching
 // library, and the names both sides agree on.
 //
-// A visitor opens a stream with WORK_P2P and sends a Request; the bridge
-// sends the provider an Invite (P2P_PUNCH_START) on its signal connection,
-// the provider opens a stream with WORK_P2P_SESSION carrying a Join, and the
+// A visitor opens a stream with WorkP2P and sends a Request; the bridge
+// sends the provider an Invite (P2PPunchStart) on its signal connection,
+// the provider opens a stream with WorkP2PSession carrying a Join, and the
 // bridge answers both with a Reply once the session exists. After an
 // accepting Reply,
 // npc runs a TLS client handshake that pins the bridge certificate and the

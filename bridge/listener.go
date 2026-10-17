@@ -20,7 +20,7 @@ func (s *Bridge) StartTunnel() error {
 	// tcp
 	s.VirtualTcpListener = conn.NewVirtualListener(nil)
 	go conn.Accept(s.VirtualTcpListener, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), common.CONN_TCP)
+		s.CliProcess(conn.NewConn(c), common.ConnTCP)
 	})
 	if ServerTcpEnable {
 		go func() {
@@ -38,7 +38,7 @@ func (s *Bridge) StartTunnel() error {
 	// tls
 	s.VirtualTlsListener = conn.NewVirtualListener(nil)
 	go conn.Accept(s.VirtualTlsListener, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{crypt.GetCert()}})), common.CONN_TLS)
+		s.CliProcess(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{crypt.GetCert()}})), common.ConnTLS)
 	})
 	if ServerTlsEnable {
 		go func() {
@@ -57,7 +57,7 @@ func (s *Bridge) StartTunnel() error {
 	s.VirtualWsListener = conn.NewVirtualListener(nil)
 	wsLn := conn.NewWSListener(s.VirtualWsListener, connection.BridgePath, connection.BridgeTrustedIps, connection.BridgeRealIpHeader)
 	go conn.Accept(wsLn, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), common.CONN_WS)
+		s.CliProcess(conn.NewConn(c), common.ConnWS)
 	})
 	if ServerWsEnable {
 		go func() {
@@ -76,7 +76,7 @@ func (s *Bridge) StartTunnel() error {
 	s.VirtualWssListener = conn.NewVirtualListener(nil)
 	wssLn := conn.NewWSSListener(s.VirtualWssListener, connection.BridgePath, crypt.GetCert(), connection.BridgeTrustedIps, connection.BridgeRealIpHeader)
 	go conn.Accept(wssLn, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), common.CONN_WSS)
+		s.CliProcess(conn.NewConn(c), common.ConnWSS)
 	})
 	if ServerWssEnable {
 		go func() {

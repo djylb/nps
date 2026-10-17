@@ -33,13 +33,15 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	}
 	defer s.Task.Client.CutConn()
 
-	connType := common.CONN_TCP
+	connType := common.ConnTCP
 	host, _ := s.Task.Target.GetRandomTarget()
 	localProxy := false
 	needAck := false
 
 	var rb []byte
 	tee := conn.NewTeeConn(src)
+	// c wraps src only; it is closed on failure and CopyWaitGroup closes it otherwise.
+	//noinspection GoResourceLeak
 	c := conn.NewConn(tee)
 	lk, err := c.GetLinkInfo()
 	if err != nil || lk == nil {
@@ -60,12 +62,12 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 				localProxy = s.Task.Target.LocalProxy
 			}
 		} else {
-			if s.Task.TargetType == common.CONN_ALL {
+			if s.Task.TargetType == common.ConnAll {
 				switch lk.ConnType {
-				case common.CONN_UDP:
-					connType = common.CONN_UDP
+				case common.ConnUDP:
+					connType = common.ConnUDP
 				default:
-					connType = common.CONN_TCP
+					connType = common.ConnTCP
 				}
 			} else {
 				connType = s.Task.TargetType
@@ -97,12 +99,14 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	// for local ones.
 	proxyProtocol := s.Task.Target.ProxyProtocol
 	visitor := c.Conn
-	if connType == common.CONN_UDP {
+	if connType == common.ConnUDP {
 		// The visitor stream carries length-framed datagrams, where a single
 		// stream-level PROXY header would be taken for a frame.
 		proxyProtocol = 0
 		if localProxy {
 			// The target is a UDP socket: unframe on the visitor side.
+			// CopyWaitGroup closes visitor.
+			//noinspection GoResourceLeak
 			visitor = conn.WrapFramed(c.Conn)
 		}
 	}

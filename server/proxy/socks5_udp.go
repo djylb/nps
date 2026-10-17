@@ -445,6 +445,8 @@ func (s *socks5UDPSession) openTunnel() error {
 	}
 	timeoutConn := conn.NewTimeoutConn(target, link.Option.Timeout)
 	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate)
+	// The session owns the framed connection and closes it in Close.
+	//noinspection GoResourceLeak
 	flowConn := conn.NewFlowConn(rateConn, task.Flow, task.Client.Flow)
 	s.framed = conn.WrapFramed(flowConn)
 	return nil

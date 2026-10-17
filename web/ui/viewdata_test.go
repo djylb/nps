@@ -1,18 +1,17 @@
 package ui
 
 import (
-	"html/template"
 	"testing"
 )
 
 func TestLoginPageCommonDataMap(t *testing.T) {
 	data := LoginPageCommonData{
 		WebBaseURL:     "/nps",
-		HeadCustomCode: template.HTML("<meta name=\"x\" content=\"1\">"),
+		HeadCustomCode: "<meta name=\"x\" content=\"1\">",
 		Version:        "1.0.0",
 		Year:           2026,
 		CaptchaOpen:    true,
-		CaptchaHTML:    template.HTML("<div>captcha</div>"),
+		CaptchaHTML:    "<div>captcha</div>",
 	}.Map()
 
 	if data["web_base_url"] != "/nps" || data["version"] != "1.0.0" || data["captcha_open"] != true {
@@ -26,7 +25,7 @@ func TestLoginPageCommonDataMap(t *testing.T) {
 func TestManagementPageCommonDataMap(t *testing.T) {
 	data := ManagementPageCommonData{
 		WebBaseURL:     "/nps",
-		HeadCustomCode: template.HTML("<style>.x{}</style>"),
+		HeadCustomCode: "<style>.x{}</style>",
 		Version:        "1.0.0",
 		Year:           2026,
 		IsAdmin:        true,

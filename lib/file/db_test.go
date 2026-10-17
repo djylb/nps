@@ -194,6 +194,8 @@ func fill(t *testing.T, v reflect.Value) {
 			} else if sf.Anonymous && sf.Name == "Health" {
 				fill(t, f)
 			}
+		default:
+			// Remaining kinds are not used by the persisted structs.
 		}
 	}
 }

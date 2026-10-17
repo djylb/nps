@@ -332,7 +332,7 @@ type Client struct {
 	files           sync.Map           // map[fileUUID]nodeUUID
 	retryTime       int                // it will add 1 when ping not ok until to 3 will close the client
 	closed          uint32
-	lastConnectNano int64
+	lastConnectNano atomic.Int64
 }
 
 func NewClient(id int, n *Node) *Client {
@@ -371,14 +371,14 @@ func (c *Client) AddNode(n *Node) {
 }
 
 func (c *Client) MarkConnectedNow() {
-	atomic.StoreInt64(&c.lastConnectNano, time.Now().UnixNano())
+	c.lastConnectNano.Store(time.Now().UnixNano())
 }
 
 func (c *Client) InConnectGraceWindow(window time.Duration) bool {
 	if window <= 0 {
 		return false
 	}
-	v := atomic.LoadInt64(&c.lastConnectNano)
+	v := c.lastConnectNano.Load()
 	if v <= 0 {
 		return false
 	}

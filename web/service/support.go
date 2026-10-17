@@ -111,28 +111,8 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	return result
 }
 
-func ChangeTunnelStatus(id int, name, action string) error {
-	return changeTunnelStatus(id, name, action)
-}
-
-func ChangeHostStatus(id int, name, action string) error {
-	return changeHostStatus(id, name, action)
-}
-
-func ClearClientStatusByID(id int, name string) error {
-	return clearClientStatusByID(id, name)
-}
-
 func ClearClientStatus(client *file.Client, name string) {
 	clearClientStatus(client, name)
-}
-
-func ClientOwnsTunnel(clientID, tunnelID int) bool {
-	return clientOwnsTunnel(clientID, tunnelID)
-}
-
-func ClientOwnsHost(clientID, hostID int) bool {
-	return clientOwnsHost(clientID, hostID)
 }
 
 func changeTunnelStatus(id int, name, action string) error {
@@ -248,14 +228,6 @@ func clearClientStatusByID(id int, name string) error {
 	}
 	clearClientStatus(client, name)
 	return DefaultBackend().repo().SaveClient(client)
-}
-
-func clientOwnsTunnel(clientID, tunnelID int) bool {
-	return DefaultBackend().repo().ClientOwnsTunnel(clientID, tunnelID)
-}
-
-func clientOwnsHost(clientID, hostID int) bool {
-	return DefaultBackend().repo().ClientOwnsHost(clientID, hostID)
 }
 
 func clearClientStatus(client *file.Client, name string) {

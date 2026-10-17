@@ -156,6 +156,8 @@ func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 		go flowSession(time.Minute * time.Duration(minute))
 	}
 	InitDashboardData()
+	// RunList owns the server; stopping the task closes it.
+	//noinspection GoResourceLeak
 	if svr := NewMode(Bridge, cnf); svr != nil {
 		if err := svr.Start(); err != nil {
 			logs.Error("%v", err)

@@ -69,22 +69,6 @@ func GetCert() tls.Certificate {
 	return cert
 }
 
-func GetPublicKeyPEM() (string, error) {
-	if len(cert.Certificate) == 0 {
-		return "", fmt.Errorf("no certificate available")
-	}
-	leaf, err := x509.ParseCertificate(cert.Certificate[0])
-	if err != nil {
-		return "", fmt.Errorf("failed to parse certificate: %w", err)
-	}
-	pubDER, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal public key: %w", err)
-	}
-	pemBlock := &pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}
-	return string(pem.EncodeToMemory(pemBlock)), nil
-}
-
 func GetRSAPublicKeyPEM() (string, error) {
 	if rsaKey == nil {
 		return "", fmt.Errorf("RSA key not initialized")
@@ -110,8 +94,11 @@ func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
 	if err == nil {
 		return plain, nil
 	}
-	//nolint:staticcheck // legacy PKCS1v15 compatibility
-	//lint:ignore SA1019 legacy PKCS1v15 compatibility
+	// The web login and register pages encrypt with JSEncrypt, which only
+	// produces PKCS#1 v1.5 ciphertext, so this fallback stays.
+	//nolint:staticcheck // PKCS#1 v1.5 is required by the JSEncrypt login form
+	//lint:ignore SA1019 PKCS#1 v1.5 is required by the JSEncrypt login form
+	//noinspection GoDeprecation
 	plain, legacyErr := rsa.DecryptPKCS1v15(rand.Reader, rsaKey, cipherBytes)
 	if legacyErr != nil {
 		return nil, fmt.Errorf("RSA decrypt error: oaep: %w; pkcs1v15: %v", err, legacyErr)

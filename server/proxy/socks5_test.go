@@ -17,7 +17,7 @@ type testUDP5Bridge struct {
 	peers chan net.Conn
 }
 
-func (b *testUDP5Bridge) SendLinkInfo(clientID int, link *conn.Link, t *file.Tunnel) (net.Conn, error) {
+func (b *testUDP5Bridge) SendLinkInfo(int, *conn.Link, *file.Tunnel) (net.Conn, error) {
 	serverSide, peerSide := net.Pipe()
 	b.peers <- peerSide
 	return serverSide, nil
@@ -31,7 +31,7 @@ func (b *testUDP5Bridge) CliProcess(*conn.Conn, string) {}
 
 type failBridge struct{}
 
-func (failBridge) SendLinkInfo(clientID int, link *conn.Link, t *file.Tunnel) (net.Conn, error) {
+func (failBridge) SendLinkInfo(int, *conn.Link, *file.Tunnel) (net.Conn, error) {
 	return nil, io.EOF
 }
 
@@ -167,9 +167,9 @@ func waitForTCP(t *testing.T, addr string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		conn, err := net.DialTimeout("tcp4", addr, 100*time.Millisecond)
+		c, err := net.DialTimeout("tcp4", addr, 100*time.Millisecond)
 		if err == nil {
-			_ = conn.Close()
+			_ = c.Close()
 			return
 		}
 		if time.Now().After(deadline) {

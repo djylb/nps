@@ -272,7 +272,7 @@ func TestApp(t *testing.T) {
 			// get 100md from user
 			startTime = time.Now()
 			readLen := 0
-			for i := 0; i < 2<<32; i++ {
+			for i := int64(0); i < 2<<32; i++ {
 				n, err := userConn.Read(b)
 				fmt.Println(n)
 				if err != nil {
@@ -319,7 +319,7 @@ func TestUser(t *testing.T) {
 	startTime := time.Now()
 	// get 100md from app
 	readLen := 0
-	for i := 0; i < 2<<32; i++ {
+	for i := int64(0); i < 2<<32; i++ {
 		n, err := appConn.Read(b)
 		if err != nil {
 			log.Fatal(err)

@@ -24,11 +24,11 @@ type ActionSpec struct {
 	APIPath          string
 	LegacyPath       string
 	Permission       string
-	ClientScope      bool
 	Ownership        ActionOwnership
-	Protected        bool
 	RequiredFeatures []PageFeature
 	Handler          Handler
+	ClientScope      bool
+	Protected        bool
 }
 
 type ActionEntry struct {
@@ -38,10 +38,10 @@ type ActionEntry struct {
 	APIPath          string          `json:"api_path"`
 	LegacyPath       string          `json:"legacy_path,omitempty"`
 	Permission       string          `json:"permission,omitempty"`
-	ClientScope      bool            `json:"client_scope"`
 	Ownership        ActionOwnership `json:"ownership,omitempty"`
-	Protected        bool            `json:"protected"`
 	RequiredFeatures []PageFeature   `json:"required_features,omitempty"`
+	ClientScope      bool            `json:"client_scope"`
+	Protected        bool            `json:"protected"`
 }
 
 func SessionActionCatalog(app *App) []ActionSpec {
@@ -73,13 +73,13 @@ func ProtectedActionCatalog(app *App) []ActionSpec {
 		{Controller: "index", Name: "hostlist", Method: http.MethodPost, APIPath: "/api/v1/index/hostlist", LegacyPath: "/index/hostlist", Permission: webservice.PermissionHostsRead, ClientScope: true, Protected: true, Handler: app.HostList},
 		{Controller: "index", Name: "addhost", Method: http.MethodPost, APIPath: "/api/v1/index/addhost", LegacyPath: "/index/addhost", Permission: webservice.PermissionHostsCreate, ClientScope: true, Protected: true, Handler: app.AddHost},
 		{Controller: "index", Name: "getonetunnel", Method: http.MethodPost, APIPath: "/api/v1/index/getonetunnel", LegacyPath: "/index/getonetunnel", Permission: webservice.PermissionTunnelsRead, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.GetOneTunnel},
-		{Controller: "index", Name: "edit", Method: http.MethodPost, APIPath: "/api/v1/index/edit", LegacyPath: "/index/edit", Permission: webservice.PermissionTunnelsUpdate, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.EditTunnel},
+		{Controller: "index", Name: "edit", Method: http.MethodPost, APIPath: "/api/v1/index/edit", LegacyPath: "/index/edit", Permission: webservice.PermissionTunnelsUpdate, ClientScope: true, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.EditTunnel},
 		{Controller: "index", Name: "start", Method: http.MethodPost, APIPath: "/api/v1/index/start", LegacyPath: "/index/start", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StartTunnel},
 		{Controller: "index", Name: "stop", Method: http.MethodPost, APIPath: "/api/v1/index/stop", LegacyPath: "/index/stop", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StopTunnel},
 		{Controller: "index", Name: "clear", Method: http.MethodPost, APIPath: "/api/v1/index/clear", LegacyPath: "/index/clear", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.ClearTunnel},
 		{Controller: "index", Name: "del", Method: http.MethodPost, APIPath: "/api/v1/index/del", LegacyPath: "/index/del", Permission: webservice.PermissionTunnelsDelete, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.DeleteTunnel},
 		{Controller: "index", Name: "gethost", Method: http.MethodPost, APIPath: "/api/v1/index/gethost", LegacyPath: "/index/gethost", Permission: webservice.PermissionHostsRead, Ownership: ActionOwnershipHost, Protected: true, Handler: app.GetHost},
-		{Controller: "index", Name: "edithost", Method: http.MethodPost, APIPath: "/api/v1/index/edithost", LegacyPath: "/index/edithost", Permission: webservice.PermissionHostsUpdate, Ownership: ActionOwnershipHost, Protected: true, Handler: app.EditHost},
+		{Controller: "index", Name: "edithost", Method: http.MethodPost, APIPath: "/api/v1/index/edithost", LegacyPath: "/index/edithost", Permission: webservice.PermissionHostsUpdate, ClientScope: true, Ownership: ActionOwnershipHost, Protected: true, Handler: app.EditHost},
 		{Controller: "index", Name: "starthost", Method: http.MethodPost, APIPath: "/api/v1/index/starthost", LegacyPath: "/index/starthost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StartHost},
 		{Controller: "index", Name: "stophost", Method: http.MethodPost, APIPath: "/api/v1/index/stophost", LegacyPath: "/index/stophost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StopHost},
 		{Controller: "index", Name: "clearhost", Method: http.MethodPost, APIPath: "/api/v1/index/clearhost", LegacyPath: "/index/clearhost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.ClearHost},

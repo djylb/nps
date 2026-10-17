@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -228,18 +229,24 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rp := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			//req = req.WithContext(context.WithValue(req.Context(), "origReq", r))
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			proxy.KeepClientForwarding(pr)
+			req := pr.Out
 			if host.TargetIsHttps {
 				req.URL.Scheme = "https"
 			} else {
 				req.URL.Scheme = "http"
 			}
-			//logs.Debug("Director: set req.URL.Scheme=%s, req.URL.Host=%s", req.URL.Scheme, req.URL.Host)
-			s.ChangeHostAndHeader(req, host.HostChange, host.HeaderChange, isHttpOnlyRequest)
+			// Header rules cannot change connection-scoped headers; ReverseProxy
+			// has already set them for the outbound hop.
+			hop := snapshotHeaders(req.Header, hopHeaders)
+			s.changeHostAndHeader(req, pr.In.Header, host.HostChange, host.HeaderChange, isHttpOnlyRequest)
+			restoreHeaders(req.Header, hopHeaders, hop)
 			req.URL.Host = r.Host
 			if isHttpOnlyRequest {
-				req.Header["X-Forwarded-For"] = nil
+				req.Header.Del("X-Forwarded-For")
+			} else {
+				proxy.AppendForwardedFor(req.Header, pr.In.RemoteAddr)
 			}
 		},
 		Transport: tr,
@@ -308,6 +315,8 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		return
 	}
 	rawConn := conn.GetConn(targetConn, link.Crypt, link.Compress, host.Client.Rate, true, isLocal)
+	// Every path below closes netConn, which wraps wsConn, or hands it to the relay.
+	//noinspection GoResourceLeak
 	wsConn := conn.NewRWConn(rawConn)
 	var netConn net.Conn = wsConn
 
@@ -454,6 +463,31 @@ var hopHeaders = []string{
 	"Trailer",
 	"Transfer-Encoding",
 	"Upgrade",
+}
+
+// snapshotHeaders copies the values of names in h.
+func snapshotHeaders(h http.Header, names []string) http.Header {
+	saved := make(http.Header, len(names))
+	for _, name := range names {
+		key := http.CanonicalHeaderKey(name)
+		if v, ok := h[key]; ok {
+			saved[key] = slices.Clone(v)
+		}
+	}
+	return saved
+}
+
+// restoreHeaders resets names in h to the values recorded in saved, removing
+// those saved does not hold.
+func restoreHeaders(h http.Header, names []string, saved http.Header) {
+	for _, name := range names {
+		key := http.CanonicalHeaderKey(name)
+		if v, ok := saved[key]; ok {
+			h[key] = v
+		} else {
+			delete(h, key)
+		}
+	}
 }
 
 // relayHandshakeRefusal writes the refusal while the backend connection is

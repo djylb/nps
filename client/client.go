@@ -40,7 +40,7 @@ type TRPClient struct {
 	cancel         context.CancelFunc
 	healthChecker  *HealthChecker
 	once           sync.Once
-	startedNano    int64
+	startedNano    atomic.Int64
 	reasonMu       sync.RWMutex
 	closeReason    string
 }
@@ -79,7 +79,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 		if s.uuid == "" {
 			s.uuid = uuid
 		}
-		err = SendType(c, common.WORK_MAIN, s.uuid)
+		err = SendType(c, common.WorkMain, s.uuid)
 		if err != nil {
 			HasFailed = true
 			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
@@ -92,7 +92,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	//start a channel connection
 	tunnel := s.newChan()
 	if Ver > 4 {
-		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, common.WORK_MAIN, s.proxyUrl)
+		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, common.WorkMain, s.proxyUrl)
 		if tunnel == nil {
 			logs.Error("The tunnel is not connected")
 			return
@@ -107,7 +107,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 			}
 			mc.SetPriority()
 			c := conn.NewConn(mc)
-			err = SendType(c, common.WORK_MAIN, s.uuid)
+			err = SendType(c, common.WorkMain, s.uuid)
 			if err != nil {
 				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 				_ = mc.Close()
@@ -123,7 +123,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 			}
 			sc := conn.NewQuicAutoCloseConn(stream, t)
 			c := conn.NewConn(sc)
-			err = SendType(c, common.WORK_MAIN, s.uuid)
+			err = SendType(c, common.WorkMain, s.uuid)
 			if err != nil {
 				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 				_ = sc.Close()
@@ -165,7 +165,7 @@ func (s *TRPClient) handleMain(tunnel any) {
 			return
 		}
 		switch flags {
-		case common.P2P_PUNCH_START:
+		case common.P2PPunchStart:
 			raw, err := s.signal.GetShortLenContent()
 			if err != nil {
 				logs.Warn("%v", err)
@@ -205,7 +205,7 @@ func (s *TRPClient) newChan() any {
 		s.uuid = uuid
 	}
 	s.server = server
-	err = SendType(tunnel, common.WORK_CHAN, s.uuid)
+	err = SendType(tunnel, common.WorkChan, s.uuid)
 	if err != nil {
 		logs.Error("Failed to send type to server %s error: %v", s.svrAddr, err)
 		HasFailed = true
@@ -214,7 +214,7 @@ func (s *TRPClient) newChan() any {
 		return nil
 	}
 	var tun any
-	if Ver > 4 && s.bridgeConnType == common.CONN_QUIC {
+	if Ver > 4 && s.bridgeConnType == common.ConnQUIC {
 		qc, ok := tunnel.Conn.(*conn.QuicAutoCloseConn)
 		if !ok {
 			logs.Error("failed to get quic session")
@@ -263,6 +263,8 @@ func (s *TRPClient) newChan() any {
 }
 
 func (s *TRPClient) handleChan(src net.Conn) {
+	// The wrapper only reads from src, which every path below closes or hands on.
+	//noinspection GoResourceLeak
 	lk, err := conn.NewConn(src).GetLinkInfo()
 	if err != nil || lk == nil {
 		_ = src.Close()
@@ -298,6 +300,8 @@ func (s *TRPClient) handleChan(src net.Conn) {
 			return
 		}
 		rwc := conn.GetConn(src, lk.Crypt, lk.Compress, nil, false, false)
+		// The virtual listener owns c from here on.
+		//noinspection GoResourceLeak
 		c := conn.WrapConn(rwc, src)
 		vl.ServeVirtual(c)
 		return
@@ -320,6 +324,8 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		}
 		targetConn, err = dialer.DialContext(s.ctx, lk.ConnType, lk.Host)
 	} else {
+		// CopyWaitGroup closes targetConn.
+		//noinspection GoResourceLeak
 		targetConn, err = net.DialTimeout(lk.ConnType, lk.Host, lk.Option.Timeout)
 	}
 	if err != nil {
@@ -391,7 +397,7 @@ func (s *TRPClient) closing() {
 }
 
 func (s *TRPClient) markConnected() {
-	atomic.StoreInt64(&s.startedNano, time.Now().UnixNano())
+	s.startedNano.Store(time.Now().UnixNano())
 }
 
 func (s *TRPClient) noteCloseReason(reason string) {
@@ -434,7 +440,7 @@ func (s *TRPClient) snapshotCloseReason() string {
 }
 
 func (s *TRPClient) logDisconnectSummary() {
-	started := atomic.LoadInt64(&s.startedNano)
+	started := s.startedNano.Load()
 	reason := s.getCloseReason()
 	if started == 0 && s.signal == nil && s.tunnel == nil && reason == "" {
 		return

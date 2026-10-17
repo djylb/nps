@@ -42,12 +42,6 @@ func CalibrateTimeOffset(server string) (time.Duration, error) {
 	return time.Until(ntpTime), nil
 }
 
-func TimeOffset() time.Duration {
-	timeMutex.RLock()
-	defer timeMutex.RUnlock()
-	return timeOffset
-}
-
 func TimeNow() time.Time {
 	SyncTime()
 	timeMutex.RLock()

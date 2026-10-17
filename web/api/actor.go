@@ -24,10 +24,6 @@ func AnonymousActor() *Actor {
 	}
 }
 
-func AdminActor(username string) *Actor {
-	return AdminActorWithFallback(username, "")
-}
-
 func AdminActorWithFallback(username, fallbackAdminUsername string) *Actor {
 	username = strings.TrimSpace(username)
 	if username == "" {

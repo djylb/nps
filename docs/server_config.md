@@ -41,8 +41,8 @@ nps.exe -conf_path=D:\test\nps
 | `web_username`         | Web 管理员账号（默认 `admin`）                  |
 | `web_password`         | Web 管理员密码（默认 `123`，建议修改！）              |
 | `web_open_ssl`         | 是否启用 Web 面板 HTTPS（默认 `false`，启用需配置证书）  |
-| `web_cert_file`        | Web HTTPS 证书文件路径                       |
-| `web_key_file`         | Web HTTPS 证书密钥文件路径                     |
+| `web_cert_file`        | Web HTTPS 证书文件路径（相对路径按运行目录解析，也可直接填写 PEM 内容） |
+| `web_key_file`         | Web HTTPS 证书密钥文件路径（同上）              |
 | `web_base_url`         | Web 管理主路径（默认 `/`，适用于 Web 反向代理时调整路径）    |
 | `open_captcha`         | 是否启用验证码                                |
 | `pow_bits`             | PoW 验证位数（默认 `20`）                      |

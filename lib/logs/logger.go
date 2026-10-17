@@ -226,10 +226,7 @@ func Debug(msg string, v ...interface{})  { Logger.Debug().Msgf(msg, v...) }
 func Info(msg string, v ...interface{})   { Logger.Info().Msgf(msg, v...) }
 func Warn(msg string, v ...interface{})   { Logger.Warn().Msgf(msg, v...) }
 func Error(msg string, v ...interface{})  { Logger.Error().Msgf(msg, v...) }
-func Fatal(msg string, v ...interface{})  { Logger.Fatal().Msgf(msg, v...) }
-func Panic(msg string, v ...interface{})  { Logger.Panic().Msgf(msg, v...) }
 func Println(v ...interface{})            { Logger.Println(v...) }
-func Print(v ...interface{})              { Logger.Print(v...) }
 func Printf(msg string, v ...interface{}) { Logger.Printf(msg, v...) }
 
 // SetLevel updates the global minimum level

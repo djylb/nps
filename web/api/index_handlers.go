@@ -70,6 +70,8 @@ func (a *App) EditTunnel(c Context) {
 			ajax(c, "modified error,the client is not exist", 0)
 		case errors.Is(err, webservice.ErrPortUnavailable):
 			ajax(c, "The port cannot be opened because it may has been occupied or is no longer allowed.", 0)
+		case errors.Is(err, webservice.ErrTunnelLimitExceeded):
+			ajax(c, "The number of tunnels exceeds the limit", 0)
 		default:
 			ajax(c, err.Error(), 0)
 		}
@@ -231,6 +233,8 @@ func (a *App) EditHost(c Context) {
 			ajax(c, "host has exist", 0)
 		case errors.Is(err, webservice.ErrClientNotFound):
 			ajax(c, "modified error, the client is not exist", 0)
+		case errors.Is(err, webservice.ErrTunnelLimitExceeded):
+			ajax(c, "The number of tunnels exceeds the limit", 0)
 		default:
 			ajax(c, err.Error(), 0)
 		}

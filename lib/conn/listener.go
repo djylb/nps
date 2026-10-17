@@ -21,16 +21,6 @@ const HandshakeTimeout = 10 * time.Second
 
 const maxAcceptBackoff = time.Second
 
-func NewTcpListenerAndProcess(addr string, f func(c net.Conn), listener *net.Listener) error {
-	var err error
-	*listener, err = net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	Accept(*listener, f)
-	return nil
-}
-
 func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
 	kcpListener, err := kcp.ListenWithOptions(addr, nil, 10, 3)
 	if err != nil {

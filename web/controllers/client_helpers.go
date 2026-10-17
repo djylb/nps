@@ -12,7 +12,3 @@ func RemoveRepeatedElement(arr []string) (newArr []string) {
 func clearClientStatus(client *file.Client, name string) {
 	webservice.ClearClientStatus(client, name)
 }
-
-func ClearClientStatusByID(id int, name string) error {
-	return webservice.ClearClientStatusByID(id, name)
-}

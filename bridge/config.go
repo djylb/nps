@@ -24,7 +24,7 @@ loop:
 		}
 
 		switch flag {
-		case common.WORK_STATUS:
+		case common.WorkStatus:
 			b, err := c.GetShortContent(64)
 			if err != nil {
 				break loop
@@ -40,7 +40,7 @@ loop:
 				file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
 					v := value.(*file.Host)
 					if v.Client.Id == id {
-						strBuilder.WriteString(v.Remark + common.CONN_DATA_SEQ)
+						strBuilder.WriteString(v.Remark + common.ConnDataSeq)
 					}
 					return true
 				})
@@ -48,7 +48,7 @@ loop:
 				file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 					v := value.(*file.Tunnel)
 					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
-						strBuilder.WriteString(v.Remark + common.CONN_DATA_SEQ)
+						strBuilder.WriteString(v.Remark + common.ConnDataSeq)
 					}
 					return true
 				})
@@ -58,13 +58,16 @@ loop:
 			_ = binary.Write(c, binary.LittleEndian, []byte(str))
 			break loop
 
-		case common.NEW_CONF:
+		case common.FlagNewConf:
 			client, err = c.GetConfigInfo()
 			if err != nil {
 				fail = true
 				_ = c.WriteAddFail()
 				break loop
 			}
+			// The server assigns the client id and verify key.
+			client.Id = 0
+			client.VerifyKey = ""
 
 			if err = file.GetDb().NewClient(client); err != nil {
 				fail = true
@@ -74,11 +77,13 @@ loop:
 
 			_ = c.WriteAddOk()
 			_, _ = c.Write([]byte(client.VerifyKey))
+			// The bridge client map owns the new client from here on.
+			//noinspection GoResourceLeak
 			s.Client.Store(client.Id, NewClient(client.Id, NewNode(uuid, vs, ver)))
 
-		case common.NEW_HOST:
+		case common.FlagNewHost:
 			h, err := c.GetHostInfo()
-			if err != nil {
+			if err != nil || h.Target == nil {
 				fail = true
 				_ = c.WriteAddFail()
 				break loop
@@ -110,7 +115,7 @@ loop:
 			}
 			_ = c.WriteAddOk()
 
-		case common.NEW_TASK:
+		case common.FlagNewTask:
 			t, err := c.GetTaskInfo()
 			if err != nil {
 				fail = true

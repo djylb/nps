@@ -63,15 +63,3 @@ func newOptions(opts ...Option) Options {
 	}
 	return opt
 }
-
-func LinkTimeout(t time.Duration) Option {
-	return func(opt *Options) {
-		opt.Timeout = t
-	}
-}
-
-func WithAck(enabled bool) Option {
-	return func(opt *Options) {
-		opt.NeedAck = enabled
-	}
-}

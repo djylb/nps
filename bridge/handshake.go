@@ -20,13 +20,13 @@ import (
 
 func (s *Bridge) verifyError(c *conn.Conn) {
 	if !ServerSecureMode {
-		_, _ = c.Write([]byte(common.VERIFY_EER))
+		_, _ = c.Write([]byte(common.VerifyErr))
 	}
 	_ = c.Close()
 }
 
 func (s *Bridge) verifySuccess(c *conn.Conn) {
-	_, _ = c.Write([]byte(common.VERIFY_SUCCESS))
+	_, _ = c.Write([]byte(common.VerifySuccess))
 }
 
 func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
@@ -289,7 +289,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 	c.SetAlive()
 	isPub := file.GetDb().IsPubClient(id)
 	switch flag {
-	case common.WORK_MAIN:
+	case common.WorkMain:
 		if isPub {
 			_ = c.Close()
 			return
@@ -304,6 +304,8 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		//the vKey connect by another, close the client of before
 		node := NewNode(uuid, vs, ver)
 		node.AddSignal(c)
+		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
+		//noinspection GoResourceLeak
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
@@ -321,7 +323,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		go s.GetHealthFromClient(id, c, client, node)
 		logs.Info("ClientId %d connection succeeded, address:%v ", id, addr)
 
-	case common.WORK_CHAN:
+	case common.WorkChan:
 		if !first {
 			logs.Error("Can not create mux more than once")
 			_ = c.Close()
@@ -341,6 +343,8 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		}
 		node := NewNode(uuid, vs, ver)
 		node.AddTunnel(anyConn)
+		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
+		//noinspection GoResourceLeak
 		client := NewClient(id, node)
 		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
 			client = v.(*Client)
@@ -403,7 +407,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			}()
 		}
 
-	case common.WORK_CONFIG:
+	case common.WorkConfig:
 		client, err := file.GetDb().GetClient(id)
 		if err != nil || (!isPub && !client.ConfigConnAllow) {
 			_ = c.Close()
@@ -412,11 +416,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		_ = binary.Write(c, binary.LittleEndian, isPub)
 		go s.getConfig(c, isPub, client, ver, vs, uuid)
 
-	case common.WORK_REGISTER:
+	case common.WorkRegister:
 		go s.register(c)
 		return
 
-	case common.WORK_VISITOR:
+	case common.WorkVisitor:
 		if !first {
 			logs.Error("Can not create mux more than once")
 			_ = c.Close()
@@ -468,7 +472,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			}
 		}()
 
-	case common.WORK_SECRET:
+	case common.WorkSecret:
 		b, err := c.GetShortContent(32)
 		if err != nil {
 			logs.Error("secret error, failed to match the key successfully")
@@ -481,7 +485,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			return
 		}
 
-	case common.WORK_FILE:
+	case common.WorkFile:
 		logs.Warn("clientId %d not support file", id)
 		_ = c.Close()
 		return
@@ -494,11 +498,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		//	client.AddFile(muxConn)
 		//}
 
-	case common.WORK_P2P:
+	case common.WorkP2P:
 		s.handleP2PVisitor(c, id, ver, vs, uuid, tunnelType)
 		return
 
-	case common.WORK_P2P_SESSION:
+	case common.WorkP2PSession:
 		s.handleP2PJoin(c, id, ver, vs, tunnelType)
 		return
 	}

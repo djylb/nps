@@ -19,18 +19,18 @@ import (
 )
 
 const (
-	HTTP_GET     = 716984
-	HTTP_POST    = 807983
-	HTTP_HEAD    = 726965
-	HTTP_PUT     = 808585
-	HTTP_DELETE  = 686976
-	HTTP_CONNECT = 677978
-	HTTP_OPTIONS = 798084
-	HTTP_TRACE   = 848265
-	CLIENT       = 848384
-	// ACCEPT_TIME_OUT bounds both protocol recognition of a new connection and
+	HTTPGet     = 716984
+	HTTPPost    = 807983
+	HTTPHead    = 726965
+	HTTPPut     = 808585
+	HTTPDelete  = 686976
+	HTTPConnect = 677978
+	HTTPOptions = 798084
+	HTTPTrace   = 848265
+	CLIENT      = 848384
+	// AcceptTimeout bounds both protocol recognition of a new connection and
 	// the wait for the target listener to accept it.
-	ACCEPT_TIME_OUT = 10 * time.Second
+	AcceptTimeout = 10 * time.Second
 
 	maxAcceptBackoff = time.Second
 	maxHeaderBytes   = http.DefaultMaxHeaderBytes
@@ -65,6 +65,7 @@ type PortMux struct {
 func NewPortMux(port int, managerHost, clientHost string) (*PortMux, error) {
 	pMux := newPortMux(port, managerHost, clientHost)
 	if err := pMux.Start(); err != nil {
+		_ = pMux.Close()
 		return nil, err
 	}
 	return pMux, nil
@@ -85,11 +86,12 @@ func (pMux *PortMux) Start() error {
 	if err != nil {
 		return err
 	}
-	pMux.Listener, err = net.ListenTCP("tcp", tcpAddr)
+	l, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		return err
 	}
-	go pMux.serve(pMux.Listener)
+	pMux.Listener = l
+	go pMux.serve(l)
 	return nil
 }
 
@@ -143,7 +145,7 @@ func (pMux *PortMux) process(conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	timer := time.NewTimer(ACCEPT_TIME_OUT)
+	timer := time.NewTimer(AcceptTimeout)
 	defer timer.Stop()
 	select {
 	case target.connCh <- newPortConn(conn, rs, readMore):
@@ -158,7 +160,7 @@ func (pMux *PortMux) process(conn net.Conn) {
 // classify reads the leading bytes of conn under a read deadline and picks the
 // listener it belongs to. A nil listener means the connection must be dropped.
 func (pMux *PortMux) classify(conn net.Conn) (*PortListener, []byte, bool) {
-	if err := conn.SetReadDeadline(time.Now().Add(ACCEPT_TIME_OUT)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(AcceptTimeout)); err != nil {
 		return nil, nil, false
 	}
 	buf := make([]byte, 3)
@@ -167,7 +169,7 @@ func (pMux *PortMux) classify(conn net.Conn) (*PortListener, []byte, bool) {
 	}
 	ls := pMux.snapshot()
 	switch common.BytesToNum(buf) {
-	case HTTP_CONNECT, HTTP_DELETE, HTTP_GET, HTTP_HEAD, HTTP_OPTIONS, HTTP_POST, HTTP_PUT, HTTP_TRACE: //http and manager
+	case HTTPConnect, HTTPDelete, HTTPGet, HTTPHead, HTTPOptions, HTTPPost, HTTPPut, HTTPTrace: //http and manager
 		httpL, managerL, wsL := ls[kindHttp], ls[kindManager], ls[kindClientWs]
 		n := 0
 		for _, l := range []*PortListener{httpL, managerL, wsL} {

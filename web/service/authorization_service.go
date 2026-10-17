@@ -50,15 +50,15 @@ type DefaultAuthorizationService struct {
 }
 
 type Principal struct {
-	Authenticated bool
 	Kind          string
 	SubjectID     string
 	Username      string
-	IsAdmin       bool
 	ClientIDs     []int
 	Roles         []string
 	Permissions   []string
 	Attributes    map[string]string
+	Authenticated bool
+	IsAdmin       bool
 }
 
 type ClientScope struct {

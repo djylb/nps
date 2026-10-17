@@ -41,12 +41,6 @@ var DisableP2P = false
 var AutoReconnect = true
 var LocalIPForward = false
 
-var TlsCfg = &tls.Config{
-	InsecureSkipVerify: true,
-	ServerName:         crypt.GetFakeDomainName(),
-	NextProtos:         []string{"h3"},
-}
-
 var QuicConfig = &quic.Config{
 	KeepAlivePeriod:    10 * time.Second,
 	MaxIdleTimeout:     30 * time.Second,
@@ -64,12 +58,12 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	//defer c.Close()
-	err = SendType(c, common.WORK_CONFIG, uuid)
+	err = SendType(c, common.WorkConfig, uuid)
 	if err != nil {
 		log.Fatalf("Failed to send type: %v", err)
 	}
-	if _, err := c.BufferWrite([]byte(common.WORK_STATUS)); err != nil {
-		log.Fatalf("Failed to write WORK_STATUS: %v", err)
+	if _, err := c.BufferWrite([]byte(common.WorkStatus)); err != nil {
+		log.Fatalf("Failed to write WorkStatus: %v", err)
 	}
 	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
 		log.Fatalf("Failed to write auth key: %v", err)
@@ -86,7 +80,7 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 	if err != nil {
 		log.Fatalf("Failed to read content: %v", err)
 	}
-	parts := strings.Split(string(data), common.CONN_DATA_SEQ)
+	parts := strings.Split(string(data), common.ConnDataSeq)
 	if len(parts) > 0 && parts[len(parts)-1] == "" {
 		parts = parts[:len(parts)-1]
 	}
@@ -108,7 +102,7 @@ func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, loc
 		log.Fatalln(err)
 	}
 	//defer c.Close()
-	err = SendType(c, common.WORK_REGISTER, uuid)
+	err = SendType(c, common.WorkRegister, uuid)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -181,7 +175,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 		if uuid == "" {
 			uuid = cid
 		}
-		err = SendType(c, common.WORK_CONFIG, uuid)
+		err = SendType(c, common.WorkConfig, uuid)
 		if err != nil {
 			logs.Error("Failed to send type: %v", err)
 			_ = c.Close()
@@ -196,7 +190,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 		vkey := cnf.CommonConfig.VKey
 		if isPub {
 			// send global configuration to server and get status of config setting
-			if _, err := c.SendInfo(cnf.CommonConfig.Client, common.NEW_CONF); err != nil {
+			if _, err := c.SendInfo(cnf.CommonConfig.Client, common.FlagNewConf); err != nil {
 				logs.Error("%v", err)
 				_ = c.Close()
 				continue
@@ -223,7 +217,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 
 		//send hosts to server
 		for _, v := range cnf.Hosts {
-			if _, err := c.SendInfo(v, common.NEW_HOST); err != nil {
+			if _, err := c.SendInfo(v, common.FlagNewHost); err != nil {
 				logs.Error("%v", err)
 				continue
 			}
@@ -238,7 +232,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 
 		//send  task to server
 		for _, v := range cnf.Tasks {
-			if _, err := c.SendInfo(v, common.NEW_TASK); err != nil {
+			if _, err := c.SendInfo(v, common.FlagNewTask); err != nil {
 				logs.Error("%v", err)
 				continue
 			}
@@ -264,7 +258,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 	}
 }
 
-// readTaskAddStatus reads the add statuses the server reports for a NEW_TASK:
+// readTaskAddStatus reads the add statuses the server reports for a FlagNewTask:
 // one per port the task expands to, or a single failure. It stops at the first
 // failure, after which the server closes the connection.
 func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) bool {
@@ -406,10 +400,10 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		urlStr := "ws://" + server + path
 		//logs.Debug("URL: %s", urlStr)
 		wsConn, resp, err := conn.DialWS(rawConn, urlStr, host, timeout)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
 			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
@@ -423,10 +417,10 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 			return nil, "", serverInfo{}, err
 		}
 		wsConn, resp, err := conn.DialWSS(rawConn, urlStr, host, sni, timeout)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
 			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
@@ -479,7 +473,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		_ = connection.Close()
 		return nil, "", serverInfo{}, fmt.Errorf("conn.NewConn returned nil (tp=%q server=%q)", tp, server)
 	}
-	if _, err := c.BufferWrite([]byte(common.CONN_TEST)); err != nil {
+	if _, err := c.BufferWrite([]byte(common.ConnTest)); err != nil {
 		_ = c.Close()
 		return nil, "", serverInfo{}, err
 	}
@@ -518,7 +512,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		if s, err := c.ReadFlag(); err != nil {
 			_ = c.Close()
 			return nil, "", serverInfo{}, err
-		} else if s == common.VERIFY_EER {
+		} else if s == common.VerifyErr {
 			_ = c.Close()
 			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
 		}
@@ -630,7 +624,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 			}
 		}
 	}
-	if proxyUrl == "" && tp != common.CONN_WS && tp != common.CONN_WSS {
+	if proxyUrl == "" && tp != common.ConnWS && tp != common.ConnWSS {
 		if ap, perr := netip.ParseAddrPort(connection.RemoteAddr().String()); perr == nil {
 			info.ip = ap.Addr().Unmap().String()
 		}
@@ -710,18 +704,6 @@ func dialProxyContext(ctx context.Context, d proxy.Dialer, server string) (net.C
 		return cd.DialContext(ctx, "tcp", server)
 	}
 	return d.Dial("tcp", server)
-}
-
-// NewHttpProxyConn http proxy connection
-func NewHttpProxyConn(proxyURL *url.URL, remoteAddr string, timeout time.Duration, localIP string) (net.Conn, error) {
-	ctx := context.Background()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-	dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-	return newHttpProxyConnContext(ctx, dialer, proxyURL, remoteAddr)
 }
 
 func newHttpProxyConnContext(ctx context.Context, dialer *net.Dialer, proxyURL *url.URL, remoteAddr string) (net.Conn, error) {

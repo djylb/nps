@@ -180,7 +180,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 }
 
 func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *file.Client, flows []*file.Flow, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool, tp string) {
-	isFramed := tp == common.CONN_UDP
+	isFramed := tp == common.ConnUDP
 	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal, isFramed)
 }
 

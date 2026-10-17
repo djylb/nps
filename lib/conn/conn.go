@@ -231,41 +231,61 @@ func (s *Conn) GetHealthInfo() (info string, status bool, err error) {
 	if err != nil {
 		return
 	}
-	arr := strings.Split(string(buf[:l]), common.CONN_DATA_SEQ)
+	arr := strings.Split(string(buf[:l]), common.ConnDataSeq)
 	if len(arr) < 2 {
 		return "", false, errors.New("receive health info error")
 	}
 	return arr[0], common.GetBoolByStr(arr[1]), nil
 }
 
-// GetHostInfo get task info
-func (s *Conn) GetHostInfo() (h *file.Host, err error) {
-	err = s.getInfo(&h)
+var errEmptyInfo = errors.New("empty info payload")
+
+// GetHostInfo get host info
+func (s *Conn) GetHostInfo() (*file.Host, error) {
+	var h *file.Host
+	if err := s.getInfo(&h); err != nil {
+		return nil, err
+	}
+	if h == nil {
+		return nil, errEmptyInfo
+	}
 	h.Id = int(file.GetDb().JsonDb.GetHostId())
 	h.Flow = new(file.Flow)
 	h.NoStore = true
-	return
+	return h, nil
 }
 
-// GetConfigInfo get task info
-func (s *Conn) GetConfigInfo() (c *file.Client, err error) {
-	err = s.getInfo(&c)
+// GetConfigInfo get client config info
+func (s *Conn) GetConfigInfo() (*file.Client, error) {
+	var c *file.Client
+	if err := s.getInfo(&c); err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return nil, errEmptyInfo
+	}
 	c.NoStore = true
 	c.Status = true
 	if c.Flow == nil {
 		c.Flow = new(file.Flow)
 	}
 	c.NoDisplay = false
-	return
+	return c, nil
 }
 
 // GetTaskInfo get task info
-func (s *Conn) GetTaskInfo() (t *file.Tunnel, err error) {
-	err = s.getInfo(&t)
+func (s *Conn) GetTaskInfo() (*file.Tunnel, error) {
+	var t *file.Tunnel
+	if err := s.getInfo(&t); err != nil {
+		return nil, err
+	}
+	if t == nil {
+		return nil, errEmptyInfo
+	}
 	t.Id = int(file.GetDb().JsonDb.GetTaskId())
 	t.NoStore = true
 	t.Flow = new(file.Flow)
-	return
+	return t, nil
 }
 
 // SendInfo send  info
@@ -305,7 +325,13 @@ func (s *Conn) getInfo(t interface{}) (err error) {
 	if _, err = s.ReadLen(l, buf); err != nil {
 		return
 	}
-	_ = json.Unmarshal(buf[:l], &t)
+	if err = json.Unmarshal(buf[:l], t); err != nil {
+		// Field type mismatches keep the previous lenient decoding.
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			return nil
+		}
+	}
 	return
 }
 
@@ -412,22 +438,22 @@ func (s *Conn) Read(b []byte) (n int, err error) {
 
 // WriteClose write sign flag
 func (s *Conn) WriteClose() (int, error) {
-	return s.Write([]byte(common.RES_CLOSE))
+	return s.Write([]byte(common.ResClose))
 }
 
 // WriteMain write main
 func (s *Conn) WriteMain() (int, error) {
-	return s.Write([]byte(common.WORK_MAIN))
+	return s.Write([]byte(common.WorkMain))
 }
 
 // WriteConfig write config
 func (s *Conn) WriteConfig() (int, error) {
-	return s.Write([]byte(common.WORK_CONFIG))
+	return s.Write([]byte(common.WorkConfig))
 }
 
 // WriteChan write chan
 func (s *Conn) WriteChan() (int, error) {
-	return s.Write([]byte(common.WORK_CHAN))
+	return s.Write([]byte(common.WorkChan))
 }
 
 // GetAddStatus get task or host result of add

@@ -362,10 +362,7 @@ func (s *Mux) ping() {
 				}
 
 				binary.BigEndian.PutUint64(buf[:8], uint64(now.UnixNano()))
-				pad := 0
-				if PingMaxPad > 0 {
-					pad = rand.Intn(PingMaxPad)
-				}
+				pad := rand.Intn(PingMaxPad)
 				s.sendInfo(muxPingFlag, muxPing, false, buf[:8+pad])
 
 				timer.Reset(nextPingDelay())
@@ -539,11 +536,7 @@ func (s *Mux) readSession() {
 func pingReturnPayload(pack *muxPackager) []byte {
 	buf := pack.content[:pack.length]
 	if pack.length == 8 || (pack.length > 8 && isZero(buf[8:])) {
-		pad := 0
-		if PingMaxPad > 0 {
-			pad = rand.Intn(PingMaxPad)
-		}
-		n := 8 + pad
+		n := 8 + rand.Intn(PingMaxPad)
 		if n > maximumSegmentSize {
 			n = maximumSegmentSize
 		}
@@ -697,11 +690,11 @@ func (s *Mux) getId() (id int32) {
 }
 
 type Bandwidth struct {
-	readBandwidth uint64 // store in bits, but it's float64
+	readBandwidth uint64 // store in bits, but it's float64; first for 64-bit atomic alignment on 32-bit platforms
 	readStart     time.Time
 	lastReadStart time.Time
-	bufLength     uint32
 	fd            *os.File
+	bufLength     uint32
 	calcThreshold uint32
 }
 

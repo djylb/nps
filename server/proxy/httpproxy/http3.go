@@ -121,6 +121,8 @@ func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 		return
 	}
 	c := conn.NewQuicAutoCloseConn(stream, qc)
+	// CliProcess owns the connection.
+	//noinspection GoResourceLeak
 	s.Bridge.CliProcess(conn.NewConn(c), "quic")
 }
 

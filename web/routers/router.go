@@ -234,14 +234,6 @@ func appendPageHandler(middlewares []gin.HandlerFunc, handler gin.HandlerFunc) [
 	return handlers
 }
 
-func subgroup(group *gin.RouterGroup, prefix string, middlewares ...gin.HandlerFunc) *gin.RouterGroup {
-	child := group.Group(prefix)
-	if len(middlewares) > 0 {
-		child.Use(middlewares...)
-	}
-	return child
-}
-
 func joinBase(base, suffix string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if base == "" {

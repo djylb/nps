@@ -72,7 +72,7 @@ func actionRouteMiddlewares(state *State, spec webapi.ActionSpec) []gin.HandlerF
 		middlewares = append(middlewares, permissionMiddleware(state, permission))
 	}
 	if spec.ClientScope {
-		middlewares = append(middlewares, clientScopeMiddleware(state))
+		middlewares = append(middlewares, clientScopeMiddleware(state, spec.Ownership != webapi.ActionOwnershipNone))
 	}
 	switch spec.Ownership {
 	case webapi.ActionOwnershipClient:

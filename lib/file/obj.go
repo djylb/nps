@@ -189,8 +189,8 @@ func (s *Client) EnsureWebPassword() {
 			s.WebTotpSecret, _ = crypt.GenerateTOTPSecret()
 		}
 	}
-	if idx := strings.LastIndex(s.WebPassword, common.TOTP_SEQ); idx != -1 {
-		secret := s.WebPassword[idx+len(common.TOTP_SEQ):]
+	if idx := strings.LastIndex(s.WebPassword, common.TOTPSeq); idx != -1 {
+		secret := s.WebPassword[idx+len(common.TOTPSeq):]
 		s.WebPassword = s.WebPassword[:idx]
 		if !crypt.IsValidTOTPSecret(secret) {
 			secret, _ = crypt.GenerateTOTPSecret()

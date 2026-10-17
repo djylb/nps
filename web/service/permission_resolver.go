@@ -179,15 +179,3 @@ func (StaticPermissionResolver) PermissionCatalog() map[string][]string {
 		},
 	}
 }
-
-func KnownRoles() []string {
-	return DefaultPermissionResolver().KnownRoles()
-}
-
-func KnownPermissions() []string {
-	return DefaultPermissionResolver().KnownPermissions()
-}
-
-func PermissionCatalog() map[string][]string {
-	return DefaultPermissionResolver().PermissionCatalog()
-}

@@ -123,11 +123,11 @@ func (Self *basePackager) reset() {
 }
 
 type muxPackager struct {
-	flag     uint8
-	id       int32
-	window   uint64
-	priority bool
 	basePackager
+	window   uint64
+	id       int32
+	flag     uint8
+	priority bool
 }
 
 func (Self *muxPackager) Set(flag uint8, id int32, content interface{}) (err error) {

@@ -2,9 +2,7 @@ package common
 
 import (
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
@@ -16,23 +14,7 @@ import (
 var (
 	domainCheckWithPathRegexp = regexp.MustCompile(`^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}(/)`)
 	domainCheckRegexp         = regexp.MustCompile(`^((http://)|(https://))?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}`)
-	externalIPClient          = &http.Client{Timeout: 2 * time.Second}
 )
-
-var externalIp string
-
-var ipApis = []string{
-	"https://4.ipw.cn",
-	"https://api.ipify.org",
-	"http://ipinfo.io/ip",
-	"https://api64.ipify.org",
-	"https://6.ipw.cn",
-	"http://api.ip.sb",
-	"http://myexternalip.com/raw",
-	"http://ifconfig.me/ip",
-	"http://ident.me",
-	"https://d-jy.net/ip",
-}
 
 func parsePortString(s string) (int, bool) {
 	p, err := strconv.Atoi(strings.TrimSpace(s))
@@ -200,23 +182,6 @@ func GetSni(host string) string {
 	return sni
 }
 
-// GetHostByName Get the corresponding IP address through domain name
-func GetHostByName(hostname string) string {
-	if !DomainCheck(hostname) {
-		return hostname
-	}
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		return ""
-	}
-	for _, v := range ips {
-		if v.To4() != nil || v.To16() != nil {
-			return v.String()
-		}
-	}
-	return ""
-}
-
 // DomainCheck Check the legality of domain
 func DomainCheck(domain string) bool {
 	return domainCheckWithPathRegexp.MatchString(domain) || domainCheckRegexp.MatchString(domain)
@@ -353,51 +318,6 @@ func IsSameIPType(addr1, addr2 string) bool {
 	return ip1 == ip2
 }
 
-func GetMatchingLocalAddr(remoteAddr, localAddr string) (string, error) {
-	remoteIsV6 := strings.Contains(remoteAddr, "]:")
-	localIsV6 := strings.Contains(localAddr, "]:")
-	if remoteIsV6 == localIsV6 {
-		return localAddr, nil
-	}
-	port := GetPortStrByAddr(localAddr)
-	if remoteIsV6 {
-		addr6, err := GetLocalUdp6Addr()
-		if err != nil {
-			return localAddr, fmt.Errorf("get local ipv6 addr: %w", err)
-		}
-		return net.JoinHostPort(addr6.IP.String(), port), nil
-	}
-	addr4, err := GetLocalUdp4Addr()
-	if err != nil {
-		return localAddr, fmt.Errorf("get local ipv4 addr: %w", err)
-	}
-	return net.JoinHostPort(addr4.IP.String(), port), nil
-}
-
-func FetchExternalIp() string {
-	for _, api := range ipApis {
-		resp, err := externalIPClient.Get(api)
-		if err != nil {
-			continue
-		}
-		content, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		ip := strings.TrimSpace(string(content))
-		if IsValidIP(ip) {
-			externalIp = ip
-			return ip
-		}
-	}
-	return ""
-}
-
-func GetExternalIp() string {
-	if externalIp != "" {
-		return externalIp
-	}
-	return FetchExternalIp()
-}
-
 func PickEgressIPFor(dstIP net.IP) net.IP {
 	if dstIP == nil {
 		return nil
@@ -417,21 +337,6 @@ func PickEgressIPFor(dstIP net.IP) net.IP {
 		return la.IP
 	}
 	return nil
-}
-
-func GetIntranetIp() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "127.0.0.1"
-	}
-	for _, address := range addrs {
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil || ipnet.IP.To16() != nil {
-				return ipnet.IP.String()
-			}
-		}
-	}
-	return "127.0.0.1"
 }
 
 func GetOutboundIP() net.IP {
@@ -456,10 +361,6 @@ func GetOutboundIPv6() net.IP {
 		return net.ParseIP("::1")
 	}
 	return addr.IP
-}
-
-func IsValidIP(ip string) bool {
-	return net.ParseIP(ip) != nil
 }
 
 func IsPublicIP(ip net.IP) bool {
@@ -499,13 +400,6 @@ func GetServerIp(ip string) string {
 		}
 	}
 	return GetOutboundIP().String()
-}
-
-func GetServerIpByClientIp(clientIp net.IP) string {
-	if IsPublicIP(clientIp) {
-		return GetExternalIp()
-	}
-	return GetIntranetIp()
 }
 
 // EncodeIP encodes a net.IP to [1-byte ATYP] + [16-byte Address]

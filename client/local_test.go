@@ -55,7 +55,7 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 			go func() {
 				c := conn.NewConn(mc)
 				defer func() { _ = c.Close() }()
-				if flag, err := c.ReadFlag(); err != nil || flag != common.WORK_SECRET {
+				if flag, err := c.ReadFlag(); err != nil || flag != common.WorkSecret {
 					return
 				}
 				_, _ = c.GetShortLenContent() // uuid

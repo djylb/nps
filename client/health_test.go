@@ -68,7 +68,7 @@ func TestDoCheckUnsupportedTypeSendsDownEvent(t *testing.T) {
 	case err := <-errCh:
 		t.Fatalf("expected health event to be written, got error: %v", err)
 	case payload := <-readCh:
-		if !strings.Contains(payload, "node-a") || !strings.Contains(payload, common.CONN_DATA_SEQ+"0") {
+		if !strings.Contains(payload, "node-a") || !strings.Contains(payload, common.ConnDataSeq+"0") {
 			t.Fatalf("unexpected health payload: %q", payload)
 		}
 	case <-time.After(2 * time.Second):
@@ -122,7 +122,7 @@ func TestDoCheckTCPSuccessAfterFailuresSendsRecoveryEvent(t *testing.T) {
 	case err := <-errCh:
 		t.Fatalf("expected recovery event to be written, got error: %v", err)
 	case payload := <-readCh:
-		if !strings.Contains(payload, target) || !strings.Contains(payload, common.CONN_DATA_SEQ+"1") {
+		if !strings.Contains(payload, target) || !strings.Contains(payload, common.ConnDataSeq+"1") {
 			t.Fatalf("unexpected recovery payload: %q", payload)
 		}
 	case <-time.After(2 * time.Second):

@@ -9,21 +9,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 )
 
-type LenConn struct {
-	conn io.Writer
-	Len  int
-}
-
-func NewLenConn(conn io.Writer) *LenConn {
-	return &LenConn{conn: conn}
-}
-
-func (c *LenConn) Write(p []byte) (n int, err error) {
-	n, err = c.conn.Write(p)
-	c.Len += n
-	return
-}
-
 type RWConn struct {
 	io.ReadWriteCloser
 	FakeAddr net.Addr

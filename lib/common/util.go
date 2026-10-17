@@ -46,14 +46,6 @@ func GetBoolByStr(s string) bool {
 	return false
 }
 
-// GetStrByBool get str by bool
-func GetStrByBool(b bool) string {
-	if b {
-		return "1"
-	}
-	return "0"
-}
-
 // GetIntNoErrByStr int
 func GetIntNoErrByStr(str string) int {
 	i, _ := strconv.Atoi(strings.TrimSpace(str))
@@ -128,7 +120,7 @@ func BinaryWrite(raw *bytes.Buffer, v ...string) {
 
 // GetWriteStr get seq str
 func GetWriteStr(v ...string) []byte {
-	sep := CONN_DATA_SEQ
+	sep := ConnDataSeq
 	sepLen := len(sep)
 	total := 0
 	for _, s := range v {

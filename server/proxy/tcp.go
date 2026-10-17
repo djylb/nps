@@ -127,6 +127,8 @@ func (s *TunnelModeServer) ServeVirtual(c net.Conn) {
 
 func (s *TunnelModeServer) DialVirtual(rAddr string) (net.Conn, error) {
 	a, b := net.Pipe()
+	// handleConn owns c and closes it.
+	//noinspection GoResourceLeak
 	c, err := conn.NewAddrOverrideConn(b, rAddr, s.address)
 	if err != nil {
 		_ = a.Close()
@@ -187,7 +189,7 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 		targetAddr = ""
 	}
 
-	return s.DealClient(c, s.Task.Client, targetAddr, nil, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	return s.DealClient(c, s.Task.Client, targetAddr, nil, common.ConnTCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 }
 
 // httpProxyHeaderTimeout bounds how long a client may take to send a request header.
@@ -226,7 +228,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	if r.Method == http.MethodConnect {
 		_, _ = c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 		// Bytes the client sent right after the CONNECT header belong to the tunnel.
-		return s.DealClient(c, s.Task.Client, addr, rest, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
+		return s.DealClient(c, s.Task.Client, addr, rest, common.ConnTCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
 	}
 	var server *http.Server
 
@@ -253,23 +255,11 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	defer transport.CloseIdleConnections()
 
 	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			//req.RequestURI = ""
-			//req.Header.Del("Proxy-Connection")
-			//req.Header.Del("Proxy-Authenticate")
-			//req.Header.Del("Proxy-Authorization")
-			//req.Header.Del("TE")
-			//req.Header.Del("Trailers")
-			//req.Header.Del("Transfer-Encoding")
-			//req.Header.Del("Upgrade")
-			//connections := req.Header.Get("Connection")
-			//req.Header.Del("Connection")
-			//if connections != "" {
-			//	for _, h := range strings.Split(connections, ",") {
-			//		req.Header.Del(strings.TrimSpace(h))
-			//	}
-			//}
-			req.Header["X-Forwarded-For"] = nil
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			// The client's forwarding headers pass through, except
+			// X-Forwarded-For, which is neither relayed nor added.
+			KeepClientForwarding(pr)
+			pr.Out.Header.Del("X-Forwarded-For")
 		},
 		Transport: transport,
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {

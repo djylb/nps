@@ -15,7 +15,7 @@ func SetTcpKeepAliveParams(tc *net.TCPConn, idle, intvl, probes int) error {
 	}
 	var sockErr error
 	err = raw.Control(func(fd uintptr) {
-		if sockErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, TCP_KEEPIDLE, idle); sockErr != nil {
+		if sockErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, TCPKeepIdle, idle); sockErr != nil {
 			return
 		}
 		if sockErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPINTVL, intvl); sockErr != nil {

@@ -1,14 +1,9 @@
 package routers
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -17,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -305,8 +299,8 @@ func TestAPIInputMiddlewareSupportsJSON(t *testing.T) {
 	api := engine.Group("/api/v1")
 	api.Use(apiInputMiddleware())
 	api.POST("/echo", func(c *gin.Context) {
-		id, ok := requestInt(c, "id")
-		if !ok || id != 42 {
+		id, ok, err := requestInt(c, "id")
+		if err != nil || !ok || id != 42 {
 			t.Fatalf("requestInt(id) = %d, %v, want 42, true", id, ok)
 		}
 		name, ok := framework.RequestParam(c, "name")
@@ -1111,6 +1105,9 @@ func resetTestDB(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatalf("create temp conf dir: %v", err)
 	}
+	// Run the lazy default initialization first so it cannot replace the
+	// temporary database installed below.
+	_ = file.GetDb()
 	oldDb := file.Db
 	oldHostIndex := file.HostIndex
 	oldVkeyIndex := file.Blake2bVkeyIndex
@@ -1154,7 +1151,7 @@ func createTestTunnel(t *testing.T, id int, client *file.Client, port int) *file
 		Mode:       "tcp",
 		Status:     true,
 		Client:     client,
-		TargetType: common.CONN_TCP,
+		TargetType: common.ConnTCP,
 		Target: &file.Target{
 			TargetStr: "127.0.0.1:80",
 		},
@@ -1181,37 +1178,6 @@ func createTestHost(t *testing.T, id int, client *file.Client, host string) *fil
 	return record
 }
 
-func loginAsUser(t *testing.T, handler http.Handler, username, password string) []*http.Cookie {
-	t.Helper()
-	pageResp := httptest.NewRecorder()
-	pageReq := httptest.NewRequest(http.MethodGet, "/login/index", nil)
-	handler.ServeHTTP(pageResp, pageReq)
-	if pageResp.Code != http.StatusOK {
-		t.Fatalf("GET /login/index status = %d, want 200", pageResp.Code)
-	}
-	nonce := extractLoginNonce(t, pageResp.Body.String())
-	sessionCookie := cookieByName(pageResp.Result().Cookies(), "nps_session")
-	if sessionCookie == nil {
-		t.Fatal("GET /login/index did not set session cookie")
-	}
-
-	payload := encryptLoginPayload(t, nonce, password)
-	loginResp := performFormRequest(handler, http.MethodPost, "/api/v1/login/verify", []*http.Cookie{sessionCookie}, map[string]string{
-		"username": username,
-		"password": payload,
-	})
-	if loginResp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/login/verify status = %d, want 200", loginResp.Code)
-	}
-	if body := loginResp.Body.String(); !strings.Contains(body, "\"status\":1") {
-		t.Fatalf("POST /api/v1/login/verify should succeed, got %s", body)
-	}
-	if updated := cookieByName(loginResp.Result().Cookies(), "nps_session"); updated != nil {
-		return []*http.Cookie{updated}
-	}
-	return []*http.Cookie{sessionCookie}
-}
-
 func performFormRequest(handler http.Handler, method, path string, cookies []*http.Cookie, form map[string]string) *httptest.ResponseRecorder {
 	values := url.Values{}
 	if len(form) > 0 {
@@ -1227,48 +1193,6 @@ func performFormRequest(handler http.Handler, method, path string, cookies []*ht
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	return resp
-}
-
-func extractLoginNonce(t *testing.T, body string) string {
-	t.Helper()
-	match := regexp.MustCompile(`loginNonce\s*:\s*"([^"]+)"`).FindStringSubmatch(body)
-	if len(match) != 2 {
-		t.Fatalf("login nonce not found in body: %s", body)
-	}
-	return match[1]
-}
-
-func encryptLoginPayload(t *testing.T, nonce, password string) string {
-	t.Helper()
-	publicKeyPEM, err := crypt.GetRSAPublicKeyPEM()
-	if err != nil {
-		t.Fatalf("GetRSAPublicKeyPEM() error = %v", err)
-	}
-	block, _ := pem.Decode([]byte(publicKeyPEM))
-	if block == nil {
-		t.Fatal("failed to decode RSA public key PEM")
-	}
-	parsedKey, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		t.Fatalf("ParsePKIXPublicKey() error = %v", err)
-	}
-	publicKey, ok := parsedKey.(*rsa.PublicKey)
-	if !ok {
-		t.Fatal("parsed public key is not RSA")
-	}
-	payload, err := json.Marshal(crypt.LoginPayload{
-		Nonce:     nonce,
-		Timestamp: time.Now().UnixMilli(),
-		Password:  password,
-	})
-	if err != nil {
-		t.Fatalf("Marshal(login payload) error = %v", err)
-	}
-	encrypted, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, payload, nil)
-	if err != nil {
-		t.Fatalf("EncryptOAEP() error = %v", err)
-	}
-	return base64.StdEncoding.EncodeToString(encrypted)
 }
 
 func cookieByName(cookies []*http.Cookie, name string) *http.Cookie {

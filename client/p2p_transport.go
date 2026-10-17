@@ -139,6 +139,8 @@ func (t *p2pTransport) open(ctx context.Context, link conn.Link, timeout time.Du
 	}
 	nc := conn.NewQuicStreamConn(stream, t.qc)
 	_ = stream.SetWriteDeadline(time.Now().Add(timeout))
+	// The wrapper only writes to nc, whose stream fail cancels on failure.
+	//noinspection GoResourceLeak
 	if _, err := conn.NewConn(nc).SendInfo(&link, ""); err != nil {
 		return fail(fmt.Errorf("send link: %w", err))
 	}

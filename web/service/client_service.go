@@ -77,16 +77,11 @@ type AddClientInput struct {
 
 type EditClientInput struct {
 	ID                      int
-	IsAdmin                 bool
-	AllowUserChangeUsername bool
 	ReservedAdminUsername   string
 	VKey                    string
 	Remark                  string
 	User                    string
 	Password                string
-	Compress                bool
-	Crypt                   bool
-	ConfigConnAllow         bool
 	RateLimit               int
 	MaxConn                 int
 	WebUserName             string
@@ -95,8 +90,13 @@ type EditClientInput struct {
 	MaxTunnelNum            int
 	FlowLimit               int64
 	TimeLimit               string
-	ResetFlow               bool
 	BlackIPList             []string
+	IsAdmin                 bool
+	AllowUserChangeUsername bool
+	Compress                bool
+	Crypt                   bool
+	ConfigConnAllow         bool
+	ResetFlow               bool
 }
 
 type ClientQRCodeInput struct {

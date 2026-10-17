@@ -30,14 +30,14 @@ func (s *TRPClient) serveP2P(tunnel any, invite p2pproto.Invite) {
 		logs.Info("P2P session %s declined: P2P is disabled on this client", invite.SessionID)
 		join.Decline = "P2P is disabled on the provider"
 		c := conn.NewConn(stream)
-		if err := SendType(c, common.WORK_P2P_SESSION, s.uuid); err == nil {
+		if err := SendType(c, common.WorkP2PSession, s.uuid); err == nil {
 			_ = c.SetWriteDeadline(time.Now().Add(p2pControlTimeout))
 			_ = p2pproto.Write(c, join)
 			_ = c.Close()
 		}
 		return
 	}
-	tc, _, err := openP2PControl(s.ctx, conn.NewConn(stream), common.WORK_P2P_SESSION, s.uuid, s.server.fingerprint, join)
+	tc, _, err := openP2PControl(s.ctx, conn.NewConn(stream), common.WorkP2PSession, s.uuid, s.server.fingerprint, join)
 	if err != nil {
 		logs.Warn("P2P session %s: join failed: %v", invite.SessionID, err)
 		return

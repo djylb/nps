@@ -178,7 +178,9 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	if err != nil {
 		return nil, err
 	}
-	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), common.WORK_P2P, mgr.getUUID(), server.fingerprint,
+	// openP2PControl owns the stream and closes it on failure.
+	//noinspection GoResourceLeak
+	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), common.WorkP2P, mgr.getUUID(), server.fingerprint,
 		p2pproto.Request{Password: crypt.Md5(p.password), Background: background, ServerIP: server.ip})
 	if err != nil {
 		return nil, err
@@ -188,6 +190,8 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 		mode = protocol.ModeBackground
 	}
 	logs.Debug("%s: punching in session %s (%s)", p.label, sessionID, p2pModeName(background))
+	// tc is closed right below; on success the session is handed to the transport.
+	//noinspection GoResourceLeak
 	sess, err := holepunch.AttachSession(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, mode))
 	_ = tc.Close()
 	if err != nil {

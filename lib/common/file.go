@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -94,13 +93,4 @@ func FileExists(name string) bool {
 		return false
 	}
 	return true
-}
-
-func GetExtFromPath(path string) string {
-	s := strings.Split(path, ".")
-	re, err := regexp.Compile(`(\w+)`)
-	if err != nil {
-		return ""
-	}
-	return string(re.Find([]byte(s[0])))
 }

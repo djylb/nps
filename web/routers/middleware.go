@@ -51,7 +51,13 @@ func apiInputMiddleware() gin.HandlerFunc {
 			return
 		}
 		for key, value := range payload {
-			framework.SetRequestParam(c, key, stringifyAPIValue(value))
+			text := stringifyAPIValue(value)
+			framework.SetRequestInput(c, key, text)
+			// Values already normalized by earlier middleware take precedence.
+			if _, exists := framework.RequestParam(c, key); exists {
+				continue
+			}
+			framework.SetRequestParam(c, key, text)
 		}
 		c.Next()
 	}
@@ -89,11 +95,12 @@ func protectedRouteMiddleware(state *State) gin.HandlerFunc {
 				abortUnauthorized(c, state.LoginURL())
 				return
 			}
-		} else if err := framework.SetSessionValue(c, "isAdmin", true); err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			c.Abort()
-			return
 		} else {
+			if err := framework.SetSessionValue(c, "isAdmin", true); err != nil {
+				c.AbortWithStatus(http.StatusInternalServerError)
+				c.Abort()
+				return
+			}
 			setActor(c, webapi.AdminActorWithFallback("", cfg.Web.Username))
 		}
 
@@ -146,59 +153,59 @@ func permissionMiddleware(state *State, permission string) gin.HandlerFunc {
 	}
 }
 
-func clientScopeMiddleware(state *State) gin.HandlerFunc {
+// clientScopeMiddleware resolves the client_id submitted with the request
+// and stores the normalized value for the handler. When keepUnset is true an
+// empty or non-positive client_id is normalized to 0 so the handler keeps the
+// resource's current client.
+func clientScopeMiddleware(state *State, keepUnset bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		resolvedClientID, err := state.Authorization().ResolveClient(currentPrincipal(c), requestedClientID(c))
+		requested, err := requestedClientID(c)
+		if err != nil {
+			abortForbidden(c)
+			return
+		}
+		if keepUnset && requested <= 0 {
+			framework.SetRequestParam(c, "client_id", "0")
+			c.Next()
+			return
+		}
+		resolvedClientID, err := state.Authorization().ResolveClient(currentPrincipal(c), requested)
 		if err != nil {
 			abortAccessError(c, state, err)
 			return
 		}
 		if resolvedClientID > 0 {
 			framework.SetRequestData(c, "client_id", resolvedClientID)
-			framework.SetRequestParam(c, "client_id", strconv.Itoa(resolvedClientID))
 		}
+		framework.SetRequestParam(c, "client_id", strconv.Itoa(resolvedClientID))
 		c.Next()
 	}
 }
 
 func clientOwnershipMiddleware(state *State) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id, ok := requestInt(c, "id")
-		if !ok {
-			c.Next()
-			return
-		}
-		if err := state.Authorization().RequireClient(currentPrincipal(c), id); err != nil {
-			abortAccessError(c, state, err)
-			return
-		}
-		c.Next()
-	}
+	return resourceOwnershipMiddleware(state, state.Authorization().RequireClient)
 }
 
 func tunnelOwnershipMiddleware(state *State) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id, ok := requestInt(c, "id")
-		if !ok {
-			c.Next()
-			return
-		}
-		if err := state.Authorization().RequireTunnel(currentPrincipal(c), id); err != nil {
-			abortAccessError(c, state, err)
-			return
-		}
-		c.Next()
-	}
+	return resourceOwnershipMiddleware(state, state.Authorization().RequireTunnel)
 }
 
 func hostOwnershipMiddleware(state *State) gin.HandlerFunc {
+	return resourceOwnershipMiddleware(state, state.Authorization().RequireHost)
+}
+
+func resourceOwnershipMiddleware(state *State, require func(webservice.Principal, int) error) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, ok := requestInt(c, "id")
+		id, ok, err := requestInt(c, "id")
+		if err != nil {
+			abortForbidden(c)
+			return
+		}
 		if !ok {
 			c.Next()
 			return
 		}
-		if err := state.Authorization().RequireHost(currentPrincipal(c), id); err != nil {
+		if err := require(currentPrincipal(c), id); err != nil {
 			abortAccessError(c, state, err)
 			return
 		}
@@ -206,40 +213,35 @@ func hostOwnershipMiddleware(state *State) gin.HandlerFunc {
 	}
 }
 
-func requestInt(c *gin.Context, key string) (int, bool) {
-	if raw, ok := framework.RequestParam(c, key); ok && raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err == nil {
-			return value, true
-		}
-		return 0, false
-	}
-	raw := c.Request.FormValue(key)
+// requestInt reads key with the same lookup order and parsing rules as the
+// handler context and stores the normalized value back as a request param.
+// It reports whether a non-empty value was present.
+func requestInt(c *gin.Context, key string) (int, bool, error) {
+	raw := strings.TrimSpace(newAPIContext(c).String(key))
 	if raw == "" {
-		return 0, false
+		return 0, false, nil
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, false
+		return 0, true, err
 	}
-	return value, true
+	framework.SetRequestParam(c, key, strconv.Itoa(value))
+	return value, true, nil
 }
 
-func requestedClientID(c *gin.Context) int {
+// requestedClientID returns the client_id submitted by the caller from the
+// form or the JSON body; an absent value yields 0.
+func requestedClientID(c *gin.Context) (int, error) {
 	raw := strings.TrimSpace(c.Request.FormValue("client_id"))
 	if raw == "" {
-		if requestValue, ok := framework.RequestParam(c, "client_id"); ok {
-			raw = strings.TrimSpace(requestValue)
+		if input, ok := framework.RequestInput(c, "client_id"); ok {
+			raw = strings.TrimSpace(input)
 		}
 	}
 	if raw == "" {
-		return 0
+		return 0, nil
 	}
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0
-	}
-	return value
+	return strconv.Atoi(raw)
 }
 
 func stringifyAPIValue(value interface{}) string {

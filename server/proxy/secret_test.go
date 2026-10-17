@@ -18,7 +18,7 @@ type localDialBridge struct {
 	links chan *conn.Link
 }
 
-func (b *localDialBridge) SendLinkInfo(clientID int, link *conn.Link, t *file.Tunnel) (net.Conn, error) {
+func (b *localDialBridge) SendLinkInfo(_ int, link *conn.Link, _ *file.Tunnel) (net.Conn, error) {
 	b.links <- link
 	return net.DialTimeout(link.ConnType, link.Host, 2*time.Second)
 }

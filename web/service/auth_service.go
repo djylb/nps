@@ -47,16 +47,16 @@ type RegisterUserResult struct {
 
 type SessionIdentity struct {
 	Version       int               `json:"version"`
-	Authenticated bool              `json:"authenticated"`
 	Kind          string            `json:"kind,omitempty"`
 	Provider      string            `json:"provider,omitempty"`
 	SubjectID     string            `json:"subject_id,omitempty"`
 	Username      string            `json:"username,omitempty"`
-	IsAdmin       bool              `json:"is_admin"`
 	ClientIDs     []int             `json:"client_ids,omitempty"`
 	Roles         []string          `json:"roles,omitempty"`
 	Permissions   []string          `json:"permissions,omitempty"`
 	Attributes    map[string]string `json:"attributes,omitempty"`
+	Authenticated bool              `json:"authenticated"`
+	IsAdmin       bool              `json:"is_admin"`
 }
 
 func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdentity, error) {

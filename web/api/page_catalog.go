@@ -10,7 +10,6 @@ import (
 type PageOwnership string
 
 const (
-	PageOwnershipNone   PageOwnership = ""
 	PageOwnershipClient PageOwnership = "client"
 	PageOwnershipTunnel PageOwnership = "tunnel"
 	PageOwnershipHost   PageOwnership = "host"
@@ -34,14 +33,14 @@ type PageSpec struct {
 	Action                string
 	Permission            string
 	Ownership             PageOwnership
-	IncludeControllerRoot bool
-	Protected             bool
 	Section               string
 	Menu                  string
 	Template              string
-	Navigation            bool
 	Params                []PageParam
 	RequiredFeatures      []PageFeature
+	IncludeControllerRoot bool
+	Protected             bool
+	Navigation            bool
 }
 
 type PageEntry struct {

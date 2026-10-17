@@ -13,6 +13,6 @@ func HandleTrans(c *conn.Conn, s *TunnelModeServer) error {
 	if addr, err := transport.GetAddress(c.Conn); err != nil {
 		return err
 	} else {
-		return s.DealClient(c, s.Task.Client, addr, nil, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+		return s.DealClient(c, s.Task.Client, addr, nil, common.ConnTCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 	}
 }

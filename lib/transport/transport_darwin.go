@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	PfOut        = 2
-	LEN          = 4*16 + 4*4 + 4*1
-	IOCInOut     = 0x80000000
-	IOCPARM_MASK = 0x1FFF
-	DIOCNATLOOK  = IOCInOut | ((LEN & IOCPARM_MASK) << 16) | ('D' << 8) | 23
-	TCP_KEEPIDLE = unix.TCP_KEEPALIVE
+	PfOut       = 2
+	LEN         = 4*16 + 4*4 + 4*1
+	IOCInOut    = 0x80000000
+	IocparmMask = 0x1FFF
+	DIOCNATLOOK = IOCInOut | ((LEN & IocparmMask) << 16) | ('D' << 8) | 23
+	TCPKeepIdle = unix.TCP_KEEPALIVE
 )
 
 func GetAddress(conn net.Conn) (string, error) {
@@ -25,7 +25,7 @@ func GetAddress(conn net.Conn) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open /dev/pf: %v", err)
 	}
-	defer syscall.Close(fd)
+	defer func() { _ = syscall.Close(fd) }()
 
 	var nl struct {
 		saddr, daddr, rsaddr, rdaddr       [16]byte

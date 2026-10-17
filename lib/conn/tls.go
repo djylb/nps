@@ -26,7 +26,7 @@ func NewTlsConn(rawConn net.Conn, timeout time.Duration, tlsConfig *tls.Config) 
 	tlsConn := tls.Client(rawConn, tlsConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
-		_ = rawConn.Close()
+		_ = tlsConn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
 

@@ -393,9 +393,14 @@ func newTransportClient(insecure bool) *http.Client {
 
 // do sends req and reports whether the server certificate was verified.
 func (c *httpClient) do(req *http.Request) (*http.Response, bool, error) {
+	// The response is returned to the caller, which closes its body.
+	//noinspection GoResourceLeak
 	resp, err := c.verified.Do(req)
 	if err == nil || !isCertificateError(err) {
 		return resp, err == nil, err
+	}
+	if resp != nil {
+		_ = resp.Body.Close()
 	}
 	fmt.Printf("WARNING: certificate verification for %s failed: %v\n", req.URL.Host, err)
 	fmt.Println("WARNING: the system certificate store may be broken or outdated; retrying this download WITHOUT certificate verification")

@@ -26,22 +26,24 @@ type stopSignal struct {
 	ch chan struct{}
 }
 
+// Rate is a byte rate limiter. Its atomically accessed int64 fields come
+// first, so that they stay 8-byte aligned on 32-bit platforms.
 type Rate struct {
 	rate    int64 // bytes/s, <=0 => unlimited
 	burstNs int64 // burst window in ns
 	tat     int64 // theoretical arrival time (ns since t0), can be negative
 
-	enabled int32
-	t0      time.Time
-
-	mu      sync.Mutex
-	stopped bool
-	stop    atomic.Pointer[stopSignal]
-
 	// approx realtime rate (bytes/s)
 	bytesAcc     int64
 	lastSampleNs int64
 	nowBps       int64
+
+	t0   time.Time
+	stop atomic.Pointer[stopSignal]
+	mu   sync.Mutex
+
+	enabled int32
+	stopped bool
 }
 
 type rateJSON struct {

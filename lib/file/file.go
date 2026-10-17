@@ -63,8 +63,8 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 			post.HttpProxy = true
 			post.Socks5Proxy = false
 		}
-		if post.TargetType != common.CONN_TCP && post.TargetType != common.CONN_UDP {
-			post.TargetType = common.CONN_ALL
+		if post.TargetType != common.ConnTCP && post.TargetType != common.ConnUDP {
+			post.TargetType = common.ConnAll
 		}
 		post.CompileDestACL()
 		s.Tasks.Store(post.Id, post)
@@ -207,10 +207,10 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 }
 
 func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
-	// 加载旧版的json文件，以"\n"+common.CONN_DATA_SEQ分隔
+	// 加载旧版的json文件，以"\n"+common.ConnDataSeq分隔
 	var err error
 	// 根据分隔符处理内容
-	for _, v := range strings.Split(string(b), "\n"+common.CONN_DATA_SEQ) {
+	for _, v := range strings.Split(string(b), "\n"+common.ConnDataSeq) {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			continue

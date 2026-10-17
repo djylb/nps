@@ -255,6 +255,7 @@ func startObservers(basePort int, p2pIP string, logger *slog.Logger) (*natprobe.
 			}
 			return reg, probe, groups, nil
 		}
+		_ = probe.Close()
 		if dualErr != nil {
 			return nil, nil, nil, err
 		}
@@ -481,7 +482,7 @@ func (p *p2pService) onResult(r coord.Result) {
 		r.SessionID, task, visitor, provider, r.Outcome, r.Code, r.Detail, r.FailedRole, r.Retry.Advice, p.succeeded.Load(), n)
 }
 
-// handleP2PVisitor serves a WORK_P2P stream: it checks the request, invites
+// handleP2PVisitor serves a WorkP2P stream: it checks the request, invites
 // the provider, waits for its join, opens the session with each side's probe
 // addresses and attaches both streams, turned into TLS, to it.
 func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelType string) {
@@ -530,7 +531,7 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 		return false
 	}
 	defer drop()
-	if err := node.sendSignal(common.P2P_PUNCH_START, p2pproto.Invite{SessionID: inviteID, Token: token}, p2pHandshakeTimeout); err != nil {
+	if err := node.sendSignal(common.P2PPunchStart, p2pproto.Invite{SessionID: inviteID, Token: token}, p2pHandshakeTimeout); err != nil {
 		refuseP2P(c, id, p2pproto.CodeOffline, fmt.Sprintf("client %d unreachable: %v", t.Client.Id, err))
 		return false
 	}
@@ -635,7 +636,7 @@ func isTimeout(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
-// handleP2PJoin serves a WORK_P2P_SESSION stream: the provider answers an
+// handleP2PJoin serves a WorkP2PSession stream: the provider answers an
 // invitation, and the stream goes to the visitor's handler.
 func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string) {
 	svc := s.p2p.Load()
@@ -664,7 +665,7 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string)
 // bridge directly, so that the server address its client reports is the
 // bridge's own: a WebSocket bridge may sit behind a reverse proxy or CDN.
 func p2pDirect(tunnelType string) bool {
-	return tunnelType != common.CONN_WS && tunnelType != common.CONN_WSS
+	return tunnelType != common.ConnWS && tunnelType != common.ConnWSS
 }
 
 // resolveP2PTarget finds the P2P task of a password and its provider's
@@ -715,6 +716,8 @@ func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tl
 		cs.Abort(protocol.ReasonPeerOffline, "gone_"+string(role))
 		return
 	}
+	// Every failure closes tc; on success the session owns it.
+	//noinspection GoResourceLeak
 	tc := tls.Server(c, cfg)
 	if err := tc.Handshake(); err != nil {
 		logs.Warn("P2P session %s: TLS handshake with the %s at %v failed: %v", cs.ID(), role, c.RemoteAddr(), err)

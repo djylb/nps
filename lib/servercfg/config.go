@@ -40,12 +40,6 @@ func init() {
 	mustRegisterViperFormat("json", ".json")
 }
 
-func mustRegisterFormat(format string, parser parserFunc, extensions ...string) {
-	if err := RegisterFormat(format, parser, extensions...); err != nil {
-		panic(err)
-	}
-}
-
 func mustRegisterViperFormat(format string, extensions ...string) {
 	if err := RegisterViperFormat(format, extensions...); err != nil {
 		panic(err)
@@ -358,13 +352,6 @@ func Bool(key string) (bool, error) {
 	return toBool(value)
 }
 
-func DefaultBool(key string, defaultValue bool) bool {
-	if value, err := Bool(key); err == nil {
-		return value
-	}
-	return defaultValue
-}
-
 func Int(key string) (int, error) {
 	value, err := getValue(key)
 	if err != nil {
@@ -373,26 +360,12 @@ func Int(key string) (int, error) {
 	return toInt(value)
 }
 
-func DefaultInt(key string, defaultValue int) int {
-	if value, err := Int(key); err == nil {
-		return value
-	}
-	return defaultValue
-}
-
 func Int64(key string) (int64, error) {
 	value, err := getValue(key)
 	if err != nil {
 		return 0, err
 	}
 	return toInt64(value)
-}
-
-func DefaultInt64(key string, defaultValue int64) int64 {
-	if value, err := Int64(key); err == nil {
-		return value
-	}
-	return defaultValue
 }
 
 func flattenSettings(root map[string]any) map[string]any {

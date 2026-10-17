@@ -104,6 +104,7 @@ func ReadClientHello(clientConn net.Conn, prefix []byte) (helloInfo *tls.ClientH
 			return nil, nil
 		},
 	})
+	defer func() { _ = fakeTLS.Close() }()
 	err = fakeTLS.Handshake()
 	if helloInfoPtr == nil {
 		if err == nil {

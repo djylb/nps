@@ -63,8 +63,6 @@ type HostMutation struct {
 }
 
 type AddTunnelInput struct {
-	IsAdmin        bool
-	AllowUserLocal bool
 	ClientID       int
 	Port           int
 	ServerIP       string
@@ -72,24 +70,24 @@ type AddTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
-	LocalProxy     bool
 	Auth           string
 	Remark         string
 	Password       string
 	LocalPath      string
 	StripPre       string
-	EnableHTTP     bool
-	EnableSocks5   bool
 	DestACLMode    int
 	DestACLRules   string
 	FlowLimit      int64
 	TimeLimit      string
+	IsAdmin        bool
+	AllowUserLocal bool
+	LocalProxy     bool
+	EnableHTTP     bool
+	EnableSocks5   bool
 }
 
 type EditTunnelInput struct {
 	ID             int
-	IsAdmin        bool
-	AllowUserLocal bool
 	ClientID       int
 	Port           int
 	ServerIP       string
@@ -97,29 +95,28 @@ type EditTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
-	LocalProxy     bool
 	Auth           string
 	Remark         string
 	Password       string
 	LocalPath      string
 	StripPre       string
-	EnableHTTP     bool
-	EnableSocks5   bool
 	DestACLMode    int
 	DestACLRules   string
 	FlowLimit      int64
 	TimeLimit      string
+	IsAdmin        bool
+	AllowUserLocal bool
+	LocalProxy     bool
+	EnableHTTP     bool
+	EnableSocks5   bool
 	ResetFlow      bool
 }
 
 type AddHostInput struct {
-	IsAdmin        bool
-	AllowUserLocal bool
 	ClientID       int
 	Host           string
 	Target         string
 	ProxyProtocol  int
-	LocalProxy     bool
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -131,11 +128,14 @@ type AddHostInput struct {
 	FlowLimit      int64
 	TimeLimit      string
 	Scheme         string
+	KeyFile        string
+	CertFile       string
+	IsAdmin        bool
+	AllowUserLocal bool
+	LocalProxy     bool
 	HTTPSJustProxy bool
 	TLSOffload     bool
 	AutoSSL        bool
-	KeyFile        string
-	CertFile       string
 	AutoHTTPS      bool
 	AutoCORS       bool
 	CompatMode     bool
@@ -144,13 +144,10 @@ type AddHostInput struct {
 
 type EditHostInput struct {
 	ID             int
-	IsAdmin        bool
-	AllowUserLocal bool
 	ClientID       int
 	Host           string
 	Target         string
 	ProxyProtocol  int
-	LocalProxy     bool
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -161,13 +158,16 @@ type EditHostInput struct {
 	RedirectURL    string
 	FlowLimit      int64
 	TimeLimit      string
-	ResetFlow      bool
 	Scheme         string
+	KeyFile        string
+	CertFile       string
+	IsAdmin        bool
+	AllowUserLocal bool
+	LocalProxy     bool
+	ResetFlow      bool
 	HTTPSJustProxy bool
 	TLSOffload     bool
 	AutoSSL        bool
-	KeyFile        string
-	CertFile       string
 	AutoHTTPS      bool
 	AutoCORS       bool
 	CompatMode     bool
@@ -254,9 +254,9 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	// Edit a copy so that a rejected save leaves the stored task untouched.
 	tunnel := stored.Clone()
 
-	client, err := s.repo().GetClient(input.ClientID)
+	client, err := s.editTargetClient(tunnel.Client, input.ClientID)
 	if err != nil {
-		return TunnelMutation{}, ErrClientNotFound
+		return TunnelMutation{}, err
 	}
 	tunnel.Client = client
 
@@ -291,7 +291,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.Target = &file.Target{
 		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
 		ProxyProtocol: input.ProxyProtocol,
-		LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
+		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
 	}
 	tunnel.UserAuth = &file.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
 	tunnel.Password = input.Password
@@ -319,7 +319,30 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 		return TunnelMutation{}, normalizeRuntimeError(err)
 	}
 
-	return TunnelMutation{ID: tunnel.Id, ClientID: input.ClientID, Mode: tunnel.Mode}, nil
+	return TunnelMutation{ID: tunnel.Id, ClientID: client.Id, Mode: tunnel.Mode}, nil
+}
+
+// editTargetClient returns the client an edited tunnel or host belongs to.
+// A non-positive clientID keeps the current client; moving to another client
+// applies the same tunnel count limit as creation.
+func (s DefaultIndexService) editTargetClient(current *file.Client, clientID int) (*file.Client, error) {
+	if clientID <= 0 {
+		if current == nil {
+			return nil, ErrClientNotFound
+		}
+		return current, nil
+	}
+	client, err := s.repo().GetClient(clientID)
+	if err != nil {
+		return nil, ErrClientNotFound
+	}
+	if current != nil && current.Id == client.Id {
+		return client, nil
+	}
+	if client.MaxTunnelNum != 0 && client.GetTunnelNum() >= client.MaxTunnelNum {
+		return nil, ErrTunnelLimitExceeded
+	}
+	return client, nil
 }
 
 func (s DefaultIndexService) StopTunnel(id int, mode string) error {
@@ -474,9 +497,9 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 		}
 	}
 
-	client, err := s.repo().GetClient(input.ClientID)
+	client, err := s.editTargetClient(host.Client, input.ClientID)
 	if err != nil {
-		return HostMutation{}, ErrClientNotFound
+		return HostMutation{}, err
 	}
 	host.Client = client
 
@@ -489,7 +512,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.Target = &file.Target{
 		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
 		ProxyProtocol: input.ProxyProtocol,
-		LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
+		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
 	}
 	host.UserAuth = &file.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
 	host.HeaderChange = input.Header
@@ -522,7 +545,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 		return HostMutation{}, err
 	}
 
-	return HostMutation{ID: host.Id, ClientID: input.ClientID}, nil
+	return HostMutation{ID: host.Id, ClientID: client.Id}, nil
 }
 
 func sanitizeBridgeTarget(target string, isAdmin bool, fallback string) string {

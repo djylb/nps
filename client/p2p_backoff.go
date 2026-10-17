@@ -52,12 +52,14 @@ func classifyP2PError(err error) (p2pBackoffClass, time.Duration, protocol.Advic
 	var refused *p2pproto.RefusedError
 	switch {
 	case errors.As(err, &herr):
-		class := p2pBackoffTransient
+		var class p2pBackoffClass
 		switch herr.Reason.Class() {
 		case protocol.ClassFatal:
 			class = p2pBackoffFatal
 		case protocol.ClassNATHard:
 			class = p2pBackoffNATHard
+		default:
+			class = p2pBackoffTransient
 		}
 		if herr.Advice == protocol.AdviceRelayOnly {
 			class = p2pBackoffRelayOnly

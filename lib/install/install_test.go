@@ -157,8 +157,12 @@ func TestReplaceExecutables(t *testing.T) {
 				t.Fatalf("aside=%v: ReadFile(%s) = (%q, %v), want new", aside, p, got, err)
 			}
 			if runtime.GOOS != "windows" {
-				if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o755 {
-					t.Fatalf("aside=%v: %s mode = %v (%v), want 0755", aside, p, fi.Mode().Perm(), err)
+				fi, err := os.Stat(p)
+				if err != nil {
+					t.Fatalf("aside=%v: Stat(%s) error = %v", aside, p, err)
+				}
+				if fi.Mode().Perm() != 0o755 {
+					t.Fatalf("aside=%v: %s mode = %v, want 0755", aside, p, fi.Mode().Perm())
 				}
 			}
 		}

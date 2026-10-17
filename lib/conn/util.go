@@ -46,7 +46,7 @@ func GetTlsConn(c net.Conn, sni string) (net.Conn, error) {
 	tlsConn := tls.Client(c, tlsConf)
 	if err := tlsConn.Handshake(); err != nil {
 		logs.Error("TLS handshake with backend failed: %v", err)
-		_ = c.Close()
+		_ = tlsConn.Close()
 		return nil, err
 	}
 	return tlsConn, nil
@@ -72,10 +72,9 @@ func IsTimeout(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) {
 		return ne.Timeout()
-	} else {
-		s := strings.ToLower(strings.ReplaceAll(err.Error(), " ", ""))
-		return strings.Contains(s, "timeout")
 	}
+	s := strings.ToLower(strings.ReplaceAll(err.Error(), " ", ""))
+	return strings.Contains(s, "timeout")
 }
 
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
@@ -182,20 +181,20 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 
 func WriteACK(c net.Conn, timeout time.Duration) error {
 	_ = c.SetWriteDeadline(time.Now().Add(timeout))
-	_, err := c.Write([]byte(common.CONN_ACK))
+	_, err := c.Write([]byte(common.ConnAck))
 	_ = c.SetWriteDeadline(time.Time{})
 	return err
 }
 
 func ReadACK(c net.Conn, timeout time.Duration) error {
 	_ = c.SetReadDeadline(time.Now().Add(timeout))
-	buf := make([]byte, len(common.CONN_ACK))
+	buf := make([]byte, len(common.ConnAck))
 	_, err := io.ReadFull(c, buf)
 	_ = c.SetReadDeadline(time.Time{})
 	if err != nil {
 		return err
 	}
-	if string(buf) != common.CONN_ACK {
+	if string(buf) != common.ConnAck {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
@@ -206,6 +205,8 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Ra
 	flows []*file.Flow, isServer bool, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal, isFramed bool) {
 	connHandle := GetConn(conn1, crypt, snappy, rate, isServer, isLocal)
 	if isFramed {
+		// connHandle only wraps conn1, which every path below closes.
+		//noinspection GoResourceLeak
 		connHandle = WrapFramed(WrapConn(connHandle, conn1))
 	}
 	proxyHeader := BuildProxyProtocolHeader(conn2, proxyProtocol)

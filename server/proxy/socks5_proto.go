@@ -18,9 +18,9 @@ var (
 )
 
 type socks5Address struct {
-	Type byte
 	Host string
 	Port uint16
+	Type byte
 }
 
 func (a socks5Address) String() string {

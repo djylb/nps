@@ -42,7 +42,7 @@ func TestSortClientByKey(t *testing.T) {
 func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
 	validSecret := "JBSWY3DPEHPK3PXP"
 	c := &Client{
-		WebPassword: "plainpass" + common.TOTP_SEQ + validSecret,
+		WebPassword: "plainpass" + common.TOTPSeq + validSecret,
 	}
 
 	c.EnsureWebPassword()
