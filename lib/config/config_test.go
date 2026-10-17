@@ -124,21 +124,6 @@ func TestDealCommon_Defaults(t *testing.T) {
 	}
 }
 
-func TestGetTitleContent(t *testing.T) {
-	s := "[common]"
-	if getTitleContent(s) != "common" {
-		t.Fail()
-	}
-}
-
-func TestStripCommentLines(t *testing.T) {
-	content := "a=1\n#comment\n  #comment2\nb=2\n"
-	cleaned := stripCommentLines(content)
-	if cleaned != "a=1\nb=2\n" {
-		t.Fatalf("unexpected cleaned config: %q", cleaned)
-	}
-}
-
 func TestDealHost_HeaderAndResponseMapping(t *testing.T) {
 	h := dealHost(`host=example.com
 target_addr=127.0.0.1:8080,127.0.0.1:8081
@@ -231,5 +216,64 @@ fallback_secret=true`)
 	}
 	if !local.LocalProxy || !local.Fallback {
 		t.Fatalf("boolean flags parse failed: %+v", local)
+	}
+}
+
+func TestParseConfig_WindowsFile(t *testing.T) {
+	raw := "\xEF\xBB\xBF[common] \r\nserver_addr = 1.2.3.4:8024\r\nvkey=abc\r\n\r\n[ssh]  \r\nmode=tcp\r\ntarget_addr=localhost:22\r\nserver_port=9022\r\n[web]\rhost=a.com\rtarget_addr=127.0.0.1:80\r"
+	c, err := parseConfig(raw)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if c.CommonConfig.Server != "1.2.3.4:8024" || c.CommonConfig.VKey != "abc" {
+		t.Fatalf("unexpected common: %+v", c.CommonConfig)
+	}
+	if len(c.Tasks) != 1 || c.Tasks[0].Remark != "ssh" || c.Tasks[0].Target.TargetStr != "localhost:22" || c.Tasks[0].Ports != "9022" {
+		t.Fatalf("unexpected tasks: %+v", c.Tasks)
+	}
+	if len(c.Hosts) != 1 || c.Hosts[0].Host != "a.com" || c.Hosts[0].Target.TargetStr != "127.0.0.1:80" {
+		t.Fatalf("unexpected hosts: %+v", c.Hosts)
+	}
+}
+
+func TestParseConfig_CommentedDuplicateTitle(t *testing.T) {
+	raw := "[common]\nvkey=a\n#[tcp]\n# mode=udp\n[tcp]\nmode=tcp\nserver_port=1000\ntarget_addr=127.0.0.1:22\n"
+	c, err := parseConfig(raw)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if c.CommonConfig.VKey != "a" || len(c.Tasks) != 1 || c.Tasks[0].Mode != "tcp" || c.Tasks[0].Ports != "1000" {
+		t.Fatalf("unexpected result: common=%+v tasks=%+v", c.CommonConfig, c.Tasks)
+	}
+}
+
+func TestParseConfig_ValueWithEquals(t *testing.T) {
+	raw := "[common]\nvkey=a=b==\nproxy_url=http://u:p@h/?x=1\n"
+	c, err := parseConfig(raw)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if c.CommonConfig.VKey != "a=b==" || c.CommonConfig.ProxyUrl != "http://u:p@h/?x=1" {
+		t.Fatalf("unexpected common: %+v", c.CommonConfig)
+	}
+}
+
+func TestParseConfig_SectionTypeByKey(t *testing.T) {
+	raw := "[COMMON]\nvkey=a\n[secret_ssh]\nlocal_port=2000\npassword=mode_x\n[p2p_ssh]\nlocal_port=2001\npassword=modehost\n"
+	c, err := parseConfig(raw)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if c.CommonConfig == nil || len(c.LocalServer) != 2 || len(c.Hosts) != 0 || len(c.Tasks) != 0 {
+		t.Fatalf("unexpected result: %+v %+v %+v", c.LocalServer, c.Hosts, c.Tasks)
+	}
+	if c.LocalServer[0].Type != "secret" || c.LocalServer[1].Type != "p2p" {
+		t.Fatalf("unexpected local types: %+v %+v", c.LocalServer[0], c.LocalServer[1])
+	}
+}
+
+func TestParseConfig_MissingCommon(t *testing.T) {
+	if _, err := parseConfig("[tcp]\r\nmode=tcp\r\n"); err == nil {
+		t.Fatal("expected error for missing [common]")
 	}
 }

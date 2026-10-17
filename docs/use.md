@@ -296,7 +296,9 @@ target_addr=10.1.50.2:22
 
 #### 文件访问模式
 
-利用nps提供一个公网可访问的本地文件服务，此模式仅客户端使用配置文件模式方可启动
+利用nps提供一个公网可访问的本地文件服务（WebDAV，浏览器也可直接浏览）。
+
+**文件模式只能在 npc.conf 中配置，并用 `npc -config=npc.conf` 启动**；网页管理界面不能创建文件隧道，命令行（`-server`/`-vkey`）模式也不会启动文件服务。
 
 ```ini
 [common]
@@ -308,17 +310,25 @@ server_port=9100
 local_path=/tmp/
 strip_pre=/web/
 read_only=false
-````
+multi_account=/etc/npc/file_users.conf
+```
 
-| 项           | 含义       |
-|-------------|----------|
-| mode        | file     |
-| server_port | 服务端开启的端口 |
-| local_path  | 本地文件目录   |
-| strip_pre   | 前缀       |
-| read_only   | 只读       |
+| 项             | 含义                                                         |
+|---------------|------------------------------------------------------------|
+| mode          | file                                                       |
+| server_port   | 在 nps 服务端开启的端口                                            |
+| server_ip     | 可选，nps 服务端监听该端口时绑定的地址（如 0.0.0.0），不是访问地址                   |
+| local_path    | npc 本机上要共享的目录                                             |
+| strip_pre     | URL 前缀，访问时需带上该前缀                                          |
+| read_only     | 为 true 时只读：只允许浏览/下载，拒绝上传、删除、移动等写操作                         |
+| multi_account | 可选，账号文件路径，每行 `用户名=密码`；配置后访问需 Basic 认证（`[common]` 的 basic_username/basic_password 也会生效） |
 
-对于`strip_pre`，访问公网`ip:9100/web/`相当于访问`/tmp/`目录
+访问地址为 `http://<server-ip>:<server_port>/<strip_pre>`，例如上例访问 `http://1.1.1.1:9100/web/` 即相当于访问 npc 本机的 `/tmp/` 目录。其中：
+
+- `<server-ip>` 是 **nps 服务端** 的地址（公网 IP 或域名），端口 `server_port` 由 nps 服务端监听；
+- 它不是 npc 本机的 `127.0.0.1`，也不是 `[file]` 段里的 `server_ip`（那只是服务端监听的绑定地址）。
+
+Windows 下用记事本等编辑 npc.conf 均可：UTF-8（含或不含 BOM）编码、CRLF 换行、段头或键值前后多余空格都能正确解析。
 
 #### 断线重连
 

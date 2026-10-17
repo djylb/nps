@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -45,77 +46,129 @@ type Config struct {
 	LocalServer  []*LocalServer
 }
 
-func NewConfig(path string) (c *Config, err error) {
-	c = new(Config)
-	var b []byte
-	if b, err = common.ReadAllFromFile(path); err != nil {
-		return
-	}
-	if c.content, err = common.ParseStr(string(b)); err != nil {
+// NewConfig loads and parses an npc configuration file.
+func NewConfig(path string) (*Config, error) {
+	b, err := common.ReadAllFromFile(path)
+	if err != nil {
 		return nil, err
 	}
-	if c.title, err = getAllTitle(c.content); err != nil {
-		return
+	return parseConfig(string(b))
+}
+
+func parseConfig(raw string) (*Config, error) {
+	content, err := common.ParseStr(normalizeContent(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
 	}
-	var nowIndex int
-	var nextIndex int
-	var nowContent string
-	for i := 0; i < len(c.title); i++ {
-		nowIndex = strings.Index(c.content, c.title[i]) + len(c.title[i])
-		if i < len(c.title)-1 {
-			nextIndex = strings.Index(c.content, c.title[i+1])
-		} else {
-			nextIndex = len(c.content)
-		}
-		nowContent = c.content[nowIndex:nextIndex]
-		nowContent = stripCommentLines(nowContent)
-		if strings.HasPrefix(getTitleContent(c.title[i]), "secret") && !strings.Contains(nowContent, "mode") {
-			local := delLocalService(nowContent)
+	sections, err := parseSections(content)
+	if err != nil {
+		return nil, err
+	}
+	c := &Config{content: content}
+	for _, sec := range sections {
+		c.title = append(c.title, "["+sec.name+"]")
+		name := strings.ToLower(sec.name)
+		keys := sectionKeys(sec.body)
+		switch {
+		case strings.HasPrefix(name, "secret") && !keys["mode"]:
+			local := delLocalService(sec.body)
 			local.Type = "secret"
 			c.LocalServer = append(c.LocalServer, local)
-			continue
-		}
-		if strings.HasPrefix(getTitleContent(c.title[i]), "p2p") && !strings.Contains(nowContent, "mode") {
-			local := delLocalService(nowContent)
+		case strings.HasPrefix(name, "p2p") && !keys["mode"]:
+			local := delLocalService(sec.body)
 			if local.Type == "" {
 				local.Type = "p2p"
 			}
 			c.LocalServer = append(c.LocalServer, local)
-			continue
-		}
-		//health set
-		if strings.HasPrefix(getTitleContent(c.title[i]), "health") {
-			c.Healths = append(c.Healths, dealHealth(nowContent))
-			continue
-		}
-		switch c.title[i] {
-		case "[common]":
-			c.CommonConfig = dealCommon(nowContent)
+		case strings.HasPrefix(name, "health"):
+			c.Healths = append(c.Healths, dealHealth(sec.body))
+		case name == "common":
+			c.CommonConfig = dealCommon(sec.body)
+		case keys["host"]:
+			h := dealHost(sec.body)
+			h.Remark = sec.name
+			c.Hosts = append(c.Hosts, h)
 		default:
-			if strings.Contains(nowContent, "host") {
-				h := dealHost(nowContent)
-				h.Remark = getTitleContent(c.title[i])
-				c.Hosts = append(c.Hosts, h)
-				continue
-			}
-			t := dealTunnel(nowContent)
-			t.Remark = getTitleContent(c.title[i])
+			t := dealTunnel(sec.body)
+			t.Remark = sec.name
 			c.Tasks = append(c.Tasks, t)
 		}
 	}
-	return
+	if c.CommonConfig == nil {
+		return nil, errors.New("missing [common] section")
+	}
+	return c, nil
 }
 
-var bracketRE = regexp.MustCompile(`[\[\]]`)
-
-func getTitleContent(s string) string {
-	return bracketRE.ReplaceAllString(s, "")
+// normalizeContent removes a UTF-8 BOM and converts CRLF and lone CR line
+// endings to LF, so files saved by Windows editors parse like Unix ones.
+func normalizeContent(s string) string {
+	s = strings.TrimPrefix(s, "\uFEFF")
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
 }
 
-var commentLineRE = regexp.MustCompile(`(?m)^[ \t]*#.*(\r?\n|$)`)
+type section struct {
+	name string
+	body string // trimmed, non-empty, non-comment lines joined by "\n"
+}
 
-func stripCommentLines(s string) string {
-	return commentLineRE.ReplaceAllString(s, "")
+var titleRE = regexp.MustCompile(`^\[([^\[\]]+)]$`)
+
+// parseSections splits normalized content into sections line by line.
+// Lines before the first section header are ignored.
+func parseSections(content string) ([]section, error) {
+	var sections []section
+	var body []string
+	seen := make(map[string]bool)
+	flush := func() {
+		if len(sections) > 0 {
+			sections[len(sections)-1].body = strings.Join(body, "\n")
+		}
+		body = body[:0]
+	}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if m := titleRE.FindStringSubmatch(line); m != nil {
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if seen[key] {
+				return nil, fmt.Errorf("item names [%s] are not allowed to be duplicated", name)
+			}
+			seen[key] = true
+			flush()
+			sections = append(sections, section{name: name})
+			continue
+		}
+		body = append(body, line)
+	}
+	flush()
+	return sections, nil
+}
+
+// sectionKeys returns the set of keys present in a section body.
+func sectionKeys(body string) map[string]bool {
+	keys := make(map[string]bool)
+	for _, line := range splitStr(body) {
+		if item, ok := splitKV(line); ok {
+			keys[item[0]] = true
+		}
+	}
+	return keys
+}
+
+// splitKV splits a "key=value" line at the first '='. Both parts are
+// trimmed; a line without '=' yields an empty value.
+func splitKV(line string) (item [2]string, ok bool) {
+	k, v, _ := strings.Cut(line, "=")
+	item[0], item[1] = strings.TrimSpace(k), strings.TrimSpace(v)
+	return item, item[0] != ""
 }
 
 func dealCommon(s string) *CommonConfig {
@@ -125,11 +178,9 @@ func dealCommon(s string) *CommonConfig {
 	c.Client = file.NewClient("", true, true)
 	c.Client.Cnf = new(file.Config)
 	for _, v := range splitStr(s) {
-		item := strings.Split(v, "=")
-		if len(item) == 0 {
+		item, ok := splitKV(v)
+		if !ok {
 			continue
-		} else if len(item) == 1 {
-			item = append(item, "")
 		}
 		switch item[0] {
 		case "server_addr":
@@ -190,13 +241,11 @@ func dealHost(s string) *file.Host {
 	h.MultiAccount = new(file.MultiAccount)
 	var headerChange, respHeaderChange string
 	for _, v := range splitStr(s) {
-		item := strings.Split(v, "=")
-		if len(item) == 0 {
+		item, ok := splitKV(v)
+		if !ok {
 			continue
-		} else if len(item) == 1 {
-			item = append(item, "")
 		}
-		switch strings.TrimSpace(item[0]) {
+		switch item[0] {
 		case "host":
 			h.Host = item[1]
 		case "target_addr":
@@ -243,11 +292,11 @@ func dealHost(s string) *file.Host {
 				}
 			}
 		default:
-			if strings.Contains(item[0], "header_") {
-				headerChange += strings.ReplaceAll(item[0], "header_", "") + ":" + item[1] + "\n"
+			if name, ok := strings.CutPrefix(item[0], "header_"); ok {
+				headerChange += name + ":" + item[1] + "\n"
 			}
-			if strings.Contains(item[0], "response_") {
-				respHeaderChange += strings.ReplaceAll(item[0], "response_", "") + ":" + item[1] + "\n"
+			if name, ok := strings.CutPrefix(item[0], "response_"); ok {
+				respHeaderChange += name + ":" + item[1] + "\n"
 			}
 			h.HeaderChange = headerChange
 			h.RespHeaderChange = respHeaderChange
@@ -259,13 +308,11 @@ func dealHost(s string) *file.Host {
 func dealHealth(s string) *file.Health {
 	h := &file.Health{}
 	for _, v := range splitStr(s) {
-		item := strings.Split(v, "=")
-		if len(item) == 0 {
+		item, ok := splitKV(v)
+		if !ok {
 			continue
-		} else if len(item) == 1 {
-			item = append(item, "")
 		}
-		switch strings.TrimSpace(item[0]) {
+		switch item[0] {
 		case "health_check_timeout":
 			h.HealthCheckTimeout = common.GetIntNoErrByStr(item[1])
 		case "health_check_max_failed":
@@ -288,13 +335,11 @@ func dealTunnel(s string) *file.Tunnel {
 	t.Target = new(file.Target)
 	t.MultiAccount = new(file.MultiAccount)
 	for _, v := range splitStr(s) {
-		item := strings.Split(v, "=")
-		if len(item) == 0 {
+		item, ok := splitKV(v)
+		if !ok {
 			continue
-		} else if len(item) == 1 {
-			item = append(item, "")
 		}
-		switch strings.TrimSpace(item[0]) {
+		switch item[0] {
 		case "server_port":
 			t.Ports = item[1]
 		case "server_ip":
@@ -370,11 +415,9 @@ func dealMultiUser(s string) map[string]string {
 func delLocalService(s string) *LocalServer {
 	l := new(LocalServer)
 	for _, v := range splitStr(s) {
-		item := strings.Split(v, "=")
-		if len(item) == 0 {
+		item, ok := splitKV(v)
+		if !ok {
 			continue
-		} else if len(item) == 1 {
-			item = append(item, "")
 		}
 		switch item[0] {
 		case "local_port":
@@ -398,30 +441,18 @@ func delLocalService(s string) *LocalServer {
 	return l
 }
 
-func getAllTitle(content string) (arr []string, err error) {
-	var re *regexp.Regexp
-	re, err = regexp.Compile(`(?m)^\[[^\r\n\[\]]+]$`)
+func getAllTitle(content string) ([]string, error) {
+	sections, err := parseSections(normalizeContent(content))
 	if err != nil {
-		return
+		return nil, err
 	}
-	arr = re.FindAllString(content, -1)
-	m := make(map[string]bool)
-	for _, v := range arr {
-		if _, ok := m[v]; ok {
-			err = fmt.Errorf("item names %s are not allowed to be duplicated", v)
-			return
-		}
-		m[v] = true
+	arr := make([]string, 0, len(sections))
+	for _, sec := range sections {
+		arr = append(arr, "["+sec.name+"]")
 	}
-	return
+	return arr, nil
 }
 
-func splitStr(s string) (configDataArr []string) {
-	if common.IsWindows() {
-		configDataArr = strings.Split(s, "\r\n")
-	}
-	if len(configDataArr) < 3 {
-		configDataArr = strings.Split(s, "\n")
-	}
-	return
+func splitStr(s string) []string {
+	return strings.Split(normalizeContent(s), "\n")
 }
