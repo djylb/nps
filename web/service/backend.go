@@ -175,13 +175,11 @@ func (defaultRepository) GetClient(id int) (*file.Client, error) {
 }
 
 func (defaultRepository) SaveClient(_ *file.Client) error {
-	file.GetDb().JsonDb.StoreClientsToJsonFile()
-	return nil
+	return file.GetDb().JsonDb.StoreClientsToJsonFile()
 }
 
 func (defaultRepository) PersistClients() error {
-	file.GetDb().JsonDb.StoreClientsToJsonFile()
-	return nil
+	return file.GetDb().JsonDb.StoreClientsToJsonFile()
 }
 
 func (defaultRepository) DeleteClient(id int) error {
@@ -230,13 +228,11 @@ func (defaultRepository) SaveHost(host *file.Host, oldHost string) error {
 		file.HostIndex.Remove(oldHost, host.Id)
 		file.HostIndex.Add(host.Host, host.Id)
 	}
-	file.GetDb().JsonDb.StoreHostToJsonFile()
-	return nil
+	return file.GetDb().JsonDb.StoreHostToJsonFile()
 }
 
 func (defaultRepository) PersistHosts() error {
-	file.GetDb().JsonDb.StoreHostToJsonFile()
-	return nil
+	return file.GetDb().JsonDb.StoreHostToJsonFile()
 }
 
 func (defaultRepository) DeleteHostRecord(id int) error {

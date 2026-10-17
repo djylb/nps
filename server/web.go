@@ -1,11 +1,14 @@
 package server
 
 import (
+	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
 
 	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
@@ -38,6 +41,16 @@ func (s *WebServer) Start() error {
 	ip := connection.WebIp
 	p := connection.WebPort
 	handler := webHandler
+	cfg := servercfg.Current()
+
+	var tlsConfig *tls.Config
+	if p > 0 && cfg.Web.OpenSSL {
+		cert, err := loadWebCert(cfg.Web.CertFile, cfg.Web.KeyFile)
+		if err != nil {
+			return err
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+	}
 
 	if tool.WebServerListener != nil {
 		_ = tool.WebServerListener.Close()
@@ -55,12 +68,12 @@ func (s *WebServer) Start() error {
 	if p > 0 {
 		if l, err := connection.GetWebManagerListener(); err == nil {
 			s.tcpListener = l
-			cfg := servercfg.Current()
-			if cfg.Web.OpenSSL {
+			if tlsConfig != nil {
 				targets = append(targets, httpServeTarget{
 					listener: l,
 					serve: func(l net.Listener) error {
-						return http.ServeTLS(l, handler, cfg.Web.CertFile, cfg.Web.KeyFile)
+						srv := &http.Server{Handler: handler, TLSConfig: tlsConfig}
+						return srv.ServeTLS(l, "", "")
 					},
 				})
 			} else {
@@ -79,6 +92,35 @@ func (s *WebServer) Start() error {
 	}
 
 	return serveHTTPListeners(targets...)
+}
+
+// loadWebCert loads the web manager certificate. Each value may be inline PEM,
+// an absolute path, or a path relative to the run directory.
+func loadWebCert(certFile, keyFile string) (tls.Certificate, error) {
+	certContent, err := loadWebPEM("web_cert_file", certFile, "CERTIFICATE")
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyContent, err := loadWebPEM("web_key_file", keyFile, "PRIVATE")
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	cert, err := tls.X509KeyPair([]byte(certContent), []byte(keyContent))
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("web certificate: %w", err)
+	}
+	return cert, nil
+}
+
+func loadWebPEM(name, value, header string) (string, error) {
+	content, err := common.GetCertContent(value, header)
+	if err != nil {
+		return "", fmt.Errorf("%s %q: %w", name, value, err)
+	}
+	if content == "" {
+		return "", fmt.Errorf("%s %q: no PEM %s block found", name, value, header)
+	}
+	return content, nil
 }
 
 func (s *WebServer) Close() error {

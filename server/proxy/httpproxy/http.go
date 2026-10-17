@@ -167,18 +167,27 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	host.AddConn()
 	defer host.CutConn()
 
-	// HTTP Auth
-	if r.Header.Get("Upgrade") == "" {
-		if err := s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, host.MultiAccount, host.UserAuth); err != nil {
+	// HTTP Auth. Upgrade and CONNECT requests may carry protocols whose
+	// clients cannot send Basic credentials, so they proceed unauthenticated;
+	// such a request only reaches the client if the backend completes the
+	// handshake.
+	authed := true
+	if err := s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, host.MultiAccount, host.UserAuth); err != nil {
+		if !isTunnelRequest(r) {
 			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "401 Unauthorized", http.StatusUnauthorized)
+			writeUnauthorized(w)
 			return
 		}
+		authed = false
 	}
 
 	// 307 Temporary Redirect
 	if host.RedirectURL != "" {
+		if !authed {
+			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
+			writeUnauthorized(w)
+			return
+		}
 		redirectURL := s.ChangeRedirectURL(r, host.RedirectURL)
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		return
@@ -196,9 +205,9 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	// WebSocket
-	if r.Method == http.MethodConnect || r.Header.Get("Upgrade") != "" || r.Header.Get(":protocol") != "" {
+	if isTunnelRequest(r) {
 		logs.Trace("Handling websocket from %s", r.RemoteAddr)
-		s.handleWebsocket(w, r, host, isHttpOnlyRequest)
+		s.handleWebsocket(w, r, host, isHttpOnlyRequest, authed)
 		return
 	}
 
@@ -280,7 +289,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	rp.ServeHTTP(w, r)
 }
 
-func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest bool) {
+func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {
 	// Get target addr
 	targetAddr, err := host.Target.GetRandomTarget()
 	if err != nil {
@@ -339,19 +348,12 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		logs.Error("handleWebsocket: Hijack not supported")
 		return
 	}
-	clientConn, clientBuf, err := hijacker.Hijack()
-	if err != nil {
-		_ = netConn.Close()
-		w.WriteHeader(http.StatusInternalServerError)
-		logs.Error("handleWebsocket: Hijack failed")
-		return
-	}
-	//defer clientConn.Close()
+
 	r.Close = false
 	if err := r.Write(netConn); err != nil {
 		logs.Error("handleWebsocket: failed to write handshake to backend: %v", err)
 		_ = netConn.Close()
-		_ = clientConn.Close()
+		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
 	}
 
@@ -360,11 +362,34 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 	if err != nil {
 		logs.Error("handleWebsocket: failed to read handshake response from backend: %v", err)
 		_ = netConn.Close()
-		_ = clientConn.Close()
+		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
 	}
-	if resp.Body != nil {
-		defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Only a successful handshake turns the connection into a tunnel; any other
+	// backend answer is relayed as a regular response and the connection ends.
+	good := (r.Method == http.MethodConnect && resp.StatusCode == http.StatusOK) ||
+		(r.Method != http.MethodConnect && resp.StatusCode == http.StatusSwitchingProtocols)
+	if !good {
+		logs.Info("handleWebsocket: backend answered handshake with status %d, host %s, remote address %s", resp.StatusCode, r.Host, r.RemoteAddr)
+		if !authed {
+			// An unauthenticated client never sees a backend response.
+			_ = netConn.Close()
+			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
+			writeUnauthorized(w)
+			return
+		}
+		s.relayHandshakeRefusal(w, resp, host, netConn)
+		return
+	}
+
+	clientConn, clientBuf, err := hijacker.Hijack()
+	if err != nil {
+		_ = netConn.Close()
+		w.WriteHeader(http.StatusInternalServerError)
+		logs.Error("handleWebsocket: Hijack failed: %v", err)
+		return
 	}
 
 	if err := resp.Write(clientBuf); err != nil {
@@ -404,16 +429,72 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		clientConn = conn.NewConn(clientConn).SetRb(pending)
 	}
 
-	good := (r.Method == http.MethodConnect && resp.StatusCode == http.StatusOK) ||
-		(r.Method != http.MethodConnect && resp.StatusCode == http.StatusSwitchingProtocols)
-	if !good {
-		logs.Error("handleWebsocket: unexpected status code in handshake: %d", resp.StatusCode)
-		_ = netConn.Close()
-		_ = clientConn.Close()
+	goroutine.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
+}
+
+// isTunnelRequest reports whether r asks to turn the connection into a tunnel:
+// CONNECT (including HTTP/2 extended CONNECT) or an HTTP/1.1 Upgrade.
+func isTunnelRequest(r *http.Request) bool {
+	return r.Method == http.MethodConnect || r.Header.Get("Upgrade") != "" || r.Header.Get(":protocol") != ""
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+	http.Error(w, "401 Unauthorized", http.StatusUnauthorized)
+}
+
+// hopHeaders are connection-scoped headers that must not be relayed.
+var hopHeaders = []string{
+	"Connection",
+	"Proxy-Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailer",
+	"Transfer-Encoding",
+	"Upgrade",
+}
+
+// relayHandshakeRefusal writes the refusal while the backend connection is
+// still open, since resp.Body streams from it, and closes it afterwards. The
+// tunnel connection ignores read deadlines, so the body copy is bounded by
+// closing the connection once the response timeout elapses.
+func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *file.Host, backend net.Conn) {
+	defer func() { _ = backend.Close() }()
+	if s.ResponseHeaderTimeout > 0 {
+		timer := time.AfterFunc(s.ResponseHeaderTimeout, func() { _ = backend.Close() })
+		defer timer.Stop()
+	}
+	s.writeHandshakeRefusal(w, resp, host)
+}
+
+// writeHandshakeRefusal relays a backend response that did not complete an
+// upgrade or CONNECT handshake as an ordinary HTTP response and asks the
+// server to close the client connection afterwards.
+func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *file.Host) {
+	if resp.StatusCode < http.StatusOK {
+		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
 	}
-
-	goroutine.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
+	s.ChangeResponseHeader(resp, host.RespHeaderChange)
+	header := w.Header()
+	for k, vv := range resp.Header {
+		header[k] = vv
+	}
+	for _, v := range resp.Header.Values("Connection") {
+		for _, name := range strings.Split(v, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				header.Del(name)
+			}
+		}
+	}
+	for _, name := range hopHeaders {
+		header.Del(name)
+	}
+	header.Set("Connection", "close")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (s *HttpServer) NewServer(port int, scheme string) *http.Server {

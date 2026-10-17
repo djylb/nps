@@ -4,7 +4,6 @@ import (
 	goflag "flag"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -81,6 +80,30 @@ func main() {
 		}
 	}
 
+	install.RemoveStaleExecutables()
+	svcConfig := newServiceConfig()
+	prg := &nps{exit: make(chan struct{})}
+
+	// update needs no config, so a broken config file can still be replaced
+	if cmd == "update" {
+		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
+		var s service.Service
+		if svc, err := service.New(prg, svcConfig); err == nil {
+			s = svc
+		} else {
+			logs.Warn("service function disabled %v", err)
+		}
+		replaced, err := install.UpdateNps()
+		if err == nil && len(replaced) > 0 {
+			err = install.RestartAfterUpdate(s, svcConfig.Name, replaced)
+		}
+		if err != nil {
+			logs.Error("update failed: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := servercfg.LoadDefault(); err != nil {
 		log.Fatalln("load config file error", err.Error())
 	}
@@ -121,37 +144,10 @@ func main() {
 	logCompress := cfg.Log.Compress
 	logColor := cfg.Log.Color
 
-	// init service
-	options := make(service.KeyValue)
-	svcConfig := &service.Config{
-		Name:        "Nps",
-		DisplayName: "nps内网穿透代理服务器",
-		Description: "一款轻量级、功能强大的内网穿透代理服务器。支持tcp、udp流量转发，支持内网http代理、内网socks5代理，同时支持snappy压缩、站点保护、加密传输、多路复用、header修改等。支持web图形化管理，集成多用户模式。",
-		Option:      options,
-	}
-
-	for _, v := range os.Args[1:] {
-		switch v {
-		case "install", "start", "stop", "uninstall", "restart":
-			continue
-		}
-		svcConfig.Arguments = append(svcConfig.Arguments, v)
-	}
-
-	svcConfig.Arguments = append(svcConfig.Arguments, "service")
 	if len(os.Args) > 1 && os.Args[1] == "service" && !strings.EqualFold(logType, "off") && !strings.EqualFold(logType, "both") {
 		logType = "file"
 	}
 	logs.Init(logType, logLevel, logPath, logMaxSize, logMaxFiles, logMaxDays, logCompress, logColor)
-	if !common.IsWindows() {
-		svcConfig.Dependencies = []string{
-			"Requires=network.target",
-			"After=network-online.target syslog.target"}
-		svcConfig.Option["SystemdScript"] = install.SystemdScript
-		svcConfig.Option["SysvScript"] = install.SysvScript
-	}
-	prg := &nps{}
-	prg.exit = make(chan struct{})
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		logs.Error("service function disabled %v", err)
@@ -173,7 +169,11 @@ func main() {
 			_ = service.Control(s, "stop")
 			_ = service.Control(s, "uninstall")
 
-			binPath := install.NPS()
+			binPath, err := install.NPS()
+			if err != nil {
+				logs.Error("install failed: %v", err)
+				os.Exit(1)
+			}
 			svcConfig.Executable = binPath
 			s, err := service.New(prg, svcConfig)
 			if err != nil {
@@ -192,16 +192,7 @@ func main() {
 			}
 			return
 		case "start", "restart", "stop":
-			if service.Platform() == "unix-systemv" {
-				logs.Info("unix-systemv service")
-				c := exec.Command("/etc/init.d/"+svcConfig.Name, cmd)
-				if err := c.Run(); err != nil {
-					logs.Error("%v", err)
-				}
-				return
-			}
-			err := service.Control(s, cmd)
-			if err != nil {
+			if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
 				logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 			}
 			return
@@ -216,15 +207,37 @@ func main() {
 				_ = os.Remove("/etc/rc.d/K02" + svcConfig.Name)
 			}
 			return
-		case "update":
-			install.UpdateNps()
-			return
 			//default:
 			//	logs.Error("command is not support")
 			//	return
 		}
 	}
 	_ = s.Run()
+}
+
+func newServiceConfig() *service.Config {
+	svcConfig := &service.Config{
+		Name:        "Nps",
+		DisplayName: "nps内网穿透代理服务器",
+		Description: "一款轻量级、功能强大的内网穿透代理服务器。支持tcp、udp流量转发，支持内网http代理、内网socks5代理，同时支持snappy压缩、站点保护、加密传输、多路复用、header修改等。支持web图形化管理，集成多用户模式。",
+		Option:      make(service.KeyValue),
+	}
+	for _, v := range os.Args[1:] {
+		switch v {
+		case "install", "start", "stop", "uninstall", "restart":
+			continue
+		}
+		svcConfig.Arguments = append(svcConfig.Arguments, v)
+	}
+	svcConfig.Arguments = append(svcConfig.Arguments, "service")
+	if !common.IsWindows() {
+		svcConfig.Dependencies = []string{
+			"Requires=network.target",
+			"After=network-online.target syslog.target"}
+		svcConfig.Option["SystemdScript"] = install.SystemdScript
+		svcConfig.Option["SysvScript"] = install.SysvScript
+	}
+	return svcConfig
 }
 
 func normalizeLegacyLongFlags() {

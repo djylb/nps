@@ -1,42 +1,54 @@
 package pmux
 
 import (
-	"errors"
 	"net"
+	"sync"
 )
 
+// PortListener receives the connections a PortMux routes to one protocol.
 type PortListener struct {
-	net.Listener
-	connCh  chan *PortConn
-	addr    net.Addr
-	isClose bool
+	connCh    chan *PortConn
+	done      chan struct{}
+	muxClosed <-chan struct{}
+	closeOnce sync.Once
+	addr      net.Addr
 }
 
-func NewPortListener(connCh chan *PortConn, addr net.Addr) *PortListener {
+func newPortListener(addr net.Addr, muxClosed <-chan struct{}) *PortListener {
 	return &PortListener{
-		connCh: connCh,
-		addr:   addr,
+		connCh:    make(chan *PortConn),
+		done:      make(chan struct{}),
+		muxClosed: muxClosed,
+		addr:      addr,
 	}
 }
 
+// Accept returns net.ErrClosed once the listener or its PortMux is closed.
 func (pListener *PortListener) Accept() (net.Conn, error) {
-	if pListener.isClose {
-		return nil, errors.New("the listener has closed")
+	select {
+	case <-pListener.done:
+		return nil, net.ErrClosed
+	case <-pListener.muxClosed:
+		return nil, net.ErrClosed
+	default:
 	}
-	conn := <-pListener.connCh
-	if conn != nil {
+	select {
+	case conn := <-pListener.connCh:
 		return conn, nil
+	case <-pListener.done:
+		return nil, net.ErrClosed
+	case <-pListener.muxClosed:
+		return nil, net.ErrClosed
 	}
-	return nil, errors.New("the listener has closed")
 }
 
 func (pListener *PortListener) Close() error {
-	//close
-	if pListener.isClose {
-		return errors.New("the listener has closed")
-	}
-	pListener.isClose = true
-	return nil
+	err := net.ErrClosed
+	pListener.closeOnce.Do(func() {
+		err = nil
+		close(pListener.done)
+	})
+	return err
 }
 
 func (pListener *PortListener) Addr() net.Addr {

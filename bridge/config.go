@@ -196,7 +196,7 @@ loop:
 				tt, ok := client.HasTunnel(tl)
 				if !ok {
 					if err := file.GetDb().NewTask(tl); err != nil {
-						logs.Warn("Add task error: %v", err)
+						logs.Warn("Add task %s of client %d error: %v", tl.Remark, client.Id, err)
 						fail = true
 						_ = c.WriteAddFail()
 						break loop
@@ -209,11 +209,16 @@ loop:
 					}
 
 					s.OpenTask <- tl
-				} else {
-					if tt.NoStore {
-						tt.Update(tl)
-						s.OpenTask <- tt
+				} else if tt.NoStore {
+					tl.Id = tt.Id
+					if err := file.GetDb().ReserveTaskPassword(tl); err != nil {
+						logs.Warn("Update task %s of client %d error: %v", tl.Remark, client.Id, err)
+						fail = true
+						_ = c.WriteAddFail()
+						break loop
 					}
+					tt.Update(tl)
+					s.OpenTask <- tt
 				}
 				_ = c.WriteAddOk()
 			}

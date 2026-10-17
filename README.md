@@ -108,7 +108,7 @@ nps install
 nps start|stop|restart|uninstall
 
 # Update
-nps update && nps restart
+nps update
 ```
 
 > **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
@@ -122,9 +122,7 @@ nps update && nps restart
 .\nps.exe start|stop|restart|uninstall
 
 # Update
-.\nps.exe stop
-.\nps-update.exe update
-.\nps.exe start
+.\nps.exe update
 ```
 
 ### Client Installation
@@ -137,7 +135,7 @@ wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.
 npc start|stop|restart|uninstall
 
 # Update
-npc update && npc restart
+npc update
 ```
 
 > **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
@@ -151,9 +149,7 @@ npc update && npc restart
 .\npc.exe start|stop|restart|uninstall
 
 # Update
-.\npc.exe stop
-.\npc-update.exe update
-.\npc.exe start
+.\npc.exe update
 ```
 
 > **Tip:** The client supports connecting to multiple servers simultaneously. Example:

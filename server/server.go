@@ -26,7 +26,6 @@ import (
 var (
 	Bridge         *bridge.Bridge
 	RunList        sync.Map //map[int]interface{}
-	once           sync.Once
 	HttpProxyCache = index.NewAnyIntIndex()
 )
 
@@ -173,6 +172,9 @@ func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 	}
 	go DealBridgeTask()
 	go dealClientFlow()
+	if minute := cfg.Runtime.FlowStoreInterval; minute > 0 {
+		go flowSession(time.Minute * time.Duration(minute))
+	}
 	InitDashboardData()
 	if svr := NewMode(Bridge, cnf); svr != nil {
 		if err := svr.Start(); err != nil {
@@ -257,28 +259,27 @@ func StopServer(id int) error {
 		logs.Info("close port %d,remark %s,client id %d,task id %d", t.Port, t.Remark, t.Client.Id, t.Id)
 		_ = file.GetDb().UpdateTask(t)
 	}
-	//if v, ok := RunList[id]; ok {
-	if v, ok := RunList.Load(id); ok {
-		if svr, ok := v.(proxy.Service); ok {
-			if err := svr.Close(); err != nil {
-				return err
-			}
-			logs.Info("stop server id %d", id)
-		} else {
-			logs.Warn("stop server id %d error", id)
-		}
-		//delete(RunList, id)
-		RunList.Delete(id)
-		return nil
+	v, ok := RunList.Load(id)
+	if !ok {
+		return errors.New("task is not running")
 	}
-	return errors.New("task is not running")
+	if svr, ok := v.(proxy.Service); ok {
+		if err := svr.Close(); err != nil {
+			logs.Warn("stop server id %d error %v", id, err)
+		} else {
+			logs.Info("stop server id %d", id)
+		}
+	}
+	RunList.CompareAndDelete(id, v)
+	return nil
 }
 
-// AddTask add task
+// AddTask add task. Services that own a listening socket bind it before
+// AddTask returns, so address errors are reported to the caller and a later
+// StopServer always finds the running instance in RunList.
 func AddTask(t *file.Tunnel) error {
 	if t.Mode == "secret" || t.Mode == "p2p" {
 		logs.Info("secret task %s start ", t.Remark)
-		//RunList[t.Id] = nil
 		RunList.Store(t.Id, nil)
 		return nil
 	}
@@ -286,52 +287,50 @@ func AddTask(t *file.Tunnel) error {
 		logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
 		return errors.New("the port open error")
 	}
-	if minute := servercfg.Current().Runtime.FlowStoreInterval; minute > 0 {
-		go flowSession(time.Minute * time.Duration(minute))
-	}
-	if svr := NewMode(Bridge, t); svr != nil {
-		logs.Info("tunnel task %s start mode：%s port %d", t.Remark, t.Mode, t.Port)
-		//RunList[t.Id] = svr
-		RunList.Store(t.Id, svr)
-		go func() {
-			if err := svr.Start(); err != nil {
-				logs.Error("clientId %d taskId %d start error %v", t.Client.Id, t.Id, err)
-				//delete(RunList, t.Id)
-				RunList.Delete(t.Id)
-				return
-			}
-		}()
-	} else {
+	svr := NewMode(Bridge, t)
+	if svr == nil {
 		return errors.New("the mode is not correct")
 	}
+	if b, ok := svr.(proxy.Binder); ok {
+		if err := b.Bind(); err != nil {
+			logs.Error("taskId %d start error port %d open failed: %v", t.Id, t.Port, err)
+			return err
+		}
+	}
+	if old, loaded := RunList.Swap(t.Id, svr); loaded {
+		if oldSvr, ok := old.(proxy.Service); ok {
+			_ = oldSvr.Close()
+		}
+	}
+	logs.Info("tunnel task %s start mode：%s port %d", t.Remark, t.Mode, t.Port)
+	go func() {
+		if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
+			logs.Error("taskId %d start error %v", t.Id, err)
+			RunList.CompareAndDelete(t.Id, svr)
+			_ = svr.Close()
+		}
+	}()
 	return nil
 }
 
 // StartTask start task
 func StartTask(id int) error {
-	if t, err := file.GetDb().GetTask(id); err != nil {
+	t, err := file.GetDb().GetTask(id)
+	if err != nil {
 		return err
-	} else {
-		if !tool.TestTunnelPort(t) {
-			return errors.New("the port open error")
-		}
-		err = AddTask(t)
-		if err != nil {
-			return err
-		}
-		t.Status = true
-		_ = file.GetDb().UpdateTask(t)
 	}
+	if err = AddTask(t); err != nil {
+		return err
+	}
+	t.Status = true
+	_ = file.GetDb().UpdateTask(t)
 	return nil
 }
 
 // DelTask delete task
 func DelTask(id int) error {
-	//if _, ok := RunList[id]; ok {
 	if _, ok := RunList.Load(id); ok {
-		if err := StopServer(id); err != nil {
-			return err
-		}
+		_ = StopServer(id)
 	}
 	return file.GetDb().DelTask(id)
 }
@@ -436,21 +435,20 @@ func dealClientData() {
 	//return
 }
 
+// flowSession periodically persists flow counters and other runtime state.
 func flowSession(m time.Duration) {
-	file.GetDb().JsonDb.StoreHostToJsonFile()
-	file.GetDb().JsonDb.StoreTasksToJsonFile()
-	file.GetDb().JsonDb.StoreClientsToJsonFile()
-	file.GetDb().JsonDb.StoreGlobalToJsonFile()
-	once.Do(func() {
-		go func() {
-			ticker := time.NewTicker(m)
-			defer ticker.Stop()
-			for range ticker.C {
-				file.GetDb().JsonDb.StoreHostToJsonFile()
-				file.GetDb().JsonDb.StoreTasksToJsonFile()
-				file.GetDb().JsonDb.StoreClientsToJsonFile()
-				file.GetDb().JsonDb.StoreGlobalToJsonFile()
-			}
-		}()
-	})
+	ticker := time.NewTicker(m)
+	defer ticker.Stop()
+	for range ticker.C {
+		storeAll()
+	}
+}
+
+func storeAll() {
+	db := file.GetDb().JsonDb
+	for _, store := range []func() error{db.StoreHostToJsonFile, db.StoreTasksToJsonFile, db.StoreClientsToJsonFile, db.StoreGlobalToJsonFile} {
+		if err := store(); err != nil {
+			logs.Error("%v", err)
+		}
+	}
 }

@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +24,6 @@ import (
 )
 
 var LocalTCPAddr = &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}
-var requestEndBytes = []byte("\r\n\r\n")
 
 type Conn struct {
 	Conn       net.Conn
@@ -60,60 +58,44 @@ func (s *Conn) OnClose(fn func(*Conn)) *Conn {
 	return s
 }
 
-func (s *Conn) readRequest(buf []byte) (n int, err error) {
-	var rd int
-	for {
-		rd, err = s.Read(buf[n:])
-		if err != nil {
-			return
-		}
-		n += rd
-		if n < 4 {
-			continue
-		}
-		if bytes.Equal(buf[n-4:n], requestEndBytes) {
-			return
-		}
-		// buf is full, can't contain the request
-		if n == cap(buf) {
-			err = io.ErrUnexpectedEOF
-			return
-		}
+// GetHost reads one HTTP proxy request header from the connection and resolves
+// the target address. head holds the raw header bytes and rest holds everything
+// read past the header (request body, pipelined requests or early tunnel data)
+// followed by any data still queued on the connection, so nothing stays queued
+// on return. On error head holds every byte consumed so far.
+func (s *Conn) GetHost() (address string, r *http.Request, head, rest []byte, err error) {
+	var raw bytes.Buffer
+	br := bufio.NewReader(io.TeeReader(io.LimitReader(s, http.DefaultMaxHeaderBytes), &raw))
+	r, err = http.ReadRequest(br)
+	if err != nil {
+		head = raw.Bytes()
+		return
 	}
+	b := raw.Bytes()
+	n := len(b) - br.Buffered()
+	head = b[:n:n]
+	if len(b) > n {
+		rest = b[n:]
+	}
+	for _, rb := range s.rbs {
+		rest = append(rest, rb...)
+	}
+	s.rbs = nil
+	address = requestTargetAddress(r)
+	return
 }
 
-// GetHost get host 、connection type、method...from connection
-func (s *Conn) GetHost() (method, address string, rb []byte, r *http.Request, err error) {
-	var b [32 * 1024]byte
-	var n int
-	if n, err = s.readRequest(b[:]); err != nil {
-		return
+// requestTargetAddress returns host:port for a proxy request, adding the
+// scheme's default port when the request names none.
+func requestTargetAddress(r *http.Request) string {
+	if _, _, err := net.SplitHostPort(r.Host); err == nil {
+		return r.Host
 	}
-	rb = b[:n]
-	r, err = http.ReadRequest(bufio.NewReader(bytes.NewReader(rb)))
-	if err != nil {
-		return
+	port := "80"
+	if r.Method == http.MethodConnect || strings.EqualFold(r.URL.Scheme, "https") {
+		port = "443"
 	}
-	hostPortURL, err := url.Parse(r.Host)
-	if err != nil {
-		address = r.Host
-		err = nil
-		return
-	}
-	if hostPortURL.Opaque == "443" {
-		if !strings.Contains(r.Host, ":") {
-			address = r.Host + ":443"
-		} else {
-			address = r.Host
-		}
-	} else {
-		if !strings.Contains(r.Host, ":") {
-			address = r.Host + ":80"
-		} else {
-			address = r.Host
-		}
-	}
-	return
+	return net.JoinHostPort(strings.TrimSuffix(strings.TrimPrefix(r.Host, "["), "]"), port)
 }
 
 func (s *Conn) GetShortLenContent() (b []byte, err error) {

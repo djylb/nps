@@ -16,9 +16,21 @@ import (
 
 var errProxyAccessDenied = errors.New("proxy access denied")
 
+// ErrServerClosed is returned by Bind and Start once the server was closed.
+var ErrServerClosed = errors.New("server closed")
+
 type Service interface {
 	Start() error
 	Close() error
+}
+
+// Binder is implemented by services that own a listening socket. Bind opens
+// it synchronously so that the caller learns about address errors before the
+// service is published, after which Start serves on it. Bind is idempotent and
+// fails with ErrServerClosed once Close has been called, so a Close racing
+// with Bind or Start never leaves a socket open.
+type Binder interface {
+	Bind() error
 }
 
 type NetBridge interface {
@@ -35,6 +47,29 @@ type BaseServer struct {
 	ErrorContent    []byte
 	AllowLocalProxy bool
 	sync.Mutex
+
+	lifecycleMu sync.Mutex
+	closed      bool
+}
+
+// bindLocked runs bind under the lifecycle lock unless the server is closed.
+func (s *BaseServer) bindLocked(bind func() error) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.closed {
+		return ErrServerClosed
+	}
+	return bind()
+}
+
+// markClosed marks the server closed and runs snapshot under the lifecycle
+// lock, so snapshot observes every resource a concurrent Bind opened. The
+// resources should be released after markClosed returns.
+func (s *BaseServer) markClosed(snapshot func()) {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	s.closed = true
+	snapshot()
 }
 
 func NewBaseServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *BaseServer {

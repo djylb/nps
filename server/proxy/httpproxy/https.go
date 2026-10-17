@@ -21,6 +21,15 @@ import (
 	"github.com/djylb/nps/lib/servercfg"
 )
 
+const (
+	// tlsHandshakeTimeout bounds reading the ClientHello on the HTTPS entry and
+	// completing a TLS handshake with a locally available certificate.
+	tlsHandshakeTimeout = 10 * time.Second
+	// autoSSLHandshakeTimeout bounds a TLS handshake that may obtain a
+	// certificate on demand from the ACME CA before it can finish.
+	autoSSLHandshakeTimeout = 90 * time.Second
+)
+
 type HttpsServer struct {
 	*HttpServer
 	httpsStatus        bool
@@ -90,6 +99,7 @@ func (s *HttpsServer) Start() error {
 	}
 	s.httpsStatus = true
 	conn.Accept(s.httpsListener, func(c net.Conn) {
+		_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 		helloInfo, rb, err := crypt.ReadClientHello(c, nil)
 		if err != nil || helloInfo == nil {
 			logs.Debug("Failed to read clientHello from %v, err=%v", c.RemoteAddr(), err)
@@ -114,14 +124,17 @@ func (s *HttpsServer) Start() error {
 
 		if host.HttpsJustProxy {
 			logs.Debug("Certificate handled by backend")
+			_ = c.SetDeadline(time.Time{})
 			s.handleHttpsProxy(host, c, rb, serverName)
 			return
 		}
 
 		var tlsConfig *tls.Config
+		handshakeTimeout := tlsHandshakeTimeout
 		if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
 			logs.Debug("Auto SSL is enabled")
 			tlsConfig = s.certMagicTls
+			handshakeTimeout = autoSSLHandshakeTimeout
 		} else {
 			cert, err := s.cert.Get(host.CertFile, host.KeyFile, host.CertType, host.CertHash)
 			if err != nil {
@@ -133,6 +146,7 @@ func (s *HttpsServer) Start() error {
 				}
 				if err != nil {
 					logs.Debug("Certificate handled by backend")
+					_ = c.SetDeadline(time.Time{})
 					s.handleHttpsProxy(host, c, rb, serverName)
 					return
 				}
@@ -146,22 +160,24 @@ func (s *HttpsServer) Start() error {
 
 		acceptConn := conn.NewConn(c).SetRb(rb)
 		tlsConn := tls.Server(acceptConn, tlsConfig)
+		_ = c.SetDeadline(time.Now().Add(handshakeTimeout))
 		if err := tlsConn.Handshake(); err != nil {
 			_ = tlsConn.Close()
 			return
 		}
+		_ = c.SetDeadline(time.Time{})
 		if host.TlsOffload {
 			s.handleTlsProxy(host, tlsConn, serverName)
 			return
 		}
-		s.httpsServeListener.acceptConn <- tlsConn
+		s.httpsServeListener.push(tlsConn)
 	})
 	s.httpsStatus = false
 	return nil
 }
 
 func checkHTTPAndRedirect(c net.Conn, rb []byte) {
-	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 	defer func() { _ = c.Close() }()
 
 	logs.Debug("Pre-read rb content: %q", string(rb))
@@ -246,9 +262,11 @@ func (s *HttpsServer) Close() error {
 	return s.httpsListener.Close()
 }
 
-// HttpsListener wraps a parent listener.
+// HttpsListener wraps a parent listener and hands out connections whose TLS
+// handshake has already completed.
 type HttpsListener struct {
 	acceptConn     chan *tls.Conn
+	done           chan struct{}
 	parentListener net.Listener
 	closeOnce      sync.Once
 }
@@ -256,21 +274,38 @@ type HttpsListener struct {
 func NewHttpsListener(l net.Listener) *HttpsListener {
 	return &HttpsListener{
 		parentListener: l,
-		acceptConn:     make(chan *tls.Conn, 1024),
+		acceptConn:     make(chan *tls.Conn),
+		done:           make(chan struct{}),
+	}
+}
+
+// push hands c to Accept, or closes it once the listener is closed.
+func (l *HttpsListener) push(c *tls.Conn) {
+	select {
+	case l.acceptConn <- c:
+	case <-l.done:
+		_ = c.Close()
 	}
 }
 
 func (l *HttpsListener) Accept() (net.Conn, error) {
-	httpsConn, ok := <-l.acceptConn
-	if !ok {
-		return nil, errors.New("failed to get connection")
+	select {
+	case c := <-l.acceptConn:
+		select {
+		case <-l.done:
+			_ = c.Close()
+			return nil, net.ErrClosed
+		default:
+			return c, nil
+		}
+	case <-l.done:
+		return nil, net.ErrClosed
 	}
-	return httpsConn, nil
 }
 
 func (l *HttpsListener) Close() error {
 	l.closeOnce.Do(func() {
-		close(l.acceptConn)
+		close(l.done)
 	})
 	return nil
 }

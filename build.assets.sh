@@ -30,7 +30,9 @@ TARGETS=(
   "linux arm 7"
   "linux loong64"
   "linux mips64le"
+  "linux mips64le softfloat"
   "linux mips64"
+  "linux mips64 softfloat"
   "linux mipsle"
   "linux mipsle softfloat"
   "linux mips"
@@ -71,6 +73,9 @@ build_binary() {
     "mips"|"mipsle")
       [[ -n "$extra" ]] && envstr="GOMIPS=$extra"
       ;;
+    "mips64"|"mips64le")
+      [[ -n "$extra" ]] && envstr="GOMIPS64=$extra"
+      ;;
     *)
       ;;
   esac
@@ -87,6 +92,10 @@ build_binary() {
   local build_ldflags="$COMMON_LDFLAGS"
   if [[ -n "$arch_tag" ]]; then
     build_ldflags+=" -X 'github.com/djylb/nps/lib/install.BuildTarget=${arch_tag}'"
+  fi
+  # github.com/wlynxg/anet (interface listing on Android) links to net internals.
+  if [[ "$os" == "android" ]]; then
+    build_ldflags+=" -checklinkname=0"
   fi
 
   if [[ -n "$envstr" ]]; then

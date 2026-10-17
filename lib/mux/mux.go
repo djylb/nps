@@ -552,7 +552,7 @@ func (s *Mux) closeWithReason(reason string) (err error) {
 	//fmt.Print(string(buf[:n]))
 
 	if s.IsClosed() {
-		return errors.New("the mux has closed")
+		return fmt.Errorf("the mux has closed: %w", net.ErrClosed)
 	}
 
 	s.once.Do(func() {
@@ -592,9 +592,9 @@ func (s *Mux) setCloseReason(reason string) string {
 
 func (s *Mux) closedErr(prefix string) error {
 	if reason := s.CloseReason(); reason != "" {
-		return fmt.Errorf("%s (%s)", prefix, reason)
+		return fmt.Errorf("%s (%s): %w", prefix, reason, net.ErrClosed)
 	}
-	return errors.New(prefix)
+	return fmt.Errorf("%s: %w", prefix, net.ErrClosed)
 }
 
 func (s *Mux) release() {

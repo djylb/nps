@@ -2,9 +2,11 @@ package proxy
 
 import (
 	"encoding/base64"
+	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -187,4 +189,40 @@ func TestWriteConnFailWithNilErrorContent(t *testing.T) {
 	}
 
 	_ = serverSide.Close()
+}
+
+func TestTunnelModeServerCloseBeforeStartReleasesPort(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := probe.Addr().(*net.TCPAddr).Port
+	_ = probe.Close()
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	task := &file.Tunnel{Mode: "tcp", ServerIp: "127.0.0.1", Port: port, Client: &file.Client{Cnf: &file.Config{}, Flow: &file.Flow{}}, Flow: &file.Flow{}, Target: &file.Target{}}
+
+	// Bound but never started: Close must release the port and Start must not reopen it.
+	bound := NewTunnelModeServer(ProcessTunnel, failBridge{}, task, false)
+	if err := bound.Bind(); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := bound.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := bound.Start(); !errors.Is(err, ErrServerClosed) {
+		t.Fatalf("Start() after Close() = %v, want ErrServerClosed", err)
+	}
+
+	// Closed before Bind: neither Bind nor Start may open the port.
+	closed := NewTunnelModeServer(ProcessTunnel, failBridge{}, task, false)
+	_ = closed.Close()
+	if err := closed.Bind(); !errors.Is(err, ErrServerClosed) {
+		t.Fatalf("Bind() after Close() = %v, want ErrServerClosed", err)
+	}
+
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("port %d still in use after Close(): %v", port, err)
+	}
+	_ = l.Close()
 }

@@ -157,7 +157,15 @@ esac
 echo "Detected OS/ARCH: $OS/$ARCH"
 
 # MIPS float ABI detection
-if [ "$ARCH" = "mips" ] || [ "$ARCH" = "mipsle" ]; then
+if [ "$ARCH" = "mips64" ] || [ "$ARCH" = "mips64le" ]; then
+  # 64-bit MIPS userlands are hard-float; only a CPU without FPU needs soft-float
+  if [ -r /proc/cpuinfo ] && ! grep -qi 'fpu' /proc/cpuinfo; then
+    ARCH="${ARCH}_softfloat"
+    echo "No FPU in /proc/cpuinfo; use soft-float, new ARCH: $ARCH"
+  else
+    echo "Use hard-float for $ARCH"
+  fi
+elif [ "$ARCH" = "mips" ] || [ "$ARCH" = "mipsle" ]; then
   if has file; then
     out="$(file /bin/sh 2>/dev/null || true)"
     case "$out" in

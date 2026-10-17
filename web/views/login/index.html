@@ -185,7 +185,9 @@
                     data.powx = await calcPowX(encPwd, window.nps.powBits);
                     data.bits = window.nps.powBits;
                 } catch (e) {
-                    showMsg(e.toString(), 'error', 4000);
+                    showMsg(e.toString(), 'error', 4000, function () {
+                        loginBtn.disabled = false;
+                    });
                     return false;
                 }
             }

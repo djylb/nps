@@ -319,6 +319,68 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 	}
 }
 
+// Clone returns a copy of t that can be edited and then stored with
+// UpdateTask without touching t until the update is accepted. Flow and the
+// health state are copied; Client, Target and the account settings are shared
+// and are expected to be replaced rather than modified.
+func (t *Tunnel) Clone() *Tunnel {
+	t.RLock()
+	c := &Tunnel{
+		Id:           t.Id,
+		Port:         t.Port,
+		ServerIp:     t.ServerIp,
+		Mode:         t.Mode,
+		Status:       t.Status,
+		RunStatus:    t.RunStatus,
+		Client:       t.Client,
+		Ports:        t.Ports,
+		NowConn:      atomic.LoadInt32(&t.NowConn),
+		Password:     t.Password,
+		Remark:       t.Remark,
+		TargetAddr:   t.TargetAddr,
+		TargetType:   t.TargetType,
+		DestAclMode:  t.DestAclMode,
+		DestAclRules: t.DestAclRules,
+		DestAclSet:   t.DestAclSet,
+		NoStore:      t.NoStore,
+		IsHttp:       t.IsHttp,
+		HttpProxy:    t.HttpProxy,
+		Socks5Proxy:  t.Socks5Proxy,
+		LocalPath:    t.LocalPath,
+		StripPre:     t.StripPre,
+		ReadOnly:     t.ReadOnly,
+		Target:       t.Target,
+		UserAuth:     t.UserAuth,
+		MultiAccount: t.MultiAccount,
+	}
+	flow := t.Flow
+	t.RUnlock()
+
+	if flow != nil {
+		flow.RLock()
+		c.Flow = &Flow{ExportFlow: flow.ExportFlow, InletFlow: flow.InletFlow, FlowLimit: flow.FlowLimit, TimeLimit: flow.TimeLimit}
+		flow.RUnlock()
+	}
+
+	t.Health.RLock()
+	c.HealthCheckTimeout = t.HealthCheckTimeout
+	c.HealthMaxFail = t.HealthMaxFail
+	c.HealthCheckInterval = t.HealthCheckInterval
+	c.HealthNextTime = t.HealthNextTime
+	if t.HealthMap != nil {
+		c.HealthMap = make(map[string]int, len(t.HealthMap))
+		for k, v := range t.HealthMap {
+			c.HealthMap[k] = v
+		}
+	}
+	c.HttpHealthUrl = t.HttpHealthUrl
+	c.HealthRemoveArr = append([]string(nil), t.HealthRemoveArr...)
+	c.HealthCheckType = t.HealthCheckType
+	c.HealthCheckTarget = t.HealthCheckTarget
+	t.Health.RUnlock()
+	return c
+}
+
 func (t *Tunnel) Update(other *Tunnel) {
 	t.ServerIp = other.ServerIp
 	t.Mode = other.Mode
@@ -422,12 +484,84 @@ func (s *Host) CutConn() {
 }
 
 type Target struct {
-	nowIndex      int
 	TargetStr     string
-	TargetArr     []string
 	LocalProxy    bool
 	ProxyProtocol int // 0=off, 1=v1, 2=v2
+
+	// targets is the runtime list of healthy targets parsed from TargetStr;
+	// source is the TargetStr it was parsed from. Both, and nowIndex, are
+	// guarded by the embedded mutex.
+	targets  []string
+	source   string
+	nowIndex int
 	sync.RWMutex
+}
+
+func parseTargets(targetStr string) []string {
+	normalized := strings.ReplaceAll(strings.ReplaceAll(targetStr, "：", ":"), "\r\n", "\n")
+	return common.TrimArr(strings.Split(normalized, "\n"))
+}
+
+// syncTargetsLocked (re)builds the target list whenever TargetStr changed.
+// The caller must hold the write lock.
+func (s *Target) syncTargetsLocked() {
+	if s.targets == nil || s.source != s.TargetStr {
+		s.source = s.TargetStr
+		s.targets = parseTargets(s.TargetStr)
+		s.nowIndex = 0
+	}
+}
+
+func (s *Target) GetRandomTarget() (string, error) {
+	s.Lock()
+	defer s.Unlock()
+	s.syncTargetsLocked()
+	if len(s.targets) == 0 {
+		return "", errors.New("all inward-bending targets are offline")
+	}
+	if s.nowIndex >= len(s.targets) {
+		s.nowIndex = 0
+	}
+	target := s.targets[s.nowIndex]
+	s.nowIndex++
+	return target, nil
+}
+
+// RemoveTarget takes addr out of the rotation and reports whether it was
+// present.
+func (s *Target) RemoveTarget(addr string) bool {
+	s.Lock()
+	defer s.Unlock()
+	s.syncTargetsLocked()
+	for i, v := range s.targets {
+		if v == addr {
+			targets := make([]string, 0, len(s.targets)-1)
+			targets = append(targets, s.targets[:i]...)
+			s.targets = append(targets, s.targets[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// RestoreTarget puts addr back into the rotation if it is a configured target
+// that is currently out of it, and reports whether it was restored.
+func (s *Target) RestoreTarget(addr string) bool {
+	s.Lock()
+	defer s.Unlock()
+	s.syncTargetsLocked()
+	if common.IsArrContains(s.targets, addr) || !common.IsArrContains(parseTargets(s.TargetStr), addr) {
+		return false
+	}
+	s.targets = append(s.targets, addr)
+	return true
+}
+
+// HasTarget reports whether addr is one of the configured targets.
+func (s *Target) HasTarget(addr string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	return common.IsArrContains(parseTargets(s.TargetStr), addr)
 }
 
 type MultiAccount struct {
@@ -443,36 +577,6 @@ func GetAccountMap(multiAccount *MultiAccount) map[string]string {
 		accountMap = multiAccount.AccountMap
 	}
 	return accountMap
-}
-
-func (s *Target) GetRandomTarget() (string, error) {
-	// Init TargetArr and filter empty lines
-	if s.TargetArr == nil {
-		s.TargetStr = strings.ReplaceAll(s.TargetStr, "：", ":")
-		normalized := strings.ReplaceAll(s.TargetStr, "\r\n", "\n")
-		lines := strings.Split(normalized, "\n")
-		for _, v := range lines {
-			trimmed := strings.TrimSpace(v)
-			if trimmed != "" {
-				s.TargetArr = append(s.TargetArr, trimmed)
-			}
-		}
-	}
-
-	if len(s.TargetArr) == 1 {
-		return s.TargetArr[0], nil
-	}
-	if len(s.TargetArr) == 0 {
-		return "", errors.New("all inward-bending targets are offline")
-	}
-
-	s.Lock()
-	defer s.Unlock()
-	if s.nowIndex >= len(s.TargetArr)-1 {
-		s.nowIndex = -1
-	}
-	s.nowIndex++
-	return s.TargetArr[s.nowIndex], nil
 }
 
 type Glob struct {

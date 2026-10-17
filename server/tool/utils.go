@@ -269,8 +269,8 @@ func getServerStatus() {
 		if io1, err := net.IOCounters(false); err == nil {
 			time.Sleep(500 * time.Millisecond)
 			if io2, err2 := net.IOCounters(false); err2 == nil && len(io1) > 0 && len(io2) > 0 {
-				m["io_send"] = (io2[0].BytesSent - io1[0].BytesSent) * 2
-				m["io_recv"] = (io2[0].BytesRecv - io1[0].BytesRecv) * 2
+				m["io_send"] = CounterDelta(io2[0].BytesSent, io1[0].BytesSent) * 2
+				m["io_recv"] = CounterDelta(io2[0].BytesRecv, io1[0].BytesRecv) * 2
 			}
 		}
 
@@ -286,4 +286,14 @@ func getServerStatus() {
 		}
 		ssMu.Unlock()
 	}
+}
+
+// CounterDelta returns how far a monotonically increasing counter advanced
+// from prev to cur. A counter that went backwards was reset (for example the
+// interface was recreated), and the interval counts as zero.
+func CounterDelta(cur, prev uint64) uint64 {
+	if cur < prev {
+		return 0
+	}
+	return cur - prev
 }

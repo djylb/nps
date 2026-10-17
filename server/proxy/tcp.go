@@ -36,31 +36,45 @@ func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel, a
 	}
 }
 
-func (s *TunnelModeServer) Start() error {
-	if s.Task.ServerIp == "" {
-		s.Task.ServerIp = "0.0.0.0"
-	}
-	s.address = common.BuildAddress(s.Task.ServerIp, strconv.Itoa(s.Task.Port))
+// Bind opens the TCP listener and, for SOCKS5, the UDP associate socket.
+func (s *TunnelModeServer) Bind() error {
+	return s.bindLocked(func() error {
+		if s.listener != nil {
+			return nil
+		}
+		if s.Task.ServerIp == "" {
+			s.Task.ServerIp = "0.0.0.0"
+		}
+		s.address = common.BuildAddress(s.Task.ServerIp, strconv.Itoa(s.Task.Port))
 
-	if s.usesSocks5UDP() {
-		registry, err := newSocks5UDPRegistry(s.Bridge, s.Task, s.AllowLocalProxy, s.address)
+		var registry *socks5UDPRegistry
+		if s.usesSocks5UDP() {
+			var err error
+			if registry, err = newSocks5UDPRegistry(s.Bridge, s.Task, s.AllowLocalProxy, s.address); err != nil {
+				return err
+			}
+		}
+		listener, err := net.Listen("tcp", s.address)
 		if err != nil {
+			if registry != nil {
+				_ = registry.Close()
+			}
 			return err
 		}
-		s.socks5UDP = registry
-		s.socks5UDP.start()
-	}
-
-	listener, err := net.Listen("tcp", s.address)
-	if err != nil {
-		if s.socks5UDP != nil {
-			_ = s.socks5UDP.Close()
-			s.socks5UDP = nil
+		if registry != nil {
+			registry.start()
 		}
+		s.socks5UDP = registry
+		s.listener = listener
+		return nil
+	})
+}
+
+func (s *TunnelModeServer) Start() error {
+	if err := s.Bind(); err != nil {
 		return err
 	}
-	s.listener = listener
-	conn.Accept(listener, s.handleConn)
+	conn.Accept(s.listener, s.handleConn)
 	if s.socks5UDP != nil {
 		_ = s.socks5UDP.Close()
 	}
@@ -68,6 +82,12 @@ func (s *TunnelModeServer) Start() error {
 }
 
 func (s *TunnelModeServer) Close() error {
+	var listener net.Listener
+	var registry *socks5UDPRegistry
+	s.markClosed(func() {
+		listener = s.listener
+		registry = s.socks5UDP
+	})
 	s.activeConnections.Range(func(key, value interface{}) bool {
 		if c, ok := key.(net.Conn); ok {
 			_ = c.Close()
@@ -75,13 +95,28 @@ func (s *TunnelModeServer) Close() error {
 		}
 		return true
 	})
-	if s.socks5UDP != nil {
-		_ = s.socks5UDP.Close()
+	if registry != nil {
+		_ = registry.Close()
 	}
-	if s.listener == nil {
+	if listener == nil {
 		return nil
 	}
-	return s.listener.Close()
+	if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		return err
+	}
+	return nil
+}
+
+// trackConn registers c as active unless the server is closed, so Close
+// never misses a connection accepted concurrently with it.
+func (s *TunnelModeServer) trackConn(c net.Conn) bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.closed {
+		return false
+	}
+	s.activeConnections.Store(c, struct{}{})
+	return true
 }
 
 func (s *TunnelModeServer) ServeVirtual(c net.Conn) {
@@ -106,12 +141,13 @@ func (s *TunnelModeServer) handleConn(c net.Conn) {
 	if c == nil {
 		return
 	}
-	s.activeConnections.Store(c, struct{}{})
+	if !s.trackConn(c) {
+		_ = c.Close()
+		return
+	}
 	defer func() {
 		s.activeConnections.Delete(c)
-		if c != nil {
-			_ = c.Close()
-		}
+		_ = c.Close()
 	}()
 
 	if s.Bridge.IsServer() {
@@ -154,18 +190,28 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	return s.DealClient(c, s.Task.Client, targetAddr, nil, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 }
 
+// httpProxyHeaderTimeout bounds how long a client may take to send a request header.
+const httpProxyHeaderTimeout = 10 * time.Second
+
 // ProcessHttp http proxy
 func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
-	_, addr, rb, r, err := c.GetHost()
+	if err := c.SetReadDeadline(time.Now().Add(httpProxyHeaderTimeout)); err != nil {
+		_ = c.Close()
+		return err
+	}
+	addr, r, head, rest, err := c.GetHost()
+	if err == nil {
+		err = c.SetReadDeadline(time.Time{})
+	}
 	if err != nil {
 		_ = c.Close()
 		logs.Info("%v", err)
 		return err
 	}
-	if err := s.Auth(r, nil, s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, s.Task.MultiAccount, s.Task.UserAuth); err != nil {
+	if !common.CheckProxyAuth(r, s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, file.GetAccountMap(s.Task.MultiAccount), file.GetAccountMap(s.Task.UserAuth)) {
 		_, _ = c.Write([]byte(common.ProxyAuthRequiredBytes))
 		_ = c.Close()
-		return err
+		return errors.New("407 Proxy Authentication Required")
 	}
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
 		if !s.Task.AllowsDestination(addr) {
@@ -179,7 +225,8 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	logs.Debug("http proxy request, client=%d method=%s, host=%s, url=%s, remote address=%s, target=%s", s.Task.Client.Id, r.Method, r.Host, r.URL.RequestURI(), remoteAddr, addr)
 	if r.Method == http.MethodConnect {
 		_, _ = c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
-		return s.DealClient(c, s.Task.Client, addr, nil, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
+		// Bytes the client sent right after the CONNECT header belong to the tunnel.
+		return s.DealClient(c, s.Task.Client, addr, rest, common.CONN_TCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
 	}
 	var server *http.Server
 
@@ -246,7 +293,8 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			//go server.Close()
 		},
 	}
-	listener := conn.NewOneConnListener(c.SetRb(rb))
+	// Replay the parsed header and everything read after it (body, pipelined requests).
+	listener := conn.NewOneConnListener(c.SetRb(head, rest))
 	var shutdownTimerMu sync.Mutex
 	var shutdownTimer *time.Timer
 	defer func() {
@@ -275,8 +323,14 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	})
 	server = &http.Server{
 		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpProxyHeaderTimeout,
 		IdleTimeout:       90 * time.Second,
+		// The listener serves a single connection; stop serving once it is gone.
+		ConnState: func(_ net.Conn, state http.ConnState) {
+			if state == http.StateClosed {
+				_ = server.Close()
+			}
+		},
 	}
 	//httpNum++
 	//logs.Error("HTTP Proxy Number: %d", httpNum)

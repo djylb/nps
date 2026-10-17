@@ -83,3 +83,35 @@ func TestResolveUDPBindTargetHonorsSpecificAndWildcardHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestGetHostKeepsBytesAfterHeader(t *testing.T) {
+	tests := []struct {
+		name, header, rest, addr string
+	}{
+		{"post with body", "POST http://example.com/svn HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\n", "hello", "example.com:80"},
+		{"connect with early data", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "\x16\x03\x01", "example.com:443"},
+		{"pipelined", "GET http://[::1]/ HTTP/1.1\r\nHost: [::1]\r\n\r\n", "GET http://[::1]/b HTTP/1.1\r\nHost: [::1]\r\n\r\n", "[::1]:80"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, client := net.Pipe()
+			defer func() { _ = client.Close() }()
+			defer func() { _ = server.Close() }()
+			// Header and trailing bytes arrive in one write and nothing follows.
+			go func() { _, _ = client.Write([]byte(tt.header + tt.rest)) }()
+
+			c := NewConn(server)
+			_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+			addr, r, head, rest, err := c.GetHost()
+			if err != nil {
+				t.Fatalf("GetHost() error = %v", err)
+			}
+			if addr != tt.addr || r == nil {
+				t.Fatalf("GetHost() addr = %q, want %q", addr, tt.addr)
+			}
+			if string(head) != tt.header || string(rest) != tt.rest {
+				t.Fatalf("GetHost() head = %q rest = %q, want %q and %q", head, rest, tt.header, tt.rest)
+			}
+		})
+	}
+}

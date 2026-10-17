@@ -52,7 +52,7 @@ nps install
 nps start|stop|restart|uninstall
 
 # Update
-nps update && nps restart
+nps update
 ```
 
 ### 2.2 NPC
@@ -63,7 +63,7 @@ wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -
 npc start|stop|restart|uninstall
 
 # Update
-npc update && npc restart
+npc update
 ```
 
 ### 2.3 脚本说明
@@ -119,18 +119,14 @@ NPS 提供官方二进制安装包，适用于 **Windows、Linux、macOS、FreeB
 .\nps.exe install -conf_path="D:\test\nps"
 
 # Update
-.\nps.exe stop
-.\nps-update.exe update
-.\nps.exe start
+.\nps.exe update
 
 # NPC Client
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tcp,tls" -log="off"
 .\npc.exe start|stop|restart|uninstall
 
 # Update
-.\npc.exe stop
-.\npc-update.exe update
-.\npc.exe start
+.\npc.exe update
 ```
 
 ---
@@ -165,7 +161,7 @@ nps start|stop|restart|uninstall
 ./nps install -conf_path="/app/nps"
 
 # Update
-nps update && nps restart
+nps update
 
 # NPC Client
 ./npc install
@@ -173,7 +169,7 @@ nps update && nps restart
 npc start|stop|restart|uninstall
 
 # Update
-npc update && npc restart
+npc update
 ```
 
 ---
@@ -195,7 +191,7 @@ nps start|stop|restart|uninstall
 ./nps install -conf_path="/app/nps"
 
 # Update
-nps update && nps restart
+nps update
 
 # NPC Client
 ./npc install
@@ -203,7 +199,7 @@ nps update && nps restart
 npc start|stop|restart|uninstall
 
 # Update
-npc update && npc restart
+npc update
 ```
 
 ---

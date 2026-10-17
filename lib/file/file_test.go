@@ -91,7 +91,9 @@ func TestStoreSyncMapToFileSkipsNoStoreEntries(t *testing.T) {
 	m.Store(2, &Client{Id: 2, VerifyKey: "hidden", NoStore: true})
 	m.Store(3, &Client{Id: 3, VerifyKey: "visible-3", NoStore: false})
 
-	storeSyncMapToFile(m, path)
+	if err := storeSyncMapToFile(m, path); err != nil {
+		t.Fatalf("expected store to succeed, got %v", err)
+	}
 
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -113,5 +115,25 @@ func TestStoreSyncMapToFileSkipsNoStoreEntries(t *testing.T) {
 	}
 	if !found[1] || !found[3] || found[2] {
 		t.Fatalf("unexpected persisted ids: %+v", found)
+	}
+}
+
+func TestStoreToJsonFileReportsErrorAndReleasesLock(t *testing.T) {
+	// A non-empty directory at the target path makes the final rename fail
+	// after the temporary file has been written.
+	target := filepath.Join(t.TempDir(), "tasks.json")
+	if err := os.MkdirAll(filepath.Join(target, "keep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db := &JsonDb{TaskFilePath: target}
+	db.Tasks.Store(1, &Tunnel{Id: 1})
+
+	for i := 0; i < 2; i++ {
+		if err := db.StoreTasksToJsonFile(); err == nil {
+			t.Fatalf("expected store to fail")
+		}
+	}
+	if _, err := os.Stat(target + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("expected temporary file to be removed, got %v", err)
 	}
 }

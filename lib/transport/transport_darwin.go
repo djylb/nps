@@ -95,5 +95,5 @@ func GetAddress(conn net.Conn) (string, error) {
 		copy(odIP, nl.rdaddr[:])
 	}
 
-	return common.BuildAddress(odIP.String(), strconv.Itoa(int(odPort[0]<<8|odPort[1]))), nil
+	return common.BuildAddress(odIP.String(), strconv.Itoa(int(odPort[0])<<8|int(odPort[1]))), nil
 }

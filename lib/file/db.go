@@ -2,6 +2,7 @@ package file
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
+	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -128,77 +130,112 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 	return
 }
 
-func (s *DbUtils) NewTask(t *Tunnel) (err error) {
-	//s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
-	//	v := value.(*Tunnel)
-	//	if (v.Mode == "secret" || v.Mode == "p2p") && (t.Mode == "secret" || t.Mode == "p2p") && v.Password == t.Password {
-	//		err = errors.New(fmt.Sprintf("secret mode keys %s must be unique", t.Password))
-	//		return false
-	//	}
-	//	return true
-	//})
-	//if err != nil {
-	//	return
-	//}
-	if (t.Mode == "secret" || t.Mode == "p2p") && t.Password == "" {
-		t.Password = crypt.GetRandomString(16, t.Id)
+// NewTask adds t. A password explicitly set on a task created through the
+// web or API that is already used by another task is rejected; for tasks
+// delivered by a client configuration (NoStore) it is replaced by a random one,
+// see reserveTaskPassword.
+func (s *DbUtils) NewTask(t *Tunnel) error {
+	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
+		return err
 	}
-
 	t.Flow = new(Flow)
-
-	if t.Password != "" {
-		for {
-			hash := crypt.Md5(t.Password)
-			if idxId, ok := TaskPasswordIndex.Get(hash); !ok || idxId == t.Id {
-				TaskPasswordIndex.Add(hash, t.Id)
-				break
-			}
-			t.Password = crypt.GetRandomString(16, t.Id)
-		}
-	}
-
-	switch t.Mode {
-	case "socks5":
-		t.Mode = "mixProxy"
-		t.HttpProxy = false
-		t.Socks5Proxy = true
-	case "httpProxy":
-		t.Mode = "mixProxy"
-		t.HttpProxy = true
-		t.Socks5Proxy = false
-	}
-	if t.TargetType != common.CONN_TCP && t.TargetType != common.CONN_UDP {
-		t.TargetType = common.CONN_ALL
-	}
-	t.CompileDestACL()
+	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
-	s.JsonDb.StoreTasksToJsonFile()
-	return
+	logStoreError(s.JsonDb.StoreTasksToJsonFile())
+	return nil
 }
 
+// UpdateTask stores t in place of the task with the same id. t may be the
+// stored object itself or an edited copy; the password the task held before
+// is tracked separately and released when it changes. A rejected password
+// leaves the stored task and the password index unchanged.
 func (s *DbUtils) UpdateTask(t *Tunnel) error {
-	if (t.Mode == "secret" || t.Mode == "p2p") && t.Password == "" {
-		t.Password = crypt.GetRandomString(16, t.Id)
+	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
+		return err
 	}
+	normalizeTask(t)
+	s.JsonDb.Tasks.Store(t.Id, t)
+	logStoreError(s.JsonDb.StoreTasksToJsonFile())
+	return nil
+}
 
-	if v, ok := s.JsonDb.Tasks.Load(t.Id); ok {
-		if oldPwd := v.(*Tunnel).Password; oldPwd != "" {
-			if idxId, ok := TaskPasswordIndex.Get(crypt.Md5(oldPwd)); ok && idxId == t.Id {
-				TaskPasswordIndex.Remove(crypt.Md5(oldPwd))
-			}
-		}
-	}
+// ReserveTaskPassword claims t.Password for t.Id under the same rules as
+// NewTask and UpdateTask. It is used before an existing task is updated in
+// place from t.
+func (s *DbUtils) ReserveTaskPassword(t *Tunnel) error {
+	return reserveTaskPassword(t, !t.NoStore)
+}
 
-	if t.Password != "" {
-		for {
-			hash := crypt.Md5(t.Password)
-			if idxId, ok := TaskPasswordIndex.Get(hash); !ok || idxId == t.Id {
-				TaskPasswordIndex.Add(hash, t.Id)
-				break
-			}
-			t.Password = crypt.GetRandomString(16, t.Id)
+var (
+	// taskPasswordLock guards TaskPasswordIndex writes and taskPasswordClaims
+	// so that two tasks can never claim the same password.
+	taskPasswordLock sync.Mutex
+	// taskPasswordClaims maps a task id to the password hash it holds in
+	// TaskPasswordIndex.
+	taskPasswordClaims = make(map[int]string)
+)
+
+func resetTaskPasswords() {
+	taskPasswordLock.Lock()
+	defer taskPasswordLock.Unlock()
+	TaskPasswordIndex.Clear()
+	taskPasswordClaims = make(map[int]string)
+}
+
+// releaseTaskPasswordLocked drops the password claim of task id.
+func releaseTaskPasswordLocked(id int) {
+	if hash, ok := taskPasswordClaims[id]; ok {
+		if idxId, ok := TaskPasswordIndex.Get(hash); ok && idxId == id {
+			TaskPasswordIndex.Remove(hash)
 		}
+		delete(taskPasswordClaims, id)
 	}
+}
+
+// reserveTaskPassword makes t.Password the password claimed by t.Id and
+// releases the one the task held before. A secret or p2p task without a
+// password gets a random one, regenerated until it is unique. An explicitly
+// set password that another task already uses is rejected when strict, leaving
+// t and the index unchanged; otherwise it is logged and replaced by a random
+// one.
+func reserveTaskPassword(t *Tunnel, strict bool) error {
+	taskPasswordLock.Lock()
+	defer taskPasswordLock.Unlock()
+	password := t.Password
+	generated := false
+	if (t.Mode == "secret" || t.Mode == "p2p") && password == "" {
+		password = crypt.GetRandomString(16, t.Id)
+		generated = true
+	}
+	if password == "" {
+		releaseTaskPasswordLocked(t.Id)
+		return nil
+	}
+	for {
+		idxId, ok := TaskPasswordIndex.Get(crypt.Md5(password))
+		if !ok || idxId == t.Id {
+			break
+		}
+		if !generated {
+			if strict {
+				return fmt.Errorf("task password is already used by task %d", idxId)
+			}
+			logs.Warn("password of task %d is already used by task %d, a random password is used instead", t.Id, idxId)
+			generated = true
+		}
+		password = crypt.GetRandomString(16, t.Id)
+	}
+	t.Password = password
+	hash := crypt.Md5(password)
+	if taskPasswordClaims[t.Id] != hash {
+		releaseTaskPasswordLocked(t.Id)
+	}
+	TaskPasswordIndex.Add(hash, t.Id)
+	taskPasswordClaims[t.Id] = hash
+	return nil
+}
+
+func normalizeTask(t *Tunnel) {
 	switch t.Mode {
 	case "socks5":
 		t.Mode = "mixProxy"
@@ -213,24 +250,28 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 		t.TargetType = common.CONN_ALL
 	}
 	t.CompileDestACL()
-	s.JsonDb.Tasks.Store(t.Id, t)
-	s.JsonDb.StoreTasksToJsonFile()
-	return nil
+}
+
+// logStoreError reports a failed write of the json store. The in-memory state
+// stays authoritative and is written again by the next store.
+func logStoreError(err error) {
+	if err != nil {
+		logs.Error("%v, changes are kept in memory only until the next successful store", err)
+	}
 }
 
 func (s *DbUtils) SaveGlobal(t *Glob) error {
 	s.JsonDb.Global = t
-	s.JsonDb.StoreGlobalToJsonFile()
+	logStoreError(s.JsonDb.StoreGlobalToJsonFile())
 	return nil
 }
 
 func (s *DbUtils) DelTask(id int) error {
-	if v, ok := s.JsonDb.Tasks.Load(id); ok {
-		t := v.(*Tunnel)
-		TaskPasswordIndex.Remove(crypt.Md5(t.Password))
-	}
+	taskPasswordLock.Lock()
+	releaseTaskPasswordLocked(id)
+	taskPasswordLock.Unlock()
 	s.JsonDb.Tasks.Delete(id)
-	s.JsonDb.StoreTasksToJsonFile()
+	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	return nil
 }
 
@@ -272,7 +313,7 @@ func (s *DbUtils) DelHost(id int) error {
 		HostIndex.Remove(h.Host, id)
 	}
 	s.JsonDb.Hosts.Delete(id)
-	s.JsonDb.StoreHostToJsonFile()
+	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	return nil
 }
 
@@ -333,7 +374,7 @@ func (s *DbUtils) NewHost(t *Host) error {
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
 	t.Flow = new(Flow)
 	s.JsonDb.Hosts.Store(t.Id, t)
-	s.JsonDb.StoreHostToJsonFile()
+	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	return nil
 }
 
@@ -373,7 +414,7 @@ func (s *DbUtils) DelClient(id int) error {
 		}
 	}
 	s.JsonDb.Clients.Delete(id)
-	s.JsonDb.StoreClientsToJsonFile()
+	logStoreError(s.JsonDb.StoreClientsToJsonFile())
 	return nil
 }
 
@@ -408,7 +449,7 @@ reset:
 	}
 	s.JsonDb.Clients.Store(c.Id, c)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
-	s.JsonDb.StoreClientsToJsonFile()
+	logStoreError(s.JsonDb.StoreClientsToJsonFile())
 	return nil
 }
 

@@ -932,3 +932,21 @@ func TestTunnelModeServerSocks5UDPIdleSessionExpires(t *testing.T) {
 	}
 	t.Fatal("idle socks5 udp session was not cleaned up in time")
 }
+
+func TestSocks5UDPReplyAddrWithholdsPrivateAddressFromPublicClient(t *testing.T) {
+	tcpLocal := &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 1080}
+	udpLocal := &net.UDPAddr{IP: net.IPv4zero, Port: 1080}
+	publicClient := net.ParseIP("8.8.8.8")
+
+	task := &file.Tunnel{Port: 1080}
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.Host != "0.0.0.0" {
+		t.Fatalf("reply host for public client = %q, want 0.0.0.0", got.Host)
+	}
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, net.ParseIP("10.0.0.9")); got.Host != "10.0.0.5" {
+		t.Fatalf("reply host for LAN client = %q, want 10.0.0.5", got.Host)
+	}
+	task.ServerIp = "10.0.0.5"
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.Host != "10.0.0.5" {
+		t.Fatalf("reply host with configured ServerIp = %q, want 10.0.0.5", got.Host)
+	}
+}

@@ -1,7 +1,6 @@
 package bridge
 
 import (
-	"strings"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
@@ -37,58 +36,35 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 		//firstSuccess = true
 		retry = 0
 
-		if !status { //the status is true , return target to the targetArr
+		if !status {
+			// the target is unhealthy: take it out of the rotation
 			file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 				v := value.(*file.Tunnel)
-				if v.Client.Id == id && v.Mode == "tcp" && strings.Contains(v.Target.TargetStr, info) {
-					v.Lock()
-					if v.Target.TargetArr == nil || (len(v.Target.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
-						v.Target.TargetArr = common.TrimArr(strings.Split(strings.ReplaceAll(v.Target.TargetStr, "\r\n", "\n"), "\n"))
-					}
-					v.Target.TargetArr = common.RemoveArrVal(v.Target.TargetArr, info)
-					if v.HealthRemoveArr == nil {
-						v.HealthRemoveArr = make([]string, 0)
-					}
-					v.HealthRemoveArr = append(v.HealthRemoveArr, info)
-					v.Unlock()
+				if v.Client.Id == id && v.Mode == "tcp" && v.Target.HasTarget(info) {
+					markTargetDown(v.Target, &v.Health, info)
 				}
 				return true
 			})
 			file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
 				v := value.(*file.Host)
-				if v.Client.Id == id && strings.Contains(v.Target.TargetStr, info) {
-					v.Lock()
-					if v.Target.TargetArr == nil || (len(v.Target.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
-						v.Target.TargetArr = common.TrimArr(strings.Split(strings.ReplaceAll(v.Target.TargetStr, "\r\n", "\n"), "\n"))
-					}
-					v.Target.TargetArr = common.RemoveArrVal(v.Target.TargetArr, info)
-					if v.HealthRemoveArr == nil {
-						v.HealthRemoveArr = make([]string, 0)
-					}
-					v.HealthRemoveArr = append(v.HealthRemoveArr, info)
-					v.Unlock()
+				if v.Client.Id == id && v.Target.HasTarget(info) {
+					markTargetDown(v.Target, &v.Health, info)
 				}
 				return true
 			})
-		} else { //the status is false,remove target from the targetArr
+		} else {
+			// the target is healthy again: put it back into the rotation
 			file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 				v := value.(*file.Tunnel)
-				if v.Client.Id == id && v.Mode == "tcp" && common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.Target.TargetArr, info) {
-					v.Lock()
-					v.Target.TargetArr = append(v.Target.TargetArr, info)
-					v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
-					v.Unlock()
+				if v.Client.Id == id && v.Mode == "tcp" {
+					markTargetUp(v.Target, &v.Health, info)
 				}
 				return true
 			})
-
 			file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
 				v := value.(*file.Host)
-				if v.Client.Id == id && common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.Target.TargetArr, info) {
-					v.Lock()
-					v.Target.TargetArr = append(v.Target.TargetArr, info)
-					v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
-					v.Unlock()
+				if v.Client.Id == id {
+					markTargetUp(v.Target, &v.Health, info)
 				}
 				return true
 			})
@@ -98,6 +74,25 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	//_ = c.Close()
 	_ = node.Close()
 	client.RemoveOfflineNodes(false)
+}
+
+// markTargetDown removes addr from the target rotation and records it in the
+// health state. The target list is guarded by the Target itself and the
+// removal record by the Health lock, so no lock is held across both.
+func markTargetDown(t *file.Target, h *file.Health, addr string) {
+	t.RemoveTarget(addr)
+	h.Lock()
+	if !common.IsArrContains(h.HealthRemoveArr, addr) {
+		h.HealthRemoveArr = append(h.HealthRemoveArr, addr)
+	}
+	h.Unlock()
+}
+
+func markTargetUp(t *file.Target, h *file.Health, addr string) {
+	t.RestoreTarget(addr)
+	h.Lock()
+	h.HealthRemoveArr = common.RemoveArrVal(h.HealthRemoveArr, addr)
+	h.Unlock()
 }
 
 func (s *Bridge) ping() {

@@ -98,21 +98,13 @@ npc.exe uninstall
 
 ### **步骤**
 
-1. **先停止 NPC**
-   ```bash
-   sudo npc stop  # Linux/macOS
-   npc.exe stop  # Windows
-   ```
-2. **执行更新**
-   ```bash
-   sudo npc-update update  # Linux/macOS
-   npc-update.exe update  # Windows
-   ```
-3. **重新启动 NPC**
-   ```bash
-   sudo npc start  # Linux/macOS
-   npc.exe start  # Windows
-   ```
+**执行更新**（已在运行的 NPC 服务会自动重启，无需先停止）
+```bash
+sudo npc update  # Linux/macOS
+npc.exe update   # Windows
+```
+
+已是最新版本时不会替换文件，也不会重启服务。
 
 📌 **如果更新失败**，请 **手动下载** [最新版本](https://github.com/djylb/nps/releases/latest)，然后覆盖原有的 `npc` 文件。
 

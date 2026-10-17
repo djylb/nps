@@ -247,10 +247,12 @@ func (s DefaultIndexService) GetTunnel(id int) (*file.Tunnel, error) {
 }
 
 func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, error) {
-	tunnel, err := s.repo().GetTunnel(input.ID)
+	stored, err := s.repo().GetTunnel(input.ID)
 	if err != nil {
 		return TunnelMutation{}, ErrTunnelNotFound
 	}
+	// Edit a copy so that a rejected save leaves the stored task untouched.
+	tunnel := stored.Clone()
 
 	client, err := s.repo().GetClient(input.ClientID)
 	if err != nil {

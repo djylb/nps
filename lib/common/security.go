@@ -145,28 +145,61 @@ func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[
 	return false
 }
 
-// CheckAuth Check if the Request request is validated
+// NeedsAuth reports whether any credential is configured. A username or a
+// password on its own is enough to require authentication.
+func NeedsAuth(user, passwd string, accountMap, authMap map[string]string) bool {
+	return user != "" || passwd != "" || len(accountMap) > 0 || len(authMap) > 0
+}
+
+// CheckAuth validates the Basic credentials of a request to a reverse-proxied
+// host. It reads Authorization and falls back to Proxy-Authorization only when
+// the request carries no Authorization header at all.
 func CheckAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
-	// Bypass authentication only if user, passwd are empty and multiAccount is nil or empty
-	if user == "" && passwd == "" && len(accountMap) == 0 && len(authMap) == 0 {
+	return checkBasicAuthHeader(credentialHeader(r, "Authorization", "Proxy-Authorization"), user, passwd, accountMap, authMap)
+}
+
+// CheckProxyAuth validates the Basic credentials of a forward proxy request. It
+// reads Proxy-Authorization and falls back to Authorization only when the
+// request carries no Proxy-Authorization header at all, so a client's own
+// Authorization for the origin server never overrides its proxy credentials.
+func CheckProxyAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
+	return checkBasicAuthHeader(credentialHeader(r, "Proxy-Authorization", "Authorization"), user, passwd, accountMap, authMap)
+}
+
+// credentialHeader returns the primary header if present, otherwise the fallback.
+func credentialHeader(r *http.Request, primary, fallback string) string {
+	if v := r.Header.Values(primary); len(v) > 0 {
+		return v[0]
+	}
+	return r.Header.Get(fallback)
+}
+
+func checkBasicAuthHeader(header, user, passwd string, accountMap, authMap map[string]string) bool {
+	if !NeedsAuth(user, passwd, accountMap, authMap) {
 		return true
 	}
-	s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-	if len(s) != 2 {
-		s = strings.SplitN(r.Header.Get("Proxy-Authorization"), " ", 2)
-		if len(s) != 2 {
-			return false
+	u, p, ok := ParseBasicAuth(header)
+	if !ok {
+		return false
+	}
+	return CheckAuthWithAccountMap(u, p, user, passwd, accountMap, authMap)
+}
+
+// ParseBasicAuth parses a "Basic <base64(user:pass)>" credential. The scheme is
+// matched case-insensitively and unpadded base64 is accepted.
+func ParseBasicAuth(header string) (user, passwd string, ok bool) {
+	scheme, cred, found := strings.Cut(strings.TrimSpace(header), " ")
+	if !found || !strings.EqualFold(scheme, "Basic") {
+		return "", "", false
+	}
+	cred = strings.TrimSpace(cred)
+	b, err := base64.StdEncoding.DecodeString(cred)
+	if err != nil {
+		if b, err = base64.RawStdEncoding.DecodeString(cred); err != nil {
+			return "", "", false
 		}
 	}
-	b, err := base64.StdEncoding.DecodeString(s[1])
-	if err != nil {
-		return false
-	}
-	pair := strings.SplitN(string(b), ":", 2)
-	if len(pair) != 2 {
-		return false
-	}
-	return CheckAuthWithAccountMap(pair[0], pair[1], user, passwd, accountMap, authMap)
+	return strings.Cut(string(b), ":")
 }
 
 func DealMultiUser(s string) map[string]string {

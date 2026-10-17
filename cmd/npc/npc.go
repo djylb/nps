@@ -7,7 +7,6 @@ import (
 	goflag "flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -107,6 +106,7 @@ func main() {
 		version.PrintVersion(*protoVer)
 		return
 	}
+	install.RemoveStaleExecutables()
 	client.Ver = *protoVer
 	client.SkipTLSVerify = *skipVerify
 	client.DisableP2P = *disableP2P
@@ -184,6 +184,21 @@ func main() {
 	defer cancel()
 	prg := NewNpc(ctx)
 	s, err := service.New(prg, svcConfig)
+	if cmd == "update" {
+		if err != nil {
+			logs.Warn("service function disabled %v", err)
+			s = nil
+		}
+		replaced, err := install.UpdateNpc()
+		if err == nil && len(replaced) > 0 {
+			err = install.RestartAfterUpdate(s, svcConfig.Name, replaced)
+		}
+		if err != nil {
+			logs.Error("update failed: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err != nil {
 		logs.Error("service function disabled %v", err)
 		run(ctx, cancel)
@@ -201,9 +216,6 @@ func main() {
 		return
 	case "register":
 		client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime)
-		return
-	case "update":
-		install.UpdateNpc()
 		return
 	case "nat":
 		c, err := pionstun.Dial("udp", *stunAddr)
@@ -255,24 +267,24 @@ func main() {
 		fmt.Println("Note: a single STUN binding request only returns the observed external address; reliable NAT behavior classification still requires multi-endpoint probing.")
 		os.Exit(0)
 	case "start", "stop", "restart":
-		// support busyBox and sysV, for openWrt
-		if service.Platform() == "unix-systemv" {
-			logs.Info("unix-systemv service")
-			cmd := exec.Command("/etc/init.d/"+svcConfig.Name, os.Args[1])
-			if err := cmd.Run(); err != nil {
-				logs.Error("%v", err)
-			}
-			return
-		}
-		if err := service.Control(s, os.Args[1]); err != nil {
+		if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
 			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 		}
 		return
 	case "install":
 		_ = service.Control(s, "stop")
 		_ = service.Control(s, "uninstall")
-		install.NPC()
-		if err := service.Control(s, os.Args[1]); err != nil {
+		binPath, err := install.NPC()
+		if err != nil {
+			logs.Error("install failed: %v", err)
+			os.Exit(1)
+		}
+		svcConfig.Executable = binPath
+		if s, err = service.New(prg, svcConfig); err != nil {
+			logs.Error("%v", err)
+			return
+		}
+		if err := service.Control(s, cmd); err != nil {
 			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 		}
 		if service.Platform() == "unix-systemv" {
@@ -283,7 +295,7 @@ func main() {
 		}
 		return
 	case "uninstall":
-		if err := service.Control(s, os.Args[1]); err != nil {
+		if err := service.Control(s, cmd); err != nil {
 			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 		}
 		if service.Platform() == "unix-systemv" {

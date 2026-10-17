@@ -44,16 +44,14 @@ type JsonDb struct {
 }
 
 func (s *JsonDb) LoadTaskFromJsonFile() {
-	TaskPasswordIndex.Clear()
+	resetTaskPasswords()
 	loadSyncMapFromFile(s.TaskFilePath, Tunnel{}, func(v interface{}) {
 		var err error
 		post := v.(*Tunnel)
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
 			return
 		}
-		if post.Password != "" {
-			TaskPasswordIndex.Add(crypt.Md5(post.Password), post.Id)
-		}
+		_ = reserveTaskPassword(post, false)
 		post.NowConn = 0
 		switch post.Mode {
 		case "socks5":
@@ -141,34 +139,34 @@ func (s *JsonDb) GetClient(id int) (c *Client, err error) {
 
 var hostLock sync.Mutex
 
-func (s *JsonDb) StoreHostToJsonFile() {
+func (s *JsonDb) StoreHostToJsonFile() error {
 	hostLock.Lock()
-	storeSyncMapToFile(&s.Hosts, s.HostFilePath)
-	hostLock.Unlock()
+	defer hostLock.Unlock()
+	return storeSyncMapToFile(&s.Hosts, s.HostFilePath)
 }
 
 var taskLock sync.Mutex
 
-func (s *JsonDb) StoreTasksToJsonFile() {
+func (s *JsonDb) StoreTasksToJsonFile() error {
 	taskLock.Lock()
-	storeSyncMapToFile(&s.Tasks, s.TaskFilePath)
-	taskLock.Unlock()
+	defer taskLock.Unlock()
+	return storeSyncMapToFile(&s.Tasks, s.TaskFilePath)
 }
 
 var clientLock sync.Mutex
 
-func (s *JsonDb) StoreClientsToJsonFile() {
+func (s *JsonDb) StoreClientsToJsonFile() error {
 	clientLock.Lock()
-	storeSyncMapToFile(&s.Clients, s.ClientFilePath)
-	clientLock.Unlock()
+	defer clientLock.Unlock()
+	return storeSyncMapToFile(&s.Clients, s.ClientFilePath)
 }
 
 var globalLock sync.Mutex
 
-func (s *JsonDb) StoreGlobalToJsonFile() {
+func (s *JsonDb) StoreGlobalToJsonFile() error {
 	globalLock.Lock()
-	storeGlobalToFile(s.Global, s.GlobalFilePath)
-	globalLock.Unlock()
+	defer globalLock.Unlock()
+	return storeGlobalToFile(s.Global, s.GlobalFilePath)
 }
 
 func (s *JsonDb) GetClientId() int32 {
@@ -326,97 +324,97 @@ func createEmptyFile(filePath string) error {
 	return nil
 }
 
-func storeSyncMapToFile(m *sync.Map, filePath string) {
+func storeSyncMapToFile(m *sync.Map, filePath string) error {
+	return writeFileAtomic(filePath, func(w *bufio.Writer) error {
+		if _, err := w.WriteString("[\n"); err != nil {
+			return err
+		}
+		first := true
+		var rangeErr error
+		m.Range(func(key, value interface{}) bool {
+			switch v := value.(type) {
+			case *Tunnel:
+				if v.NoStore {
+					return true
+				}
+			case *Host:
+				if v.NoStore {
+					return true
+				}
+			case *Client:
+				if v.NoStore {
+					return true
+				}
+			}
+			data, err := json.Marshal(value)
+			if err != nil {
+				rangeErr = err
+				return false
+			}
+			if !first {
+				if _, err = w.WriteString(",\n"); err != nil {
+					rangeErr = err
+					return false
+				}
+			}
+			first = false
+			if _, err = w.WriteString("  "); err != nil {
+				rangeErr = err
+				return false
+			}
+			if _, err = w.Write(data); err != nil {
+				rangeErr = err
+				return false
+			}
+			return true
+		})
+		if rangeErr != nil {
+			return rangeErr
+		}
+		_, err := w.WriteString("\n]\n")
+		return err
+	})
+}
+
+func storeGlobalToFile(m *Glob, filePath string) error {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("store %s: %w", filePath, err)
+	}
+	return writeFileAtomic(filePath, func(w *bufio.Writer) error {
+		_, err := w.Write(b)
+		return err
+	})
+}
+
+// writeFileAtomic writes the content produced by write into a temporary file
+// next to filePath and renames it over filePath once it is fully synced. On any
+// failure the temporary file is removed and filePath is left untouched.
+func writeFileAtomic(filePath string, write func(w *bufio.Writer) error) (err error) {
 	tmpFilePath := filePath + ".tmp"
 	file, err := os.Create(tmpFilePath)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("store %s: %w", filePath, err)
 	}
-	writer := bufio.NewWriter(file)
-
-	if _, err = writer.WriteString("[\n"); err != nil {
-		panic(err)
-	}
-
-	first := true
-	m.Range(func(key, value interface{}) bool {
-		switch v := value.(type) {
-		case *Tunnel:
-			if v.NoStore {
-				return true
-			}
-		case *Host:
-			if v.NoStore {
-				return true
-			}
-		case *Client:
-			if v.NoStore {
-				return true
-			}
-		}
-
-		data, err := json.Marshal(value)
+	defer func() {
 		if err != nil {
-			panic(err)
+			_ = file.Close()
+			_ = os.Remove(tmpFilePath)
+			err = fmt.Errorf("store %s: %w", filePath, err)
 		}
-
-		if !first {
-			if _, err = writer.WriteString(",\n"); err != nil {
-				panic(err)
-			}
-		}
-		first = false
-
-		if _, err = writer.WriteString("  "); err != nil {
-			panic(err)
-		}
-		if _, err = writer.Write(data); err != nil {
-			panic(err)
-		}
-
-		return true
-	})
-
-	if _, err = writer.WriteString("\n]\n"); err != nil {
-		panic(err)
+	}()
+	writer := bufio.NewWriter(file)
+	if err = write(writer); err != nil {
+		return err
 	}
-
 	if err = writer.Flush(); err != nil {
-		panic(err)
+		return err
 	}
 	if err = file.Sync(); err != nil {
-		panic(err)
+		return err
 	}
 	if err = file.Close(); err != nil {
-		panic(err)
+		return err
 	}
-
-	err = os.Rename(tmpFilePath, filePath)
-	if err != nil {
-		logs.Error("store to file err %v, data will lost", err)
-	}
-}
-
-func storeGlobalToFile(m *Glob, filePath string) {
-	file, err := os.Create(filePath + ".tmp")
-	// first create a temporary file to store
-	if err != nil {
-		panic(err)
-	}
-
-	b, err := json.Marshal(m)
-	if err != nil {
-		panic(err)
-	}
-	_, err = file.Write(b)
-	if err != nil {
-		panic(err)
-	}
-	_ = file.Sync()
-	_ = file.Close()
-	// must close file first, then rename it
-	err = os.Rename(filePath+".tmp", filePath)
-	if err != nil {
-		logs.Error("store to file err %v, data will lost", err)
-	}
+	return os.Rename(tmpFilePath, filePath)
 }

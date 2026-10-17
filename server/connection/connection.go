@@ -85,7 +85,11 @@ func InitConnectionService() {
 			logs.Error("Invalid bridge port %d", BridgePort)
 			os.Exit(0)
 		}
-		pMux = pmux.NewPortMux(BridgePort, cfg.Web.Host, cfg.Network.BridgeHost)
+		var err error
+		if pMux, err = pmux.NewPortMux(BridgePort, cfg.Web.Host, cfg.Network.BridgeHost); err != nil {
+			logs.Error("Port multiplexing on %d failed: %v", BridgePort, err)
+			os.Exit(1)
+		}
 	}
 }
 

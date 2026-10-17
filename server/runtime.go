@@ -54,8 +54,8 @@ func startSpeedSampler() {
 					elapsed := now.Sub(lastSampleTime).Seconds()
 
 					// calculate bytes/sec
-					rateSent := float64(sent-lastBytesSent) / elapsed
-					rateRecv := float64(recv-lastBytesRecv) / elapsed
+					rateSent := float64(tool.CounterDelta(sent, lastBytesSent)) / elapsed
+					rateRecv := float64(tool.CounterDelta(recv, lastBytesRecv)) / elapsed
 
 					ioSendRate.Store(rateSent)
 					ioRecvRate.Store(rateRecv)

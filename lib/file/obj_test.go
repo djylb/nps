@@ -141,3 +141,43 @@ func TestTunnelAllowsDestination(t *testing.T) {
 		}
 	})
 }
+
+func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
+	target := &Target{TargetStr: "a:1\r\nb:2\n\nc：3"}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				_, _ = target.GetRandomTarget()
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				target.RemoveTarget("b:2")
+				target.RestoreTarget("b:2")
+			}
+		}()
+	}
+	wg.Wait()
+
+	seen := map[string]int{}
+	for i := 0; i < 3; i++ {
+		addr, err := target.GetRandomTarget()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		seen[addr]++
+	}
+	if len(seen) != 3 || seen["a:1"] != 1 || seen["b:2"] != 1 || seen["c:3"] != 1 {
+		t.Fatalf("unexpected rotation: %v", seen)
+	}
+	if target.RestoreTarget("d:4") {
+		t.Fatalf("an unconfigured target must not be added")
+	}
+	if !target.RemoveTarget("a:1") || target.RemoveTarget("a:1") {
+		t.Fatalf("unexpected RemoveTarget result")
+	}
+}

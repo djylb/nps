@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
@@ -19,18 +20,30 @@ type packet struct {
 }
 
 type entry struct {
-	ch     chan packet
-	conn   net.Conn
-	ctx    context.Context
-	cancel context.CancelFunc
-	once   sync.Once
+	ch         chan packet
+	conn       net.Conn
+	ctx        context.Context
+	cancel     context.CancelFunc
+	once       sync.Once
+	lastActive atomic.Int64 // monotonic time (since udpClock) of the latest packet in either direction
+}
+
+// udpClock anchors entry activity stamps to the monotonic clock.
+var udpClock = time.Now()
+
+func (e *entry) touch() {
+	e.lastActive.Store(int64(time.Since(udpClock)))
+}
+
+func (e *entry) idleFor() time.Duration {
+	return time.Since(udpClock) - time.Duration(e.lastActive.Load())
 }
 
 type UdpModeServer struct {
 	*BaseServer
 	listener    *net.UDPConn
 	entries     sync.Map      // key: clientAddr.String(), value: *entry
-	readTimeout time.Duration // idle timeout for back-channel reads
+	readTimeout time.Duration // idle timeout of a session, counted over both directions
 }
 
 func NewUdpModeServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *UdpModeServer {
@@ -40,14 +53,26 @@ func NewUdpModeServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool)
 	}
 }
 
-func (s *UdpModeServer) Start() error {
-	if s.Task.ServerIp == "" {
-		s.Task.ServerIp = "0.0.0.0"
-	}
+// Bind opens the UDP socket.
+func (s *UdpModeServer) Bind() error {
+	return s.bindLocked(func() error {
+		if s.listener != nil {
+			return nil
+		}
+		if s.Task.ServerIp == "" {
+			s.Task.ServerIp = "0.0.0.0"
+		}
+		listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(s.Task.ServerIp), Port: s.Task.Port})
+		if err != nil {
+			return err
+		}
+		s.listener = listener
+		return nil
+	})
+}
 
-	var err error
-	s.listener, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(s.Task.ServerIp), Port: s.Task.Port})
-	if err != nil {
+func (s *UdpModeServer) Start() error {
+	if err := s.Bind(); err != nil {
 		return err
 	}
 
@@ -101,7 +126,7 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 	key := addr.String()
 	defer func() {
 		ent.cancel()
-		s.entries.Delete(key)
+		s.entries.CompareAndDelete(key, ent)
 		if ent.conn != nil {
 			_ = ent.conn.Close()
 		}
@@ -143,24 +168,20 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 		ent.conn = conn.WrapFramed(flowConn)
 	}
 
+	// The back-channel reader blocks without a deadline; it is released by
+	// closing ent.conn when the worker returns.
 	go func() {
 		buf := common.BufPoolUdp.Get()
 		defer common.BufPoolUdp.Put(buf)
 
 		for {
-			select {
-			case <-ent.ctx.Done():
-				return
-			default:
-			}
-
-			_ = clientConn.SetReadDeadline(time.Now().Add(s.readTimeout))
 			nr, err := ent.conn.Read(buf)
 			if err != nil {
-				logs.Trace("back-channel read error or idle: %v", err)
+				logs.Trace("back-channel read error: %v", err)
 				ent.cancel()
 				return
 			}
+			ent.touch()
 			if _, err := s.listener.WriteTo(buf[:nr], addr); err != nil {
 				logs.Warn("error writing back to client: %v", err)
 				ent.cancel()
@@ -169,14 +190,26 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 		}
 	}()
 
+	// The session ends once neither direction has carried a packet for readTimeout.
+	ent.touch()
+	idle := time.NewTimer(s.readTimeout)
+	defer idle.Stop()
 	for {
 		select {
 		case <-ent.ctx.Done():
 			return
+		case <-idle.C:
+			remaining := s.readTimeout - ent.idleFor()
+			if remaining <= 0 {
+				logs.Trace("udp session %s idle for %v", key, s.readTimeout)
+				return
+			}
+			idle.Reset(remaining)
 		case pkt, ok := <-ent.ch:
 			if !ok {
 				return
 			}
+			ent.touch()
 			data := pkt.buf[:pkt.n]
 			ent.once.Do(func() {
 				if s.Task.Target.ProxyProtocol != 0 {
@@ -202,8 +235,10 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 }
 
 func (s *UdpModeServer) Close() error {
-	if s.listener != nil {
-		_ = s.listener.Close()
+	var listener *net.UDPConn
+	s.markClosed(func() { listener = s.listener })
+	if listener != nil {
+		_ = listener.Close()
 	}
 	s.entries.Range(func(key, value interface{}) bool {
 		ent := value.(*entry)

@@ -8,8 +8,9 @@ import (
 	"errors"
 	"io"
 	"net"
-	"os"
+	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
@@ -18,46 +19,64 @@ import (
 )
 
 const (
-	HTTP_GET        = 716984
-	HTTP_POST       = 807983
-	HTTP_HEAD       = 726965
-	HTTP_PUT        = 808585
-	HTTP_DELETE     = 686976
-	HTTP_CONNECT    = 677978
-	HTTP_OPTIONS    = 798084
-	HTTP_TRACE      = 848265
-	CLIENT          = 848384
-	ACCEPT_TIME_OUT = 10
+	HTTP_GET     = 716984
+	HTTP_POST    = 807983
+	HTTP_HEAD    = 726965
+	HTTP_PUT     = 808585
+	HTTP_DELETE  = 686976
+	HTTP_CONNECT = 677978
+	HTTP_OPTIONS = 798084
+	HTTP_TRACE   = 848265
+	CLIENT       = 848384
+	// ACCEPT_TIME_OUT bounds both protocol recognition of a new connection and
+	// the wait for the target listener to accept it.
+	ACCEPT_TIME_OUT = 10 * time.Second
+
+	maxAcceptBackoff = time.Second
+	maxHeaderBytes   = http.DefaultMaxHeaderBytes
+)
+
+type listenerKind int
+
+const (
+	kindClient listenerKind = iota
+	kindClientTls
+	kindClientWs
+	kindClientWss
+	kindHttp
+	kindHttps
+	kindManager
+	kindCount
 )
 
 type PortMux struct {
 	net.Listener
-	port          int
-	isClose       bool
-	managerHost   string
-	clientHost    string
-	clientConn    chan *PortConn
-	clientTlsConn chan *PortConn
-	clientWsConn  chan *PortConn
-	clientWssConn chan *PortConn
-	httpConn      chan *PortConn
-	httpsConn     chan *PortConn
-	managerConn   chan *PortConn
+	port        int
+	managerHost string
+	clientHost  string
+
+	mu        sync.RWMutex
+	listeners [kindCount]*PortListener
+
+	closed    chan struct{}
+	closeOnce sync.Once
 }
 
-func NewPortMux(port int, managerHost, clientHost string) *PortMux {
-	pMux := &PortMux{
-		managerHost:   managerHost,
-		clientHost:    clientHost,
-		port:          port,
-		clientConn:    nil,
-		clientTlsConn: nil,
-		httpConn:      nil,
-		httpsConn:     nil,
-		managerConn:   nil,
+func NewPortMux(port int, managerHost, clientHost string) (*PortMux, error) {
+	pMux := newPortMux(port, managerHost, clientHost)
+	if err := pMux.Start(); err != nil {
+		return nil, err
 	}
-	_ = pMux.Start()
-	return pMux
+	return pMux, nil
+}
+
+func newPortMux(port int, managerHost, clientHost string) *PortMux {
+	return &PortMux{
+		managerHost: managerHost,
+		clientHost:  clientHost,
+		port:        port,
+		closed:      make(chan struct{}),
+	}
 }
 
 func (pMux *PortMux) Start() error {
@@ -68,163 +87,188 @@ func (pMux *PortMux) Start() error {
 	}
 	pMux.Listener, err = net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
-		logs.Error("%v", err)
-		os.Exit(0)
+		return err
 	}
-	go func() {
-		for {
-			conn, err := pMux.Accept()
-			if err != nil {
-				logs.Warn("%v", err)
-				// close and stop processing when listener is no longer available.
+	go pMux.serve(pMux.Listener)
+	return nil
+}
+
+func (pMux *PortMux) serve(l net.Listener) {
+	var delay time.Duration
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
 				_ = pMux.Close()
 				return
 			}
-			go pMux.process(conn)
+			// Transient failures such as EMFILE or ECONNABORTED: back off and retry.
+			if delay == 0 {
+				delay = 5 * time.Millisecond
+			} else {
+				delay = min(delay*2, maxAcceptBackoff)
+			}
+			logs.Warn("port mux accept error: %v; retrying in %v", err, delay)
+			t := time.NewTimer(delay)
+			select {
+			case <-t.C:
+			case <-pMux.closed:
+				t.Stop()
+				return
+			}
+			continue
 		}
-	}()
-	return nil
+		delay = 0
+		go pMux.process(conn)
+	}
+}
+
+// snapshot returns the listeners registered at this moment.
+func (pMux *PortMux) snapshot() [kindCount]*PortListener {
+	pMux.mu.RLock()
+	defer pMux.mu.RUnlock()
+	return pMux.listeners
 }
 
 func (pMux *PortMux) process(conn net.Conn) {
 	if conn == nil {
 		return
 	}
-	// Recognition according to different signs
-	// read 3 byte
-	buf := make([]byte, 3)
-	if n, err := io.ReadFull(conn, buf); err != nil || n != 3 {
+	target, rs, readMore := pMux.classify(conn)
+	if target == nil {
+		_ = conn.Close()
 		return
 	}
-	var ch chan *PortConn
-	var rs []byte
-	var buffer bytes.Buffer
-	var readMore = false
-	switch common.BytesToNum(buf) {
-	case HTTP_CONNECT, HTTP_DELETE, HTTP_GET, HTTP_HEAD, HTTP_OPTIONS, HTTP_POST, HTTP_PUT, HTTP_TRACE: //http and manager
-		i := 0
-		if pMux.httpConn != nil {
-			i++
-		}
-		if pMux.managerConn != nil {
-			i++
-		}
-		if pMux.clientWsConn != nil {
-			i++
-		}
-		if i > 1 {
-			buffer.Reset()
-			r := bufio.NewReader(conn)
-			buffer.Write(buf)
-			for {
-				b, _, err := r.ReadLine()
-				if err != nil {
-					logs.Warn("read line error %v", err)
-					_ = conn.Close()
-					break
-				}
-				buffer.Write(b)
-				buffer.WriteString("\r\n")
-				if host, ok := parseHostHeader(b); ok {
-					// Determine whether it is the same as the manager domain name
-					if common.GetIpByAddr(host) == pMux.managerHost && pMux.managerConn != nil {
-						ch = pMux.managerConn
-					} else if common.GetIpByAddr(host) == pMux.clientHost && pMux.clientWsConn != nil {
-						ch = pMux.clientWsConn
-					} else if pMux.httpConn != nil {
-						ch = pMux.httpConn
-					}
-					b, _ := r.Peek(r.Buffered())
-					buffer.Write(b)
-					rs = buffer.Bytes()
-					break
-				}
-			}
-		} else if pMux.httpConn != nil {
-			ch = pMux.httpConn
-			readMore = true
-			//logs.Debug("Only use httpConn")
-		} else if pMux.managerConn != nil {
-			ch = pMux.managerConn
-			readMore = true
-			//logs.Debug("Only use managerConn")
-		} else if pMux.clientWsConn != nil {
-			ch = pMux.clientWsConn
-			readMore = true
-			//logs.Debug("Only use clientWsConn")
-		} else {
-			return
-		}
-	case CLIENT: // client connection
-		if pMux.clientConn == nil {
-			return
-		}
-		ch = pMux.clientConn
-	default: // https or clientTls or clientWss
-		if pMux.httpsConn != nil && pMux.clientTlsConn != nil {
-			helloInfo, rawData, err := crypt.ReadClientHello(conn, buf)
-			if err == nil && helloInfo != nil && (helloInfo.ServerName == "" || helloInfo.ServerName == pMux.clientHost) {
-				ch = pMux.clientTlsConn
-				//logs.Debug("Use clientTlsConn")
-			} else {
-				ch = pMux.httpsConn
-				//logs.Debug("Use httpsConn")
-			}
-			rs = rawData
-		} else if pMux.httpsConn != nil {
-			ch = pMux.httpsConn
-			//logs.Debug("Only use httpsConn")
-		} else if pMux.clientTlsConn != nil {
-			ch = pMux.clientTlsConn
-			//logs.Debug("Only use clientTlsConn")
-		} else if pMux.clientWssConn != nil {
-			ch = pMux.clientWssConn
-			//logs.Debug("Only use clientWssConn")
-		} else {
-			return
-		}
-		readMore = true
-	}
-	if len(rs) == 0 {
-		rs = buf
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		_ = conn.Close()
+		return
 	}
 	timer := time.NewTimer(ACCEPT_TIME_OUT)
+	defer timer.Stop()
 	select {
+	case target.connCh <- newPortConn(conn, rs, readMore):
+		return
+	case <-target.done:
+	case <-pMux.closed:
 	case <-timer.C:
-	case ch <- newPortConn(conn, rs, readMore):
+	}
+	_ = conn.Close()
+}
+
+// classify reads the leading bytes of conn under a read deadline and picks the
+// listener it belongs to. A nil listener means the connection must be dropped.
+func (pMux *PortMux) classify(conn net.Conn) (*PortListener, []byte, bool) {
+	if err := conn.SetReadDeadline(time.Now().Add(ACCEPT_TIME_OUT)); err != nil {
+		return nil, nil, false
+	}
+	buf := make([]byte, 3)
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		return nil, nil, false
+	}
+	ls := pMux.snapshot()
+	switch common.BytesToNum(buf) {
+	case HTTP_CONNECT, HTTP_DELETE, HTTP_GET, HTTP_HEAD, HTTP_OPTIONS, HTTP_POST, HTTP_PUT, HTTP_TRACE: //http and manager
+		httpL, managerL, wsL := ls[kindHttp], ls[kindManager], ls[kindClientWs]
+		n := 0
+		for _, l := range []*PortListener{httpL, managerL, wsL} {
+			if l != nil {
+				n++
+			}
+		}
+		switch {
+		case n > 1:
+			return pMux.classifyHttp(conn, buf, httpL, managerL, wsL)
+		case httpL != nil:
+			return httpL, buf, true
+		case managerL != nil:
+			return managerL, buf, true
+		default:
+			return wsL, buf, true
+		}
+	case CLIENT: // client connection
+		return ls[kindClient], buf, false
+	default: // https or clientTls or clientWss
+		https, tlsL := ls[kindHttps], ls[kindClientTls]
+		switch {
+		case https != nil && tlsL != nil:
+			helloInfo, rawData, err := crypt.ReadClientHello(conn, buf)
+			var ne net.Error
+			if (errors.As(err, &ne) && ne.Timeout()) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, nil, false
+			}
+			if err == nil && helloInfo != nil && (helloInfo.ServerName == "" || helloInfo.ServerName == pMux.clientHost) {
+				return tlsL, rawData, true
+			}
+			return https, rawData, true
+		case https != nil:
+			return https, buf, true
+		case tlsL != nil:
+			return tlsL, buf, true
+		default:
+			return ls[kindClientWss], buf, true
+		}
 	}
 }
 
+// classifyHttp reads request headers until the Host header and routes by host.
+func (pMux *PortMux) classifyHttp(conn net.Conn, prefix []byte, httpL, managerL, wsL *PortListener) (*PortListener, []byte, bool) {
+	var buffer bytes.Buffer
+	buffer.Write(prefix)
+	r := bufio.NewReader(conn)
+	var line []byte
+	for {
+		b, isPrefix, err := r.ReadLine()
+		if err != nil {
+			logs.Trace("port mux read http header error: %v", err)
+			return nil, nil, false
+		}
+		buffer.Write(b)
+		if buffer.Len() > maxHeaderBytes {
+			logs.Trace("port mux http header too large from %v", conn.RemoteAddr())
+			return nil, nil, false
+		}
+		line = append(line, b...)
+		if isPrefix {
+			continue
+		}
+		buffer.WriteString("\r\n")
+		var target *PortListener
+		host, ok := parseHostHeader(line)
+		switch {
+		case ok:
+			// Determine whether it is the same as the manager domain name
+			switch ip := common.GetIpByAddr(host); {
+			case ip == pMux.managerHost && managerL != nil:
+				target = managerL
+			case ip == pMux.clientHost && wsL != nil:
+				target = wsL
+			default:
+				target = httpL
+			}
+		case len(line) == 0:
+			// End of headers without a Host header.
+			target = httpL
+		default:
+			line = line[:0]
+			continue
+		}
+		rest, _ := r.Peek(r.Buffered())
+		buffer.Write(rest)
+		return target, buffer.Bytes(), false
+	}
+}
+
+// Close stops the underlying listener and wakes up all port listeners.
 func (pMux *PortMux) Close() error {
-	if pMux.isClose {
-		return errors.New("the port pmux has closed")
-	}
-	pMux.isClose = true
-	if pMux.clientConn != nil {
-		close(pMux.clientConn)
-	}
-	if pMux.clientTlsConn != nil {
-		close(pMux.clientTlsConn)
-	}
-	if pMux.clientWsConn != nil {
-		close(pMux.clientWsConn)
-	}
-	if pMux.clientWssConn != nil {
-		close(pMux.clientWssConn)
-	}
-	if pMux.httpsConn != nil {
-		close(pMux.httpsConn)
-	}
-	if pMux.httpConn != nil {
-		close(pMux.httpConn)
-	}
-	if pMux.managerConn != nil {
-		close(pMux.managerConn)
-	}
-	if pMux.Listener != nil {
-		return pMux.Listener.Close()
-	}
-	return nil
+	err := net.ErrClosed
+	pMux.closeOnce.Do(func() {
+		err = nil
+		if pMux.Listener != nil {
+			err = pMux.Listener.Close()
+		}
+		close(pMux.closed)
+	})
+	return err
 }
 
 func parseHostHeader(line []byte) (string, bool) {
@@ -235,37 +279,49 @@ func parseHostHeader(line []byte) (string, bool) {
 	return string(bytes.TrimSpace(line[len(header):])), true
 }
 
+// register installs a new listener for kind, closing any listener it replaces.
+// A closed listener keeps its slot, so routing does not shift to another
+// protocol; connections routed to it are dropped until it is replaced.
+func (pMux *PortMux) register(kind listenerKind) net.Listener {
+	var addr net.Addr
+	if pMux.Listener != nil {
+		addr = pMux.Listener.Addr()
+	}
+	l := newPortListener(addr, pMux.closed)
+	pMux.mu.Lock()
+	old := pMux.listeners[kind]
+	pMux.listeners[kind] = l
+	pMux.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	return l
+}
+
 func (pMux *PortMux) GetClientListener() net.Listener {
-	pMux.clientConn = make(chan *PortConn)
-	return NewPortListener(pMux.clientConn, pMux.Addr())
+	return pMux.register(kindClient)
 }
 
 func (pMux *PortMux) GetClientTlsListener() net.Listener {
-	pMux.clientTlsConn = make(chan *PortConn)
-	return NewPortListener(pMux.clientTlsConn, pMux.Addr())
+	return pMux.register(kindClientTls)
 }
 
 func (pMux *PortMux) GetClientWsListener() net.Listener {
-	pMux.clientWsConn = make(chan *PortConn)
-	return NewPortListener(pMux.clientWsConn, pMux.Addr())
+	return pMux.register(kindClientWs)
 }
 
 func (pMux *PortMux) GetClientWssListener() net.Listener {
-	pMux.clientWssConn = make(chan *PortConn)
-	return NewPortListener(pMux.clientWssConn, pMux.Addr())
+	return pMux.register(kindClientWss)
 }
 
 func (pMux *PortMux) GetHttpListener() net.Listener {
-	pMux.httpConn = make(chan *PortConn)
-	return NewPortListener(pMux.httpConn, pMux.Addr())
+	return pMux.register(kindHttp)
 }
 
 func (pMux *PortMux) GetHttpsListener() net.Listener {
-	pMux.httpsConn = make(chan *PortConn)
-	return NewPortListener(pMux.httpsConn, pMux.Addr())
+	return pMux.register(kindHttps)
 }
 
 func (pMux *PortMux) GetManagerListener() net.Listener {
-	pMux.managerConn = make(chan *PortConn)
-	return NewPortListener(pMux.managerConn, pMux.Addr())
+	return pMux.register(kindManager)
 }

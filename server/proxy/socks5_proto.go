@@ -165,7 +165,7 @@ func socks5ReplyAddrFromNetAddr(task *file.Tunnel, tcpLocal, udpLocal net.Addr, 
 	}
 	wantV6 := client != nil && client.To4() == nil
 
-	ip := socks5ReplyIP(task, tcpLocal, udpLocal, wantV6)
+	ip := socks5ReplyIP(task, tcpLocal, udpLocal, client, wantV6)
 	port := socks5ReplyPort(udpLocal, tcpLocal, fallbackPort)
 	if port <= 0 {
 		port = fallbackPort
@@ -193,7 +193,13 @@ func taskPort(task *file.Tunnel) int {
 	return task.Port
 }
 
-func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, wantV6 bool) net.IP {
+// socks5ReplyIP picks the address to advertise in a reply. An explicitly
+// configured ServerIp always wins. A local address is only advertised when the
+// client can reach it: a private local address is withheld from a public client
+// (for example behind 1:1 NAT), and the zero address tells the client to reuse
+// the server address of its control connection instead.
+func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP, wantV6 bool) net.IP {
+	publicClient := client != nil && common.IsPublicIP(client)
 	trySpecificIP := func(value net.IP) net.IP {
 		value = common.NormalizeIP(value)
 		if value == nil || value.IsUnspecified() || common.IsZeroIP(value) {
@@ -213,16 +219,25 @@ func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, wantV6 bool) 
 		}
 	}
 	for _, addr := range []net.Addr{udpLocal, tcpLocal} {
+		var local net.IP
 		switch typed := addr.(type) {
 		case *net.UDPAddr:
-			if specific := trySpecificIP(typed.IP); specific != nil {
-				return specific
+			if typed != nil {
+				local = typed.IP
 			}
 		case *net.TCPAddr:
-			if specific := trySpecificIP(typed.IP); specific != nil {
-				return specific
+			if typed != nil {
+				local = typed.IP
 			}
 		}
+		specific := trySpecificIP(local)
+		if specific == nil {
+			continue
+		}
+		if publicClient && !common.IsPublicIP(specific) {
+			continue
+		}
+		return specific
 	}
 	return nil
 }

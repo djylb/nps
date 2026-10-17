@@ -10,8 +10,12 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/p2p"
 	"github.com/djylb/nps/lib/version"
 )
+
+// defaultSTUNServer matches the default of the npc stun_addr flag.
+const defaultSTUNServer = "stun.miwifi.com:3478"
 
 var cl *client.TRPClient
 
@@ -25,7 +29,7 @@ func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) i
 	if cl != nil {
 		cl.Close()
 	}
-	cl = client.NewRPClient(C.GoString(serverAddr), C.GoString(verifyKey), C.GoString(connType), C.GoString(proxyUrl), "", "", nil, 60, nil)
+	cl = client.NewRPClient(C.GoString(serverAddr), C.GoString(verifyKey), C.GoString(connType), C.GoString(proxyUrl), "", "", nil, 60, nil, p2p.ParseSTUNServerList(defaultSTUNServer))
 	cl.Start(context.Background())
 	return 1
 }

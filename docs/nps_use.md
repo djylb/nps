@@ -72,21 +72,13 @@ nps.exe restart # Restart NPS
 - **获取最新功能**
 
 ### **步骤**
-1. **先停止 `nps`**
-   ```bash
-   sudo nps stop # Linux/macOS
-   nps.exe stop  # Windows
-   ```
-2. **执行更新**
-   ```bash
-   sudo nps-update update # Linux/macOS
-   nps-update.exe update  # Windows
-   ```
-3. **重新启动 `nps`**
-   ```bash
-   sudo nps start # Linux/macOS
-   nps.exe start  # Windows
-   ```
+**执行更新**（已在运行的 `nps` 服务会自动重启，无需先停止）
+```bash
+sudo nps update # Linux/macOS
+nps.exe update  # Windows
+```
+
+已是最新版本时不会替换文件，也不会重启服务。
 
 📌 **如果更新失败**
 - **手动下载最新版本**：[🔗 GitHub Releases](https://github.com/djylb/nps/releases/latest)
@@ -102,7 +94,7 @@ nps.exe restart # Restart NPS
 
 📌 **适用于**
 - **手动下载 `nps` 二进制文件**
-- **`nps-update` 更新失败时**
+- **`nps update` 更新失败时**
 
 ### **Linux/macOS**
 ```bash

@@ -176,11 +176,12 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 		return err
 	}
 
+	user, passwd := socks5ClientCredentials(s.Task)
 	valid := common.CheckAuthWithAccountMap(
 		username,
 		password,
-		s.Task.Client.Cnf.U,
-		s.Task.Client.Cnf.P,
+		user,
+		passwd,
 		file.GetAccountMap(s.Task.MultiAccount),
 		file.GetAccountMap(s.Task.UserAuth),
 	)
@@ -304,12 +305,19 @@ func effectiveMixProxyFlags(task *file.Tunnel) (httpEnabled, socksEnabled bool) 
 }
 
 func socks5NeedsAuth(task *file.Tunnel) bool {
-	if task == nil || task.Client == nil || task.Client.Cnf == nil {
+	if task == nil {
 		return false
 	}
-	return (task.Client.Cnf.U != "" && task.Client.Cnf.P != "") ||
-		(task.MultiAccount != nil && len(task.MultiAccount.AccountMap) > 0) ||
-		(task.UserAuth != nil && len(task.UserAuth.AccountMap) > 0)
+	user, passwd := socks5ClientCredentials(task)
+	return common.NeedsAuth(user, passwd,
+		file.GetAccountMap(task.MultiAccount), file.GetAccountMap(task.UserAuth))
+}
+
+func socks5ClientCredentials(task *file.Tunnel) (user, passwd string) {
+	if task.Client == nil || task.Client.Cnf == nil {
+		return "", ""
+	}
+	return task.Client.Cnf.U, task.Client.Cnf.P
 }
 
 func looksLikeHTTPProxyRequest(prefix []byte) bool {

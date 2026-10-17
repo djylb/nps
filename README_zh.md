@@ -89,7 +89,7 @@ nps install
 nps start|stop|restart|uninstall
 
 # 更新
-nps update && nps restart
+nps update
 ```
 
 > **提示：** 首次安装后请先编辑 `/etc/nps/nps.conf`，确认配置无误后再执行 `nps start`。
@@ -101,9 +101,7 @@ nps update && nps restart
 .\nps.exe start|stop|restart|uninstall
 
 # 更新
-.\nps.exe stop
-.\nps-update.exe update
-.\nps.exe start
+.\nps.exe update
 ```
 
 ### 客户端安装
@@ -115,7 +113,7 @@ wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -
 npc start|stop|restart|uninstall
 
 # 更新
-npc update && npc restart
+npc update
 ```
 
 > **提示：** `npc install` 命令中的参数请以 NPS Web 管理端客户端页面生成的命令为准。
@@ -127,9 +125,7 @@ npc update && npc restart
 .\npc.exe start|stop|restart|uninstall
 
 # 更新
-.\npc.exe stop
-.\npc-update.exe update
-.\npc.exe start
+.\npc.exe update
 ```
 
 > **提示：** 客户端支持同时连接多个服务器，示例：  

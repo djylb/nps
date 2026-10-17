@@ -1,8 +1,16 @@
 package install
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -49,19 +57,28 @@ func TestCopyFile(t *testing.T) {
 	}
 }
 
-func TestCopyFileSamePathNoop(t *testing.T) {
+func TestCopyFileSameFileNoop(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := filepath.Join(tmpDir, "same.txt")
 	if err := os.WriteFile(p, []byte("same"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-
-	n, err := copyFile(p, p)
-	if err != nil {
-		t.Fatalf("copyFile(same path) error = %v", err)
+	link := filepath.Join(tmpDir, "link.txt")
+	if err := os.Link(p, link); err != nil {
+		t.Fatalf("Link() error = %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("copyFile(same path) copied = %d, want 0", n)
+
+	for _, dest := range []string{p, link} {
+		n, err := copyFile(p, dest)
+		if err != nil {
+			t.Fatalf("copyFile(%s) error = %v", dest, err)
+		}
+		if n != 0 {
+			t.Fatalf("copyFile(%s) copied = %d, want 0", dest, n)
+		}
+	}
+	if got, err := os.ReadFile(p); err != nil || string(got) != "same" {
+		t.Fatalf("ReadFile() = (%q, %v), want same", got, err)
 	}
 }
 
@@ -119,5 +136,243 @@ func TestCopyDirValidationErrors(t *testing.T) {
 	}
 	if err := CopyDir(srcDir, notDir); err == nil {
 		t.Fatal("CopyDir(file destination) error = nil, want error")
+	}
+}
+
+func TestReplaceExecutables(t *testing.T) {
+	for _, aside := range []bool{false, true} {
+		tmpDir := t.TempDir()
+		src := filepath.Join(tmpDir, "src")
+		writeTestFile(t, src, "new")
+		a := filepath.Join(tmpDir, "a")
+		b := filepath.Join(tmpDir, "b")
+		writeTestFile(t, a, "old")
+		writeTestFile(t, b, "old")
+
+		if err := replaceExecutables(src, []string{a, b}, aside); err != nil {
+			t.Fatalf("replaceExecutables(aside=%v) error = %v", aside, err)
+		}
+		for _, p := range []string{a, b} {
+			if got, err := os.ReadFile(p); err != nil || string(got) != "new" {
+				t.Fatalf("aside=%v: ReadFile(%s) = (%q, %v), want new", aside, p, got, err)
+			}
+			if runtime.GOOS != "windows" {
+				if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o755 {
+					t.Fatalf("aside=%v: %s mode = %v (%v), want 0755", aside, p, fi.Mode().Perm(), err)
+				}
+			}
+		}
+		assertOnlyFiles(t, tmpDir, "a", "b", "src")
+	}
+}
+
+func TestCommitExecutablesRollback(t *testing.T) {
+	for _, aside := range []bool{false, true} {
+		tmpDir := t.TempDir()
+		src := filepath.Join(tmpDir, "src")
+		writeTestFile(t, src, "new")
+		a := filepath.Join(tmpDir, "a")
+		b := filepath.Join(tmpDir, "b")
+		writeTestFile(t, a, "old-a")
+		writeTestFile(t, b, "old-b")
+
+		staged, err := stageExecutables(src, []string{a, b})
+		if err != nil {
+			t.Fatalf("stageExecutables() error = %v", err)
+		}
+		if err := os.Remove(b + ".new"); err != nil {
+			t.Fatalf("Remove() error = %v", err)
+		}
+		if err := commitExecutables(staged, aside); err == nil {
+			t.Fatalf("commitExecutables(aside=%v) error = nil, want error", aside)
+		}
+		for p, want := range map[string]string{a: "old-a", b: "old-b"} {
+			if got, err := os.ReadFile(p); err != nil || string(got) != want {
+				t.Fatalf("aside=%v: ReadFile(%s) = (%q, %v), want %q", aside, p, got, err, want)
+			}
+		}
+		assertOnlyFiles(t, tmpDir, "a", "b", "src")
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want int
+	}{
+		{"v0.34.7", "0.34.8", -1},
+		{"v0.34.10", "0.34.9", 1},
+		{"v0.34.8", "0.34.8", 0},
+		{"0.35", "0.34.99", 1},
+		{"0.34.8", "0.34.8.0", 0},
+		{"0.34.9-beta.1", "0.34.9", -1},
+		{"0.34.9-rc.1", "0.34.8", 1},
+		{"0.34.9-beta", "0.34.9-rc", -1},
+		{"0.34.9+build.5", "0.34.9", 0},
+	} {
+		if got := compareVersions(tc.a, tc.b); got != tc.want {
+			t.Fatalf("compareVersions(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
+func TestParseServiceExecutable(t *testing.T) {
+	if got := parseSystemdExecStart("{ path=/usr/bin/nps ; argv[]=/usr/bin/nps service ; ignore_errors=no }\n"); got != "/usr/bin/nps" {
+		t.Fatalf("parseSystemdExecStart() = %q", got)
+	}
+	if got := parseSysvCmd("#!/bin/sh\ncmd=\"/usr/bin/npc -server=a:1 -debug=false\"\nname=x\n"); got != "/usr/bin/npc" {
+		t.Fatalf("parseSysvCmd() = %q", got)
+	}
+	for out, want := range map[string]string{
+		"        BINARY_PATH_NAME   : \"C:\\Program Files\\nps\\nps.exe\" service\r\n": `C:\Program Files\nps\nps.exe`,
+		"        BINARY_PATH_NAME   : C:\\nps\\npc.exe -debug=false\r\n":               `C:\nps\npc.exe`,
+	} {
+		if got := parseScBinaryPath("[SC] QueryServiceConfig SUCCESS\r\n" + out); got != want {
+			t.Fatalf("parseScBinaryPath() = %q, want %q", got, want)
+		}
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func TestRemoveAsideFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"nps.exe", "nps.exe.old", "nps.exe.k3x9.old", "npc.exe.old", "nps.exe.new"} {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), nil, 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", name, err)
+		}
+	}
+
+	removeAsideFiles(filepath.Join(tmpDir, "nps.exe"))
+	assertOnlyFiles(t, tmpDir, "npc.exe.old", "nps.exe", "nps.exe.new")
+}
+
+func TestCopyServerAssetsPerItem(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "src")
+	dest := filepath.Join(tmpDir, "dest")
+	for path, content := range map[string]string{
+		"src/web/static/app.js": "js",
+		"src/conf/nps.conf":     "conf",
+		"dest/web/views/a.html": "kept",
+		"dest/conf/nps.conf":    "user",
+	} {
+		p := filepath.Join(tmpDir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	if err := copyServerAssets(src, dest); err != nil {
+		t.Fatalf("copyServerAssets() error = %v", err)
+	}
+	for path, want := range map[string]string{
+		"web/views/a.html":      "kept",
+		"web/static/app.js":     "js",
+		"conf/nps.conf.default": "conf",
+		"conf/nps.conf":         "user",
+	} {
+		got, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(path)))
+		if err != nil || string(got) != want {
+			t.Fatalf("ReadFile(%s) = (%q, %v), want %q", path, got, err, want)
+		}
+	}
+
+	if err := copyServerAssets(src, filepath.Join(tmpDir, "empty")); err == nil {
+		t.Fatal("copyServerAssets(missing views, no existing copy) error = nil, want error")
+	}
+}
+
+func assertOnlyFiles(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("files = %v, want %v", got, want)
+	}
+}
+
+func TestReleaseSHA256(t *testing.T) {
+	sum := strings.Repeat("ab", 32)
+	rl := &release{TagName: "v1.0.0"}
+	for _, a := range []struct{ name, digest string }{
+		{"ok.tar.gz", "sha256:" + strings.ToUpper(sum)},
+		{"none.tar.gz", ""},
+		{"short.tar.gz", "sha256:abcd"},
+	} {
+		rl.Assets = append(rl.Assets, struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+			Digest             string `json:"digest"`
+		}{Name: a.name, Digest: a.digest})
+	}
+
+	if got, err := rl.sha256("ok.tar.gz"); err != nil || got != sum {
+		t.Fatalf("sha256(ok) = (%q, %v), want %q", got, err, sum)
+	}
+	if got, err := rl.sha256("none.tar.gz"); err != nil || got != "" {
+		t.Fatalf("sha256(none) = (%q, %v), want (\"\", nil)", got, err)
+	}
+	for _, name := range []string{"short.tar.gz", "missing.tar.gz"} {
+		if _, err := rl.sha256(name); err == nil {
+			t.Fatalf("sha256(%s) error = nil, want error", name)
+		}
+	}
+}
+
+func TestHTTPClientCertificateFallback(t *testing.T) {
+	payload := []byte("package")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	c := newHTTPClient()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, verified, err := c.do(req)
+	if err != nil {
+		t.Fatalf("do(self-signed) error = %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if verified || string(body) != string(payload) {
+		t.Fatalf("do(self-signed) = (%q, verified=%v), want (%q, false)", body, verified, payload)
+	}
+
+	dest := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	if err := downloadArchive(c, srv.URL, dest, ""); err == nil {
+		t.Fatal("downloadArchive(unverified, no digest) error = nil, want error")
+	}
+	sum := sha256.Sum256(payload)
+	if err := downloadArchive(c, srv.URL, dest, hex.EncodeToString(sum[:])); err != nil {
+		t.Fatalf("downloadArchive(unverified, digest) error = %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	closedURL := "https://" + ln.Addr().String()
+	_ = ln.Close()
+	req, _ = http.NewRequest(http.MethodGet, closedURL, nil)
+	if _, _, err := c.do(req); err == nil || isCertificateError(err) {
+		t.Fatalf("do(closed port) error = %v, want a non-certificate error", err)
 	}
 }

@@ -17,21 +17,38 @@
         return tempJson;
     }
 
-    function setCookie(c_name, value, expiredays) {
-        var exdate = new Date();
-        exdate.setDate(exdate.getDate() + expiredays);
-        document.cookie = c_name + '=' + escape(value) + ((expiredays == null) ? '' : ';expires=' + exdate.toGMTString()) + '; path=' + window.nps.web_base_url + '/;';
+    // Only an explicit choice from the language menu is persisted;
+    // otherwise the browser preference decides on every visit.
+    var LANG_KEY = 'nps-lang';
+
+    function loadSavedLang() {
+        try {
+            return localStorage.getItem(LANG_KEY);
+        } catch (e) {
+            return null;
+        }
     }
 
-    function getCookie(c_name) {
-        if (document.cookie.length > 0) {
-            c_start = document.cookie.indexOf(c_name + '=');
-            if (c_start != -1) {
-                c_start = c_start + c_name.length + 1;
-                c_end = document.cookie.indexOf(';', c_start);
-                if (c_end == -1) c_end = document.cookie.length;
-                return unescape(document.cookie.substring(c_start, c_end));
+    function saveLang(lang) {
+        try {
+            localStorage.setItem(LANG_KEY, lang);
+        } catch (e) {}
+    }
+
+    function matchBrowserLang(menu) {
+        var prefs = (navigator.languages && navigator.languages.length) ? navigator.languages
+            : [navigator.language || navigator.browserLanguage || ''];
+        for (var i = 0; i < prefs.length; i++) {
+            var pref = String(prefs[i] || '').toLowerCase();
+            if (!pref) continue;
+            var primary = pref.split('-')[0];
+            var partial = null;
+            for (var key in menu) {
+                var k = key.toLowerCase();
+                if (k == pref) return key;
+                if (partial == null && k.split('-')[0] == primary) partial = key;
             }
+            if (partial != null) return partial;
         }
         return null;
     }
@@ -66,14 +83,15 @@
                 languages['content'] = xml2json($(xml).children())['content'];
                 languages['menu'] = languages['content']['languages'];
                 languages['default'] = languages['content']['default'];
-                // languages['navigator'] = (getCookie('lang') || navigator.language || navigator.browserLanguage);
-                var navLang = (getCookie('lang') || navigator.language || navigator.browserLanguage || '');
-                languages['navigator'] = navLang.startsWith('zh') ? 'zh-CN' : navLang;
                 for (var key in languages['menu']) {
                     $('#languagemenu').next().append('<li lang="' + key + '"><a><img src="' + window.nps.web_base_url + '/static/img/flag/' + key + '.png"> ' + languages['menu'][key] + '</a></li>');
-                    if (key == languages['navigator']) languages['current'] = key;
                 }
-                $('#languagemenu').attr('lang', (languages['current'] || languages['default']));
+                var saved = loadSavedLang();
+                if (!saved || !languages['menu'].hasOwnProperty(saved)) {
+                    saved = null;
+                }
+                languages['current'] = (saved || matchBrowserLang(languages['menu']) || languages['default']);
+                $('#languagemenu').attr('lang', languages['current']);
                 $('body').setLang('');
 
                 if ($.fn.selectpicker != null) {
@@ -83,11 +101,16 @@
         });
     };
 
+    $.fn.chooseLang = function (lang) {
+        saveLang(lang);
+        $('#languagemenu').attr('lang', lang);
+        return this.setLang('');
+    };
+
     $.fn.setLang = function (dom) {
         languages['current'] = $('#languagemenu').attr('lang');
         if (dom == '') {
             $('#languagemenu span').text(' ' + languages['menu'][languages['current']]);
-            if (languages['current'] != getCookie('lang')) setCookie('lang', languages['current']);
             if ($("#table").length > 0) $('#table').bootstrapTable('refreshOptions', {'locale': languages['current']});
         }
         $.each($(dom + ' [langtag]'), function (i, item) {
@@ -177,18 +200,19 @@ $(document).ready(function () {
 
     $('body').cloudLang();
     $('body').on('click', 'li[lang]', function () {
-        $('#languagemenu').attr('lang', $(this).attr('lang'));
-        $('body').setLang('');
+        $('body').chooseLang($(this).attr('lang'));
     });
 });
 
 var languages = {};
 var charts = {};
 var chartdatas = {};
-var postsubmit;
+var submitLocks = [];
 
 function langreply(langstr) {
-    var langobj = languages['content']['reply'][langstr.replace(/[\s,.?]*/g, "").toLowerCase()];
+    langstr = (langstr == null) ? '' : String(langstr);
+    var replies = (languages['content'] && languages['content']['reply']) || {};
+    var langobj = replies[langstr.replace(/[\s,.?]*/g, "").toLowerCase()];
     if ($.type(langobj) == 'undefined') return langstr
     langobj = (langobj[languages['current']] || langobj[languages['default']] || langstr);
     return langobj
@@ -198,60 +222,93 @@ function goback() {
     history.back();
 }
 
-function submitform(action, url, postdata) {
-    postsubmit = false;
-    $.each(postdata, function (i, v) {
-        if (v['value']) {
-            v['value'] = v['value'].trim();
-        }
-    });
+// A submission is locked per form (all of its buttons) or, outside a form,
+// per clicked element, so repeated clicks cannot send the same request twice.
+// The lock is released on failure; on success it stays until the page
+// navigates away or reloads.
+function submitScope(trigger) {
+    var $trigger = $(trigger || (window.event && window.event.currentTarget) || []);
+    var $form = $trigger.closest('form');
+    if ($form.length) return {scope: $form, controls: $form.find('button')};
+    if ($trigger.length) return {scope: $trigger, controls: $trigger};
+    return {scope: $(document), controls: $()};
+}
+
+function lockSubmit(lock) {
+    lock.scope.data('submitting', true);
+    lock.controls.prop('disabled', true).addClass('disabled');
+    submitLocks.push(lock);
+}
+
+function unlockSubmit(lock) {
+    lock.scope.removeData('submitting');
+    lock.controls.prop('disabled', false).removeClass('disabled');
+    var idx = submitLocks.indexOf(lock);
+    if (idx >= 0) submitLocks.splice(idx, 1);
+}
+
+// A page restored from the back/forward cache must not keep stale locks.
+$(window).on('pageshow', function (e) {
+    if (e.originalEvent && e.originalEvent.persisted) {
+        $.each(submitLocks.slice(), function (i, lock) {
+            unlockSubmit(lock);
+        });
+    }
+});
+
+function submitform(action, url, postdata, trigger) {
+    var lock = submitScope(trigger);
+    if (lock.scope.data('submitting')) return;
+    var reload = false;
     switch (action) {
         case 'turn':
         case 'clear':
         case 'delete':
             var langobj = languages['content']['confirm'][action];
-            action = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to ' + action + ' it?');
-            if (!confirm(action)) return;
+            var question = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to ' + action + ' it?');
+            if (!confirm(question)) return;
         case 'start':
         case 'stop':
-            postsubmit = true;
+        case 'global':
+            reload = true;
         case 'add':
         case 'edit':
-            $.ajax({
-                type: "POST",
-                url: url,
-                data: postdata,
-                success: function (res) {
-                    if (res.status) {
-                        showMsg(langreply(res.msg), 'success', 1000, function() {
-                          if (postsubmit) {
-                              document.location.reload();
-                          } else {
-                              window.location.href = document.referrer;
-                          }
-                        });
-                    } else {
-                        showMsg(langreply(res.msg), 'error', 5000);
-                    }
-                }
-            });
+            break;
+        default:
             return;
-        case 'global':
-            $.ajax({
-                type: "POST",
-                url: url,
-                data: postdata,
-                success: function (res) {
-                    if (res.status) {
-                        showMsg(langreply(res.msg), 'success', 1000, function() {
-                            document.location.reload();
-                        });
-                    } else {
-                        showMsg(langreply(res.msg), 'error', 5000);
-                    }
-                }
-            });
     }
+    $.each(postdata, function (i, v) {
+        if (v['value']) {
+            v['value'] = v['value'].trim();
+        }
+    });
+    lockSubmit(lock);
+    var succeeded = false;
+    $.ajax({
+        type: "POST",
+        url: url,
+        data: postdata,
+        success: function (res) {
+            if (res && res.status) {
+                succeeded = true;
+                showMsg(langreply(res.msg), 'success', 1000, function () {
+                    if (reload) {
+                        document.location.reload();
+                    } else {
+                        window.location.href = document.referrer;
+                    }
+                });
+            } else {
+                showMsg(langreply(res && res.msg), 'error', 5000);
+            }
+        },
+        error: function (xhr, textStatus) {
+            showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000);
+        },
+        complete: function () {
+            if (!succeeded) unlockSubmit(lock);
+        }
+    });
 }
 
 function changeunit(limit) {

@@ -57,10 +57,13 @@ func NewTunnel(ipVerify bool, runList *sync.Map, disconnectTime int) *Bridge {
 
 func (s *Bridge) DelClient(id int) {
 	if v, ok := s.Client.Load(id); ok {
-		client := v.(*Client)
-		_ = client.Close()
-
-		s.Client.Delete(id)
+		// Only remove the entry that was loaded: a client reconnecting with
+		// the same id may already have replaced it and must stay registered.
+		deleted := s.Client.CompareAndDelete(id, v)
+		_ = v.(*Client).Close()
+		if !deleted {
+			return
+		}
 
 		if file.GetDb().IsPubClient(id) {
 			return

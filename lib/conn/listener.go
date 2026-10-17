@@ -3,16 +3,23 @@ package conn
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/djylb/nps/lib/logs"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
 )
+
+// HandshakeTimeout bounds how long an accepted transport may take to present
+// its first stream or protocol upgrade before it is dropped.
+const HandshakeTimeout = 10 * time.Second
+
+const maxAcceptBackoff = time.Second
 
 func NewTcpListenerAndProcess(addr string, f func(c net.Conn), listener *net.Listener) error {
 	var err error
@@ -58,33 +65,44 @@ func NewQuicListenerAndProcess(addr string, tlsConfig *tls.Config, quicConfig *q
 			logs.Warn("QUIC accept session error: %v", err)
 			continue
 		}
-		stream, err := sess.AcceptStream(context.Background())
-		if err != nil {
-			logs.Trace("QUIC accept stream error: %v", err)
-			_ = sess.CloseWithError(0, "closed")
-			continue
-		}
-		conn := NewQuicAutoCloseConn(stream, sess)
-		go f(conn)
+		go acceptQuicStream(sess, f)
 	}
 }
 
+func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
+	ctx, cancel := context.WithTimeout(sess.Context(), HandshakeTimeout)
+	stream, err := sess.AcceptStream(ctx)
+	cancel()
+	if err != nil {
+		logs.Trace("QUIC accept stream error: %v", err)
+		_ = sess.CloseWithError(0, "closed")
+		return
+	}
+	f(NewQuicAutoCloseConn(stream, sess))
+}
+
+// Accept serves l until it is closed, backing off on transient errors.
 func Accept(l net.Listener, f func(c net.Conn)) {
+	var delay time.Duration
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				break
+			if errors.Is(err, net.ErrClosed) {
+				return
 			}
-			if strings.Contains(err.Error(), "the mux has closed") {
-				break
+			if delay == 0 {
+				delay = 5 * time.Millisecond
+			} else {
+				delay = min(delay*2, maxAcceptBackoff)
 			}
-			logs.Warn("%v", err)
+			logs.Warn("accept error: %v; retrying in %v", err, delay)
+			time.Sleep(delay)
 			continue
 		}
+		delay = 0
 		if c == nil {
 			logs.Warn("nil connection")
-			break
+			return
 		}
 		go f(c)
 	}

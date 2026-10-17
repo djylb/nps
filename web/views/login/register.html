@@ -61,7 +61,7 @@
                     </div>
                 </div>
                 {{end}}
-                <button class="btn btn-primary block full-width m-b" langtag="word-register" onclick="if (this.form.reportValidity()) register()" type="submit"></button>
+                <button id="registerBtn" class="btn btn-primary block full-width m-b" langtag="word-register" onclick="if (this.form.reportValidity()) register()" type="submit"></button>
                 <p class="text-muted text-center">
                     <small langtag="info-haveaccount"></small>
                     <small><a href="{{.web_base_url}}/login/index" langtag="word-login"></a></small>
@@ -111,6 +111,9 @@
             syncServerTime();
         });
         function register() {
+            const registerBtn = document.getElementById('registerBtn');
+            if (registerBtn.disabled) return false;
+            registerBtn.disabled = true;
             const data = {};
             $("form").serializeArray().forEach(item => {
                 data[item.name] = item.value;
@@ -140,6 +143,7 @@
                         $('input[name="captcha"]').val('');
                         {{end}}
                         showMsg(langreply(res.msg), 'error', 5000, function() {
+                            registerBtn.disabled = false;
                             if (res.nonce) {
                                 window.nps.loginNonce = res.nonce;
                             }
@@ -151,6 +155,11 @@
                             }
                         });
                     }
+                },
+                error: function (xhr, textStatus) {
+                    showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000, function () {
+                        registerBtn.disabled = false;
+                    });
                 }
             });
             return false;
