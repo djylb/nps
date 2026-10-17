@@ -2,14 +2,16 @@ package proxy
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -134,7 +136,7 @@ func dialSocks5ImplicitNoAuth(t *testing.T, port int) net.Conn {
 func requestUDPAssociate(t *testing.T, c net.Conn) (string, int) {
 	t.Helper()
 
-	if _, err := c.Write([]byte{5, associateMethod, 0, ipV4, 0, 0, 0, 0, 0, 0}); err != nil {
+	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, socks5.Addr{}); err != nil {
 		t.Fatalf("write udp associate: %v", err)
 	}
 	return readSocks5Reply(t, c)
@@ -143,12 +145,11 @@ func requestUDPAssociate(t *testing.T, c net.Conn) (string, int) {
 func requestUDPAssociateFromIPv4(t *testing.T, c net.Conn, ip net.IP, port int) (string, int) {
 	t.Helper()
 
-	ip = ip.To4()
-	if ip == nil {
+	addr, ok := netip.AddrFromSlice(ip.To4())
+	if !ok {
 		t.Fatal("requestUDPAssociateFromIPv4 requires IPv4 address")
 	}
-	req := []byte{5, associateMethod, 0, ipV4, ip[0], ip[1], ip[2], ip[3], byte(port >> 8), byte(port)}
-	if _, err := c.Write(req); err != nil {
+	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, socks5.Addr{IP: addr, Port: uint16(port)}); err != nil {
 		t.Fatalf("write udp associate: %v", err)
 	}
 	return readSocks5Reply(t, c)
@@ -182,66 +183,51 @@ func waitForTCP(t *testing.T, addr string) {
 
 func readSocks5Reply(t *testing.T, c net.Conn) (string, int) {
 	t.Helper()
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(c, header); err != nil {
-		t.Fatalf("read socks5 reply header: %v", err)
+	bound, err := socks5.ReadReply(c)
+	if err != nil {
+		t.Fatalf("read socks5 reply: %v", err)
 	}
-	if header[0] != 5 || header[1] != succeeded {
-		t.Fatalf("unexpected socks5 reply header %v", header)
+	if !bound.IP.IsValid() {
+		t.Fatalf("unexpected socks5 bound address %v", bound)
 	}
-
-	var host string
-	switch header[3] {
-	case ipV4:
-		addr := make([]byte, net.IPv4len)
-		if _, err := io.ReadFull(c, addr); err != nil {
-			t.Fatalf("read socks5 ipv4 addr: %v", err)
-		}
-		host = net.IP(addr).String()
-	case ipV6:
-		addr := make([]byte, net.IPv6len)
-		if _, err := io.ReadFull(c, addr); err != nil {
-			t.Fatalf("read socks5 ipv6 addr: %v", err)
-		}
-		host = net.IP(addr).String()
-	default:
-		t.Fatalf("unexpected atyp %d", header[3])
-	}
-
-	portBuf := make([]byte, 2)
-	if _, err := io.ReadFull(c, portBuf); err != nil {
-		t.Fatalf("read socks5 port: %v", err)
-	}
-	return host, int(portBuf[0])<<8 | int(portBuf[1])
+	return bound.IP.String(), int(bound.Port)
 }
 
-func readSocks5ReplyCode(t *testing.T, c net.Conn) byte {
+func readSocks5ReplyCode(t *testing.T, c net.Conn) socks5.Reply {
 	t.Helper()
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(c, header); err != nil {
-		t.Fatalf("read socks5 reply header: %v", err)
-	}
-	replyCode := header[1]
-	addrLen := 0
-	switch header[3] {
-	case ipV4:
-		addrLen = net.IPv4len
-	case ipV6:
-		addrLen = net.IPv6len
-	case domainName:
-		var l [1]byte
-		if _, err := io.ReadFull(c, l[:]); err != nil {
-			t.Fatalf("read socks5 domain length: %v", err)
-		}
-		addrLen = int(l[0])
+	_, err := socks5.ReadReply(c)
+	var replyErr *socks5.ReplyError
+	switch {
+	case err == nil:
+		return socks5.ReplySucceeded
+	case errors.As(err, &replyErr):
+		return replyErr.Reply
 	default:
-		t.Fatalf("unexpected atyp %d", header[3])
+		t.Fatalf("read socks5 reply: %v", err)
+		return 0
 	}
-	skip := make([]byte, addrLen+2)
-	if _, err := io.ReadFull(c, skip); err != nil {
-		t.Fatalf("read socks5 reply tail: %v", err)
+}
+
+type testSocks5Datagram struct {
+	addr socks5.Addr
+	data []byte
+}
+
+func writeSocks5Datagram(w *bytes.Buffer, addr net.Addr, payload []byte) error {
+	b, err := socks5.AppendDatagram(nil, socks5.AddrFromNetAddr(addr), payload)
+	if err != nil {
+		return err
 	}
-	return replyCode
+	_, err = w.Write(b)
+	return err
+}
+
+func readSocks5Datagram(b []byte) (testSocks5Datagram, error) {
+	addr, n, err := socks5.DecodeDatagram(b)
+	if err != nil {
+		return testSocks5Datagram{}, err
+	}
+	return testSocks5Datagram{addr: addr, data: b[n:]}, nil
 }
 
 func TestTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T) {
@@ -287,7 +273,7 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 
 	targetAddr, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr)), []byte("ping")).Write(&outbound); err != nil {
+	if err := writeSocks5Datagram(&outbound, targetAddr, []byte("ping")); err != nil {
 		t.Fatalf("build outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn.WriteToUDP(outbound.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -300,20 +286,20 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatalf("read framed udp payload: %v", err)
 	}
-	tunneled, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf[:n]))
+	tunneled, err := readSocks5Datagram(frameBuf[:n])
 	if err != nil {
 		t.Fatalf("parse tunneled udp datagram: %v", err)
 	}
-	if tunneled.Header.Addr.String() != "8.8.8.8:53" {
-		t.Fatalf("tunneled addr = %s, want 8.8.8.8:53", tunneled.Header.Addr.String())
+	if tunneled.addr.String() != "8.8.8.8:53" {
+		t.Fatalf("tunneled addr = %s, want 8.8.8.8:53", tunneled.addr.String())
 	}
-	if string(tunneled.Data) != "ping" {
-		t.Fatalf("tunneled payload = %q, want ping", tunneled.Data)
+	if string(tunneled.data) != "ping" {
+		t.Fatalf("tunneled payload = %q, want ping", tunneled.data)
 	}
 
 	replyAddr, _ := net.ResolveUDPAddr("udp4", "1.1.1.1:53")
 	var inbound bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(replyAddr)), []byte("pong")).Write(&inbound); err != nil {
+	if err := writeSocks5Datagram(&inbound, replyAddr, []byte("pong")); err != nil {
 		t.Fatalf("build inbound udp datagram: %v", err)
 	}
 	if _, err := peerFramed.Write(inbound.Bytes()); err != nil {
@@ -326,15 +312,15 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatalf("ReadFromUDP() error = %v", err)
 	}
-	replyDatagram, err := common.ReadUDPDatagram(bytes.NewReader(udpBuf[:n]))
+	replyDatagram, err := readSocks5Datagram(udpBuf[:n])
 	if err != nil {
 		t.Fatalf("parse udp reply datagram: %v", err)
 	}
-	if replyDatagram.Header.Addr.String() != "1.1.1.1:53" {
-		t.Fatalf("reply addr = %s, want 1.1.1.1:53", replyDatagram.Header.Addr.String())
+	if replyDatagram.addr.String() != "1.1.1.1:53" {
+		t.Fatalf("reply addr = %s, want 1.1.1.1:53", replyDatagram.addr.String())
 	}
-	if string(replyDatagram.Data) != "pong" {
-		t.Fatalf("reply payload = %q, want pong", replyDatagram.Data)
+	if string(replyDatagram.data) != "pong" {
+		t.Fatalf("reply payload = %q, want pong", replyDatagram.data)
 	}
 
 	udpConn2, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -345,7 +331,7 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 
 	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outbound2 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr2)), []byte("ping2")).Write(&outbound2); err != nil {
+	if err := writeSocks5Datagram(&outbound2, targetAddr2, []byte("ping2")); err != nil {
 		t.Fatalf("build second outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn2.WriteToUDP(outbound2.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -357,20 +343,20 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatalf("read rebound framed udp payload: %v", err)
 	}
-	tunneled2, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf[:n]))
+	tunneled2, err := readSocks5Datagram(frameBuf[:n])
 	if err != nil {
 		t.Fatalf("parse rebound tunneled udp datagram: %v", err)
 	}
-	if tunneled2.Header.Addr.String() != "9.9.9.9:9999" {
-		t.Fatalf("rebound tunneled addr = %s, want 9.9.9.9:9999", tunneled2.Header.Addr.String())
+	if tunneled2.addr.String() != "9.9.9.9:9999" {
+		t.Fatalf("rebound tunneled addr = %s, want 9.9.9.9:9999", tunneled2.addr.String())
 	}
-	if string(tunneled2.Data) != "ping2" {
-		t.Fatalf("rebound tunneled payload = %q, want ping2", tunneled2.Data)
+	if string(tunneled2.data) != "ping2" {
+		t.Fatalf("rebound tunneled payload = %q, want ping2", tunneled2.data)
 	}
 
 	replyAddr2, _ := net.ResolveUDPAddr("udp4", "2.2.2.2:2222")
 	var inbound2 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(replyAddr2)), []byte("pong2")).Write(&inbound2); err != nil {
+	if err := writeSocks5Datagram(&inbound2, replyAddr2, []byte("pong2")); err != nil {
 		t.Fatalf("build rebound inbound udp datagram: %v", err)
 	}
 	if _, err := peerFramed.Write(inbound2.Bytes()); err != nil {
@@ -382,15 +368,15 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatalf("ReadFromUDP() rebound socket error = %v", err)
 	}
-	replyDatagram2, err := common.ReadUDPDatagram(bytes.NewReader(udpBuf[:n]))
+	replyDatagram2, err := readSocks5Datagram(udpBuf[:n])
 	if err != nil {
 		t.Fatalf("parse rebound udp reply datagram: %v", err)
 	}
-	if replyDatagram2.Header.Addr.String() != "2.2.2.2:2222" {
-		t.Fatalf("rebound reply addr = %s, want 2.2.2.2:2222", replyDatagram2.Header.Addr.String())
+	if replyDatagram2.addr.String() != "2.2.2.2:2222" {
+		t.Fatalf("rebound reply addr = %s, want 2.2.2.2:2222", replyDatagram2.addr.String())
 	}
-	if string(replyDatagram2.Data) != "pong2" {
-		t.Fatalf("rebound reply payload = %q, want pong2", replyDatagram2.Data)
+	if string(replyDatagram2.data) != "pong2" {
+		t.Fatalf("rebound reply payload = %q, want pong2", replyDatagram2.data)
 	}
 
 	_ = udpConn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
@@ -433,11 +419,11 @@ func TestTunnelModeServerSocks5ConnectFailureReturnsReply(t *testing.T) {
 		t.Fatalf("unexpected negotiation reply %v", negotiation)
 	}
 
-	if _, err := clientSide.Write([]byte{5, connectMethod, 0, ipV4, 8, 8, 8, 8, 0, 53}); err != nil {
+	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
 		t.Fatalf("write connect request: %v", err)
 	}
-	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != serverFailure {
-		t.Fatalf("reply code = %d, want %d", replyCode, serverFailure)
+	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != socks5.ReplyGeneralFailure {
+		t.Fatalf("reply code = %v, want %v", replyCode, socks5.ReplyGeneralFailure)
 	}
 
 	select {
@@ -471,11 +457,11 @@ func TestTunnelModeServerSocks5NoAuthAcceptsEmptyMethodList(t *testing.T) {
 		t.Fatalf("unexpected negotiation reply %v", negotiation)
 	}
 
-	if _, err := clientSide.Write([]byte{5, connectMethod, 0, ipV4, 8, 8, 8, 8, 0, 53}); err != nil {
+	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
 		t.Fatalf("write connect request: %v", err)
 	}
-	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != serverFailure {
-		t.Fatalf("reply code = %d, want %d", replyCode, serverFailure)
+	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != socks5.ReplyGeneralFailure {
+		t.Fatalf("reply code = %v, want %v", replyCode, socks5.ReplyGeneralFailure)
 	}
 
 	select {
@@ -520,7 +506,7 @@ func TestTunnelModeServerSocks5UDPAssociateAllowsSinglePendingPortMismatch(t *te
 
 	targetAddr, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr)), []byte("ping")).Write(&outbound); err != nil {
+	if err := writeSocks5Datagram(&outbound, targetAddr, []byte("ping")); err != nil {
 		t.Fatalf("build outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn.WriteToUDP(outbound.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -532,15 +518,15 @@ func TestTunnelModeServerSocks5UDPAssociateAllowsSinglePendingPortMismatch(t *te
 	if err != nil {
 		t.Fatalf("read framed udp payload: %v", err)
 	}
-	tunneled, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf[:n]))
+	tunneled, err := readSocks5Datagram(frameBuf[:n])
 	if err != nil {
 		t.Fatalf("parse tunneled udp datagram: %v", err)
 	}
-	if tunneled.Header.Addr.String() != "8.8.8.8:53" {
-		t.Fatalf("tunneled addr = %s, want 8.8.8.8:53", tunneled.Header.Addr.String())
+	if tunneled.addr.String() != "8.8.8.8:53" {
+		t.Fatalf("tunneled addr = %s, want 8.8.8.8:53", tunneled.addr.String())
 	}
-	if string(tunneled.Data) != "ping" {
-		t.Fatalf("tunneled payload = %q, want ping", tunneled.Data)
+	if string(tunneled.data) != "ping" {
+		t.Fatalf("tunneled payload = %q, want ping", tunneled.data)
 	}
 }
 
@@ -595,7 +581,7 @@ func TestTunnelModeServerSocks5UDPDisambiguatesSameIPSessionsByRequestedPort(t *
 
 	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outbound2 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr2)), []byte("ping2")).Write(&outbound2); err != nil {
+	if err := writeSocks5Datagram(&outbound2, targetAddr2, []byte("ping2")); err != nil {
 		t.Fatalf("build second outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn2.WriteToUDP(outbound2.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -612,17 +598,17 @@ func TestTunnelModeServerSocks5UDPDisambiguatesSameIPSessionsByRequestedPort(t *
 	if err != nil {
 		t.Fatalf("read second framed udp payload: %v", err)
 	}
-	tunneled2, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf2[:n2]))
+	tunneled2, err := readSocks5Datagram(frameBuf2[:n2])
 	if err != nil {
 		t.Fatalf("parse second tunneled udp datagram: %v", err)
 	}
-	if tunneled2.Header.Addr.String() != "9.9.9.9:9999" {
-		t.Fatalf("second tunneled addr = %s, want 9.9.9.9:9999", tunneled2.Header.Addr.String())
+	if tunneled2.addr.String() != "9.9.9.9:9999" {
+		t.Fatalf("second tunneled addr = %s, want 9.9.9.9:9999", tunneled2.addr.String())
 	}
 
 	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound1 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr1)), []byte("ping1")).Write(&outbound1); err != nil {
+	if err := writeSocks5Datagram(&outbound1, targetAddr1, []byte("ping1")); err != nil {
 		t.Fatalf("build first outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1.WriteToUDP(outbound1.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -634,12 +620,12 @@ func TestTunnelModeServerSocks5UDPDisambiguatesSameIPSessionsByRequestedPort(t *
 	if err != nil {
 		t.Fatalf("read first framed udp payload: %v", err)
 	}
-	tunneled1, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf1[:n1]))
+	tunneled1, err := readSocks5Datagram(frameBuf1[:n1])
 	if err != nil {
 		t.Fatalf("parse first tunneled udp datagram: %v", err)
 	}
-	if tunneled1.Header.Addr.String() != "8.8.8.8:53" {
-		t.Fatalf("first tunneled addr = %s, want 8.8.8.8:53", tunneled1.Header.Addr.String())
+	if tunneled1.addr.String() != "8.8.8.8:53" {
+		t.Fatalf("first tunneled addr = %s, want 8.8.8.8:53", tunneled1.addr.String())
 	}
 }
 
@@ -677,7 +663,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 
 	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound1 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr1)), []byte("bind1")).Write(&outbound1); err != nil {
+	if err := writeSocks5Datagram(&outbound1, targetAddr1, []byte("bind1")); err != nil {
 		t.Fatalf("build first outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1.WriteToUDP(outbound1.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -690,12 +676,12 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 	if err != nil {
 		t.Fatalf("read first framed udp payload: %v", err)
 	}
-	tunneled1, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf1[:n1]))
+	tunneled1, err := readSocks5Datagram(frameBuf1[:n1])
 	if err != nil {
 		t.Fatalf("parse first tunneled udp datagram: %v", err)
 	}
-	if tunneled1.Header.Addr.String() != "8.8.8.8:53" || string(tunneled1.Data) != "bind1" {
-		t.Fatalf("unexpected first tunneled payload addr=%s data=%q", tunneled1.Header.Addr.String(), tunneled1.Data)
+	if tunneled1.addr.String() != "8.8.8.8:53" || string(tunneled1.data) != "bind1" {
+		t.Fatalf("unexpected first tunneled payload addr=%s data=%q", tunneled1.addr.String(), tunneled1.data)
 	}
 
 	_, replyPort2 := requestUDPAssociateFromIPv4(t, tcpConn2, net.ParseIP("127.0.0.1"), 54321)
@@ -720,7 +706,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 
 	targetAddrRebind, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outboundRebind bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddrRebind)), []byte("rebind")).Write(&outboundRebind); err != nil {
+	if err := writeSocks5Datagram(&outboundRebind, targetAddrRebind, []byte("rebind")); err != nil {
 		t.Fatalf("build rebound outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1b.WriteToUDP(outboundRebind.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -739,7 +725,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 
 	targetAddrStillOld, _ := net.ResolveUDPAddr("udp4", "1.1.1.1:53")
 	var outboundStillOld bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddrStillOld)), []byte("old-port")).Write(&outboundStillOld); err != nil {
+	if err := writeSocks5Datagram(&outboundStillOld, targetAddrStillOld, []byte("old-port")); err != nil {
 		t.Fatalf("build old-port outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1.WriteToUDP(outboundStillOld.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -751,12 +737,12 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 	if err != nil {
 		t.Fatalf("read old-port framed udp payload: %v", err)
 	}
-	tunneledStillOld, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf1[:n1]))
+	tunneledStillOld, err := readSocks5Datagram(frameBuf1[:n1])
 	if err != nil {
 		t.Fatalf("parse old-port tunneled udp datagram: %v", err)
 	}
-	if tunneledStillOld.Header.Addr.String() != "1.1.1.1:53" || string(tunneledStillOld.Data) != "old-port" {
-		t.Fatalf("unexpected old-port tunneled payload addr=%s data=%q", tunneledStillOld.Header.Addr.String(), tunneledStillOld.Data)
+	if tunneledStillOld.addr.String() != "1.1.1.1:53" || string(tunneledStillOld.data) != "old-port" {
+		t.Fatalf("unexpected old-port tunneled payload addr=%s data=%q", tunneledStillOld.addr.String(), tunneledStillOld.data)
 	}
 }
 
@@ -806,7 +792,7 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 
 	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
 	var outbound1 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr1)), []byte("bind1")).Write(&outbound1); err != nil {
+	if err := writeSocks5Datagram(&outbound1, targetAddr1, []byte("bind1")); err != nil {
 		t.Fatalf("build first outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1.WriteToUDP(outbound1.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -817,12 +803,12 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 	if err != nil {
 		t.Fatalf("read first framed udp payload: %v", err)
 	}
-	tunneled1, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf1[:n1]))
+	tunneled1, err := readSocks5Datagram(frameBuf1[:n1])
 	if err != nil {
 		t.Fatalf("parse first tunneled udp datagram: %v", err)
 	}
-	if tunneled1.Header.Addr.String() != "8.8.8.8:53" || string(tunneled1.Data) != "bind1" {
-		t.Fatalf("unexpected first tunneled payload addr=%s data=%q", tunneled1.Header.Addr.String(), tunneled1.Data)
+	if tunneled1.addr.String() != "8.8.8.8:53" || string(tunneled1.data) != "bind1" {
+		t.Fatalf("unexpected first tunneled payload addr=%s data=%q", tunneled1.addr.String(), tunneled1.data)
 	}
 
 	tcpConn2 := dialSocks5ImplicitNoAuth(t, port)
@@ -846,7 +832,7 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 
 	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
 	var outbound2 bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddr2)), []byte("bind2")).Write(&outbound2); err != nil {
+	if err := writeSocks5Datagram(&outbound2, targetAddr2, []byte("bind2")); err != nil {
 		t.Fatalf("build second outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn2.WriteToUDP(outbound2.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -857,17 +843,17 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 	if err != nil {
 		t.Fatalf("read second framed udp payload: %v", err)
 	}
-	tunneled2, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf2[:n2]))
+	tunneled2, err := readSocks5Datagram(frameBuf2[:n2])
 	if err != nil {
 		t.Fatalf("parse second tunneled udp datagram: %v", err)
 	}
-	if tunneled2.Header.Addr.String() != "9.9.9.9:9999" || string(tunneled2.Data) != "bind2" {
-		t.Fatalf("unexpected second tunneled payload addr=%s data=%q", tunneled2.Header.Addr.String(), tunneled2.Data)
+	if tunneled2.addr.String() != "9.9.9.9:9999" || string(tunneled2.data) != "bind2" {
+		t.Fatalf("unexpected second tunneled payload addr=%s data=%q", tunneled2.addr.String(), tunneled2.data)
 	}
 
 	targetAddrRebind, _ := net.ResolveUDPAddr("udp4", "1.1.1.1:53")
 	var outboundRebind bytes.Buffer
-	if err := common.NewUDPDatagram(common.NewUDPHeader(0, 0, common.ToSocksAddr(targetAddrRebind)), []byte("rebind")).Write(&outboundRebind); err != nil {
+	if err := writeSocks5Datagram(&outboundRebind, targetAddrRebind, []byte("rebind")); err != nil {
 		t.Fatalf("build rebound outbound udp datagram: %v", err)
 	}
 	if _, err := udpConn1b.WriteToUDP(outboundRebind.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
@@ -884,12 +870,12 @@ func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *tes
 	if err != nil {
 		t.Fatalf("read rebound framed udp payload: %v", err)
 	}
-	tunneledRebind, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf1[:n1]))
+	tunneledRebind, err := readSocks5Datagram(frameBuf1[:n1])
 	if err != nil {
 		t.Fatalf("parse rebound tunneled udp datagram: %v", err)
 	}
-	if tunneledRebind.Header.Addr.String() != "1.1.1.1:53" || string(tunneledRebind.Data) != "rebind" {
-		t.Fatalf("unexpected rebound tunneled payload addr=%s data=%q", tunneledRebind.Header.Addr.String(), tunneledRebind.Data)
+	if tunneledRebind.addr.String() != "1.1.1.1:53" || string(tunneledRebind.data) != "rebind" {
+		t.Fatalf("unexpected rebound tunneled payload addr=%s data=%q", tunneledRebind.addr.String(), tunneledRebind.data)
 	}
 }
 
@@ -940,14 +926,169 @@ func TestSocks5UDPReplyAddrWithholdsPrivateAddressFromPublicClient(t *testing.T)
 	publicClient := net.ParseIP("8.8.8.8")
 
 	task := &file.Tunnel{Port: 1080}
-	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.Host != "0.0.0.0" {
-		t.Fatalf("reply host for public client = %q, want 0.0.0.0", got.Host)
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.IP.String() != "0.0.0.0" {
+		t.Fatalf("reply host for public client = %s, want 0.0.0.0", got.IP)
 	}
-	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, net.ParseIP("10.0.0.9")); got.Host != "10.0.0.5" {
-		t.Fatalf("reply host for LAN client = %q, want 10.0.0.5", got.Host)
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, net.ParseIP("10.0.0.9")); got.IP.String() != "10.0.0.5" {
+		t.Fatalf("reply host for LAN client = %s, want 10.0.0.5", got.IP)
 	}
 	task.ServerIp = "10.0.0.5"
-	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.Host != "10.0.0.5" {
-		t.Fatalf("reply host with configured ServerIp = %q, want 10.0.0.5", got.Host)
+	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.IP.String() != "10.0.0.5" {
+		t.Fatalf("reply host with configured ServerIp = %s, want 10.0.0.5", got.IP)
+	}
+}
+
+// startSocks5Handshake serves one connection of task over a pipe and returns
+// the client side with a channel closed when the server is done.
+func startSocks5Handshake(t *testing.T, task *file.Tunnel) (net.Conn, chan struct{}) {
+	t.Helper()
+	serverSide, clientSide := net.Pipe()
+	t.Cleanup(func() { _ = clientSide.Close() })
+	server := NewTunnelModeServer(ProcessMix, failBridge{}, task, false)
+	done := make(chan struct{})
+	go func() {
+		server.handleConn(serverSide)
+		close(done)
+	}()
+	_ = clientSide.SetDeadline(time.Now().Add(3 * time.Second))
+	return clientSide, done
+}
+
+func waitSocks5Done(t *testing.T, done chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not finish in time")
+	}
+}
+
+func newAuthSocks5Task() *file.Tunnel {
+	task := newTestSocks5Task(1080, "socks5")
+	task.Client.Cnf.U = "user"
+	task.Client.Cnf.P = "secret"
+	return task
+}
+
+func TestTunnelModeServerSocks5UserPass(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		password string
+		ok       bool
+	}{
+		{"valid", "secret", true},
+		{"wrong password", "nope", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, done := startSocks5Handshake(t, newAuthSocks5Task())
+			if err := socks5.WriteMethods(c, socks5.MethodNoAuth, socks5.MethodUserPass); err != nil {
+				t.Fatal(err)
+			}
+			if m, err := socks5.ReadMethod(c); err != nil || m != socks5.MethodUserPass {
+				t.Fatalf("selected method %v, %v; want username/password", m, err)
+			}
+			if err := socks5.WriteUserPass(c, "user", tc.password); err != nil {
+				t.Fatal(err)
+			}
+			err := socks5.ReadUserPassStatus(c)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("auth status: %v", err)
+				}
+				if err := socks5.WriteRequest(c, socks5.CmdConnect, socks5.Addr{Name: "example.com", Port: 443}); err != nil {
+					t.Fatal(err)
+				}
+				if rep := readSocks5ReplyCode(t, c); rep != socks5.ReplyGeneralFailure {
+					t.Fatalf("reply = %v, want %v", rep, socks5.ReplyGeneralFailure)
+				}
+			} else {
+				if !errors.Is(err, socks5.ErrAuthFailed) {
+					t.Fatalf("auth status error = %v, want %v", err, socks5.ErrAuthFailed)
+				}
+				if _, err := c.Read(make([]byte, 1)); err == nil {
+					t.Fatal("connection still open after failed authentication")
+				}
+			}
+			waitSocks5Done(t, done)
+		})
+	}
+}
+
+func TestTunnelModeServerSocks5AuthRequiredRejectsNoAuthOnly(t *testing.T) {
+	c, done := startSocks5Handshake(t, newAuthSocks5Task())
+	if err := socks5.WriteMethods(c, socks5.MethodNoAuth); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := socks5.ReadMethod(c); !errors.Is(err, socks5.ErrNoAcceptableMethod) {
+		t.Fatalf("method selection error = %v, want %v", err, socks5.ErrNoAcceptableMethod)
+	}
+	waitSocks5Done(t, done)
+}
+
+func TestTunnelModeServerSocks5NoAuthAcceptsUserPassOnlyClient(t *testing.T) {
+	c, done := startSocks5Handshake(t, newTestSocks5Task(1080, "socks5"))
+	if err := socks5.WriteMethods(c, socks5.MethodUserPass); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := socks5.ReadMethod(c); err != nil || m != socks5.MethodUserPass {
+		t.Fatalf("selected method %v, %v; want username/password", m, err)
+	}
+	// Version 5 instead of 1, as some clients send.
+	if _, err := c.Write([]byte{5, 1, 'u', 1, 'p'}); err != nil {
+		t.Fatal(err)
+	}
+	if err := socks5.ReadUserPassStatus(c); err != nil {
+		t.Fatalf("auth status: %v", err)
+	}
+	if err := socks5.WriteRequest(c, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("2001:db8::1"), Port: 80}); err != nil {
+		t.Fatal(err)
+	}
+	if rep := readSocks5ReplyCode(t, c); rep != socks5.ReplyGeneralFailure {
+		t.Fatalf("reply = %v, want %v", rep, socks5.ReplyGeneralFailure)
+	}
+	waitSocks5Done(t, done)
+}
+
+func TestTunnelModeServerSocks5RequestErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		request []byte
+		want    socks5.Reply
+	}{
+		{"unknown address type", []byte{5, 1, 0, 9, 0}, socks5.ReplyAddrTypeNotSupported},
+		{"empty domain", []byte{5, 1, 0, 3, 0, 0, 80}, socks5.ReplyGeneralFailure},
+		{"bind", []byte{5, 2, 0, 1, 127, 0, 0, 1, 0, 80}, socks5.ReplyCommandNotSupported},
+		// A non-zero reserved byte is tolerated: the request reaches the
+		// tunnel, which fails in this test.
+		{"reserved byte set", []byte{5, 1, 1, 1, 127, 0, 0, 1, 0, 80}, socks5.ReplyGeneralFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, done := startSocks5Handshake(t, newTestSocks5Task(1080, "socks5"))
+			if _, err := c.Write([]byte{5, 1, 0}); err != nil {
+				t.Fatal(err)
+			}
+			if m, err := socks5.ReadMethod(c); err != nil || m != socks5.MethodNoAuth {
+				t.Fatalf("selected method %v, %v", m, err)
+			}
+			if _, err := c.Write(tc.request); err != nil {
+				t.Fatal(err)
+			}
+			if rep := readSocks5ReplyCode(t, c); rep != tc.want {
+				t.Fatalf("reply = %v, want %v", rep, tc.want)
+			}
+			waitSocks5Done(t, done)
+		})
+	}
+}
+
+func TestSocks5ReplyAddrIPv6Client(t *testing.T) {
+	tcpLocal := &net.TCPAddr{IP: net.ParseIP("2001:db8::5"), Port: 1080}
+	got := socks5ReplyAddrFromNetAddr(&file.Tunnel{Port: 1080}, tcpLocal, nil, 1080, net.ParseIP("2001:db8::9"))
+	if got.String() != "[2001:db8::5]:1080" {
+		t.Fatalf("reply addr = %v", got)
+	}
+	got = socks5ReplyAddrFromNetAddr(&file.Tunnel{Port: 1080}, &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 1080}, nil, 1080, net.ParseIP("2001:db8::9"))
+	if b, _ := got.AppendBinary(nil); !bytes.Equal(b, append(append([]byte{4}, make([]byte, 16)...), 0x04, 0x38)) {
+		t.Fatalf("IPv6 client without IPv6 local address: encoded %x, want the IPv6 zero address", b)
 	}
 }

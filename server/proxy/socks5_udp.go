@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -501,9 +502,11 @@ func (s *socks5UDPSession) writeToTunnelLoop() {
 
 	discardOnly := false
 	for pkt := range s.packetCh {
-		if pkt.n >= 3 && pkt.buf[2] != 0 {
+		// The client endpoint decodes the datagram; checking it here
+		// keeps malformed and fragmented ones out of the tunnel.
+		if _, _, err := socks5.DecodeDatagram(pkt.buf[:pkt.n]); err != nil {
 			common.BufPoolUdp.Put(pkt.buf)
-			logs.Warn("socks5 udp frag not supported, drop (frag=%d)", pkt.buf[2])
+			logs.Debug("drop socks5 udp datagram from %s: %v", s.controlRemoteAddr(), err)
 			continue
 		}
 		if pkt.n > netx.MaxFramePayload {

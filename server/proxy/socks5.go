@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"time"
 
+	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -13,13 +16,6 @@ import (
 )
 
 const (
-	ipV4            = 1
-	domainName      = 3
-	ipV6            = 4
-	connectMethod   = 1
-	bindMethod      = 2
-	associateMethod = 3
-
 	socks5AssociateControlPollInterval = time.Second
 
 	// socks5HandshakeTimeout bounds reading the greeting, credentials and
@@ -27,58 +23,38 @@ const (
 	socks5HandshakeTimeout = 10 * time.Second
 )
 
-// SOCKS5 reply codes (RFC 1928 section 6).
-const (
-	succeeded            uint8 = 0
-	serverFailure        uint8 = 1
-	notAllowed           uint8 = 2
-	commandNotSupported  uint8 = 7
-	addrTypeNotSupported uint8 = 8
-)
-
-const (
-	noAuthMethod     = uint8(0)
-	UserPassAuth     = uint8(2)
-	noAcceptableAuth = uint8(0xFF)
-
-	userAuthVersion = uint8(1)
-	authSuccess     = uint8(0)
-	authFailure     = uint8(1)
-)
-
 func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
-	request, err := readSocks5Request(c)
+	cmd, dst, err := socks5.ReadRequest(c)
 	if err != nil {
-		replyCode := serverFailure
-		if errors.Is(err, errSocks5UnsupportedAddrType) {
-			replyCode = addrTypeNotSupported
-		}
 		logs.Warn("invalid socks5 request from %v: %v", c.RemoteAddr(), err)
-		_ = writeSocks5Reply(c, replyCode, socks5ConnReplyAddr(c))
+		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			rep := socks5.ReplyGeneralFailure
+			if errors.Is(err, socks5.ErrAddrType) {
+				rep = socks5.ReplyAddrTypeNotSupported
+			}
+			_ = socks5.WriteReply(c, rep, socks5.Addr{})
+		}
 		_ = c.Close()
 		return
 	}
 	_ = c.SetReadDeadline(time.Time{})
 
-	switch request.Command {
-	case connectMethod:
-		s.handleSocks5Connect(c, request.Destination)
-	case bindMethod:
-		_ = writeSocks5Reply(c, commandNotSupported, socks5ConnReplyAddr(c))
-		_ = c.Close()
-	case associateMethod:
-		s.handleSocks5Associate(c, request.Destination)
+	switch cmd {
+	case socks5.CmdConnect:
+		s.handleSocks5Connect(c, dst)
+	case socks5.CmdUDPAssociate:
+		s.handleSocks5Associate(c, dst)
 	default:
-		_ = writeSocks5Reply(c, commandNotSupported, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, socks5.ReplyCommandNotSupported, socks5.Addr{})
 		_ = c.Close()
 	}
 }
 
-func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
-	targetAddr := dest.String()
+func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst socks5.Addr) {
+	targetAddr := dst.String()
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff && !s.Task.AllowsDestination(targetAddr) {
 		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(targetAddr))
-		_ = writeSocks5Reply(c, notAllowed, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, socks5.Addr{})
 		_ = c.Close()
 		return
 	}
@@ -89,11 +65,11 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
-		replyCode := serverFailure
+		rep := socks5.ReplyGeneralFailure
 		if errors.Is(err, errProxyAccessDenied) {
-			replyCode = notAllowed
+			rep = socks5.ReplyNotAllowed
 		}
-		_ = writeSocks5Reply(c, replyCode, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, rep, socks5.Addr{})
 		_ = c.Close()
 		return
 	}
@@ -103,7 +79,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 	}
 
 	replyAddr := socks5ConnectReplyAddr(s.Task, c)
-	if err := writeSocks5Reply(c, succeeded, replyAddr); err != nil {
+	if err := socks5.WriteReply(c, socks5.ReplySucceeded, replyAddr); err != nil {
 		_ = target.Close()
 		_ = c.Close()
 		return
@@ -111,7 +87,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dest socks5Address) {
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
 }
 
-func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dest socks5Address) {
+func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst socks5.Addr) {
 	if tcpConn, ok := c.(*net.TCPConn); ok {
 		_ = tcpConn.SetKeepAliveConfig(net.KeepAliveConfig{
 			Enable:   true,
@@ -122,29 +98,29 @@ func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dest socks5Address)
 	}
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
 		logs.Warn("mixProxy dest acl active, reject socks5 udp associate: client=%d task=%d", s.Task.Client.Id, s.Task.Id)
-		_ = writeSocks5Reply(c, notAllowed, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, socks5.Addr{})
 		_ = c.Close()
 		return
 	}
 	defer func() { _ = c.Close() }()
 
-	logs.Trace("ASSOCIATE %s", dest.String())
+	logs.Trace("ASSOCIATE %s", dst)
 	if s.socks5UDP == nil {
 		logs.Error("socks5 udp listener is unavailable on task %d", s.Task.Id)
-		_ = writeSocks5Reply(c, serverFailure, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, socks5.Addr{})
 		return
 	}
 
 	clientIP := common.NormalizeIP(common.ParseIPFromAddr(c.RemoteAddr().String()))
-	session, err := s.socks5UDP.newSession(c, int(dest.Port))
+	session, err := s.socks5UDP.newSession(c, int(dst.Port))
 	if err != nil {
 		logs.Warn("open socks5 udp associate tunnel failed: client=%d task=%d err=%v", s.Task.Client.Id, s.Task.Id, err)
-		_ = writeSocks5Reply(c, serverFailure, socks5ConnReplyAddr(c))
+		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, socks5.Addr{})
 		return
 	}
 	defer session.Close()
 
-	if err := writeSocks5Reply(c, succeeded, socks5UDPReplyAddr(s.Task, c, s.socks5UDP.listener, clientIP)); err != nil {
+	if err := socks5.WriteReply(c, socks5.ReplySucceeded, socks5UDPReplyAddr(s.Task, c, s.socks5UDP.listener, clientIP)); err != nil {
 		return
 	}
 	session.start()
@@ -177,8 +153,11 @@ func (s *TunnelModeServer) waitForSocks5AssociateControl(c net.Conn, session *so
 	}
 }
 
+// SocksAuth reads the client's username/password request, checks it against
+// the task's accounts and answers it. It returns socks5.ErrAuthFailed for
+// rejected credentials.
 func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
-	username, password, err := readSocks5UserPassCredentials(c)
+	username, password, err := socks5.ReadUserPass(c)
 	if err != nil {
 		return err
 	}
@@ -192,15 +171,11 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 		file.GetAccountMap(s.Task.MultiAccount),
 		file.GetAccountMap(s.Task.UserAuth),
 	)
-	status := authFailure
-	if valid {
-		status = authSuccess
-	}
-	if _, err := c.Write([]byte{userAuthVersion, status}); err != nil {
+	if err := socks5.WriteUserPassStatus(c, valid); err != nil {
 		return err
 	}
 	if !valid {
-		return errors.New("auth failed")
+		return socks5.ErrAuthFailed
 	}
 	return nil
 }
@@ -217,7 +192,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		return err
 	}
 
-	if header[0] != 5 {
+	if header[0] != socks5.Version5 {
 		if looksLikeHTTPProxyRequest(header[:]) {
 			if !httpEnabled {
 				logs.Warn("http proxy is disable, client %d request from: %v", s.Task.Client.Id, c.RemoteAddr())
@@ -244,14 +219,15 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		return errors.New("socks5 proxy is disabled")
 	}
 
-	methods, err := readSocks5Methods(c, int(header[1]))
+	methods, err := socks5.ReadMethods(io.MultiReader(bytes.NewReader(header[:]), c))
 	if err != nil {
-		logs.Warn("wrong method")
+		logs.Warn("read socks5 methods from %v: %v", c.RemoteAddr(), err)
 		_ = c.Close()
-		return errors.New("wrong method")
+		return err
 	}
 
 	if err := s.negotiateSocks5Method(c, methods); err != nil {
+		logs.Warn("socks5 negotiation with %v failed: %v", c.RemoteAddr(), err)
 		_ = c.Close()
 		return err
 	}
@@ -259,42 +235,33 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	return nil
 }
 
-func (s *TunnelModeServer) negotiateSocks5Method(c net.Conn, methods []byte) error {
-	supports := func(method byte) bool {
-		for _, offered := range methods {
-			if offered == method {
-				return true
-			}
-		}
-		return false
-	}
-
+// negotiateSocks5Method selects an authentication method from those the
+// client offers and runs it. With authentication required only
+// username/password is accepted. Otherwise no authentication is selected,
+// also for clients that offer no method or only unknown ones, and a client
+// that offers username/password alone has any credentials accepted.
+func (s *TunnelModeServer) negotiateSocks5Method(c net.Conn, methods []socks5.Method) error {
 	if socks5NeedsAuth(s.Task) {
-		if !supports(UserPassAuth) {
-			_, _ = c.Write([]byte{5, noAcceptableAuth})
-			return errors.New("no acceptable authentication method")
+		if !slices.Contains(methods, socks5.MethodUserPass) {
+			_ = socks5.WriteMethod(c, socks5.MethodNoAcceptable)
+			return socks5.ErrNoAcceptableMethod
 		}
-		if _, err := c.Write([]byte{5, UserPassAuth}); err != nil {
+		if err := socks5.WriteMethod(c, socks5.MethodUserPass); err != nil {
 			return err
 		}
-		if err := s.SocksAuth(c); err != nil {
-			logs.Warn("Validation failed: %v", err)
+		return s.SocksAuth(c)
+	}
+
+	if slices.Contains(methods, socks5.MethodUserPass) && !slices.Contains(methods, socks5.MethodNoAuth) {
+		if err := socks5.WriteMethod(c, socks5.MethodUserPass); err != nil {
 			return err
 		}
-		return nil
+		if _, _, err := socks5.ReadUserPass(c); err != nil {
+			return err
+		}
+		return socks5.WriteUserPassStatus(c, true)
 	}
-
-	if len(methods) == 0 {
-		_, _ = c.Write([]byte{5, noAuthMethod})
-		return nil
-	}
-
-	if !supports(noAuthMethod) {
-		_, _ = c.Write([]byte{5, noAcceptableAuth})
-		return errors.New("no acceptable method (no-auth not offered)")
-	}
-	_, _ = c.Write([]byte{5, noAuthMethod})
-	return nil
+	return socks5.WriteMethod(c, socks5.MethodNoAuth)
 }
 
 func effectiveMixProxyFlags(task *file.Tunnel) (httpEnabled, socksEnabled bool) {

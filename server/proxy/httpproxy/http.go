@@ -326,10 +326,9 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
 		}
 		la, _ := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		hdr := conn.BuildProxyProtocolHeaderByAddr(ra, la, host.Target.ProxyProtocol)
-		if hdr != nil {
+		if hdr := conn.ProxyProtocolHeader(host.Target.ProxyProtocol, ra, la); hdr != nil {
 			_ = netConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if _, err := netConn.Write(hdr); err != nil {
+			if _, err := hdr.WriteTo(netConn); err != nil {
 				_ = netConn.Close()
 				return
 			}
@@ -577,10 +576,9 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
 		}
 		la, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		hdr := conn.BuildProxyProtocolHeaderByAddr(ra, la, h.Target.ProxyProtocol)
-		if hdr != nil {
+		if hdr := conn.ProxyProtocolHeader(h.Target.ProxyProtocol, ra, la); hdr != nil {
 			_ = flowConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if _, err := flowConn.Write(hdr); err != nil {
+			if _, err := hdr.WriteTo(flowConn); err != nil {
 				_ = flowConn.Close()
 				return nil, fmt.Errorf("write PROXY header: %w", err)
 			}

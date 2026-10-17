@@ -213,15 +213,13 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 			ent.touch()
 			data := pkt.buf[:pkt.n]
 			ent.once.Do(func() {
-				if s.Task.Target.ProxyProtocol != 0 {
-					hdr := conn.BuildProxyProtocolHeaderByAddr(addr, &net.UDPAddr{Port: s.Task.Port}, s.Task.Target.ProxyProtocol)
-					hdrLen := len(hdr)
-					if hdrLen > 0 {
-						mergeBuf := make([]byte, hdrLen+len(data))
-						copy(mergeBuf, hdr)
-						copy(mergeBuf[hdrLen:], data)
-						data = mergeBuf
+				if hdr := conn.ProxyProtocolHeader(s.Task.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {
+					merged, err := hdr.AppendBinary(nil)
+					if err != nil {
+						logs.Warn("build PROXY protocol header for %v: %v", addr, err)
+						return
 					}
+					data = append(merged, data...)
 				}
 			})
 

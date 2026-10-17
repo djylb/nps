@@ -9,12 +9,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/proxyproto"
+	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -78,6 +81,16 @@ func IsTimeout(err error) bool {
 	return strings.Contains(s, "timeout")
 }
 
+// udp5HeaderRoom is the length of the longest SOCKS5 UDP header for an IP
+// source: reserved bytes, fragment number, address type, IPv6 address and
+// port. Replies are read behind this much room so that their header can be
+// written in front of them in place.
+const udp5HeaderRoom = 3 + 1 + 16 + 2
+
+// HandleUdp5 relays the SOCKS5 UDP datagrams of serverConn, one per frame,
+// through a local UDP socket: each datagram's payload goes to its
+// destination, and each datagram received goes back with its source as the
+// address.
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
 	// Wrap the TCP tunnel with timeout and framed I/O.
 	defer func() { _ = serverConn.Close() }()
@@ -96,11 +109,12 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 	relayCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Internet -> tunnel: read UDP responses, encode to SOCKS5-UDP, send through tunnel.
+	// Internet -> tunnel: read UDP responses, prefix the SOCKS5 UDP header,
+	// send through the tunnel.
 	go func() {
 		defer cancel()
-		buf := common.BufPoolUdp.Get()
-		defer common.BufPoolUdp.Put(buf)
+		buf := common.BufPool.Get()
+		defer common.BufPool.Put(buf)
 
 		for {
 			select {
@@ -109,7 +123,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 			default:
 			}
 
-			n, rAddr, err := local.ReadFromUDP(buf)
+			n, src, err := local.ReadFromUDPAddrPort(buf[udp5HeaderRoom:])
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					logs.Debug("local UDP closed, exiting goroutine")
@@ -123,17 +137,23 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 				return
 			}
 
-			// Build a standard SOCKS5-UDP packet: RSV(2)=0, FRAG=0, ATYP+ADDR+PORT + DATA.
-			hdr := common.NewUDPHeader(0, 0, common.ToSocksAddr(rAddr))
-			dgram := common.NewUDPDatagram(hdr, buf[:n])
-			if err := dgram.Write(framed); err != nil {
+			from := socks5.Addr{IP: src.Addr().Unmap(), Port: src.Port()}
+			start := udp5HeaderRoom - (3 + 1 + 4 + 2)
+			if from.IP.Is6() {
+				start = 0
+			}
+			// The header fills buf[start:udp5HeaderRoom] exactly, so the
+			// payload behind it stays in place. An IP address cannot fail.
+			_, _ = socks5.AppendDatagram(buf[start:start], from, nil)
+			if _, err := framed.Write(buf[start : udp5HeaderRoom+n]); err != nil {
 				logs.Debug("write data to tunnel error %v", err)
 				return
 			}
 		}
 	}()
 
-	// Tunnel -> internet: read framed bytes, parse as SOCKS5-UDP, send via local UDP socket.
+	// Tunnel -> internet: read one datagram per frame and send its payload
+	// via the local UDP socket.
 	frameBuf := common.BufPool.Get()
 	defer common.BufPool.Put(frameBuf)
 
@@ -149,32 +169,31 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 			logs.Debug("read udp frame from tunnel error %v", err)
 			return
 		}
-		if n < 4 {
-			// Too short to contain a valid SOCKS5-UDP header.
-			logs.Debug("socks5 udp packet too short: %d", n)
-			continue
-		}
 
-		// Decode a single SOCKS5-UDP datagram from the frame bytes.
-		dgram, err := common.ReadUDPDatagram(bytes.NewReader(frameBuf[:n]))
+		dst, hlen, err := socks5.DecodeDatagram(frameBuf[:n])
 		if err != nil {
-			// Drop malformed or fragmented (FRAG != 0) packets.
+			// Drop malformed or fragmented packets.
 			logs.Debug("parse socks5 udp packet error %v", err)
 			continue
 		}
+		payload := frameBuf[hlen:n]
 
-		// Resolve destination and send the payload out.
-		rAddr, err := net.ResolveUDPAddr("udp", dgram.Header.Addr.String())
-		if err != nil {
-			logs.Debug("resolve dest addr %q error %v", dgram.Header.Addr.String(), err)
-			continue
-		}
-		if _, err := local.WriteTo(dgram.Data, rAddr); err != nil {
-			if IsTimeout(err) {
-				logs.Debug("temporary UDP write error to %v, retrying: %v", rAddr, err)
+		if dst.IP.IsValid() {
+			_, err = local.WriteToUDPAddrPort(payload, netip.AddrPortFrom(dst.IP, dst.Port))
+		} else {
+			var rAddr *net.UDPAddr
+			if rAddr, err = net.ResolveUDPAddr("udp", dst.String()); err != nil {
+				logs.Debug("resolve dest addr %q error %v", dst, err)
 				continue
 			}
-			logs.Debug("write udp to %v error %v", rAddr, err)
+			_, err = local.WriteToUDP(payload, rAddr)
+		}
+		if err != nil {
+			if IsTimeout(err) {
+				logs.Debug("temporary UDP write error to %v, retrying: %v", dst, err)
+				continue
+			}
+			logs.Debug("write udp to %v error %v", dst, err)
 			return
 		}
 	}
@@ -210,10 +229,9 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Ra
 		//noinspection GoResourceLeak
 		connHandle = netx.NewFramedConn(netx.WrapConn(connHandle, conn1, netx.WithWrapParentClose()), netx.WithFramedDatagrams())
 	}
-	proxyHeader := BuildProxyProtocolHeader(conn2, proxyProtocol)
-	if proxyHeader != nil {
-		logs.Debug("Sending Proxy Protocol v%d header to backend: %v", proxyProtocol, proxyHeader)
-		if _, err := connHandle.Write(proxyHeader); err != nil {
+	if proxyHeader := ProxyProtocolHeader(proxyProtocol, conn2.RemoteAddr(), conn2.LocalAddr()); proxyHeader != nil {
+		logs.Debug("Sending Proxy Protocol v%d header to backend: %v -> %v", proxyProtocol, proxyHeader.Source, proxyHeader.Destination)
+		if _, err := proxyHeader.WriteTo(connHandle); err != nil {
 			logs.Warn("failed to write proxy protocol header: %v", err)
 			_ = conn1.Close()
 			_ = conn2.Close()
@@ -259,173 +277,26 @@ func ParseAddr(addr string) net.Addr {
 	return &net.TCPAddr{IP: ip, Port: port}
 }
 
-func BuildProxyProtocolV1Header(clientAddr, targetAddr net.Addr) []byte {
-	var (
-		protocol           = "UNKNOWN"
-		clientIP, targetIP string
-		srcPort, dstPort   int
-	)
-
-	switch c := clientAddr.(type) {
-	case *net.TCPAddr:
-		if t, ok := targetAddr.(*net.TCPAddr); ok {
-			clientIP, targetIP = c.IP.String(), t.IP.String()
-			srcPort, dstPort = c.Port, t.Port
-			if c.IP.To4() != nil {
-				protocol = "TCP4"
-			} else {
-				protocol = "TCP6"
-			}
-		}
-	case *net.UDPAddr:
-		if u, ok := targetAddr.(*net.UDPAddr); ok {
-			clientIP, targetIP = c.IP.String(), u.IP.String()
-			srcPort, dstPort = c.Port, u.Port
-			if c.IP.To4() != nil {
-				protocol = "TCP4"
-			} else {
-				protocol = "TCP6"
-			}
-		}
-	}
-
-	if protocol == "UNKNOWN" {
-		return []byte("PROXY UNKNOWN\r\n")
-	}
-
-	header := "PROXY " + protocol + " " + clientIP + " " + targetIP + " " +
-		strconv.Itoa(srcPort) + " " + strconv.Itoa(dstPort) + "\r\n"
-	return []byte(header)
-}
-
-func BuildProxyProtocolV2Header(clientAddr, targetAddr net.Addr) []byte {
-	const sig = "\r\n\r\n\000\r\nQUIT\n" // 12-byte v2 signature
-	var (
-		header           []byte
-		famProto         byte
-		addrBytes        uint16
-		srcIP, dstIP     net.IP
-		srcPort, dstPort uint16
-	)
-
-	switch c := clientAddr.(type) {
-	case *net.TCPAddr:
-		t := targetAddr.(*net.TCPAddr)
-		srcIP, dstIP = c.IP, t.IP
-		srcPort, dstPort = uint16(c.Port), uint16(t.Port)
-		if c.IP.To4() != nil {
-			famProto, addrBytes = 0x11, 12 // TCPv4
-		} else {
-			famProto, addrBytes = 0x21, 36 // TCPv6
-		}
-	case *net.UDPAddr:
-		u := targetAddr.(*net.UDPAddr)
-		srcIP, dstIP = c.IP, u.IP
-		srcPort, dstPort = uint16(c.Port), uint16(u.Port)
-		if c.IP.To4() != nil {
-			famProto, addrBytes = 0x12, 12 // UDPv4
-		} else {
-			famProto, addrBytes = 0x22, 36 // UDPv6
-		}
-	}
-
-	header = make([]byte, 16+addrBytes)
-	copy(header[:12], sig)
-	header[12] = 0x21 // v2 + PROXY
-	header[13] = famProto
-	binary.BigEndian.PutUint16(header[14:16], addrBytes)
-
-	if addrBytes == 12 { // IPv4
-		copy(header[16:20], srcIP.To4())
-		copy(header[20:24], dstIP.To4())
-		binary.BigEndian.PutUint16(header[24:26], srcPort)
-		binary.BigEndian.PutUint16(header[26:28], dstPort)
-	} else { // IPv6
-		copy(header[16:32], srcIP.To16())
-		copy(header[32:48], dstIP.To16())
-		binary.BigEndian.PutUint16(header[48:50], srcPort)
-		binary.BigEndian.PutUint16(header[50:52], dstPort)
-	}
-	return header
-}
-
-func BuildProxyProtocolHeader(c net.Conn, proxyProtocol int) []byte {
-	if proxyProtocol == 0 {
+// ProxyProtocolHeader returns the PROXY protocol header of version 1 or 2
+// for a connection from client to target, or nil for any other version. The
+// addresses are taken as proxyproto.NewHeader takes them: an unknown or
+// unspecified target becomes the zero address of the client's family, and an
+// IPv4 and an IPv6 address are both sent as IPv6. A pair that it rejects, such
+// as a nil client, an address without an IP or addresses of other types,
+// gives a header without addresses ("PROXY UNKNOWN" for version 1, a PROXY
+// command of the AF_UNSPEC family for version 2), so that the backend uses
+// the connection's own addresses.
+func ProxyProtocolHeader(version int, client, target net.Addr) *proxyproto.Header {
+	v := proxyproto.Version(version)
+	if v != proxyproto.V1 && v != proxyproto.V2 {
 		return nil
 	}
-	clientAddr := c.RemoteAddr()
-	targetAddr := c.LocalAddr()
-
-	if proxyProtocol == 2 {
-		return BuildProxyProtocolV2Header(clientAddr, targetAddr)
+	h, err := proxyproto.NewHeader(v, client, target)
+	if err != nil {
+		logs.Debug("PROXY protocol header without addresses for %v -> %v: %v", client, target, err)
+		return &proxyproto.Header{Version: v}
 	}
-	if proxyProtocol == 1 {
-		return BuildProxyProtocolV1Header(clientAddr, targetAddr)
-	}
-	return nil
-}
-
-func BuildProxyProtocolHeaderByAddr(clientAddr, targetAddr net.Addr, proxyProtocol int) []byte {
-	if proxyProtocol == 0 {
-		return nil
-	}
-
-	targetAddr = normalizeTarget(clientAddr, targetAddr)
-
-	switch proxyProtocol {
-	case 2:
-		return BuildProxyProtocolV2Header(clientAddr, targetAddr)
-	case 1:
-		return BuildProxyProtocolV1Header(clientAddr, targetAddr)
-	default:
-		return nil
-	}
-}
-
-func normalizeTarget(src, dst net.Addr) net.Addr {
-	switch s := src.(type) {
-
-	// TCP
-	case *net.TCPAddr:
-		d, _ := dst.(*net.TCPAddr)
-		if d == nil {
-			d = &net.TCPAddr{Port: 0}
-		}
-		d.IP = normalizeTargetIP(s.IP, d.IP)
-		return d
-
-	// UDP
-	case *net.UDPAddr:
-		d, _ := dst.(*net.UDPAddr)
-		if d == nil {
-			d = &net.UDPAddr{Port: 0}
-		}
-		d.IP = normalizeTargetIP(s.IP, d.IP)
-		return d
-
-	// Other
-	default:
-		return dst
-	}
-}
-
-func normalizeTargetIP(srcIP, dstIP net.IP) net.IP {
-	srcIsV4 := srcIP.To4() != nil
-	dstIsV4 := dstIP != nil && dstIP.To4() != nil
-
-	switch {
-	case srcIsV4 && !dstIsV4:
-		return net.IPv4zero
-	case !srcIsV4 && dstIsV4:
-		return append(net.IPv6zero[:12], dstIP.To4()...)
-	case dstIP == nil || dstIP.IsUnspecified():
-		if srcIsV4 {
-			return net.IPv4zero
-		}
-		return net.IPv6zero
-	default:
-		return dstIP
-	}
+	return h
 }
 
 func GetRealIP(r *http.Request, header string) string {
