@@ -204,6 +204,11 @@ func (s *Mux) Accept() (net.Conn, error) {
 		if !ok || conn == nil {
 			return nil, errors.New("accept error: the connection has been closed")
 		}
+		if s.IsClosed() {
+			// both cases were ready; never hand out a stream of a closed mux
+			_ = conn.Close()
+			return nil, s.closedErr("accept error: the mux has closed")
+		}
 		return conn, nil
 	}
 }
@@ -212,15 +217,11 @@ func (s *Mux) Addr() net.Addr {
 	return s.conn.LocalAddr()
 }
 
-func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) {
+// sendInfo queues a frame and reports whether it was accepted; it returns
+// false when the mux is closed.
+func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) bool {
 	if s.IsClosed() {
-		return
-	}
-
-	s.applyWriteBackpressure(flag, priority)
-
-	if s.IsClosed() {
-		return
+		return false
 	}
 
 	pack := muxPack.Get()
@@ -228,31 +229,53 @@ func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) {
 	if err := pack.Set(flag, id, data); err != nil {
 		muxPack.Put(pack)
 		logs.Println("mux: New Pack err", err)
-		_ = s.Close()
-		return
+		// close asynchronously: the caller may hold a stream lock that
+		// closing the streams also needs
+		go func() { _ = s.Close() }()
+		return false
 	}
 	s.writeQueue.Push(pack)
-	//return
+	if s.IsClosed() {
+		// closed concurrently, release may already have drained the queue;
+		// recycle anything left behind
+		s.drainWriteQueue()
+		return false
+	}
+	return true
 }
 
-func (s *Mux) applyWriteBackpressure(flag uint8, priority bool) {
-	if priority {
-		return
-	}
-	if flag != muxNewMsg && flag != muxNewMsgPart {
-		return
-	}
-
-	if s.writeQueue.Len() < writeQueueHighWater {
-		return
-	}
-
+// applyWriteBackpressure blocks a data writer while the write queue is above
+// the high water mark, until it drains below the low water mark. The wait
+// also ends when the mux or the stream closes or the write deadline passes.
+func (s *Mux) applyWriteBackpressure(w *sendWindow) error {
 	q := &s.writeQueue
-	q.cond.L.Lock()
-	defer q.cond.L.Unlock()
-
-	for !s.IsClosed() && atomic.LoadUint32(&q.stop) == 0 && q.Len() >= writeQueueLowWater {
-		q.cond.Wait()
+	if w.priority || q.Len() < writeQueueHighWater {
+		return nil
+	}
+	drainSignal(w.deadlineCh)
+	for {
+		lowWater := q.lowWater()
+		if s.IsClosed() || q.stopped() {
+			return fmt.Errorf("conn.writeWindow: mux closed: %w", net.ErrClosed)
+		}
+		if q.Len() < writeQueueLowWater {
+			return nil
+		}
+		timer, timeout, expired := deadlineTimer(w.deadline.Load())
+		if expired {
+			return os.ErrDeadlineExceeded
+		}
+		select {
+		case <-lowWater:
+		case <-s.closeChan:
+		case <-w.closeOpCh:
+			stopTimer(timer)
+			return errWriteWindowClosed
+		case <-w.deadlineCh:
+		case <-timeout:
+			return os.ErrDeadlineExceeded
+		}
+		stopTimer(timer)
 	}
 }
 
@@ -269,7 +292,10 @@ func (s *Mux) writeSession() {
 			}
 			pack := s.writeQueue.TryPop()
 			if pack == nil {
-				_ = fw.Flush()
+				if err := fw.Flush(); err != nil {
+					s.writeFailed(err)
+					return
+				}
 				pack = s.writeQueue.Pop()
 			}
 			if pack == nil {
@@ -289,17 +315,27 @@ func (s *Mux) writeSession() {
 			err := pack.Pack(fw)
 			muxPack.Put(pack)
 			if err != nil {
-				reason := fmt.Sprintf("write session pack failed: %s", connx.DescribeNetError(err, s.conn))
-				logs.Error("mux: %s", reason)
-				_ = s.closeWithReason(reason)
-				break
+				s.writeFailed(err)
+				return
 			}
 
 			if flag == muxPingFlag || flag == muxPingReturn {
-				_ = fw.Flush()
+				if err = fw.Flush(); err != nil {
+					s.writeFailed(err)
+					return
+				}
 			}
 		}
 	}()
+}
+
+func (s *Mux) writeFailed(err error) {
+	if s.IsClosed() {
+		return
+	}
+	reason := fmt.Sprintf("write session pack failed: %s", connx.DescribeNetError(err, s.conn))
+	logs.Error("mux: %s", reason)
+	_ = s.closeWithReason(reason)
 }
 
 func (s *Mux) ping() {
@@ -388,6 +424,8 @@ func (s *Mux) readSession() {
 			s.connMap.Set(connection.connId, connection) //it has been Set before send ok
 			select {
 			case <-s.closeChan:
+				// the stream may have missed the close sweep of connMap
+				connection.closeLocal()
 				return
 			case s.newConnCh <- connection:
 			}
@@ -431,15 +469,7 @@ func (s *Mux) readSession() {
 				muxPack.Put(pack)
 				continue
 			case muxPingFlag: //ping
-				buf := pack.content[:pack.length]
-				if pack.length == 8 || (pack.length > 8 && isZero(buf[8:])) {
-					pad := 0
-					if PingMaxPad > 0 {
-						pad = rand.Intn(PingMaxPad)
-					}
-					buf = pack.content[:8+pad]
-				}
-				s.sendInfo(muxPingReturn, muxPing, false, buf)
+				s.sendInfo(muxPingReturn, muxPing, false, pingReturnPayload(pack))
 				windowBuff.Put(pack.content)
 				muxPack.Put(pack)
 				continue
@@ -500,6 +530,29 @@ func (s *Mux) readSession() {
 			muxPack.Put(pack)
 		}
 	}()
+}
+
+// pingReturnPayload builds the ping reply from a received ping. A ping
+// carrying no padding or zero padding is answered with a freshly chosen
+// zero padding; the peer only reads the first 8 bytes. Bytes beyond what was
+// received are zeroed so stale pool contents never leave this side.
+func pingReturnPayload(pack *muxPackager) []byte {
+	buf := pack.content[:pack.length]
+	if pack.length == 8 || (pack.length > 8 && isZero(buf[8:])) {
+		pad := 0
+		if PingMaxPad > 0 {
+			pad = rand.Intn(PingMaxPad)
+		}
+		n := 8 + pad
+		if n > maximumSegmentSize {
+			n = maximumSegmentSize
+		}
+		if n > int(pack.length) {
+			clear(pack.content[pack.length:n])
+		}
+		buf = pack.content[:n]
+	}
+	return buf
 }
 
 func isZero(buf []byte) bool {
@@ -597,20 +650,24 @@ func (s *Mux) closedErr(prefix string) error {
 	return fmt.Errorf("%s: %w", prefix, net.ErrClosed)
 }
 
-func (s *Mux) release() {
+// drainWriteQueue recycles every queued frame. Each buffer goes back to the
+// pool exactly once: content here, buf in muxPack.Put via reset.
+func (s *Mux) drainWriteQueue() {
 	for {
-		pack := s.writeQueue.TryPop()
+		pack := s.writeQueue.drainPop()
 		if pack == nil {
-			break
-		}
-		if pack.buf != nil {
-			windowBuff.Put(pack.buf)
+			return
 		}
 		if pack.content != nil {
 			windowBuff.Put(pack.content)
+			pack.content = nil
 		}
 		muxPack.Put(pack)
 	}
+}
+
+func (s *Mux) release() {
+	s.drainWriteQueue()
 	for {
 		connection := s.newConnQueue.TryPop()
 		if connection == nil {
