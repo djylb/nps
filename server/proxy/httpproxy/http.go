@@ -95,23 +95,25 @@ func (s *HttpServer) writeLimitErrorPage(rw http.ResponseWriter, errMsg string) 
 	return true
 }
 
+// abortRequest aborts the request being served without a response: it
+// closes the connection of an HTTP/1 request and resets the stream of an
+// HTTP/2 or HTTP/3 one, which, unlike HTTP/1, cannot be hijacked.
+func abortRequest() {
+	panic(http.ErrAbortHandler)
+}
+
 func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// Get host
 	host, err := file.GetDb().GetInfoByHost(r.Host, r)
 	if err != nil || host.IsClose {
-		//http.Error(w, "404 Host not found", http.StatusNotFound)
-		if s.ErrorAlways {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Connection", "close")
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write(s.ErrorContent)
-		} else {
-			if hj, ok := w.(http.Hijacker); ok {
-				c, _, _ := hj.Hijack()
-				_ = c.Close()
-			}
-		}
 		logs.Debug("Host not found: %s %s %s", r.URL.Scheme, r.Host, r.RequestURI)
+		if !s.ErrorAlways {
+			abortRequest()
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write(s.ErrorContent)
 		return
 	}
 
@@ -120,15 +122,11 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if proxy.IsGlobalBlackIp(clientIP) || common.IsBlackIp(clientIP, host.Client.VerifyKey, host.Client.BlackIpList) {
 		//http.Error(w, "403 Forbidden", http.StatusForbidden)
 		logs.Warn("Blocked IP: %s", clientIP)
-		if hj, ok := w.(http.Hijacker); ok {
-			c, _, _ := hj.Hijack()
-			_ = c.Close()
-		}
-		return
+		abortRequest()
 	}
 
 	// AutoSSL
-	if host.AutoSSL && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
+	if s.autoSSL(host) && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") {
 		s.Acme.HandleHTTPChallenge(w, r)
 		return
 	}

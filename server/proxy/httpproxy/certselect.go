@@ -119,3 +119,45 @@ func (s *HttpsServer) selectCert(host *file.Host, sni string) (*tls.Certificate,
 	}
 	return nil, errors.New("no certificate for " + sni)
 }
+
+// autoSSL reports whether TLS for host is terminated with certificates
+// obtained by AutoSSL: the entry enables it and the server listens on the
+// standard HTTP or HTTPS port, or AutoSSL is forced.
+func (s *HttpProxy) autoSSL(host *file.Host) bool {
+	return host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl)
+}
+
+// serverTLSConfig returns the configuration to terminate TLS for sni with:
+// that of AutoSSL if host enables it, a fresh one holding the certificate
+// selectCert picks otherwise, or, if host is nil because no entry serves
+// sni, one holding the default certificate, so the HTTP layer can answer
+// that the host is not found. It returns nil if there is no certificate.
+func (s *HttpsServer) serverTLSConfig(host *file.Host, sni string) (cfg *tls.Config, autoSSL bool) {
+	var cert *tls.Certificate
+	switch {
+	case host == nil:
+		if !s.hasDefaultCert {
+			return nil, false
+		}
+		c, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
+		if err != nil {
+			logs.Error("Failed to load certificate: %v", err)
+			return nil, false
+		}
+		cert = c
+	case s.autoSSL(host):
+		return s.certMagicTls, true
+	default:
+		c, err := s.selectCert(host, sni)
+		if err != nil {
+			return nil, false
+		}
+		cert = c
+	}
+	cfg = &tls.Config{
+		Certificates: []tls.Certificate{*cert},
+		NextProtos:   s.tlsNextProtos,
+	}
+	cfg.SetSessionTicketKeys(s.ticketKeys)
+	return cfg, false
+}

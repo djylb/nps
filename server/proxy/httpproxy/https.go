@@ -141,38 +141,34 @@ func (s *HttpsServer) Start() error {
 		}
 
 		host, err := file.GetDb().FindCertByHost(serverName)
-		if err != nil || host.IsClose {
-			_ = c.Close()
-			logs.Debug("The URL %s cannot be parsed! Remote address: %v", serverName, c.RemoteAddr())
-			return
+		if err != nil {
+			host = nil
 		}
 
-		if host.HttpsJustProxy {
+		if host != nil && host.HttpsJustProxy {
 			logs.Debug("Certificate handled by backend")
 			_ = c.SetDeadline(time.Time{})
 			s.handleHttpsProxy(host, c, rb, serverName)
 			return
 		}
 
-		var tlsConfig *tls.Config
+		tlsConfig, autoSSL := s.serverTLSConfig(host, serverName)
+		switch {
+		case tlsConfig != nil:
+		case host == nil:
+			_ = c.Close()
+			logs.Debug("The URL %s cannot be parsed! Remote address: %v", serverName, c.RemoteAddr())
+			return
+		default:
+			logs.Debug("Certificate handled by backend")
+			_ = c.SetDeadline(time.Time{})
+			s.handleHttpsProxy(host, c, rb, serverName)
+			return
+		}
 		handshakeTimeout := tlsHandshakeTimeout
-		if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
+		if autoSSL {
 			logs.Debug("Auto SSL is enabled")
-			tlsConfig = s.certMagicTls
 			handshakeTimeout = autoSSLHandshakeTimeout
-		} else {
-			cert, err := s.selectCert(host, serverName)
-			if err != nil {
-				logs.Debug("Certificate handled by backend")
-				_ = c.SetDeadline(time.Time{})
-				s.handleHttpsProxy(host, c, rb, serverName)
-				return
-			}
-			tlsConfig = &tls.Config{
-				Certificates: []tls.Certificate{*cert},
-			}
-			tlsConfig.NextProtos = s.tlsNextProtos
-			tlsConfig.SetSessionTicketKeys(s.ticketKeys)
 		}
 
 		acceptConn := conn.NewConn(c).SetRb(rb)
@@ -183,7 +179,7 @@ func (s *HttpsServer) Start() error {
 			return
 		}
 		_ = c.SetDeadline(time.Time{})
-		if host.TlsOffload {
+		if host != nil && host.TlsOffload {
 			s.handleTlsProxy(host, tlsConn, serverName)
 			return
 		}

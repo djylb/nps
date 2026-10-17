@@ -128,26 +128,19 @@ func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 
 func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config, error) {
 	host, err := file.GetDb().FindCertByHost(info.ServerName)
+	if err != nil {
+		host = nil
+	}
 	// TLS offload hosts forward the decrypted stream as raw TCP, which an
 	// HTTP/3 server cannot provide.
-	if err != nil || host == nil || host.HttpsJustProxy || host.TlsOffload || host.IsClose {
+	if host != nil && (host.HttpsJustProxy || host.TlsOffload) {
 		return nil, nil
 	}
 
-	if host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl) {
-		return s.certMagicTls, nil
+	config, autoSSL := s.serverTLSConfig(host, info.ServerName)
+	if config == nil || autoSSL {
+		return config, nil
 	}
-
-	cert, err := s.selectCert(host, info.ServerName)
-	if err != nil {
-		return nil, nil
-	}
-	config := &tls.Config{
-		Certificates: []tls.Certificate{*cert},
-	}
-	config.NextProtos = s.tlsNextProtos
-	config.SetSessionTicketKeys(s.ticketKeys)
-
 	if s.Http3Bridge {
 		config.NextProtos = s.http3NextProtos
 	}
