@@ -21,6 +21,16 @@ import (
 
 const clientConnectGraceWindow = 3 * time.Second
 
+// defaultLinkOpenTimeout bounds opening a link when the link carries no timeout.
+const defaultLinkOpenTimeout = 5 * time.Second
+
+func linkOpenTimeout(link *conn.Link) time.Duration {
+	if link.Option.Timeout > 0 {
+		return link.Option.Timeout
+	}
+	return defaultLinkOpenTimeout
+}
+
 func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error) {
 	if link == nil {
 		return nil, errors.New("link is nil")
@@ -96,7 +106,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		if link.ConnType == common.CONN_UDP {
 			network = "udp"
 		}
-		target, err = net.Dial(network, common.FormatAddress(link.Host))
+		target, err = net.DialTimeout(network, common.FormatAddress(link.Host), linkOpenTimeout(link))
 		return
 	}
 
@@ -157,7 +167,9 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		target, err = tun.NewConn()
 	case *quic.Conn:
 		var stream *quic.Stream
-		stream, err = tun.OpenStreamSync(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
+		stream, err = tun.OpenStreamSync(ctx)
+		cancel()
 		if err == nil {
 			target = conn.NewQuicStreamConn(stream, tun)
 		}
@@ -180,7 +192,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		if err := conn.ReadACK(target, link.Option.Timeout); err != nil {
 			_ = target.Close()
 			logs.Trace("ReadACK failed: %v", err)
-			_ = node.Close()
+			node.CloseIfTunnelCurrent(tunnel)
 			return nil, err
 		}
 	}

@@ -216,10 +216,9 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	if client.Rate == nil {
 		client.Rate = rate.NewRate(limit)
 		client.Rate.Start()
+	} else if client.Rate.Limit() != limit {
+		client.Rate.ResetLimit(limit)
 	} else {
-		if client.Rate.Limit() != limit {
-			client.Rate.SetLimit(limit)
-		}
 		client.Rate.Start()
 	}
 

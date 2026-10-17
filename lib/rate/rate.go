@@ -224,7 +224,13 @@ func (r *Rate) ReturnBucket(size int64) {
 	}
 }
 
+// Get takes size bytes from the bucket, sleeping until they are available.
 func (r *Rate) Get(size int64) {
+	r.Wait(size, nil)
+}
+
+// Wait is Get, except that it returns early once done is closed.
+func (r *Rate) Wait(size int64, done <-chan struct{}) {
 	if r == nil || size <= 0 || atomic.LoadInt32(&r.enabled) == 0 {
 		return
 	}
@@ -259,7 +265,7 @@ func (r *Rate) Get(size int64) {
 		if atomic.CompareAndSwapInt64(&r.tat, prev, next) {
 			wait := next - now
 			if wait > coalesceWaitNs {
-				sleepNs(wait, stopCh)
+				sleepNs(wait, stopCh, done)
 			}
 			return
 		}
@@ -281,11 +287,11 @@ func (r *Rate) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func sleepNs(waitNs int64, stopCh <-chan struct{}) {
+func sleepNs(waitNs int64, stopCh, done <-chan struct{}) {
 	if waitNs <= 0 {
 		return
 	}
-	if waitNs <= shortWaitNs || stopCh == nil {
+	if waitNs <= shortWaitNs || (stopCh == nil && done == nil) {
 		time.Sleep(time.Duration(waitNs))
 		return
 	}
@@ -294,6 +300,7 @@ func sleepNs(waitNs int64, stopCh <-chan struct{}) {
 	select {
 	case <-t.C:
 	case <-stopCh:
+	case <-done:
 	}
 	putTimer(t)
 }

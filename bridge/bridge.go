@@ -22,6 +22,27 @@ var (
 
 var bridgeHandshakeReadTimeout time.Duration = 10
 
+// bridgeDispatchTimeout bounds handing work to the server loop, so that a
+// stalled loop cannot pin client connections forever.
+const bridgeDispatchTimeout = 5 * time.Second
+
+// dispatch sends v on ch, giving up after bridgeDispatchTimeout.
+func dispatch[T any](ch chan<- T, v T) bool {
+	select {
+	case ch <- v:
+		return true
+	default:
+	}
+	t := time.NewTimer(bridgeDispatchTimeout)
+	defer t.Stop()
+	select {
+	case ch <- v:
+		return true
+	case <-t.C:
+		return false
+	}
+}
+
 type Bridge struct {
 	Client             *sync.Map
 	Register           *sync.Map

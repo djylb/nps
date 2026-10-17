@@ -100,7 +100,12 @@ loop:
 			} else {
 				if hh.NoStore {
 					hh.Update(h)
-					s.OpenHost <- hh
+					if !dispatch(s.OpenHost, hh) {
+						logs.Warn("Open host %s of client %d timed out", hh.Host, client.Id)
+						fail = true
+						_ = c.WriteAddFail()
+						break loop
+					}
 				}
 			}
 			_ = c.WriteAddOk()
@@ -208,7 +213,12 @@ loop:
 						break loop
 					}
 
-					s.OpenTask <- tl
+					if !dispatch(s.OpenTask, tl) {
+						logs.Warn("Open task %s of client %d timed out", tl.Remark, client.Id)
+						fail = true
+						_ = c.WriteAddFail()
+						break loop
+					}
 				} else if tt.NoStore {
 					tl.Id = tt.Id
 					if err := file.GetDb().ReserveTaskPassword(tl); err != nil {
@@ -218,7 +228,12 @@ loop:
 						break loop
 					}
 					tt.Update(tl)
-					s.OpenTask <- tt
+					if !dispatch(s.OpenTask, tt) {
+						logs.Warn("Open task %s of client %d timed out", tt.Remark, client.Id)
+						fail = true
+						_ = c.WriteAddFail()
+						break loop
+					}
 				}
 				_ = c.WriteAddOk()
 			}

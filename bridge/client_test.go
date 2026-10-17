@@ -1,9 +1,12 @@
 package bridge
 
 import (
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/conn"
 )
 
 func TestSetClientSelectMode(t *testing.T) {
@@ -88,5 +91,31 @@ func TestRemoveOfflineNodesRetriesBeforeRemoval(t *testing.T) {
 	}
 	if count := client.NodeCount(); count != 0 {
 		t.Fatalf("expected no nodes left, count=%d", count)
+	}
+}
+
+func TestNodeCloseIfSignalCurrentKeepsReplacedNode(t *testing.T) {
+	newPipe := func() *conn.Conn {
+		a, b := net.Pipe()
+		t.Cleanup(func() { _ = a.Close(); _ = b.Close() })
+		return conn.NewConn(a)
+	}
+	oldSignal, newSignal := newPipe(), newPipe()
+
+	node := NewNode("n4", "", 6)
+	node.AddSignal(oldSignal)
+	node.AddSignal(newSignal)
+
+	if node.CloseIfSignalCurrent(oldSignal) {
+		t.Fatal("outdated signal closed the node")
+	}
+	if node.GetSignal() != newSignal || newSignal.IsClosed() {
+		t.Fatal("outdated signal tore down the current signal")
+	}
+	if !node.CloseIfSignalCurrent(newSignal) {
+		t.Fatal("current signal did not close the node")
+	}
+	if node.GetSignal() != nil || !newSignal.IsClosed() {
+		t.Fatal("node not closed by its current signal")
 	}
 }

@@ -31,6 +31,7 @@ type Conn struct {
 	wBuf       *bytes.Buffer
 	mu         sync.Mutex
 	closed     uint32
+	hookMu     sync.Mutex
 	closeHooks []func(*Conn)
 }
 
@@ -54,8 +55,21 @@ func (s *Conn) OnClose(fn func(*Conn)) *Conn {
 	if fn == nil {
 		return s
 	}
-	s.closeHooks = append(s.closeHooks, fn)
+	s.hookMu.Lock()
+	if !s.IsClosed() {
+		s.closeHooks = append(s.closeHooks, fn)
+		s.hookMu.Unlock()
+		return s
+	}
+	s.hookMu.Unlock()
+	// already closed: Close has taken its hooks, so run this one now
+	runCloseHook(fn, s)
 	return s
+}
+
+func runCloseHook(fn func(*Conn), c *Conn) {
+	defer func() { _ = recover() }()
+	fn(c)
 }
 
 // GetHost reads one HTTP proxy request header from the connection and resolves
@@ -301,13 +315,12 @@ func (s *Conn) IsClosed() bool {
 
 func (s *Conn) Close() error {
 	if atomic.CompareAndSwapUint32(&s.closed, 0, 1) {
+		s.hookMu.Lock()
 		hooks := s.closeHooks
 		s.closeHooks = nil
+		s.hookMu.Unlock()
 		for _, h := range hooks {
-			func() {
-				defer func() { _ = recover() }()
-				h(s)
-			}()
+			runCloseHook(h, s)
 		}
 		// rbs is left alone: a Read running concurrently, as on any conn
 		// closed by another goroutine, may still be looking at it.

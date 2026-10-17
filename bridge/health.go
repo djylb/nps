@@ -70,9 +70,10 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 			})
 		}
 	}
-	//s.DelClient(id)
-	//_ = c.Close()
-	_ = node.Close()
+	if !node.CloseIfSignalCurrent(c) {
+		// a newer signal connection has taken over the node
+		_ = c.Close()
+	}
 	client.RemoveOfflineNodes(false)
 }
 

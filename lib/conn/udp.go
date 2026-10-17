@@ -10,6 +10,10 @@ import (
 	"github.com/djylb/nps/lib/common"
 )
 
+// smartUdpReadErrorEnqueueTimeout bounds how long a read loop waits to queue
+// its final error when the packet queue is full.
+const smartUdpReadErrorEnqueueTimeout = 250 * time.Millisecond
+
 type packet struct {
 	buf  []byte
 	n    int
@@ -60,13 +64,30 @@ func (s *SmartUdpConn) readLoop(c net.PacketConn) {
 		case s.packetCh <- pkt:
 			// delivered, buffer will be returned in ReadFrom or on flush
 		default:
-			common.BufPool.Put(buf)
+			if err == nil || !s.enqueueReadError(pkt) {
+				common.BufPool.Put(buf)
+			}
 		}
 
 		if err != nil {
 			return
 		}
 	}
+}
+
+// enqueueReadError waits briefly for room for the read error that ends a
+// read loop. Data packets are dropped when the queue is full, but the error
+// must reach ReadFrom, otherwise a consumer of a dead socket never learns it.
+func (s *SmartUdpConn) enqueueReadError(pkt packet) bool {
+	t := time.NewTimer(smartUdpReadErrorEnqueueTimeout)
+	defer t.Stop()
+	select {
+	case s.packetCh <- pkt:
+		return true
+	case <-s.quit:
+	case <-t.C:
+	}
+	return false
 }
 
 func (s *SmartUdpConn) ReadFrom(p []byte) (int, net.Addr, error) {

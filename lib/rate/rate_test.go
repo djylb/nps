@@ -125,3 +125,27 @@ func TestNilRateSafety(t *testing.T) {
 		t.Fatalf("nil MarshalJSON=%s, want null", string(b))
 	}
 }
+
+type discardRWC struct{}
+
+func (discardRWC) Read([]byte) (int, error)    { return 0, nil }
+func (discardRWC) Write(b []byte) (int, error) { return len(b), nil }
+func (discardRWC) Close() error                { return nil }
+
+func TestRateConnCloseWakesWaitingWrite(t *testing.T) {
+	t.Parallel()
+
+	c := NewRateConn(discardRWC{}, NewRate(1))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = c.Write(make([]byte, 1024))
+	}()
+	time.Sleep(50 * time.Millisecond)
+	_ = c.Close()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Write still waiting for rate budget after Close")
+	}
+}

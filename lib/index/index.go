@@ -133,13 +133,37 @@ func (idx *AnyIntIndex) Get(key int) (value interface{}, ok bool) {
 	return idx.data.Load(key)
 }
 
-func (idx *AnyIntIndex) Remove(key int) {
-	idx.data.Delete(key)
+// LoadOrStore returns the existing value for key if present; otherwise it
+// stores and returns value. loaded reports whether the value was present.
+func (idx *AnyIntIndex) LoadOrStore(key int, value interface{}) (actual interface{}, loaded bool) {
+	return idx.data.LoadOrStore(key, value)
 }
 
+// idleConnCloser is implemented by cached values that hold idle connections,
+// such as *http.Transport.
+type idleConnCloser interface {
+	CloseIdleConnections()
+}
+
+func closeIdleConns(value interface{}) {
+	if c, ok := value.(idleConnCloser); ok {
+		c.CloseIdleConnections()
+	}
+}
+
+// Remove deletes key and closes the idle connections held by its value.
+func (idx *AnyIntIndex) Remove(key int) {
+	if v, ok := idx.data.LoadAndDelete(key); ok {
+		closeIdleConns(v)
+	}
+}
+
+// Clear deletes every key and closes the idle connections held by the values.
 func (idx *AnyIntIndex) Clear() {
-	idx.data.Range(func(k, _ interface{}) bool {
-		idx.data.Delete(k)
+	idx.data.Range(func(k, v interface{}) bool {
+		if idx.data.CompareAndDelete(k, v) {
+			closeIdleConns(v)
+		}
 		return true
 	})
 }

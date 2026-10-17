@@ -365,7 +365,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 						logs.Trace("Tunnel connection closed, client %d, remote %v", id, addr)
 					}
 					_ = c.Close()
-					_ = node.Close()
+					node.CloseIfTunnelCurrent(anyConn)
 					removed := client.RemoveOfflineNodes(false)
 					logs.Warn(
 						"Disconnect summary event=disconnect_summary role=server client=%d uuid=%s remote=%v removed=%d remaining=%d reason=%q",
@@ -475,7 +475,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			_ = c.Close()
 			return
 		}
-		s.SecretChan <- conn.NewSecret(string(b), c)
+		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c)) {
+			logs.Warn("secret connection from %v dropped: server busy", addr)
+			_ = c.Close()
+			return
+		}
 
 	case common.WORK_FILE:
 		logs.Warn("clientId %d not support file", id)

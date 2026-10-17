@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -656,41 +657,63 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 	return nil
 }
 
-func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (rawConn net.Conn, err error) {
-	if proxyUrl != "" {
-		u, er := url.Parse(proxyUrl)
-		if er != nil {
-			return nil, er
-		}
-		switch u.Scheme {
-		case "socks5":
-			dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-			n, er := proxy.FromURL(u, dialer)
-			if er != nil {
-				return nil, er
-			}
-			rawConn, err = n.Dial("tcp", server)
-		default:
-			rawConn, err = NewHttpProxyConn(u, server, timeout, localIP)
-		}
-	} else {
-		dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-		n := proxy.FromEnvironmentUsing(dialer)
-		rawConn, err = n.Dial("tcp", server)
+// GetProxyConn dials server directly, through proxyUrl, or through the proxy
+// configured in the environment. The whole dial, including any proxy
+// handshake, is bounded by timeout.
+func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (net.Conn, error) {
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
+	dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
+	if proxyUrl == "" {
+		return dialProxyContext(ctx, proxy.FromEnvironmentUsing(dialer), server)
+	}
+	u, err := url.Parse(proxyUrl)
 	if err != nil {
 		return nil, err
 	}
-	return rawConn, nil
+	if u.Scheme == "socks5" {
+		d, err := proxy.FromURL(u, dialer)
+		if err != nil {
+			return nil, err
+		}
+		return dialProxyContext(ctx, d, server)
+	}
+	return newHttpProxyConnContext(ctx, dialer, u, server)
+}
+
+// dialProxyContext dials through d honouring ctx. Every dialer built by
+// golang.org/x/net/proxy implements ContextDialer, which applies the ctx
+// deadline to the SOCKS5 handshake as well.
+func dialProxyContext(ctx context.Context, d proxy.Dialer, server string) (net.Conn, error) {
+	if cd, ok := d.(proxy.ContextDialer); ok {
+		return cd.DialContext(ctx, "tcp", server)
+	}
+	return d.Dial("tcp", server)
 }
 
 // NewHttpProxyConn http proxy connection
 func NewHttpProxyConn(proxyURL *url.URL, remoteAddr string, timeout time.Duration, localIP string) (net.Conn, error) {
-	//proxyConn, err := net.DialTimeout("tcp", proxyURL.Host, timeout)
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	dialer := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-	proxyConn, err := dialer.Dial("tcp", proxyURL.Host)
+	return newHttpProxyConnContext(ctx, dialer, proxyURL, remoteAddr)
+}
+
+func newHttpProxyConnContext(ctx context.Context, dialer *net.Dialer, proxyURL *url.URL, remoteAddr string) (net.Conn, error) {
+	proxyConn, err := dialer.DialContext(ctx, "tcp", proxyURL.Host)
 	if err != nil {
 		return nil, err
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = proxyConn.SetDeadline(deadline)
 	}
 	req := &http.Request{
 		Method: http.MethodConnect,
@@ -701,7 +724,7 @@ func NewHttpProxyConn(proxyURL *url.URL, remoteAddr string, timeout time.Duratio
 	if proxyURL.User != nil {
 		username := proxyURL.User.Username()
 		password, _ := proxyURL.User.Password()
-		req.SetBasicAuth(username, password)
+		req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
 	}
 	if err := req.Write(proxyConn); err != nil {
 		_ = proxyConn.Close()
@@ -712,11 +735,12 @@ func NewHttpProxyConn(proxyURL *url.URL, remoteAddr string, timeout time.Duratio
 		_ = proxyConn.Close()
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_ = proxyConn.Close()
 		return nil, errors.New("proxy CONNECT failed: " + resp.Status)
 	}
+	_ = proxyConn.SetDeadline(time.Time{})
 	return proxyConn, nil
 }
 

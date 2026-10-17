@@ -36,13 +36,15 @@ func NewHealthChecker(parentCtx context.Context, healths []*file.Health, c *conn
 	hq := &sheap.IntHeap{}
 	heap.Init(hq)
 	now := time.Now()
-	for _, hc := range healths {
-		if hc.HealthMaxFail > 0 && hc.HealthCheckInterval > 0 && hc.HealthCheckTimeout > 0 {
-			//hc.HealthNextTime = now.Add(time.Duration(hc.HealthCheckInterval) * time.Second)
-			hc.HealthNextTime = now
-			heap.Push(hq, hc.HealthNextTime.Unix())
-			hc.HealthMap = make(map[string]int)
+	valid := make([]*file.Health, 0, len(healths))
+	for _, h := range healths {
+		if !healthConfigValid(h) {
+			continue
 		}
+		h.HealthNextTime = now
+		heap.Push(hq, h.HealthNextTime.Unix())
+		h.HealthMap = make(map[string]int)
+		valid = append(valid, h)
 	}
 
 	tmr := time.NewTimer(0)
@@ -53,12 +55,18 @@ func NewHealthChecker(parentCtx context.Context, healths []*file.Health, c *conn
 	return &HealthChecker{
 		ctx:        ctx,
 		cancel:     cancel,
-		healths:    healths,
+		healths:    valid,
 		serverConn: c,
 		heap:       hq,
 		timer:      tmr,
 		client:     &http.Client{},
 	}
+}
+
+// healthConfigValid reports whether h can be scheduled: a zero fail count,
+// interval or timeout would divide by zero or never time out.
+func healthConfigValid(h *file.Health) bool {
+	return h != nil && h.HealthMaxFail > 0 && h.HealthCheckInterval > 0 && h.HealthCheckTimeout > 0
 }
 
 func (hc *HealthChecker) Start() {

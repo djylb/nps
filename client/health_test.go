@@ -27,6 +27,9 @@ func TestNewHealthCheckerInitializesOnlyValidHealthConfigs(t *testing.T) {
 	if got := hc.heap.Len(); got != 1 {
 		t.Fatalf("expected only one valid health entry in heap, got %d", got)
 	}
+	if len(hc.healths) != 1 || hc.healths[0] != healths[0] {
+		t.Fatalf("expected only the valid health entry to be scheduled, got %d entries", len(hc.healths))
+	}
 	if healths[0].HealthMap == nil {
 		t.Fatal("expected valid health entry to initialize HealthMap")
 	}

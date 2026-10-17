@@ -272,13 +272,41 @@ func (n *Node) Retry() bool {
 func (n *Node) Close() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	n.closeLocked()
+	return nil
+}
+
+// CloseIfSignalCurrent closes the node only while signal is still its signal
+// connection, so that an outdated connection exiting cannot tear down a node
+// that has been taken over by a newer connection with the same UUID.
+func (n *Node) CloseIfSignalCurrent(signal *conn.Conn) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.signal != signal {
+		return false
+	}
+	n.closeLocked()
+	return true
+}
+
+// CloseIfTunnelCurrent is CloseIfSignalCurrent for the tunnel.
+func (n *Node) CloseIfTunnelCurrent(tunnel any) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.tunnel != tunnel {
+		return false
+	}
+	n.closeLocked()
+	return true
+}
+
+func (n *Node) closeLocked() {
 	_ = n.closeTunnel("node close")
 	if n.signal != nil {
 		_ = n.signal.Close()
 		n.signal = nil
 	}
 	n.retryTime = retryTimeMax
-	return nil
 }
 
 func (n *Node) closeTunnel(err string) error {
@@ -398,10 +426,7 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 		if c.InConnectGraceWindow(connectGraceProtectWindow) {
 			return nil, false
 		}
-		_ = node.Close()
-		c.mu.Lock()
-		c.removeNode(uuid)
-		c.mu.Unlock()
+		c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
 	}
 	return nil, false
 }
@@ -441,37 +466,34 @@ func (c *Client) CheckNode() *Node {
 			lastUUID = nextUUID
 		}
 		c.mu.RLock()
-		raw, ok := c.nodes.Load(lastUUID)
+		raw, _ := c.nodes.Load(lastUUID)
 		c.mu.RUnlock()
-		if ok {
-			node, ok := raw.(*Node)
-			if ok {
-				if !node.IsOffline() {
-					if !first {
-						logs.Info("Client %d switched to backup node %s", c.Id, lastUUID)
-					}
-					return node
+		node, _ := raw.(*Node)
+		if node != nil {
+			if !node.IsOffline() {
+				if !first {
+					logs.Info("Client %d switched to backup node %s", c.Id, lastUUID)
 				}
-				if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
-					first = false
-					graceChecksLeft--
-					if graceChecksLeft <= 0 {
-						return nil
-					}
-					c.mu.Lock()
-					c.LastUUID = ""
-					c.mu.Unlock()
-					continue
+				return node
+			}
+			if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+				first = false
+				graceChecksLeft--
+				if graceChecksLeft <= 0 {
+					return nil
 				}
-				_ = node.Close()
+				c.mu.Lock()
+				c.LastUUID = ""
+				c.mu.Unlock()
+				continue
 			}
 		}
 		first = false
-		c.mu.Lock()
-		removed := c.LastUUID
-		c.removeNode(removed)
-		c.mu.Unlock()
-		logs.Info("Client %d removed node %s", c.Id, removed)
+		// If the entry changed or came back online meanwhile, the next
+		// iteration re-evaluates it.
+		if c.closeAndRemoveNodeIfCurrent(lastUUID, node, (*Node).IsOffline) {
+			logs.Info("Client %d removed node %s", c.Id, lastUUID)
+		}
 	}
 }
 
@@ -548,25 +570,43 @@ func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGra
 		}
 		return true
 	})
-	if len(toRemove) == 0 {
-		return 0
-	}
 	for _, it := range toRemove {
-		_ = it.node.Close()
-	}
-	c.mu.Lock()
-	for _, it := range toRemove {
-		if v, ok := c.nodes.Load(it.uuid); ok && v == it.node && !it.node.IsOnline() {
-			c.removeNode(it.uuid)
+		if c.closeAndRemoveNodeIfCurrent(it.uuid, it.node, (*Node).IsOffline) {
 			removed++
 			logs.Info("Client %d removed offline node %s", c.Id, it.uuid)
 		}
 	}
-	c.mu.Unlock()
 	if removed > 0 {
 		logs.Info("Client %d pruned %d offline node(s)", c.Id, removed)
 	}
 	return removed
+}
+
+func nodeNotOnline(n *Node) bool { return !n.IsOnline() }
+
+// closeAndRemoveNodeIfCurrent removes uuid only while it still maps to node
+// and dead(node) still holds, both checked under the client lock, and closes
+// node after the lock is released. A nil node removes a uuid whose entry is
+// missing or invalid, which keeps the node list in sync with the node map.
+func (c *Client) closeAndRemoveNodeIfCurrent(uuid string, node *Node, dead func(*Node) bool) bool {
+	c.mu.Lock()
+	raw, _ := c.nodes.Load(uuid)
+	current, _ := raw.(*Node)
+	if node != nil {
+		if current != node || !dead(node) {
+			c.mu.Unlock()
+			return false
+		}
+	} else if current != nil {
+		c.mu.Unlock()
+		return false
+	}
+	c.removeNode(uuid)
+	c.mu.Unlock()
+	if node != nil {
+		_ = node.Close()
+	}
+	return true
 }
 
 func (c *Client) removeNode(uuid string) {

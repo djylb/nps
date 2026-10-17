@@ -215,7 +215,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if v, ok := s.HttpProxyCache.Get(host.Id); ok {
 		tr = v.(*http.Transport)
 	} else {
-		tr = &http.Transport{
+		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, &http.Transport{
 			ResponseHeaderTimeout: s.ResponseHeaderTimeout,
 			DisableKeepAlives:     host.CompatMode,
 			DialContext:           s.DialContext,
@@ -223,8 +223,8 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 			MaxIdleConns:          1024,
 			MaxIdleConnsPerHost:   256,
 			IdleConnTimeout:       90 * time.Second,
-		}
-		s.HttpProxyCache.Add(host.Id, tr)
+		})
+		tr = v.(*http.Transport)
 	}
 
 	rp := &httputil.ReverseProxy{
@@ -497,6 +497,14 @@ func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Res
 	_, _ = io.Copy(w, resp.Body)
 }
 
+const (
+	// serverReadHeaderTimeout bounds reading a request header, so that slow
+	// clients cannot hold connections open without sending a request.
+	serverReadHeaderTimeout = 10 * time.Second
+	// serverIdleTimeout closes keep-alive connections idle between requests.
+	serverIdleTimeout = 90 * time.Second
+)
+
 func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 	return &http.Server{
 		Addr: ":" + strconv.Itoa(port),
@@ -504,6 +512,8 @@ func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 			r.URL.Scheme = scheme
 			s.handleProxy(w, r)
 		}),
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		IdleTimeout:       serverIdleTimeout,
 		// Disable HTTP/2.
 		//TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}

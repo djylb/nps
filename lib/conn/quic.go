@@ -91,5 +91,10 @@ func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config,
 		_ = packetConn.Close()
 		return nil, err
 	}
+	// quic.Dial does not take ownership of a caller-supplied PacketConn.
+	go func() {
+		<-sess.Context().Done()
+		_ = packetConn.Close()
+	}()
 	return sess, nil
 }

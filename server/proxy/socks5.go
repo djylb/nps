@@ -22,6 +22,10 @@ const (
 	associateMethod = 3
 
 	socks5AssociateControlPollInterval = time.Second
+
+	// socks5HandshakeTimeout bounds reading the greeting, credentials and
+	// request, so that a slow or silent client cannot hold the connection.
+	socks5HandshakeTimeout = 10 * time.Second
 )
 
 const (
@@ -58,6 +62,7 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 		_ = c.Close()
 		return
 	}
+	_ = c.SetReadDeadline(time.Time{})
 
 	switch request.Command {
 	case connectMethod:
@@ -201,6 +206,8 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	httpEnabled, socksEnabled := effectiveMixProxyFlags(s.Task)
 
+	// cleared once the socks5 request is read; the http path sets its own
+	_ = c.SetReadDeadline(time.Now().Add(socks5HandshakeTimeout))
 	var header [2]byte
 	if _, err := io.ReadFull(c, header[:]); err != nil {
 		logs.Warn("negotiation err %v", err)
