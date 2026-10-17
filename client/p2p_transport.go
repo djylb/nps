@@ -192,42 +192,27 @@ func p2pLocalPin() string {
 	return crypt.EncodePeerTransportData(cert.Certificate[0])
 }
 
-// verifyP2PPeer accepts only the peer certificate with the pin the peer sent
-// through the coordinator.
-func verifyP2PPeer(pin string) func(tls.ConnectionState) error {
-	return func(cs tls.ConnectionState) error {
-		if len(cs.PeerCertificates) == 0 || !crypt.VerifyPeerTransportData(pin, cs.PeerCertificates[0].Raw) {
-			return errors.New("p2p peer certificate does not match its pin")
-		}
-		return nil
-	}
-}
-
 // p2pServerTLS is the provider's QUIC TLS configuration: the visitor must
-// present the certificate with pin. No session tickets: every connection
-// authenticates afresh.
+// present the certificate with pin, the one the visitor sent through the
+// coordinator. No session tickets: every connection authenticates afresh.
 func p2pServerTLS(pin string) *tls.Config {
-	return &tls.Config{
+	return crypt.PinPeerTransportData(pin).ServerConfig(&tls.Config{
 		MinVersion:             tls.VersionTLS13,
 		Certificates:           []tls.Certificate{crypt.GetCert()},
-		ClientAuth:             tls.RequireAnyClientCert,
-		VerifyConnection:       verifyP2PPeer(pin),
 		SessionTicketsDisabled: true,
 		NextProtos:             []string{p2pALPN},
-	}
+	})
 }
 
-// p2pClientTLS is the visitor's QUIC TLS configuration: the pin replaces the
-// chain verification.
+// p2pClientTLS is the visitor's QUIC TLS configuration: the provider's pin,
+// sent through the coordinator, replaces the chain verification.
 func p2pClientTLS(pin string) *tls.Config {
-	return &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		Certificates:       []tls.Certificate{crypt.GetCert()},
-		InsecureSkipVerify: true, // the pin replaces the chain verification
-		VerifyConnection:   verifyP2PPeer(pin),
-		ServerName:         crypt.GetFakeDomainName(),
-		NextProtos:         []string{p2pALPN},
-	}
+	return crypt.PinPeerTransportData(pin).ClientConfig(&tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{crypt.GetCert()},
+		ServerName:   crypt.GetFakeDomainName(),
+		NextProtos:   []string{p2pALPN},
+	})
 }
 
 // p2pSocket checks that sess settled on a pinned QUIC transport and returns

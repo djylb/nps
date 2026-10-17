@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/cache"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -35,9 +35,8 @@ type HttpsServer struct {
 	httpsListener      net.Listener
 	httpsServeListener *HttpsListener
 	httpsServer        *http.Server
-	cert               *cache.CertManager
+	cert               *tlsconn.CertFiles
 	certMagicTls       *tls.Config
-	defaultCertHash    string
 	defaultCertFile    string
 	defaultKeyFile     string
 	ticketKeys         [][32]byte
@@ -57,13 +56,7 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 	}
 
 	_, https.hasDefaultCert = common.LoadCert(https.defaultCertFile, https.defaultKeyFile)
-	https.defaultCertHash = crypt.FNV1a64("file", https.defaultCertFile, https.defaultKeyFile)
-
-	https.cert = cache.NewCertManager(
-		cfg.Proxy.SSL.CacheMax,
-		time.Duration(cfg.Proxy.SSL.CacheReload)*time.Second,
-		time.Duration(cfg.Proxy.SSL.CacheIdle)*time.Minute,
-	)
+	https.cert = newCertFiles(cfg.Proxy.SSL)
 	https.httpsServeListener = NewHttpsListener(l)
 	https.httpsServer = https.NewServer(https.HttpsPort, "https")
 
@@ -91,6 +84,38 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 	}()
 
 	return https
+}
+
+// newCertFiles returns the cache of the certificates of the hosts, sized and
+// timed by the ssl_cache settings: ssl_cache_reload is how often, in
+// seconds, the files are checked for changes, never if zero.
+func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
+	check := time.Duration(cfg.CacheReload) * time.Second
+	if check <= 0 {
+		check = -1
+	}
+	return &tlsconn.CertFiles{
+		MaxEntries:    cfg.CacheMax,
+		IdleTimeout:   time.Duration(cfg.CacheIdle) * time.Minute,
+		CheckInterval: check,
+		OnError: func(err *tlsconn.CertError) {
+			logs.Warn("Failed to reload certificate, the previous one stays in use: %v", err)
+		},
+	}
+}
+
+// loadCert returns the certificate of certFile and keyFile: of the files,
+// relative ones in the run directory, if certType is "file", or of the PEM
+// data they hold if it is "text".
+func (s *HttpsServer) loadCert(certFile, keyFile, certType string) (*tls.Certificate, error) {
+	switch certType {
+	case "file":
+		return s.cert.LoadFiles(common.GetPath(certFile), common.GetPath(keyFile))
+	case "text":
+		return s.cert.LoadPEM([]byte(certFile), []byte(keyFile))
+	default:
+		return nil, errors.New("cert must be 'file' or 'text'")
+	}
 }
 
 func (s *HttpsServer) Start() error {
@@ -136,10 +161,10 @@ func (s *HttpsServer) Start() error {
 			tlsConfig = s.certMagicTls
 			handshakeTimeout = autoSSLHandshakeTimeout
 		} else {
-			cert, err := s.cert.Get(host.CertFile, host.KeyFile, host.CertType, host.CertHash)
+			cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
 			if err != nil {
 				if s.hasDefaultCert {
-					cert, err = s.cert.Get(s.defaultCertFile, s.defaultKeyFile, "file", s.defaultCertHash)
+					cert, err = s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
 					if err != nil {
 						logs.Error("Failed to load certificate: %v", err)
 					}
@@ -261,7 +286,7 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 func (s *HttpsServer) Close() error {
 	_ = s.httpsServer.Close()
 	_ = s.httpsServeListener.Close()
-	s.cert.Stop()
+	s.cert.Clear()
 	s.httpsStatus = false
 	return s.httpsListener.Close()
 }

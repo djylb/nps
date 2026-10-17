@@ -4,32 +4,30 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
-	"math/big"
 	"net"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/logs"
 )
 
 var (
 	cert       tls.Certificate
 	rsaKey     *rsa.PrivateKey
-	trustedSet sync.Map // key:string -> struct{}
-	vkeyToFp   sync.Map // key:vkey(string) -> fpHex(string)
 	SkipVerify = false
+
+	trusted   tlsconn.PinSet // bridge certificates of vkeyToPin
+	trustedMu sync.Mutex
+	vkeyToPin = make(map[string][sha256.Size]byte)
 )
 
 func InitTls(customCert tls.Certificate) {
@@ -39,11 +37,8 @@ func InitTls(customCert tls.Certificate) {
 	} else {
 		commonName := gofakeit.DomainName()
 		organization := gofakeit.Company()
-		c, k, err := generateKeyPair(commonName, organization)
-		if err == nil {
-			cert, err = tls.X509KeyPair(c, k)
-		}
-		if err != nil {
+		var err error
+		if cert, err = newSelfSigned(commonName, organization); err != nil {
 			logs.Error("Error initializing crypto certs %v", err)
 		}
 	}
@@ -132,11 +127,13 @@ func ParseLoginPayload(base64Cipher string) (*LoginPayload, error) {
 	return &lp, nil
 }
 
+// GetCertFingerprint returns the SHA-256 of certificate's leaf, as the
+// bridge sends it to the client during the handshake, or nil if it has none.
 func GetCertFingerprint(certificate tls.Certificate) []byte {
 	if len(certificate.Certificate) == 0 {
 		return nil
 	}
-	sum := sha256.Sum256(certificate.Certificate[0])
+	sum := tlsconn.Fingerprint(certificate.Certificate[0])
 	return sum[:]
 }
 
@@ -146,59 +143,73 @@ func EncodePeerTransportData(certificateDER []byte) string {
 	if len(certificateDER) == 0 {
 		return ""
 	}
-	sum := sha256.Sum256(certificateDER)
+	sum := tlsconn.Fingerprint(certificateDER)
 	return hex.EncodeToString(sum[:])
 }
 
-// VerifyPeerTransportData reports whether certificateDER has the pin
-// transportData (EncodePeerTransportData).
-func VerifyPeerTransportData(transportData string, certificateDER []byte) bool {
-	want, err := hex.DecodeString(transportData)
-	if err != nil || len(want) != sha256.Size || len(certificateDER) == 0 {
-		return false
+// PinPeerTransportData returns the pin set holding the certificate pin
+// transportData (EncodePeerTransportData), or an empty set, which trusts no
+// certificate, if transportData is not a pin.
+func PinPeerTransportData(transportData string) *tlsconn.PinSet {
+	pins := &tlsconn.PinSet{}
+	if pin, ok := parsePin(transportData); ok {
+		pins.Add(pin)
 	}
-	sum := sha256.Sum256(certificateDER)
-	return subtle.ConstantTimeCompare(want, sum[:]) == 1
+	return pins
 }
 
+func parsePin(s string) (pin [sha256.Size]byte, ok bool) {
+	if hex.DecodedLen(len(s)) != len(pin) {
+		return pin, false
+	}
+	_, err := hex.Decode(pin[:], []byte(s))
+	return pin, err == nil
+}
+
+// AddTrustedCert trusts the bridge certificate with fingerprint fp for the
+// client with vkey, in place of the one trusted for it before.
 func AddTrustedCert(vkey string, fp []byte) {
-	hexFp := hex.EncodeToString(fp)
-	if oldRaw, loaded := vkeyToFp.Load(vkey); loaded {
-		oldFp := oldRaw.(string)
-		if oldFp == hexFp {
+	trustedMu.Lock()
+	defer trustedMu.Unlock()
+	old, had := vkeyToPin[vkey]
+	if len(fp) != sha256.Size {
+		delete(vkeyToPin, vkey)
+	} else {
+		pin := [sha256.Size]byte(fp)
+		if had && old == pin {
 			return
 		}
-		trustedSet.Delete(oldFp)
+		vkeyToPin[vkey] = pin
+		trusted.Add(pin)
 	}
-	vkeyToFp.Store(vkey, hexFp)
-	trustedSet.LoadOrStore(hexFp, struct{}{})
+	if had && !pinInUse(old) {
+		trusted.Remove(old)
+	}
+}
+
+// pinInUse reports whether a vkey still trusts pin. trustedMu is held.
+func pinInUse(pin [sha256.Size]byte) bool {
+	for _, p := range vkeyToPin {
+		if p == pin {
+			return true
+		}
+	}
+	return false
 }
 
 func NewTlsServerConn(conn net.Conn) net.Conn {
-	var err error
-	if err != nil {
-		logs.Error("%v", err)
-		os.Exit(0)
-		return nil
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cert}}
-	return tls.Server(conn, config)
+	return tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}})
 }
 
+// NewTlsClientConn returns a TLS client on conn that accepts only bridge
+// certificates trusted by AddTrustedCert, or any if SkipVerify.
 func NewTlsClientConn(conn net.Conn) net.Conn {
 	if SkipVerify {
 		return tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: true,
 		})
 	}
-
-	return tls.Client(conn, &tls.Config{
-		InsecureSkipVerify: true,
-		VerifyPeerCertificate: verifyFingerprint(func(fp string) bool {
-			_, ok := trustedSet.Load(fp)
-			return ok
-		}),
-	})
+	return tls.Client(conn, trusted.ClientConfig(nil))
 }
 
 // NewPinnedTlsClientConfig returns a TLS client configuration that accepts
@@ -206,67 +217,24 @@ func NewTlsClientConn(conn net.Conn) net.Conn {
 // sent it, encrypted with the vkey, during the bridge handshake. It ignores
 // SkipVerify: the fingerprint is authenticated by the vkey itself.
 func NewPinnedTlsClientConfig(fingerprint []byte) *tls.Config {
-	want := hex.EncodeToString(fingerprint)
-	return &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true, // the fingerprint replaces the chain verification
-		VerifyPeerCertificate: verifyFingerprint(func(fp string) bool {
-			return len(fingerprint) > 0 && subtle.ConstantTimeCompare([]byte(want), []byte(fp)) == 1
-		}),
+	pins := &tlsconn.PinSet{}
+	if len(fingerprint) == sha256.Size {
+		pins.Add([sha256.Size]byte(fingerprint))
 	}
+	return pins.ClientConfig(&tls.Config{MinVersion: tls.VersionTLS13})
 }
 
-// verifyFingerprint checks the leaf certificate's hex SHA-256 with trusted.
-func verifyFingerprint(trusted func(fp string) bool) func([][]byte, [][]*x509.Certificate) error {
-	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-		if len(rawCerts) == 0 {
-			return errors.New("no server certificate")
-		}
-		sum := sha256.Sum256(rawCerts[0])
-		if trusted(hex.EncodeToString(sum[:])) {
-			return nil
-		}
-		return errors.New("untrusted server certificate")
-	}
-}
-
-func generateKeyPair(commonName, organization string) (rawCert, rawKey []byte, err error) {
-	// Create private key and self-signed certificate
-	// Adapted from https://golang.org/src/crypto/tls/generate_cert.go
-
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+// newSelfSigned returns a ten-year self-signed server certificate with a
+// fresh RSA key, which the web login also uses to decrypt credentials.
+func newSelfSigned(commonName, organization string) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return
+		return tls.Certificate{}, err
 	}
-	validFor := time.Hour * 24 * 365 * 10 // ten years
-	notBefore := time.Now()
-	notAfter := notBefore.Add(validFor)
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return
-	}
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{organization},
-			CommonName:   commonName,
-			Country:      []string{"US"},
-		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return
-	}
-
-	rawCert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	rawKey = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	return
+	return tlsconn.NewSelfSigned(tlsconn.SelfSignedOptions{
+		Hosts:        []string{commonName},
+		Organization: organization,
+		ValidFor:     10 * 365 * 24 * time.Hour,
+		Key:          key,
+	})
 }

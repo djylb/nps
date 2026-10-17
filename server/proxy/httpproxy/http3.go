@@ -138,10 +138,10 @@ func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config
 		return s.certMagicTls, nil
 	}
 
-	cert, err := s.cert.Get(host.CertFile, host.KeyFile, host.CertType, host.CertHash)
+	cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
 	if err != nil {
 		if s.hasDefaultCert {
-			cert, err = s.cert.Get(s.defaultCertFile, s.defaultKeyFile, "file", s.defaultCertHash)
+			cert, err = s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
 			if err != nil {
 				logs.Error("Failed to load certificate: %v", err)
 			}

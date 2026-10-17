@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxydial"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -291,7 +291,7 @@ func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, ve
 	} else {
 		verified = true
 	}
-	sum := sha256.Sum256(leaf.Raw)
+	sum := tlsconn.Fingerprint(leaf.Raw)
 	return sum[:], verified
 }
 
