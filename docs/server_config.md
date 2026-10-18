@@ -67,6 +67,8 @@ nps.exe -conf_path=D:\test\nps
 | `http_proxy_ip`               | HTTP 代理监听地址（默认 `0.0.0.0`）                                                               |
 | `http_proxy_port`             | HTTP 代理监听端口（默认 `80`，留空不启用）                                                              |
 | `https_proxy_port`            | HTTPS 代理监听端口（默认 `443`，留空不启用）                                                            |
+| `http_proxy_access_port`      | 域名转发 HTTP 对外访问端口，仅用于管理页面生成链接（默认同 `http_proxy_port`，前面有反代或端口映射时填写） |
+| `https_proxy_access_port`     | 域名转发 HTTPS 对外访问端口，仅用于管理页面生成链接（默认同 `https_proxy_port`） |
 | `http3_proxy_port`            | HTTP/3 代理监听端口（默认 `https_proxy_port`，配置`0`关闭）                                            |
 | `http_proxy_response_timeout` | HTTP 后端响应头超时（单位 s，默认值 100）                                                              |
 | `force_auto_ssl`              | 强制自动申请证书，需自行解决80、443端口问题（默认 `false`）                                                    |

@@ -37,6 +37,16 @@
 </div>
 
 <script>
+    // hostURL links a host the way visitors reach it: over https unless the
+    // host is http only or the https proxy is off, on the access port, which
+    // is left out when it is the default port of the scheme.
+    function hostURL(row) {
+        var https = row.Scheme === 'https' || (row.Scheme !== 'http' && {{.httpsEnabled}});
+        var port = https ? {{.httpsAccessPort}} : {{.httpAccessPort}};
+        var omit = !port || (https ? port === 443 : port === 80);
+        return (https ? 'https://' : 'http://') + row.Host + (omit ? '' : ':' + port) + (row.Location || '/');
+    }
+
     /*bootstrap table*/
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
@@ -162,8 +172,7 @@
                 visible: true, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    hosturl = ((row.Scheme == 'http') ? 'http://' : 'https://') + row.Host + ((row.Scheme == 'http') ? ":{{.httpProxyPort}}" : ":{{.httpsProxyPort}}") + row.Location
-                    return '<a href="' + hosturl + '" target="_blank">' + row.Host + '</a>'
+                    return '<a href="' + hostURL(row) + '" target="_blank">' + row.Host + '</a>'
                 }
             },
             {
@@ -424,9 +433,8 @@
                 visible: true, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    hosturl = ((row.Scheme == 'http') ? 'http://' : 'https://') + row.Host + row.Location
                     if (value) {
-                        return '<a href="' + hosturl + '" target="_blank"><span class="badge badge-primary" langtag="word-online"></span></a>'
+                        return '<a href="' + hostURL(row) + '" target="_blank"><span class="badge badge-primary" langtag="word-online"></span></a>'
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }

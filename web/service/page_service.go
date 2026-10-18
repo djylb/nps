@@ -109,8 +109,9 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 		}
 		data["name"] = "edit tunnel"
 	case "hostlist":
-		data["httpProxyPort"] = pageIntString(cfg.Network.HTTPProxyPort)
-		data["httpsProxyPort"] = pageIntString(cfg.Network.HTTPSProxyPort)
+		data["httpAccessPort"] = cfg.Network.HTTPProxyAccessPort
+		data["httpsAccessPort"] = cfg.Network.HTTPSProxyAccessPort
+		data["httpsEnabled"] = cfg.Network.HTTPSProxyPort > 0
 		data["client_id"] = pageParam(input, "client_id")
 		data["name"] = "host list"
 	case "addhost":

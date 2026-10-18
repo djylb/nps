@@ -210,3 +210,19 @@ func TestP2PDefaults(t *testing.T) {
 		t.Fatalf("defaults: p2p_ip %q, %+v", cfg.Network.P2PIP, cfg.P2P)
 	}
 }
+
+func TestProxyAccessPorts(t *testing.T) {
+	resetTestState(t)
+	if err := Load(writeConfig(t, "nps.conf", "http_proxy_port=180\nhttps_proxy_port=1443\n")); err != nil {
+		t.Fatal(err)
+	}
+	if n := Current().Network; n.HTTPProxyAccessPort != 180 || n.HTTPSProxyAccessPort != 1443 {
+		t.Fatalf("access ports = %d/%d, want the listen ports 180/1443", n.HTTPProxyAccessPort, n.HTTPSProxyAccessPort)
+	}
+	if err := Load(writeConfig(t, "nps.conf", "http_proxy_port=180\nhttps_proxy_port=1443\nhttp_proxy_access_port=80\nhttps_proxy_access_port=443\n")); err != nil {
+		t.Fatal(err)
+	}
+	if n := Current().Network; n.HTTPProxyAccessPort != 80 || n.HTTPSProxyAccessPort != 443 {
+		t.Fatalf("access ports = %d/%d, want 80/443", n.HTTPProxyAccessPort, n.HTTPSProxyAccessPort)
+	}
+}

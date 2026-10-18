@@ -25,6 +25,7 @@
 - 新增远程更新客户端（需客户端v0.34.9及以上）
 - 新增`-disable_remote_update`禁止远程更新，Docker镜像默认禁止
 - 优化`update`命令，替换前验证新版本可运行，同时更新系统服务实际运行的程序
+- 新增`http_proxy_access_port`、`https_proxy_access_port`，域名列表的访问链接使用对外访问端口
 - 修复Linux下安装系统服务失败、服务显示masked的问题
 - 修复OpenWrt、FreeBSD等平台系统服务安装、卸载和更新后重启的问题
 - 修复QUIC连接关闭时末尾数据可能丢失的问题

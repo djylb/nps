@@ -42,7 +42,7 @@ func TestDefaultPageServiceBuildHostList(t *testing.T) {
 	result, err := service.Build(PageBuildInput{
 		Config: &servercfg.Snapshot{
 			Web:     servercfg.WebConfig{BaseURL: "/nps"},
-			Network: servercfg.NetworkConfig{HTTPProxyPort: 8080, HTTPSProxyPort: 8443},
+			Network: servercfg.NetworkConfig{HTTPProxyPort: 8080, HTTPSProxyPort: 8443, HTTPProxyAccessPort: 80, HTTPSProxyAccessPort: 443},
 		},
 		Controller: "index",
 		Action:     "hostlist",
@@ -62,11 +62,8 @@ func TestDefaultPageServiceBuildHostList(t *testing.T) {
 	if result.Data["client_id"] != "7" {
 		t.Fatalf("client_id = %v, want 7", result.Data["client_id"])
 	}
-	if result.Data["httpProxyPort"] != "8080" {
-		t.Fatalf("httpProxyPort = %v, want 8080", result.Data["httpProxyPort"])
-	}
-	if result.Data["httpsProxyPort"] != "8443" {
-		t.Fatalf("httpsProxyPort = %v, want 8443", result.Data["httpsProxyPort"])
+	if result.Data["httpAccessPort"] != 80 || result.Data["httpsAccessPort"] != 443 || result.Data["httpsEnabled"] != true {
+		t.Fatalf("access ports = %v/%v, https %v; want 80/443, true", result.Data["httpAccessPort"], result.Data["httpsAccessPort"], result.Data["httpsEnabled"])
 	}
 	if result.Data["version"] != "test-version" || result.Data["year"] != 2099 {
 		t.Fatalf("version/year = %v/%v, want test-version/2099", result.Data["version"], result.Data["year"])

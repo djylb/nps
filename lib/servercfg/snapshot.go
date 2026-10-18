@@ -121,27 +121,32 @@ type RuntimeConfig struct {
 }
 
 type NetworkConfig struct {
-	BridgeIP               string
-	BridgeHost             string
-	BridgeTCPIP            string
-	BridgeKCPIP            string
-	BridgeQUICIP           string
-	BridgeTLSIP            string
-	BridgeWSIP             string
-	BridgeWSSIP            string
-	BridgePort             int
-	BridgeTCPPort          int
-	BridgeKCPPort          int
-	BridgeQUICPort         int
-	BridgeTLSPort          int
-	BridgeWSPort           int
-	BridgeWSSPort          int
-	BridgePath             string
-	BridgeTrustedIPs       string
-	BridgeRealIPHeader     string
-	HTTPProxyIP            string
-	HTTPProxyPort          int
-	HTTPSProxyPort         int
+	BridgeIP           string
+	BridgeHost         string
+	BridgeTCPIP        string
+	BridgeKCPIP        string
+	BridgeQUICIP       string
+	BridgeTLSIP        string
+	BridgeWSIP         string
+	BridgeWSSIP        string
+	BridgePort         int
+	BridgeTCPPort      int
+	BridgeKCPPort      int
+	BridgeQUICPort     int
+	BridgeTLSPort      int
+	BridgeWSPort       int
+	BridgeWSSPort      int
+	BridgePath         string
+	BridgeTrustedIPs   string
+	BridgeRealIPHeader string
+	HTTPProxyIP        string
+	HTTPProxyPort      int
+	HTTPSProxyPort     int
+	// HTTPProxyAccessPort and HTTPSProxyAccessPort are the ports visitors
+	// reach the host proxy on from outside, behind a reverse proxy or port
+	// mapping; they default to the listen ports and only build links.
+	HTTPProxyAccessPort    int
+	HTTPSProxyAccessPort   int
 	HTTP3ProxyPort         int
 	WebIP                  string
 	WebPort                int
@@ -364,6 +369,8 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.HTTPProxyIP = r.stringDefault("0.0.0.0", "http_proxy_ip")
 	cfg.Network.HTTPProxyPort = r.intDefault(0, "http_proxy_port")
 	cfg.Network.HTTPSProxyPort = r.intDefault(0, "https_proxy_port")
+	cfg.Network.HTTPProxyAccessPort = r.intDefault(cfg.Network.HTTPProxyPort, "http_proxy_access_port")
+	cfg.Network.HTTPSProxyAccessPort = r.intDefault(cfg.Network.HTTPSProxyPort, "https_proxy_access_port")
 	cfg.Network.HTTP3ProxyPort = r.intDefault(cfg.Network.HTTPSProxyPort, "http3_proxy_port")
 	cfg.Network.WebIP = cfg.Web.IP
 	cfg.Network.WebPort = cfg.Web.Port
