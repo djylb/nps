@@ -276,6 +276,7 @@ func logStoreError(err error) {
 
 func (s *DbUtils) SaveGlobal(t *Glob) error {
 	t.CompileSourceLists(acl.ScopeGlobal, "the global settings")
+	t.ApplyLimits()
 	s.JsonDb.Global = t
 	logStoreError(s.JsonDb.StoreGlobalToJsonFile())
 	return nil
@@ -463,6 +464,7 @@ reset:
 	if c.Flow == nil {
 		c.Flow = new(Flow)
 	}
+	c.Flow.MarkClient()
 	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
 	s.JsonDb.Clients.Store(c.Id, c)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
@@ -505,6 +507,10 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 		}
 	}
 
+	if t.Flow == nil {
+		t.Flow = new(Flow)
+	}
+	t.Flow.MarkClient()
 	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
 	s.JsonDb.Clients.Store(t.Id, t)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)

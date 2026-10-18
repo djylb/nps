@@ -226,3 +226,15 @@ func TestProxyAccessPorts(t *testing.T) {
 		t.Fatalf("access ports = %d/%d, want 80/443", n.HTTPProxyAccessPort, n.HTTPSProxyAccessPort)
 	}
 }
+
+func TestFlowLimitType(t *testing.T) {
+	resetTestState(t)
+	for content, want := range map[string]bool{"": false, "flow_limit_type=total\n": false, "flow_limit_type=actual\n": true} {
+		if err := Load(writeConfig(t, "nps.conf", content)); err != nil {
+			t.Fatal(err)
+		}
+		if got := Current().Feature.FlowLimitActual; got != want {
+			t.Errorf("%q: FlowLimitActual = %v, want %v", content, got, want)
+		}
+	}
+}

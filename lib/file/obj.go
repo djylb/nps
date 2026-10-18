@@ -26,7 +26,20 @@ type Flow struct {
 	InletFlow  int64     // inbound traffic
 	FlowLimit  int64     // traffic limit
 	TimeLimit  time.Time // expire time
+	// client marks a client's flow, whose limit FlowLimitFactor scales;
+	// the limits of tunnels and hosts always count the in/out traffic.
+	client bool
 	sync.RWMutex
+}
+
+// MarkClient marks f as the flow of a client, see FlowLimitFactor.
+func (s *Flow) MarkClient() {
+	if s == nil {
+		return
+	}
+	s.Lock()
+	s.client = true
+	s.Unlock()
 }
 
 func (s *Flow) Add(in, out int64) {
@@ -88,23 +101,31 @@ func (s *Flow) Over() (traffic, expired bool) {
 	return traffic, expired
 }
 
-func (s *Flow) overLocked() (traffic, expired bool) {
-	traffic = s.FlowLimit > 0 && (s.FlowLimit<<20) < (s.ExportFlow+s.InletFlow)
-	expired = !s.TimeLimit.IsZero() && s.TimeLimit.Before(time.Now())
-	return traffic, expired
+// FlowLimitFactor is what the flow limits of clients multiply the inbound
+// and outbound traffic by: 1 to count the traffic, 2 to count the actual
+// usage on both sides of the server.
+var FlowLimitFactor atomic.Int64
+
+func init() { FlowLimitFactor.Store(1) }
+
+// SetFlowLimitActual makes the flow limits of clients count the actual
+// usage, twice the traffic, or the traffic itself.
+func SetFlowLimitActual(actual bool) {
+	if actual {
+		FlowLimitFactor.Store(2)
+	} else {
+		FlowLimitFactor.Store(1)
+	}
 }
 
-func (s *Flow) Sub(in, out int64) {
-	s.Lock()
-	s.InletFlow -= in
-	s.ExportFlow -= out
-	if s.InletFlow < 0 {
-		s.InletFlow = 0
+func (s *Flow) overLocked() (traffic, expired bool) {
+	used := s.ExportFlow + s.InletFlow
+	if s.client {
+		used *= FlowLimitFactor.Load()
 	}
-	if s.ExportFlow < 0 {
-		s.ExportFlow = 0
-	}
-	s.Unlock()
+	traffic = s.FlowLimit > 0 && (s.FlowLimit<<20) < used
+	expired = !s.TimeLimit.IsZero() && s.TimeLimit.Before(time.Now())
+	return traffic, expired
 }
 
 type Config struct {
@@ -666,5 +687,20 @@ func GetAccountMap(multiAccount *MultiAccount) map[string]string {
 
 type Glob struct {
 	SourceLists
+	// RateLimit limits all forwarded traffic together, in KB/s; 0 means
+	// unlimited.
+	RateLimit int
+	// InletFlow and ExportFlow are the bytes forwarded in total, from
+	// visitors to clients and back, as of the last store; the running
+	// totals are kept by package rate.
+	InletFlow  int64
+	ExportFlow int64
 	sync.RWMutex
+}
+
+// ApplyLimits makes the server use g's global rate limit.
+func (g *Glob) ApplyLimits() {
+	if g != nil {
+		rate.SetGlobalLimit(int64(g.RateLimit) * 1024)
+	}
 }

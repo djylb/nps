@@ -217,6 +217,13 @@ func clearClientStatusByID(id int, name string) error {
 			clearClientStatus(client, name)
 			return true
 		})
+		if strings.TrimSpace(name) == "flow" {
+			// clearing every client's traffic clears the server's total
+			rate.ResetGlobalTraffic()
+			if err := DefaultBackend().repo().PersistGlobal(); err != nil {
+				return err
+			}
+		}
 		return DefaultBackend().repo().PersistClients()
 	}
 

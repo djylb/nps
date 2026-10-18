@@ -250,12 +250,7 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Ra
 			remote = ra.String()
 		}
 	}
-	out, in := relay(connHandle, conn2, flows, task, remote)
-	// Each flow counted every byte both ways; the task's own flow keeps
-	// only the inbound bytes as inlet and the outbound ones as export.
-	if task != nil && task.Flow != nil {
-		task.Flow.Sub(out, in)
-	}
+	relay(connHandle, conn2, flows, task, remote)
 	_ = conn1.Close()
 	_ = conn2.Close()
 }

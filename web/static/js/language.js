@@ -333,6 +333,22 @@ function compareVersion(a, b) {
     return x.pre < y.pre ? -1 : 1;
 }
 
+// actualFlow estimates the traffic a flow costs the server: nps counts the
+// visitor side once each way, and every byte also crosses the link to the
+// client, so the total is doubled.
+function actualFlow(flow) {
+    return flow ? (flow.InletFlow + flow.ExportFlow) * 2 : 0;
+}
+
+// flowRemain returns what is left of a flow's limit, which counts the
+// in/out traffic or, for a client with flow_limit_type=actual, the actual
+// usage.
+function flowRemain(flow, isClient) {
+    if (!flow) return 0;
+    var used = (isClient && window.nps && window.nps.flow_limit_actual) ? actualFlow(flow) : flow.InletFlow + flow.ExportFlow;
+    return flow.FlowLimit * 1024 * 1024 - used;
+}
+
 function changeunit(limit) {
     const sign = limit < 0 ? "-" : "";
     const abs = Math.abs(limit);

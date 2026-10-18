@@ -69,9 +69,14 @@ func TestNilRateSafety(t *testing.T) {
 	if string(b) != "null" {
 		t.Fatalf("nil MarshalJSON=%s, want null", string(b))
 	}
-	conn := discardRWC{}
-	if got := NewRateConn(conn, nil); got != io.ReadWriteCloser(conn) {
-		t.Fatalf("NewRateConn with a nil Rate wrapped the connection")
+	SetGlobalTraffic(0, 0)
+	t.Cleanup(ResetGlobalTraffic)
+	c := NewRateConn(discardRWC{}, nil)
+	if _, err := c.Write(make([]byte, 100)); err != nil {
+		t.Fatal(err)
+	}
+	if in, _ := GlobalTraffic(); in != 100 {
+		t.Fatalf("a nil Rate left the global traffic uncounted: in = %d", in)
 	}
 }
 

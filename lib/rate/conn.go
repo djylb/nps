@@ -7,15 +7,14 @@ import (
 	"github.com/djylb/byterate"
 )
 
-// NewRateConn limits conn's reads and writes together by r. A net.Conn stays
-// a net.Conn. With a nil r, conn is returned as it is. Close wakes a Read or
-// Write waiting for the limit.
+// NewRateConn limits conn's reads and writes together by r and by the global
+// limit, and counts them in the global traffic; conn is a connection to an
+// npc. A net.Conn stays a net.Conn. A nil r leaves only the global limit.
+// Close wakes a Read or Write waiting for a limit.
 func NewRateConn(conn io.ReadWriteCloser, r *Rate) io.ReadWriteCloser {
-	if r == nil {
-		return conn
-	}
+	read, write := limiters(r)
 	if c, ok := conn.(net.Conn); ok {
-		return byterate.NewConn(c, &r.l)
+		return byterate.NewDuplexConn(c, read, write)
 	}
-	return byterate.NewReadWriteCloser(conn, &r.l)
+	return byterate.NewDuplexReadWriteCloser(conn, read, write)
 }

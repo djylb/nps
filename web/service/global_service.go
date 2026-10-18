@@ -21,6 +21,9 @@ type DefaultGlobalService struct {
 
 type SaveGlobalInput struct {
 	Access AccessListInput
+	// RateLimit limits all forwarded traffic together, in KB/s; 0 means
+	// unlimited.
+	RateLimit int
 }
 
 func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
@@ -29,6 +32,7 @@ func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
 		return err
 	}
 	g := new(file.Glob)
+	g.RateLimit = max(input.RateLimit, 0)
 	lists.applyTo(&g.SourceLists, "the global settings")
 	return s.repo().SaveGlobal(g)
 }

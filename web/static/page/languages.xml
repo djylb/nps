@@ -494,9 +494,13 @@
 		<zh-CN>入口流量</zh-CN>
 		<en-US>Inlet Flow</en-US>
 	</lang>
+	<lang id="word-actualflow">
+		<zh-CN>实际消耗</zh-CN>
+		<en-US>Actual Usage</en-US>
+	</lang>
 	<lang id="word-totalflow">
-		<zh-CN>总流量</zh-CN>
-		<en-US>Total Flow</en-US>
+		<zh-CN>上下行流量</zh-CN>
+		<en-US>In/Out Flow</en-US>
 	</lang>
 	<lang id="word-load">
 		<zh-CN>负载</zh-CN>
@@ -649,6 +653,26 @@
 	<lang id="word-publicvkey">
 		<zh-CN>公钥</zh-CN>
 		<en-US>Public vkey</en-US>
+	</lang>
+	<lang id="word-globaltraffic">
+		<zh-CN>服务端转发</zh-CN>
+		<en-US>Server Forwarded</en-US>
+	</lang>
+	<lang id="word-forwardin">
+		<zh-CN>流入</zh-CN>
+		<en-US>In</en-US>
+	</lang>
+	<lang id="word-forwardout">
+		<zh-CN>流出</zh-CN>
+		<en-US>Out</en-US>
+	</lang>
+	<lang id="word-globalratelimit">
+		<zh-CN>全局带宽限制 (KB/s)</zh-CN>
+		<en-US>Global Rate Limit (KB/s)</en-US>
+	</lang>
+	<lang id="info-globalratelimit">
+		<zh-CN>所有客户端的转发流量合计不超过此带宽，与各客户端自身的带宽限制同时生效，0 为不限制。客户端列表上方显示服务端的转发流量（流入为访问者发往客户端，流出为客户端返回访问者），“清除流量”会同时清零。</zh-CN>
+		<en-US>All forwarded traffic together stays within this rate, on top of each client's own limit; 0 means unlimited. The client list shows the total traffic forwarded by the server (in: from visitors to clients, out: back to visitors), which "Clear Flow" resets too.</en-US>
 	</lang>
 	<lang id="word-ratelimit">
 		<zh-CN>带宽限制</zh-CN>
@@ -1513,6 +1537,10 @@
 		<lang id="registrationkeyduplicatepleasereset">
 			<zh-CN>登记口令与其他客户端重复或与 vkey 相同，请重新设置</zh-CN>
 			<en-US>The registration key is used by another client or equals the vkey, please change it</en-US>
+		</lang>
+		<lang id="totalx2">
+			<zh-CN>上下行流量 x 2：估算服务器两侧（访问者与客户端）的实际消耗</zh-CN>
+			<en-US>In/Out flow x 2: estimated usage on both sides of the server (visitor and client)</en-US>
 		</lang>
 	</reply>
 

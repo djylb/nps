@@ -347,6 +347,17 @@
                 }
             },
             {
+                field: 'ActualFlow',//域值
+                title: '<span langtag="word-actualflow"></span>',//标题
+                align: 'center',
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: false,
+                formatter: function (value, row, index) {
+                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(actualFlow(row.Flow)) + '</span>'
+                }
+            },
+            {
                 field: 'FlowRemain', //域值
                 title: '<span langtag="word-flowremain"></span>', //内容
                 align: 'center',
@@ -357,7 +368,7 @@
                     if (row.Flow.FlowLimit === 0) {
                         return '∞'
                     }
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(flowRemain(row.Flow)) + '</span>'
                 }
             },
             {

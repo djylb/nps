@@ -205,16 +205,12 @@ func GetDashboardData(force bool) map[string]interface{} {
 		if v.IsConnect {
 			c++
 		}
-		clientIn := v.Flow.InletFlow - (v.InletFlow + v.ExportFlow)
-		if clientIn < 0 {
-			clientIn = 0
+		if v.Flow != nil {
+			v.Flow.RLock()
+			in += v.Flow.InletFlow
+			out += v.Flow.ExportFlow
+			v.Flow.RUnlock()
 		}
-		clientOut := v.Flow.ExportFlow - (v.InletFlow + v.ExportFlow)
-		if clientOut < 0 {
-			clientOut = 0
-		}
-		in += v.InletFlow + clientIn/2
-		out += v.ExportFlow + clientOut/2
 		return true
 	})
 	data["clientOnlineCount"] = c

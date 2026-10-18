@@ -167,6 +167,7 @@ func (s DefaultPageService) buildGlobal(input PageBuildInput) (PageBuildResult, 
 			data["globalIpListPriority"] = global.IpListPriority
 			data["globalBlackIpList"] = joinRuleLines(global.BlackIpList)
 			data["globalWhiteIpList"] = joinRuleLines(global.WhiteIpList)
+			data["globalRateLimit"] = global.RateLimit
 		}
 		data["geo"] = s.system().GeoDataStatus()
 	case "banlist":
@@ -229,6 +230,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 		Features: map[string]bool{
 			"allow_user_login":           cfg.Feature.AllowUserLogin,
 			"allow_flow_limit":           cfg.Feature.AllowFlowLimit,
+			"flow_limit_actual":          cfg.Feature.FlowLimitActual,
 			"allow_rate_limit":           cfg.Feature.AllowRateLimit,
 			"allow_time_limit":           cfg.Feature.AllowTimeLimit,
 			"allow_connection_num_limit": cfg.Feature.AllowConnectionNumLimit,

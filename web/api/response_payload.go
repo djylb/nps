@@ -79,4 +79,17 @@ type ClientListResponse struct {
 	Addr       string `json:"addr"`
 	BridgeType string `json:"bridgeType"`
 	BridgePort int    `json:"bridgePort"`
+	// Traffic is the server-wide forwarded traffic, for administrators.
+	Traffic *GlobalTrafficPayload `json:"traffic,omitempty"`
+}
+
+// GlobalTrafficPayload is the traffic forwarded by the whole server: In from
+// visitors to clients and Out back, in bytes and bytes per second, and the
+// global rate limit in bytes per second, 0 for none.
+type GlobalTrafficPayload struct {
+	In     int64 `json:"in"`
+	Out    int64 `json:"out"`
+	InBps  int64 `json:"inBps"`
+	OutBps int64 `json:"outBps"`
+	Limit  int64 `json:"limit"`
 }

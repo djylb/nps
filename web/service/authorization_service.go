@@ -178,11 +178,18 @@ func (s DefaultAuthorizationService) RequireHost(principal Principal, hostID int
 	return ErrForbidden
 }
 
+// canAccessClient reports whether principal may act on client clientID; an
+// administrator may also act on 0, which stands for every client, as the
+// clearing of all clients' traffic does.
 func (s DefaultAuthorizationService) canAccessClient(principal Principal, clientID int) bool {
+	admin := s.Allows(principal, PermissionManagementAdmin)
+	if clientID == 0 && admin {
+		return true
+	}
 	if clientID <= 0 {
 		return false
 	}
-	if s.Allows(principal, PermissionManagementAdmin) {
+	if admin {
 		return true
 	}
 	for _, current := range principal.ClientIDs {

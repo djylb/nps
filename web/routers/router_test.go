@@ -24,6 +24,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/ipreg"
+	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/controllers"
 	"github.com/djylb/nps/web/framework"
@@ -1457,5 +1458,50 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 	standalone.ServeHTTP(static, httptest.NewRequest(http.MethodGet, "/static/css/style.css", nil))
 	if static.Code != http.StatusOK {
 		t.Fatalf("standalone static status = %d", static.Code)
+	}
+}
+
+func TestGlobalTrafficAndRateLimit(t *testing.T) {
+	repoRoot := testRepoRoot(t)
+	oldConfPath := common.ConfPath
+	common.ConfPath = repoRoot
+	defer func() { common.ConfPath = oldConfPath }()
+	configPath := writeTestConfig(t, "nps.conf", "web_username=admin\nweb_password=secret\nweb_base_url=\nopen_captcha=false\n")
+	if err := servercfg.Load(configPath); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	resetTestDB(t)
+	t.Cleanup(func() { rate.SetGlobalLimit(0); rate.ResetGlobalTraffic() })
+	crypt.InitTls(tls.Certificate{})
+	gin.SetMode(gin.TestMode)
+	handler := Init()
+	admin := sessionCookiesFromIdentity(t, servercfg.Current(), (&webservice.SessionIdentity{
+		Version:       webservice.SessionIdentityVersion,
+		Authenticated: true,
+		Kind:          "admin",
+		Provider:      "test",
+		SubjectID:     "admin:admin",
+		Username:      "admin",
+		IsAdmin:       true,
+		Roles:         []string{webservice.RoleAdmin},
+	}).Normalize())
+
+	save := performFormRequest(handler, http.MethodPost, "/global/save", admin, map[string]string{"globalIpListPriority": "0", "globalRateLimit": "100"})
+	if !strings.Contains(save.Body.String(), `"status":1`) || rate.GlobalLimit() != 100*1024 || file.Db.JsonDb.Global.RateLimit != 100 {
+		t.Fatalf("POST /global/save = %s, limit %d", save.Body.String(), rate.GlobalLimit())
+	}
+
+	rate.SetGlobalTraffic(3000, 7000)
+	list := performFormRequest(handler, http.MethodPost, "/client/list", admin, map[string]string{"offset": "0", "limit": "10"})
+	if !strings.Contains(list.Body.String(), `"traffic":{"in":3000,"out":7000,`) || !strings.Contains(list.Body.String(), `"limit":102400`) {
+		t.Fatalf("POST /client/list = %d %s %v", list.Code, list.Body.String(), list.Header())
+	}
+
+	clear := performFormRequest(handler, http.MethodPost, "/client/clear", admin, map[string]string{"id": "0", "mode": "flow"})
+	if in, out := rate.GlobalTraffic(); !strings.Contains(clear.Body.String(), `"status":1`) || in != 0 || out != 0 {
+		t.Fatalf("POST /client/clear = %d %s, traffic %d/%d", clear.Code, clear.Body.String(), in, out)
+	}
+	if g := file.Db.JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
+		t.Fatalf("cleared traffic not stored: %d/%d", g.InletFlow, g.ExportFlow)
 	}
 }

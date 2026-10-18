@@ -166,7 +166,8 @@
 <script>
     window.nps = {
         "web_base_url": "{{.web_base_url}}",
-        "version": "{{.version}}"
+        "version": "{{.version}}",
+        "flow_limit_actual": {{if eq true .flow_limit_actual}}true{{else}}false{{end}}
     }
     /*
          googleTranslateElementInit()

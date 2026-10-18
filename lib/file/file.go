@@ -91,6 +91,10 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 		}
 		post.Rate.Start()
 		post.NowConn = 0
+		if post.Flow == nil {
+			post.Flow = new(Flow)
+		}
+		post.Flow.MarkClient()
 		post.CompileSourceLists(acl.ScopeUser, clientOwner(post))
 		s.Clients.Store(post.Id, post)
 		if post.Id > int(s.ClientIncreaseId) {
@@ -130,8 +134,15 @@ func (s *JsonDb) LoadGlobalFromJsonFile() {
 			return
 		}
 		post.CompileSourceLists(acl.ScopeGlobal, "the global settings")
+		post.ApplyLimits()
+		rate.SetGlobalTraffic(post.InletFlow, post.ExportFlow)
 		s.Global = post
 	})
+	if s.Global == nil {
+		g := new(Glob)
+		g.CompileSourceLists(acl.ScopeGlobal, "the global settings")
+		s.Global = g
+	}
 }
 
 func clientOwner(c *Client) string { return "client " + strconv.Itoa(c.Id) }
@@ -387,6 +398,12 @@ func storeSyncMapToFile(m *sync.Map, filePath string) error {
 }
 
 func storeGlobalToFile(m *Glob, filePath string) error {
+	if m != nil {
+		in, out := rate.GlobalTraffic()
+		m.Lock()
+		m.InletFlow, m.ExportFlow = in, out
+		m.Unlock()
+	}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("store %s: %w", filePath, err)

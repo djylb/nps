@@ -127,6 +127,7 @@ func main() {
 	// before any access list is compiled
 	acl.SetGeoData(geoIPPath, geoSitePath)
 	acl.SetMaxRules(cfg.App.AclMaxRules)
+	file.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
 	install.SetGeoDataPaths(geoIPPath, geoSitePath)
 	if cmd == "update-geo" {
 		logs.Init("stdout", "info", "", 0, 0, 0, false, true)

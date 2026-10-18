@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/rate"
 	webservice "github.com/djylb/nps/web/service"
 )
 
@@ -22,7 +23,13 @@ func (a *App) ListClients(c Context) {
 			ClientIDs:       append([]int(nil), scope.ClientIDs...),
 		},
 	})
-	respondClientList(c, result.Rows, result.Total, result.BridgeIP, result.BridgeAddr, result.BridgeType, result.BridgePort)
+	var traffic *GlobalTrafficPayload
+	if scope.All {
+		in, out := rate.GlobalTraffic()
+		inBps, outBps := rate.GlobalThroughput()
+		traffic = &GlobalTrafficPayload{In: in, Out: out, InBps: inBps, OutBps: outBps, Limit: rate.GlobalLimit()}
+	}
+	respondClientList(c, result.Rows, result.Total, result.BridgeIP, result.BridgeAddr, result.BridgeType, result.BridgePort, traffic)
 }
 
 func (a *App) AddClient(c Context) {

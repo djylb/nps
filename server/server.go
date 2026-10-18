@@ -57,6 +57,7 @@ func InitFromDb() {
 			local.Addr = "127.0.0.1"
 			local.Cnf = new(file.Config)
 			local.Flow = new(file.Flow)
+			local.Flow.MarkClient()
 			local.Rate = rate.NewRate(0)
 			local.Rate.Start()
 			local.NowConn = 0

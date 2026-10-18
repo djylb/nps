@@ -114,8 +114,9 @@ func respondTable(c Context, rows any, total int) {
 	})
 }
 
-func respondClientList(c Context, rows any, total int, bridgeIP, bridgeAddr, bridgeType string, bridgePort int) {
+func respondClientList(c Context, rows any, total int, bridgeIP, bridgeAddr, bridgeType string, bridgePort int, traffic *GlobalTrafficPayload) {
 	c.RespondJSON(200, ClientListResponse{
+		Traffic:    traffic,
 		Rows:       rows,
 		Total:      total,
 		IP:         bridgeIP,

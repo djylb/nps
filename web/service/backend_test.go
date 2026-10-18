@@ -58,6 +58,7 @@ func (s stubRepository) GetClient(id int) (*file.Client, error) {
 }
 func (stubRepository) SaveClient(*file.Client) error              { return nil }
 func (stubRepository) PersistClients() error                      { return nil }
+func (stubRepository) PersistGlobal() error                       { return nil }
 func (stubRepository) DeleteClient(int) error                     { return nil }
 func (stubRepository) VerifyUserName(string, int) bool            { return true }
 func (stubRepository) VerifyVKey(string, int) bool                { return true }

@@ -89,6 +89,9 @@ type FeatureConfig struct {
 	AllowUserChangeUsername bool
 	OpenCaptcha             bool
 	AllowFlowLimit          bool
+	// FlowLimitActual makes flow limits count the actual usage, twice the
+	// inbound and outbound traffic, rather than the traffic itself.
+	FlowLimitActual         bool
 	AllowRateLimit          bool
 	AllowTimeLimit          bool
 	AllowConnectionNumLimit bool
@@ -316,6 +319,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		AllowUserChangeUsername: r.boolDefault(false, "allow_user_change_username"),
 		OpenCaptcha:             r.boolDefault(false, "open_captcha"),
 		AllowFlowLimit:          r.boolDefault(false, "allow_flow_limit"),
+		FlowLimitActual:         r.stringDefault("total", "flow_limit_type") == "actual",
 		AllowRateLimit:          r.boolDefault(false, "allow_rate_limit"),
 		AllowTimeLimit:          r.boolDefault(false, "allow_time_limit"),
 		AllowConnectionNumLimit: r.boolDefault(false, "allow_connection_num_limit"),

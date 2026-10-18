@@ -8,6 +8,7 @@ import (
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/rate"
 )
 
 func writeConf(t *testing.T, dir, name, content string) string {
@@ -136,5 +137,34 @@ func TestGlobalDenied(t *testing.T) {
 	}
 	if db.GlobalDenied(tcpAddr("198.51.100.1:1"), "Bridge") {
 		t.Fatal("address off the blacklist denied")
+	}
+}
+
+func TestGlobalTrafficPersisted(t *testing.T) {
+	t.Cleanup(func() { rate.ResetGlobalTraffic(); rate.SetGlobalLimit(0) })
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db := NewJsonDb(dir)
+	db.Global = &Glob{RateLimit: 50}
+	rate.SetGlobalTraffic(1234, 5678)
+	if err := db.StoreGlobalToJsonFile(); err != nil {
+		t.Fatal(err)
+	}
+	rate.ResetGlobalTraffic()
+	loaded := NewJsonDb(dir)
+	loaded.LoadGlobalFromJsonFile()
+	if in, out := rate.GlobalTraffic(); in != 1234 || out != 5678 {
+		t.Fatalf("restored traffic = %d/%d, want 1234/5678", in, out)
+	}
+	if loaded.Global.RateLimit != 50 || rate.GlobalLimit() != 50*1024 {
+		t.Fatalf("restored limit = %d, applied %d", loaded.Global.RateLimit, rate.GlobalLimit())
+	}
+
+	empty := NewJsonDb(t.TempDir())
+	empty.LoadGlobalFromJsonFile()
+	if empty.Global == nil {
+		t.Fatal("no global settings left Global nil, so the traffic would not be stored")
 	}
 }

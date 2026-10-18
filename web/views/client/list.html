@@ -30,6 +30,15 @@
                                     <i class="fa fa-fw fa-lg fa-signal"></i>
                                     <span langtag="word-ping"></span>
                                 </a>
+                                <div id="global_traffic" class="ml-3 align-self-center text-muted small" style="display: none;">
+                                    <i class="fa fa-fw fa-server"></i> <span langtag="word-globaltraffic"></span>:
+                                    <span langtag="word-forwardin"></span> <strong id="global_traffic_in"></strong>
+                                    &ensp;<span langtag="word-forwardout"></span> <strong id="global_traffic_out"></strong>
+                                    &ensp;<span langtag="word-totalflow"></span> <strong id="global_traffic_total"></strong>
+                                    &ensp;<span langtag="word-actualflow"></span> <strong id="global_traffic_actual"></strong>
+                                    &ensp;<span langtag="word-speed"></span> <strong id="global_traffic_rate"></strong>
+                                    <span id="global_traffic_limit_box">&ensp;<span langtag="word-ratelimit"></span> <strong id="global_traffic_limit"></strong></span>
+                                </div>
                             </div>
                         </div>
                         <table class="table-striped table-hover" data-mobile-responsive="true" id="taskList_table"></table>
@@ -82,6 +91,7 @@
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () {$('body').setLang ('.detail-view');},
         onPostBody: function (data) { if ($(this)[0].locale != undefined) $('body').setLang('#table'); },
+        onLoadSuccess: function (res) { showGlobalTraffic(res && res.traffic); },
         detailFormatter: function (index, row, element) {
             tmp = '<b langtag="word-maxconnections"></b>: '
                 {{if eq true .isAdmin}}
@@ -277,6 +287,17 @@
                 }
             },
             {
+                field: 'ActualFlow',//域值
+                title: '<span langtag="word-actualflow"></span>',//标题
+                align: 'center',
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: false,
+                formatter: function (value, row, index) {
+                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(actualFlow(row.Flow)) + '</span>'
+                }
+            },
+            {
                 field: 'FlowRemain',//域值
                 title: '<span langtag="word-flowremain"></span>',//标题
                 halign: 'center',
@@ -287,9 +308,9 @@
                         return '∞'
                     }
                     {{if eq true .isAdmin}}
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(flowRemain(row.Flow, true)) + '</span>'
                     {{else}}
-                    return changeunit(row.Flow.FlowLimit*1024*1024 - row.Flow.InletFlow - row.Flow.ExportFlow)
+                    return changeunit(flowRemain(row.Flow, true))
                     {{end}}
                 }
             },
@@ -493,5 +514,19 @@
         var url = el.getAttribute('data-url');
         document.getElementById('qrImg').src = url;
         $('#qrModal').modal('show');
+    }
+
+    // showGlobalTraffic shows the traffic forwarded by the whole server,
+    // which the client list returns to administrators.
+    function showGlobalTraffic(t) {
+        if (!t) return;
+        $('#global_traffic_in').text(changeunit(t.in));
+        $('#global_traffic_out').text(changeunit(t.out));
+        $('#global_traffic_total').text(changeunit(t.in + t.out));
+        $('#global_traffic_actual').text(changeunit((t.in + t.out) * 2));
+        $('#global_traffic_rate').text(changeunit(t.inBps) + '/s, ' + changeunit(t.outBps) + '/s');
+        $('#global_traffic_limit').text(t.limit > 0 ? changeunit(t.limit) + '/s' : '');
+        $('#global_traffic_limit_box').toggle(t.limit > 0);
+        $('#global_traffic').show();
     }
 </script>

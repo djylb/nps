@@ -33,6 +33,13 @@
                                 <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
                             </div>
                         </div>
+                        <div class="form-group" id="global_rate_limit">
+                            <label class="control-label font-bold" langtag="word-globalratelimit"></label>
+                            <div class="col-sm-12">
+                                <input class="form-control" type="number" min="0" step="1" name="globalRateLimit" value="{{or .globalRateLimit 0}}">
+                                <span class="help-block m-b-none" langtag="info-globalratelimit"></span>
+                            </div>
+                        </div>
                         <div class="form-group">
                             <div class="col-lg-12 col-sm-offset-2">
                                 <button class="btn btn-success" onclick="submitform('global', '{{.web_base_url}}/global/save', $('form').serializeArray())" type="button">

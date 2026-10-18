@@ -13,6 +13,7 @@ func (a *App) SaveGlobal(c Context) {
 			Black:    requestString(c, "globalBlackIpList"),
 			White:    requestString(c, "globalWhiteIpList"),
 		},
+		RateLimit: requestIntValue(c, "globalRateLimit"),
 	}); err != nil {
 		ajax(c, err.Error(), 0)
 		return

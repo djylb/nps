@@ -2,83 +2,15 @@ package conn
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"net"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/djylb/nps/lib/file"
 )
-
-// referenceCopy is the per-direction copy that the relay replaces, without
-// its HTTP detection, kept to compare traffic accounting against: every write adds its bytes to each
-// flow as both inlet and export, and a flow over a limit stops the copy.
-func referenceCopy(dst io.Writer, src io.Reader, flows []*file.Flow) (written int64, err error) {
-	buf := make([]byte, 32<<10)
-	for {
-		nr, er := src.Read(buf)
-		if er == nil || nr > 0 {
-			nw, ew := dst.Write(buf[:nr])
-			if nw > 0 {
-				written += int64(nw)
-				for _, f := range flows {
-					if f == nil {
-						continue
-					}
-					f.Add(int64(nw), int64(nw))
-					if f.FlowLimit > 0 && (f.FlowLimit<<20) < (f.ExportFlow+f.InletFlow) {
-						return written, errors.New("flow limit exceeded")
-					}
-					if !f.TimeLimit.IsZero() && f.TimeLimit.Before(time.Now()) {
-						return written, errors.New("time limit exceeded")
-					}
-				}
-			}
-			if ew != nil {
-				return written, ew
-			}
-			if nr != nw {
-				return written, io.ErrShortWrite
-			}
-		}
-		if er != nil {
-			return written, er
-		}
-	}
-}
-
-// referenceCopyWaitGroup relays mux and outside as CopyWaitGroup did before
-// it used netx.Relay, subtracting the opposite direction from the task flow.
-func referenceCopyWaitGroup(mux, outside net.Conn, flows []*file.Flow, taskFlow *file.Flow) {
-	var in, out int64
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		defer func() { _ = mux.Close(); _ = outside.Close() }()
-		in, _ = referenceCopy(mux, outside, flows)
-	}()
-	go func() {
-		defer wg.Done()
-		defer func() { _ = mux.Close(); _ = outside.Close() }()
-		out, _ = referenceCopy(outside, mux, flows)
-	}()
-	wg.Wait()
-	taskFlow.Sub(out, in)
-}
-
-func referenceJoin(c1, c2 net.Conn, flows []*file.Flow) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	closeBoth := sync.OnceFunc(func() { _ = c1.Close(); _ = c2.Close() })
-	go func() { defer wg.Done(); defer closeBoth(); _, _ = referenceCopy(c1, c2, flows) }()
-	go func() { defer wg.Done(); defer closeBoth(); _, _ = referenceCopy(c2, c1, flows) }()
-	wg.Wait()
-}
 
 // tcpPair returns the two ends of a loopback TCP connection.
 func tcpPair(t *testing.T) (net.Conn, net.Conn) {
@@ -172,57 +104,34 @@ func newRelayTask() *file.Tunnel {
 	}
 }
 
-func TestCopyWaitGroupAccountingMatchesReference(t *testing.T) {
+func TestCopyWaitGroupAccounting(t *testing.T) {
 	const up, down = 100_000, 250_000
-	measure := func(useRelay bool) (task, client flowValues) {
-		tk := newRelayTask()
-		flows := []*file.Flow{tk.Flow, tk.Client.Flow}
-		runExchange(t, func(mux, outside net.Conn) {
-			if useRelay {
-				CopyWaitGroup(mux, outside, false, false, nil, flows, true, 0, nil, tk, true, false)
-			} else {
-				referenceCopyWaitGroup(mux, outside, flows, tk.Flow)
-			}
-		}, up, down)
-		return valuesOf(tk.Flow), valuesOf(tk.Client.Flow)
+	tk := newRelayTask()
+	runExchange(t, func(mux, outside net.Conn) {
+		CopyWaitGroup(mux, outside, false, false, nil, []*file.Flow{tk.Flow, tk.Client.Flow}, true, 0, nil, tk, true, false)
+	}, up, down)
+	// Every flow counts the visitor's bytes once as inlet and the
+	// backend's once as export.
+	if got, want := valuesOf(tk.Flow), (flowValues{7 + up, 11 + down}); got != want {
+		t.Fatalf("task flow = %+v, want %+v", got, want)
 	}
-	refTask, refClient := measure(false)
-	gotTask, gotClient := measure(true)
-	if gotTask != refTask || gotClient != refClient {
-		t.Fatalf("task %+v client %+v, reference task %+v client %+v", gotTask, gotClient, refTask, refClient)
-	}
-	// The task keeps the visitor's bytes as inlet and the backend's as
-	// export; the client counts all of them both ways.
-	if want := (flowValues{7 + up, 11 + down}); gotTask != want {
-		t.Fatalf("task flow = %+v, want %+v", gotTask, want)
-	}
-	if want := (flowValues{3 + up + down, 5 + up + down}); gotClient != want {
-		t.Fatalf("client flow = %+v, want %+v", gotClient, want)
+	if got, want := valuesOf(tk.Client.Flow), (flowValues{3 + up, 5 + down}); got != want {
+		t.Fatalf("client flow = %+v, want %+v", got, want)
 	}
 }
 
-func TestJoinAccountingMatchesReference(t *testing.T) {
+func TestJoinAccounting(t *testing.T) {
 	const up, down = 70_000, 130_000
-	measure := func(useRelay bool) (host, client flowValues) {
-		tk := newRelayTask()
-		hostFlow := &file.Flow{InletFlow: 1, ExportFlow: 2}
-		flows := []*file.Flow{hostFlow, tk.Client.Flow}
-		runExchange(t, func(mux, outside net.Conn) {
-			if useRelay {
-				Join(outside, mux, flows, tk, "192.0.2.1:1234")
-			} else {
-				referenceJoin(outside, mux, flows)
-			}
-		}, up, down)
-		return valuesOf(hostFlow), valuesOf(tk.Client.Flow)
+	tk := newRelayTask()
+	hostFlow := &file.Flow{InletFlow: 1, ExportFlow: 2}
+	runExchange(t, func(mux, outside net.Conn) {
+		Join(outside, mux, []*file.Flow{hostFlow, tk.Client.Flow}, tk, "192.0.2.1:1234")
+	}, up, down)
+	if got, want := valuesOf(hostFlow), (flowValues{1 + up, 2 + down}); got != want {
+		t.Fatalf("host flow = %+v, want %+v", got, want)
 	}
-	refHost, refClient := measure(false)
-	gotHost, gotClient := measure(true)
-	if gotHost != refHost || gotClient != refClient {
-		t.Fatalf("host %+v client %+v, reference host %+v client %+v", gotHost, gotClient, refHost, refClient)
-	}
-	if want := (flowValues{1 + up + down, 2 + up + down}); gotHost != want {
-		t.Fatalf("host flow = %+v, want %+v", gotHost, want)
+	if got, want := valuesOf(tk.Client.Flow), (flowValues{3 + up, 5 + down}); got != want {
+		t.Fatalf("client flow = %+v, want %+v", got, want)
 	}
 }
 
@@ -258,11 +167,11 @@ func TestCopyWaitGroupStopsAtFlowLimit(t *testing.T) {
 	tk := newRelayTask()
 	tk.Flow = &file.Flow{FlowLimit: 1}
 	relayUntilStopped(t, tk, []*file.Flow{tk.Flow, tk.Client.Flow})
-	// Every byte passed visitor to backend: the task keeps them as inlet,
-	// which went just over the 1 MiB limit together with the export.
+	// Every byte passed visitor to backend, counted once as inlet, which
+	// went just over the 1 MiB limit.
 	got := valuesOf(tk.Flow)
-	if got.export != 0 || 2*got.inlet <= 1<<20 || 2*got.inlet > 1<<20+2*32<<10 {
-		t.Fatalf("task flow = %+v, want inlet just over 512 KiB", got)
+	if got.export != 0 || got.inlet <= 1<<20 || got.inlet > 1<<20+64<<10 {
+		t.Fatalf("task flow = %+v, want inlet just over 1 MiB", got)
 	}
 }
 
@@ -377,10 +286,11 @@ func TestRelayFramedUDPKeepsDatagrams(t *testing.T) {
 	}
 	_ = peer.Close()
 	<-done
-	// Bytes counted are the datagrams' payloads, without the frame headers.
-	const total = 9000 + 3 + 5000 + 0 + 7
-	if got := valuesOf(tk.Client.Flow); got != (flowValues{3 + total, 5 + total}) {
-		t.Fatalf("client flow = %+v, want %d more each way", got, total)
+	// Bytes counted are the datagrams' payloads, without the frame headers:
+	// in to the target from the tunnel's visitor side, out back.
+	const in, out = 5000 + 0 + 7, 9000 + 3
+	if got := valuesOf(tk.Client.Flow); got != (flowValues{3 + in, 5 + out}) {
+		t.Fatalf("client flow = %+v, want %d in and %d out more", got, in, out)
 	}
 }
 

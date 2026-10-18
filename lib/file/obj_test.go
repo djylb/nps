@@ -12,19 +12,6 @@ import (
 	"github.com/djylb/nps/lib/rate"
 )
 
-func TestFlowSubDoesNotGoNegative(t *testing.T) {
-	flow := &Flow{InletFlow: 5, ExportFlow: 3}
-
-	flow.Sub(10, 8)
-
-	if flow.InletFlow != 0 {
-		t.Fatalf("expected inlet flow to clamp at 0, got %d", flow.InletFlow)
-	}
-	if flow.ExportFlow != 0 {
-		t.Fatalf("expected export flow to clamp at 0, got %d", flow.ExportFlow)
-	}
-}
-
 func TestSortClientByKey(t *testing.T) {
 	clients := &sync.Map{}
 	clients.Store("a", &Client{Id: 1, Flow: &Flow{ExportFlow: 10, InletFlow: 100}})
@@ -287,5 +274,40 @@ func TestClientJSONGolden(t *testing.T) {
 	}
 	if none.Rate != nil {
 		t.Fatalf("decoded null Rate = %+v, want nil", none.Rate)
+	}
+}
+
+func TestFlowLimitActual(t *testing.T) {
+	t.Cleanup(func() { SetFlowLimitActual(false) })
+	client := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
+	client.MarkClient()
+	tunnel := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
+	if traffic, _ := client.Over(); traffic {
+		t.Fatal("700 KiB of traffic over a 1 MiB client limit on the in/out traffic")
+	}
+	SetFlowLimitActual(true)
+	if traffic, _ := client.Over(); !traffic {
+		t.Fatal("1400 KiB of actual usage not over a 1 MiB client limit on the actual usage")
+	}
+	if traffic, _ := tunnel.Over(); traffic {
+		t.Fatal("a tunnel limit counted the actual usage")
+	}
+}
+
+func TestClientFlowsMarked(t *testing.T) {
+	t.Cleanup(func() { SetFlowLimitActual(false) })
+	SetFlowLimitActual(true)
+	db := &DbUtils{JsonDb: NewJsonDb(t.TempDir())}
+	c := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
+	if err := db.NewClient(c); err != nil && !strings.Contains(err.Error(), "store") {
+		t.Fatal(err)
+	}
+	if traffic, _ := c.Flow.Over(); !traffic {
+		t.Fatal("a new client's flow not marked")
+	}
+	u := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
+	_ = db.UpdateClient(u)
+	if traffic, _ := u.Flow.Over(); !traffic {
+		t.Fatal("an updated client's flow not marked")
 	}
 }

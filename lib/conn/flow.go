@@ -60,21 +60,19 @@ func flowLimitError(traffic, expired bool, label string) error {
 
 func (c *FlowConn) Read(p []byte) (int, error) {
 	n, err := c.RWConn.Read(p)
-	n64 := int64(n)
-	return n, c.account(0, n64, n64, err)
+	return n, c.account(0, int64(n), err)
 }
 
 func (c *FlowConn) Write(p []byte) (int, error) {
 	n, err := c.RWConn.Write(p)
-	n64 := int64(n)
-	return n, c.account(n64, 0, n64, err)
+	return n, c.account(int64(n), 0, err)
 }
 
-// account adds in and out to the task flow and both to the client flow, and
-// returns the first limit error, or else err.
-func (c *FlowConn) account(in, out, both int64, err error) error {
+// account adds in and out to the task flow and the client flow, and returns
+// the first limit error, or else err.
+func (c *FlowConn) account(in, out int64, err error) error {
 	taskTraffic, taskExpired := c.taskFlow.AddOver(in, out)
-	clientTraffic, clientExpired := c.clientFlow.AddOver(both, both)
+	clientTraffic, clientExpired := c.clientFlow.AddOver(in, out)
 	if lerr := flowLimitError(taskTraffic, taskExpired, "Task"); lerr != nil {
 		return lerr
 	}

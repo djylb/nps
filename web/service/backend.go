@@ -23,6 +23,7 @@ type Repository interface {
 	GetClient(int) (*file.Client, error)
 	SaveClient(*file.Client) error
 	PersistClients() error
+	PersistGlobal() error
 	DeleteClient(int) error
 	VerifyUserName(string, int) bool
 	VerifyVKey(string, int) bool
@@ -184,6 +185,10 @@ func (defaultRepository) SaveClient(_ *file.Client) error {
 
 func (defaultRepository) PersistClients() error {
 	return file.GetDb().JsonDb.StoreClientsToJsonFile()
+}
+
+func (defaultRepository) PersistGlobal() error {
+	return file.GetDb().JsonDb.StoreGlobalToJsonFile()
 }
 
 func (defaultRepository) DeleteClient(id int) error {
