@@ -56,7 +56,7 @@ func NewConfig(path string) (*Config, error) {
 }
 
 func parseConfig(raw string) (*Config, error) {
-	content, err := common.ParseStr(normalizeContent(raw))
+	content, err := common.ParseStr(common.NormalizeNewlines(raw))
 	if err != nil {
 		return nil, fmt.Errorf("parse template: %w", err)
 	}
@@ -98,14 +98,6 @@ func parseConfig(raw string) (*Config, error) {
 		return nil, errors.New("missing [common] section")
 	}
 	return c, nil
-}
-
-// normalizeContent removes a UTF-8 BOM and converts CRLF and lone CR line
-// endings to LF, so files saved by Windows editors parse like Unix ones.
-func normalizeContent(s string) string {
-	s = strings.TrimPrefix(s, "\uFEFF")
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	return strings.ReplaceAll(s, "\r", "\n")
 }
 
 type section struct {
@@ -442,7 +434,7 @@ func delLocalService(s string) *LocalServer {
 }
 
 func getAllTitle(content string) ([]string, error) {
-	sections, err := parseSections(normalizeContent(content))
+	sections, err := parseSections(common.NormalizeNewlines(content))
 	if err != nil {
 		return nil, err
 	}
@@ -454,5 +446,5 @@ func getAllTitle(content string) ([]string, error) {
 }
 
 func splitStr(s string) []string {
-	return strings.Split(normalizeContent(s), "\n")
+	return strings.Split(common.NormalizeNewlines(s), "\n")
 }

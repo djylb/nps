@@ -402,23 +402,31 @@ func dealClientData() {
 		return true
 	})
 	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		h := value.(*file.Host)
+		h, ok := value.(*file.Host)
+		if !ok || h == nil || h.Client == nil {
+			return true
+		}
 		c, err := file.GetDb().GetClient(h.Client.Id)
 		if err != nil {
 			return true
 		}
-		c.InletFlow += h.Flow.InletFlow
-		c.ExportFlow += h.Flow.ExportFlow
+		f := h.Flow.Values()
+		c.InletFlow += f.InletFlow
+		c.ExportFlow += f.ExportFlow
 		return true
 	})
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		t := value.(*file.Tunnel)
+		t, ok := value.(*file.Tunnel)
+		if !ok || t == nil || t.Client == nil {
+			return true
+		}
 		c, err := file.GetDb().GetClient(t.Client.Id)
 		if err != nil {
 			return true
 		}
-		c.InletFlow += t.Flow.InletFlow
-		c.ExportFlow += t.Flow.ExportFlow
+		f := t.Flow.Values()
+		c.InletFlow += f.InletFlow
+		c.ExportFlow += f.ExportFlow
 		return true
 	})
 	//return

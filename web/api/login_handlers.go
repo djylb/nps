@@ -205,7 +205,7 @@ func (a *App) LogoutRedirect(c Context) {
 		Resource: "session",
 		Action:   "logout",
 	})
-	clearSessionIdentity(c)
+	_ = clearSessionIdentity(c)
 	deleteSession(c, "login_nonce")
 	c.Redirect(302, joinBase(a.currentConfig().Web.BaseURL, "/login/index"))
 }
@@ -234,7 +234,10 @@ func (a *App) doLogin(c Context, username, password, totp string, explicit bool)
 		return false
 	}
 
-	applySessionIdentity(c, identity)
+	if err := applySessionIdentity(c, identity); err != nil {
+		logs.Error("Login of user %s from %s succeeded but the session could not be saved: %v", username, ip, err)
+		return false
+	}
 	a.system().RegisterManagementAccess(c.ClientIP(), identity.ClientIDs, identity.IsAdmin)
 
 	loginPolicy.RemoveBan(ip)

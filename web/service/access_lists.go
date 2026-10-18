@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 )
 
@@ -73,7 +74,7 @@ func normalizeDestRules(raw string) (string, error) {
 }
 
 func splitRuleLines(text string) []string {
-	return strings.Split(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"), "\n")
+	return common.SplitLines(text)
 }
 
 // joinRuleLines renders a list for a text area.

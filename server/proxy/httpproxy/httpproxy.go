@@ -313,7 +313,7 @@ func (s *HttpProxy) changeHostAndHeader(r *http.Request, conn http.Header, host 
 	}
 
 	// 设置自定义头部信息
-	h := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
+	h := common.SplitLines(header)
 	for _, v := range h {
 		hd := strings.SplitN(v, ":", 2)
 		if len(hd) == 2 {
@@ -418,7 +418,7 @@ func (s *HttpProxy) ChangeResponseHeader(resp *http.Response, header string) {
 	}
 
 	// 设置自定义头部信息
-	h := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
+	h := common.SplitLines(header)
 	for _, v := range h {
 		hd := strings.SplitN(v, ":", 2)
 		if len(hd) == 2 {

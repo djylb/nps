@@ -90,6 +90,28 @@ func (s *Flow) AddOver(in, out int64) (traffic, expired bool) {
 	return traffic, expired
 }
 
+// FlowValues is a snapshot of a Flow. Used is the traffic its limit counts:
+// the inbound and outbound traffic, scaled by FlowLimitFactor for a client.
+type FlowValues struct {
+	InletFlow, ExportFlow, FlowLimit, Used int64
+	TimeLimit                              time.Time
+}
+
+// Values returns a snapshot of the flow, taken under its lock; a nil flow
+// gives zero values.
+func (s *Flow) Values() FlowValues {
+	if s == nil {
+		return FlowValues{}
+	}
+	s.RLock()
+	defer s.RUnlock()
+	used := s.InletFlow + s.ExportFlow
+	if s.client {
+		used *= FlowLimitFactor.Load()
+	}
+	return FlowValues{InletFlow: s.InletFlow, ExportFlow: s.ExportFlow, FlowLimit: s.FlowLimit, Used: used, TimeLimit: s.TimeLimit}
+}
+
 // Over reports whether the flow is over its traffic limit (FlowLimit MiB of
 // inbound and outbound traffic together) or past its time limit. The fields
 // are read under the lock, so that a 64-bit counter is never seen half
@@ -604,8 +626,7 @@ type Target struct {
 }
 
 func parseTargets(targetStr string) []string {
-	normalized := strings.ReplaceAll(strings.ReplaceAll(targetStr, "：", ":"), "\r\n", "\n")
-	return common.TrimArr(strings.Split(normalized, "\n"))
+	return common.TrimArr(common.SplitLines(strings.ReplaceAll(targetStr, "：", ":")))
 }
 
 // syncTargetsLocked (re)builds the target list whenever TargetStr changed.

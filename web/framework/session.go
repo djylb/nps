@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/djylb/nps/lib/logs"
@@ -103,24 +104,14 @@ func SetSessionValue(g *gin.Context, key string, value interface{}) error {
 	if err := EnsureSession(g); err != nil {
 		return err
 	}
-	session := sessionStateFromContext(g)
-	if session == nil {
-		return nil
-	}
-	session.Set(key, value)
-	return nil
+	return sessionStateFromContext(g).Set(key, value)
 }
 
 func DeleteSessionValue(g *gin.Context, key string) error {
 	if err := EnsureSession(g); err != nil {
 		return err
 	}
-	session := sessionStateFromContext(g)
-	if session == nil {
-		return nil
-	}
-	session.Delete(key)
-	return nil
+	return sessionStateFromContext(g).Delete(key)
 }
 
 func sessionStateFromContext(g *gin.Context) *sessionState {
@@ -139,21 +130,56 @@ func (s *sessionState) Get(key string) interface{} {
 	return s.session.Values[key]
 }
 
-func (s *sessionState) Set(key string, value interface{}) {
+func (s *sessionState) Set(key string, value interface{}) error {
 	if s == nil || s.session == nil {
-		return
+		return nil
 	}
 	s.session.Values[key] = value
-	_ = s.session.Save(s.request, s.writer)
+	return s.save()
 }
 
-func (s *sessionState) Delete(key string) {
+func (s *sessionState) Delete(key string) error {
 	if s == nil || s.session == nil {
-		return
+		return nil
 	}
 	delete(s.session.Values, key)
-	_ = s.session.Save(s.request, s.writer)
+	return s.save()
 }
+
+// save writes the session cookie in place of the one an earlier save of
+// the same response wrote, so that a response carries the final session
+// once however many values a request changes; a header of a cookie per
+// change can outgrow the header buffer of a reverse proxy.
+func (s *sessionState) save() error {
+	return saveSessionCookie(s.session, s.request, s.writer)
+}
+
+// saveSessionCookie saves session into the Set-Cookie headers of w,
+// replacing any cookie of the session set there before.
+func saveSessionCookie(session *sessions.Session, r *http.Request, w http.ResponseWriter) error {
+	rec := cookieRecorder{header: http.Header{}}
+	if err := session.Save(r, rec); err != nil {
+		logs.Warn("Save web session: %v", err)
+		return err
+	}
+	h := w.Header()
+	prefix := session.Name() + "="
+	kept := h.Values("Set-Cookie")[:0:0]
+	for _, c := range h.Values("Set-Cookie") {
+		if !strings.HasPrefix(c, prefix) {
+			kept = append(kept, c)
+		}
+	}
+	h["Set-Cookie"] = append(kept, rec.header.Values("Set-Cookie")...)
+	return nil
+}
+
+// cookieRecorder collects the headers a session save sets.
+type cookieRecorder struct{ header http.Header }
+
+func (c cookieRecorder) Header() http.Header         { return c.header }
+func (c cookieRecorder) Write(b []byte) (int, error) { return len(b), nil }
+func (c cookieRecorder) WriteHeader(int)             {}
 
 func buildSessionStore(cfg *servercfg.Snapshot) (*sessions.CookieStore, error) {
 	authKey, encKey, err := deriveSessionKeys(cfg)
@@ -172,7 +198,7 @@ func buildSessionStore(cfg *servercfg.Snapshot) (*sessions.CookieStore, error) {
 func clearSessionCookie(store *sessions.CookieStore, w http.ResponseWriter, r *http.Request) error {
 	session := newBlankSession(store)
 	session.Options.MaxAge = -1
-	return session.Save(r, w)
+	return saveSessionCookie(session, r, w)
 }
 
 func newBlankSession(store *sessions.CookieStore) *sessions.Session {

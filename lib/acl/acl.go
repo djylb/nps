@@ -124,11 +124,17 @@ func normalize(c geomatch.Compiler, lines []string) ([]string, error) {
 // duplicates. The error names the rules that were rejected; they are left
 // out of the result.
 func NormalizeSource(scope Scope, rules []string) ([]string, error) {
+	return normalize(sourceCompiler(scope), ruleLines(rules))
+}
+
+// ruleLines splits rules into lines: older versions stored the lines
+// entered on a page as one rule.
+func ruleLines(rules []string) []string {
 	lines := make([]string, 0, len(rules))
 	for _, r := range rules {
-		lines = append(lines, strings.Split(strings.ReplaceAll(r, "\r", "\n"), "\n")...)
+		lines = append(lines, geomatch.SplitLines(r)...)
 	}
-	return normalize(sourceCompiler(scope), lines)
+	return lines
 }
 
 // NormalizeDest returns the canonical form of destination rules, one per

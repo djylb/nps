@@ -580,7 +580,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 }
 
 func sanitizeBridgeTarget(target string, isAdmin bool, fallback string) string {
-	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(target, "\r\n", "\n")))
+	normalized := strings.ToLower(strings.TrimSpace(common.NormalizeNewlines(target)))
 	if !isAdmin && strings.Contains(normalized, "bridge://") {
 		return fallback
 	}

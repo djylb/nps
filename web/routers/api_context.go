@@ -80,12 +80,12 @@ func (c *ginAPIContext) SessionValue(key string) interface{} {
 	return framework.SessionValue(c.gin, key)
 }
 
-func (c *ginAPIContext) SetSessionValue(key string, value interface{}) {
-	_ = framework.SetSessionValue(c.gin, key, value)
+func (c *ginAPIContext) SetSessionValue(key string, value interface{}) error {
+	return framework.SetSessionValue(c.gin, key, value)
 }
 
-func (c *ginAPIContext) DeleteSessionValue(key string) {
-	_ = framework.DeleteSessionValue(c.gin, key)
+func (c *ginAPIContext) DeleteSessionValue(key string) error {
+	return framework.DeleteSessionValue(c.gin, key)
 }
 
 func (c *ginAPIContext) RespondJSON(status int, value interface{}) {

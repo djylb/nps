@@ -19,13 +19,18 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 	// get all Tunnel and filter
 	for _, key := range keys {
 		if value, ok := file.GetDb().JsonDb.Tasks.Load(key); ok {
-			v := value.(*file.Tunnel)
+			v, ok := value.(*file.Tunnel)
+			if !ok || v == nil || v.Client == nil || v.Target == nil {
+				continue
+			}
 			if (typeVal != "" && v.Mode != typeVal || (clientId != 0 && v.Client.Id != clientId)) || (typeVal == "" && clientId != v.Client.Id) {
 				continue
 			}
 			allList = append(allList, v)
 		}
 	}
+
+	fv := flowSnapshots(allList, func(t *file.Tunnel) *file.Flow { return t.Flow })
 
 	// sort by field, asc or desc
 	switch sortField {
@@ -115,43 +120,43 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 	case "InletFlow":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.InletFlow < allList[j].Flow.InletFlow })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].InletFlow < fv[allList[j].Flow].InletFlow })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.InletFlow > allList[j].Flow.InletFlow })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].InletFlow > fv[allList[j].Flow].InletFlow })
 		}
 
 	case "ExportFlow":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.ExportFlow < allList[j].Flow.ExportFlow })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].ExportFlow < fv[allList[j].Flow].ExportFlow })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.ExportFlow > allList[j].Flow.ExportFlow })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].ExportFlow > fv[allList[j].Flow].ExportFlow })
 		}
 
 	case "TotalFlow":
 		if order == "asc" {
 			sort.SliceStable(allList, func(i, j int) bool {
-				return allList[i].Flow.InletFlow+allList[i].Flow.ExportFlow < allList[j].Flow.InletFlow+allList[j].Flow.ExportFlow
+				return fv[allList[i].Flow].InletFlow+fv[allList[i].Flow].ExportFlow < fv[allList[j].Flow].InletFlow+fv[allList[j].Flow].ExportFlow
 			})
 		} else {
 			sort.SliceStable(allList, func(i, j int) bool {
-				return allList[i].Flow.InletFlow+allList[i].Flow.ExportFlow > allList[j].Flow.InletFlow+allList[j].Flow.ExportFlow
+				return fv[allList[i].Flow].InletFlow+fv[allList[i].Flow].ExportFlow > fv[allList[j].Flow].InletFlow+fv[allList[j].Flow].ExportFlow
 			})
 		}
 
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f *file.Flow) int64 {
+		rem := func(f file.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
 				}
 				return math.MinInt64
 			}
-			return f.FlowLimit*mb - (f.InletFlow + f.ExportFlow)
+			return f.FlowLimit*mb - f.Used
 		}
 		sort.SliceStable(allList, func(i, j int) bool {
-			ri, rj := rem(allList[i].Flow), rem(allList[j].Flow)
+			ri, rj := rem(fv[allList[i].Flow]), rem(fv[allList[j].Flow])
 			if asc {
 				return ri < rj
 			}
@@ -161,21 +166,21 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 	case "Flow.FlowLimit":
 		if order == "asc" {
 			sort.SliceStable(allList, func(i, j int) bool {
-				vi, vj := allList[i].Flow.FlowLimit, allList[j].Flow.FlowLimit
+				vi, vj := fv[allList[i].Flow].FlowLimit, fv[allList[j].Flow].FlowLimit
 				return (vi != 0 && vj == 0) || (vi != 0 && vj != 0 && vi < vj)
 			})
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.FlowLimit > allList[j].Flow.FlowLimit })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].FlowLimit > fv[allList[j].Flow].FlowLimit })
 		}
 
 	case "Flow.TimeLimit", "TimeRemain":
 		if order == "asc" {
 			sort.SliceStable(allList, func(i, j int) bool {
-				ti, tj := allList[i].Flow.TimeLimit, allList[j].Flow.TimeLimit
+				ti, tj := fv[allList[i].Flow].TimeLimit, fv[allList[j].Flow].TimeLimit
 				return (!ti.IsZero() && tj.IsZero()) || (!ti.IsZero() && !tj.IsZero() && ti.Before(tj))
 			})
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Flow.TimeLimit.After(allList[j].Flow.TimeLimit) })
+			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].TimeLimit.After(fv[allList[j].Flow].TimeLimit) })
 		}
 
 	case "Status":
@@ -241,7 +246,10 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 // GetHostList get client list
 func GetHostList(start, length, clientId int, search, sortField, order string) (list []*file.Host, cnt int) {
-	list, cnt = file.GetDb().GetHost(start, length, clientId, search)
+	// all the matching hosts are sorted before a page is taken
+	list, cnt = file.GetDb().GetHost(0, 0, clientId, search)
+	defer func() { list = page(list, start, length) }()
+	fv := flowSnapshots(list, func(h *file.Host) *file.Flow { return h.Flow })
 
 	// sort by field, asc or desc
 	switch sortField {
@@ -373,43 +381,43 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 
 	case "InletFlow":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.InletFlow < list[j].Flow.InletFlow })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].InletFlow < fv[list[j].Flow].InletFlow })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.InletFlow > list[j].Flow.InletFlow })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].InletFlow > fv[list[j].Flow].InletFlow })
 		}
 
 	case "ExportFlow":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.ExportFlow < list[j].Flow.ExportFlow })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].ExportFlow < fv[list[j].Flow].ExportFlow })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.ExportFlow > list[j].Flow.ExportFlow })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].ExportFlow > fv[list[j].Flow].ExportFlow })
 		}
 
 	case "TotalFlow":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				return list[i].Flow.InletFlow+list[i].Flow.ExportFlow < list[j].Flow.InletFlow+list[j].Flow.ExportFlow
+				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow < fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow
 			})
 		} else {
 			sort.SliceStable(list, func(i, j int) bool {
-				return list[i].Flow.InletFlow+list[i].Flow.ExportFlow > list[j].Flow.InletFlow+list[j].Flow.ExportFlow
+				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow > fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow
 			})
 		}
 
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f *file.Flow) int64 {
+		rem := func(f file.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
 				}
 				return math.MinInt64
 			}
-			return f.FlowLimit*mb - (f.InletFlow + f.ExportFlow)
+			return f.FlowLimit*mb - f.Used
 		}
 		sort.SliceStable(list, func(i, j int) bool {
-			ri, rj := rem(list[i].Flow), rem(list[j].Flow)
+			ri, rj := rem(fv[list[i].Flow]), rem(fv[list[j].Flow])
 			if asc {
 				return ri < rj
 			}
@@ -419,21 +427,21 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 	case "Flow.FlowLimit":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				vi, vj := list[i].Flow.FlowLimit, list[j].Flow.FlowLimit
+				vi, vj := fv[list[i].Flow].FlowLimit, fv[list[j].Flow].FlowLimit
 				return (vi != 0 && vj == 0) || (vi != 0 && vj != 0 && vi < vj)
 			})
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.FlowLimit > list[j].Flow.FlowLimit })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].FlowLimit > fv[list[j].Flow].FlowLimit })
 		}
 
 	case "Flow.TimeLimit", "TimeRemain":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				ti, tj := list[i].Flow.TimeLimit, list[j].Flow.TimeLimit
+				ti, tj := fv[list[i].Flow].TimeLimit, fv[list[j].Flow].TimeLimit
 				return (!ti.IsZero() && tj.IsZero()) || (!ti.IsZero() && !tj.IsZero() && ti.Before(tj))
 			})
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.TimeLimit.After(list[j].Flow.TimeLimit) })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].TimeLimit.After(fv[list[j].Flow].TimeLimit) })
 		}
 
 	case "IsClose":
@@ -456,7 +464,10 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 
 // GetClientList get client list
 func GetClientList(start, length int, search, sortField, order string, clientId int) (list []*file.Client, cnt int) {
-	list, cnt = file.GetDb().GetClientList(start, length, search, sortField, order, clientId)
+	// all the matching clients are sorted before a page is taken
+	list, cnt = file.GetDb().GetClientList(0, 0, search, sortField, order, clientId)
+	defer func() { list = page(list, start, length) }()
+	fv := flowSnapshots(list, func(c *file.Client) *file.Flow { return c.Flow })
 
 	// sort by Id, Remark, Port..., asc or desc
 	switch sortField {
@@ -498,28 +509,28 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 	case "TotalFlow":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				return list[i].Flow.InletFlow+list[i].Flow.ExportFlow < list[j].Flow.InletFlow+list[j].Flow.ExportFlow
+				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow < fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow
 			})
 		} else {
 			sort.SliceStable(list, func(i, j int) bool {
-				return list[i].Flow.InletFlow+list[i].Flow.ExportFlow > list[j].Flow.InletFlow+list[j].Flow.ExportFlow
+				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow > fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow
 			})
 		}
 
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f *file.Flow) int64 {
+		rem := func(f file.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
 				}
 				return math.MinInt64
 			}
-			return f.FlowLimit*mb - (f.InletFlow + f.ExportFlow)
+			return f.FlowLimit*mb - f.Used
 		}
 		sort.SliceStable(list, func(i, j int) bool {
-			ri, rj := rem(list[i].Flow), rem(list[j].Flow)
+			ri, rj := rem(fv[list[i].Flow]), rem(fv[list[j].Flow])
 			if asc {
 				return ri < rj
 			}
@@ -557,21 +568,21 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 	case "Flow.FlowLimit":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				vi, vj := list[i].Flow.FlowLimit, list[j].Flow.FlowLimit
+				vi, vj := fv[list[i].Flow].FlowLimit, fv[list[j].Flow].FlowLimit
 				return (vi != 0 && vj == 0) || (vi != 0 && vj != 0 && vi < vj)
 			})
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.FlowLimit > list[j].Flow.FlowLimit })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].FlowLimit > fv[list[j].Flow].FlowLimit })
 		}
 
 	case "Flow.TimeLimit", "TimeRemain":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
-				ti, tj := list[i].Flow.TimeLimit, list[j].Flow.TimeLimit
+				ti, tj := fv[list[i].Flow].TimeLimit, fv[list[j].Flow].TimeLimit
 				return (!ti.IsZero() && tj.IsZero()) || (!ti.IsZero() && !tj.IsZero() && ti.Before(tj))
 			})
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Flow.TimeLimit.After(list[j].Flow.TimeLimit) })
+			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].TimeLimit.After(fv[list[j].Flow].TimeLimit) })
 		}
 
 	case "Status":
@@ -591,4 +602,30 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 
 	dealClientData()
 	return
+}
+
+// flowSnapshots takes a snapshot of the flow of every entry of list, so that
+// sorting reads consistent values under no lock; a nil flow reads as zero.
+func flowSnapshots[T any](list []T, flow func(T) *file.Flow) map[*file.Flow]file.FlowValues {
+	fv := make(map[*file.Flow]file.FlowValues, len(list))
+	for _, v := range list {
+		if f := flow(v); f != nil {
+			fv[f] = f.Values()
+		}
+	}
+	return fv
+}
+
+// page returns the page of length entries of list from start; a length of
+// 0 or less returns the entries from start on.
+func page[T any](list []T, start, length int) []T {
+	start = max(start, 0)
+	if start >= len(list) {
+		return list[:0]
+	}
+	list = list[start:]
+	if length > 0 && length < len(list) {
+		list = list[:length]
+	}
+	return list
 }

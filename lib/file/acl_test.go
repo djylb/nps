@@ -168,3 +168,21 @@ func TestGlobalTrafficPersisted(t *testing.T) {
 		t.Fatal("no global settings left Global nil, so the traffic would not be stored")
 	}
 }
+
+func TestNullGlobalSettings(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "conf", "global.json"), []byte("null"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db := NewJsonDb(dir)
+	db.LoadGlobalFromJsonFile()
+	if db.Global == nil {
+		t.Fatal("null global settings left Global nil")
+	}
+	if err := db.StoreGlobalToJsonFile(); err != nil {
+		t.Fatal(err)
+	}
+}

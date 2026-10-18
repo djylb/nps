@@ -11,6 +11,7 @@ import (
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
@@ -81,7 +82,10 @@ func ensureAutoAdminSession(c *gin.Context, state *State) {
 	if !ok {
 		return
 	}
-	webapi.ApplySessionIdentity(newAPIContext(c), identity)
+	if err := webapi.ApplySessionIdentity(newAPIContext(c), identity); err != nil {
+		logs.Error("Automatic administrator session could not be saved: %v", err)
+		return
+	}
 	state.System().RegisterManagementAccess(c.ClientIP(), nil, true)
 }
 

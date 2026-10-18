@@ -4,12 +4,15 @@ import (
 	"html"
 	"strings"
 
+	"github.com/djylb/nps/lib/common"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 )
 
+// requestString returns the field key with its line endings, whatever the
+// visitor's system uses, turned into \n.
 func requestString(c Context, key string) string {
-	return c.String(key)
+	return common.NormalizeNewlines(c.String(key))
 }
 
 func requestEscapedString(c Context, key string) string {
@@ -136,12 +139,14 @@ func sessionString(c Context, key string) string {
 	return value
 }
 
+// setSession and deleteSession change the session where a failed save,
+// which is logged, leaves nothing to undo.
 func setSession(c Context, key string, value interface{}) {
-	c.SetSessionValue(key, value)
+	_ = c.SetSessionValue(key, value)
 }
 
 func deleteSession(c Context, key string) {
-	c.DeleteSessionValue(key)
+	_ = c.DeleteSessionValue(key)
 }
 
 func titleName(name string) string {

@@ -42,6 +42,7 @@ func CompileSource(scope Scope, priority int, black, white []string) (*Source, e
 	c := sourceCompiler(scope)
 	s := &Source{priority: geomatch.Priority(NormalizePriority(priority))}
 	var errs []error
+	black, white = ruleLines(black), ruleLines(white)
 	if len(black) > 0 {
 		l, err := geomatch.NewLive(c, black)
 		s.black = l

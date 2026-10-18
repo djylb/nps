@@ -207,9 +207,8 @@ func DealMultiUser(s string) map[string]string {
 	if s == "" {
 		return nil
 	}
-	s = strings.ReplaceAll(s, "\r\n", "\n")
 	multiUserMap := make(map[string]string)
-	for _, v := range strings.Split(s, "\n") {
+	for _, v := range SplitLines(s) {
 		if strings.TrimSpace(v) == "" {
 			continue
 		}

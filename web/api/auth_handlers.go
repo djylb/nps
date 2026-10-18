@@ -177,8 +177,8 @@ func (a *App) Logout(c Context) {
 		Resource: "session",
 		Action:   "logout",
 	})
-	clearSessionIdentity(c)
-	c.DeleteSessionValue("login_nonce")
+	_ = clearSessionIdentity(c)
+	_ = c.DeleteSessionValue("login_nonce")
 	ajax(c, "logout success", 1)
 }
 

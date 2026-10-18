@@ -17,15 +17,14 @@ func TestSortClientByKey(t *testing.T) {
 	clients.Store("a", &Client{Id: 1, Flow: &Flow{ExportFlow: 10, InletFlow: 100}})
 	clients.Store("b", &Client{Id: 2, Flow: &Flow{ExportFlow: 30, InletFlow: 50}})
 	clients.Store("c", &Client{Id: 3, Flow: &Flow{ExportFlow: 20, InletFlow: 80}})
+	clients.Store("d", &Client{Id: 4}) // no flow: zero traffic
+	clients.Store("e", "not a client")
 
-	desc := sortClientByKey(clients, "ExportFlow", "desc")
-	if len(desc) != 3 || desc[0] != 1 || desc[1] != 3 || desc[2] != 2 {
-		t.Fatalf("unexpected desc sort result: %v", desc)
+	if got := sortClientByKey(clients, "ExportFlow", "desc"); !reflect.DeepEqual(got, []int{2, 3, 1, 4}) {
+		t.Fatalf("ExportFlow desc = %v, want [2 3 1 4]", got)
 	}
-
-	asc := sortClientByKey(clients, "InletFlow", "asc")
-	if len(asc) != 3 || asc[0] != 1 || asc[1] != 3 || asc[2] != 2 {
-		t.Fatalf("unexpected asc sort result: %v", asc)
+	if got := sortClientByKey(clients, "InletFlow", "asc"); !reflect.DeepEqual(got, []int{4, 2, 3, 1}) {
+		t.Fatalf("InletFlow asc = %v, want [4 2 3 1]", got)
 	}
 }
 

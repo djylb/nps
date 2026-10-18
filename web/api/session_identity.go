@@ -1,14 +1,17 @@
 package api
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
 	webservice "github.com/djylb/nps/web/service"
 )
 
-func ApplySessionIdentity(c Context, identity *webservice.SessionIdentity) {
-	applySessionIdentity(c, identity)
+// ApplySessionIdentity stores identity in the session; an error says that
+// the session could not be saved.
+func ApplySessionIdentity(c Context, identity *webservice.SessionIdentity) error {
+	return applySessionIdentity(c, identity)
 }
 
 func currentSessionIdentityWithResolverAndFallback(c Context, resolver webservice.PermissionResolver, fallbackAdminUsername string) *webservice.SessionIdentity {
@@ -50,52 +53,60 @@ func currentSessionIdentityWithResolverAndFallback(c Context, resolver webservic
 	}).Normalize()
 }
 
-func applySessionIdentity(c Context, identity *webservice.SessionIdentity) {
+func applySessionIdentity(c Context, identity *webservice.SessionIdentity) error {
 	normalized := identity
 	if normalized != nil {
 		normalized = normalized.Normalize()
 	}
 	if normalized == nil || !normalized.Authenticated {
-		clearSessionIdentity(c)
-		return
+		return clearSessionIdentity(c)
 	}
 
 	encoded, err := webservice.MarshalSessionIdentity(normalized)
 	if err != nil {
-		clearSessionIdentity(c)
-		return
+		return errors.Join(err, clearSessionIdentity(c))
 	}
 
-	c.SetSessionValue("auth", true)
-	c.SetSessionValue(webservice.SessionIdentityKey, encoded)
-	c.SetSessionValue("isAdmin", normalized.IsAdmin)
+	errs := []error{
+		c.SetSessionValue("auth", true),
+		c.SetSessionValue(webservice.SessionIdentityKey, encoded),
+		c.SetSessionValue("isAdmin", normalized.IsAdmin),
+	}
 	if normalized.Username != "" {
-		c.SetSessionValue("username", normalized.Username)
+		errs = append(errs, c.SetSessionValue("username", normalized.Username))
 	} else {
-		c.DeleteSessionValue("username")
+		errs = append(errs, c.DeleteSessionValue("username"))
 	}
 
 	if clientID, ok := primaryClientID(normalized.ClientIDs); ok {
-		c.SetSessionValue("clientId", clientID)
+		errs = append(errs, c.SetSessionValue("clientId", clientID))
 	} else {
-		c.DeleteSessionValue("clientId")
+		errs = append(errs, c.DeleteSessionValue("clientId"))
 	}
 	if len(normalized.ClientIDs) > 0 {
-		c.SetSessionValue("clientIds", joinClientIDs(normalized.ClientIDs))
+		errs = append(errs, c.SetSessionValue("clientIds", joinClientIDs(normalized.ClientIDs)))
 	} else {
-		c.DeleteSessionValue("clientIds")
+		errs = append(errs, c.DeleteSessionValue("clientIds"))
+	}
+	if err := errors.Join(errs...); err != nil {
+		c.SetActor(AnonymousActor())
+		return err
 	}
 	c.SetActor(ActorFromSessionIdentity(normalized))
+	return nil
 }
 
-func clearSessionIdentity(c Context) {
-	c.SetSessionValue("auth", false)
-	c.DeleteSessionValue(webservice.SessionIdentityKey)
-	c.DeleteSessionValue("isAdmin")
-	c.DeleteSessionValue("clientId")
-	c.DeleteSessionValue("clientIds")
-	c.DeleteSessionValue("username")
+func clearSessionIdentity(c Context) error {
+	err := errors.Join(
+		c.SetSessionValue("auth", false),
+		c.DeleteSessionValue(webservice.SessionIdentityKey),
+		c.DeleteSessionValue("isAdmin"),
+		c.DeleteSessionValue("clientId"),
+		c.DeleteSessionValue("clientIds"),
+		c.DeleteSessionValue("username"),
+	)
 	c.SetActor(AnonymousActor())
+	return err
 }
 
 func joinClientIDs(clientIDs []int) string {

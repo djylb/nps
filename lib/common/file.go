@@ -32,7 +32,7 @@ func GetPath(filePath string) string {
 
 func GetCertContent(filePath, header string) (string, error) {
 	if filePath == "" || strings.Contains(filePath, header) {
-		return filePath, nil
+		return NormalizeNewlines(filePath), nil
 	}
 	if !filepath.IsAbs(filePath) {
 		filePath = filepath.Join(GetRunPath(), filePath)
@@ -41,7 +41,7 @@ func GetCertContent(filePath, header string) (string, error) {
 	if err != nil || !strings.Contains(string(content), header) {
 		return "", err
 	}
-	return string(content), nil
+	return NormalizeNewlines(string(content)), nil
 }
 
 func LoadCertPair(certFile, keyFile string) (certContent, keyContent string, ok bool) {
@@ -78,7 +78,7 @@ func GetCertType(s string) string {
 	if s == "" {
 		return "empty"
 	}
-	if strings.Contains(s, "-----BEGIN ") || strings.Contains(s, "\n") {
+	if strings.Contains(s, "-----BEGIN ") || strings.ContainsAny(s, "\r\n") {
 		return "text"
 	}
 	if _, err := os.Stat(s); err == nil {

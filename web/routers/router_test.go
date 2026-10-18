@@ -1,9 +1,14 @@
 package routers
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -1503,5 +1509,74 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	}
 	if g := file.Db.JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
 		t.Fatalf("cleared traffic not stored: %d/%d", g.InletFlow, g.ExportFlow)
+	}
+}
+
+// A login answers with the final session cookie alone: a cookie per changed
+// session value made the response header outgrow the default header buffer
+// of reverse proxies such as Nginx, which then failed the login.
+func TestLoginSetsOneSessionCookie(t *testing.T) {
+	repoRoot := testRepoRoot(t)
+	oldConfPath := common.ConfPath
+	common.ConfPath = repoRoot
+	defer func() { common.ConfPath = oldConfPath }()
+	configPath := writeTestConfig(t, "nps.conf", "web_username=admin\nweb_password=secret\nweb_base_url=\nopen_captcha=false\nsecure_mode=true\n")
+	if err := servercfg.Load(configPath); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	resetTestDB(t)
+	crypt.InitTls(tls.Certificate{})
+	gin.SetMode(gin.TestMode)
+	handler := Init()
+
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login/index", nil))
+	m := regexp.MustCompile(`loginNonce\s*:\s*"([^"]+)"`).FindStringSubmatch(page.Body.String())
+	if m == nil {
+		t.Fatal("no login nonce on the login page")
+	}
+	pubPEM, err := crypt.GetRSAPublicKeyPEM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode([]byte(pubPEM))
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(crypt.LoginPayload{Nonce: m[1], Timestamp: time.Now().UnixMilli(), Password: "secret"})
+	cipher, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, pub.(*rsa.PublicKey), payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login := performFormRequest(handler, http.MethodPost, "/login/verify", page.Result().Cookies(), map[string]string{
+		"username": "admin",
+		"password": base64.StdEncoding.EncodeToString(cipher),
+	})
+	if !strings.Contains(login.Body.String(), `"status":1`) {
+		t.Fatalf("POST /login/verify = %s", login.Body.String())
+	}
+	var sessions, size int
+	for _, c := range login.Header().Values("Set-Cookie") {
+		if strings.HasPrefix(c, "nps_session=") {
+			sessions++
+		}
+	}
+	for k, vs := range login.Header() {
+		for _, v := range vs {
+			size += len(k) + len(v) + 4
+		}
+	}
+	if sessions != 1 || size > 2048 {
+		t.Fatalf("login response sets %d session cookies in %d header bytes, want 1 in at most 2 KiB", sessions, size)
+	}
+	index := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/index/index", nil)
+	for _, c := range login.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	handler.ServeHTTP(index, req)
+	if index.Code != http.StatusOK {
+		t.Fatalf("GET /index/index with the login cookie status = %d, want 200", index.Code)
 	}
 }

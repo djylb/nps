@@ -50,8 +50,18 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 	loadSyncMapFromFile(s.TaskFilePath, Tunnel{}, func(v interface{}) {
 		var err error
 		post := v.(*Tunnel)
+		if post.Id <= 0 || post.Client == nil {
+			logs.Warn("Tunnel %d skipped: no id or client", post.Id)
+			return
+		}
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
 			return
+		}
+		if post.Flow == nil {
+			post.Flow = new(Flow)
+		}
+		if post.Target == nil {
+			post.Target = new(Target)
 		}
 		_ = reserveTaskPassword(post, false)
 		post.NowConn = 0
@@ -81,6 +91,13 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 	Blake2bVkeyIndex.Clear()
 	loadSyncMapFromFile(s.ClientFilePath, Client{}, func(v interface{}) {
 		post := v.(*Client)
+		if post.Id == 0 {
+			logs.Warn("Client skipped: no id")
+			return
+		}
+		if post.Cnf == nil {
+			post.Cnf = new(Config)
+		}
 		if post.Id > 0 {
 			Blake2bVkeyIndex.Add(crypt.Blake2b(post.VerifyKey), post.Id)
 		}
@@ -108,8 +125,18 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 	loadSyncMapFromFile(s.HostFilePath, Host{}, func(v interface{}) {
 		var err error
 		post := v.(*Host)
+		if post.Id <= 0 || post.Client == nil {
+			logs.Warn("Host %d skipped: no id or client", post.Id)
+			return
+		}
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
 			return
+		}
+		if post.Flow == nil {
+			post.Flow = new(Flow)
+		}
+		if post.Target == nil {
+			post.Target = new(Target)
 		}
 		if post.CertType == "" {
 			post.CertType = common.GetCertType(post.CertFile)
@@ -130,7 +157,8 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 func (s *JsonDb) LoadGlobalFromJsonFile() {
 	loadSyncMapFromFileWithSingleJson(s.GlobalFilePath, func(v string) {
 		post := new(Glob)
-		if json.Unmarshal([]byte(v), &post) != nil {
+		// "null", as older versions stored empty settings, leaves post nil
+		if json.Unmarshal([]byte(v), &post) != nil || post == nil {
 			return
 		}
 		post.CompileSourceLists(acl.ScopeGlobal, "the global settings")

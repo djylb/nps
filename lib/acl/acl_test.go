@@ -234,3 +234,22 @@ func TestDecideNamesLevel(t *testing.T) {
 		t.Fatalf("decision = %+v (%s), want denied by client 3", d, d)
 	}
 }
+
+// Older versions stored the lines entered on a page as one rule.
+func TestCompileSourceSplitsStoredLines(t *testing.T) {
+	s, err := CompileSource(ScopeUser, DenyFirst, []string{"203.0.113.9\n\n10.9.9.9\r\n"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range []string{"203.0.113.9:1", "10.9.9.9:1"} {
+		if AllowsString(addr, nil, s, nil) {
+			t.Errorf("%s allowed by a stored multi-line blacklist", addr)
+		}
+	}
+	if !AllowsString("198.51.100.1:1", nil, s, nil) {
+		t.Error("address off the list denied")
+	}
+	if got, _ := NormalizeSource(ScopeUser, []string{"203.0.113.9\n10.9.9.9"}); len(got) != 2 {
+		t.Errorf("NormalizeSource = %q, want two rules", got)
+	}
+}

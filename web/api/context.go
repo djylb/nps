@@ -15,8 +15,10 @@ type Context interface {
 	ClientIP() string
 	RequestHeader(string) string
 	SessionValue(string) interface{}
-	SetSessionValue(string, interface{})
-	DeleteSessionValue(string)
+	// SetSessionValue and DeleteSessionValue change the session and save it
+	// in the response; an error says that it could not be saved.
+	SetSessionValue(string, interface{}) error
+	DeleteSessionValue(string) error
 	RespondJSON(int, interface{})
 	RespondString(int, string)
 	RespondData(int, string, []byte)
