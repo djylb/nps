@@ -222,8 +222,9 @@ func main() {
 			logs.Error("%v", err)
 			return
 		}
-		if err := service.Control(s, cmd); err != nil {
-			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
+		if err := install.InstallService(s, svcConfig.Name); err != nil {
+			logs.Error("install service failed: %v", err)
+			os.Exit(1)
 		}
 		if service.Platform() == "unix-systemv" {
 			logs.Info("unix-systemv service")

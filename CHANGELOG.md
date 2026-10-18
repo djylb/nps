@@ -7,6 +7,9 @@
 
 ## Stable
 
+### v0.34.9 (待发布)
+- 修复Linux下安装系统服务失败、服务显示masked的问题
+
 ### v0.34.8 (2026-10-18)
 - 使用[holepunch](https://github.com/djylb/holepunch)重写P2P打洞（P2P不再兼容旧版，服务端与客户端需同时升级）
 - P2P支持IPv4/IPv6双栈，`p2p_ip`支持填写域名，留空自动识别

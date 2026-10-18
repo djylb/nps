@@ -36,18 +36,18 @@ var BuildTarget string
 const SysvScript = `#!/bin/sh
 # For RedHat and cousins:
 # chkconfig: - 99 01
-# description: {{.Description}}
-# processname: {{.Path}}
+# description: {{Description}}
+# processname: {{Path}}
 ### BEGIN INIT INFO
-# Provides:          {{.Path}}
+# Provides:          {{Path}}
 # Required-Start:
 # Required-Stop:
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: {{.DisplayName}}
-# Description:       {{.Description}}
+# Short-Description: {{DisplayName}}
+# Description:       {{Description}}
 ### END INIT INFO
-cmd="{{.Path}}{{range .Arguments}} {{.|cmd}}{{end}}"
+cmd="{{Path}}{{range Arguments}} {{. | cmd}}{{end}}"
 name=$(basename $(readlink -f $0))
 pid_file="/var/run/$name.pid"
 stdout_log="/var/log/$name.log"
@@ -65,7 +65,7 @@ case "$1" in
             echo "Already started"
         else
             echo "Starting $name"
-            {{if .WorkingDirectory}}cd '{{.WorkingDirectory}}'{{end}}
+            {{if WorkingDirectory}}cd '{{WorkingDirectory}}'{{end}}
             $cmd >> "$stdout_log" 2>> "$stderr_log" &
             echo $! > "$pid_file"
             if ! is_running; then
@@ -125,25 +125,23 @@ exit 0
 `
 
 const SystemdScript = `[Unit]
-Description={{.Description}}
-ConditionFileIsExecutable={{.Path|cmdEscape}}
-{{range $i, $dep := .Dependencies}}
-{{$dep}} {{end}}
+Description={{Description}}
+ConditionFileIsExecutable={{Path | cmdEscape}}
+{{range Dependencies}}{{.}}
+{{end}}
 [Service]
 LimitNOFILE=65536
 StartLimitInterval=5
 StartLimitBurst=10
-ExecStart={{.Path|cmdEscape}}{{range .Arguments}} {{.|cmd}}{{end}}
-{{if .ChRoot}}RootDirectory={{.ChRoot|cmd}}{{end}}
-{{if .WorkingDirectory}}WorkingDirectory={{.WorkingDirectory|cmdEscape}}{{end}}
-{{if .UserName}}User={{.UserName}}{{end}}
-{{if .ReloadSignal}}ExecReload=/bin/kill -{{.ReloadSignal}} "$MAINPID"{{end}}
-{{if .PIDFile}}PIDFile={{.PIDFile|cmd}}{{end}}
-{{if and .LogOutput .HasOutputFileSupport -}}
-StandardOutput=file:/var/log/{{.Name}}.out
-StandardError=file:/var/log/{{.Name}}.err
-{{- end}}
-Restart=always
+ExecStart={{Path | cmdEscape}}{{range Arguments}} {{. | cmd}}{{end}}
+{{if ChRoot}}RootDirectory={{ChRoot | cmd}}
+{{end}}{{if WorkingDirectory}}WorkingDirectory={{WorkingDirectory | cmdEscape}}
+{{end}}{{if UserName}}User={{UserName}}
+{{end}}{{if ReloadSignal}}ExecReload=/bin/kill -{{ReloadSignal}} "$MAINPID"
+{{end}}{{if PIDFile}}PIDFile={{PIDFile | cmd}}
+{{end}}{{if OutputFileSupport}}StandardOutput=file:{{LogDirectory}}/{{Name}}.out
+StandardError=file:{{LogDirectory}}/{{Name}}.err
+{{end}}Restart=always
 RestartSec=120
 [Install]
 WantedBy=multi-user.target

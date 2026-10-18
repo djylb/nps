@@ -121,3 +121,34 @@ func parseScBinaryPath(out string) string {
 	}
 	return ""
 }
+
+// serviceFiles are the init files the systemd and System V installers create
+// for the service name.
+func serviceFiles(name string) []string {
+	return []string{"/etc/systemd/system/" + name + ".service", "/etc/init.d/" + name}
+}
+
+// removeEmptyFiles deletes the regular files among paths that are empty. An
+// installer that fails after creating its init file leaves it empty, and
+// systemd reports an empty unit file as masked; the next install would also
+// refuse to overwrite it.
+func removeEmptyFiles(paths []string) {
+	for _, p := range paths {
+		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && fi.Size() == 0 {
+			_ = os.Remove(p)
+		}
+	}
+}
+
+// InstallService installs s as the system service name, first clearing an
+// empty init file left by an earlier failed install and removing the one this
+// install leaves if it fails.
+func InstallService(s service.Service, name string) error {
+	files := serviceFiles(name)
+	removeEmptyFiles(files)
+	if err := service.Control(s, "install"); err != nil {
+		removeEmptyFiles(files)
+		return err
+	}
+	return nil
+}
