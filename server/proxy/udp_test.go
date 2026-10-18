@@ -38,6 +38,12 @@ func TestUdpModeServerRelaysLargeDatagrams(t *testing.T) {
 	defer func() { _ = client.Close() }()
 	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: server.listener.LocalAddr().(*net.UDPAddr).Port}
 
+	var tunnel net.Conn
+	defer func() {
+		if tunnel != nil {
+			_ = tunnel.Close()
+		}
+	}()
 	var peer *netx.FramedConn
 	buf := make([]byte, netx.MaxFramePayload)
 	// 8000 bytes stay under the smallest loopback datagram limit (macOS).
@@ -49,7 +55,7 @@ func TestUdpModeServerRelaysLargeDatagrams(t *testing.T) {
 		if peer == nil {
 			select {
 			case c := <-bridge.peers:
-				defer func() { _ = c.Close() }()
+				tunnel = c
 				_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 				peer = netx.NewFramedConn(c, netx.WithFramedDatagrams())
 			case <-time.After(time.Second):

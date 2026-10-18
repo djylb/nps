@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
@@ -55,22 +56,36 @@ func (q *QuicStreamConn) SetWriteDeadline(t time.Time) error {
 	return q.stream.SetWriteDeadline(t)
 }
 
-type QuicAutoCloseConn struct{ *QuicStreamConn }
-
-func NewQuicAutoCloseConn(stream *quic.Stream, sess *quic.Conn) *QuicAutoCloseConn {
-	return &QuicAutoCloseConn{NewQuicStreamConn(stream, sess)}
+type QuicAutoCloseConn struct {
+	*QuicStreamConn
+	closeOnce sync.Once
 }
 
+func NewQuicAutoCloseConn(stream *quic.Stream, sess *quic.Conn) *QuicAutoCloseConn {
+	return &QuicAutoCloseConn{QuicStreamConn: NewQuicStreamConn(stream, sess)}
+}
+
+// quicCloseDrain is how long a closed QuicAutoCloseConn keeps its connection
+// so the data and FIN already written can reach the peer.
+const quicCloseDrain = 300 * time.Millisecond
+
+// Close closes the stream and, unless the peer closes the connection first,
+// the connection after quicCloseDrain. Closing the connection right away
+// would discard stream data the peer has not acknowledged yet.
 func (q *QuicAutoCloseConn) Close() error {
-	_ = q.QuicStreamConn.Close()
-	drain := 300 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), drain)
-	defer cancel()
-	select {
-	case <-q.QuicStreamConn.stream.Context().Done():
-	case <-ctx.Done():
-	}
-	return q.sess.CloseWithError(0, "close")
+	q.closeOnce.Do(func() {
+		_ = q.QuicStreamConn.Close()
+		go func() {
+			t := time.NewTimer(quicCloseDrain)
+			defer t.Stop()
+			select {
+			case <-q.sess.Context().Done():
+			case <-t.C:
+			}
+			_ = q.sess.CloseWithError(0, "close")
+		}()
+	})
+	return nil
 }
 
 func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config, quicCfg *quic.Config, localIP string) (*quic.Conn, error) {

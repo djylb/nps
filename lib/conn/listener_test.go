@@ -132,9 +132,15 @@ func TestVirtualListenerCloseClosesQueuedConns(t *testing.T) {
 func TestDialVirtualWaitsForQueueSpaceUntilContextDone(t *testing.T) {
 	l := NewVirtualListener(nil)
 	defer func() { _ = l.Close() }()
+	clients := make([]net.Conn, 0, virtualQueue)
+	defer func() {
+		for _, c := range clients {
+			_ = c.Close()
+		}
+	}()
 	for i := 0; i < virtualQueue; i++ {
 		client, server := net.Pipe()
-		defer func() { _ = client.Close() }()
+		clients = append(clients, client)
 		if !l.TryDeliver(server) {
 			t.Fatalf("TryDeliver #%d failed before the queue was full", i)
 		}

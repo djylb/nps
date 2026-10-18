@@ -167,7 +167,7 @@ func main() {
 		case "install":
 			// uninstall before
 			_ = service.Control(s, "stop")
-			_ = service.Control(s, "uninstall")
+			_ = install.UninstallService(s, svcConfig.Name)
 
 			binPath, err := install.NPS()
 			if err != nil {
@@ -180,7 +180,7 @@ func main() {
 				logs.Error("%v", err)
 				return
 			}
-			if err := install.InstallService(s, svcConfig.Name); err != nil {
+			if err := service.Control(s, "install"); err != nil {
 				logs.Error("install service failed: %v", err)
 				os.Exit(1)
 			}
@@ -197,8 +197,7 @@ func main() {
 			}
 			return
 		case "uninstall":
-			err := service.Control(s, cmd)
-			if err != nil {
+			if err := install.UninstallService(s, svcConfig.Name); err != nil {
 				logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 			}
 			if service.Platform() == "unix-systemv" {
@@ -230,13 +229,7 @@ func newServiceConfig() *service.Config {
 		svcConfig.Arguments = append(svcConfig.Arguments, v)
 	}
 	svcConfig.Arguments = append(svcConfig.Arguments, "service")
-	if !common.IsWindows() {
-		svcConfig.Dependencies = []string{
-			"Requires=network.target",
-			"After=network-online.target syslog.target"}
-		svcConfig.Option["SystemdScript"] = install.SystemdScript
-		svcConfig.Option["SysvScript"] = install.SysvScript
-	}
+	install.ConfigureService(svcConfig)
 	return svcConfig
 }
 

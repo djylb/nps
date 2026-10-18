@@ -135,6 +135,7 @@ func (s *TunnelModeServer) DialVirtual(rAddr string) (net.Conn, error) {
 	local, _ := conn.ParseTCPAddr(s.address)
 	a, b := net.Pipe()
 	// handleConn owns the server end and closes it.
+	//noinspection GoResourceLeak
 	go s.handleConn(netx.NewAddrOverrideConn(b, local, remote))
 	return a, nil
 }

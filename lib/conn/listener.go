@@ -26,20 +26,17 @@ func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
 		logs.Error("KCP listen error: %v", err)
 		return err
 	}
+	// Without a deadline AcceptKCP fails only once the listener is closed or
+	// its socket has failed, and keeps failing after that.
 	for {
 		c, err := kcpListener.AcceptKCP()
 		if err != nil {
-			//if errors.Is(err, net.ErrClosed) {
-			//	logs.Info("KCP listener closed intentionally.")
-			//	break
-			//}
-			logs.Trace("KCP accept session error: %v", err)
-			continue
+			_ = kcpListener.Close()
+			return err
 		}
 		SetUdpSession(c)
 		go f(c)
 	}
-	//return nil
 }
 
 func NewQuicListenerAndProcess(addr string, tlsConfig *tls.Config, quicConfig *quic.Config, f func(c net.Conn)) error {
@@ -49,10 +46,11 @@ func NewQuicListenerAndProcess(addr string, tlsConfig *tls.Config, quicConfig *q
 		return err
 	}
 	for {
+		// Accept fails only once the listener is closed.
 		sess, err := listener.Accept(context.Background())
 		if err != nil {
-			logs.Warn("QUIC accept session error: %v", err)
-			continue
+			_ = listener.Close()
+			return err
 		}
 		go acceptQuicStream(sess, f)
 	}

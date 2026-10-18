@@ -10,7 +10,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
 	github.com/djylb/byterate v0.0.0-20261017115745-d48e971d8f7c
-	github.com/djylb/holepunch v0.0.0-20261017132640-0efb74c58724
+	github.com/djylb/holepunch v0.0.0-20261018033353-48c6e4cf6d9e
 	github.com/djylb/netx v0.0.0-20261017115315-fe2acbb47e36
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
@@ -40,9 +40,9 @@ require (
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/dsnet/compress v0.0.1 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/gin-contrib/sse v1.1.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.2 // indirect
@@ -93,5 +93,5 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	gopkg.in/ini.v1 v1.67.3 // indirect
+	gopkg.in/ini.v1 v1.67.1 // indirect
 )

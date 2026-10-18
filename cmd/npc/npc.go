@@ -144,14 +144,8 @@ func main() {
 		Option:      options,
 	}
 
-	// 非 Windows 系统添加服务依赖
-	if !common.IsWindows() {
-		svcConfig.Dependencies = []string{
-			"Requires=network.target",
-			"After=network-online.target syslog.target"}
-		svcConfig.Option["SystemdScript"] = install.SystemdScript
-		svcConfig.Option["SysvScript"] = install.SysvScript
-	}
+	// 平台相关的服务设置
+	install.ConfigureService(svcConfig)
 
 	// 配置服务启动参数
 	for _, v := range os.Args[1:] {
@@ -211,7 +205,7 @@ func main() {
 		return
 	case "install":
 		_ = service.Control(s, "stop")
-		_ = service.Control(s, "uninstall")
+		_ = install.UninstallService(s, svcConfig.Name)
 		binPath, err := install.NPC()
 		if err != nil {
 			logs.Error("install failed: %v", err)
@@ -222,7 +216,7 @@ func main() {
 			logs.Error("%v", err)
 			return
 		}
-		if err := install.InstallService(s, svcConfig.Name); err != nil {
+		if err := service.Control(s, "install"); err != nil {
 			logs.Error("install service failed: %v", err)
 			os.Exit(1)
 		}
@@ -234,7 +228,7 @@ func main() {
 		}
 		return
 	case "uninstall":
-		if err := service.Control(s, cmd); err != nil {
+		if err := install.UninstallService(s, svcConfig.Name); err != nil {
 			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
 		}
 		if service.Platform() == "unix-systemv" {

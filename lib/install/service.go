@@ -87,7 +87,8 @@ func parseSystemdExecStart(out string) string {
 	return rest
 }
 
-// parseSysvCmd extracts the executable from the cmd= line of SysvScript.
+// parseSysvCmd extracts the executable from the cmd= line of the System V
+// init script.
 func parseSysvCmd(script string) string {
 	for _, line := range strings.Split(script, "\n") {
 		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), `cmd="`); ok {
@@ -122,33 +123,49 @@ func parseScBinaryPath(out string) string {
 	return ""
 }
 
-// serviceFiles are the init files the systemd and System V installers create
-// for the service name.
-func serviceFiles(name string) []string {
-	return []string{"/etc/systemd/system/" + name + ".service", "/etc/init.d/" + name}
+// ConfigureService sets the platform specific settings of c.
+func ConfigureService(c *service.Config) {
+	if service.Platform() != "linux-systemd" {
+		return
+	}
+	c.Dependencies = []string{
+		"Requires=network.target",
+		"After=network-online.target syslog.target"}
+	c.Option["LimitNOFILE"] = 65536
 }
 
-// removeEmptyFiles deletes the regular files among paths that are empty. An
-// installer that fails after creating its init file leaves it empty, and
-// systemd reports an empty unit file as masked; the next install would also
-// refuse to overwrite it.
-func removeEmptyFiles(paths []string) {
-	for _, p := range paths {
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && fi.Size() == 0 {
-			_ = os.Remove(p)
+// serviceFiles are the files the install of the platform creates, on the
+// platforms whose uninstall deletes them only after running the init system.
+func serviceFiles(name string) []string {
+	switch service.Platform() {
+	case "linux-systemd":
+		return []string{"/etc/systemd/system/" + name + ".service"}
+	case "linux-procd":
+		return []string{"/etc/init.d/" + name, "/etc/rc.d/S50" + name, "/etc/rc.d/K02" + name}
+	}
+	return nil
+}
+
+// UninstallService uninstalls s, the system service name. systemd refuses to
+// disable a unit whose file is empty, and procd runs the init script, which
+// an empty or foreign script fails; the files of the service are then deleted
+// directly so that a later install does not find them in place.
+func UninstallService(s service.Service, name string) error {
+	err := service.Control(s, "uninstall")
+	if err == nil {
+		return nil
+	}
+	removed := false
+	for _, p := range serviceFiles(name) {
+		if os.Remove(p) == nil {
+			removed = true
 		}
 	}
-}
-
-// InstallService installs s as the system service name, first clearing an
-// empty init file left by an earlier failed install and removing the one this
-// install leaves if it fails.
-func InstallService(s service.Service, name string) error {
-	files := serviceFiles(name)
-	removeEmptyFiles(files)
-	if err := service.Control(s, "install"); err != nil {
-		removeEmptyFiles(files)
+	if !removed {
 		return err
+	}
+	if service.Platform() == "linux-systemd" {
+		_ = exec.Command("systemctl", "daemon-reload").Run()
 	}
 	return nil
 }

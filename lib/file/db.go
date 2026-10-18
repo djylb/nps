@@ -673,11 +673,11 @@ func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
 }
 
 type certHostRank struct {
-	exact    bool
 	suffix   int
-	tls      bool
 	location int
 	id       int
+	exact    bool
+	tls      bool
 }
 
 func (r certHostRank) better(o certHostRank) bool {

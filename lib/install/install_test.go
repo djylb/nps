@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -358,42 +357,5 @@ func TestHTTPClientCertificateFallback(t *testing.T) {
 	req, _ = http.NewRequest(http.MethodGet, closedURL, nil)
 	if _, _, err := c.do(req); err == nil || isCertificateError(err) {
 		t.Fatalf("do(closed port) error = %v, want a non-certificate error", err)
-	}
-}
-
-func TestRemoveEmptyFiles(t *testing.T) {
-	dir := t.TempDir()
-	empty := filepath.Join(dir, "empty.service")
-	full := filepath.Join(dir, "full.service")
-	missing := filepath.Join(dir, "missing.service")
-	if err := os.WriteFile(empty, nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte("[Unit]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	removeEmptyFiles([]string{empty, full, missing})
-	if _, err := os.Stat(empty); !os.IsNotExist(err) {
-		t.Fatalf("empty file kept: %v", err)
-	}
-	if _, err := os.Stat(full); err != nil {
-		t.Fatalf("non-empty file removed: %v", err)
-	}
-}
-
-// The service library renders these templates with a minimal engine that
-// knows bare keys, if, range and pipes only.
-func TestServiceTemplatesUseBareKeys(t *testing.T) {
-	re := regexp.MustCompile(`{{[^}]*}}`)
-	for name, tpl := range map[string]string{"systemd": SystemdScript, "sysv": SysvScript} {
-		for _, action := range re.FindAllString(tpl, -1) {
-			inner := strings.TrimSpace(strings.Trim(action, "{}"))
-			if strings.HasPrefix(inner, "-") || strings.HasSuffix(inner, "-") ||
-				strings.Contains(inner, "$") || strings.Contains(inner, " and ") ||
-				(strings.HasPrefix(inner, ".") && inner != "." && !strings.HasPrefix(inner, ". |")) ||
-				strings.Contains(inner, " .") {
-				t.Errorf("%s template uses unsupported syntax %s", name, action)
-			}
-		}
 	}
 }
