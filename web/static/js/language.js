@@ -460,6 +460,18 @@ function toggleTheme() {
     }
 }
 
+// accessListDetail renders the source access lists of a client, tunnel or
+// host for a detail view.
+function accessListDetail(row) {
+    var list = function (items) {
+        return items && items.length ? escapeHtml(items.join(', ')) : '-';
+    };
+    return '<b langtag="word-iplistpriority"></b>: <span langtag="' + (row.IpListPriority === 1 ? 'word-allowfirst' : 'word-denyfirst') + '"></span>&emsp;'
+        + '<b langtag="word-blackiplist"></b>: ' + list(row.BlackIpList) + '&emsp;'
+        + '<b langtag="word-whiteiplist"></b>: ' + list(row.WhiteIpList) + '&emsp;'
+        + '<b langtag="word-registeredonly"></b>: <span langtag="word-' + (row.RegisteredOnly ? 'yes' : 'no') + '"></span>&emsp;<br/><br/>';
+}
+
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, function (s) {
         return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[s];

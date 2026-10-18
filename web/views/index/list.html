@@ -85,6 +85,9 @@
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
+            if (row.Mode != "secret" && row.Mode != "p2p") {
+                tmp = accessListDetail(row) + tmp
+            }
             if (row.Mode == "mixProxy") {
                 // 0=off, 1=whitelist, 2=blacklist
                 var destMode = Number(row.DestAclMode || 0)

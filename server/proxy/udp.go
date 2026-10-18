@@ -90,8 +90,8 @@ func (s *UdpModeServer) Start() error {
 			continue
 		}
 
-		// IP blacklist check
-		if s.Bridge.IsServer() && (IsGlobalBlackIp(addr.String()) || common.IsBlackIp(addr.String(), s.Task.Client.VerifyKey, s.Task.Client.BlackIpList)) {
+		// source access lists
+		if s.Bridge.IsServer() && datagramDenied(addr, s.Task.Client, &s.Task.SourceLists) {
 			continue
 		}
 

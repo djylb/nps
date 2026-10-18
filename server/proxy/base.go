@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"sort"
 	"sync"
 
 	"github.com/djylb/nps/lib/common"
@@ -124,15 +123,6 @@ func (s *BaseServer) CheckFlowAndConnNum(client *file.Client) error {
 	return nil
 }
 
-func in(target string, strArray []string) bool {
-	sort.Strings(strArray)
-	index := sort.SearchStrings(strArray, target)
-	if index < len(strArray) && strArray[index] == target {
-		return true
-	}
-	return false
-}
-
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
 	target, link, isLocal, err := s.openClientLink(c, client, addr, tp, localProxy, task)
@@ -153,7 +143,7 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 }
 
 func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp string, localProxy bool, task *file.Tunnel) (net.Conn, *conn.Link, bool, error) {
-	if IsGlobalBlackIp(c.RemoteAddr().String()) || common.IsBlackIp(c.RemoteAddr().String(), client.VerifyKey, client.BlackIpList) {
+	if SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
 	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != file.AclOff {
@@ -176,17 +166,4 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *file.Client, flows []*file.Flow, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool, tp string) {
 	isFramed := tp == common.ConnUDP
 	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal, isFramed)
-}
-
-func IsGlobalBlackIp(ipPort string) bool {
-	global := file.GetDb().GetGlobal()
-	if global != nil {
-		ip := common.GetIpByAddr(ipPort)
-		if in(ip, global.BlackIpList) {
-			logs.Error("IP address [%s] is in the global blacklist", ip)
-			return true
-		}
-	}
-
-	return false
 }

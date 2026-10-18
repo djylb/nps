@@ -8,11 +8,29 @@
                 </div>
                 <div class="ibox-content">
                     <form class="form-horizontal">
+                        <p class="help-block m-b-md" langtag="info-globaliplist"></p>
+                        <div class="form-group" id="ip_list_priority">
+                            <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                            <div class="col-sm-12">
+                                <select class="form-control selectpicker" name="globalIpListPriority">
+                                    <option value="0" {{if ne 1 .globalIpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                    <option value="1" {{if eq 1 .globalIpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
+                                </select>
+                                <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                            </div>
+                        </div>
                         <div class="form-group" id="black_ip_list">
                             <label class="control-label font-bold" langtag="word-globalblackiplist"></label>
                             <div class="col-sm-12">
-                                <textarea class="form-control" langtag="info-suchasblackiplist" name="globalBlackIpList" placeholder="" rows="10" type="text">{{.globalBlackIpList}}</textarea>
-                                <span class="help-block m-b-none" langtag="info-descblackiplist"></span>
+                                <textarea class="form-control" langtag="info-suchasaclrules" name="globalBlackIpList" placeholder="" rows="8">{{.globalBlackIpList}}</textarea>
+                                <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
+                            </div>
+                        </div>
+                        <div class="form-group" id="white_ip_list">
+                            <label class="control-label font-bold" langtag="word-globalwhiteiplist"></label>
+                            <div class="col-sm-12">
+                                <textarea class="form-control" langtag="info-suchasaclrules" name="globalWhiteIpList" placeholder="" rows="8">{{.globalWhiteIpList}}</textarea>
+                                <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
                             </div>
                         </div>
                         <div class="form-group">
@@ -27,9 +45,64 @@
             </div>
         </div>
     </div>
+    <!--Geo 数据-->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5 langtag="word-geodata"></h5>
+                </div>
+                <div class="ibox-content">
+                    <p class="help-block" langtag="info-geodata"></p>
+                    <ul class="list-group clear-list m-t">
+                        <li class="list-group-item fist-item">
+                            <strong langtag="word-geoversion"></strong>
+                            <span class="pull-right">{{if .geo.Version}}{{.geo.Version}}{{else}}<span langtag="word-unknown"></span>{{end}}</span>
+                        </li>
+                        {{range .geo.Files}}
+                        <li class="list-group-item">
+                            <strong>{{.Name}}</strong> <small class="text-muted">{{.Path}}</small>
+                            <span class="pull-right">{{if .Exists}}{{.ModTime}} · {{.Size}} B{{else}}<span class="text-danger" langtag="word-filemissing"></span>{{end}}</span>
+                        </li>
+                        {{end}}
+                    </ul>
+                    <button class="btn btn-primary" onclick="updateGeoData(this)" type="button">
+                        <i class="fa fa-fw fa-lg fa-cloud-download-alt"></i> <span langtag="word-updategeo"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
+    function updateGeoData(btn) {
+        var $btn = $(btn);
+        if ($btn.data('busy')) return;
+        var langobj = languages['content']['confirm']['updategeo'];
+        if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
+        $btn.data('busy', true).addClass('disabled');
+        $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-spinner fa-spin');
+        $.ajax({
+            type: 'POST',
+            url: '{{.web_base_url}}/global/updategeo',
+            success: function (res) {
+                if (res && res.status) {
+                    showMsg(langreply(res.msg), 'success', 1500, function () { document.location.reload(); });
+                    return;
+                }
+                showMsg(langreply(res && res.msg), 'error', 8000);
+            },
+            error: function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 8000);
+            },
+            complete: function () {
+                $btn.data('busy', false).removeClass('disabled');
+                $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-cloud-download-alt');
+            }
+        });
+    }
+
     window.addEventListener('resize', () => {
         for (var key in charts) {
             charts[key].resize();

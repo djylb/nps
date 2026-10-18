@@ -96,12 +96,6 @@ func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst socks5.Addr) {
 			Count:    3,
 		})
 	}
-	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
-		logs.Warn("mixProxy dest acl active, reject socks5 udp associate: client=%d task=%d", s.Task.Client.Id, s.Task.Id)
-		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, socks5.Addr{})
-		_ = c.Close()
-		return
-	}
 	defer func() { _ = c.Close() }()
 
 	logs.Trace("ASSOCIATE %s", dst)
@@ -181,6 +175,12 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 }
 
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
+	// the source lists apply before any handshake, so that denied
+	// addresses cannot try the proxy credentials
+	if SourceDenied(c.RemoteAddr(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
+		_ = c.Close()
+		return errProxyAccessDenied
+	}
 	httpEnabled, socksEnabled := effectiveMixProxyFlags(s.Task)
 
 	// cleared once the socks5 request is read; the http path sets its own

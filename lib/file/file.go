@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
@@ -67,6 +69,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 			post.TargetType = common.ConnAll
 		}
 		post.CompileDestACL()
+		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))
 		s.Tasks.Store(post.Id, post)
 		if post.Id > int(s.TaskIncreaseId) {
 			s.TaskIncreaseId = int32(post.Id)
@@ -88,6 +91,7 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 		}
 		post.Rate.Start()
 		post.NowConn = 0
+		post.CompileSourceLists(acl.ScopeUser, clientOwner(post))
 		s.Clients.Store(post.Id, post)
 		if post.Id > int(s.ClientIncreaseId) {
 			s.ClientIncreaseId = int32(post.Id)
@@ -110,6 +114,7 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 			post.CertHash = crypt.FNV1a64(post.CertType, post.CertFile, post.KeyFile)
 		}
 		post.NowConn = 0
+		post.CompileSourceLists(acl.ScopeUser, hostOwner(post))
 		s.Hosts.Store(post.Id, post)
 		HostIndex.Add(post.Host, post.Id)
 		if post.Id > int(s.HostIncreaseId) {
@@ -124,9 +129,14 @@ func (s *JsonDb) LoadGlobalFromJsonFile() {
 		if json.Unmarshal([]byte(v), &post) != nil {
 			return
 		}
+		post.CompileSourceLists(acl.ScopeGlobal, "the global settings")
 		s.Global = post
 	})
 }
+
+func clientOwner(c *Client) string { return "client " + strconv.Itoa(c.Id) }
+func taskOwner(t *Tunnel) string   { return "tunnel " + strconv.Itoa(t.Id) }
+func hostOwner(h *Host) string     { return "host " + strconv.Itoa(h.Id) + " (" + h.Host + ")" }
 
 func (s *JsonDb) GetClient(id int) (c *Client, err error) {
 	if v, ok := s.Clients.Load(id); ok {

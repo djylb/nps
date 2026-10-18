@@ -27,6 +27,7 @@ func Init() http.Handler {
 	engine.RedirectFixedPath = false
 	engine.HandleMethodNotAllowed = false
 	engine.Use(gin.Recovery())
+	engine.Use(globalFirewallMiddleware(state))
 	engine.NoRoute(unknownRouteHandler(cfg.Web.CloseOnNotFound))
 	engine.NoMethod(unknownRouteHandler(cfg.Web.CloseOnNotFound))
 
@@ -88,6 +89,8 @@ func registerSessionRoutes(group *gin.RouterGroup, state *State) {
 	registerSessionControllerRoutes(group, state, "login", sessionActions)
 	registerSessionControllerRoutes(group, state, "auth", sessionActions)
 	group.GET("/login/out", handle(state.App.LogoutRedirect))
+	group.GET("/ip/register", handle(state.App.IPRegisterPage))
+	group.POST("/ip/register", handle(state.App.IPRegister))
 	registerSessionPageRoutes(group, state)
 }
 

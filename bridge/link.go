@@ -36,19 +36,6 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		return nil, errors.New("link is nil")
 	}
 
-	// If IP is restricted, do IP verification
-	if s.ipVerify {
-		ip := common.GetIpByAddr(link.RemoteAddr)
-		ipValue, ok := s.Register.Load(ip)
-		if !ok {
-			return nil, fmt.Errorf("the ip %s is not in the validation list", ip)
-		}
-
-		if !ipValue.(time.Time).After(time.Now()) {
-			return nil, fmt.Errorf("the validity of the ip %s has expired", ip)
-		}
-	}
-
 	clientValue, ok := s.Client.Load(clientId)
 	if !ok {
 		err = fmt.Errorf("the client %d is not connect", clientId)
@@ -83,7 +70,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 				}
 				return tool.GetTunnelConn(id, link.RemoteAddr)
 			case "bridge":
-				// bridge://tcp|tls|ws|wss|web
+				// bridge://tcp|tls|ws|wss|web|ipreg
 				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
 				defer cancel()
 				switch strings.ToLower(targetStr) {
@@ -97,6 +84,8 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
 				case common.ConnWeb:
 					return tool.GetWebServerConn(ctx, link.RemoteAddr)
+				case "ipreg":
+					return tool.GetIPRegisterConn(ctx, link.RemoteAddr)
 				default:
 					return nil, fmt.Errorf("invalid bridge target %q in %q", targetStr, raw)
 				}

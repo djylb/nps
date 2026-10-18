@@ -128,7 +128,11 @@ curl -X POST \
   | `enable_http` | 是否启用 HTTP 代理能力（`0/1` 或 `true/false`） |
   | `enable_socks5` | 是否启用 SOCKS5 代理能力（`0/1` 或 `true/false`） |
   | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单） |
-  | `dest_acl_rules` | 出站 ACL 规则（多行） |
+  | `dest_acl_rules` | 出站 ACL 规则（多行，语法见“混合代理黑/白名单”） |
+  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
+  | `blackiplist` | 来源 IP 黑名单（多行，语法见“IP 黑白名单”） |
+  | `whiteiplist` | 来源 IP 白名单（多行） |
+  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
   | `remark` | 隧道备注（字符串） |
   | `password` | 访问隧道的密码（字符串） |
   | `local_path` | 本地路径（适用于文件服务） |
@@ -191,6 +195,10 @@ curl -X POST \
   | `auto_cors` | 是否自动添加 CORS 头（`0` 否，`1` 是） |
   | `compat_mode` | 是否启用兼容模式（`0` 否，`1` 是） |
   | `target_is_https` | 目标是否为 HTTPS（`0` 否，`1` 是） |
+  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
+  | `blackiplist` | 来源 IP 黑名单（多行） |
+  | `whiteiplist` | 来源 IP 白名单（多行） |
+  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
   | `id` | 域名解析 ID（修改时必填） |
 
 ### 单个域名解析操作
@@ -239,7 +247,12 @@ curl -X POST \
   | `web_username` | 客户端 Web 登录用户名（字符串） |
   | `web_password` | 客户端 Web 登录密码（字符串） |
   | `web_totp_secret` | 客户端 Web 登录 TOTP 密钥（字符串） |
-  | `blackiplist` | 客户端黑名单 IP（多行） |
+  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
+  | `blackiplist` | 来源 IP 黑名单（多行，语法见“IP 黑白名单”） |
+  | `whiteiplist` | 来源 IP 白名单（多行） |
+  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
+  | `register_key` | IP 登记口令（字符串，留空则只能用 vkey 登记） |
+  | `register_max_hours` | 登记页面登记的最长有效期（小时，`0` 为 2 小时） |
   | `id` | 客户端 ID（修改时必填） |
 
 ### 单个客户端操作
@@ -287,13 +300,23 @@ curl -X POST \
   | `password` | 通过 RSA 公钥加密的 JSON 字符串（与登录接口一致） |
   | `captcha_id` / `captcha` | 验证码 ID 与验证码（启用验证码时必填） |
 
+## IP 登记接口（无需登录）
+
+- **登记页面：** `GET /ip/register`（可带 `key` 参数预填口令；配置了 `web_base_url` 时带上该前缀；单独监听的登记服务和 `bridge://ipreg` 不带前缀，根路径即为登记页面）
+- **登记：** `POST /ip/register`
+  - 参数：`key`（客户端登记口令或 vkey，公钥则对所有客户端生效）、`hours`（有效小时数，留空或超过上限时按上限）、`captcha_id` / `captcha`（启用验证码时必填）
+  - 返回：`status`、`msg`、`ip`（登记的 IP）、`until`（到期时间）
+  - 输错口令计入登录失败次数
+
 ## 全局管理接口（仅管理员）
 
-### 全局黑名单
+### 全局黑白名单
 
 - **查看页面：** `GET /global/index`
 - **保存配置：** `POST /global/save`
-  - 参数：`globalBlackIpList`（多行 IP）
+  - 参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`（多行）、`globalWhiteIpList`（多行）
+  - 规则有误时返回 `status: 0`，`msg` 中给出名单和行号
+- **更新 Geo 数据：** `POST /global/updategeo`
 
 ### 登录封禁管理
 

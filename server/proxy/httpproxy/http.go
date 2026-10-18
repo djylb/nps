@@ -117,11 +117,8 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// IP Black List
-	clientIP := common.GetIpByAddr(r.RemoteAddr)
-	if proxy.IsGlobalBlackIp(clientIP) || common.IsBlackIp(clientIP, host.Client.VerifyKey, host.Client.BlackIpList) {
-		//http.Error(w, "403 Forbidden", http.StatusForbidden)
-		logs.Warn("Blocked IP: %s", clientIP)
+	// source access lists
+	if proxy.SourceDeniedString(r.RemoteAddr, host.Client, &host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")") {
 		abortRequest()
 	}
 

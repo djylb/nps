@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/djylb/nps/lib/common"
 	webservice "github.com/djylb/nps/web/service"
@@ -28,22 +27,24 @@ func (a *App) ListClients(c Context) {
 
 func (a *App) AddClient(c Context) {
 	id, err := a.Services.Clients.Add(webservice.AddClientInput{
-		VKey:            requestEscapedString(c, "vkey"),
-		Remark:          requestEscapedString(c, "remark"),
-		User:            requestEscapedString(c, "u"),
-		Password:        requestEscapedString(c, "p"),
-		Compress:        common.GetBoolByStr(requestEscapedString(c, "compress")),
-		Crypt:           requestBoolValue(c, "crypt"),
-		ConfigConnAllow: requestBoolValue(c, "config_conn_allow"),
-		RateLimit:       requestIntValue(c, "rate_limit"),
-		MaxConn:         requestIntValue(c, "max_conn"),
-		WebUserName:     requestEscapedString(c, "web_username"),
-		WebPassword:     requestEscapedString(c, "web_password"),
-		WebTotpSecret:   requestEscapedString(c, "web_totp_secret"),
-		MaxTunnelNum:    requestIntValue(c, "max_tunnel"),
-		FlowLimit:       int64(requestIntValue(c, "flow_limit")),
-		TimeLimit:       requestEscapedString(c, "time_limit"),
-		BlackIPList:     splitLinesUnique(requestEscapedString(c, "blackiplist")),
+		VKey:             requestEscapedString(c, "vkey"),
+		Remark:           requestEscapedString(c, "remark"),
+		User:             requestEscapedString(c, "u"),
+		Password:         requestEscapedString(c, "p"),
+		Compress:         common.GetBoolByStr(requestEscapedString(c, "compress")),
+		Crypt:            requestBoolValue(c, "crypt"),
+		ConfigConnAllow:  requestBoolValue(c, "config_conn_allow"),
+		RateLimit:        requestIntValue(c, "rate_limit"),
+		MaxConn:          requestIntValue(c, "max_conn"),
+		WebUserName:      requestEscapedString(c, "web_username"),
+		WebPassword:      requestEscapedString(c, "web_password"),
+		WebTotpSecret:    requestEscapedString(c, "web_totp_secret"),
+		MaxTunnelNum:     requestIntValue(c, "max_tunnel"),
+		FlowLimit:        int64(requestIntValue(c, "flow_limit")),
+		TimeLimit:        requestEscapedString(c, "time_limit"),
+		Access:           requestAccessLists(c, ""),
+		RegisterKey:      requestString(c, "register_key"),
+		RegisterMaxHours: requestIntValue(c, "register_max_hours"),
 	})
 	if err != nil {
 		ajax(c, err.Error(), 0)
@@ -100,13 +101,19 @@ func (a *App) EditClient(c Context) {
 		FlowLimit:               int64(requestIntValue(c, "flow_limit")),
 		TimeLimit:               requestEscapedString(c, "time_limit"),
 		ResetFlow:               requestBoolValue(c, "flow_reset"),
-		BlackIPList:             splitLinesUnique(requestEscapedString(c, "blackiplist")),
+		Access:                  requestAccessLists(c, ""),
+		RegisterKey:             requestString(c, "register_key"),
+		RegisterMaxHours:        requestIntValue(c, "register_max_hours"),
 	}); err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrWebUsernameDuplicate):
 			ajax(c, "web login username duplicate, please reset", 0)
 		case errors.Is(err, webservice.ErrClientVKeyDuplicate):
 			ajax(c, "Vkey duplicate, please reset", 0)
+		case errors.Is(err, webservice.ErrInvalidAccessList):
+			ajax(c, err.Error(), 0)
+		case errors.Is(err, webservice.ErrRegisterKeyDuplicate):
+			ajax(c, "registration key duplicate, please reset", 0)
 		default:
 			ajax(c, "client ID not found", 0)
 		}
@@ -186,8 +193,4 @@ func (a *App) ClientQRCode(c Context) {
 		return
 	}
 	c.RespondData(200, "image/png", png)
-}
-
-func splitLinesUnique(value string) []string {
-	return webservice.UniqueStringsPreserveOrder(strings.Split(value, "\r\n"))
 }

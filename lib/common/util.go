@@ -7,14 +7,12 @@ import (
 	"math"
 	"net"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/araddon/dateparse"
-	"github.com/djylb/nps/lib/logs"
 )
 
 func Max(values ...int) int {
@@ -150,21 +148,6 @@ func InIntArr(arr []int, val int) bool {
 		if v == val {
 			return true
 		}
-	}
-	return false
-}
-
-func in(target string, strArray []string) bool {
-	sort.Strings(strArray)
-	index := sort.SearchStrings(strArray, target)
-	return index < len(strArray) && strArray[index] == target
-}
-
-func IsBlackIp(ipPort, vkey string, blackIpList []string) bool {
-	ip := GetIpByAddr(ipPort)
-	if in(ip, blackIpList) {
-		logs.Warn("IP [%s] is in the blacklist for [%s]", ip, vkey)
-		return true
 	}
 	return false
 }

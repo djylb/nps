@@ -2,11 +2,16 @@ package service
 
 import (
 	"errors"
+	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/install"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/connection"
@@ -42,11 +47,33 @@ type BridgeDisplay struct {
 type SystemService interface {
 	Info() SystemInfo
 	BridgeDisplay(*servercfg.Snapshot, string) BridgeDisplay
-	RegisterManagementAccess(string)
+	// RegisterManagementAccess registers the address of a web login for the
+	// clients the user manages, or every client for an administrator.
+	RegisterManagementAccess(remoteAddr string, clientIDs []int, isAdmin bool)
 	// UpdateServer updates the server to the latest release and restarts it
 	// shortly. It returns the version updated to, or "" when the running
 	// version is the latest.
 	UpdateServer() (string, error)
+	// GeoDataStatus describes the geodata files of the access lists.
+	GeoDataStatus() GeoDataStatus
+	// UpdateGeoData downloads the latest geodata files and applies them.
+	UpdateGeoData() (GeoDataStatus, error)
+}
+
+// GeoDataStatus describes the geodata files of the access lists.
+type GeoDataStatus struct {
+	// Version is the release the files come from, "" when unknown.
+	Version string
+	Files   []GeoFileStatus
+}
+
+// GeoFileStatus describes one geodata file.
+type GeoFileStatus struct {
+	Name    string
+	Path    string
+	Exists  bool
+	Size    int64
+	ModTime string
 }
 
 type DefaultSystemService struct{}
@@ -94,15 +121,54 @@ func (DefaultSystemService) UpdateServer() (string, error) {
 	return v, err
 }
 
-func (DefaultSystemService) RegisterManagementAccess(remoteAddr string) {
-	if server.Bridge == nil {
+func (DefaultSystemService) GeoDataStatus() GeoDataStatus {
+	ipPath, sitePath := acl.GeoFiles()
+	st := GeoDataStatus{Version: install.GeoDataVersion(ipPath)}
+	for _, f := range install.GeoFiles(ipPath, sitePath) {
+		fs := GeoFileStatus{Name: f.Name, Path: f.Path}
+		if fi, err := os.Stat(f.Path); err == nil {
+			fs.Exists = true
+			fs.Size = fi.Size()
+			fs.ModTime = fi.ModTime().Format("2006-01-02 15:04:05")
+		}
+		st.Files = append(st.Files, fs)
+	}
+	return st
+}
+
+// geoUpdating keeps a single geodata update running.
+var geoUpdating atomic.Bool
+
+func (s DefaultSystemService) UpdateGeoData() (GeoDataStatus, error) {
+	if !geoUpdating.CompareAndSwap(false, true) {
+		return GeoDataStatus{}, ErrGeoDataUpdateRunning
+	}
+	defer geoUpdating.Store(false)
+	ipPath, sitePath := acl.GeoFiles()
+	res, err := install.UpdateGeoData(ipPath, sitePath)
+	if res != nil && len(res.Updated) > 0 {
+		file.GetDb().RefreshAccessLists()
+	}
+	return s.GeoDataStatus(), err
+}
+
+// managementRegisterTTL is how long a web login registers its address.
+const managementRegisterTTL = 2 * time.Hour
+
+func (DefaultSystemService) RegisterManagementAccess(remoteAddr string, clientIDs []int, isAdmin bool) {
+	ip, ok := ipreg.ParseIP(strings.TrimSpace(remoteAddr))
+	if !ok {
 		return
 	}
-	clientIP := strings.TrimSpace(common.GetIpByAddr(remoteAddr))
-	if clientIP == "" {
+	if isAdmin {
+		ipreg.Register(ipreg.AnyClient, ip, managementRegisterTTL)
 		return
 	}
-	server.Bridge.Register.Store(clientIP, time.Now().Add(2*time.Hour))
+	for _, id := range clientIDs {
+		if id > 0 {
+			ipreg.Register(id, ip, managementRegisterTTL)
+		}
+	}
 }
 
 func newBridgeTransport(enabled bool, transportType, fallbackIP, configuredIP, fallbackPort, configuredPort, path string, appendPath bool) BridgeTransport {

@@ -24,7 +24,7 @@ var initCert sync.Once
 func newTestP2PBridge(t *testing.T) *Bridge {
 	t.Helper()
 	initCert.Do(func() { crypt.InitTls(tls.Certificate{}) })
-	b := NewTunnel(false, &sync.Map{}, 30)
+	b := NewTunnel(&sync.Map{}, 30)
 	err := b.StartP2P(P2PConfig{IP: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)

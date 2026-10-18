@@ -1,12 +1,18 @@
 package api
 
 import (
+	"errors"
+
 	webservice "github.com/djylb/nps/web/service"
 )
 
 func (a *App) SaveGlobal(c Context) {
 	if err := a.Services.Globals.Save(webservice.SaveGlobalInput{
-		GlobalBlackIPList: requestEscapedString(c, "globalBlackIpList"),
+		Access: webservice.AccessListInput{
+			Priority: requestIntValue(c, "globalIpListPriority"),
+			Black:    requestString(c, "globalBlackIpList"),
+			White:    requestString(c, "globalWhiteIpList"),
+		},
 	}); err != nil {
 		ajax(c, err.Error(), 0)
 		return
@@ -17,6 +23,18 @@ func (a *App) SaveGlobal(c Context) {
 		Action:   "save",
 	})
 	ajax(c, "save success", 1)
+}
+
+func (a *App) UpdateGeoData(c Context) {
+	if _, err := a.system().UpdateGeoData(); err != nil {
+		if errors.Is(err, webservice.ErrGeoDataUpdateRunning) {
+			ajax(c, "geodata update is already running", 0)
+			return
+		}
+		ajax(c, "geodata update failed: "+err.Error(), 0)
+		return
+	}
+	ajax(c, "geodata updated", 1)
 }
 
 func (a *App) BanList(c Context) {

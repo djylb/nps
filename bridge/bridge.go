@@ -46,7 +46,6 @@ func dispatch[T any](ch chan<- T, v T) bool {
 
 type Bridge struct {
 	Client             *sync.Map
-	Register           *sync.Map
 	VirtualTcpListener *netx.ChanListener
 	VirtualTlsListener *netx.ChanListener
 	VirtualWsListener  *netx.ChanListener
@@ -56,22 +55,19 @@ type Bridge struct {
 	CloseTask          chan *file.Tunnel
 	CloseClient        chan int
 	SecretChan         chan *conn.Secret
-	ipVerify           bool
 	runList            *sync.Map //map[int]interface{}
 	disconnectTime     int
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 }
 
-func NewTunnel(ipVerify bool, runList *sync.Map, disconnectTime int) *Bridge {
+func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 	return &Bridge{
 		Client:         &sync.Map{},
-		Register:       &sync.Map{},
 		OpenHost:       make(chan *file.Host, 100),
 		OpenTask:       make(chan *file.Tunnel, 100),
 		CloseTask:      make(chan *file.Tunnel, 100),
 		CloseClient:    make(chan int, 100),
 		SecretChan:     make(chan *conn.Secret, 100),
-		ipVerify:       ipVerify,
 		runList:        runList,
 		disconnectTime: disconnectTime,
 	}

@@ -1,8 +1,7 @@
 package service
 
 import (
-	"strings"
-
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/file"
 )
 
@@ -21,12 +20,17 @@ type DefaultGlobalService struct {
 }
 
 type SaveGlobalInput struct {
-	GlobalBlackIPList string
+	Access AccessListInput
 }
 
 func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
-	globalBlackIPList := UniqueStringsPreserveOrder(strings.Split(input.GlobalBlackIPList, "\r\n"))
-	return s.repo().SaveGlobal(&file.Glob{BlackIpList: globalBlackIPList})
+	lists, err := input.Access.validate(acl.ScopeGlobal)
+	if err != nil {
+		return err
+	}
+	g := new(file.Glob)
+	lists.applyTo(&g.SourceLists, "the global settings")
+	return s.repo().SaveGlobal(g)
 }
 
 func (s DefaultGlobalService) Get() *file.Glob {

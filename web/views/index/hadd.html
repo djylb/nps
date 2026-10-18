@@ -157,6 +157,40 @@
                         </div>
                     </div>
                     {{end}}
+                    <div class="form-group" id="iplistpriority">
+                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="iplistpriority">
+                                <option value="0" langtag="word-denyfirst"></option>
+                                <option value="1" langtag="word-allowfirst"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="blackiplist">
+                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4"></textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="whiteiplist">
+                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4"></textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="registered_only">
+                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="registered_only">
+                                <option value="0" langtag="word-no"></option>
+                                <option value="1" langtag="word-yes"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                        </div>
+                    </div>
                     <div class="form-group" id="auth">
                         <label class="control-label font-bold" langtag="word-auth"></label>
                         <div class="col-sm-12">

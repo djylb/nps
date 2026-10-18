@@ -1,14 +1,17 @@
 package service
 
 import (
+	"crypto/subtle"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/skip2/go-qrcode"
@@ -25,6 +28,9 @@ type ClientService interface {
 	RequestUpdate(id int) (int, error)
 	Delete(id int) error
 	BuildQRCode(ClientQRCodeInput) ([]byte, error)
+	// RegisterVisitorIP registers ip for the client whose registration key
+	// or verify key is key, for hours, at most the client's limit.
+	RegisterVisitorIP(key, ip string, hours int) (clientID int, until time.Time, err error)
 }
 
 type DefaultClientService struct {
@@ -58,22 +64,24 @@ type ListClientsResult struct {
 }
 
 type AddClientInput struct {
-	VKey            string
-	Remark          string
-	User            string
-	Password        string
-	Compress        bool
-	Crypt           bool
-	ConfigConnAllow bool
-	RateLimit       int
-	MaxConn         int
-	WebUserName     string
-	WebPassword     string
-	WebTotpSecret   string
-	MaxTunnelNum    int
-	FlowLimit       int64
-	TimeLimit       string
-	BlackIPList     []string
+	VKey             string
+	Remark           string
+	User             string
+	Password         string
+	Compress         bool
+	Crypt            bool
+	ConfigConnAllow  bool
+	RateLimit        int
+	MaxConn          int
+	WebUserName      string
+	WebPassword      string
+	WebTotpSecret    string
+	MaxTunnelNum     int
+	FlowLimit        int64
+	TimeLimit        string
+	Access           AccessListInput
+	RegisterKey      string
+	RegisterMaxHours int
 }
 
 type EditClientInput struct {
@@ -91,7 +99,9 @@ type EditClientInput struct {
 	MaxTunnelNum            int
 	FlowLimit               int64
 	TimeLimit               string
-	BlackIPList             []string
+	Access                  AccessListInput
+	RegisterKey             string
+	RegisterMaxHours        int
 	IsAdmin                 bool
 	AllowUserChangeUsername bool
 	Compress                bool
@@ -147,9 +157,18 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 			FlowLimit:  input.FlowLimit,
 			TimeLimit:  common.GetTimeNoErrByStr(input.TimeLimit),
 		},
-		BlackIpList: input.BlackIPList,
-		CreateTime:  time.Now().Format("2006-01-02 15:04:05"),
+		CreateTime: time.Now().Format("2006-01-02 15:04:05"),
 	}
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return 0, err
+	}
+	client.RegisterKey = strings.TrimSpace(input.RegisterKey)
+	client.RegisterMaxHours = max(input.RegisterMaxHours, 0)
+	if err := s.checkRegisterKey(id, client.RegisterKey, client.VerifyKey); err != nil {
+		return 0, err
+	}
+	lists.applyTo(&client.SourceLists, "client "+strconv.Itoa(id))
 	if err := s.repo().CreateClient(client); err != nil {
 		return 0, err
 	}
@@ -170,6 +189,18 @@ func (s DefaultClientService) Get(id int) (*file.Client, error) {
 func (s DefaultClientService) Edit(input EditClientInput) error {
 	client, err := s.repo().GetClient(input.ID)
 	if err != nil {
+		return err
+	}
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return err
+	}
+	registerKey := strings.TrimSpace(input.RegisterKey)
+	vkey := client.VerifyKey
+	if input.IsAdmin {
+		vkey = input.VKey
+	}
+	if err := s.checkRegisterKey(client.Id, registerKey, vkey); err != nil {
 		return err
 	}
 
@@ -221,7 +252,9 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 		client.Rate.Start()
 	}
 
-	client.BlackIpList = input.BlackIPList
+	client.RegisterKey = registerKey
+	client.RegisterMaxHours = max(input.RegisterMaxHours, 0)
+	lists.applyTo(&client.SourceLists, "client "+strconv.Itoa(client.Id))
 	return s.repo().SaveClient(client)
 }
 
@@ -259,6 +292,75 @@ func (s DefaultClientService) Delete(id int) error {
 	}
 	s.runtime().DeleteClientResources(id)
 	s.runtime().DisconnectClient(id)
+	return nil
+}
+
+func (s DefaultClientService) RegisterVisitorIP(key, ip string, hours int) (int, time.Time, error) {
+	addr, ok := ipreg.ParseIP(strings.TrimSpace(ip))
+	if !ok {
+		return 0, time.Time{}, ErrRegisterKeyInvalid
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0, time.Time{}, ErrRegisterKeyInvalid
+	}
+	cfg := s.config()
+	def := max(cfg.App.IPRegisterMaxHours, 1)
+	// the public key is an administrator's key, as an administrator's login
+	// it registers for every client
+	if keyEqual(cfg.Runtime.PublicVKey, key) {
+		until := ipreg.Register(ipreg.AnyClient, addr, time.Duration(clampHours(hours, def))*time.Hour)
+		return ipreg.AnyClient, until, nil
+	}
+	var found *file.Client
+	s.repo().RangeClients(func(c *file.Client) bool {
+		if c.Id > 0 && c.Status && !c.NoDisplay && (keyEqual(c.RegisterKey, key) || keyEqual(c.VerifyKey, key)) {
+			found = c
+			return false
+		}
+		return true
+	})
+	if found == nil {
+		return 0, time.Time{}, ErrRegisterKeyInvalid
+	}
+	until := ipreg.Register(found.Id, addr, time.Duration(clampHours(hours, found.RegisterHoursLimit(def)))*time.Hour)
+	return found.Id, until, nil
+}
+
+// clampHours returns hours, or limit when hours is unset or above it.
+func clampHours(hours, limit int) int {
+	if hours <= 0 || hours > limit {
+		return limit
+	}
+	return hours
+}
+
+// keyEqual compares a stored key with a submitted one in constant time; an
+// unset key matches nothing.
+func keyEqual(stored, submitted string) bool {
+	return stored != "" && subtle.ConstantTimeCompare([]byte(stored), []byte(submitted)) == 1
+}
+
+// checkRegisterKey rejects a registration key that another client uses as
+// registration key or verify key, or that is the client's own verify key.
+func (s DefaultClientService) checkRegisterKey(id int, key, vkey string) error {
+	if key == "" {
+		return nil
+	}
+	if key == vkey {
+		return ErrRegisterKeyDuplicate
+	}
+	var dup bool
+	s.repo().RangeClients(func(c *file.Client) bool {
+		if c.Id != id && (c.RegisterKey == key || c.VerifyKey == key) {
+			dup = true
+			return false
+		}
+		return true
+	})
+	if dup {
+		return ErrRegisterKeyDuplicate
+	}
 	return nil
 }
 

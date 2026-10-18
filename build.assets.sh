@@ -6,6 +6,9 @@ export GOPROXY=direct
 CURRENT_GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
 go mod edit -go=$CURRENT_GO_VERSION
 go mod tidy
+
+# geodata packaged with nps
+bash scripts/fetch_geodata.sh
 echo "Updated go.mod to Go version: $CURRENT_GO_VERSION"
 
 sudo apt-get update
@@ -44,7 +47,7 @@ TARGETS=(
 )
 
 NPC_TAR_FILES="conf/npc.conf conf/multi_account.conf"
-NPS_TAR_FILES="conf/nps.conf web/views web/static"
+NPS_TAR_FILES="conf/nps.conf conf/geoip.dat conf/geosite.dat conf/geodata.version web/views web/static"
 
 SDK_TARGETS=(
   "windows 386 i686-w64-mingw32-gcc"

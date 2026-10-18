@@ -78,7 +78,13 @@ sudo nps update # Linux/macOS
 nps.exe update  # Windows
 ```
 
-已是最新版本时不会替换文件，也不会重启服务。
+已是最新版本时不会替换文件，也不会重启服务。发布包中的 Geo 数据比本地新时会一并更新。
+
+**单独更新 Geo 数据**（黑白名单中 `geoip:`、`geosite:` 规则使用的数据，运行中的 nps 会在一分钟内自动生效）
+```bash
+sudo nps update-geo # Linux/macOS
+nps.exe update-geo  # Windows
+```
 
 **在网页上更新**：管理员登录后，在仪表盘"服务端版本"卡片右上角点击更新按钮，服务端会更新到最新版本并自动重启，页面在新版本启动后自动刷新。
 

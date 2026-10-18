@@ -10,6 +10,7 @@ import (
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
@@ -256,7 +257,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["bridgeType"] = cfg.Bridge.PrimaryType
 	data["httpProxyPort"] = intStringOrEmpty(cfg.Network.HTTPProxyPort)
 	data["httpsProxyPort"] = intStringOrEmpty(cfg.Network.HTTPSProxyPort)
-	data["ipLimit"] = cfg.Runtime.IPLimit
+	data["registeredIps"] = ipreg.Count()
 	data["flowStoreInterval"] = intStringOrEmpty(cfg.Runtime.FlowStoreInterval)
 	data["serverIp"] = common.GetServerIp(connection.P2pIp)
 	data["serverIpv4"] = common.GetOutboundIPv4().String()

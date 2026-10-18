@@ -195,8 +195,7 @@ func (r *socks5UDPRegistry) shouldDropClientDatagram(addr *net.UDPAddr) bool {
 	if addr == nil || !r.bridge.IsServer() || r.task == nil || r.task.Client == nil {
 		return false
 	}
-	addrString := addr.String()
-	return IsGlobalBlackIp(addrString) || common.IsBlackIp(addrString, r.task.Client.VerifyKey, r.task.Client.BlackIpList)
+	return datagramDenied(addr, r.task.Client, &r.task.SourceLists)
 }
 
 func (r *socks5UDPRegistry) pickSession(addr *net.UDPAddr) *socks5UDPSession {
@@ -505,9 +504,15 @@ func (s *socks5UDPSession) writeToTunnelLoop() {
 	for pkt := range s.packetCh {
 		// The client endpoint decodes the datagram; checking it here
 		// keeps malformed and fragmented ones out of the tunnel.
-		if _, _, err := socks5.DecodeDatagram(pkt.buf[:pkt.n]); err != nil {
+		dst, _, err := socks5.DecodeDatagram(pkt.buf[:pkt.n])
+		if err != nil {
 			putUDPPacketBuf(pkt.buf)
 			logs.Debug("drop socks5 udp datagram from %s: %v", s.controlRemoteAddr(), err)
+			continue
+		}
+		if !s.allowsDestination(dst.String()) {
+			putUDPPacketBuf(pkt.buf)
+			logs.Trace("drop socks5 udp datagram from %s to %s: denied by the destination list", s.controlRemoteAddr(), dst)
 			continue
 		}
 		if pkt.n > netx.MaxFramePayload {
@@ -642,4 +647,14 @@ func isClosedPacketConnError(err error) bool {
 		return false
 	}
 	return errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "use of closed network connection")
+}
+
+// allowsDestination applies the destination list of a mixProxy task to the
+// destination of a datagram.
+func (s *socks5UDPSession) allowsDestination(addr string) bool {
+	t := s.registry.task
+	if t == nil || t.Mode != "mixProxy" || t.DestAclMode == file.AclOff {
+		return true
+	}
+	return t.AllowsDestination(addr)
 }

@@ -1,8 +1,10 @@
 package service
 
 import (
+	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -77,6 +79,7 @@ type AddTunnelInput struct {
 	StripPre       string
 	DestACLMode    int
 	DestACLRules   string
+	Access         AccessListInput
 	FlowLimit      int64
 	TimeLimit      string
 	IsAdmin        bool
@@ -102,6 +105,7 @@ type EditTunnelInput struct {
 	StripPre       string
 	DestACLMode    int
 	DestACLRules   string
+	Access         AccessListInput
 	FlowLimit      int64
 	TimeLimit      string
 	IsAdmin        bool
@@ -125,6 +129,7 @@ type AddHostInput struct {
 	Location       string
 	PathRewrite    string
 	RedirectURL    string
+	Access         AccessListInput
 	FlowLimit      int64
 	TimeLimit      string
 	Scheme         string
@@ -156,6 +161,7 @@ type EditHostInput struct {
 	Location       string
 	PathRewrite    string
 	RedirectURL    string
+	Access         AccessListInput
 	FlowLimit      int64
 	TimeLimit      string
 	Scheme         string
@@ -183,6 +189,14 @@ func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*file.Tunnel,
 }
 
 func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, error) {
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return TunnelMutation{}, err
+	}
+	destRules, err := normalizeDestRules(input.DestACLRules)
+	if err != nil {
+		return TunnelMutation{}, err
+	}
 	id := s.repo().NextTunnelID()
 	tunnel := &file.Tunnel{
 		Port:       input.Port,
@@ -207,12 +221,14 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		HttpProxy:    input.EnableHTTP,
 		Socks5Proxy:  input.EnableSocks5,
 		DestAclMode:  normalizeACLMode(input.DestACLMode),
-		DestAclRules: normalizeRules(input.DestACLRules),
+		DestAclRules: destRules,
 		Flow: &file.Flow{
 			FlowLimit: input.FlowLimit,
 			TimeLimit: common.GetTimeNoErrByStr(input.TimeLimit),
 		},
 	}
+
+	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
 		return TunnelMutation{}, err
@@ -247,6 +263,14 @@ func (s DefaultIndexService) GetTunnel(id int) (*file.Tunnel, error) {
 }
 
 func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, error) {
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return TunnelMutation{}, err
+	}
+	destRules, err := normalizeDestRules(input.DestACLRules)
+	if err != nil {
+		return TunnelMutation{}, err
+	}
 	stored, err := s.repo().GetTunnel(input.ID)
 	if err != nil {
 		return TunnelMutation{}, ErrTunnelNotFound
@@ -300,7 +324,8 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.HttpProxy = input.EnableHTTP
 	tunnel.Socks5Proxy = input.EnableSocks5
 	tunnel.DestAclMode = normalizeACLMode(input.DestACLMode)
-	tunnel.DestAclRules = normalizeRules(input.DestACLRules)
+	tunnel.DestAclRules = destRules
+	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Remark = input.Remark
 	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
@@ -423,6 +448,10 @@ func (s DefaultIndexService) ClearHost(id int, mode string) error {
 }
 
 func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return HostMutation{}, err
+	}
 	id := s.repo().NextHostID()
 	host := &file.Host{
 		Id:   id,
@@ -458,6 +487,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		CompatMode:     input.CompatMode,
 		TargetIsHttps:  input.TargetIsHTTPS,
 	}
+	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
 
 	client, err := s.repo().GetClient(input.ClientID)
 	if err != nil {
@@ -479,6 +509,10 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 }
 
 func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error) {
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return HostMutation{}, err
+	}
 	s.runtime().RemoveHostCache(input.ID)
 
 	host, err := s.repo().GetHost(input.ID)
@@ -537,6 +571,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 
 	host.CertType = common.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
+	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")")
 	if err := s.repo().SaveHost(host, oldHost); err != nil {
 		return HostMutation{}, err
 	}
@@ -559,10 +594,6 @@ func normalizeACLMode(mode int) int {
 	default:
 		return file.AclOff
 	}
-}
-
-func normalizeRules(rules string) string {
-	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(rules, "\r\n", "\n")))
 }
 
 func normalizeScheme(scheme string) string {

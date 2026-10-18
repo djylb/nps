@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
@@ -262,6 +263,7 @@ func normalizeTask(t *Tunnel) {
 		t.TargetType = common.ConnAll
 	}
 	t.CompileDestACL()
+	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))
 }
 
 // logStoreError reports a failed write of the json store. The in-memory state
@@ -273,6 +275,7 @@ func logStoreError(err error) {
 }
 
 func (s *DbUtils) SaveGlobal(t *Glob) error {
+	t.CompileSourceLists(acl.ScopeGlobal, "the global settings")
 	s.JsonDb.Global = t
 	logStoreError(s.JsonDb.StoreGlobalToJsonFile())
 	return nil
@@ -385,6 +388,7 @@ func (s *DbUtils) NewHost(t *Host) error {
 	t.CertType = common.GetCertType(t.CertFile)
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
 	t.Flow = newEntryFlow(t.Flow)
+	t.CompileSourceLists(acl.ScopeUser, hostOwner(t))
 	s.JsonDb.Hosts.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	return nil
@@ -459,6 +463,7 @@ reset:
 	if c.Flow == nil {
 		c.Flow = new(Flow)
 	}
+	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
 	s.JsonDb.Clients.Store(c.Id, c)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
 	logStoreError(s.JsonDb.StoreClientsToJsonFile())
@@ -500,6 +505,7 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 		}
 	}
 
+	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
 	s.JsonDb.Clients.Store(t.Id, t)
 	Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
 	var limit int64

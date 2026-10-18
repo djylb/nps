@@ -135,13 +135,73 @@
                             </select>
                         </div>
                     </div>
-                    <div class="form-group" id="black_ip_list">
-                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                    <div class="form-group" id="iplistpriority">
+                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
                         <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasblackiplist" name="blackiplist" placeholder="" rows="4" type="text">{{.BlackIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-descblackiplist"></span>
+                            <select class="form-control selectpicker" name="iplistpriority">
+                                <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
                         </div>
                     </div>
+                    <div class="form-group" id="blackiplist">
+                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="whiteiplist">
+                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="registered_only">
+                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="registered_only">
+                                <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
+                                <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="register_key">
+                        <label class="control-label font-bold" langtag="word-registerkey"></label>
+                        <div class="col-sm-12">
+                            <div class="input-group">
+                                <input class="form-control" name="register_key" type="text" value="{{.c.RegisterKey}}" autocomplete="off" oninput="updateRegisterLink()">
+                                <span class="input-group-append"><button class="btn btn-outline-secondary" type="button" onclick="generateRegisterKey()" langtag="word-generate"></button></span>
+                            </div>
+                            <span class="help-block m-b-none" langtag="info-registerkey"></span>
+                            <span class="help-block m-b-none"><span langtag="word-registerlink"></span>: <code id="register_link" onclick="oCopy(this)"></code></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="register_max_hours">
+                        <label class="control-label font-bold" langtag="word-registermaxhours"></label>
+                        <div class="col-sm-12">
+                            <input class="form-control" name="register_max_hours" type="number" min="0" step="1" placeholder="2" value="{{if .c.RegisterMaxHours}}{{.c.RegisterMaxHours}}{{end}}">
+                            <span class="help-block m-b-none" langtag="info-registermaxhours"></span>
+                        </div>
+                    </div>
+                    <script>
+                        function generateRegisterKey() {
+                            var chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', out = '';
+                            var buf = new Uint32Array(20);
+                            window.crypto.getRandomValues(buf);
+                            for (var i = 0; i < buf.length; i++) out += chars[buf[i] % chars.length];
+                            $("input[name='register_key']").val(out);
+                            updateRegisterLink();
+                        }
+                        function updateRegisterLink() {
+                            var key = $("input[name='register_key']").val().trim();
+                            $('#register_link').text(key ? location.origin + '{{.web_base_url}}/ip/register?key=' + encodeURIComponent(key) : '-');
+                        }
+                        $(function () { updateRegisterLink(); });
+                    </script>
                     <div class="hr-line-dashed"></div>
                     <div class="form-group">
                         <div class="col-lg-12 col-sm-offset-2">

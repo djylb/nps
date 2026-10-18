@@ -16,27 +16,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 )
 
-func TestIn(t *testing.T) {
-	tests := []struct {
-		name   string
-		target string
-		list   []string
-		want   bool
-	}{
-		{name: "finds existing element", target: "b", list: []string{"c", "a", "b"}, want: true},
-		{name: "returns false for missing element", target: "d", list: []string{"c", "a", "b"}, want: false},
-		{name: "handles empty slice", target: "a", list: []string{}, want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := in(tt.target, tt.list); got != tt.want {
-				t.Fatalf("in(%q, %v) = %v, want %v", tt.target, tt.list, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCheckFlowAndConnNum(t *testing.T) {
 	s := &BaseServer{}
 

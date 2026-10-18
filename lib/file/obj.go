@@ -7,8 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -137,10 +139,25 @@ type Client struct {
 	ConfigConnAllow bool       // allowed by config file
 	MaxTunnelNum    int
 	Version         string
-	BlackIpList     []string
-	CreateTime      string
-	LastOnlineTime  string
+	SourceLists
+	CreateTime     string
+	LastOnlineTime string
+	// RegisterKey, if set, lets visitors register their address for the
+	// client on the registration page, as the verify key does.
+	RegisterKey string
+	// RegisterMaxHours bounds how long a registration made on the page
+	// lasts; 0 means the server default.
+	RegisterMaxHours int
 	sync.RWMutex
+}
+
+// RegisterHoursLimit returns how long a registration made on the page may
+// last at most, in hours: the client's limit, or def when it sets none.
+func (s *Client) RegisterHoursLimit(def int) int {
+	if s.RegisterMaxHours > 0 {
+		return s.RegisterMaxHours
+	}
+	return def
 }
 
 func NewClient(vKey string, noStore bool, noDisplay bool) *Client {
@@ -272,9 +289,10 @@ type Tunnel struct {
 	Remark       string
 	TargetAddr   string
 	TargetType   string
-	DestAclMode  int              // 0=off, 1=whitelist, 2=blacklist
-	DestAclRules string           // raw rules text
-	DestAclSet   *common.ProxyACL `json:"-"`
+	DestAclMode  int    // 0=off, 1=whitelist, 2=blacklist
+	DestAclRules string // one rule per line
+	destAcl      *acl.Dest
+	SourceLists
 	NoStore      bool
 	IsHttp       bool
 	HttpProxy    bool
@@ -289,92 +307,49 @@ type Tunnel struct {
 	sync.RWMutex
 }
 
+// CompileDestACL compiles the destination list. Rules that cannot be used
+// are logged and skipped.
 func (t *Tunnel) CompileDestACL() {
 	if t == nil {
 		return
 	}
-
 	t.Lock()
 	defer t.Unlock()
+	t.compileDestACLLocked()
+}
 
-	// Invalid mode => off
+func (t *Tunnel) compileDestACLLocked() {
 	if t.DestAclMode != AclOff && t.DestAclMode != AclWhitelist && t.DestAclMode != AclBlacklist {
 		t.DestAclMode = AclOff
 	}
-
-	// Normalize rules (store normalized form)
-	t.DestAclRules = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(t.DestAclRules, "\r\n", "\n")))
-
-	if t.DestAclMode == AclOff {
-		t.DestAclSet = nil
-		return
+	d, err := acl.CompileDest(t.DestAclMode, t.DestAclRules)
+	if err != nil {
+		logs.Warn("Destination list of tunnel %d: rules skipped: %v", t.Id, err)
 	}
-
-	// Semantics:
-	// - whitelist + empty rules => deny all
-	// - blacklist + empty rules => allow all
-	if t.DestAclRules == "" {
-		if t.DestAclMode == AclWhitelist {
-			t.DestAclSet = &common.ProxyACL{} // empty => never match => deny all
-		} else {
-			t.DestAclSet = nil // allow all
-		}
-		return
-	}
-
-	t.DestAclSet = common.ParseProxyACL(t.DestAclRules)
+	t.destAcl = d
 }
 
+// AllowsDestination reports whether the destination list lets the tunnel
+// reach addr, a host or host:port.
 func (t *Tunnel) AllowsDestination(addr string) bool {
 	if t == nil {
 		return true
 	}
-
 	t.RLock()
-	mode := t.DestAclMode
-	rules := t.DestAclRules
-	set := t.DestAclSet
+	mode, d := t.DestAclMode, t.destAcl
 	t.RUnlock()
-
-	if mode != AclOff && mode != AclWhitelist && mode != AclBlacklist {
-		mode = AclOff
-	}
-
-	if mode == AclOff {
+	if mode != AclWhitelist && mode != AclBlacklist {
 		return true
 	}
-
-	// If not compiled (should be compiled at load/new/update), fall back safely.
-	if set == nil {
-		if rules == "" {
-			return mode == AclBlacklist
+	if d == nil {
+		t.Lock()
+		if t.destAcl == nil {
+			t.compileDestACLLocked()
 		}
-		// Compile once on-demand (rare path)
-		t.CompileDestACL()
-		t.RLock()
-		mode = t.DestAclMode
-		//rules = t.DestAclRules
-		set = t.DestAclSet
-		t.RUnlock()
-
-		if mode == AclOff {
-			return true
-		}
-
-		// if still nil:
-		// - whitelist => deny all
-		// - blacklist => allow all
-		if set == nil {
-			return mode == AclBlacklist
-		}
+		d = t.destAcl
+		t.Unlock()
 	}
-
-	matched := set.Allows(addr)
-	if mode == AclWhitelist {
-		return matched
-	}
-	// blacklist
-	return !matched
+	return d.Allows(addr)
 }
 
 // ConfigTaskPorts expands a task delivered by a client configuration into the
@@ -403,7 +378,7 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 }
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {
-	return &Tunnel{
+	t := &Tunnel{
 		ServerIp:     "0.0.0.0",
 		Port:         port,
 		Mode:         "tcp",
@@ -416,6 +391,8 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 		UserAuth:     host.UserAuth,
 		MultiAccount: host.MultiAccount,
 	}
+	t.CopySourceLists(&host.SourceLists)
+	return t
 }
 
 // Clone returns a copy of t that can be edited and then stored with
@@ -440,7 +417,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		TargetType:   t.TargetType,
 		DestAclMode:  t.DestAclMode,
 		DestAclRules: t.DestAclRules,
-		DestAclSet:   t.DestAclSet,
+		destAcl:      t.destAcl,
 		NoStore:      t.NoStore,
 		IsHttp:       t.IsHttp,
 		HttpProxy:    t.HttpProxy,
@@ -452,6 +429,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		UserAuth:     t.UserAuth,
 		MultiAccount: t.MultiAccount,
 	}
+	c.CopySourceLists(&t.SourceLists)
 	flow := t.Flow
 	t.RUnlock()
 
@@ -490,7 +468,8 @@ func (t *Tunnel) Update(other *Tunnel) {
 	t.Socks5Proxy = other.Socks5Proxy
 	t.DestAclMode = other.DestAclMode
 	t.DestAclRules = other.DestAclRules
-	t.DestAclSet = other.DestAclSet
+	t.destAcl = other.destAcl
+	t.CopySourceLists(&other.SourceLists)
 	t.LocalPath = other.LocalPath
 	t.StripPre = other.StripPre
 	t.ReadOnly = other.ReadOnly
@@ -549,7 +528,8 @@ type Host struct {
 	Target           *Target
 	UserAuth         *MultiAccount
 	MultiAccount     *MultiAccount
-	Health           `json:"-"`
+	SourceLists
+	Health `json:"-"`
 	sync.RWMutex
 }
 
@@ -577,6 +557,7 @@ func (s *Host) Update(h *Host) {
 	s.TargetIsHttps = h.TargetIsHttps
 	s.Target = h.Target
 	s.MultiAccount = h.MultiAccount
+	s.CopySourceLists(&h.SourceLists)
 }
 
 func (s *Host) AddConn() {
@@ -684,6 +665,6 @@ func GetAccountMap(multiAccount *MultiAccount) map[string]string {
 }
 
 type Glob struct {
-	BlackIpList []string
+	SourceLists
 	sync.RWMutex
 }

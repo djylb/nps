@@ -4,6 +4,7 @@ import (
 	"html"
 	"strings"
 
+	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 )
 
@@ -13,6 +14,19 @@ func requestString(c Context, key string) string {
 
 func requestEscapedString(c Context, key string) string {
 	return html.EscapeString(requestString(c, key))
+}
+
+// requestAccessLists reads the source access lists of a level from the
+// fields prefix+"iplistpriority", prefix+"blackiplist", prefix+"whiteiplist"
+// and prefix+"registered_only". The rules are validated by the service and
+// escaped by the templates.
+func requestAccessLists(c Context, prefix string) webservice.AccessListInput {
+	return webservice.AccessListInput{
+		Priority:       requestIntValue(c, prefix+"iplistpriority"),
+		Black:          requestString(c, prefix+"blackiplist"),
+		White:          requestString(c, prefix+"whiteiplist"),
+		RegisteredOnly: requestBoolValue(c, prefix+"registered_only"),
+	}
 }
 
 func requestIntValue(c Context, key string, def ...int) int {

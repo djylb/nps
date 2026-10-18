@@ -5,7 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/web/ui"
@@ -99,6 +101,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			return PageBuildResult{}, ErrPageNotFound
 		}
 		data["t"] = task
+		setAccessListData(data, &task.SourceLists)
 		if task.UserAuth == nil {
 			data["auth"] = ""
 		} else {
@@ -119,6 +122,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			return PageBuildResult{}, ErrPageNotFound
 		}
 		data["h"] = host
+		setAccessListData(data, &host.SourceLists)
 		if host.UserAuth == nil {
 			data["auth"] = ""
 		} else {
@@ -144,7 +148,7 @@ func (s DefaultPageService) buildClient(input PageBuildInput) (PageBuildResult, 
 			return PageBuildResult{}, ErrPageNotFound
 		}
 		data["c"] = client
-		data["BlackIpList"] = strings.Join(client.BlackIpList, "\r\n")
+		setAccessListData(data, &client.SourceLists)
 		data["name"] = "edit client"
 	default:
 		return PageBuildResult{}, ErrPageNotFound
@@ -157,9 +161,13 @@ func (s DefaultPageService) buildGlobal(input PageBuildInput) (PageBuildResult, 
 	switch strings.TrimSpace(input.Action) {
 	case "index":
 		data["name"] = "global"
+		data["globalIpListPriority"] = acl.DenyFirst
 		if global := s.globals().Get(); global != nil {
-			data["globalBlackIpList"] = strings.Join(global.BlackIpList, "\r\n")
+			data["globalIpListPriority"] = global.IpListPriority
+			data["globalBlackIpList"] = joinRuleLines(global.BlackIpList)
+			data["globalWhiteIpList"] = joinRuleLines(global.WhiteIpList)
 		}
+		data["geo"] = s.system().GeoDataStatus()
 	case "banlist":
 		data["name"] = "banlist"
 	default:
@@ -265,6 +273,14 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 		commonData.WSSPort = bridge.WSS.Port
 	}
 	return commonData.Map()
+}
+
+// setAccessListData exposes the lists of an edited entry to its template.
+func setAccessListData(data map[string]interface{}, l *file.SourceLists) {
+	data["RegisteredOnly"] = l.RegisteredOnly
+	data["IpListPriority"] = l.IpListPriority
+	data["BlackIpList"] = joinRuleLines(l.BlackIpList)
+	data["WhiteIpList"] = joinRuleLines(l.WhiteIpList)
 }
 
 func normalizePageConfig(cfg *servercfg.Snapshot) *servercfg.Snapshot {

@@ -142,7 +142,7 @@ func DealBridgeTask() {
 // StartNewServer start a new server
 func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 	cfg := servercfg.Current()
-	Bridge = bridge.NewTunnel(common.GetBoolByStr(cfg.Runtime.IPLimit), &RunList, bridgeDisconnect)
+	Bridge = bridge.NewTunnel(&RunList, bridgeDisconnect)
 	startP2P(Bridge, cfg)
 	go func() {
 		if err := Bridge.StartTunnel(); err != nil {

@@ -23,7 +23,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := NewTunnel(false, &sync.Map{}, 30)
+	b := NewTunnel(&sync.Map{}, 30)
 	clientSide, serverSide := net.Pipe()
 	defer func() { _ = clientSide.Close() }()
 	done := make(chan struct{})

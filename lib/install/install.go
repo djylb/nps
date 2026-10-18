@@ -70,7 +70,7 @@ func update(kind, bin, service string) (*UpdateResult, error) {
 		digest string
 		urls   []string
 	)
-	rl, verified, err := fetchLatestRelease(c)
+	rl, verified, err := fetchLatestRelease(c, "djylb/nps")
 	if err != nil {
 		fmt.Println("Query latest release failed:", err)
 		fmt.Println("Falling back to the CDN @latest mirrors; their packages carry no SHA-256 digest")
@@ -161,6 +161,10 @@ func update(kind, bin, service string) (*UpdateResult, error) {
 	if bin == "nps" {
 		if err := copyServerAssets(pkgDir, common.GetRunPath()); err != nil {
 			return res, fmt.Errorf("executables replaced, but updating web assets failed: %w", err)
+		}
+		ipPath, sitePath := geoDataPaths(common.GetRunPath())
+		if err := SyncGeoData(filepath.Join(pkgDir, "conf"), ipPath, sitePath); err != nil {
+			return res, fmt.Errorf("executables replaced, but updating geodata failed: %w", err)
 		}
 	}
 	fmt.Println("Update completed:", tag)
@@ -351,8 +355,10 @@ func isCertificateError(err error) bool {
 
 // fetchLatestRelease queries the latest release and reports whether the
 // server certificate was verified.
-func fetchLatestRelease(c *httpClient) (*release, bool, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/djylb/nps/releases/latest", nil)
+// fetchLatestRelease fetches the latest release of the GitHub repository repo,
+// owner/name.
+func fetchLatestRelease(c *httpClient, repo string) (*release, bool, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+repo+"/releases/latest", nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -847,6 +853,9 @@ func NPS() (string, error) {
 		chMod(filepath.Join(path, "conf"), 0766)
 	}
 	if err := copyServerAssets(appPath, path); err != nil {
+		return "", err
+	}
+	if err := SyncGeoData(filepath.Join(appPath, "conf"), filepath.Join(path, "conf", "geoip.dat"), filepath.Join(path, "conf", "geosite.dat")); err != nil {
 		return "", err
 	}
 	binPath, err := installExecutable(appPath, "nps")

@@ -18,10 +18,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/controllers"
 	"github.com/djylb/nps/web/framework"
@@ -1334,4 +1336,126 @@ func deriveTestSessionKeys(cfg *servercfg.Snapshot) ([]byte, []byte) {
 	authSum := sha256.Sum256([]byte("auth:" + seed))
 	encSum := sha256.Sum256([]byte("enc:" + seed))
 	return authSum[:], encSum[:]
+}
+
+func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
+	repoRoot := testRepoRoot(t)
+	oldConfPath := common.ConfPath
+	common.ConfPath = repoRoot
+	defer func() { common.ConfPath = oldConfPath }()
+	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
+		"web_username=admin",
+		"web_password=secret",
+		"web_base_url=",
+		"open_captcha=false",
+	}, "\n")+"\n")
+	if err := servercfg.Load(configPath); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	resetTestDB(t)
+	ipreg.Reset()
+	t.Cleanup(ipreg.Reset)
+	client := createTestClient(t, 9, "", "")
+	client.RegisterKey = "reg-key-9"
+	crypt.InitTls(tls.Certificate{})
+	gin.SetMode(gin.TestMode)
+	handler := Init()
+
+	pageResp := httptest.NewRecorder()
+	handler.ServeHTTP(pageResp, httptest.NewRequest(http.MethodGet, "/ip/register?key=prefilled", nil))
+	if pageResp.Code != http.StatusOK || !strings.Contains(pageResp.Body.String(), `value="prefilled"`) || !strings.Contains(pageResp.Body.String(), "192.0.2.1") {
+		t.Fatalf("GET /ip/register status = %d, body %q", pageResp.Code, pageResp.Body.String())
+	}
+
+	wrong := performFormRequest(handler, http.MethodPost, "/ip/register", nil, map[string]string{"key": "wrong"})
+	if !strings.Contains(wrong.Body.String(), `"status":0`) {
+		t.Fatalf("POST /ip/register with a wrong key = %s", wrong.Body.String())
+	}
+	if again := performFormRequest(handler, http.MethodPost, "/ip/register", nil, map[string]string{"key": "reg-key-9"}); !strings.Contains(again.Body.String(), `"status":0`) {
+		t.Fatalf("a retry right after a failure was not rate limited: %s", again.Body.String())
+	}
+	webservice.SharedLoginPolicy().RemoveBan("192.0.2.1")
+	ok := performFormRequest(handler, http.MethodPost, "/ip/register", nil, map[string]string{"key": "reg-key-9", "hours": "1"})
+	if !strings.Contains(ok.Body.String(), `"status":1`) || !ipreg.RegisteredString(9, "192.0.2.1") {
+		t.Fatalf("POST /ip/register with the registration key = %s", ok.Body.String())
+	}
+
+	g := new(file.Glob)
+	g.SetSourceLists(acl.DenyFirst, []string{"192.0.2.0/24"}, nil, acl.ScopeGlobal, "global")
+	file.Db.JsonDb.Global = g
+	for _, path := range []string{"/login/index", "/ip/register", "/static/css/style.css"} {
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
+		if resp.Code != http.StatusForbidden {
+			t.Errorf("GET %s from a globally denied address status = %d, want 403", path, resp.Code)
+		}
+	}
+	allowed := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/login/index", nil)
+	req.RemoteAddr = "198.51.100.7:1234"
+	handler.ServeHTTP(allowed, req)
+	if allowed.Code == http.StatusForbidden {
+		t.Fatal("allowed address denied by the global lists")
+	}
+}
+
+func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
+	repoRoot := testRepoRoot(t)
+	oldConfPath := common.ConfPath
+	common.ConfPath = repoRoot
+	defer func() { common.ConfPath = oldConfPath }()
+	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
+		"web_username=admin",
+		"web_password=secret",
+		"web_base_url=/nps",
+		"open_captcha=false",
+		"public_vkey=pub-key",
+	}, "\n")+"\n")
+	if err := servercfg.Load(configPath); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	resetTestDB(t)
+	ipreg.Reset()
+	t.Cleanup(ipreg.Reset)
+	crypt.InitTls(tls.Certificate{})
+	gin.SetMode(gin.TestMode)
+	handler := Init()
+
+	login := httptest.NewRecorder()
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodGet, "/nps/login/index", nil))
+	if !strings.Contains(login.Body.String(), `href="/nps/ip/register"`) {
+		t.Fatal("login page lacks the registration entry under the base URL")
+	}
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/nps/ip/register", nil))
+	body := page.Body.String()
+	if page.Code != http.StatusOK || !strings.Contains(body, `"/nps/static/`) || !strings.Contains(body, `href="/nps/login/index"`) || !strings.Contains(body, `<option value="720">30d</option>`) {
+		t.Fatalf("GET /nps/ip/register status = %d, body %q", page.Code, body)
+	}
+	reg := performFormRequest(handler, http.MethodPost, "/nps/ip/register", nil, map[string]string{"key": "pub-key", "hours": "720"})
+	if !strings.Contains(reg.Body.String(), `"status":1`) || !ipreg.RegisteredString(77, "192.0.2.1") {
+		t.Fatalf("POST /nps/ip/register with the public key = %s", reg.Body.String())
+	}
+
+	standalone := InitIPRegister()
+	for _, path := range []string{"/", "/ip/register"} {
+		resp := httptest.NewRecorder()
+		standalone.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
+		b := resp.Body.String()
+		if resp.Code != http.StatusOK || !strings.Contains(b, `"/static/`) || strings.Contains(b, "/nps/") || strings.Contains(b, "login/index") {
+			t.Fatalf("standalone GET %s status = %d, body %q", path, resp.Code, b)
+		}
+	}
+	for _, path := range []string{"/login/index", "/index/index", "/client/list"} {
+		resp := httptest.NewRecorder()
+		standalone.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
+		if resp.Code != http.StatusNotFound {
+			t.Errorf("standalone GET %s status = %d, want 404", path, resp.Code)
+		}
+	}
+	static := httptest.NewRecorder()
+	standalone.ServeHTTP(static, httptest.NewRequest(http.MethodGet, "/static/css/style.css", nil))
+	if static.Code != http.StatusOK {
+		t.Fatalf("standalone static status = %d", static.Code)
+	}
 }

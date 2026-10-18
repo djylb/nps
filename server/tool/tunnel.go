@@ -36,6 +36,18 @@ func GetTunnelConn(id int, remote string) (net.Conn, error) {
 
 var WebServerListener *netx.ChanListener
 
+// IPRegisterListener feeds the registration page; see GetIPRegisterConn.
+var IPRegisterListener *netx.ChanListener
+
+// GetIPRegisterConn connects a bridge://ipreg target to the registration
+// page, with remote, the visitor, as the address it sees.
+func GetIPRegisterConn(ctx context.Context, remote string) (net.Conn, error) {
+	if IPRegisterListener == nil {
+		return nil, errors.New("the IP registration page is not running")
+	}
+	return conn.DialVirtual(ctx, IPRegisterListener, remote)
+}
+
 // GetWebServerConn connects to the web server's in-memory listener as remote.
 func GetWebServerConn(ctx context.Context, remote string) (net.Conn, error) {
 	if WebServerListener == nil {

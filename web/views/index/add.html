@@ -67,6 +67,40 @@
                             <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
                         </div>
                     </div>
+                    <div class="form-group" id="iplistpriority">
+                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="iplistpriority">
+                                <option value="0" langtag="word-denyfirst"></option>
+                                <option value="1" langtag="word-allowfirst"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="blackiplist">
+                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4"></textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="whiteiplist">
+                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                        <div class="col-sm-12">
+                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4"></textarea>
+                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="registered_only">
+                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                        <div class="col-sm-12">
+                            <select class="form-control selectpicker" name="registered_only">
+                                <option value="0" langtag="word-no"></option>
+                                <option value="1" langtag="word-yes"></option>
+                            </select>
+                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                        </div>
+                    </div>
                     <div class="form-group" id="dest_acl_mode">
                         <label class="control-label font-bold" langtag="word-destacl"></label>
                         <div class="col-sm-12">
@@ -186,15 +220,15 @@
 
 <script>
     var arr = []
-    arr["all"] = ["auth", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip"]
-    arr["tcp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "time_limit"]
+    arr["all"] = ["auth", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["tcp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
     arr["secret"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
     arr["p2p"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
-    arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
+    arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 
     function resetForm() {
         $(".form-group[id]").css("display", "none");

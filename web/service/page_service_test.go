@@ -20,8 +20,12 @@ func (s stubSystemService) BridgeDisplay(*servercfg.Snapshot, string) BridgeDisp
 	return s.bridge
 }
 
-func (stubSystemService) RegisterManagementAccess(string) {}
-func (stubSystemService) UpdateServer() (string, error)   { return "", nil }
+func (stubSystemService) RegisterManagementAccess(string, []int, bool) {}
+func (stubSystemService) UpdateServer() (string, error)                { return "", nil }
+func (stubSystemService) GeoDataStatus() GeoDataStatus                 { return GeoDataStatus{} }
+func (stubSystemService) UpdateGeoData() (GeoDataStatus, error) {
+	return GeoDataStatus{}, nil
+}
 
 func TestDefaultPageServiceBuildHostList(t *testing.T) {
 	service := DefaultPageService{

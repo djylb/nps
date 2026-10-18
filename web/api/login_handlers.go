@@ -11,6 +11,7 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -29,14 +30,7 @@ func (a *App) LoginVerify(c Context) {
 	setSession(c, "login_nonce", nonce)
 
 	username := requestString(c, "username")
-	ip := requestRemoteIP(c)
-	httpOnlyPass := cfg.Auth.HTTPOnlyPass
-	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
-		(httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass) {
-		if realIP := c.RequestHeader("X-Real-IP"); realIP != "" {
-			ip = realIP
-		}
-	}
+	ip := requestVisitorIP(c, cfg)
 
 	isIPBan := loginPolicy.IsIPBanned(ip)
 	isUserBan := loginPolicy.IsUserBanned(username)
@@ -221,14 +215,7 @@ func (a *App) doLogin(c Context, username, password, totp string, explicit bool)
 	loginPolicy := a.loginPolicy()
 	loginPolicy.Clean(false)
 
-	ip := requestRemoteIP(c)
-	httpOnlyPass := cfg.Auth.HTTPOnlyPass
-	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
-		(httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass) {
-		if realIP := c.RequestHeader("X-Real-IP"); realIP != "" {
-			ip = realIP
-		}
-	}
+	ip := requestVisitorIP(c, cfg)
 
 	if explicit && loginPolicy.IsIPBanned(ip) {
 		return false
@@ -248,12 +235,24 @@ func (a *App) doLogin(c Context, username, password, totp string, explicit bool)
 	}
 
 	applySessionIdentity(c, identity)
-	if identity.IsAdmin {
-		a.system().RegisterManagementAccess(c.ClientIP())
-	}
+	a.system().RegisterManagementAccess(c.ClientIP(), identity.ClientIDs, identity.IsAdmin)
 
 	loginPolicy.RemoveBan(ip)
 	return true
+}
+
+// requestVisitorIP returns the address of the visitor: the peer, or the
+// X-Real-IP header a trusted proxy sets.
+func requestVisitorIP(c Context, cfg *servercfg.Snapshot) string {
+	ip := requestRemoteIP(c)
+	httpOnlyPass := cfg.Auth.HTTPOnlyPass
+	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
+		(httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass) {
+		if realIP := c.RequestHeader("X-Real-IP"); realIP != "" {
+			ip = realIP
+		}
+	}
+	return ip
 }
 
 func requestRemoteIP(c Context) string {

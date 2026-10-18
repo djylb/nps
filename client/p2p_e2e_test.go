@@ -105,7 +105,7 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 		t.Fatal(err)
 	}
 
-	b := bridge.NewTunnel(false, &sync.Map{}, 30)
+	b := bridge.NewTunnel(&sync.Map{}, 30)
 	if err := b.StartP2P(bridge.P2PConfig{IP: "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}

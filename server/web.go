@@ -97,17 +97,23 @@ func (s *WebServer) Start() error {
 // loadWebCert loads the web manager certificate. Each value may be inline PEM,
 // an absolute path, or a path relative to the run directory.
 func loadWebCert(certFile, keyFile string) (tls.Certificate, error) {
-	certContent, err := loadWebPEM("web_cert_file", certFile, "CERTIFICATE")
+	return loadCertPair("web", certFile, keyFile)
+}
+
+// loadCertPair loads the certificate and key configured as
+// prefix_cert_file and prefix_key_file, given as paths or PEM content.
+func loadCertPair(prefix, certFile, keyFile string) (tls.Certificate, error) {
+	certContent, err := loadWebPEM(prefix+"_cert_file", certFile, "CERTIFICATE")
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	keyContent, err := loadWebPEM("web_key_file", keyFile, "PRIVATE")
+	keyContent, err := loadWebPEM(prefix+"_key_file", keyFile, "PRIVATE")
 	if err != nil {
 		return tls.Certificate{}, err
 	}
 	cert, err := tls.X509KeyPair([]byte(certContent), []byte(keyContent))
 	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("web certificate: %w", err)
+		return tls.Certificate{}, fmt.Errorf("%s certificate: %w", prefix, err)
 	}
 	return cert, nil
 }

@@ -77,10 +77,10 @@
         <div class="col-lg-3">
             <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 langtag="word-iprestriction"></h5>
+                    <h5 langtag="word-registeredips"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" langtag="word-{{or .data.ipLimit "false"}}"></h1>
+                    <h1 class="no-margins">{{.data.registeredIps}}</h1>
                 </div>
             </div>
         </div>
@@ -174,10 +174,10 @@
                         <li class="list-group-item ">
                             <div class="row">
                                 <div class="col-sm-6">
-                                    <strong langtag="word-iprestriction"></strong>
+                                    <strong langtag="word-registeredips"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong langtag="word-{{or .data.ipLimit "false"}}"></strong>
+                                    <strong>{{.data.registeredIps}}</strong>
                                 </div>
                             </div>
                         </li>

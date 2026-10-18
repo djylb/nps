@@ -143,6 +143,8 @@ loop:
 					Socks5Proxy:  t.Socks5Proxy,
 					HttpProxy:    t.HttpProxy,
 					TargetType:   t.TargetType,
+					DestAclMode:  t.DestAclMode,
+					DestAclRules: t.DestAclRules,
 					MultiAccount: t.MultiAccount,
 					Id:           int(file.GetDb().JsonDb.GetTaskId()),
 					Status:       true,

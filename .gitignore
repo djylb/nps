@@ -6,3 +6,8 @@ npc
 *.tar.gz
 *.json
 *.tmp
+
+# geodata fetched at build time
+conf/*.dat
+conf/geodata.version
+conf/*.download

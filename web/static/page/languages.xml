@@ -498,10 +498,6 @@
 		<zh-CN>总流量</zh-CN>
 		<en-US>Total Flow</en-US>
 	</lang>
-	<lang id="word-iprestriction">
-		<zh-CN>IP 限制</zh-CN>
-		<en-US>IP Restriction</en-US>
-	</lang>
 	<lang id="word-load">
 		<zh-CN>负载</zh-CN>
 		<en-US>Load</en-US>
@@ -974,12 +970,12 @@
 		<en-US>Colon separated, multiple lines please fill in</en-US>
 	</lang>
 	<lang id="info-destacl">
-		<zh-CN>启用黑/白名单后，SOCKS5 不支持 UDP（将禁用 UDP Associate）。</zh-CN>
-		<en-US>When whitelist/blacklist is enabled, SOCKS5 does not support UDP (UDP Associate will be disabled).</en-US>
+		<zh-CN>名单对 HTTP、SOCKS5 TCP 以及 SOCKS5 UDP 的每个数据报生效，被拒绝的 UDP 数据报直接丢弃。</zh-CN>
+		<en-US>The lists apply to HTTP, SOCKS5 TCP and every SOCKS5 UDP datagram; denied datagrams are dropped.</en-US>
 	</lang>
 	<lang id="info-destaclrules">
-		<zh-CN>每行一个：IP、CIDR、域名或通配符域名（如 *.example.com）。</zh-CN>
-		<en-US>One per line: IP, CIDR, hostname, or wildcard domain (e.g. *.example.com).</en-US>
+		<zh-CN>每行一条：IP、CIDR、full:example.com（精确匹配）、*.example.com（仅子域名）、*example.com 或 domain:example.com（含自身和子域名）、keyword:（不带前缀的域名也按关键字匹配）、regexp:、geosite:cn、geoip:cn，# 开头为注释。</zh-CN>
+		<en-US>One per line: IP, CIDR, full:example.com (exact match), *.example.com (subdomains only), *example.com or domain:example.com (the domain and its subdomains), keyword: (a host name without prefix is a keyword too), regexp:, geosite:cn, geoip:cn. Lines starting with # are comments.</en-US>
 	</lang>
 	<lang id="info-httpsjustproxy">
 		<zh-CN>按域名（SNI）分流；不在此解密 TLS，数据原样转给后端。提示：后端启用 HTTP/2 时，浏览器可能复用连接，导致偶发串站。</zh-CN>
@@ -1109,25 +1105,141 @@
 		<zh-CN>307 临时重定向（留空关闭）</zh-CN>
 		<en-US>307 Temporary Redirect (leave blank to disable)</en-US>
 	</lang>
+	<lang id="word-whiteiplist">
+		<zh-CN>IP 白名单</zh-CN>
+		<en-US>IP Whitelist</en-US>
+	</lang>
+	<lang id="word-globalwhiteiplist">
+		<zh-CN>全局 IP 白名单</zh-CN>
+		<en-US>Global IP Whitelist</en-US>
+	</lang>
+	<lang id="word-iplistpriority">
+		<zh-CN>名单优先级</zh-CN>
+		<en-US>List Priority</en-US>
+	</lang>
+	<lang id="word-denyfirst">
+		<zh-CN>黑名单优先</zh-CN>
+		<en-US>Blacklist First</en-US>
+	</lang>
+	<lang id="word-allowfirst">
+		<zh-CN>白名单优先</zh-CN>
+		<en-US>Whitelist First</en-US>
+	</lang>
+	<lang id="word-geodata">
+		<zh-CN>Geo 数据</zh-CN>
+		<en-US>Geodata</en-US>
+	</lang>
+	<lang id="word-geoversion">
+		<zh-CN>数据版本</zh-CN>
+		<en-US>Data Version</en-US>
+	</lang>
+	<lang id="word-updategeo">
+		<zh-CN>更新 Geo 数据</zh-CN>
+		<en-US>Update Geodata</en-US>
+	</lang>
+	<lang id="word-unknown">
+		<zh-CN>未知</zh-CN>
+		<en-US>Unknown</en-US>
+	</lang>
+	<lang id="word-filemissing">
+		<zh-CN>文件不存在</zh-CN>
+		<en-US>File Missing</en-US>
+	</lang>
+	<lang id="info-iplistpriority">
+		<zh-CN>同时配置了黑名单和白名单时生效。黑名单优先：在黑名单中的地址拒绝，其余地址只有在白名单中才放行；白名单优先：在白名单中的地址放行，其余地址只要不在黑名单中就放行。只配置一个名单时两种优先级相同。</zh-CN>
+		<en-US>Applies when both lists are set. Blacklist first: addresses on the blacklist are denied, others are allowed only if they are on the whitelist. Whitelist first: addresses on the whitelist are allowed, others are allowed unless they are on the blacklist. With one list only, both priorities are the same.</en-US>
+	</lang>
+	<lang id="info-iplistrules">
+		<zh-CN>每行一条：IP、CIDR（如 10.0.0.0/8）、IPv4 前缀通配（如 192.168.*）、geoip:cn、geoip:!cn（取反）、geoip:private，# 开头为注释。访问需依次通过全局、客户端、隧道或域名三层名单，上级拒绝的访问下级无法放行。</zh-CN>
+		<en-US>One per line: IP, CIDR (e.g. 10.0.0.0/8), IPv4 prefix wildcard (e.g. 192.168.*), geoip:cn, geoip:!cn (negated), geoip:private. Lines starting with # are comments. Access has to pass the global, client and tunnel or host lists in turn; what a higher level denies, a lower level cannot allow.</en-US>
+	</lang>
+	<lang id="info-globaliplistrules">
+		<zh-CN>每行一条：IP、CIDR、IPv4 前缀通配（如 192.168.*）、geoip:cn、geoip:!cn、geoip:private，也可用 ext-ip:文件名:代码 引用 Geo 数据目录下的其他文件，# 开头为注释。</zh-CN>
+		<en-US>One per line: IP, CIDR, IPv4 prefix wildcard (e.g. 192.168.*), geoip:cn, geoip:!cn, geoip:private, or ext-ip:file:code for another file in the geodata directory. Lines starting with # are comments.</en-US>
+	</lang>
+	<lang id="info-globaliplist">
+		<zh-CN>全局名单相当于 nps 前面的防火墙，作用于所有进入 nps 的连接：客户端连接（bridge）、所有隧道和域名转发、Web 管理界面（P2P 探测端口除外）。被拒绝的地址连管理界面也无法打开，修改前请确认不会把自己挡在外面（误操作时可手动编辑 conf/global.json 恢复）。限制谁能访问哪个内网服务，请在客户端或隧道、域名转发中配置。</zh-CN>
+		<en-US>The global lists are the firewall in front of nps and apply to every connection to it: client connections (bridge), all tunnels and hosts, and this web interface (not the P2P probe port). A denied address cannot open the web interface either, so make sure you do not lock yourself out (edit conf/global.json to recover). To limit who may reach an internal service, configure the client, tunnel or host.</en-US>
+	</lang>
+	<lang id="info-suchasaclrules">
+		<zh-CN>例如&#10;1.2.3.4&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:cn</zh-CN>
+		<en-US>Such as&#10;1.2.3.4&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:cn</en-US>
+	</lang>
+	<lang id="info-geodata">
+		<zh-CN>geoip.dat 用于名单中的 geoip: 规则，geosite.dat 用于目标访问控制中的 geosite: 规则。数据来自 Loyalsoldier/v2ray-rules-dat，更新后立即生效。也可以执行 nps update-geo 命令更新。</zh-CN>
+		<en-US>geoip.dat serves the geoip: rules of the lists, geosite.dat the geosite: rules of destination ACLs. The data comes from Loyalsoldier/v2ray-rules-dat and takes effect right after an update. The nps update-geo command updates it too.</en-US>
+	</lang>
+	<lang id="word-registeredonly">
+		<zh-CN>仅允许已登记的 IP</zh-CN>
+		<en-US>Registered IPs Only</en-US>
+	</lang>
+	<lang id="info-registeredonly">
+		<zh-CN>开启后，访问者除了要通过名单，还必须先登记 IP：在访问者设备上执行 npc register，或用该客户端的登记口令、vkey 在登记页面登记，或登录本管理界面（管理员对所有客户端有效）。登记只保存在内存中，nps 重启后需要重新登记。</zh-CN>
+		<en-US>When on, visitors must also have registered their IP: with npc register on their device, with the client's registration key or vkey on the registration page, or by logging in to this web interface (an administrator's login counts for every client). Registrations are kept in memory and end when nps restarts.</en-US>
+	</lang>
+	<lang id="word-registerkey">
+		<zh-CN>登记口令</zh-CN>
+		<en-US>Registration Key</en-US>
+	</lang>
+	<lang id="info-registerkey">
+		<zh-CN>访问者在登记页面输入登记口令即可为本客户端登记自己的 IP；留空时只能用 vkey 登记。登记口令与 vkey 分开，泄露后重置即可，不影响客户端连接。</zh-CN>
+		<en-US>Visitors enter the registration key on the registration page to register their IP for this client; when empty, only the vkey works. It is separate from the vkey: reset it when it leaks, the client connection is not affected.</en-US>
+	</lang>
+	<lang id="word-registerlink">
+		<zh-CN>登记链接</zh-CN>
+		<en-US>Registration Link</en-US>
+	</lang>
+	<lang id="word-registermaxhours">
+		<zh-CN>登记最长有效期（小时）</zh-CN>
+		<en-US>Max Registration Hours</en-US>
+	</lang>
+	<lang id="info-registermaxhours">
+		<zh-CN>在登记页面登记的最长有效时间，留空或 0 为 2 小时。</zh-CN>
+		<en-US>How long a registration made on the registration page lasts at most; empty or 0 means 2 hours.</en-US>
+	</lang>
+	<lang id="word-generate">
+		<zh-CN>生成</zh-CN>
+		<en-US>Generate</en-US>
+	</lang>
+	<lang id="word-registeredips">
+		<zh-CN>已登记 IP</zh-CN>
+		<en-US>Registered IPs</en-US>
+	</lang>
+	<lang id="title-ipregister">
+		<zh-CN>IP 登记</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="word-yourip">
+		<zh-CN>当前 IP</zh-CN>
+		<en-US>Your IP</en-US>
+	</lang>
+	<lang id="word-registerhours">
+		<zh-CN>有效期</zh-CN>
+		<en-US>Duration</en-US>
+	</lang>
+	<lang id="word-registerlongest">
+		<zh-CN>最长（按上限）</zh-CN>
+		<en-US>Longest allowed</en-US>
+	</lang>
+	<lang id="word-ipregisterentry">
+		<zh-CN>IP 登记</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="word-registerip">
+		<zh-CN>登记</zh-CN>
+		<en-US>Register</en-US>
+	</lang>
+	<lang id="info-ipregister">
+		<zh-CN>输入客户端的登记口令或 vkey，为当前 IP 开通该客户端的访问；输入公钥（public_vkey）则对所有客户端生效。选择的有效期超过上限时按上限登记。</zh-CN>
+		<en-US>Enter the client's registration key or vkey to allow access to that client from your current IP; the public key (public_vkey) allows every client. A duration above the limit is cut to the limit.</en-US>
+	</lang>
 	<lang id="word-blackiplist">
-		<zh-CN>IP黑名单（防暴力破解）</zh-CN>
-		<en-US>IP Black List</en-US>
+		<zh-CN>IP 黑名单</zh-CN>
+		<en-US>IP Blacklist</en-US>
 	</lang>
 	<lang id="word-globalblackiplist">
-		<zh-CN>全局IP黑名单（防暴力破解）</zh-CN>
-		<en-US>Global IP Black List</en-US>
-	</lang>
-	<lang id="info-suchasblackiplist">
-		<zh-CN>例如&#10;10.1.50.203&#10;10.1.50.202</zh-CN>
-		<en-US>Such as&#10;10.1.50.203&#10;10.1.50.202</en-US>
-	</lang>
-	<lang id="info-descblackiplist">
-		<zh-CN>一行一个，IPV4,不支持范围匹配</zh-CN>
-		<en-US>IPV4</en-US>
-	</lang>
-	<lang id="word-blackip">
-		<zh-CN>IP黑名单</zh-CN>
-		<en-US>IP Black List</en-US>
+		<zh-CN>全局 IP 黑名单</zh-CN>
+		<en-US>Global IP Blacklist</en-US>
 	</lang>
 	<lang id="word-createtime">
 		<zh-CN>创建时间</zh-CN>
@@ -1182,6 +1294,10 @@
 		<lang id="updateserver">
 			<zh-CN>确定要将服务端更新到最新版本并重启吗？重启期间所有连接会短暂中断。</zh-CN>
 			<en-US>Are you sure you want to update the server to the latest version and restart it? All connections drop briefly during the restart.</en-US>
+		</lang>
+		<lang id="updategeo">
+			<zh-CN>确定要从网络下载最新的 Geo 数据吗？</zh-CN>
+			<en-US>Are you sure you want to download the latest geodata?</en-US>
 		</lang>
 	</confirm>
 
@@ -1369,6 +1485,34 @@
 		<lang id="serverupdateisunavailable">
 			<zh-CN>服务端当前不支持在线更新</zh-CN>
 			<en-US>Server Update Is Unavailable</en-US>
+		</lang>
+		<lang id="geodataupdated">
+			<zh-CN>Geo 数据已更新</zh-CN>
+			<en-US>Geodata Updated</en-US>
+		</lang>
+		<lang id="geodataupdateisalreadyrunning">
+			<zh-CN>Geo 数据正在更新中</zh-CN>
+			<en-US>Geodata Update Is Already Running</en-US>
+		</lang>
+		<lang id="ipregistered">
+			<zh-CN>登记成功</zh-CN>
+			<en-US>Registered</en-US>
+		</lang>
+		<lang id="invalidregistrationkey">
+			<zh-CN>登记口令无效</zh-CN>
+			<en-US>Invalid Registration Key</en-US>
+		</lang>
+		<lang id="toomanyattemptstryagainlater">
+			<zh-CN>尝试过于频繁，请稍后再试</zh-CN>
+			<en-US>Too Many Attempts, Try Again Later</en-US>
+		</lang>
+		<lang id="theverificationcodeiswrong">
+			<zh-CN>验证码错误</zh-CN>
+			<en-US>Wrong Verification Code</en-US>
+		</lang>
+		<lang id="registrationkeyduplicatepleasereset">
+			<zh-CN>登记口令与其他客户端重复或与 vkey 相同，请重新设置</zh-CN>
+			<en-US>The registration key is used by another client or equals the vkey, please change it</en-US>
 		</lang>
 	</reply>
 

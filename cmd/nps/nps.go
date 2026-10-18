@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	goflag "flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/daemon"
@@ -97,6 +100,11 @@ func main() {
 		} else {
 			logs.Warn("service function disabled %v", err)
 		}
+		// The config only tells where the geodata files are kept.
+		if servercfg.LoadDefault() == nil {
+			cfg := servercfg.Current()
+			install.SetGeoDataPaths(common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath))
+		}
 		res, err := install.UpdateNps(svcConfig.Name)
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
@@ -115,6 +123,25 @@ func main() {
 		log.Fatalln("load config file error", err.Error())
 	}
 	cfg := servercfg.Current()
+	geoIPPath, geoSitePath := common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath)
+	// before any access list is compiled
+	acl.SetGeoData(geoIPPath, geoSitePath)
+	acl.SetMaxRules(cfg.App.AclMaxRules)
+	install.SetGeoDataPaths(geoIPPath, geoSitePath)
+	if cmd == "update-geo" {
+		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
+		res, err := install.UpdateGeoData(geoIPPath, geoSitePath)
+		if err != nil {
+			logs.Error("update geodata failed: %v", err)
+			os.Exit(1)
+		}
+		if len(res.Updated) == 0 {
+			fmt.Println("Geodata is up to date")
+		} else {
+			fmt.Println("Geodata updated; a running nps applies it within a minute")
+		}
+		return
+	}
 	if strings.TrimSpace(os.Getenv("GIN_MODE")) == "" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -307,6 +334,7 @@ func (p *nps) run() error {
 func run() {
 	cfg := servercfg.Current()
 	server.SetWebHandler(routers.Init())
+	server.StartIPRegisterServer(routers.InitIPRegister())
 	task := &file.Tunnel{
 		Mode: "webServer",
 	}
@@ -337,5 +365,6 @@ func run() {
 	bridge.ServerTlsEnable = cfg.Bridge.ServerTLSEnabled
 	bridge.ServerWsEnable = cfg.Bridge.ServerWSEnabled
 	bridge.ServerWssEnable = cfg.Bridge.ServerWSSEnabled
+	go file.WatchAccessLists(context.Background(), time.Minute)
 	go server.StartNewServer(task, timeout)
 }

@@ -27,7 +27,7 @@ func signalNode(t *testing.T, uuid, vs string) (*Node, *conn.Conn) {
 }
 
 func TestRequestClientUpdate(t *testing.T) {
-	b := NewTunnel(false, &sync.Map{}, 30)
+	b := NewTunnel(&sync.Map{}, 30)
 
 	if _, err := b.RequestClientUpdate(1); !errors.Is(err, ErrClientOffline) {
 		t.Fatalf("unknown client: err = %v, want ErrClientOffline", err)

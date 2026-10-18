@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
 	"github.com/djylb/nps/lib/version"
@@ -32,6 +33,10 @@ func (s *Bridge) verifySuccess(c *conn.Conn) {
 func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	if c.Conn == nil || c.Conn.RemoteAddr() == nil {
 		logs.Warn("Invalid connection")
+		_ = c.Close()
+		return
+	}
+	if file.GetDb().GlobalDenied(c.Conn.RemoteAddr(), "Bridge") {
 		_ = c.Close()
 		return
 	}
@@ -417,7 +422,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		go s.getConfig(c, isPub, client, ver, vs, uuid)
 
 	case common.WorkRegister:
-		go s.register(c)
+		go s.register(c, id)
 		return
 
 	case common.WorkVisitor:
@@ -523,14 +528,21 @@ func tunnelCloseReason(v any) string {
 	return ""
 }
 
-// register ip
-func (s *Bridge) register(c *conn.Conn) {
+// register registers the address of the npc on c for its client, or for
+// every client when it used the public key, for the hours npc asks.
+func (s *Bridge) register(c *conn.Conn, id int) {
 	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	var hour int32
 	if err := binary.Read(c, binary.LittleEndian, &hour); err == nil {
-		ip := common.GetIpByAddr(c.RemoteAddr().String())
-		s.Register.Store(ip, time.Now().Add(time.Hour*time.Duration(hour)))
-		logs.Info("Registered IP: %s for %d hours", ip, hour)
+		if ip, ok := ipreg.ParseIP(c.RemoteAddr().String()); ok && hour > 0 {
+			// the public key is an administrator's key: it registers for
+			// every client
+			if file.GetDb().IsPubClient(id) {
+				id = ipreg.AnyClient
+			}
+			until := ipreg.Register(id, ip, time.Hour*time.Duration(hour))
+			logs.Info("Registered IP %s for client %d until %s", ip, id, until.Format("2006-01-02 15:04:05"))
+		}
 	} else {
 		logs.Warn("Failed to register IP: %v", err)
 	}

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title langtag="title-ipregister"></title>
+    <link href="{{.web_base_url}}/static/css/fontawesome.min.css" rel="stylesheet">
+    <link href="{{.web_base_url}}/static/css/solid.min.css" rel="stylesheet">
+    <link href="{{.web_base_url}}/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{.web_base_url}}/static/css/style.css?v={{.version}}" rel="stylesheet">
+    <script src="{{.web_base_url}}/static/js/jquery-3.7.1.min.js"></script>
+    <script src="{{.web_base_url}}/static/js/bootstrap.min.js"></script>
+    <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
+    {{.head_custom_code}}
+</head>
+
+<body class="login-page">
+    <nav class="navbar navbar-static-top navbar-right navbar-login">
+        <div class="ml-auto d-flex align-items-center" style="gap: 0.5rem;">
+            <button id="theme-toggle" class="btn btn-outline-secondary" onclick="toggleTheme()">
+                <i class="fa fa-moon"></i>
+            </button>
+            <span class="btn-group dropdown">
+                <button id="languagemenu" class="btn btn-outline-primary dropdown-toggle" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fa fa-globe-asia fa-lg"></i>
+                    <span></span>
+                </button>
+                <ul class="dropdown-menu"></ul>
+            </span>
+        </div>
+    </nav>
+
+    <div class="login-card">
+        <div class="login-header register">
+            <img src="{{.web_base_url}}/static/img/nps.svg?v={{.version}}" alt="Logo" style="width: 32px; height: 32px; margin-right: 20px !important;">
+            <div class="navbar-brand" style="font-weight: lighter; font-size: 2.0rem !important"><h1 langtag="title-ipregister"></h1></div>
+        </div>
+        <div class="login-body">
+            <p class="text-muted"><span langtag="word-yourip"></span>: <strong id="visitor-ip">{{.ip}}</strong></p>
+            <form class="m-t" onsubmit="return false;">
+                <div class="form-group position-relative">
+                    <i class="fas fa-key input-icon"></i>
+                    <input class="form-control" langtag="word-registerkey" name="key" placeholder="key" required="" type="password" value="{{.key}}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="control-label" langtag="word-registerhours"></label>
+                    <select class="form-control" name="hours">
+                        <option value="0" langtag="word-registerlongest"></option>
+                        {{range .hour_options}}<option value="{{.Hours}}">{{.Label}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                {{if eq true .captcha_open}}
+                <div class="form-group captcha-group position-relative">
+                    <div class="flex-fill">
+                    <i class="fas fa-shield-alt input-icon"></i>
+                    <input class="form-control" langtag="word-captcha" name="captcha" placeholder="captcha" required="">
+                    </div>
+                    <div class="captcha-container">
+                    {{.captcha_html}}
+                    </div>
+                </div>
+                {{end}}
+                <button id="registerBtn" class="btn btn-primary block full-width m-b" langtag="word-registerip" onclick="if (this.form.reportValidity()) registerIP()" type="submit"></button>
+                <p class="text-muted"><small langtag="info-ipregister"></small></p>
+                {{if .login_link}}
+                <p class="text-muted text-center"><small><a href="{{.web_base_url}}/login/index" langtag="word-login"></a></small></p>
+                {{end}}
+            </form>
+        </div>
+    </div>
+    <div class="footer">
+        <div class="float-right">
+            <span langtag="word-readmore"></span>
+            <strong><a href="https://github.com/djylb/nps" langtag="word-go"></a></strong>
+        </div>
+        <div><strong langtag="word-copyright"></strong> <span langtag="application"></span> &copy; 2018-{{.year}}</div>
+    </div>
+
+    <script type="text/javascript">
+        window.nps = {web_base_url: "{{.web_base_url}}", version: "{{.version}}"};
+        function registerIP() {
+            var btn = document.getElementById('registerBtn');
+            if (btn.disabled) return false;
+            btn.disabled = true;
+            $.ajax({
+                type: "POST",
+                url: window.nps.web_base_url + "/ip/register",
+                data: $("form").serialize(),
+                success: function (res) {
+                    if (res && res.status) {
+                        var msg = langreply(res.msg) + ': ' + escapeHtml(res.ip) + ' → ' + escapeHtml(res.until);
+                        showMsg(msg, 'success', 8000, function () { btn.disabled = false; });
+                        return;
+                    }
+                    {{if eq true .captcha_open}}
+                    var $img = $('.captcha-img');
+                    if ($img.length) $img.trigger('click');
+                    $('input[name="captcha"]').val('');
+                    {{end}}
+                    showMsg(langreply(res && res.msg), 'error', 5000, function () { btn.disabled = false; });
+                },
+                error: function (xhr, textStatus) {
+                    showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000, function () { btn.disabled = false; });
+                }
+            });
+            return false;
+        }
+    </script>
+</body>
+</html>

@@ -28,6 +28,24 @@ type AppConfig struct {
 	PprofPort   string
 	NTPServer   string
 	NTPInterval int
+	// GeoIPPath and GeoSitePath are the geodata files of the access lists,
+	// relative to the run path unless absolute.
+	GeoIPPath   string
+	GeoSitePath string
+	// AclMaxRules limits the rules of each access list users may write;
+	// 0 means no limit.
+	AclMaxRules int
+	// IPRegisterMaxHours bounds registrations made on the registration page
+	// with the public key, and with the key of a client that sets no limit.
+	IPRegisterMaxHours int
+	// IPRegisterIP and IPRegisterPort, when the port is set, serve the
+	// registration page on a listener of its own.
+	IPRegisterIP   string
+	IPRegisterPort int
+	// IPRegisterCertFile and IPRegisterKeyFile, when both are set, serve
+	// the listener of the registration page over TLS.
+	IPRegisterCertFile string
+	IPRegisterKeyFile  string
 }
 
 type LogConfig struct {
@@ -98,7 +116,6 @@ type SecurityConfig struct {
 
 type RuntimeConfig struct {
 	PublicVKey        string
-	IPLimit           string
 	DisconnectTimeout int
 	FlowStoreInterval int
 }
@@ -237,13 +254,21 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg := &Snapshot{}
 
 	cfg.App = AppConfig{
-		Name:        r.stringDefault("nps", "appname"),
-		Timezone:    r.stringValue("timezone"),
-		DNSServer:   r.stringValue("dns_server"),
-		PprofIP:     r.stringValue("pprof_ip"),
-		PprofPort:   r.stringDefault("0", "pprof_port"),
-		NTPServer:   r.stringValue("ntp_server"),
-		NTPInterval: r.intDefault(5, "ntp_interval"),
+		Name:               r.stringDefault("nps", "appname"),
+		Timezone:           r.stringValue("timezone"),
+		DNSServer:          r.stringValue("dns_server"),
+		PprofIP:            r.stringValue("pprof_ip"),
+		PprofPort:          r.stringDefault("0", "pprof_port"),
+		NTPServer:          r.stringValue("ntp_server"),
+		NTPInterval:        r.intDefault(5, "ntp_interval"),
+		GeoIPPath:          r.stringDefault("conf/geoip.dat", "geoip_path"),
+		GeoSitePath:        r.stringDefault("conf/geosite.dat", "geosite_path"),
+		AclMaxRules:        r.intDefault(1000, "acl_max_rules"),
+		IPRegisterMaxHours: r.intDefault(2, "ip_register_max_hours"),
+		IPRegisterIP:       r.stringDefault("0.0.0.0", "ip_register_ip"),
+		IPRegisterPort:     r.intDefault(0, "ip_register_port"),
+		IPRegisterCertFile: r.stringValue("ip_register_cert_file"),
+		IPRegisterKeyFile:  r.stringValue("ip_register_key_file"),
 	}
 
 	cfg.Log = LogConfig{
@@ -314,7 +339,6 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Runtime = RuntimeConfig{
 		PublicVKey:        r.stringValue("public_vkey"),
-		IPLimit:           r.stringValue("ip_limit"),
 		DisconnectTimeout: r.intDefault(30, "disconnect_timeout"),
 		FlowStoreInterval: r.intDefault(0, "flow_store_interval"),
 	}

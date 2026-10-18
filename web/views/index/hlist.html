@@ -84,6 +84,7 @@
                 + '<b langtag="word-httpsjustproxytitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'https_just_proxy\'})" langtag="word-' + row.HttpsJustProxy + '"></span>&emsp;'
                 + '<b langtag="word-tlsoffloadtitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'tls_offload\'})" langtag="word-' + row.TlsOffload + '"></span>&emsp;'
                 + '<b langtag="word-targettype"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
+            tmp += accessListDetail(row)
             if (row.Client.Cnf.U || row.Client.Cnf.P) {
                 tmp += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.U + '</span>&emsp;'
                 + '<b langtag="word-basicpassword"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.P + '</span>&emsp;<br/><br>'

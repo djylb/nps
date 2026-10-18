@@ -120,7 +120,14 @@ nps.exe -conf_path=D:\test\nps
 ## 5. 访问控制
 | 名称                           | 说明                                             |
 |------------------------------|------------------------------------------------|
-| `ip_limit`                   | 是否限制 IP 访问（`true` 或 `false`）                   |
+| `geoip_path`                 | 名单中 `geoip:` 规则使用的 geoip.dat 路径（默认 `conf/geoip.dat`） |
+| `geosite_path`               | 目标访问控制中 `geosite:` 规则使用的 geosite.dat 路径（默认 `conf/geosite.dat`） |
+| `acl_max_rules`              | 客户端、隧道、域名转发每份黑白名单及混合代理目标名单的最大规则条数（默认 `1000`，`0` 为不限制；全局名单不受限制） |
+| `ip_register_max_hours`      | IP 登记页面使用公钥或未设置上限的客户端口令登记时的最长有效期（小时，默认 `2`） |
+| `ip_register_ip`             | 单独提供 IP 登记页面的监听地址（默认 `0.0.0.0`） |
+| `ip_register_port`           | 单独提供 IP 登记页面的端口（默认 `0`，不单独监听） |
+| `ip_register_cert_file`      | 单独登记页面的 TLS 证书（路径或 PEM 内容），与 `ip_register_key_file` 一起配置后使用 HTTPS，不配置则为 HTTP |
+| `ip_register_key_file`       | 单独登记页面的 TLS 私钥（路径或 PEM 内容） |
 | `allow_ports`                | 允许客户端映射的端口范围（示例：`9001-9009,10001,11000-12000`） |
 | `allow_user_login`           | 是否允许用户登录管理（`true` 或 `false`）                   |
 | `allow_user_vkey_login`      | 是否允许用户使用 `vkey` 登录管理（`true` 或 `false`）         |

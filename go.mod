@@ -10,6 +10,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
 	github.com/djylb/byterate v0.0.0-20261017115745-d48e971d8f7c
+	github.com/djylb/geomatch v0.0.0-20261018204243-428815d885e7
 	github.com/djylb/holepunch v0.0.0-20261018033353-48c6e4cf6d9e
 	github.com/djylb/netx v0.0.0-20261017115315-fe2acbb47e36
 	github.com/gin-gonic/gin v1.12.0

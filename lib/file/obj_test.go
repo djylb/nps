@@ -67,37 +67,31 @@ func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
 	}
 }
 
-func TestTunnelCompileDestACLNormalizesAndHandlesEmptyRules(t *testing.T) {
+func TestTunnelCompileDestACL(t *testing.T) {
 	t.Run("invalid mode falls back to off", func(t *testing.T) {
-		tn := &Tunnel{DestAclMode: 99, DestAclRules: "Allow all"}
+		tn := &Tunnel{DestAclMode: 99, DestAclRules: "example.com"}
 		tn.CompileDestACL()
-
-		if tn.DestAclMode != AclOff {
-			t.Fatalf("expected mode to fallback to off, got %d", tn.DestAclMode)
+		if tn.DestAclMode != AclOff || tn.destAcl != nil {
+			t.Fatalf("mode %d, compiled %v; want off and nothing compiled", tn.DestAclMode, tn.destAcl)
 		}
-		if tn.DestAclSet != nil {
-			t.Fatalf("expected acl set to be nil in off mode")
+		if !tn.AllowsDestination("any.com:80") {
+			t.Fatal("off mode denied a destination")
 		}
 	})
 
 	t.Run("whitelist with empty rules denies all", func(t *testing.T) {
 		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "  \r\n\t "}
 		tn.CompileDestACL()
-
-		if tn.DestAclRules != "" {
-			t.Fatalf("expected normalized empty rules, got %q", tn.DestAclRules)
-		}
-		if tn.DestAclSet == nil {
-			t.Fatalf("expected acl set to be created for empty whitelist")
+		if tn.AllowsDestination("example.com:443") {
+			t.Fatal("empty whitelist allowed a destination")
 		}
 	})
 
 	t.Run("blacklist with empty rules allows all", func(t *testing.T) {
-		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: ""}
+		tn := &Tunnel{DestAclMode: AclBlacklist}
 		tn.CompileDestACL()
-
-		if tn.DestAclSet != nil {
-			t.Fatalf("expected acl set to stay nil for empty blacklist")
+		if !tn.AllowsDestination("example.com:443") {
+			t.Fatal("empty blacklist denied a destination")
 		}
 	})
 }
@@ -110,38 +104,37 @@ func TestTunnelAllowsDestination(t *testing.T) {
 		}
 	})
 
-	t.Run("whitelist allows matched and blocks unmatched", func(t *testing.T) {
-		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "example.com"}
+	t.Run("full: matches exactly, a bare host name is a keyword", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "full:example.com\nads"}
 		tn.CompileDestACL()
-
-		if !tn.AllowsDestination("example.com:443") {
-			t.Fatalf("expected matched destination to be allowed in whitelist mode")
-		}
-		if tn.AllowsDestination("blocked.com:443") {
-			t.Fatalf("expected unmatched destination to be denied in whitelist mode")
+		for addr, want := range map[string]bool{"example.com:443": true, "Example.COM": true, "www.example.com:443": false, "ads.example.net:443": true} {
+			if got := tn.AllowsDestination(addr); got != want {
+				t.Errorf("AllowsDestination(%q) = %v, want %v", addr, got, want)
+			}
 		}
 	})
 
-	t.Run("blacklist denies matched and allows unmatched", func(t *testing.T) {
-		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: "blocked.com"}
+	t.Run("wildcards", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: "*.sub.com\n*root.com\n10.0.0.0/8\n1.2.3.4"}
 		tn.CompileDestACL()
-
-		if tn.AllowsDestination("blocked.com:80") {
-			t.Fatalf("expected matched destination to be denied in blacklist mode")
-		}
-		if !tn.AllowsDestination("safe.com:80") {
-			t.Fatalf("expected unmatched destination to be allowed in blacklist mode")
+		for addr, want := range map[string]bool{
+			"a.sub.com:80": false, "sub.com:80": true,
+			"root.com:80": false, "a.root.com:80": false, "xroot.com:80": true,
+			"10.1.2.3:80": false, "1.2.3.4:443": false, "8.8.8.8:53": true,
+		} {
+			if got := tn.AllowsDestination(addr); got != want {
+				t.Errorf("AllowsDestination(%q) = %v, want %v", addr, got, want)
+			}
 		}
 	})
 
 	t.Run("on demand compile path works", func(t *testing.T) {
-		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "allow.me", DestAclSet: nil}
-
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "allow.me"}
 		if !tn.AllowsDestination("allow.me:8080") {
 			t.Fatalf("expected destination to be allowed after on-demand compile")
 		}
-		if tn.DestAclSet == nil {
-			t.Fatalf("expected on-demand compile to populate acl set")
+		if tn.destAcl == nil {
+			t.Fatalf("expected on-demand compile to populate the compiled list")
 		}
 	})
 }
@@ -257,7 +250,7 @@ func TestClientJSONGolden(t *testing.T) {
 		MaxConn:    10,
 		CreateTime: "2026-01-02 03:04:05",
 	}
-	const golden = `{"Cnf":{"U":"u","P":"p","Compress":true,"Crypt":false},"Id":7,"VerifyKey":"vkey","Mode":"","Addr":"","LocalAddr":"","Remark":"","Status":true,"IsConnect":false,"RateLimit":256,"Flow":{"ExportFlow":1,"InletFlow":2,"FlowLimit":3,"TimeLimit":"0001-01-01T00:00:00Z"},"ExportFlow":0,"InletFlow":0,"Rate":{"NowRate":0,"Limit":262144},"NoStore":false,"NoDisplay":false,"MaxConn":10,"NowConn":0,"WebUserName":"","WebPassword":"","WebTotpSecret":"","ConfigConnAllow":false,"MaxTunnelNum":0,"Version":"","BlackIpList":null,"CreateTime":"2026-01-02 03:04:05","LastOnlineTime":""}`
+	const golden = `{"Cnf":{"U":"u","P":"p","Compress":true,"Crypt":false},"Id":7,"VerifyKey":"vkey","Mode":"","Addr":"","LocalAddr":"","Remark":"","Status":true,"IsConnect":false,"RateLimit":256,"Flow":{"ExportFlow":1,"InletFlow":2,"FlowLimit":3,"TimeLimit":"0001-01-01T00:00:00Z"},"ExportFlow":0,"InletFlow":0,"Rate":{"NowRate":0,"Limit":262144},"NoStore":false,"NoDisplay":false,"MaxConn":10,"NowConn":0,"WebUserName":"","WebPassword":"","WebTotpSecret":"","ConfigConnAllow":false,"MaxTunnelNum":0,"Version":"","IpListPriority":0,"BlackIpList":null,"WhiteIpList":null,"RegisteredOnly":false,"CreateTime":"2026-01-02 03:04:05","LastOnlineTime":"","RegisterKey":"","RegisterMaxHours":0}`
 	b, err := json.Marshal(c)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
