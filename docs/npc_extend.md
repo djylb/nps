@@ -105,6 +105,7 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 | `-target_type`        | P2P 目标连接类型（`all` / `tcp` / `udp`）                                     | `all`     |
 | `-p2p_timeout`        | P2P 超时时间（秒）                                                           | `5`       |
 | `-disable_p2p`        | 禁用 P2P 连接                                                             | `false`   |
+| `-disable_remote_update` | 忽略服务端下发的远程更新指令                                              | `false`   |
 | `-fallback_secret`    | 当 P2P 不可用时回退到 Secret 直连模式                                             | `true`    |
 | `-dns_server`         | 配置 DNS 服务器                                                            | `8.8.8.8` |
 | `-ntp_server`         | 配置 NTP 服务器                                                            | 无         |

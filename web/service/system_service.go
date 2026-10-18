@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 type SystemInfo struct {
 	Version string
 	Year    int
+	// CanUpdate tells whether the server can be updated from the web.
+	CanUpdate bool
 }
 
 type BridgeTransport struct {
@@ -40,14 +43,19 @@ type SystemService interface {
 	Info() SystemInfo
 	BridgeDisplay(*servercfg.Snapshot, string) BridgeDisplay
 	RegisterManagementAccess(string)
+	// UpdateServer updates the server to the latest release and restarts it
+	// shortly. It returns the version updated to, or "" when the running
+	// version is the latest.
+	UpdateServer() (string, error)
 }
 
 type DefaultSystemService struct{}
 
 func (DefaultSystemService) Info() SystemInfo {
 	return SystemInfo{
-		Version: server.GetVersion(),
-		Year:    server.GetCurrentYear(),
+		Version:   server.GetVersion(),
+		Year:      server.GetCurrentYear(),
+		CanUpdate: server.CanUpdateSelf(),
 	}
 }
 
@@ -73,6 +81,17 @@ func (DefaultSystemService) BridgeDisplay(cfg *servercfg.Snapshot, host string) 
 	display.WS = newBridgeTransport(cfg.Bridge.Display.WS.Show, "ws", primary.IP, cfg.Bridge.Display.WS.IP, strconv.Itoa(connection.BridgeWsPort), cfg.Bridge.Display.WS.Port, display.Path, true)
 	display.WSS = newBridgeTransport(cfg.Bridge.Display.WSS.Show, "wss", primary.IP, cfg.Bridge.Display.WSS.IP, strconv.Itoa(connection.BridgeWssPort), cfg.Bridge.Display.WSS.Port, display.Path, true)
 	return display
+}
+
+func (DefaultSystemService) UpdateServer() (string, error) {
+	if !server.CanUpdateSelf() {
+		return "", ErrServerUpdateUnavailable
+	}
+	v, err := server.UpdateSelf()
+	if errors.Is(err, server.ErrUpdateRunning) {
+		err = ErrServerUpdateRunning
+	}
+	return v, err
 }
 
 func (DefaultSystemService) RegisterManagementAccess(remoteAddr string) {

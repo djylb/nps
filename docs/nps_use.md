@@ -80,6 +80,12 @@ nps.exe update  # Windows
 
 已是最新版本时不会替换文件，也不会重启服务。
 
+**在网页上更新**：管理员登录后，在仪表盘"服务端版本"卡片右上角点击更新按钮，服务端会更新到最新版本并自动重启，页面在新版本启动后自动刷新。
+
+- 重启期间所有连接会短暂中断，客户端会自动重连
+- Linux/macOS 等系统下无论以服务还是命令行方式运行都支持；Windows 下仅支持通过 `nps install` 安装的系统服务，其他情况不显示更新按钮
+- 启动参数加上 `-disable_remote_update` 可禁止网页更新；官方 Docker 镜像默认已禁止
+
 📌 **如果更新失败**
 - **手动下载最新版本**：[🔗 GitHub Releases](https://github.com/djylb/nps/releases/latest)
 - **覆盖原有 `nps` 二进制文件和 `web` 目录**

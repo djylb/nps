@@ -82,6 +82,18 @@ func SupportsP2P(ver int, clientVersion string) bool {
 	return ver >= P2PMinIndex && Compare(clientVersion, P2PMinVersion) >= 0
 }
 
+// RemoteUpdateMinVersion is the oldest npc release that acts on an update
+// request. Older clients treat an unknown message on the signal connection as
+// a broken stream and reconnect, so the request is only sent from this
+// version on.
+const RemoteUpdateMinVersion = "0.34.9"
+
+// SupportsRemoteUpdate reports whether a client announcing clientVersion acts
+// on an update request.
+func SupportsRemoteUpdate(clientVersion string) bool {
+	return Compare(clientVersion, RemoteUpdateMinVersion) >= 0
+}
+
 // Compare compares two dotted versions numerically segment by segment.
 // A leading "v" and build metadata are ignored; a pre-release suffix sorts
 // before the release with the same numbers.

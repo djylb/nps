@@ -34,9 +34,11 @@ var (
 	ver      = flag.BoolP("version", "v", false, "Show Current Version")
 	genTOTP  = flag.Bool("gen2fa", false, "Generate TOTP Secret")
 	getTOTP  = flag.String("get2fa", "", "Get TOTP Code")
+	noUpdate = flag.Bool("disable_remote_update", false, "Disable updating the server from the web interface (true or false)")
 )
 
 func main() {
+	install.WaitForRelaunch()
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -47,6 +49,8 @@ func main() {
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
+
+	server.DisableRemoteUpdate = *noUpdate
 
 	args := flag.Args()
 	var cmd string
@@ -93,9 +97,12 @@ func main() {
 		} else {
 			logs.Warn("service function disabled %v", err)
 		}
-		replaced, err := install.UpdateNps()
-		if err == nil && len(replaced) > 0 {
-			err = install.RestartAfterUpdate(s, svcConfig.Name, replaced)
+		res, err := install.UpdateNps(svcConfig.Name)
+		if err == nil && res != nil {
+			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
+		}
+		if res != nil {
+			install.WarnOldProcesses(res.Running)
 		}
 		if err != nil {
 			logs.Error("update failed: %v", err)
@@ -216,7 +223,7 @@ func main() {
 
 func newServiceConfig() *service.Config {
 	svcConfig := &service.Config{
-		Name:        "Nps",
+		Name:        server.ServiceName,
 		DisplayName: "nps内网穿透代理服务器",
 		Description: "一款轻量级、功能强大的内网穿透代理服务器。支持tcp、udp流量转发，支持内网http代理、内网socks5代理，同时支持snappy压缩、站点保护、加密传输、多路复用、header修改等。支持web图形化管理，集成多用户模式。",
 		Option:      make(service.KeyValue),

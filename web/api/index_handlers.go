@@ -15,6 +15,31 @@ func (a *App) DashboardStats(c Context) {
 	respondCode(c, 0)
 }
 
+// Messages of UpdateServer; the dashboard reloads after serverUpdatedMsg.
+const (
+	serverUpdatedMsg  = "server updated, restarting"
+	serverLatestMsg   = "server is already the latest version"
+	serverUpdateError = "server update failed"
+)
+
+func (a *App) UpdateServer(c Context) {
+	v, err := a.system().UpdateServer()
+	switch {
+	case v != "":
+		// An error after a version means only the web assets failed; the
+		// new version runs either way.
+		ajax(c, serverUpdatedMsg, 1)
+	case err == nil:
+		ajax(c, serverLatestMsg, 1)
+	case errors.Is(err, webservice.ErrServerUpdateRunning):
+		ajax(c, "server update is already running", 0)
+	case errors.Is(err, webservice.ErrServerUpdateUnavailable):
+		ajax(c, "server update is unavailable", 0)
+	default:
+		ajax(c, serverUpdateError+": "+err.Error(), 0)
+	}
+}
+
 func (a *App) GetTunnel(c Context) {
 	rows, count := a.Services.Index.ListTunnels(webservice.TunnelListInput{
 		Offset:   requestIntValue(c, "offset"),

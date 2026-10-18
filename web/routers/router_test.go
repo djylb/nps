@@ -430,8 +430,8 @@ func TestWebBaseURLPrefix(t *testing.T) {
 	if adminResp.Code != http.StatusFound {
 		t.Fatalf("GET /nps as admin status = %d, want 302", adminResp.Code)
 	}
-	if location := adminResp.Header().Get("Location"); location != "/nps/app" {
-		t.Fatalf("GET /nps as admin redirect = %q, want /nps/app", location)
+	if location := adminResp.Header().Get("Location"); location != "/nps/index/index" {
+		t.Fatalf("GET /nps as admin redirect = %q, want /nps/index/index", location)
 	}
 }
 
@@ -706,7 +706,7 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 	if !userActions["/api/v1/index/gettunnel"] || !userActions["/api/v1/client/list"] {
 		t.Fatalf("user bootstrap should expose permitted protected actions, got %v", sortedKeys(userActions))
 	}
-	if userActions["/api/v1/global/banlist"] || userActions["/api/v1/client/add"] {
+	if userActions["/api/v1/global/banlist"] || userActions["/api/v1/client/add"] || userActions["/api/v1/client/update"] || userActions["/api/v1/index/updateserver"] {
 		t.Fatalf("user bootstrap should not expose disallowed actions, got %v", sortedKeys(userActions))
 	}
 
@@ -771,8 +771,8 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 	if rootResp.Code != http.StatusFound {
 		t.Fatalf("GET / as user status = %d, want 302", rootResp.Code)
 	}
-	if location := rootResp.Header().Get("Location"); location != "/app" {
-		t.Fatalf("GET / as user redirect = %q, want /app", location)
+	if location := rootResp.Header().Get("Location"); location != "/index/index" {
+		t.Fatalf("GET / as user redirect = %q, want /index/index", location)
 	}
 }
 
@@ -1008,6 +1008,18 @@ func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 	clientCreateResp := performFormRequest(handler, http.MethodPost, "/api/v1/client/add", cookies, nil)
 	if clientCreateResp.Code != http.StatusForbidden {
 		t.Fatalf("POST /api/v1/client/add as regular user status = %d, want 403", clientCreateResp.Code)
+	}
+
+	clientUpdateResp := performFormRequest(handler, http.MethodPost, "/api/v1/client/update", cookies, map[string]string{
+		"id": fmt.Sprintf("%d", operatorB.Id),
+	})
+	if clientUpdateResp.Code != http.StatusForbidden {
+		t.Fatalf("POST /api/v1/client/update for an owned client as regular user status = %d, want 403", clientUpdateResp.Code)
+	}
+
+	serverUpdateResp := performFormRequest(handler, http.MethodPost, "/api/v1/index/updateserver", cookies, nil)
+	if serverUpdateResp.Code != http.StatusForbidden {
+		t.Fatalf("POST /api/v1/index/updateserver as regular user status = %d, want 403", serverUpdateResp.Code)
 	}
 
 	secondClientHostListResp := performFormRequest(handler, http.MethodPost, "/api/v1/index/hostlist", cookies, map[string]string{

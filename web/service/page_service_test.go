@@ -21,6 +21,7 @@ func (s stubSystemService) BridgeDisplay(*servercfg.Snapshot, string) BridgeDisp
 }
 
 func (stubSystemService) RegisterManagementAccess(string) {}
+func (stubSystemService) UpdateServer() (string, error)   { return "", nil }
 
 func TestDefaultPageServiceBuildHostList(t *testing.T) {
 	service := DefaultPageService{
@@ -76,5 +77,22 @@ func TestDefaultPageServiceBuildUnknownPage(t *testing.T) {
 	_, err := service.Build(PageBuildInput{Controller: "unknown", Action: "missing"})
 	if !errors.Is(err, ErrPageNotFound) {
 		t.Fatalf("Build(unknown) error = %v, want ErrPageNotFound", err)
+	}
+}
+
+func TestManagementPageDataCarriesFeatureSwitches(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		data := managementPageData(stubSystemService{}, PageBuildInput{Config: &servercfg.Snapshot{
+			Feature: servercfg.FeatureConfig{
+				AllowFlowLimit:    on,
+				AllowLocalProxy:   on,
+				SystemInfoDisplay: on,
+			},
+		}})
+		for _, key := range []string{"allow_flow_limit", "allow_local_proxy", "system_info_display"} {
+			if got, ok := data[key]; !ok || got != on {
+				t.Errorf("feature %s = %v (set %v), want %v", key, got, ok, on)
+			}
+		}
 	}
 }

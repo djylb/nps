@@ -178,6 +178,12 @@ func (s *TRPClient) handleMain(tunnel any) {
 				continue
 			}
 			go s.serveP2P(tunnel, invite)
+		case common.UpdateRequest:
+			if _, err := s.signal.GetShortLenContent(); err != nil {
+				logs.Warn("%v", err)
+				return
+			}
+			handleUpdateRequest()
 		default:
 			// The bridge sends nothing else here: an unknown flag means the
 			// stream is out of step, and reconnecting is the only way back.

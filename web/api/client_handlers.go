@@ -137,6 +137,23 @@ func (a *App) ChangeClientStatus(c Context) {
 	ajax(c, "modified success", 1)
 }
 
+func (a *App) UpdateClient(c Context) {
+	if _, err := a.Services.Clients.RequestUpdate(requestIntValue(c, "id")); err != nil {
+		switch {
+		case errors.Is(err, webservice.ErrClientOffline):
+			ajax(c, "client is offline", 0)
+		case errors.Is(err, webservice.ErrClientUpdateUnsupported):
+			ajax(c, "client version does not support remote update", 0)
+		case errors.Is(err, webservice.ErrClientNotFound):
+			ajax(c, "client ID not found", 0)
+		default:
+			ajax(c, "update request failed", 0)
+		}
+		return
+	}
+	ajax(c, "update requested", 1)
+}
+
 func (a *App) DeleteClient(c Context) {
 	id := requestIntValue(c, "id")
 	if err := a.Services.Clients.Delete(id); err != nil {

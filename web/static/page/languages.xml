@@ -1175,6 +1175,14 @@
 			<zh-CN>你确定要清除所有封禁记录吗？</zh-CN>
 			<en-US>Are you sure you want to clear all ban records?</en-US>
 		</lang>
+		<lang id="update">
+			<zh-CN>确定要让该客户端更新到最新版本并重启吗？</zh-CN>
+			<en-US>Are you sure you want this client to update to the latest version and restart?</en-US>
+		</lang>
+		<lang id="updateserver">
+			<zh-CN>确定要将服务端更新到最新版本并重启吗？重启期间所有连接会短暂中断。</zh-CN>
+			<en-US>Are you sure you want to update the server to the latest version and restart it? All connections drop briefly during the restart.</en-US>
+		</lang>
 	</confirm>
 
 	<reply>
@@ -1325,6 +1333,42 @@
 		<lang id="allrecordscleared">
 			<zh-CN>所有记录已清除</zh-CN>
 			<en-US>All Records Cleared</en-US>
+		</lang>
+		<lang id="updaterequested">
+			<zh-CN>已发送更新指令，客户端更新完成后会自动重连</zh-CN>
+			<en-US>Update requested; the client reconnects once updated</en-US>
+		</lang>
+		<lang id="updaterequestfailed">
+			<zh-CN>发送更新指令失败</zh-CN>
+			<en-US>Update Request Failed</en-US>
+		</lang>
+		<lang id="clientisoffline">
+			<zh-CN>客户端不在线</zh-CN>
+			<en-US>Client Is Offline</en-US>
+		</lang>
+		<lang id="clientversiondoesnotsupportremoteupdate">
+			<zh-CN>客户端版本过低，不支持远程更新</zh-CN>
+			<en-US>Client version does not support remote update</en-US>
+		</lang>
+		<lang id="clientidnotfound">
+			<zh-CN>找不到客户端</zh-CN>
+			<en-US>Client ID Not Found</en-US>
+		</lang>
+		<lang id="serverupdatedrestarting">
+			<zh-CN>服务端已更新，正在重启，页面会在新版本启动后自动刷新</zh-CN>
+			<en-US>Server updated and restarting; the page reloads once the new version is up</en-US>
+		</lang>
+		<lang id="serverisalreadythelatestversion">
+			<zh-CN>服务端已是最新版本</zh-CN>
+			<en-US>Server Is Already The Latest Version</en-US>
+		</lang>
+		<lang id="serverupdateisalreadyrunning">
+			<zh-CN>服务端正在更新中</zh-CN>
+			<en-US>Server Update Is Already Running</en-US>
+		</lang>
+		<lang id="serverupdateisunavailable">
+			<zh-CN>服务端当前不支持在线更新</zh-CN>
+			<en-US>Server Update Is Unavailable</en-US>
 		</lang>
 	</reply>
 

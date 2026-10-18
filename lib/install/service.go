@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/djylb/nps/lib/common"
 	"github.com/kardianos/service"
 )
 
@@ -13,10 +15,35 @@ import (
 // through the init script directly so BusyBox based systems such as OpenWrt
 // work as well.
 func ControlService(s service.Service, name, action string) error {
-	if service.Platform() == "unix-systemv" {
+	switch service.Platform() {
+	case "unix-systemv":
 		return exec.Command("/etc/init.d/"+name, action).Run()
+	case "windows-service":
+		if action == "restart" {
+			return restartWithTimeout(s, name, windowsStopTimeout)
+		}
 	}
 	return service.Control(s, action)
+}
+
+// windowsStopTimeout bounds the wait for the Windows service to stop on a
+// restart. The service library waits for the stop without a bound.
+const windowsStopTimeout = 60 * time.Second
+
+func restartWithTimeout(s service.Service, name string, timeout time.Duration) error {
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.Stop() }()
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case err := <-stopped:
+		if err != nil {
+			return err
+		}
+	case <-t.C:
+		return fmt.Errorf("service %s did not stop within %v; restart it manually", name, timeout)
+	}
+	return s.Start()
 }
 
 // RestartAfterUpdate restarts the service so it runs the replaced executables.
@@ -31,6 +58,18 @@ func RestartAfterUpdate(s service.Service, name string, replaced []string) error
 	}
 	if exe := serviceExecutable(name); exe != "" && !containsFile(replaced, exe) {
 		fmt.Printf("WARNING: service %s runs %s, which this update did not replace; run install again to point the service at the updated executable\n", name, exe)
+		return nil
+	}
+	if common.IsWindows() && !service.Interactive() {
+		// The caller is the service process, which the restart ends.
+		exe := serviceExecutable(name)
+		if exe == "" {
+			exe = replaced[0]
+		}
+		if err := restartDetached(exe); err != nil {
+			return fmt.Errorf("executables replaced, but restarting service %s failed: %w", name, err)
+		}
+		fmt.Println("Service", name, "restart requested")
 		return nil
 	}
 	if err := ControlService(s, name, "restart"); err != nil {

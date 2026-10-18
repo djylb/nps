@@ -44,6 +44,7 @@ var (
 	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	fallbackSecret = flag.Bool("fallback_secret", true, "P2P fallback secret (true or false)")
 	disableP2P     = flag.Bool("disable_p2p", false, "Disable P2P connection (true or false)")
+	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
 	logType        = flag.String("log", "file", "Log output mode (stdout|file|both|off)")
 	logLevel       = flag.String("log_level", "trace", "Log level (trace|debug|info|warn|error|fatal|panic|off)")
@@ -71,6 +72,7 @@ var (
 )
 
 func main() {
+	install.WaitForRelaunch()
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -146,6 +148,19 @@ func main() {
 
 	// 平台相关的服务设置
 	install.ConfigureService(svcConfig)
+	if !*disableRemote {
+		client.RemoteUpdate = func() error {
+			if !install.CanRestartSelf() {
+				logs.Info("Remote update ignored: on Windows only npc installed as a service updates itself")
+				return nil
+			}
+			if err := install.UpdateSelfNpc(svcConfig.Name); err != nil {
+				return err
+			}
+			logs.Info("Remote update finished: npc is already the latest version or restarts as the new one")
+			return nil
+		}
+	}
 
 	// 配置服务启动参数
 	for _, v := range os.Args[1:] {
@@ -170,9 +185,12 @@ func main() {
 			logs.Warn("service function disabled %v", err)
 			s = nil
 		}
-		replaced, err := install.UpdateNpc()
-		if err == nil && len(replaced) > 0 {
-			err = install.RestartAfterUpdate(s, svcConfig.Name, replaced)
+		res, err := install.UpdateNpc(svcConfig.Name)
+		if err == nil && res != nil {
+			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
+		}
+		if res != nil {
+			install.WarnOldProcesses(res.Running)
 		}
 		if err != nil {
 			logs.Error("update failed: %v", err)

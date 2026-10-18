@@ -7,6 +7,7 @@ import (
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/web/ui"
 )
 
@@ -203,17 +204,33 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 	info := system.Info()
 	bridge := system.BridgeDisplay(cfg, input.Host)
 	commonData := ui.ManagementPageCommonData{
-		WebBaseURL:     cfg.Web.BaseURL,
-		HeadCustomCode: template.HTML(cfg.Web.HeadCustomCode),
-		Version:        info.Version,
-		Year:           info.Year,
-		IsAdmin:        input.IsAdmin,
-		Username:       strings.TrimSpace(input.Username),
-		BridgeType:     bridge.Primary.Type,
-		BridgeAddr:     bridge.Primary.Addr,
-		BridgeIP:       bridge.Primary.IP,
-		BridgePort:     bridge.Primary.Port,
-		ProxyPort:      pageIntString(cfg.Network.HTTPProxyPort),
+		WebBaseURL:      cfg.Web.BaseURL,
+		HeadCustomCode:  template.HTML(cfg.Web.HeadCustomCode),
+		Version:         info.Version,
+		Year:            info.Year,
+		IsAdmin:         input.IsAdmin,
+		ServerUpdate:    info.CanUpdate,
+		Username:        strings.TrimSpace(input.Username),
+		BridgeType:      bridge.Primary.Type,
+		BridgeAddr:      bridge.Primary.Addr,
+		BridgeIP:        bridge.Primary.IP,
+		BridgePort:      bridge.Primary.Port,
+		ProxyPort:       pageIntString(cfg.Network.HTTPProxyPort),
+		ClientUpdateMin: version.RemoteUpdateMinVersion,
+		Features: map[string]bool{
+			"allow_user_login":           cfg.Feature.AllowUserLogin,
+			"allow_flow_limit":           cfg.Feature.AllowFlowLimit,
+			"allow_rate_limit":           cfg.Feature.AllowRateLimit,
+			"allow_time_limit":           cfg.Feature.AllowTimeLimit,
+			"allow_connection_num_limit": cfg.Feature.AllowConnectionNumLimit,
+			"allow_multi_ip":             cfg.Feature.AllowMultiIP,
+			"allow_tunnel_num_limit":     cfg.Feature.AllowTunnelNumLimit,
+			"allow_local_proxy":          cfg.Feature.AllowLocalProxy,
+			"allow_user_local":           cfg.Feature.AllowUserLocal,
+			"allow_secret_link":          cfg.Feature.AllowSecretLink,
+			"allow_user_change_username": cfg.Feature.AllowUserChangeUsername,
+			"system_info_display":        cfg.Feature.SystemInfoDisplay,
+		},
 	}
 	if common.IsWindows() {
 		commonData.WindowsSuffix = ".exe"

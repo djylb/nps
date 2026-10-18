@@ -350,6 +350,12 @@ func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 	}
 }
 
+// RequestClientUpdate asks the connected npc of client clientId to update
+// themselves; it returns how many were asked.
+func RequestClientUpdate(clientId int) (int, error) {
+	return Bridge.RequestClientUpdate(clientId)
+}
+
 // DelClientConnect close the client
 func DelClientConnect(clientId int) {
 	Bridge.DelClient(clientId)

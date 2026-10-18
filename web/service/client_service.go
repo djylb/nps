@@ -22,6 +22,7 @@ type ClientService interface {
 	Edit(EditClientInput) error
 	Clear(id int, mode string, isAdmin bool) error
 	ChangeStatus(id int, status bool) error
+	RequestUpdate(id int) (int, error)
 	Delete(id int) error
 	BuildQRCode(ClientQRCodeInput) ([]byte, error)
 }
@@ -241,6 +242,15 @@ func (s DefaultClientService) ChangeStatus(id int, status bool) error {
 		s.runtime().DisconnectClient(client.Id)
 	}
 	return s.repo().SaveClient(client)
+}
+
+// RequestUpdate asks the connected npc of client id to update themselves to
+// the latest release and returns how many were asked.
+func (s DefaultClientService) RequestUpdate(id int) (int, error) {
+	if _, err := s.repo().GetClient(id); err != nil {
+		return 0, ErrClientNotFound
+	}
+	return s.runtime().RequestClientUpdate(id)
 }
 
 func (s DefaultClientService) Delete(id int) error {

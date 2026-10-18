@@ -46,3 +46,18 @@ func TestManagementPageCommonDataMap(t *testing.T) {
 		t.Fatalf("ManagementPageCommonData.Map() should include optional fields, got %#v", data)
 	}
 }
+
+func TestManagementPageServerUpdateOnlyForAdmin(t *testing.T) {
+	for _, c := range []struct {
+		admin, update, want bool
+	}{
+		{true, true, true},
+		{true, false, false},
+		{false, true, false},
+	} {
+		got := ManagementPageCommonData{IsAdmin: c.admin, ServerUpdate: c.update}.Map()["allow_server_update"]
+		if got != c.want {
+			t.Errorf("admin=%v update=%v: allow_server_update = %v, want %v", c.admin, c.update, got, c.want)
+		}
+	}
+}

@@ -1,6 +1,9 @@
 package service
 
 import (
+	"errors"
+
+	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -45,6 +48,7 @@ type Runtime interface {
 	ListClients(offset, limit int, search, sort, order string, clientID int) ([]*file.Client, int)
 	PingClient(int, string) int
 	DisconnectClient(int)
+	RequestClientUpdate(int) (int, error)
 	DeleteClientResources(int)
 	GenerateTunnelPort(*file.Tunnel) int
 	TunnelPortAvailable(*file.Tunnel) bool
@@ -285,6 +289,17 @@ func (defaultRuntime) PingClient(id int, remoteAddr string) int {
 
 func (defaultRuntime) DisconnectClient(id int) {
 	server.DelClientConnect(id)
+}
+
+func (defaultRuntime) RequestClientUpdate(id int) (int, error) {
+	n, err := server.RequestClientUpdate(id)
+	switch {
+	case errors.Is(err, bridge.ErrClientOffline):
+		err = ErrClientOffline
+	case errors.Is(err, bridge.ErrUpdateUnsupported):
+		err = ErrClientUpdateUnsupported
+	}
+	return n, err
 }
 
 func (defaultRuntime) DeleteClientResources(id int) {

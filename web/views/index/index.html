@@ -228,6 +228,9 @@
                                 </div>
                                 <div class="col-sm-6 text-right">
                                     <strong>{{.data.version}} ({{.data.minVersion}})</strong>
+                                    {{if .allow_server_update}}
+                                    <a class="btn btn-outline btn-info btn-xs ml-2" onclick="updateServer(this)"><i class="fa fa-arrow-circle-up"></i></a>
+                                    {{end}}
                                 </div>
                             </div>
                         </li>
@@ -478,6 +481,65 @@
 </div>
 {{if eq true .isAdmin}}
 <script>
+    // updateServer asks the server to update itself and, when it restarts as
+    // the new version, reloads the page once the new version answers.
+    function updateServer(btn) {
+        var $btn = $(btn);
+        if ($btn.data('busy')) return;
+        var langobj = languages['content']['confirm']['updateserver'];
+        if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
+        var reset = function () {
+            $btn.data('busy', false).removeClass('disabled');
+            $btn.find('i').attr('class', 'fa fa-arrow-circle-up');
+        };
+        $btn.data('busy', true).addClass('disabled');
+        $btn.find('i').attr('class', 'fa fa-spinner fa-spin');
+        $.ajax({
+            type: 'POST',
+            url: '{{.web_base_url}}/index/updateserver',
+            success: function (res) {
+                if (res && res.status && res.msg === 'server updated, restarting') {
+                    showMsg(langreply(res.msg), 'success', 10000);
+                    waitForNewServer('{{.data.version}}');
+                    return;
+                }
+                showMsg(langreply(res && res.msg), res && res.status ? 'success' : 'error', 5000);
+                reset();
+            },
+            error: function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000);
+                reset();
+            }
+        });
+    }
+
+    function waitForNewServer(oldVersion) {
+        var deadline = Date.now() + 120000;
+        var poll = function () {
+            $.ajax({
+                type: 'GET',
+                url: '{{.web_base_url}}/index/stats',
+                timeout: 3000,
+                success: function (res) {
+                    // a new version, or a page asking to log in again
+                    if (!res || res.code !== 1 || !res.data || res.data.version !== oldVersion || Date.now() > deadline) {
+                        document.location.reload();
+                        return;
+                    }
+                    setTimeout(poll, 2000);
+                },
+                error: function () {
+                    if (Date.now() > deadline) {
+                        document.location.reload();
+                        return;
+                    }
+                    setTimeout(poll, 2000);
+                }
+            });
+        };
+        setTimeout(poll, 3000);
+    }
+
     $("#overview_cpu").text("{{.data.cpu}}%")
     $("#overview_cpu_bar").width("{{.data.cpu}}%")
     $("#overview_memory").text("{{.data.virtual_mem}}%")

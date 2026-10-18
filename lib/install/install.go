@@ -27,6 +27,7 @@ import (
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/version"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 var BuildTarget string
@@ -35,22 +36,31 @@ var BuildTarget string
 // in order of preference.
 var systemBinDirs = []string{"/usr/bin", "/usr/local/bin"}
 
+// UpdateResult describes a completed update.
+type UpdateResult struct {
+	// Version is the version updated to.
+	Version string
+	// Replaced are the executables replaced with the new version.
+	Replaced []string
+	// Running are the other processes that ran a replaced executable when it
+	// was replaced; they keep running the old version until restarted.
+	Running []int32
+}
+
 // UpdateNps replaces the nps executables with the latest release and then
-// refreshes the web assets of the current run directory. It returns the
-// replaced executables; none with a nil error means the running version is
-// already the latest.
-func UpdateNps() ([]string, error) {
-	return update("server", "nps")
+// refreshes the web assets of the current run directory. A nil result with a
+// nil error means the running version is already the latest.
+func UpdateNps(service string) (*UpdateResult, error) {
+	return update("server", "nps", service)
 }
 
-// UpdateNpc replaces the npc executables with the latest release. It returns
-// the replaced executables; none with a nil error means the running version
-// is already the latest.
-func UpdateNpc() ([]string, error) {
-	return update("client", "npc")
+// UpdateNpc replaces the npc executables with the latest release. A nil
+// result with a nil error means the running version is already the latest.
+func UpdateNpc(service string) (*UpdateResult, error) {
+	return update("client", "npc", service)
 }
 
-func update(kind, bin string) ([]string, error) {
+func update(kind, bin, service string) (*UpdateResult, error) {
 	RemoveStaleExecutables()
 
 	c := newHTTPClient()
@@ -96,7 +106,7 @@ func update(kind, bin string) ([]string, error) {
 		}
 	}
 
-	tmpDir, err := os.MkdirTemp("", "nps-update-")
+	tmpDir, err := updateTempDir()
 	if err != nil {
 		return nil, fmt.Errorf("create temp directory: %w", err)
 	}
@@ -112,50 +122,96 @@ func update(kind, bin string) ([]string, error) {
 	} else if !ok {
 		return nil, fmt.Errorf("%s not found in the release package", executableName(bin))
 	}
+	// Running the new executable proves it starts on this system, for example
+	// that it was built for this CPU variant, before anything is replaced.
+	v, err := executableVersion(src)
+	if err != nil {
+		return nil, fmt.Errorf("the downloaded %s does not run on this system: %w", executableName(bin), err)
+	}
+	fmt.Println("The downloaded version is", v)
 	if tag == "" {
-		if !packageIsNewer(src) {
+		if version.Compare(v, version.VERSION) <= 0 {
 			fmt.Println("Already up to date, current version is", version.VERSION)
 			return nil, nil
 		}
-		tag = "latest"
+		tag = v
+	} else if version.Compare(v, tag) != 0 {
+		return nil, fmt.Errorf("the downloaded %s is version %s, want %s", executableName(bin), v, tag)
 	}
 
-	targets, err := executableTargets(bin)
+	targets, err := executableTargets(bin, service)
 	if err != nil {
 		return nil, err
 	}
+	running := processesRunning(targets)
 	if err := replaceExecutables(src, targets, common.IsWindows()); err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			if common.IsWindows() {
+				err = fmt.Errorf("%w; run the update as administrator", err)
+			} else {
+				err = fmt.Errorf("%w; run the update as root", err)
+			}
+		}
 		return nil, err
 	}
 	for _, t := range targets {
 		fmt.Println("Replaced", t)
 	}
+	res := &UpdateResult{Version: tag, Replaced: targets, Running: running}
 	if bin == "nps" {
 		if err := copyServerAssets(pkgDir, common.GetRunPath()); err != nil {
-			return targets, fmt.Errorf("executables replaced, but updating web assets failed: %w", err)
+			return res, fmt.Errorf("executables replaced, but updating web assets failed: %w", err)
 		}
 	}
 	fmt.Println("Update completed:", tag)
-	return targets, nil
+	return res, nil
 }
 
-// packageIsNewer reports whether the downloaded executable is newer than the
-// running one. It asks the executable for its version and, when that fails,
-// treats it as new unless its content equals the running executable.
-func packageIsNewer(src string) bool {
-	v, err := executableVersion(src)
-	if err == nil {
-		fmt.Println("The downloaded version is", v)
-		return version.Compare(v, version.VERSION) > 0
-	}
-	fmt.Println("Cannot read the downloaded version:", err)
-	exe, err := currentExecutable()
+// processesRunning returns the other processes whose executable is one of
+// paths. It has to run before the executables are replaced: afterwards the
+// processes report the moved or deleted original.
+func processesRunning(paths []string) []int32 {
+	procs, err := process.Processes()
 	if err != nil {
-		return true
+		return nil
 	}
-	a, errA := fileSHA256(src)
-	b, errB := fileSHA256(exe)
-	return errA != nil || errB != nil || a != b
+	self := int32(os.Getpid())
+	var pids []int32
+	for _, p := range procs {
+		if p.Pid == self {
+			continue
+		}
+		if exe, err := p.Exe(); err == nil && exe != "" && containsFile(paths, exe) {
+			pids = append(pids, p.Pid)
+		}
+	}
+	return pids
+}
+
+// WarnOldProcesses reports the processes among pids that still run, and so
+// still run the version an update replaced.
+func WarnOldProcesses(pids []int32) {
+	var alive []string
+	for _, pid := range pids {
+		if ok, err := process.PidExists(pid); err == nil && ok {
+			alive = append(alive, strconv.Itoa(int(pid)))
+		}
+	}
+	if len(alive) > 0 {
+		fmt.Printf("WARNING: processes %s still run the old version; restart them to use the new one\n", strings.Join(alive, ", "))
+	}
+}
+
+// updateTempDir creates the directory the release is unpacked in, next to
+// the running executable when possible: the system temp directory may be
+// mounted noexec, which would keep the new executable from being run.
+func updateTempDir() (string, error) {
+	if exe, err := currentExecutable(); err == nil {
+		if dir, err := os.MkdirTemp(filepath.Dir(exe), ".nps-update-"); err == nil {
+			return dir, nil
+		}
+	}
+	return os.MkdirTemp("", "nps-update-")
 }
 
 func executableVersion(path string) (string, error) {
@@ -171,19 +227,6 @@ func executableVersion(path string) (string, error) {
 		}
 	}
 	return "", errors.New("no version in output")
-}
-
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 type release struct {
@@ -462,9 +505,10 @@ func copyServerAssets(srcDir, destDir string) error {
 	return nil
 }
 
-// executableTargets returns the running executable and, on Unix, the copies
-// install placed in the system bin directories.
-func executableTargets(bin string) ([]string, error) {
+// executableTargets returns the running executable, on Unix the copies
+// install placed in the system bin directories, and the executable the
+// installed service runs.
+func executableTargets(bin, service string) ([]string, error) {
 	exe, err := currentExecutable()
 	if err != nil {
 		return nil, err
@@ -481,7 +525,23 @@ func executableTargets(bin string) ([]string, error) {
 			}
 		}
 	}
+	if p := serviceExecutable(service); p != "" && isExecutableOf(p, bin) && !containsFile(targets, p) {
+		targets = append(targets, p)
+	}
 	return targets, nil
+}
+
+// isExecutableOf reports whether p is an existing file named like the
+// executable of bin.
+func isExecutableOf(p, bin string) bool {
+	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	name := filepath.Base(p)
+	if common.IsWindows() {
+		return strings.EqualFold(name, executableName(bin))
+	}
+	return name == bin
 }
 
 // installExecutable copies the executable found in srcDir to its install
@@ -626,7 +686,7 @@ func (s *stagedExecutable) commit(aside bool) error {
 		return err
 	}
 	s.backup = backup
-	if err := os.Rename(s.staged, s.dest); err != nil {
+	if err := renameFile(s.staged, s.dest); err != nil {
 		if rbErr := s.restore(); rbErr != nil {
 			return fmt.Errorf("%w; restore failed: %v", err, rbErr)
 		}
@@ -651,7 +711,7 @@ func (s *stagedExecutable) restore() error {
 			return os.Remove(backup)
 		}
 	}
-	if err := os.Rename(s.backup, s.dest); err != nil {
+	if err := renameFile(s.backup, s.dest); err != nil {
 		return err
 	}
 	s.backup = ""
@@ -668,7 +728,7 @@ func backupExecutable(dest string, aside bool) (string, error) {
 	}
 	backup := asidePath(dest)
 	if aside {
-		if err := os.Rename(dest, backup); err != nil {
+		if err := renameFile(dest, backup); err != nil {
 			return "", err
 		}
 		return backup, nil
@@ -707,6 +767,24 @@ func writeExecutable(src, dest string) error {
 		return os.Chmod(dest, 0o755)
 	}
 	return nil
+}
+
+// renameRetry is how long renameFile keeps retrying on Windows, where a
+// scanner or indexer briefly opening a file makes renaming it fail.
+const renameRetry = 2 * time.Second
+
+func renameFile(from, to string) error {
+	err := os.Rename(from, to)
+	if err == nil || !common.IsWindows() || errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for deadline := time.Now().Add(renameRetry); time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+		if err = os.Rename(from, to); err == nil {
+			return nil
+		}
+	}
+	return err
 }
 
 // asidePath returns a free name to move dest to. A locked dest.old left by an

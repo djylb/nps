@@ -44,9 +44,9 @@ func Init() http.Handler {
 	protected.Use(protectedRouteMiddleware(state))
 	registerProtectedRoutes(protected, state)
 	if basePath != "" {
-		protected.GET("", redirectToManagementShell(state))
+		protected.GET("", redirectToIndex(state))
 	}
-	protected.GET("/", redirectToManagementShell(state))
+	protected.GET("/", redirectToIndex(state))
 
 	return engine
 }
@@ -140,9 +140,9 @@ func registerManagementShellRoutes(group *gin.RouterGroup, state *State) {
 	group.GET("/app/*path", handle(apiApp.ManagementShell))
 }
 
-func redirectToManagementShell(state *State) gin.HandlerFunc {
+func redirectToIndex(state *State) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Redirect(http.StatusFound, joinBase(state.BaseURL(), "/app"))
+		c.Redirect(http.StatusFound, joinBase(state.BaseURL(), "/index/index"))
 	}
 }
 

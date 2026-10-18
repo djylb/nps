@@ -118,3 +118,27 @@ func TestCompare(t *testing.T) {
 		}
 	}
 }
+
+// A version scheme that stops counting up reads as older and is not sent an
+// update request, which only an old npc would misread.
+func TestSupportsRemoteUpdate(t *testing.T) {
+	for _, c := range []struct {
+		v    string
+		want bool
+	}{
+		{"0.34.8", false},
+		{"0.34.7", false},
+		{"", false},
+		{"0.34.9", true},
+		{"v0.34.9", true},
+		{"0.35.0-rc1", true},
+		{"1.0.0", true},
+		{"2027.1.5", true},
+		{"dev", false},
+		{"nightly-20270105", false},
+	} {
+		if got := SupportsRemoteUpdate(c.v); got != c.want {
+			t.Errorf("SupportsRemoteUpdate(%q) = %v, want %v", c.v, got, c.want)
+		}
+	}
+}

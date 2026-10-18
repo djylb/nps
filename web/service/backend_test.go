@@ -98,9 +98,10 @@ func (s stubRuntime) DashboardData(force bool) map[string]interface{} {
 func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*file.Client, int) {
 	return nil, 0
 }
-func (stubRuntime) PingClient(int, string) int { return 0 }
-func (stubRuntime) DisconnectClient(int)       {}
-func (stubRuntime) DeleteClientResources(int)  {}
+func (stubRuntime) PingClient(int, string) int           { return 0 }
+func (stubRuntime) DisconnectClient(int)                 {}
+func (stubRuntime) RequestClientUpdate(int) (int, error) { return 0, nil }
+func (stubRuntime) DeleteClientResources(int)            {}
 func (s stubRuntime) GenerateTunnelPort(tunnel *file.Tunnel) int {
 	if s.generatePort != nil {
 		return s.generatePort(tunnel)

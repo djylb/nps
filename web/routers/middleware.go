@@ -3,14 +3,12 @@ package routers
 import (
 	"encoding/json"
 	"errors"
-	"html/template"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/servercfg"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -87,7 +85,6 @@ func ensureAutoAdminSession(c *gin.Context, state *State) {
 func protectedRouteMiddleware(state *State) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cfg := state.CurrentConfig()
-		setProtectedRequestData(c, cfg, state.System().Info())
 
 		timestamp, _ := strconv.Atoi(c.Query("timestamp"))
 		if !webservice.ValidAuthKey(cfg.Auth.Key, c.Query("auth_key"), timestamp, common.TimeNow().Unix()) {
@@ -122,25 +119,6 @@ func protectedRouteMiddleware(state *State) gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-func setProtectedRequestData(c *gin.Context, cfg *servercfg.Snapshot, info webservice.SystemInfo) {
-	framework.SetRequestData(c, "web_base_url", cfg.Web.BaseURL)
-	framework.SetRequestData(c, "head_custom_code", template.HTML(cfg.Web.HeadCustomCode))
-	framework.SetRequestData(c, "version", info.Version)
-	framework.SetRequestData(c, "year", info.Year)
-	framework.SetRequestData(c, "allow_user_login", cfg.Feature.AllowUserLogin)
-	framework.SetRequestData(c, "allow_flow_limit", cfg.Feature.AllowFlowLimit)
-	framework.SetRequestData(c, "allow_rate_limit", cfg.Feature.AllowRateLimit)
-	framework.SetRequestData(c, "allow_time_limit", cfg.Feature.AllowTimeLimit)
-	framework.SetRequestData(c, "allow_connection_num_limit", cfg.Feature.AllowConnectionNumLimit)
-	framework.SetRequestData(c, "allow_multi_ip", cfg.Feature.AllowMultiIP)
-	framework.SetRequestData(c, "system_info_display", cfg.Feature.SystemInfoDisplay)
-	framework.SetRequestData(c, "allow_tunnel_num_limit", cfg.Feature.AllowTunnelNumLimit)
-	framework.SetRequestData(c, "allow_local_proxy", cfg.Feature.AllowLocalProxy)
-	framework.SetRequestData(c, "allow_user_local", cfg.Feature.AllowUserLocal)
-	framework.SetRequestData(c, "allow_secret_link", cfg.Feature.AllowSecretLink)
-	framework.SetRequestData(c, "allow_user_change_username", cfg.Feature.AllowUserChangeUsername)
 }
 
 func permissionMiddleware(state *State, permission string) gin.HandlerFunc {

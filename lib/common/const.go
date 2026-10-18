@@ -16,6 +16,7 @@ const (
 	WorkStatus     = "stus"
 	ResClose       = "clse"
 	P2PPunchStart  = "p2st" // P2P invitation on the signal connection
+	UpdateRequest  = "updt" // update request on the signal connection
 	FlagNewTask    = "task"
 	FlagNewConf    = "conf"
 	FlagNewHost    = "host"

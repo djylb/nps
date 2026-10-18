@@ -5,7 +5,7 @@ if [ ! -d /conf ]; then
 fi
 
 if [ -f /conf/nps.conf ]; then
-    /nps service
+    /nps service -disable_remote_update
 else
     cp /nps.conf.sample /conf/nps.conf
 fi

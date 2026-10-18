@@ -31,43 +31,54 @@ type ManagementPageCommonData struct {
 	Version        string
 	Year           int
 	IsAdmin        bool
-	Username       string
-	BridgeType     string
-	BridgeAddr     string
-	BridgeIP       string
-	BridgePort     string
-	WindowsSuffix  string
-	TCPIP          string
-	TCPPort        string
-	KCPIP          string
-	KCPPort        string
-	TLSIP          string
-	TLSPort        string
-	QUICIP         string
-	QUICPort       string
-	QUICALPN       string
-	QUICAddr       string
-	WSPath         string
-	WSIP           string
-	WSPort         string
-	WSSIP          string
-	WSSPort        string
-	ProxyPort      string
+	// ServerUpdate tells whether the server can be updated from the web.
+	ServerUpdate  bool
+	Username      string
+	BridgeType    string
+	BridgeAddr    string
+	BridgeIP      string
+	BridgePort    string
+	WindowsSuffix string
+	TCPIP         string
+	TCPPort       string
+	KCPIP         string
+	KCPPort       string
+	TLSIP         string
+	TLSPort       string
+	QUICIP        string
+	QUICPort      string
+	QUICALPN      string
+	QUICAddr      string
+	WSPath        string
+	WSIP          string
+	WSPort        string
+	WSSIP         string
+	WSSPort       string
+	ProxyPort     string
+	// ClientUpdateMin is the oldest npc version that acts on update requests.
+	ClientUpdateMin string
+	// Features are the feature switches the templates test, by name.
+	Features map[string]bool
 }
 
 func (d ManagementPageCommonData) Map() map[string]interface{} {
 	data := map[string]interface{}{
-		"web_base_url":     d.WebBaseURL,
-		"head_custom_code": d.HeadCustomCode,
-		"version":          d.Version,
-		"year":             d.Year,
-		"isAdmin":          d.IsAdmin,
-		"username":         d.Username,
-		"bridgeType":       d.BridgeType,
-		"addr":             d.BridgeAddr,
-		"ip":               d.BridgeIP,
-		"p":                d.BridgePort,
-		"proxyPort":        d.ProxyPort,
+		"web_base_url":        d.WebBaseURL,
+		"head_custom_code":    d.HeadCustomCode,
+		"version":             d.Version,
+		"year":                d.Year,
+		"isAdmin":             d.IsAdmin,
+		"allow_server_update": d.IsAdmin && d.ServerUpdate,
+		"username":            d.Username,
+		"bridgeType":          d.BridgeType,
+		"addr":                d.BridgeAddr,
+		"ip":                  d.BridgeIP,
+		"p":                   d.BridgePort,
+		"proxyPort":           d.ProxyPort,
+		"client_update_min":   d.ClientUpdateMin,
+	}
+	for name, on := range d.Features {
+		data[name] = on
 	}
 	if d.WindowsSuffix != "" {
 		data["win"] = d.WindowsSuffix
