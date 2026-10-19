@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const VERSION = "0.34.8"
+const VERSION = "0.34.9"
 const MinVer = 7
 
 var MinVersions = []string{
