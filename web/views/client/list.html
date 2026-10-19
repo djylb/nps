@@ -291,8 +291,8 @@
                 title: '<span langtag="word-actualflow"></span>',//标题
                 align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
-                sortable: false,
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span title="' + langreply('Total x 2') + '">' + changeunit(actualFlow(row.Flow)) + '</span>'
                 }

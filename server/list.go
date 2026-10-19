@@ -132,7 +132,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 			sort.SliceStable(allList, func(i, j int) bool { return fv[allList[i].Flow].ExportFlow > fv[allList[j].Flow].ExportFlow })
 		}
 
-	case "TotalFlow":
+	case "TotalFlow", "ActualFlow": // the actual usage is twice the total
 		if order == "asc" {
 			sort.SliceStable(allList, func(i, j int) bool {
 				return fv[allList[i].Flow].InletFlow+fv[allList[i].Flow].ExportFlow < fv[allList[j].Flow].InletFlow+fv[allList[j].Flow].ExportFlow
@@ -393,7 +393,7 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 			sort.SliceStable(list, func(i, j int) bool { return fv[list[i].Flow].ExportFlow > fv[list[j].Flow].ExportFlow })
 		}
 
-	case "TotalFlow":
+	case "TotalFlow", "ActualFlow": // the actual usage is twice the total
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
 				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow < fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow
@@ -506,7 +506,7 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 			sort.SliceStable(list, func(i, j int) bool { return list[i].VerifyKey > list[j].VerifyKey })
 		}
 
-	case "TotalFlow":
+	case "TotalFlow", "ActualFlow": // the actual usage is twice the total
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool {
 				return fv[list[i].Flow].InletFlow+fv[list[i].Flow].ExportFlow < fv[list[j].Flow].InletFlow+fv[list[j].Flow].ExportFlow

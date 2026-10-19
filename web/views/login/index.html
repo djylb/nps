@@ -62,15 +62,15 @@
                     </div>
                 </div>
                 {{end}}
-                <button id="loginBtn" class="btn btn-primary block full-width m-b" langtag="word-login" onclick="if (this.form.reportValidity()) login()" type="submit"></button>
+                <button id="loginBtn" class="btn btn-primary block full-width login-submit" langtag="word-login" onclick="if (this.form.reportValidity()) login()" type="submit"></button>
                 {{if eq true .register_allow}}
-                <p class="text-muted text-center">
-                    <small langtag="info-noaccount"></small>
-                    <small><a href="{{.web_base_url}}/login/register" langtag="word-register"></a></small>
+                <p class="text-muted text-center login-hint">
+                    <span langtag="info-noaccount"></span>
+                    <a href="{{.web_base_url}}/login/register" langtag="word-register"></a>
                 </p>
                 {{end}}
-                <p class="text-muted text-center">
-                    <small><a href="{{.web_base_url}}/ip/register"><i class="fa fa-key"></i> <span langtag="word-ipregisterentry"></span></a></small>
+                <p class="login-alt">
+                    <a class="login-alt-link" href="{{.web_base_url}}/ip/register"><i class="fa fa-key" aria-hidden="true"></i><span langtag="word-ipregisterentry"></span></a>
                 </p>
             </form>
     </div>

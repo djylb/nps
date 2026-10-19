@@ -111,3 +111,19 @@ func hostNames(list []*file.Host) []string {
 	}
 	return names
 }
+
+func TestListsSortByActualFlow(t *testing.T) {
+	loadTestData(t,
+		`[{"Id":1,"VerifyKey":"a","Flow":{"InletFlow":5}}, {"Id":2,"VerifyKey":"b","Flow":{"InletFlow":30}}, {"Id":3,"VerifyKey":"c","Flow":{"ExportFlow":20}}]`,
+		`[{"Id":1,"Port":1,"Mode":"tcp","Client":{"Id":1},"Flow":{"InletFlow":5}}, {"Id":2,"Port":2,"Mode":"tcp","Client":{"Id":1},"Flow":{"ExportFlow":30}}]`,
+		`[{"Id":1,"Host":"a.test","Client":{"Id":1},"Flow":{"InletFlow":1}}, {"Id":2,"Host":"b.test","Client":{"Id":1},"Flow":{"InletFlow":9}}]`)
+	if clients, _ := GetClientList(0, 0, "", "ActualFlow", "desc", 0); len(clients) != 3 || clients[0].Id != 2 || clients[1].Id != 3 || clients[2].Id != 1 {
+		t.Fatalf("clients by actual flow desc: %d", len(clients))
+	}
+	if tunnels, _ := GetTunnel(0, 0, "tcp", 0, "", "ActualFlow", "asc"); len(tunnels) != 2 || tunnels[0].Id != 1 {
+		t.Fatal("tunnels by actual flow asc")
+	}
+	if hosts, _ := GetHostList(0, 0, 0, "", "ActualFlow", "desc"); len(hosts) != 2 || hosts[0].Host != "b.test" {
+		t.Fatalf("hosts by actual flow desc = %v", hostNames(hosts))
+	}
+}

@@ -20,7 +20,8 @@ import (
 type SystemInfo struct {
 	Version string
 	Year    int
-	// CanUpdate tells whether the server can be updated from the web.
+	// CanUpdate tells whether the server can be updated from the web to a
+	// newer release.
 	CanUpdate bool
 }
 
@@ -80,9 +81,10 @@ type DefaultSystemService struct{}
 
 func (DefaultSystemService) Info() SystemInfo {
 	return SystemInfo{
-		Version:   server.GetVersion(),
-		Year:      server.GetCurrentYear(),
-		CanUpdate: server.CanUpdateSelf(),
+		Version: server.GetVersion(),
+		Year:    server.GetCurrentYear(),
+		// the update button only appears when a newer release exists
+		CanUpdate: server.CanUpdateSelf() && install.UpdateAvailable(),
 	}
 }
 

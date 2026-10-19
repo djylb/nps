@@ -1503,9 +1503,9 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 		t.Fatalf("POST /client/list = %d %s %v", list.Code, list.Body.String(), list.Header())
 	}
 
-	clear := performFormRequest(handler, http.MethodPost, "/client/clear", admin, map[string]string{"id": "0", "mode": "flow"})
-	if in, out := rate.GlobalTraffic(); !strings.Contains(clear.Body.String(), `"status":1`) || in != 0 || out != 0 {
-		t.Fatalf("POST /client/clear = %d %s, traffic %d/%d", clear.Code, clear.Body.String(), in, out)
+	cleared := performFormRequest(handler, http.MethodPost, "/client/clear", admin, map[string]string{"id": "0", "mode": "flow"})
+	if in, out := rate.GlobalTraffic(); !strings.Contains(cleared.Body.String(), `"status":1`) || in != 0 || out != 0 {
+		t.Fatalf("POST /client/clear = %d %s, traffic %d/%d", cleared.Code, cleared.Body.String(), in, out)
 	}
 	if g := file.Db.JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
 		t.Fatalf("cleared traffic not stored: %d/%d", g.InletFlow, g.ExportFlow)
@@ -1556,10 +1556,10 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 	if !strings.Contains(login.Body.String(), `"status":1`) {
 		t.Fatalf("POST /login/verify = %s", login.Body.String())
 	}
-	var sessions, size int
+	var sessionCookies, size int
 	for _, c := range login.Header().Values("Set-Cookie") {
 		if strings.HasPrefix(c, "nps_session=") {
-			sessions++
+			sessionCookies++
 		}
 	}
 	for k, vs := range login.Header() {
@@ -1567,16 +1567,16 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 			size += len(k) + len(v) + 4
 		}
 	}
-	if sessions != 1 || size > 2048 {
-		t.Fatalf("login response sets %d session cookies in %d header bytes, want 1 in at most 2 KiB", sessions, size)
+	if sessionCookies != 1 || size > 2048 {
+		t.Fatalf("login response sets %d session cookies in %d header bytes, want 1 in at most 2 KiB", sessionCookies, size)
 	}
-	index := httptest.NewRecorder()
+	indexResp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/index/index", nil)
 	for _, c := range login.Result().Cookies() {
 		req.AddCookie(c)
 	}
-	handler.ServeHTTP(index, req)
-	if index.Code != http.StatusOK {
-		t.Fatalf("GET /index/index with the login cookie status = %d, want 200", index.Code)
+	handler.ServeHTTP(indexResp, req)
+	if indexResp.Code != http.StatusOK {
+		t.Fatalf("GET /index/index with the login cookie status = %d, want 200", indexResp.Code)
 	}
 }

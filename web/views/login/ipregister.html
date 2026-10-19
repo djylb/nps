@@ -42,9 +42,9 @@
                     <i class="fas fa-key input-icon"></i>
                     <input class="form-control" langtag="word-registerkey" name="key" placeholder="key" required="" type="password" value="{{.key}}" autocomplete="off">
                 </div>
-                <div class="form-group">
-                    <label class="control-label" langtag="word-registerhours"></label>
-                    <select class="form-control" name="hours">
+                <div class="form-group position-relative">
+                    <label class="sr-only" for="register-hours" langtag="word-registerhours"></label>
+                    <select class="form-control" id="register-hours" name="hours">
                         <option value="0" langtag="word-registerlongest"></option>
                         {{range .hour_options}}<option value="{{.Hours}}">{{.Label}}</option>
                         {{end}}
@@ -61,10 +61,12 @@
                     </div>
                 </div>
                 {{end}}
-                <button id="registerBtn" class="btn btn-primary block full-width m-b" langtag="word-registerip" onclick="if (this.form.reportValidity()) registerIP()" type="submit"></button>
-                <p class="text-muted"><small langtag="info-ipregister"></small></p>
+                <button id="registerBtn" class="btn btn-primary block full-width login-submit" langtag="word-registerip" onclick="if (this.form.reportValidity()) registerIP()" type="submit"></button>
+                <p class="text-muted login-hint" langtag="info-ipregister"></p>
                 {{if .login_link}}
-                <p class="text-muted text-center"><small><a href="{{.web_base_url}}/login/index" langtag="word-login"></a></small></p>
+                <p class="login-alt">
+                    <a class="login-alt-link" href="{{.web_base_url}}/login/index"><i class="fa fa-sign-in-alt" aria-hidden="true"></i><span langtag="word-login"></span></a>
+                </p>
                 {{end}}
             </form>
         </div>

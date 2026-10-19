@@ -336,6 +336,10 @@ func run() {
 	cfg := servercfg.Current()
 	server.SetWebHandler(routers.Init())
 	server.StartIPRegisterServer(routers.InitIPRegister())
+	if server.CanUpdateSelf() {
+		// query the latest release now, so that the dashboard knows it
+		install.LatestVersion()
+	}
 	task := &file.Tunnel{
 		Mode: "webServer",
 	}
