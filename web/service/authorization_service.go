@@ -107,7 +107,7 @@ func (s DefaultAuthorizationService) ResolveClient(principal Principal, requeste
 	if s.Allows(normalized, PermissionManagementAdmin) {
 		return requestedClientID, nil
 	}
-	if requestedClientID > 0 {
+	if requestedClientID != 0 {
 		if s.canAccessClient(normalized, requestedClientID) {
 			return requestedClientID, nil
 		}

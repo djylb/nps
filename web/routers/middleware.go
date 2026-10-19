@@ -140,8 +140,8 @@ func permissionMiddleware(state *State, permission string) gin.HandlerFunc {
 
 // clientScopeMiddleware resolves the client_id submitted with the request
 // and stores the normalized value for the handler. When keepUnset is true an
-// empty or non-positive client_id is normalized to 0 so the handler keeps the
-// resource's current client.
+// empty or zero client_id keeps the resource's current client. Negative IDs
+// identify virtual clients and must pass the same authorization as other IDs.
 func clientScopeMiddleware(state *State, keepUnset bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requested, err := requestedClientID(c)
@@ -149,7 +149,7 @@ func clientScopeMiddleware(state *State, keepUnset bool) gin.HandlerFunc {
 			abortForbidden(c)
 			return
 		}
-		if keepUnset && requested <= 0 {
+		if keepUnset && requested == 0 {
 			framework.SetRequestParam(c, "client_id", "0")
 			c.Next()
 			return
@@ -159,7 +159,7 @@ func clientScopeMiddleware(state *State, keepUnset bool) gin.HandlerFunc {
 			abortAccessError(c, state, err)
 			return
 		}
-		if resolvedClientID > 0 {
+		if resolvedClientID != 0 {
 			framework.SetRequestData(c, "client_id", resolvedClientID)
 		}
 		framework.SetRequestParam(c, "client_id", strconv.Itoa(resolvedClientID))

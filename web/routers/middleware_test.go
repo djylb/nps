@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -184,5 +185,93 @@ func TestEditHostClientSelection(t *testing.T) {
 	}
 	if got := ownerOf(); got != f.clientA.Id {
 		t.Fatalf("host client after limited move = %d, want %d", got, f.clientA.Id)
+	}
+}
+
+// The service restarts tunnels after editing; keep this test independent of
+// listeners so that it exercises the real request and persistence paths.
+type virtualClientEditRuntime struct{ webservice.Runtime }
+
+func (virtualClientEditRuntime) StopTunnel(int) error  { return nil }
+func (virtualClientEditRuntime) StartTunnel(int) error { return nil }
+
+func TestEditResourceVirtualClientSelection(t *testing.T) {
+	for _, resource := range []string{"tunnel", "host"} {
+		t.Run(resource, func(t *testing.T) {
+			f := newRequestParamFixture(t)
+			createTestClient(t, -1, "", "")
+			createTestClient(t, -2, "", "")
+			state := NewState(nil)
+			backend := webservice.DefaultBackend()
+			backend.Runtime = virtualClientEditRuntime{backend.Runtime}
+			state.App.Services.Index = webservice.DefaultIndexService{Backend: backend}
+			engine := gin.New()
+			group := engine.Group("")
+			group.Use(sessionMiddleware(), requestContextMiddleware(state), protectedRouteMiddleware(state))
+			registerIndexRoutes(group, state)
+			adminCookies := sessionCookiesFromIdentity(t, servercfg.Current(), (&webservice.SessionIdentity{
+				Authenticated: true, IsAdmin: true, Username: "admin", Roles: []string{"admin"},
+			}).Normalize())
+			action, id := "edit", 201
+			if resource == "host" {
+				action, id = "edithost", 301
+			}
+			payload := map[string]interface{}{"id": id, "target": "127.0.0.1:80"}
+			if resource == "host" {
+				payload["host"] = f.hostOfB.Host
+			}
+			owner := func() int {
+				if resource == "host" {
+					h, err := file.GetDb().GetHostById(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return h.Client.Id
+				}
+				task, err := file.GetDb().GetTask(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return task.Client.Id
+			}
+			original := owner()
+			payload["client_id"] = -1
+			denied := performJSONRequest(engine, "/api/v1/index/"+action, f.cookies, payload)
+			if denied.Code != http.StatusForbidden || owner() != original {
+				t.Fatalf("non-admin virtual client move: status=%d owner=%d body=%s", denied.Code, owner(), denied.Body.String())
+			}
+			resp := performJSONRequest(engine, "/api/v1/index/"+action, adminCookies, payload)
+			if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"status":1`) || owner() != -1 {
+				t.Fatalf("admin virtual client move: status=%d owner=%d body=%s", resp.Code, owner(), resp.Body.String())
+			}
+			for _, unset := range []bool{true, false} {
+				delete(payload, "client_id")
+				if !unset {
+					payload["client_id"] = 0
+				}
+				resp = performJSONRequest(engine, "/api/v1/index/"+action, adminCookies, payload)
+				if !strings.Contains(resp.Body.String(), `"status":1`) || owner() != -1 {
+					t.Fatalf("unset client changed virtual owner: owner=%d body=%s", owner(), resp.Body.String())
+				}
+			}
+			payload["client_id"] = -999
+			resp = performJSONRequest(engine, "/api/v1/index/"+action, adminCookies, payload)
+			if !strings.Contains(resp.Body.String(), `"status":0`) || owner() != -1 {
+				t.Fatalf("missing virtual client accepted: owner=%d body=%s", owner(), resp.Body.String())
+			}
+			form := map[string]string{"id": strconv.Itoa(id), "target": "127.0.0.1:80", "client_id": "-2"}
+			if resource == "host" {
+				form["host"] = f.hostOfB.Host
+			}
+			resp = performFormRequest(engine, http.MethodPost, "/index/"+action, adminCookies, form)
+			if !strings.Contains(resp.Body.String(), `"status":1`) || owner() != -2 {
+				t.Fatalf("form virtual client move: owner=%d body=%s", owner(), resp.Body.String())
+			}
+			payload["client_id"] = f.clientA.Id
+			resp = performJSONRequest(engine, "/api/v1/index/"+action, adminCookies, payload)
+			if !strings.Contains(resp.Body.String(), `"status":1`) || owner() != f.clientA.Id {
+				t.Fatalf("move back to regular client: owner=%d body=%s", owner(), resp.Body.String())
+			}
+		})
 	}
 }

@@ -346,10 +346,10 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 }
 
 // editTargetClient returns the client an edited tunnel or host belongs to.
-// A non-positive clientID keeps the current client; moving to another client
+// A zero clientID keeps the current client; moving to another client
 // applies the same tunnel count limit as creation.
 func (s DefaultIndexService) editTargetClient(current *file.Client, clientID int) (*file.Client, error) {
-	if clientID <= 0 {
+	if clientID == 0 {
 		if current == nil {
 			return nil, ErrClientNotFound
 		}
