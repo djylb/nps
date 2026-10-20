@@ -2,11 +2,11 @@ package proxy
 
 import (
 	"errors"
-	"github.com/djylb/byterate"
 	"net"
 	"net/http"
 	"sync"
 
+	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"

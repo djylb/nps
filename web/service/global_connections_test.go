@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/djylb/nps/lib/file"
 	"testing"
+
+	"github.com/djylb/nps/lib/file"
 )
 
 type globalConnectionRepository struct {

@@ -1,8 +1,9 @@
 package proxy
 
 import (
-	"github.com/djylb/nps/lib/file"
 	"testing"
+
+	"github.com/djylb/nps/lib/file"
 )
 
 func TestGlobalClientAndTunnelAdmissionCleanup(t *testing.T) {

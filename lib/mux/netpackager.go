@@ -205,7 +205,12 @@ func (Self *muxPackager) reset() {
 	Self.id = 0
 	Self.flag = 0
 	Self.length = 0
-	Self.content = nil
+	// Payloads remain owned here until newMsg transfers them to a receive window.
+	// This also reclaims partial reads, discarded messages and ping payloads.
+	if Self.content != nil {
+		windowBuff.Put(Self.content)
+		Self.content = nil
+	}
 	Self.window = 0
 	if Self.buf != nil {
 		windowBuff.Put(Self.buf)

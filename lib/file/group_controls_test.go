@@ -1,8 +1,9 @@
 package file
 
 import (
-	"github.com/djylb/nps/lib/rate"
 	"testing"
+
+	"github.com/djylb/nps/lib/rate"
 )
 
 func TestAcceptedTunnelMoveKeepsLibrarySlots(t *testing.T) {

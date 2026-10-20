@@ -390,13 +390,11 @@ func (s *Mux) ping() {
 						//}
 					}
 				}
-				windowBuff.Put(pack.content)
 				muxPack.Put(pack)
 			case <-s.closeChan:
 				for {
 					select {
 					case pack := <-s.pingCh:
-						windowBuff.Put(pack.content)
 						muxPack.Put(pack)
 					default:
 						return
@@ -467,13 +465,11 @@ func (s *Mux) readSession() {
 				continue
 			case muxPingFlag: //ping
 				s.sendInfo(muxPingReturn, muxPing, false, pingReturnPayload(pack))
-				windowBuff.Put(pack.content)
 				muxPack.Put(pack)
 				continue
 			case muxPingReturn:
 				select {
 				case <-s.closeChan:
-					windowBuff.Put(pack.content)
 					muxPack.Put(pack)
 				case s.pingCh <- pack:
 				}
@@ -569,6 +565,10 @@ func (s *Mux) newMsg(connection *Conn, pack *muxPackager) (err error) {
 	if pack.flag == muxNewMsg {
 		err = connection.receiveWindow.Write(pack.content, pack.length, false, pack.id)
 	}
+	if err == nil {
+		// The receive window now owns the buffer and returns it after reading.
+		pack.content = nil
+	}
 	return
 }
 
@@ -644,16 +644,12 @@ func (s *Mux) closedErr(prefix string) error {
 }
 
 // drainWriteQueue recycles every queued frame. Each buffer goes back to the
-// pool exactly once: content here, buf in muxPack.Put via reset.
+// pool exactly once through muxPack.Put, including unsent payloads.
 func (s *Mux) drainWriteQueue() {
 	for {
 		pack := s.writeQueue.drainPop()
 		if pack == nil {
 			return
-		}
-		if pack.content != nil {
-			windowBuff.Put(pack.content)
-			pack.content = nil
 		}
 		muxPack.Put(pack)
 	}
