@@ -6269,16 +6269,29 @@ code {
 }
 
 .ibox-title {
+    display: flex;
+    align-items: center;
+    gap: 24px;
     background-color: var(--bg-title);
     border: none;
     color: var(--text);
     margin-bottom: 0;
-    padding: 15px;
-    min-height: 48px;
+    padding: 8px 15px;
+    min-height: 54px;
     position: relative;
     clear: both;
     border-radius: 8px 8px 0 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#global_traffic {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+#global_traffic::-webkit-scrollbar {
+    display: none;
 }
 
 .ibox-content {
@@ -6349,9 +6362,10 @@ table.table-mail tr td {
 .ibox-title h5 {
     display: inline-block;
     font-size: 14px;
-    margin: 0 0 7px;
+    margin: 0;
     padding: 0;
     text-overflow: ellipsis;
+    flex-shrink: 0;
     float: none;
 }
 

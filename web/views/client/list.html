@@ -4,6 +4,29 @@
             <div class="ibox float-e-margins">
                 <div class="ibox-title">
                     <h5 langtag="page-clientlist"></h5>
+                    {{if eq true .isAdmin}}
+                    <div id="global_traffic" class="text-muted small" style="display: none; line-height: 1.15;" role="group" aria-labelledby="global_traffic_label">
+                        <span id="global_traffic_label" class="sr-only" langtag="word-globaltraffic"></span>
+                        <div class="d-flex flex-nowrap align-items-center" style="gap: 20px; font-variant-numeric: tabular-nums;">
+                            <i class="fa fa-server" aria-hidden="true"></i>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-forwardin"></span><strong class="text-right" id="global_traffic_in"></strong>
+                                <span langtag="word-forwardout"></span><strong class="text-right" id="global_traffic_out"></strong>
+                            </div>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-totalflow"></span><strong class="text-right" id="global_traffic_total"></strong>
+                                <span langtag="word-actualflow"></span><strong class="text-right" id="global_traffic_actual"></strong>
+                            </div>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-uploadspeed"></span><strong class="text-right" id="global_traffic_rate_in"></strong>
+                                <span langtag="word-downloadspeed"></span><strong class="text-right" id="global_traffic_rate_out"></strong>
+                            </div>
+                            <div id="global_traffic_limit_box" class="text-nowrap align-self-start">
+                                <span langtag="word-ratelimit"></span> <strong id="global_traffic_limit"></strong>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
                     <div class="ibox-tools">
                         <a class="collapse-link">
                             <i class="fa fa-chevron-up"></i>
@@ -30,15 +53,6 @@
                                     <i class="fa fa-fw fa-lg fa-signal"></i>
                                     <span langtag="word-ping"></span>
                                 </a>
-                                <div id="global_traffic" class="ml-3 align-self-center text-muted small" style="display: none;">
-                                    <i class="fa fa-fw fa-server"></i> <span langtag="word-globaltraffic"></span>:
-                                    <span langtag="word-forwardin"></span> <strong id="global_traffic_in"></strong>
-                                    &ensp;<span langtag="word-forwardout"></span> <strong id="global_traffic_out"></strong>
-                                    &ensp;<span langtag="word-totalflow"></span> <strong id="global_traffic_total"></strong>
-                                    &ensp;<span langtag="word-actualflow"></span> <strong id="global_traffic_actual"></strong>
-                                    &ensp;<span langtag="word-speed"></span> <strong id="global_traffic_rate"></strong>
-                                    <span id="global_traffic_limit_box">&ensp;<span langtag="word-ratelimit"></span> <strong id="global_traffic_limit"></strong></span>
-                                </div>
                             </div>
                         </div>
                         <table class="table-striped table-hover" data-mobile-responsive="true" id="taskList_table"></table>
@@ -524,7 +538,8 @@
         $('#global_traffic_out').text(changeunit(t.out));
         $('#global_traffic_total').text(changeunit(t.in + t.out));
         $('#global_traffic_actual').text(changeunit((t.in + t.out) * 2));
-        $('#global_traffic_rate').text(changeunit(t.inBps) + '/s, ' + changeunit(t.outBps) + '/s');
+        $('#global_traffic_rate_in').text(changeunit(t.inBps) + '/s');
+        $('#global_traffic_rate_out').text(changeunit(t.outBps) + '/s');
         $('#global_traffic_limit').text(t.limit > 0 ? changeunit(t.limit) + '/s' : '');
         $('#global_traffic_limit_box').toggle(t.limit > 0);
         $('#global_traffic').show();

@@ -666,6 +666,14 @@
 		<zh-CN>流出</zh-CN>
 		<en-US>Out</en-US>
 	</lang>
+	<lang id="word-uploadspeed">
+		<zh-CN>上行网速</zh-CN>
+		<en-US>Upload Speed</en-US>
+	</lang>
+	<lang id="word-downloadspeed">
+		<zh-CN>下行网速</zh-CN>
+		<en-US>Download Speed</en-US>
+	</lang>
 	<lang id="word-globalratelimit">
 		<zh-CN>全局带宽限制 (KB/s)</zh-CN>
 		<en-US>Global Rate Limit (KB/s)</en-US>
