@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"github.com/djylb/byterate"
 	"net"
 	"net/http"
 	"sync"
@@ -108,19 +109,23 @@ func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccou
 	return nil
 }
 
-// CheckFlowAndConnNum check flow limit of the client ,and decrease the allowed num of client
-func (s *BaseServer) CheckFlowAndConnNum(client *file.Client) error {
+// AcquireForwarding admits once at a leaf. byterate reserves every ancestor
+// atomically and rolls all slots back if any cap rejects the transfer.
+func (s *BaseServer) AcquireForwarding(client *file.Client, group *byterate.Group) (func(), error) {
 	traffic, expired := client.Flow.Over()
 	if expired {
-		return errors.New("service access expired")
+		return nil, errors.New("service access expired")
 	}
 	if traffic {
-		return errors.New("traffic limit exceeded")
+		return nil, errors.New("traffic limit exceeded")
 	}
-	if !client.GetConn() {
-		return errors.New("connection limit exceeded")
+	if group == nil {
+		group = client.ControlGroup()
 	}
-	return nil
+	if err := group.Acquire(); err != nil {
+		return nil, err
+	}
+	return sync.OnceFunc(group.Release), nil
 }
 
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,

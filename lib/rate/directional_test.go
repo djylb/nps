@@ -71,7 +71,7 @@ func TestDirectionalAccountingAndIndependentDownload(t *testing.T) {
 	if in, out := GlobalTraffic(); in != 31 || out != 73 {
 		t.Fatalf("global charged more than once: %d/%d", in, out)
 	}
-	if in, out := client.traffic.Total(); in != 31 || out != 73 {
+	if out, in := client.traffic.Total(); in != 31 || out != 73 {
 		t.Fatalf("client direction/accounting: %d/%d", in, out)
 	}
 	// The tunnel's read meter must receive download bytes only.

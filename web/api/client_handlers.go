@@ -82,7 +82,7 @@ func (a *App) GetClient(c Context) {
 	if client, err := a.Services.Clients.Get(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, client)
+		respondCodeData(c, 1, clientRateRows([]*file.Client{client})[0])
 	}
 }
 
@@ -206,6 +206,7 @@ func (a *App) ClientQRCode(c Context) {
 // Directional speeds are response-only; the client's combined RateLimit remains unchanged.
 type clientRateRow struct {
 	*file.Client
+	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
@@ -220,7 +221,7 @@ func clientRateRows(rows []*file.Client) []*clientRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &clientRateRow{Client: row, UploadRate: upload, DownloadRate: download}
+		result[i] = &clientRateRow{Client: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }

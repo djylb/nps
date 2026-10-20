@@ -145,17 +145,16 @@ func (s *UdpModeServer) clientWorker(addr *net.UDPAddr, ent *entry) {
 	}()
 
 	if s.Bridge.IsServer() {
-		if err := s.CheckFlowAndConnNum(s.Task.Client); err != nil {
+		release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
+		if err != nil {
 			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
 			return
 		}
+		defer release()
 		if err := conn.CheckFlowLimits(s.Task.Flow, "Task"); err != nil {
 			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
 			return
 		}
-		defer s.Task.Client.CutConn()
-		s.Task.AddConn()
-		defer s.Task.CutConn()
 	}
 	isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
 	link := conn.NewLink(common.ConnUDP, s.Task.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, key, isLocal)

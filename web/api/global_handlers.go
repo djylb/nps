@@ -14,6 +14,7 @@ func (a *App) SaveGlobal(c Context) {
 			White:    requestString(c, "globalWhiteIpList"),
 		},
 		RateLimit: requestIntValue(c, "globalRateLimit"),
+		MaxConn:   requestIntValue(c, "globalMaxConn"),
 	}); err != nil {
 		ajax(c, err.Error(), 0)
 		return

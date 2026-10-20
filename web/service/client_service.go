@@ -219,7 +219,7 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 		s.repo().ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
 		client.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 		client.RateLimit = input.RateLimit
-		client.MaxConn = input.MaxConn
+		client.SetMaxConn(input.MaxConn)
 		client.MaxTunnelNum = input.MaxTunnelNum
 		if input.ResetFlow {
 			client.Flow.ResetTraffic()

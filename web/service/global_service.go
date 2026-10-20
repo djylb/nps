@@ -20,7 +20,8 @@ type DefaultGlobalService struct {
 }
 
 type SaveGlobalInput struct {
-	Access AccessListInput
+	MaxConn int
+	Access  AccessListInput
 	// RateLimit limits all forwarded traffic together, in KB/s; 0 means
 	// unlimited.
 	RateLimit int
@@ -33,6 +34,7 @@ func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
 	}
 	g := new(file.Glob)
 	g.RateLimit = max(input.RateLimit, 0)
+	g.MaxConn = max(input.MaxConn, 0)
 	lists.applyTo(&g.SourceLists, "the global settings")
 	return s.repo().SaveGlobal(g)
 }

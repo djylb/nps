@@ -26,7 +26,7 @@ type TunnelModeServer struct {
 	address           string
 	listener          net.Listener
 	socks5UDP         *socks5UDPRegistry
-	activeConnections sync.Map
+	activeConnections netx.ConnGroup
 }
 
 // NewTunnelModeServer tcp|host|mixproxy
@@ -34,7 +34,7 @@ func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel, a
 	return &TunnelModeServer{
 		BaseServer:        NewBaseServer(bridge, task, allowLocalProxy),
 		process:           process,
-		activeConnections: sync.Map{},
+		activeConnections: netx.ConnGroup{},
 	}
 }
 
@@ -90,13 +90,7 @@ func (s *TunnelModeServer) Close() error {
 		listener = s.listener
 		registry = s.socks5UDP
 	})
-	s.activeConnections.Range(func(key, value interface{}) bool {
-		if c, ok := key.(net.Conn); ok {
-			_ = c.Close()
-			s.activeConnections.Delete(key)
-		}
-		return true
-	})
+	_ = s.activeConnections.Close()
 	if registry != nil {
 		_ = registry.Close()
 	}
@@ -107,18 +101,6 @@ func (s *TunnelModeServer) Close() error {
 		return err
 	}
 	return nil
-}
-
-// trackConn registers c as active unless the server is closed, so Close
-// never misses a connection accepted concurrently with it.
-func (s *TunnelModeServer) trackConn(c net.Conn) bool {
-	s.lifecycleMu.Lock()
-	defer s.lifecycleMu.Unlock()
-	if s.closed {
-		return false
-	}
-	s.activeConnections.Store(c, struct{}{})
-	return true
 }
 
 func (s *TunnelModeServer) ServeVirtual(c net.Conn) {
@@ -144,24 +126,24 @@ func (s *TunnelModeServer) handleConn(c net.Conn) {
 	if c == nil {
 		return
 	}
-	if !s.trackConn(c) {
+	remove, err := s.activeConnections.Add(c)
+	if err != nil {
 		_ = c.Close()
 		return
 	}
 	defer func() {
-		s.activeConnections.Delete(c)
+		remove()
 		_ = c.Close()
 	}()
 
 	if s.Bridge.IsServer() {
-		if err := s.CheckFlowAndConnNum(s.Task.Client); err != nil {
+		release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
+		if err != nil {
 			logs.Warn("client Id %d, task Id %d, error %v, when tcp connection", s.Task.Client.Id, s.Task.Id, err)
 			_ = c.Close()
 			return
 		}
-		defer s.Task.Client.CutConn()
-		s.Task.AddConn()
-		defer s.Task.CutConn()
+		defer release()
 	}
 	logs.Trace("new tcp connection,local port %d,client %d,remote address %v", s.Task.Port, s.Task.Client.Id, c.RemoteAddr())
 

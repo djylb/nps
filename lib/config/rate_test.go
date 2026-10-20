@@ -9,3 +9,12 @@ func TestEntryDirectionalRateConfig(t *testing.T) {
 		t.Fatal("directional rates not parsed")
 	}
 }
+
+func TestTunnelConnectionConfig(t *testing.T) {
+	if task := dealTunnel("mode=tcp\nmax_conn=3"); task.MaxConn != 3 {
+		t.Fatal("max_conn not parsed")
+	}
+	if task := dealTunnel("mode=tcp\nmax_conn=-3"); task.MaxConn != 0 {
+		t.Fatal("negative max_conn not normalized")
+	}
+}

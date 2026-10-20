@@ -260,7 +260,7 @@ func clearClientStatus(client *file.Client, name string) {
 	case "rate_limit":
 		client.RateLimit = 0
 	case "conn_limit":
-		client.MaxConn = 0
+		client.SetMaxConn(0)
 	case "tunnel_limit":
 		client.MaxTunnelNum = 0
 	}

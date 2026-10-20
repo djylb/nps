@@ -153,14 +153,13 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check flow and conn
-	if err := s.CheckFlowAndConnNum(host.Client); err != nil {
+	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
+	if err != nil {
 		http.Error(w, "Access denied: "+err.Error(), http.StatusTooManyRequests)
 		logs.Warn("Connection limit exceeded, client id %d, host id %d, error %v", host.Client.Id, host.Id, err)
 		return
 	}
-	defer host.Client.CutConn()
-	host.AddConn()
-	defer host.CutConn()
+	defer release()
 
 	// HTTP Auth. Upgrade and CONNECT requests may carry protocols whose
 	// clients cannot send Basic credentials, so they proceed unauthenticated;

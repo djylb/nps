@@ -116,9 +116,9 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 	case "NowConn":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].NowConn < allList[j].NowConn })
+			sort.SliceStable(allList, func(i, j int) bool { return allList[i].CurrentConnections() < allList[j].CurrentConnections() })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].NowConn > allList[j].NowConn })
+			sort.SliceStable(allList, func(i, j int) bool { return allList[i].CurrentConnections() > allList[j].CurrentConnections() })
 		}
 
 	case "InletFlow":
@@ -380,9 +380,9 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 
 	case "NowConn":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].NowConn < list[j].NowConn })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].CurrentConnections() < list[j].CurrentConnections() })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].NowConn > list[j].NowConn })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].CurrentConnections() > list[j].CurrentConnections() })
 		}
 
 	case "InletFlow":
@@ -545,9 +545,9 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 
 	case "NowConn":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].NowConn < list[j].NowConn })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].CurrentConnections() < list[j].CurrentConnections() })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].NowConn > list[j].NowConn })
+			sort.SliceStable(list, func(i, j int) bool { return list[i].CurrentConnections() > list[j].CurrentConnections() })
 		}
 
 	case "Version":

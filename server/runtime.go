@@ -91,7 +91,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 		tcpCount := 0
 		file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-			tcpCount += int(value.(*file.Client).NowConn)
+			tcpCount += int(value.(*file.Client).CurrentConnections())
 			return true
 		})
 
@@ -268,7 +268,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 	tcpCount := 0
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-		tcpCount += int(value.(*file.Client).NowConn)
+		tcpCount += int(value.(*file.Client).CurrentConnections())
 		return true
 	})
 	data["tcpCount"] = tcpCount

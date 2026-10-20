@@ -1361,6 +1361,20 @@
 		<en-US>Processing: {done}/{total}</en-US>
 	</lang>
 
+    <lang id="info-tunnelmaxconn">
+        <zh-CN>0 表示不限。与客户端总连接数限制同时生效；TCP 按连接、UDP 按会话计数，SOCKS5 UDP 跟随控制连接计数。仅限制经过 nps 转发的连接，不限制 P2P 直连。</zh-CN>
+        <en-US>0 means unlimited. Applies together with the client limit: TCP connections, UDP sessions, and SOCKS5 UDP control connections. Applies to nps forwarding, not direct P2P traffic.</en-US>
+    </lang>
+
+    <lang id="word-globalmaxconn">
+        <zh-CN>全局最大转发连接数</zh-CN>
+        <en-US>Global Forwarding Connection Limit</en-US>
+    </lang>
+    <lang id="info-globalmaxconn">
+        <zh-CN>0 表示不限。与客户端及隧道限制同时生效；TCP、HTTPS 透传按连接、UDP 按会话、HTTP 域名转发按并发请求计数。不包含 npc 控制连接、管理网页和 P2P 直连。降低限制不会主动断开已有转发。</zh-CN>
+        <en-US>0 means unlimited. Applies together with client and tunnel limits. Counts TCP/HTTPS passthrough connections, UDP sessions and concurrent HTTP proxy requests. Excludes npc control connections, the dashboard and direct P2P traffic. Lowering the limit does not disconnect active transfers.</en-US>
+    </lang>
+
 	<confirm>
 		<lang id="turn">
 			<zh-CN>你确定你要切换它吗？</zh-CN>

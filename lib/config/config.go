@@ -212,7 +212,7 @@ func dealCommon(s string) *CommonConfig {
 		case "time_limit":
 			c.Client.Flow.TimeLimit = common.GetTimeNoErrByStr(item[1])
 		case "max_conn":
-			c.Client.MaxConn = common.GetIntNoErrByStr(item[1])
+			c.Client.SetMaxConn(common.GetIntNoErrByStr(item[1]))
 		case "remark":
 			c.Client.Remark = item[1]
 		case "pprof_addr":
@@ -336,6 +336,8 @@ func dealTunnel(s string) *file.Tunnel {
 			continue
 		}
 		switch item[0] {
+		case "max_conn":
+			t.SetMaxConn(common.GetIntNoErrByStr(item[1]))
 		case "upload_limit":
 			t.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "download_limit":

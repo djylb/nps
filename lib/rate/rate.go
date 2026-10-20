@@ -4,6 +4,7 @@ package rate
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/djylb/byterate"
 )
@@ -16,8 +17,10 @@ import (
 // the limit in bytes per second. Decoding ignores both: they are runtime
 // state, and the limit comes from the client's configuration.
 type Rate struct {
-	l       byterate.Rate
-	traffic byterate.Counter
+	l         byterate.Rate
+	traffic   byterate.Counter
+	group     byterate.Group
+	groupOnce sync.Once
 }
 
 type rateJSON struct {
@@ -84,5 +87,20 @@ func (r *Rate) CurrentRates() (int64, int64) {
 	if r == nil {
 		return 0, 0
 	}
-	return r.traffic.Throughput()
+	download, upload := r.Group().Traffic().Throughput()
+	return upload, download
+}
+
+// Group is the client level, with a single combined rate and a global parent.
+func (r *Rate) Group() *byterate.Group {
+	if r == nil {
+		return RootGroup()
+	}
+	r.groupOnce.Do(func() {
+		_ = r.group.SetParent(RootGroup())
+		r.group.SetReadLimiter(&r.l)
+		r.group.SetWriteLimiter(&r.l)
+		r.group.SetTraffic(&r.traffic)
+	})
+	return &r.group
 }

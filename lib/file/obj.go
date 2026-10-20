@@ -1,12 +1,16 @@
 package file
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -22,10 +26,15 @@ const (
 )
 
 type Flow struct {
-	ExportFlow int64     // outbound traffic
-	InletFlow  int64     // inbound traffic
-	FlowLimit  int64     // traffic limit
-	TimeLimit  time.Time // expire time
+	counter       *byterate.Counter
+	trafficBudget byterate.Budget
+	expiryBudget  byterate.Budget
+	budgetLimit   int64
+	budgetExpiry  time.Time
+	ExportFlow    int64     // outbound traffic
+	InletFlow     int64     // inbound traffic
+	FlowLimit     int64     // traffic limit
+	TimeLimit     time.Time // expire time
 	// client marks a client's flow, whose limit FlowLimitFactor scales;
 	// the limits of tunnels and hosts always count the in/out traffic.
 	client bool
@@ -44,9 +53,22 @@ func (s *Flow) MarkClient() {
 
 func (s *Flow) Add(in, out int64) {
 	s.Lock()
-	s.InletFlow += in
-	s.ExportFlow += out
+	s.addLocked(in, out)
 	s.Unlock()
+}
+
+// MarshalJSON snapshots the persisted adapter fields while transfers update them.
+func (s *Flow) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	v := s.Values()
+	return json.Marshal(struct {
+		ExportFlow int64
+		InletFlow  int64
+		FlowLimit  int64
+		TimeLimit  time.Time
+	}{v.ExportFlow, v.InletFlow, v.FlowLimit, v.TimeLimit})
 }
 
 // ResetTraffic zeroes the inbound and outbound traffic.
@@ -83,8 +105,7 @@ func (s *Flow) SetLimits(flowLimit int64, timeLimit time.Time) {
 // is then over its traffic limit or past its time limit.
 func (s *Flow) AddOver(in, out int64) (traffic, expired bool) {
 	s.Lock()
-	s.InletFlow += in
-	s.ExportFlow += out
+	s.addLocked(in, out)
 	traffic, expired = s.overLocked()
 	s.Unlock()
 	return traffic, expired
@@ -117,10 +138,13 @@ func (s *Flow) Values() FlowValues {
 // are read under the lock, so that a 64-bit counter is never seen half
 // written on 32-bit platforms.
 func (s *Flow) Over() (traffic, expired bool) {
-	s.RLock()
+	if s == nil {
+		return false, false
+	}
+	s.Lock()
 	traffic, expired = s.overLocked()
-	s.RUnlock()
-	return traffic, expired
+	s.Unlock()
+	return
 }
 
 // FlowLimitFactor is what the flow limits of clients multiply the inbound
@@ -140,14 +164,49 @@ func SetFlowLimitActual(actual bool) {
 	}
 }
 
-func (s *Flow) overLocked() (traffic, expired bool) {
-	used := s.ExportFlow + s.InletFlow
-	if s.client {
-		used *= FlowLimitFactor.Load()
+// addLocked mirrors payload traffic to the persisted JSON fields. This counter
+// stays separate from Group.Traffic: framed headers and transport records must
+// not change the established payload quota/persistence accounting.
+func (s *Flow) addLocked(in, out int64) {
+	if s.counter == nil {
+		s.counter = new(byterate.Counter)
 	}
-	traffic = s.FlowLimit > 0 && (s.FlowLimit<<20) < used
-	expired = !s.TimeLimit.IsZero() && s.TimeLimit.Before(time.Now())
-	return traffic, expired
+	currentIn, currentOut := s.counter.Total()
+	// Restore imported/reset values without counting them as new throughput.
+	if currentIn != s.InletFlow || currentOut != s.ExportFlow {
+		s.counter.Restore(s.InletFlow-currentIn, s.ExportFlow-currentOut)
+	}
+	s.counter.Add(in, out)
+	s.InletFlow, s.ExportFlow = s.counter.Total()
+}
+
+func (s *Flow) overLocked() (traffic, expired bool) {
+	used := s.InletFlow + s.ExportFlow
+	if s.client {
+		factor := FlowLimitFactor.Load()
+		if factor > 1 && used > math.MaxInt64/factor {
+			used = math.MaxInt64
+		} else {
+			used *= factor
+		}
+	}
+	if s.budgetLimit != s.FlowLimit {
+		s.budgetLimit = s.FlowLimit
+		if s.FlowLimit > 0 && s.FlowLimit < math.MaxInt64>>20 {
+			// Keep the established rule: exactly at the quota is still admitted.
+			s.trafficBudget.SetSteps(byterate.Step{After: (s.FlowLimit << 20) + 1, Stop: true})
+		} else {
+			s.trafficBudget.SetSteps()
+		}
+	}
+	s.trafficBudget.SetUsed(used)
+	_, trafficErr := s.trafficBudget.Ready(context.Background(), 1)
+	if !s.budgetExpiry.Equal(s.TimeLimit) {
+		s.budgetExpiry = s.TimeLimit
+		s.expiryBudget.SetExpiry(s.TimeLimit)
+	}
+	_, expiryErr := s.expiryBudget.Ready(context.Background(), 1)
+	return trafficErr != nil, expiryErr != nil
 }
 
 type Config struct {
@@ -175,7 +234,7 @@ type Client struct {
 	NoStore         bool       // do not store to file
 	NoDisplay       bool       // do not display on web
 	MaxConn         int        // max concurrent connections
-	NowConn         int32      // current connections
+	NowConn         int32      // legacy JSON snapshot; use CurrentConnections at runtime
 	WebUserName     string     // web username
 	WebPassword     string     // web password
 	WebTotpSecret   string     // web totp secret
@@ -221,40 +280,42 @@ func NewClient(vKey string, noStore bool, noDisplay bool) *Client {
 	}
 }
 
-func (s *Client) AddConn() {
-	atomic.AddInt32(&s.NowConn, 1)
+// ControlGroup is the client level of global -> client -> resource admission.
+func (s *Client) ControlGroup() *byterate.Group {
+	if s == nil {
+		return rate.RootGroup()
+	}
+	s.Lock()
+	if s.Rate == nil {
+		s.Rate = rate.NewRate(0)
+	}
+	g := s.Rate.Group()
+	g.SetMaxConns(int64(s.MaxConn))
+	s.Unlock()
+	return g
 }
 
-// CutConn releases a connection taken by GetConn or AddConn; the count never
-// drops below zero.
-func (s *Client) CutConn() {
-	for {
-		n := atomic.LoadInt32(&s.NowConn)
-		if n <= 0 {
-			return
-		}
-		if atomic.CompareAndSwapInt32(&s.NowConn, n, n-1) {
-			return
-		}
+// SetMaxConn updates the client configuration and its library cap together.
+func (s *Client) SetMaxConn(limit int) {
+	s.Lock()
+	defer s.Unlock()
+	s.MaxConn = max(limit, 0)
+	if s.Rate != nil {
+		s.Rate.Group().SetMaxConns(int64(s.MaxConn))
 	}
 }
 
-// GetConn takes a connection slot, reporting false when MaxConn is reached.
-func (s *Client) GetConn() bool {
-	for {
-		n := atomic.LoadInt32(&s.NowConn)
-		next := n + 1
-		if n < 0 {
-			next = 1
-		}
-		if s.MaxConn != 0 && int(next) > s.MaxConn {
-			return false
-		}
-		if atomic.CompareAndSwapInt32(&s.NowConn, n, next) {
-			return true
-		}
+// CurrentConnections includes all admitted connections of the client's resources.
+func (s *Client) CurrentConnections() int32 {
+	if s == nil || s.Rate == nil {
+		return 0
 	}
+	return int32(s.Rate.Group().Conns())
 }
+
+// GetConn and CutConn adapt legacy callers to byterate's balanced slot API.
+func (s *Client) GetConn() bool { return s.ControlGroup().Acquire() == nil }
+func (s *Client) CutConn()      { s.Rate.Group().Release() }
 
 func (s *Client) HasTunnel(t *Tunnel) (tt *Tunnel, exist bool) {
 	GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
@@ -319,6 +380,7 @@ func (s *Client) EnsureWebPassword() {
 
 type Tunnel struct {
 	RateLimits
+	MaxConn      int // concurrent connections; zero means unlimited
 	Id           int
 	Port         int
 	ServerIp     string
@@ -443,11 +505,13 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 // Clone returns a copy of t that can be edited and then stored with
 // UpdateTask without touching t until the update is accepted. Flow and the
 // health state are copied; Client, Target and the account settings are shared
-// and are expected to be replaced rather than modified.
+// and are expected to be replaced rather than modified. Connection reservations
+// are reattached on accepted updates, so an edit cannot forget active slots.
 func (t *Tunnel) Clone() *Tunnel {
 	t.RLock()
 	c := &Tunnel{
 		RateLimits:   t.RateLimits.copyConfig(),
+		MaxConn:      t.MaxConn,
 		Id:           t.Id,
 		Port:         t.Port,
 		ServerIp:     t.ServerIp,
@@ -505,6 +569,7 @@ func (t *Tunnel) Clone() *Tunnel {
 }
 
 func (t *Tunnel) Update(other *Tunnel) {
+	t.SetMaxConn(other.MaxConn)
 	t.SetRateLimits(other.UploadLimit, other.DownloadLimit)
 	t.ServerIp = other.ServerIp
 	t.Mode = other.Mode
@@ -524,13 +589,29 @@ func (t *Tunnel) Update(other *Tunnel) {
 	t.MultiAccount = other.MultiAccount
 }
 
-func (t *Tunnel) AddConn() {
-	atomic.AddInt32(&t.NowConn, 1)
+// ControlGroup is a tunnel's leaf under its client, shared across accepted edits.
+func (t *Tunnel) ControlGroup() *byterate.Group {
+	g := t.RateLimiter().Group(t.Client.ControlGroup())
+	t.RLock()
+	g.SetMaxConns(int64(t.MaxConn))
+	t.RUnlock()
+	return g
 }
 
-func (t *Tunnel) CutConn() {
-	atomic.AddInt32(&t.NowConn, -1)
+// SetMaxConn updates the library cap without reclaiming active slots.
+func (t *Tunnel) SetMaxConn(limit int) {
+	t.Lock()
+	t.MaxConn = max(limit, 0)
+	t.rateMu.Lock()
+	if t.runtimeRate != nil {
+		t.runtimeRate.Group(nil).SetMaxConns(int64(max(limit, 0)))
+	}
+	t.rateMu.Unlock()
+	t.Unlock()
 }
+func (t *Tunnel) GetConn() bool             { return t.ControlGroup().Acquire() == nil }
+func (t *Tunnel) CutConn()                  { t.RateLimiter().Group(nil).Release() }
+func (t *Tunnel) CurrentConnections() int32 { return t.RateLimits.connectionCount() }
 
 type Health struct {
 	HealthCheckTimeout  int
@@ -609,13 +690,9 @@ func (s *Host) Update(h *Host) {
 	s.CopySourceLists(&h.SourceLists)
 }
 
-func (s *Host) AddConn() {
-	atomic.AddInt32(&s.NowConn, 1)
-}
-
-func (s *Host) CutConn() {
-	atomic.AddInt32(&s.NowConn, -1)
-}
+// ControlGroup is a domain's leaf under its client; byte controls share it.
+func (s *Host) ControlGroup() *byterate.Group { return s.RateLimiter().Group(s.Client.ControlGroup()) }
+func (s *Host) CurrentConnections() int32     { return s.RateLimits.connectionCount() }
 
 type Target struct {
 	TargetStr     string
@@ -714,6 +791,7 @@ func GetAccountMap(multiAccount *MultiAccount) map[string]string {
 
 type Glob struct {
 	SourceLists
+	MaxConn int // total concurrent forwarded connections; zero means unlimited
 	// RateLimit limits all forwarded traffic together, in KB/s; 0 means
 	// unlimited.
 	RateLimit int
@@ -725,10 +803,11 @@ type Glob struct {
 	sync.RWMutex
 }
 
-// ApplyLimits makes the server use g's global rate limit.
+// ApplyLimits applies the global bandwidth and connection limits.
 func (g *Glob) ApplyLimits() {
 	if g != nil {
 		rate.SetGlobalLimit(int64(g.RateLimit) * 1024)
+		SetGlobalMaxConn(g.MaxConn)
 	}
 }
 

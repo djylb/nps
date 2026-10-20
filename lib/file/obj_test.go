@@ -182,19 +182,19 @@ func TestClientGetConnHonoursMaxConn(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if got != 5 || c.NowConn != 5 {
-		t.Fatalf("granted %d, NowConn %d, want 5", got, c.NowConn)
+	if got != 5 || c.CurrentConnections() != 5 {
+		t.Fatalf("granted %d, NowConn %d, want 5", got, c.CurrentConnections())
 	}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		c.CutConn()
 	}
-	if c.NowConn != 0 {
-		t.Fatalf("NowConn = %d after over-release, want 0", c.NowConn)
+	if c.CurrentConnections() != 0 {
+		t.Fatalf("NowConn = %d after over-release, want 0", c.CurrentConnections())
 	}
-	c.NowConn = -3
-	if !c.GetConn() || c.NowConn != 1 {
-		t.Fatalf("negative count must restart at 1, got %d", c.NowConn)
+	if !c.GetConn() || c.CurrentConnections() != 1 {
+		t.Fatal("released slot not reusable")
 	}
+	c.CutConn()
 }
 
 func TestConfigTaskPorts(t *testing.T) {

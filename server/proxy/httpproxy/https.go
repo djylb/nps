@@ -226,14 +226,13 @@ func checkHTTPAndRedirect(c net.Conn, rb []byte) {
 }
 
 func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, sni string) {
-	if err := s.CheckFlowAndConnNum(host.Client); err != nil {
+	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
+	if err != nil {
 		logs.Debug("Client id %d, host id %d, error %v during https connection", host.Client.Id, host.Id, err)
 		_ = c.Close()
 		return
 	}
-	defer host.Client.CutConn()
-	host.AddConn()
-	defer host.CutConn()
+	defer release()
 
 	targetAddr, err := host.Target.GetRandomTarget()
 	if err != nil {
@@ -249,14 +248,13 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 }
 
 func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni string) {
-	if err := s.CheckFlowAndConnNum(host.Client); err != nil {
+	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
+	if err != nil {
 		logs.Debug("Client id %d, host id %d, TLS-only check failed: %v", host.Client.Id, host.Id, err)
 		_ = tlsConn.Close()
 		return
 	}
-	defer host.Client.CutConn()
-	host.AddConn()
-	defer host.CutConn()
+	defer release()
 
 	targetAddr, err := host.Target.GetRandomTarget()
 	if err != nil {

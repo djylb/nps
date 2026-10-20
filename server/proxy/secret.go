@@ -25,14 +25,12 @@ func NewSecretServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy, allow
 }
 
 func (s *SecretServer) HandleSecret(src net.Conn) error {
-	s.Task.AddConn()
-	defer s.Task.CutConn()
-	if err := s.CheckFlowAndConnNum(s.Task.Client); err != nil {
+	release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
+	if err != nil {
 		_ = src.Close()
-		logs.Warn("Connection limit exceeded, client id %d, host id %d, error %v", s.Task.Client.Id, s.Task.Id, err)
 		return err
 	}
-	defer s.Task.Client.CutConn()
+	defer release()
 
 	connType := common.ConnTCP
 	host, _ := s.Task.Target.GetRandomTarget()

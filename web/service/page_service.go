@@ -162,12 +162,14 @@ func (s DefaultPageService) buildGlobal(input PageBuildInput) (PageBuildResult, 
 	switch strings.TrimSpace(input.Action) {
 	case "index":
 		data["name"] = "global"
+		data["globalNowConn"], _ = file.GlobalConnections()
 		data["globalIpListPriority"] = acl.DenyFirst
 		if global := s.globals().Get(); global != nil {
 			data["globalIpListPriority"] = global.IpListPriority
 			data["globalBlackIpList"] = joinRuleLines(global.BlackIpList)
 			data["globalWhiteIpList"] = joinRuleLines(global.WhiteIpList)
 			data["globalRateLimit"] = global.RateLimit
+			data["globalMaxConn"] = global.MaxConn
 		}
 		data["geo"] = s.system().GeoDataStatus()
 	case "banlist":

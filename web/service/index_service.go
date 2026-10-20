@@ -80,6 +80,7 @@ type AddTunnelInput struct {
 	DestACLMode    int
 	DestACLRules   string
 	Access         AccessListInput
+	MaxConn        int
 	UploadLimit    int // KB/s; zero means unlimited
 	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
@@ -108,6 +109,7 @@ type EditTunnelInput struct {
 	DestACLMode    int
 	DestACLRules   string
 	Access         AccessListInput
+	MaxConn        int
 	UploadLimit    int // KB/s; zero means unlimited
 	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
@@ -236,6 +238,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		},
 	}
 
+	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
@@ -336,6 +339,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.DestAclRules = destRules
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Remark = input.Remark
+	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
@@ -400,6 +404,14 @@ func (s DefaultIndexService) StartTunnel(id int, mode string) error {
 }
 
 func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
+	if strings.TrimSpace(mode) == "max_conn" {
+		tunnel, err := s.GetTunnel(id)
+		if err != nil {
+			return err
+		}
+		tunnel.SetMaxConn(0)
+		return s.repo().SaveTunnel(tunnel)
+	}
 	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
 		tunnel, err := s.GetTunnel(id)
 		if err != nil {
@@ -611,6 +623,8 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	if err := s.repo().SaveHost(host, oldHost); err != nil {
 		return HostMutation{}, err
 	}
+
+	host.ControlGroup() // Move live slots together with their new owner.
 
 	return HostMutation{ID: host.Id, ClientID: client.Id}, nil
 }

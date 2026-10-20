@@ -102,3 +102,14 @@ func (r *RateLimits) adopt(old *RateLimits) {
 	r.runtimeRate = d
 	d.SetLimits(limitBytes(r.UploadLimit), limitBytes(r.DownloadLimit))
 }
+
+// connectionCount reads the library group without allocating state for idle rows.
+func (r *RateLimits) connectionCount() int32 {
+	r.rateMu.Lock()
+	d := r.runtimeRate
+	r.rateMu.Unlock()
+	if d == nil {
+		return 0
+	}
+	return int32(d.Group(nil).Conns())
+}

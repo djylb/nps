@@ -198,6 +198,7 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 	if old, ok := s.JsonDb.Tasks.Load(t.Id); ok {
 		if previous, ok := old.(*Tunnel); ok && previous != nil && previous != t {
 			t.RateLimits.adopt(&previous.RateLimits)
+			t.ControlGroup()
 		}
 	}
 	normalizeTask(t)
@@ -536,7 +537,7 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
 		c := v.(*Client)
 		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
-		if t.Rate == nil {
+		if c.Rate != nil {
 			t.Rate = c.Rate
 		}
 	}

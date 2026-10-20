@@ -11,46 +11,52 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
 
-func TestCheckFlowAndConnNum(t *testing.T) {
+func TestAcquireForwarding(t *testing.T) {
 	s := &BaseServer{}
 
 	t.Run("expired service", func(t *testing.T) {
 		client := &file.Client{Flow: &file.Flow{TimeLimit: time.Now().Add(-time.Second)}}
-		err := s.CheckFlowAndConnNum(client)
+		_, err := s.AcquireForwarding(client, nil)
 		if err == nil || err.Error() != "service access expired" {
-			t.Fatalf("CheckFlowAndConnNum() error = %v, want service access expired", err)
+			t.Fatalf("AcquireForwarding() error = %v, want service access expired", err)
 		}
 	})
 
 	t.Run("traffic limit exceeded", func(t *testing.T) {
 		client := &file.Client{Flow: &file.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 1}, MaxConn: 10}
-		err := s.CheckFlowAndConnNum(client)
+		_, err := s.AcquireForwarding(client, nil)
 		if err == nil || err.Error() != "traffic limit exceeded" {
-			t.Fatalf("CheckFlowAndConnNum() error = %v, want traffic limit exceeded", err)
+			t.Fatalf("AcquireForwarding() error = %v, want traffic limit exceeded", err)
 		}
 	})
 
 	t.Run("connection limit exceeded", func(t *testing.T) {
-		client := &file.Client{Flow: &file.Flow{}, MaxConn: 1, NowConn: 1}
-		err := s.CheckFlowAndConnNum(client)
-		if err == nil || err.Error() != "connection limit exceeded" {
-			t.Fatalf("CheckFlowAndConnNum() error = %v, want connection limit exceeded", err)
+		client := &file.Client{Flow: &file.Flow{}, MaxConn: 1}
+		if !client.GetConn() {
+			t.Fatal("seed reservation")
+		}
+		defer client.CutConn()
+		_, err := s.AcquireForwarding(client, nil)
+		if err == nil || !errors.Is(err, byterate.ErrTooManyConns) {
+			t.Fatalf("AcquireForwarding() error = %v, want connection limit exceeded", err)
 		}
 	})
 
 	t.Run("success increments connection count", func(t *testing.T) {
 		client := &file.Client{Flow: &file.Flow{}, MaxConn: 2, NowConn: 0}
-		err := s.CheckFlowAndConnNum(client)
+		release, err := s.AcquireForwarding(client, nil)
 		if err != nil {
-			t.Fatalf("CheckFlowAndConnNum() unexpected error = %v", err)
+			t.Fatalf("AcquireForwarding() unexpected error = %v", err)
 		}
-		if client.NowConn != 1 {
-			t.Fatalf("client.NowConn = %d, want 1", client.NowConn)
+		defer release()
+		if client.CurrentConnections() != 1 {
+			t.Fatalf("client.CurrentConnections() = %d, want 1", client.CurrentConnections())
 		}
 	})
 }
@@ -129,16 +135,17 @@ func TestWriteConnFail(t *testing.T) {
 	_ = serverSide.Close()
 }
 
-func TestCheckFlowAndConnNumAtTrafficLimitBoundary(t *testing.T) {
+func TestAcquireForwardingAtTrafficLimitBoundary(t *testing.T) {
 	s := &BaseServer{}
 	client := &file.Client{Flow: &file.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 0}, MaxConn: 2}
 
-	err := s.CheckFlowAndConnNum(client)
+	release, err := s.AcquireForwarding(client, nil)
 	if err != nil {
-		t.Fatalf("CheckFlowAndConnNum() unexpected error = %v", err)
+		t.Fatalf("AcquireForwarding() unexpected error = %v", err)
 	}
-	if client.NowConn != 1 {
-		t.Fatalf("client.NowConn = %d, want 1", client.NowConn)
+	defer release()
+	if client.CurrentConnections() != 1 {
+		t.Fatalf("client.CurrentConnections() = %d, want 1", client.CurrentConnections())
 	}
 }
 

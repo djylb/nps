@@ -33,6 +33,14 @@
                                 <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
                             </div>
                         </div>
+                        <div class="form-group" id="global_max_conn">
+                            <label class="control-label font-bold" langtag="word-globalmaxconn"></label>
+                            <div class="col-sm-12">
+                                <input class="form-control" type="number" min="0" step="1" name="globalMaxConn" value="{{or .globalMaxConn 0}}">
+                                <span class="help-block m-b-none" langtag="info-globalmaxconn"></span>
+                                <span class="help-block m-b-none"><span langtag="word-nowconn"></span>: {{or .globalNowConn 0}}</span>
+                            </div>
+                        </div>
                         <div class="form-group" id="global_rate_limit">
                             <label class="control-label font-bold" langtag="word-globalratelimit"></label>
                             <div class="col-sm-12">

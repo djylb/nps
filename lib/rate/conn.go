@@ -13,13 +13,14 @@ import (
 // npc. A net.Conn stays a net.Conn. A nil r leaves only the global limit.
 // Close wakes a Read or Write waiting for a limit.
 func NewRateConn(conn io.ReadWriteCloser, r *Rate, entry ...*Directional) io.ReadWriteCloser {
-	read, write := limiters(r)
+	group := r.Group()
 	for _, e := range entry {
 		if e != nil {
-			read = byterate.NewHierarchy(read, &e.download)
-			write = byterate.NewHierarchy(write, &e.upload)
+			group = e.connectionGroup(group)
 		}
 	}
+	read, write := group.Reader(), group.Writer()
+
 	if c, ok := conn.(net.Conn); ok {
 		return byterate.NewDuplexConn(c, read, write)
 	}

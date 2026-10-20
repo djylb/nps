@@ -82,7 +82,7 @@ func (a *App) GetOneTunnel(c Context) {
 	if tunnel, err := a.Services.Index.GetTunnel(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, tunnel)
+		respondCodeData(c, 1, tunnelRateRows([]*file.Tunnel{tunnel})[0])
 	}
 }
 
@@ -173,7 +173,7 @@ func (a *App) GetHost(c Context) {
 	if host, err := a.Services.Index.GetHost(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, host)
+		respondCodeData(c, 1, hostRateRows([]*file.Host{host})[0])
 	}
 }
 
@@ -299,6 +299,7 @@ func addTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.AddTunnelInpu
 		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
 		DestACLRules:   requestString(c, "dest_acl_rules"),
 		Access:         requestAccessLists(c, ""),
+		MaxConn:        requestIntValue(c, "max_conn"),
 		UploadLimit:    requestIntValue(c, "upload_limit"),
 		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
@@ -330,6 +331,7 @@ func editTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.EditTunnelIn
 		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
 		DestACLRules:   requestString(c, "dest_acl_rules"),
 		Access:         requestAccessLists(c, ""),
+		MaxConn:        requestIntValue(c, "max_conn"),
 		UploadLimit:    requestIntValue(c, "upload_limit"),
 		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
@@ -422,12 +424,14 @@ func indexAllowLocal(cfg *servercfg.Snapshot, isAdmin bool) bool {
 // These response fields are snapshots in bytes/s and are never persisted.
 type tunnelRateRow struct {
 	*file.Tunnel
+	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
 
 type hostRateRow struct {
 	*file.Host
+	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
@@ -442,7 +446,7 @@ func tunnelRateRows(rows []*file.Tunnel) []*tunnelRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &tunnelRateRow{Tunnel: row, UploadRate: upload, DownloadRate: download}
+		result[i] = &tunnelRateRow{Tunnel: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }
@@ -457,7 +461,7 @@ func hostRateRows(rows []*file.Host) []*hostRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &hostRateRow{Host: row, UploadRate: upload, DownloadRate: download}
+		result[i] = &hostRateRow{Host: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }
