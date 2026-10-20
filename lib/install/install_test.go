@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/djylb/nps/lib/version"
 	"io"
 	"net"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/djylb/nps/lib/version"
 )
 
 func TestPathExists(t *testing.T) {
