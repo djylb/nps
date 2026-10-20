@@ -92,7 +92,7 @@ func main() {
 	prg := &nps{exit: make(chan struct{})}
 
 	// update needs no config, so a broken config file can still be replaced
-	if cmd == "update" {
+	if cmd == "update" || cmd == "update-force" {
 		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
 		var s service.Service
 		if svc, err := service.New(prg, svcConfig); err == nil {
@@ -105,7 +105,11 @@ func main() {
 			cfg := servercfg.Current()
 			install.SetGeoDataPaths(common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath))
 		}
-		res, err := install.UpdateNps(svcConfig.Name)
+		update := install.UpdateNps
+		if cmd == "update-force" {
+			update = install.ForceUpdateNps
+		}
+		res, err := update(svcConfig.Name)
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
 		}

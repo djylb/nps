@@ -92,6 +92,17 @@ NPS 提供官方二进制安装包，适用于 **Windows、Linux、macOS、FreeB
 
 ---
 
+### 强制更新
+
+服务端和客户端均支持以下命令，跳过当前版本与最新发布版本的比较，重新下载安装最新发布包：
+
+```bash
+nps update-force
+npc update-force
+```
+
+Windows 使用 `.\nps.exe update-force` 或 `.\npc.exe update-force`，请以管理员身份运行；Linux 系统安装通常需要 root 权限。适用于同版本重新安装，也允许从较新的本地开发版回到最新正式发布版。仍保留原有的包摘要校验、下载程序可运行检查及发布标签与程序版本一致性检查；镜像回落沿用原更新流程。服务重启、网页及 Geo 数据更新行为与 `update` 相同，配置和实例密钥保持不变。
+
 ### **3.1 Windows 安装**
 
 **Windows 10/11 用户（推荐）**：
@@ -128,6 +139,58 @@ NPS 提供官方二进制安装包，适用于 **Windows、Linux、macOS、FreeB
 # Update
 .\npc.exe update
 ```
+
+<a id="windows7"></a>
+
+#### Windows 7 系统更新与证书
+
+Windows 7 请先安装 **Service Pack 1（SP1）** 并补齐系统更新，再使用上面的 `old` 包：32 位系统选择 `windows_386_*_old`，64 位系统选择 `windows_amd64_*_old`。`old` 表示使用兼容旧系统的 Go 工具链，不代表无需系统补丁。建议优先使用仍受支持的 Windows 版本。
+
+**1. 程序打不开，提示 `fatal error: bcrypt.dll not found`**
+
+此前 Win7 32 位测试中遇到过这个错误，补齐系统更新后程序可以启动。该提示不一定表示磁盘上真的没有 DLL：旧系统缺少安全 DLL 加载接口支持，也可能导致 Go 运行时加载系统库失败。
+
+- 检查 **KB2533623** 或包含同等功能的后续更新。该更新为 Win7 提供 `LoadLibraryEx` 的 `LOAD_LIBRARY_SEARCH_*` 支持，参见 [Microsoft DLL 加载接口说明](https://learn.microsoft.com/zh-cn/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexa)。已安装替代更新时，无需强行重复安装旧补丁。
+- 更新基础系统时，按微软要求安装 **KB4490628（服务堆栈更新）**、**KB4474419（SHA-2 签名支持更新）**，按要求重启，然后继续安装适用更新。这两项用于支持后续更新和签名验证，不等同于根证书包，也不能替代 DLL 加载接口更新。参见 [Microsoft SHA-2 更新要求](https://support.microsoft.com/en-us/servicing/os/windows/2020/09/2019-sha-2-code-signing-support-requirement-for-windows-and-wsus)。
+- 离线补丁请从 [Microsoft Update Catalog](https://www.catalog.update.microsoft.com/) 按 KB 编号搜索，选择 Windows 7 SP1 对应的 x86/x64 包。补丁架构按**操作系统**选择，不按 npc.exe 的位数选择；提示“不适用于此计算机”时，检查 SP1、前置更新、系统架构及是否已被后续更新替代。
+- 更新后先在命令提示符中运行 `npc.exe`，确认不再出现运行时崩溃，再安装服务。不要从第三方 DLL 下载站复制 `bcrypt.dll` 到程序目录。若提示的是 **`bcryptprimitives.dll not found`**，先确认没有误用普通 Windows 包；它与 `bcrypt.dll` 不是同一个文件。
+
+**2. 程序能启动，但 TLS 连接失败或前台在线、服务离线**
+
+先检查日志：`sc query Npc` 显示 `RUNNING` 只代表服务进程在运行，不代表已成功连接 nps。出现 `x509: certificate signed by unknown authority` 等错误时，检查以下内容：
+
+- 系统日期、时间和时区正确；服务端证书未过期，访问域名在证书覆盖范围内，服务端发送了完整的中间证书链。更新根证书不能修复域名不匹配、证书过期或服务端漏发中间证书的问题。
+- 补齐系统更新后，允许 Windows 自动更新受信任根证书；网络或组策略可能阻止此更新。根证书与 SHA-2 补丁是两回事，安装补丁后仍应检查根证书是否已更新。
+- npc 服务默认以 **LocalSystem** 运行，和当前登录用户的证书存储区不同。手动导入时，应在 `mmc.exe` 中添加“证书”管理单元，选择“计算机帐户”→“本地计算机”，将可信根 CA 导入“受信任的根证书颁发机构”，中间 CA 导入“中间证书颁发机构”。只导入当前用户存储区，可能出现前台连接成功、服务连接失败。
+
+无法在线更新时，可在一台能够正常访问 Windows Update 的 Windows 计算机上执行：
+
+```bat
+certutil -generateSSTFromWU roots.sst
+```
+
+将生成的文件传到 Win7，打开 `roots.sst`，按需导出所需的根 CA 证书，再通过上面的“本地计算机”管理单元导入。旧版 `certutil` 不支持该命令或下载失败时，在已更新的 Windows 计算机上生成即可。来源与操作方法见 [Microsoft 根证书更新说明](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/configure-trusted-roots-disallowed-certificates)。已从可信 CA 官方渠道获取并核对的单张根证书，也可以在**管理员命令提示符**中导入：
+
+```bat
+certutil -addstore Root root-ca.cer
+```
+
+此命令未使用 `-user`，写入本地计算机存储区；参见 [Microsoft 导入根证书说明](https://learn.microsoft.com/en-us/troubleshoot/windows-server/certificates-and-public-key-infrastructure-pki/valid-root-ca-certificates-untrusted)。不要把服务端叶子证书或不明来源的证书包当作根 CA 导入。NPS/NPC 不内置 curl/Mozilla 根证书包，更新系统信任库后应重启 npc 服务再测试。
+
+**3. 更新后的服务验证**
+
+用相同的服务器、vkey 和连接类型，先停止服务后前台运行，确认日志显示连接成功，再退出前台并启动服务，避免同时启动两个实例干扰判断：
+
+```bat
+npc.exe stop
+npc.exe -server="nps.example.com:8025" -vkey="你的vkey" -type="tls"
+REM 确认连接成功后按 Ctrl+C 退出，再执行以下命令
+npc.exe start
+sc query Npc
+sc qc Npc
+```
+
+安装、启停服务请使用管理员命令提示符。通过 `sc qc Npc` 核对程序路径、连接参数和服务运行账户，并结合 npc 日志及 nps 管理页面确认在线；`1056` 表示服务实例已经运行，不代表 TLS 认证成功。
 
 ---
 

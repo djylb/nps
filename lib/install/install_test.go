@@ -3,6 +3,8 @@ package install
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"github.com/djylb/nps/lib/version"
 	"io"
 	"net"
 	"net/http"
@@ -359,3 +361,43 @@ func TestHTTPClientCertificateFallback(t *testing.T) {
 		t.Fatalf("do(closed port) error = %v, want a non-certificate error", err)
 	}
 }
+
+// Even with force, release metadata and package validation must remain mandatory.
+func TestForceUpdateBypassesVersionGateButValidatesDigest(t *testing.T) {
+	for _, kind := range []string{"client", "server"} {
+		for _, tag := range []string{"v" + version.VERSION, "v0.1.0"} {
+			for _, force := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/force=%v", kind, tag, force), func(t *testing.T) {
+					requests := 0
+					transport := updateTestTransport(func(req *http.Request) (*http.Response, error) {
+						requests++
+						if req.URL.Host != "api.github.com" {
+							t.Fatalf("unexpected download: %s", req.URL)
+						}
+						body := fmt.Sprintf(`{"tag_name":%q,"assets":[{"name":%q,"digest":"sha256:invalid"}]}`, tag, packageName(kind))
+						return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+					})
+					c := &httpClient{verified: &http.Client{Transport: transport}}
+					res, err := updateWithClient(c, kind, "unused", "unused", force)
+					if res != nil {
+						t.Fatal("unexpected replacement")
+					}
+					if force {
+						if err == nil || !strings.Contains(err.Error(), "malformed digest") {
+							t.Fatalf("forced update must validate digest: %v", err)
+						}
+					} else if err != nil {
+						t.Fatalf("normal update should skip current/older release: %v", err)
+					}
+					if requests != 1 {
+						t.Fatalf("requests = %d, want metadata only", requests)
+					}
+				})
+			}
+		}
+	}
+}
+
+type updateTestTransport func(*http.Request) (*http.Response, error)
+
+func (f updateTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

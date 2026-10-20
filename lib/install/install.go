@@ -51,19 +51,31 @@ type UpdateResult struct {
 // refreshes the web assets of the current run directory. A nil result with a
 // nil error means the running version is already the latest.
 func UpdateNps(service string) (*UpdateResult, error) {
-	return update("server", "nps", service)
+	return update("server", "nps", service, false)
 }
 
 // UpdateNpc replaces the npc executables with the latest release. A nil
 // result with a nil error means the running version is already the latest.
 func UpdateNpc(service string) (*UpdateResult, error) {
-	return update("client", "npc", service)
+	return update("client", "npc", service, false)
 }
 
-func update(kind, bin, service string) (*UpdateResult, error) {
-	RemoveStaleExecutables()
+// ForceUpdateNps installs the latest server release regardless of the running version.
+func ForceUpdateNps(service string) (*UpdateResult, error) {
+	return update("server", "nps", service, true)
+}
 
-	c := newHTTPClient()
+// ForceUpdateNpc installs the latest client release regardless of the running version.
+func ForceUpdateNpc(service string) (*UpdateResult, error) {
+	return update("client", "npc", service, true)
+}
+
+func update(kind, bin, service string, force bool) (*UpdateResult, error) {
+	RemoveStaleExecutables()
+	return updateWithClient(newHTTPClient(), kind, bin, service, force)
+}
+
+func updateWithClient(c *httpClient, kind, bin, service string, force bool) (*UpdateResult, error) {
 	filename := packageName(kind)
 	var (
 		tag    string
@@ -87,7 +99,7 @@ func update(kind, bin, service string) (*UpdateResult, error) {
 		}
 		tag = rl.TagName
 		fmt.Println("The latest version is", tag)
-		if version.Compare(tag, version.VERSION) <= 0 {
+		if !force && version.Compare(tag, version.VERSION) <= 0 {
 			fmt.Println("Already up to date, current version is", version.VERSION)
 			return nil, nil
 		}
@@ -130,7 +142,7 @@ func update(kind, bin, service string) (*UpdateResult, error) {
 	}
 	fmt.Println("The downloaded version is", v)
 	if tag == "" {
-		if version.Compare(v, version.VERSION) <= 0 {
+		if !force && version.Compare(v, version.VERSION) <= 0 {
 			fmt.Println("Already up to date, current version is", version.VERSION)
 			return nil, nil
 		}

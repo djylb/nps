@@ -166,7 +166,7 @@ func main() {
 	for _, v := range os.Args[1:] {
 		switch v {
 		case "install", "start", "stop", "uninstall", "restart",
-			"status", "register", "update":
+			"status", "register", "update", "update-force":
 			continue
 		}
 		if !strings.Contains(v, "-service=") && !strings.Contains(v, "-debug=") {
@@ -180,12 +180,16 @@ func main() {
 	defer cancel()
 	prg := NewNpc(ctx)
 	s, err := service.New(prg, svcConfig)
-	if cmd == "update" {
+	if cmd == "update" || cmd == "update-force" {
 		if err != nil {
 			logs.Warn("service function disabled %v", err)
 			s = nil
 		}
-		res, err := install.UpdateNpc(svcConfig.Name)
+		update := install.UpdateNpc
+		if cmd == "update-force" {
+			update = install.ForceUpdateNpc
+		}
+		res, err := update(svcConfig.Name)
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
 		}

@@ -80,7 +80,7 @@ func updateSelf(kind, bin, name string) (*SelfUpdate, error) {
 	}
 	// An error with a result means the executables were replaced, so the
 	// restart is still due.
-	res, err := update(kind, bin, name)
+	res, err := update(kind, bin, name, false)
 	if res == nil {
 		return nil, err
 	}

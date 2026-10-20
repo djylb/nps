@@ -90,18 +90,21 @@ nps start|stop|restart|uninstall
 
 # 更新
 nps update
+nps update-force
 ```
 
 > **提示：** 首次安装后请先编辑 `/etc/nps/nps.conf`，确认配置无误后再执行 `nps start`。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
+> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/install.md#windows7)。
 ```powershell
 .\nps.exe install
 .\nps.exe start|stop|restart|uninstall
 
 # 更新
 .\nps.exe update
+.\nps.exe update-force
 ```
 
 ### 客户端安装
@@ -114,18 +117,21 @@ npc start|stop|restart|uninstall
 
 # 更新
 npc update
+npc update-force
 ```
 
 > **提示：** `npc install` 命令中的参数请以 NPS Web 管理端客户端页面生成的命令为准。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
+> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/install.md#windows7)。
 ```powershell
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
 .\npc.exe start|stop|restart|uninstall
 
 # 更新
 .\npc.exe update
+.\npc.exe update-force
 ```
 
 > **提示：** 客户端支持同时连接多个服务器，示例：  

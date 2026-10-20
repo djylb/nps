@@ -109,6 +109,7 @@ nps start|stop|restart|uninstall
 
 # Update
 nps update
+nps update-force
 ```
 
 > **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
@@ -116,6 +117,7 @@ nps update
 #### Windows
 
 > Windows 7 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
+> Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/install.md#windows7).
 
 ```powershell
 .\nps.exe install
@@ -123,6 +125,7 @@ nps update
 
 # Update
 .\nps.exe update
+.\nps.exe update-force
 ```
 
 ### Client Installation
@@ -136,6 +139,7 @@ npc start|stop|restart|uninstall
 
 # Update
 npc update
+npc update-force
 ```
 
 > **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
@@ -143,6 +147,7 @@ npc update
 #### Windows
 
 > Windows 7 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
+> Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/install.md#windows7).
 
 ```powershell
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
@@ -150,6 +155,7 @@ npc update
 
 # Update
 .\npc.exe update
+.\npc.exe update-force
 ```
 
 > **Tip:** The client supports connecting to multiple servers simultaneously. Example:
