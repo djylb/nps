@@ -10,6 +10,7 @@ var (
 	ErrInvalidRegistration      = errors.New("invalid registration")
 	ErrReservedUsername         = errors.New("reserved username")
 	ErrClientNotFound           = errors.New("client not found")
+	ErrVirtualClientOperation   = errors.New("operation is not supported for virtual clients")
 	ErrClientOffline            = errors.New("client is offline")
 	ErrClientUpdateUnsupported  = errors.New("client version does not support remote update")
 	ErrServerUpdateUnavailable  = errors.New("server update is unavailable")

@@ -96,8 +96,8 @@
         onLoadSuccess:function (data) { $('body').setLang('.detail-view'); },
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
         detailFormatter: function (index, row, element) {
-            var usage = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
-                + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>&emsp;'
+            var usage = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + npsLiveValue('Flow.ExportFlow', changeunit(row.Flow.ExportFlow)) + '</span>&emsp;'
+                + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + npsLiveValue('Flow.InletFlow', changeunit(row.Flow.InletFlow)) + '</span>&emsp;'
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;<br/><br>'
             usage += '<b langtag="word-uploadlimit"></b>: ' + uploadLimitValue(row) + '&emsp;'
@@ -347,7 +347,7 @@
                 sortable: true,
                 sortName: 'speed',
                 formatter: function (value, row, index) {
-                    return changeunit((Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                    return changeunit(typeof value === 'number' ? value : (Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
                 }
             },
             {
@@ -404,7 +404,7 @@
                 visible: true, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
                 }
             },
             {
@@ -415,7 +415,7 @@
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(actualFlow(row.Flow)) + '</span>'
+                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(typeof value === 'number' ? value : actualFlow(row.Flow)) + '</span>'
                 }
             },
             {
@@ -429,7 +429,7 @@
                     if (row.Flow.FlowLimit === 0) {
                         return '∞'
                     }
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(flowRemain(row.Flow)) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(typeof value === 'number' ? value : flowRemain(row.Flow)) + '</span>'
                 }
             },
             {
@@ -556,5 +556,6 @@
             }
         ]
     });
+    initListLive('host', '{{.web_base_url}}');
     initListBatch('host', '{{.web_base_url}}');
 </script>

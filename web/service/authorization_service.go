@@ -179,18 +179,19 @@ func (s DefaultAuthorizationService) RequireHost(principal Principal, hostID int
 }
 
 // canAccessClient reports whether principal may act on client clientID; an
-// administrator may also act on 0, which stands for every client, as the
+// administrator may manage negative virtual client IDs and also act on 0,
+// which stands for every client, as the
 // clearing of all clients' traffic does.
 func (s DefaultAuthorizationService) canAccessClient(principal Principal, clientID int) bool {
 	admin := s.Allows(principal, PermissionManagementAdmin)
-	if clientID == 0 && admin {
+	// Administrators manage virtual clients too; ordinary identities only
+	// contain positive client IDs. Destructive/remote-only actions have their
+	// own service guards instead of blocking every virtual client operation.
+	if admin {
 		return true
 	}
 	if clientID <= 0 {
 		return false
-	}
-	if admin {
-		return true
 	}
 	for _, current := range principal.ClientIDs {
 		if current == clientID {

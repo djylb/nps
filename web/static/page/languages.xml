@@ -1313,6 +1313,14 @@
 		<zh-CN>创建时间</zh-CN>
 		<en-US>Create Time</en-US>
 	</lang>
+	<lang id="word-autorefresh">
+		<zh-CN>自动刷新</zh-CN>
+		<en-US>Refreshing</en-US>
+	</lang>
+	<lang id="word-refreshpaused">
+		<zh-CN>已暂停</zh-CN>
+		<en-US>Paused</en-US>
+	</lang>
 	<lang id="word-connectionhistory">
 		<zh-CN>近期上线/离线</zh-CN>
 		<en-US>Recent connections</en-US>

@@ -216,7 +216,9 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 		}
 		oldVerifyKey := client.VerifyKey
 		client.VerifyKey = input.VKey
-		s.repo().ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
+		if client.Id > 0 {
+			s.repo().ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
+		}
 		client.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 		client.RateLimit = input.RateLimit
 		client.SetMaxConn(input.MaxConn)
@@ -280,6 +282,9 @@ func (s DefaultClientService) ChangeStatus(id int, status bool) error {
 // RequestUpdate asks the connected npc of client id to update themselves to
 // the latest release and returns how many were asked.
 func (s DefaultClientService) RequestUpdate(id int) (int, error) {
+	if id <= 0 {
+		return 0, ErrVirtualClientOperation
+	}
 	if _, err := s.repo().GetClient(id); err != nil {
 		return 0, ErrClientNotFound
 	}
@@ -287,6 +292,9 @@ func (s DefaultClientService) RequestUpdate(id int) (int, error) {
 }
 
 func (s DefaultClientService) Delete(id int) error {
+	if id <= 0 {
+		return ErrVirtualClientOperation
+	}
 	if err := s.repo().DeleteClient(id); err != nil {
 		return err
 	}

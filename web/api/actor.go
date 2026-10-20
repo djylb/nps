@@ -118,11 +118,14 @@ func ActorFromSessionIdentityWithFallback(identity *webservice.SessionIdentity, 
 }
 
 func ActorCanAccessClient(actor *Actor, clientID int) bool {
-	if actor == nil || clientID <= 0 {
+	if actor == nil || clientID == 0 {
 		return false
 	}
 	if actor.IsAdmin {
 		return true
+	}
+	if clientID < 0 {
+		return false
 	}
 	for _, current := range actor.ClientIDs {
 		if current == clientID {

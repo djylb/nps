@@ -105,6 +105,7 @@ func registerProtectedRoutes(group *gin.RouterGroup, state *State) {
 	registerIndexRoutes(group, state)
 	registerClientRoutes(group, state)
 	registerGlobalRoutes(group, state)
+	registerProtectedControllerRoutes(group, state, "live", webapi.ProtectedActionCatalog(state.App))
 	registerProtectedPageRoutes(group, state)
 	registerManagementShellRoutes(group, state)
 }

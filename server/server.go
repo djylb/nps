@@ -368,7 +368,7 @@ func dealClientData() {
 		v := value.(*file.Client)
 		if vv, ok := Bridge.Client.Load(v.Id); ok {
 			v.IsConnect = true
-			v.LastOnlineTime = time.Now().Format("2006-01-02 15:04:05")
+			v.MarkSeen(time.Now())
 			cli := vv.(*bridge.Client)
 			node, ok := cli.GetNodeByUUID(cli.LastUUID)
 			var ver string

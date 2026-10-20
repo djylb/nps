@@ -67,6 +67,7 @@ func ProtectedActionCatalog(app *App) []ActionSpec {
 		return nil
 	}
 	return []ActionSpec{
+		{Controller: "live", Name: "status", Method: http.MethodPost, APIPath: "/api/v1/live/status", LegacyPath: "/live/status", Protected: true, Handler: app.LiveStatus},
 		{Controller: "index", Name: "stats", Method: http.MethodGet, APIPath: "/api/v1/index/stats", LegacyPath: "/index/stats", Protected: true, Handler: app.DashboardStats},
 		{Controller: "index", Name: "updateserver", Method: http.MethodPost, APIPath: "/api/v1/index/updateserver", LegacyPath: "/index/updateserver", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateServer},
 		{Controller: "index", Name: "gettunnel", Method: http.MethodPost, APIPath: "/api/v1/index/gettunnel", LegacyPath: "/index/gettunnel", Permission: webservice.PermissionTunnelsRead, ClientScope: true, Protected: true, Handler: app.GetTunnel},
@@ -91,7 +92,7 @@ func ProtectedActionCatalog(app *App) []ActionSpec {
 		{Controller: "client", Name: "pingclient", Method: http.MethodPost, APIPath: "/api/v1/client/pingclient", LegacyPath: "/client/pingclient", Permission: webservice.PermissionClientsRead, Ownership: ActionOwnershipClient, Protected: true, Handler: app.PingClient},
 		{Controller: "client", Name: "getclient", Method: http.MethodPost, APIPath: "/api/v1/client/getclient", LegacyPath: "/client/getclient", Permission: webservice.PermissionClientsRead, Ownership: ActionOwnershipClient, Protected: true, Handler: app.GetClient},
 		{Controller: "client", Name: "edit", Method: http.MethodPost, APIPath: "/api/v1/client/edit", LegacyPath: "/client/edit", Permission: webservice.PermissionClientsUpdate, Ownership: ActionOwnershipClient, Protected: true, Handler: app.EditClient},
-		{Controller: "client", Name: "clear", Method: http.MethodPost, APIPath: "/api/v1/client/clear", LegacyPath: "/client/clear", Permission: webservice.PermissionClientsStatus, Ownership: ActionOwnershipClient, Protected: true, Handler: app.ClearClient},
+		{Controller: "client", Name: "clear", Method: http.MethodPost, APIPath: "/api/v1/client/clear", LegacyPath: "/client/clear", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ClearClient},
 		{Controller: "client", Name: "changestatus", Method: http.MethodPost, APIPath: "/api/v1/client/changestatus", LegacyPath: "/client/changestatus", Permission: webservice.PermissionClientsStatus, Ownership: ActionOwnershipClient, Protected: true, Handler: app.ChangeClientStatus},
 		{Controller: "client", Name: "update", Method: http.MethodPost, APIPath: "/api/v1/client/update", LegacyPath: "/client/update", Permission: webservice.PermissionManagementAdmin, Ownership: ActionOwnershipClient, Protected: true, Handler: app.UpdateClient},
 		{Controller: "client", Name: "del", Method: http.MethodPost, APIPath: "/api/v1/client/del", LegacyPath: "/client/del", Permission: webservice.PermissionClientsDelete, Ownership: ActionOwnershipClient, Protected: true, Handler: app.DeleteClient},

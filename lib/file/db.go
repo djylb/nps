@@ -135,7 +135,7 @@ func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(s
 func (s *DbUtils) GetClientIdByBlake2bVkey(vkey string) (id int, err error) {
 	var exist bool
 	id, exist = Blake2bVkeyIndex.Get(vkey)
-	if exist {
+	if exist && id > 0 {
 		return
 	}
 	err = errors.New("can not find client")
@@ -146,7 +146,7 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 	var exist bool
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*Client)
-		if crypt.Md5(v.VerifyKey) == vkey {
+		if v.Id > 0 && crypt.Md5(v.VerifyKey) == vkey {
 			exist = true
 			id = v.Id
 			return false
@@ -460,7 +460,9 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, in
 func (s *DbUtils) DelClient(id int) error {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
 		c := v.(*Client)
-		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		if c.Id > 0 {
+			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		}
 		if c.Rate != nil {
 			c.Rate.Stop()
 		}
@@ -505,7 +507,9 @@ reset:
 	c.Flow.MarkClient()
 	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
 	s.JsonDb.Clients.Store(c.Id, c)
-	Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
+	if c.Id > 0 {
+		Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
+	}
 	logStoreError(s.JsonDb.StoreClientsToJsonFile())
 	return nil
 }
@@ -540,7 +544,9 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
 		c := v.(*Client)
 		t.ConnectionHistory = c.ConnectionHistory
-		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		if c.Id > 0 {
+			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+		}
 		if c.Rate != nil {
 			t.Rate = c.Rate
 		}
@@ -552,7 +558,9 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 	t.Flow.MarkClient()
 	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
 	s.JsonDb.Clients.Store(t.Id, t)
-	Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
+	if t.Id > 0 {
+		Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
+	}
 	var limit int64
 	if t.RateLimit > 0 {
 		limit = int64(t.RateLimit) * 1024

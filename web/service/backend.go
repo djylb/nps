@@ -204,6 +204,9 @@ func (defaultRepository) VerifyVKey(vkey string, exceptID int) bool {
 }
 
 func (defaultRepository) ReplaceClientVKeyIndex(oldKey, newKey string, clientID int) {
+	if clientID <= 0 {
+		return
+	}
 	file.Blake2bVkeyIndex.Remove(crypt.Blake2b(oldKey))
 	file.Blake2bVkeyIndex.Add(crypt.Blake2b(newKey), clientID)
 }

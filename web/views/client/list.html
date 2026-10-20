@@ -117,7 +117,7 @@
                 + row.MaxConn
                 {{end}}
                 + '&emsp;'
-                + '<b langtag="word-curconnections"></b>: ' + row.NowConn + '&emsp;'
+                + '<b langtag="word-curconnections"></b>: ' + npsLiveValue('NowConn', row.NowConn) + '&emsp;'
                 + '<b langtag="word-flowlimit"></b>: '
                 {{if eq true .isAdmin}}
                 + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + '</span>'
@@ -147,18 +147,10 @@
                 {{end}}
                 + '&emsp;<br/><br/>'
             var status = '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;'
-                + '<b langtag="word-lastonlinetime"></b>: ' + row.LastOnlineTime + '&emsp;'
+                + '<b langtag="word-lastonlinetime"></b>: ' + npsLiveValue('LastOnlineTime', row.LastOnlineTime) + '&emsp;'
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
-            if (row.ConnectionHistory && row.ConnectionHistory.length) {
-                status += '<b langtag="word-connectionhistory"></b>: '
-                    + '<div style="overflow-x:auto;margin-top:4px"><div style="display:grid;grid-template-columns:repeat(5,max-content);column-gap:14px;row-gap:2px;white-space:nowrap;line-height:1.4">'
-                status += row.ConnectionHistory.slice().reverse().map(function (event, index) {
-                    return '<span style="text-align:right;font-variant-numeric:tabular-nums">' + (index + 1) + '.</span>'
-                        + '<span langtag="word-online"></span><span style="font-variant-numeric:tabular-nums">' + $('<span>').text(event.OnlineTime).html() + '</span>'
-                        + '<span langtag="word-offline"></span><span style="font-variant-numeric:tabular-nums">' + $('<span>').text(event.OfflineTime || '-').html() + '</span>'
-                }).join('') + '</div></div><br/>'
-            }
+            status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
             var account = ''
             if (row.WebUserName || row.WebPassword) {
                 account += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
@@ -207,7 +199,7 @@
         columns: [
             {{if eq true .isAdmin}}
             {field: '_selected', checkbox: true, switchable: false, clickToSelect: false,
-                formatter: function (value, row) { return {disabled: {{if eq true .allow_local_proxy}}row.Id <= 0{{else}}false{{end}}}; }},
+                formatter: function (value, row) { return {disabled: row.Id <= 0}; }},
             {{end}}
 
             {
@@ -320,9 +312,9 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     {{if eq true .isAdmin}}
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
                     {{else}}
-                    return changeunit(row.Flow.InletFlow + row.Flow.ExportFlow)
+                    return changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow)
                     {{end}}
                 }
             },
@@ -334,7 +326,7 @@
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(actualFlow(row.Flow)) + '</span>'
+                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(typeof value === 'number' ? value : actualFlow(row.Flow)) + '</span>'
                 }
             },
             {
@@ -348,9 +340,9 @@
                         return '∞'
                     }
                     {{if eq true .isAdmin}}
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(flowRemain(row.Flow, true)) + '</span>'
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(typeof value === 'number' ? value : flowRemain(row.Flow, true)) + '</span>'
                     {{else}}
-                    return changeunit(flowRemain(row.Flow, true))
+                    return changeunit(typeof value === 'number' ? value : flowRemain(row.Flow, true))
                     {{end}}
                 }
             },
@@ -421,7 +413,7 @@
                 sortable: true,
                 sortName: 'speed',
                 formatter: function (value, row, index) {
-                    return changeunit((Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                    return changeunit(typeof value === 'number' ? value : (Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
                 }
             },
             {
@@ -495,19 +487,14 @@
                         btn_group += '<a onclick="submitform(\'start\', \'{{.web_base_url}}/client/changestatus\', {\'id\':' + row.Id
                         btn_group += ', \'status\': 1})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>'
                     }
-                    if (row.IsConnect && compareVersion(row.Version, '{{.client_update_min}}') >= 0 && compareVersion(row.Version, '{{.version}}') < 0) {
+                    if (row.Id > 0 && row.IsConnect && compareVersion(row.Version, '{{.client_update_min}}') >= 0 && compareVersion(row.Version, '{{.version}}') < 0) {
                         btn_group += '<a onclick="submitform(\'update\', \'{{.web_base_url}}/client/update\', {\'id\':' + row.Id
                         btn_group += '})" class="btn btn-outline btn-info"><i class="fa fa-arrow-circle-up"></i></a>'
                     }
-                    {{if eq true .allow_local_proxy}}
                     if (row.Id > 0) {
                         btn_group += '<a onclick="submitform(\'delete\', \'{{.web_base_url}}/client/del\', {\'id\':' + row.Id
                         btn_group += '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>'
                     }
-                    {{else}}
-                    btn_group += '<a onclick="submitform(\'delete\', \'{{.web_base_url}}/client/del\', {\'id\':' + row.Id
-                    btn_group += '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>'
-                    {{end}}
                     {{end}}
 
                     btn_group += '<a href="{{.web_base_url}}/client/edit?id=' + row.Id
@@ -530,6 +517,7 @@
             }
         ]
     });
+    initListLive('client', '{{.web_base_url}}');
     {{if eq true .isAdmin}}
     initListBatch('client', '{{.web_base_url}}');
     {{end}}
@@ -588,6 +576,7 @@
     // showGlobalTraffic shows the traffic forwarded by the whole server,
     // which the client list returns to administrators.
     function showGlobalTraffic(t) {
+        if (t) $('#global_traffic').data('limit', t.limit);
         if (!t) return;
         $('#global_traffic_in').text(changeunit(t.in));
         $('#global_traffic_out').text(changeunit(t.out));

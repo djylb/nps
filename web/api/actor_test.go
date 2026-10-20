@@ -81,3 +81,18 @@ func TestActorFromSessionIdentityWithFallback(t *testing.T) {
 		t.Fatalf("SubjectID = %q, want admin:configured-admin", actor.SubjectID)
 	}
 }
+
+func TestActorVirtualClientAccess(t *testing.T) {
+	admin := AdminActorWithFallback("admin", "admin")
+	if !ActorCanAccessClient(admin, -1) {
+		t.Fatal("admin cannot access virtual client")
+	}
+	for _, actor := range []*Actor{nil, AnonymousActor(), UserActor("user", []int{1, -1})} {
+		if ActorCanAccessClient(actor, -1) {
+			t.Fatal("non-admin can access virtual client")
+		}
+	}
+	if ActorCanAccessClient(admin, 0) {
+		t.Fatal("zero is not a single client")
+	}
+}

@@ -88,6 +88,7 @@
     {{end}}
 
     {{if eq true .isAdmin}}
+    <div id="dashboard-live-controls" style="display:flex;justify-content:flex-end;margin-bottom:8px"></div>
     <div class="row">
         <div class="col-lg-3">
             <div class="ibox float-e-margins">
@@ -961,9 +962,9 @@
         }
     }
 
-    function refreshStats() {
-        $.getJSON('{{.web_base_url}}/index/stats', function(res) {
-            if (res.code !== 1) return;
+    function refreshStats(eligible) {
+        return $.ajax({url: '{{.web_base_url}}/index/stats', dataType: 'json', timeout: 10000}).done(function(res) {
+            if (!eligible() || res.code !== 1) return;
             const d = res.data;
             $('#stat-clientCount').text(d.clientCount);
             $('#stat-clientOnlineCount').text(d.clientOnlineCount);
@@ -993,8 +994,7 @@
     }
 
     $(function() {
-        refreshStats();
-        setInterval(refreshStats, 3000);
+        npsAutoRefresh(refreshStats, '#dashboard-live-controls');
         setInterval(function() {
             upTimeSeconds++;
             $('#stat-upTime').text(formatUpTime(upTimeSeconds));
