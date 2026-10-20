@@ -3,190 +3,242 @@
         <div class="ibox float-e-margins">
             <h3 class="ibox-title" langtag="page-clientedit"></h3>
             <div class="ibox-content">
-                <form class="form-horizontal">
+                <form class="form-horizontal resource-form">
+                    <div class="resource-form-tools">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, true)">
+                            <i class="fa fa-angle-double-down" aria-hidden="true"></i> <span langtag="word-expandadvanced"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, false)">
+                            <i class="fa fa-angle-double-up" aria-hidden="true"></i> <span langtag="word-collapseadvanced"></span>
+                        </button>
+                    </div>
                     <input name="id" type="hidden" value="{{.c.Id}}">
-                    <div class="form-group" id="remark">
-                        <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="word-remark" name="remark" placeholder="" type="text" value="{{.c.Remark}}">
-                        </div>
-                    </div>
-                    {{if eq true .isAdmin}}
-                    <div class="form-group" id="flow_reset">
-                        <label class="control-label font-bold" langtag="word-flowreset"></label>
-                        <div class="col-sm-12">
-                            <input name="flow_reset" type="checkbox" value="1">
-                            <span class="help-block m-b-none" langtag="info-flowreset"></span>
-                        </div>
-                    </div>
-                    {{if eq true .allow_flow_limit}}
-                    <div class="form-group" id="flow_limit">
-                        <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.c.Flow.FlowLimit}}">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: M
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_time_limit}}
-                    <div class="form-group" id="time_limit">
-                        <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.c.Flow.TimeLimit}}">
-                            <span class="help-block m-b-none" langtag="info-timelimit"></span>
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_rate_limit}}
-                    <div class="form-group" id="rate_limit">
-                        <label class="control-label font-bold" langtag="word-ratelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="rate_limit" placeholder="" type="text" value="{{.c.RateLimit}}">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: KB/S
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_connection_num_limit}}
-                    <div class="form-group" id="max_conn">
-                        <label class="control-label font-bold" langtag="word-maxconnections"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="max_conn" placeholder="" type="text" value="{{.c.MaxConn}}">
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_tunnel_num_limit}}
-                    <div class="form-group" id="max_tunnel">
-                        <label class="control-label font-bold" langtag="word-maxtunnels"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="max_tunnel" placeholder="" type="text" value="{{.c.MaxTunnelNum}}">
-                        </div>
-                    </div>
-                    {{end}}
-                    {{end}}
-                    <div class="form-group" id="u">
-                        <label class="control-label font-bold" langtag="word-basicusername"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="u" placeholder="" type="text" value="{{.c.Cnf.U}}">
-                            <span class="help-block m-b-none" langtag="info-onlyproxy"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="p">
-                        <label class="control-label font-bold" langtag="word-basicpassword"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="p" placeholder="" type="text" value="{{.c.Cnf.P}}">
-                            <span class="help-block m-b-none" langtag="info-onlyproxy"></span>
-                        </div>
-                    </div>
-                    {{if eq true .isAdmin}}
-                    <div class="form-group" id="vkey">
-                        <label class="control-label font-bold" langtag="word-verifyKey"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="vkey" placeholder="" type="text" value="{{.c.VerifyKey}}">
-                            <span class="help-block m-b-none" langtag="info-autogenerated"></span>
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_user_login}}
-                    {{if or (eq true .allow_user_change_username) (eq true .isAdmin)}}
-                    <div class="form-group" id="web_username">
-                        <label class="control-label font-bold" langtag="word-webusername"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="web_username" placeholder="" type="text" value="{{.c.WebUserName}}">
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="web_password">
-                        <label class="control-label font-bold" langtag="word-webpassword"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="web_password" placeholder="" type="text" value="{{.c.WebPassword}}">
-                        </div>
-                    </div>
-                    <div class="form-group" id="web_totp_secret">
-                        <label class="control-label font-bold" langtag="word-webtotpsecret"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="web_totp_secret" placeholder="" type="text" value="{{.c.WebTotpSecret}}">
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="config_conn_allow">
-                        <label class="control-label font-bold" langtag="word-connectbyconfig"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="config_conn_allow">
-                                <option {{if eq true .c.ConfigConnAllow}}selected{{end}}  value="1" langtag="word-yes"></option>
-                                <option {{if eq false .c.ConfigConnAllow}}selected{{end}} value="0" langtag="word-no"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="compress">
-                        <label class="control-label font-bold" langtag="word-compress"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="compress">
-                                <option {{if eq false .c.Cnf.Compress}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .c.Cnf.Compress}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="crypt">
-                        <label class="control-label font-bold" langtag="word-crypt"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="crypt">
-                                <option {{if eq false .c.Cnf.Crypt}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .c.Cnf.Crypt}}selected{{end}} value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="iplistpriority">
-                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="iplistpriority">
-                                <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
-                                <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="blackiplist">
-                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="whiteiplist">
-                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="registered_only">
-                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="registered_only">
-                                <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
-                                <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="register_key">
-                        <label class="control-label font-bold" langtag="word-registerkey"></label>
-                        <div class="col-sm-12">
-                            <div class="input-group">
-                                <input class="form-control" name="register_key" type="text" value="{{.c.RegisterKey}}" autocomplete="off" oninput="updateRegisterLink()">
-                                <span class="input-group-append"><button class="btn btn-outline-secondary" type="button" onclick="generateRegisterKey()" langtag="word-generate"></button></span>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-basic"></h4>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="remark">
+                                <label class="control-label font-bold" langtag="word-remark"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="word-remark" name="remark" placeholder="" type="text" value="{{.c.Remark}}">
+                                </div>
                             </div>
-                            <span class="help-block m-b-none" langtag="info-registerkey"></span>
-                            <span class="help-block m-b-none"><span langtag="word-registerlink"></span>: <code id="register_link" onclick="oCopy(this)"></code></span>
+                            {{if eq true .isAdmin}}
+                            <div class="form-group" id="vkey">
+                                <label class="control-label font-bold" langtag="word-verifyKey"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="vkey" placeholder="" type="text" value="{{.c.VerifyKey}}">
+                                    <span class="help-block m-b-none" langtag="info-autogenerated"></span>
+                                </div>
+                            </div>
+                            {{end}}
                         </div>
-                    </div>
-                    <div class="form-group" id="register_max_hours">
-                        <label class="control-label font-bold" langtag="word-registermaxhours"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" name="register_max_hours" type="number" min="0" step="1" placeholder="2" value="{{if .c.RegisterMaxHours}}{{.c.RegisterMaxHours}}{{end}}">
-                            <span class="help-block m-b-none" langtag="info-registermaxhours"></span>
+                    </section>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="config_conn_allow">
+                                <label class="control-label font-bold" langtag="word-connectbyconfig"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="config_conn_allow">
+                                        <option {{if eq true .c.ConfigConnAllow}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                        <option {{if eq false .c.ConfigConnAllow}}selected{{end}} value="0" langtag="word-no"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="compress">
+                                <label class="control-label font-bold" langtag="word-compress"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="compress">
+                                        <option {{if eq false .c.Cnf.Compress}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .c.Cnf.Compress}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="crypt">
+                                <label class="control-label font-bold" langtag="word-crypt"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="crypt">
+                                        <option {{if eq false .c.Cnf.Crypt}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .c.Cnf.Crypt}}selected{{end}} value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-quotas"></span></summary>
+                        <div class="resource-section-body">
+                            {{if eq true .isAdmin}}
+                            <div class="form-group" id="flow_reset">
+                                <label class="control-label font-bold" langtag="word-flowreset"></label>
+                                <div class="col-sm-12">
+                                    <input name="flow_reset" type="checkbox" value="1">
+                                    <span class="help-block m-b-none" langtag="info-flowreset"></span>
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .isAdmin}}
+                            {{if eq true .allow_flow_limit}}
+                            <div class="form-group" id="flow_limit">
+                                <label class="control-label font-bold" langtag="word-flowlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.c.Flow.FlowLimit}}">
+                                    <span class="help-block m-b-none" langtag="word-unit"></span>: M
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                            {{if eq true .isAdmin}}
+                            {{if eq true .allow_time_limit}}
+                            <div class="form-group" id="time_limit">
+                                <label class="control-label font-bold" langtag="word-timelimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.c.Flow.TimeLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-timelimit"></span>
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                            {{if eq true .isAdmin}}
+                            {{if eq true .allow_rate_limit}}
+                            <div class="form-group" id="rate_limit">
+                                <label class="control-label font-bold" langtag="word-ratelimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="rate_limit" placeholder="" type="text" value="{{.c.RateLimit}}">
+                                    <span class="help-block m-b-none" langtag="word-unit"></span>: KB/S
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                            {{if eq true .isAdmin}}
+                            {{if eq true .allow_connection_num_limit}}
+                            <div class="form-group" id="max_conn">
+                                <label class="control-label font-bold" langtag="word-maxconnections"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="max_conn" placeholder="" type="text" value="{{.c.MaxConn}}">
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                            {{if eq true .isAdmin}}
+                            {{if eq true .allow_tunnel_num_limit}}
+                            <div class="form-group" id="max_tunnel">
+                                <label class="control-label font-bold" langtag="word-maxtunnels"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="max_tunnel" placeholder="" type="text" value="{{.c.MaxTunnelNum}}">
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                        </div>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-access"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="u">
+                                <label class="control-label font-bold" langtag="word-basicusername"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="u" placeholder="" type="text" value="{{.c.Cnf.U}}">
+                                    <span class="help-block m-b-none" langtag="info-onlyproxy"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="p">
+                                <label class="control-label font-bold" langtag="word-basicpassword"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="p" placeholder="" type="text" value="{{.c.Cnf.P}}">
+                                    <span class="help-block m-b-none" langtag="info-onlyproxy"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="iplistpriority">
+                                <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="iplistpriority">
+                                        <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                        <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="blackiplist">
+                                <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="whiteiplist">
+                                <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="registered_only">
+                                <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="registered_only">
+                                        <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
+                                        <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-webaccount"></span></summary>
+                        <div class="resource-section-body">
+                            {{if eq true .allow_user_login}}
+                            {{if or (eq true .allow_user_change_username) (eq true .isAdmin)}}
+                            <div class="form-group" id="web_username">
+                                <label class="control-label font-bold" langtag="word-webusername"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="web_username" placeholder="" type="text" value="{{.c.WebUserName}}">
+                                </div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                            {{if eq true .allow_user_login}}
+                            <div class="form-group" id="web_password">
+                                <label class="control-label font-bold" langtag="word-webpassword"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="web_password" placeholder="" type="text" value="{{.c.WebPassword}}">
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_user_login}}
+                            <div class="form-group" id="web_totp_secret">
+                                <label class="control-label font-bold" langtag="word-webtotpsecret"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="web_totp_secret" placeholder="" type="text" value="{{.c.WebTotpSecret}}">
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-registration"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="register_key">
+                                <label class="control-label font-bold" langtag="word-registerkey"></label>
+                                <div class="col-sm-12">
+                                    <div class="input-group registration-key-control">
+                                        <input class="form-control" name="register_key" type="text" value="{{.c.RegisterKey}}" autocomplete="off" oninput="updateRegisterLink()">
+                                        <span class="input-group-append"><button class="btn btn-outline-secondary" type="button" onclick="generateRegisterKey()" langtag="word-generate"></button></span>
+                                    </div>
+                                    <span class="help-block m-b-none" langtag="info-registerkey"></span>
+                                    <span class="help-block m-b-none"><span langtag="word-registerlink"></span>: <code id="register_link" onclick="oCopy(this)"></code></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="register_max_hours">
+                                <label class="control-label font-bold" langtag="word-registermaxhours"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" name="register_max_hours" type="number" min="0" step="1" placeholder="2" value="{{if .c.RegisterMaxHours}}{{.c.RegisterMaxHours}}{{end}}">
+                                    <span class="help-block m-b-none" langtag="info-registermaxhours"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                     <script>
                         function generateRegisterKey() {
                             var chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', out = '';
@@ -200,7 +252,10 @@
                             var key = $("input[name='register_key']").val().trim();
                             $('#register_link').text(key ? location.origin + '{{.web_base_url}}/ip/register?key=' + encodeURIComponent(key) : '-');
                         }
-                        $(function () { updateRegisterLink(); });
+                        $(function () {
+                            updateRegisterLink();
+                            refreshResourceSections($("form.resource-form"));
+                        });
                     </script>
                     <div class="hr-line-dashed"></div>
                     <div class="form-group">

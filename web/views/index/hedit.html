@@ -3,245 +3,288 @@
         <div class="ibox float-e-margins">
             <h3 class="ibox-title" langtag="page-hostedit"></h3>
             <div class="ibox-content">
-                <form class="form-horizontal">
+                <form class="form-horizontal resource-form">
+                    <div class="resource-form-tools">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, true)">
+                            <i class="fa fa-angle-double-down" aria-hidden="true"></i> <span langtag="word-expandadvanced"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, false)">
+                            <i class="fa fa-angle-double-up" aria-hidden="true"></i> <span langtag="word-collapseadvanced"></span>
+                        </button>
+                    </div>
                     <input name="id" type="hidden" value="{{.h.Id}}">
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-clientid"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control" name="client_id" data-live-search="true"></select>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-basic"></h4>
+                        <div class="resource-section-body">
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-clientid"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="client_id" data-live-search="true"></select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-remark"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" name="remark" placeholder="remark" type="text" value="{{.h.Remark}}">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-host"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchashost" name="host" placeholder="" type="text" value="{{.h.Host}}">
+                                </div>
+                            </div>
+                            <div class="form-group" id="scheme">
+                                <label class="control-label font-bold" langtag="word-scheme"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" id="scheme_select" name="scheme">
+                                        <option {{if eq "all" .h.Scheme}}selected{{end}} value="all" langtag="word-all"></option>
+                                        <option {{if eq "http" .h.Scheme}}selected{{end}} value="http" langtag="word-http"></option>
+                                        <option {{if eq "https" .h.Scheme}}selected{{end}} value="https" langtag="word-https"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" name="remark" placeholder="remark" type="text" value="{{.h.Remark}}">
+                    </section>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-target"></h4>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="target_is_https">
+                                <label class="control-label font-bold" langtag="word-targetishttps"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="target_is_https">
+                                        <option {{if eq false .h.TargetIsHttps}}selected{{end}} value="0">HTTP</option>
+                                        <option {{if eq true .h.TargetIsHttps}}selected{{end}}  value="1">HTTPS</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-target"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4" type="text">{{.h.Target.TargetStr}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-targethost"></span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-urlroute"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="location" placeholder="" type="text" value="{{.h.Location}}">
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-host"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchashost" name="host" placeholder="" type="text" value="{{.h.Host}}">
+                    </section>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-tls"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="auto_https">
+                                <label class="control-label font-bold" langtag="word-autohttps"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="auto_https">
+                                        <option {{if eq false .h.AutoHttps}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.AutoHttps}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="https_just_proxy">
+                                <label class="control-label font-bold" langtag="word-httpsjustproxy"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" id="https_just_proxy_select" name="https_just_proxy">
+                                        <option {{if eq false .h.HttpsJustProxy}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.HttpsJustProxy}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-httpsjustproxy"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="tls_offload">
+                                <label class="control-label font-bold" langtag="word-tlsoffload"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="tls_offload">
+                                        <option {{if eq false .h.TlsOffload}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.TlsOffload}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-tlsoffload"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="auto_ssl">
+                                <label class="control-label font-bold" langtag="word-autossl"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="auto_ssl">
+                                        <option {{if eq false .h.AutoSSL}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.AutoSSL}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="cert_file">
+                                <label class="control-label font-bold" langtag="word-httpscert"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" id="pemText" langtag="info-pemtext" name="cert_file" placeholder="" rows="6" type="text">{{.h.CertFile}}</textarea>
+                                </div>
+                            </div>
+                            <div class="form-group" id="key_file">
+                                <label class="control-label font-bold" langtag="word-httpskey"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" id="pemKey" langtag="info-pemkey" name="key_file" placeholder="" rows="6" type="text">{{.h.KeyFile}}</textarea>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="scheme">
-                        <label class="control-label font-bold" langtag="word-scheme"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" id="scheme_select" name="scheme">
-                                <option {{if eq "all" .h.Scheme}}selected{{end}} value="all" langtag="word-all"></option>
-                                <option {{if eq "http" .h.Scheme}}selected{{end}} value="http" langtag="word-http"></option>
-                                <option {{if eq "https" .h.Scheme}}selected{{end}} value="https" langtag="word-https"></option>
-                            </select>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-routing"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-urlrewrite"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-urlrewrite" name="path_rewrite" placeholder="" type="text" value="{{.h.PathRewrite}}">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-redirecturl"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-redirecturl" name="redirect_url" placeholder="" type="text" value="{{.h.RedirectURL}}">
+                                </div>
+                            </div>
+                            <div class="form-group" id="hostchange">
+                                <label class="control-label font-bold" langtag="word-requesthost"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="word-requesthost" name="hostchange" placeholder="" type="text" value="{{.h.HostChange}}" value="">
+                                </div>
+                            </div>
+                            <div class="form-group" id="header">
+                                <label class="control-label font-bold" langtag="word-requestheader"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" name="header" placeholder="Cache-Control: no-cache" rows="4" type="text">{{.h.HeaderChange}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-header"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="resp_header">
+                                <label class="control-label font-bold" langtag="word-responseheader"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" name="resp_header" placeholder="Strict-Transport-Security: max-age=31536000; includeSubDomains; preload" rows="4" type="text">{{.h.RespHeaderChange}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-header"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="auto_cors">
+                                <label class="control-label font-bold" langtag="word-autocors"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="auto_cors">
+                                        <option {{if eq false .h.AutoCORS}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.AutoCORS}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="compat_mode">
+                                <label class="control-label font-bold" langtag="word-compatmode"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="compat_mode">
+                                        <option {{if eq false .h.CompatMode}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.CompatMode}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="flow_reset">
-                        <label class="control-label font-bold" langtag="word-flowreset"></label>
-                        <div class="col-sm-12">
-                            <input name="flow_reset" type="checkbox" value="1">
-                            <span class="help-block m-b-none" langtag="info-flowreset"></span>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-access"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="auth">
+                                <label class="control-label font-bold" langtag="word-auth"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4">{{.auth}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-targetauth"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="iplistpriority">
+                                <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="iplistpriority">
+                                        <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                        <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="blackiplist">
+                                <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="whiteiplist">
+                                <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="registered_only">
+                                <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="registered_only">
+                                        <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
+                                        <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    {{if eq true .allow_flow_limit}}
-                    <div class="form-group" id="flow_limit">
-                        <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.h.Flow.FlowLimit}}">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: M
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-limits"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="flow_reset">
+                                <label class="control-label font-bold" langtag="word-flowreset"></label>
+                                <div class="col-sm-12">
+                                    <input name="flow_reset" type="checkbox" value="1">
+                                    <span class="help-block m-b-none" langtag="info-flowreset"></span>
+                                </div>
+                            </div>
+                            {{if eq true .allow_flow_limit}}
+                            <div class="form-group" id="flow_limit">
+                                <label class="control-label font-bold" langtag="word-flowlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.h.Flow.FlowLimit}}">
+                                    <span class="help-block m-b-none" langtag="word-unit"></span>: M
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_time_limit}}
+                            <div class="form-group" id="time_limit">
+                                <label class="control-label font-bold" langtag="word-timelimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.h.Flow.TimeLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-timelimit"></span>
+                                </div>
+                            </div>
+                            {{end}}
                         </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_time_limit}}
-                    <div class="form-group" id="time_limit">
-                        <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.h.Flow.TimeLimit}}">
-                            <span class="help-block m-b-none" langtag="info-timelimit"></span>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
+                            <div class="form-group" id="local_proxy">
+                                <label class="control-label font-bold" langtag="word-proxytolocal"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="local_proxy">
+                                        <option {{if eq false .h.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="proxy_protocol">
+                                <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="proxy_protocol">
+                                        <option value="0" {{if eq .h.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
+                                        <option value="1" {{if eq .h.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
+                                        <option value="2" {{if eq .h.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="auto_https">
-                        <label class="control-label font-bold" langtag="word-autohttps"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="auto_https">
-                                <option {{if eq false .h.AutoHttps}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.AutoHttps}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="auto_cors">
-                        <label class="control-label font-bold" langtag="word-autocors"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="auto_cors">
-                                <option {{if eq false .h.AutoCORS}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.AutoCORS}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="compat_mode">
-                        <label class="control-label font-bold" langtag="word-compatmode"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="compat_mode">
-                                <option {{if eq false .h.CompatMode}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.CompatMode}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="https_just_proxy">
-                        <label class="control-label font-bold" langtag="word-httpsjustproxy"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" id="https_just_proxy_select" name="https_just_proxy">
-                                <option {{if eq false .h.HttpsJustProxy}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.HttpsJustProxy}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-httpsjustproxy"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="tls_offload">
-                        <label class="control-label font-bold" langtag="word-tlsoffload"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="tls_offload">
-                                <option {{if eq false .h.TlsOffload}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.TlsOffload}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-tlsoffload"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="proxy_protocol">
-                        <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="proxy_protocol">
-                                <option value="0" {{if eq .h.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
-                                <option value="1" {{if eq .h.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
-                                <option value="2" {{if eq .h.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="auto_ssl">
-                        <label class="control-label font-bold" langtag="word-autossl"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="auto_ssl">
-                                <option {{if eq false .h.AutoSSL}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.AutoSSL}}selected{{end}}  value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="cert_file">
-                        <label class="control-label font-bold" langtag="word-httpscert"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" id="pemText" langtag="info-pemtext" name="cert_file" placeholder="" rows="6" type="text">{{.h.CertFile}}</textarea>
-                        </div>
-                    </div>
-                    <div class="form-group" id="key_file">
-                        <label class="control-label font-bold" langtag="word-httpskey"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" id="pemKey" langtag="info-pemkey" name="key_file" placeholder="" rows="6" type="text">{{.h.KeyFile}}</textarea>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-urlroute"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="location" placeholder="" type="text" value="{{.h.Location}}">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-urlrewrite"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-urlrewrite" name="path_rewrite" placeholder="" type="text" value="{{.h.PathRewrite}}">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-redirecturl"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-redirecturl" name="redirect_url" placeholder="" type="text" value="{{.h.RedirectURL}}">
-                        </div>
-                    </div>
-                    {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
-                    <div class="form-group" id="local_proxy">
-                        <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="local_proxy">
-                                <option {{if eq false .h.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option {{if eq true .h.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="iplistpriority">
-                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="iplistpriority">
-                                <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
-                                <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="blackiplist">
-                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="whiteiplist">
-                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="registered_only">
-                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="registered_only">
-                                <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
-                                <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="auth">
-                        <label class="control-label font-bold" langtag="word-auth"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4">{{.auth}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-targetauth"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="target_is_https">
-                        <label class="control-label font-bold" langtag="word-targetishttps"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="target_is_https">
-                                <option {{if eq false .h.TargetIsHttps}}selected{{end}} value="0">HTTP</option>
-                                <option {{if eq true .h.TargetIsHttps}}selected{{end}}  value="1">HTTPS</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-target"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4" type="text">{{.h.Target.TargetStr}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-targethost"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="header">
-                        <label class="control-label font-bold" langtag="word-requestheader"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" name="header" placeholder="Cache-Control: no-cache" rows="4" type="text">{{.h.HeaderChange}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-header"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="resp_header">
-                        <label class="control-label font-bold" langtag="word-responseheader"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" name="resp_header" placeholder="Strict-Transport-Security: max-age=31536000; includeSubDomains; preload" rows="4" type="text">{{.h.RespHeaderChange}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-header"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="hostchange">
-                        <label class="control-label font-bold" langtag="word-requesthost"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="word-requesthost" name="hostchange" placeholder="" type="text" value="{{.h.HostChange}}" value="">
-                        </div>
-                    </div>
+                    </details>
                     <div class="hr-line-dashed"></div>
                     <div class="form-group">
                         <div class="col-lg-12 col-sm-offset-2">
@@ -368,6 +411,10 @@
                 $("#key_file").css("display", "block")
             }
         })
+        $("form.resource-form").on('change', function () {
+            refreshResourceSections(this);
+        });
+        refreshResourceSections($("form.resource-form"));
     });
 
     function getClientList() {

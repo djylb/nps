@@ -1761,4 +1761,68 @@
 			<en-US>No results match {0}</en-US>
 		</lang>
 	</bootstrap-select>
+	<lang id="section-basic">
+		<zh-CN>基本信息</zh-CN>
+		<en-US>Basic Information</en-US>
+	</lang>
+	<lang id="section-connection">
+		<zh-CN>监听与目标</zh-CN>
+		<en-US>Listener and Target</en-US>
+	</lang>
+	<lang id="section-target">
+		<zh-CN>目标与路径</zh-CN>
+		<en-US>Target and Path</en-US>
+	</lang>
+	<lang id="section-access">
+		<zh-CN>访问控制与认证</zh-CN>
+		<en-US>Access Control and Authentication</en-US>
+	</lang>
+	<lang id="section-limits">
+		<zh-CN>流量与有效期</zh-CN>
+		<en-US>Traffic and Expiry</en-US>
+	</lang>
+	<lang id="section-transport">
+		<zh-CN>转发设置</zh-CN>
+		<en-US>Forwarding</en-US>
+	</lang>
+	<lang id="section-tls">
+		<zh-CN>HTTPS 与证书</zh-CN>
+		<en-US>HTTPS and Certificates</en-US>
+	</lang>
+	<lang id="section-routing">
+		<zh-CN>路由与请求响应</zh-CN>
+		<en-US>Routing, Requests and Responses</en-US>
+	</lang>
+	<lang id="section-destination">
+		<zh-CN>代理目标限制</zh-CN>
+		<en-US>Proxy Destination Rules</en-US>
+	</lang>
+	<lang id="section-commands">
+		<zh-CN>访问命令</zh-CN>
+		<en-US>Access Commands</en-US>
+	</lang>
+	<lang id="section-quotas">
+		<zh-CN>配额与有效期</zh-CN>
+		<en-US>Quotas and Expiry</en-US>
+	</lang>
+	<lang id="section-webaccount">
+		<zh-CN>Web 管理账号</zh-CN>
+		<en-US>Web Account</en-US>
+	</lang>
+	<lang id="section-registration">
+		<zh-CN>IP 登记设置</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="section-status">
+		<zh-CN>连接信息</zh-CN>
+		<en-US>Connection Information</en-US>
+	</lang>
+	<lang id="word-expandadvanced">
+		<zh-CN>全部展开</zh-CN>
+		<en-US>Expand All</en-US>
+	</lang>
+	<lang id="word-collapseadvanced">
+		<zh-CN>全部收起</zh-CN>
+		<en-US>Collapse All</en-US>
+	</lang>
 </content>

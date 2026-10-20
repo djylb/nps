@@ -12544,3 +12544,98 @@ body.md-skin {
 .ibox-tools {
     display: none;
 }
+
+/* Shared groups for resource forms. */
+.resource-section {
+    background: var(--bg);
+    margin-bottom: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    min-width: 0;
+}
+.resource-section > .resource-section-title,
+.resource-section > summary {
+    margin: 0;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg-title);
+    border-radius: 5px 5px 0 0;
+}
+.resource-section:not([open]) > summary {
+    border-radius: 5px;
+}
+.resource-section > summary {
+    cursor: pointer;
+}
+.resource-section > summary:focus-visible {
+    outline: 2px solid var(--active-color);
+    outline-offset: 2px;
+}
+.resource-section-body {
+    padding: 16px;
+    overflow-wrap: anywhere;
+}
+.resource-section-body > .form-group:last-child {
+    margin-bottom: 0;
+}
+.resource-section[hidden] {
+    display: none;
+}
+
+.resource-form-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+/* List details use compact rows rather than form cards. */
+.resource-detail-section {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr);
+    gap: 4px 16px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color);
+    line-height: 1.4;
+}
+.resource-detail-section:last-child {
+    border-bottom: 0;
+}
+.resource-detail-section > .resource-detail-title {
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: inherit;
+    color: var(--text);
+}
+.resource-detail-body {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-wrap: anywhere;
+}
+.resource-detail-commands {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+.resource-detail-body code {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+@media (max-width: 1000px) {
+    .resource-detail-section {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.registration-key-control > .input-group-append {
+    display: flex;
+    align-self: stretch;
+}
+.registration-key-control > .input-group-append > .btn {
+    height: 100%;
+    font-size: 0.9rem;
+    border-radius: 0 8px 8px 0;
+}

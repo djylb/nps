@@ -506,3 +506,29 @@ function getBridgeMode(data) {
     }
     return escapedSecond + ' → ' + escapedFirst;
 }
+
+// A closed details element still submits its controls. Only hide categories
+// whose fields are all hidden for the selected tunnel or domain mode.
+function refreshResourceSections(form) {
+    $(form).find('.resource-section').each(function () {
+        this.hidden = !$(this).find('.form-group').toArray().some(function (group) {
+            return group.style.display !== 'none';
+        });
+    });
+    $(form).find('.resource-form-tools').toggle(
+        $(form).find('details.resource-advanced:not([hidden])').length > 0
+    );
+}
+
+function setResourceSectionsExpanded(form, expanded) {
+    $(form).find('details.resource-advanced:not([hidden])').prop('open', expanded);
+}
+
+function resourceDetailSection(title, content) {
+    if (!content) return '';
+    content = content.replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br>')
+        .replace(/(?:<br\s*\/?>(?:\s|&emsp;)*)+$/gi, '');
+    return '<section class="resource-detail-section">'
+        + '<h4 class="resource-detail-title" langtag="' + escapeHtml(title) + '"></h4>'
+        + '<div class="resource-detail-body' + (title === 'section-commands' ? ' resource-detail-commands' : '') + '">' + content + '</div></section>';
+}

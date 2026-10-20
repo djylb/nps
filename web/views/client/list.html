@@ -107,7 +107,7 @@
         onPostBody: function (data) { if ($(this)[0].locale != undefined) $('body').setLang('#table'); },
         onLoadSuccess: function (res) { showGlobalTraffic(res && res.traffic); },
         detailFormatter: function (index, row, element) {
-            tmp = '<b langtag="word-maxconnections"></b>: '
+            var quotas = '<b langtag="word-maxconnections"></b>: '
                 {{if eq true .isAdmin}}
                 + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'conn_limit\'})">' + row.MaxConn + '</span>'
                 {{else}}
@@ -143,25 +143,27 @@
                 + row.MaxTunnelNum
                 {{end}}
                 + '&emsp;<br/><br/>'
-                + '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;'
+            var status = '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;'
                 + '<b langtag="word-lastonlinetime"></b>: ' + row.LastOnlineTime + '&emsp;'
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
+            var account = ''
             if (row.WebUserName || row.WebPassword) {
-                tmp += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
+                account += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
                 + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
             }
             if (row.WebUserName && row.WebTotpSecret) {
-                tmp += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
+                account += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
             }
+            var access = accessListDetail(row)
             if (row.Cnf.U || row.Cnf.P) {
-                tmp += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
+                access += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
                 + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
             }
-            tmp += '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
+            var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
                 + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
-                + accessListDetail(row)
+            var commands = ''
                 {{if index . "tcp_p"}}
                 + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.tcp_ip}}:{{.tcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tcp\"</code>&emsp;<br/><br/>"
                 {{end}}
@@ -180,7 +182,14 @@
                 {{if index . "wss_p"}}
                 + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.wss_ip}}:{{.wss_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"wss\"</code>&emsp;<br/><br/>"
                 {{end}}
-            return tmp
+            return '<div class="resource-details">'
+                + resourceDetailSection('section-status', status)
+                + resourceDetailSection('section-commands', commands)
+                + resourceDetailSection('section-quotas', quotas)
+                + resourceDetailSection('section-transport', transport)
+                + resourceDetailSection('section-access', access)
+                + resourceDetailSection('section-webaccount', account)
+                + '</div>'
         },
         //表格的列
         columns: [

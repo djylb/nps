@@ -81,46 +81,52 @@
         onLoadSuccess:function (data) { $('body').setLang('.detail-view'); },
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
         detailFormatter: function (index, row, element) {
-            tmp = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
+            var usage = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
                 + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>&emsp;'
-                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
-                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;<br/><br>'
-                + '<b langtag="word-autohttps"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_https\'})" langtag="word-' + row.AutoHttps + '"></span>&emsp;'
-                + '<b langtag="word-autocors"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_cors\'})" langtag="word-' + row.AutoCORS + '"></span>&emsp;'
-                + '<b langtag="word-compatmode"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'compat_mode\'})" langtag="word-' + row.CompatMode + '"></span>&emsp;'
+            var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
+                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
+                + '<b langtag="word-targettype"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
+            var tls = '<b langtag="word-autohttps"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_https\'})" langtag="word-' + row.AutoHttps + '"></span>&emsp;'
                 + '<b langtag="word-httpsjustproxytitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'https_just_proxy\'})" langtag="word-' + row.HttpsJustProxy + '"></span>&emsp;'
                 + '<b langtag="word-tlsoffloadtitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'tls_offload\'})" langtag="word-' + row.TlsOffload + '"></span>&emsp;'
-                + '<b langtag="word-targettype"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
-            tmp += accessListDetail(row)
+            var routing = '<b langtag="word-autocors"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_cors\'})" langtag="word-' + row.AutoCORS + '"></span>&emsp;'
+                + '<b langtag="word-compatmode"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'compat_mode\'})" langtag="word-' + row.CompatMode + '"></span>&emsp;'
+            var access = accessListDetail(row)
             if (row.Client.Cnf.U || row.Client.Cnf.P) {
-                tmp += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.U + '</span>&emsp;'
+                access += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.U + '</span>&emsp;'
                 + '<b langtag="word-basicpassword"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.P + '</span>&emsp;<br/><br>'
             }
             if (row.UserAuth && row.UserAuth.Content) {
-                tmp += '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
+                access += '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
             }
             if (row.HostChange) {
-                tmp += '<b langtag="word-requesthost"></b>: <span onclick="oCopy(this)">' + row.HostChange + '</span>&emsp;<br/><br>'
+                routing += '<b langtag="word-requesthost"></b>: <span onclick="oCopy(this)">' + row.HostChange + '</span>&emsp;<br/><br>'
             }
             if (row.HeaderChange) {
-                tmp += '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
+                routing += '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
             }
             if (row.RespHeaderChange) {
-                tmp += '<b langtag="word-responseheader"></b>: ' + row.RespHeaderChange + '&emsp;<br/><br>'
+                routing += '<b langtag="word-responseheader"></b>: ' + row.RespHeaderChange + '&emsp;<br/><br>'
             }
             if (row.RedirectURL) {
-                tmp += '<b langtag="word-redirecturl"></b>: <span onclick="oCopy(this)">' + row.RedirectURL + '</span>&emsp;<br/><br>'
+                routing += '<b langtag="word-redirecturl"></b>: <span onclick="oCopy(this)">' + row.RedirectURL + '</span>&emsp;<br/><br>'
             }
-            tmp += '<b langtag="word-autossl"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_ssl\'})" langtag="word-' + row.AutoSSL + '"></span>&emsp;'
+            tls += '<b langtag="word-autossl"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_ssl\'})" langtag="word-' + row.AutoSSL + '"></span>&emsp;'
             if (row.Scheme != "http" && row.HttpsJustProxy == false && row.AutoSSL == false && (row.CertFile || row.KeyFile)) {
-                return tmp + "<br/><br>"
+                tls += "<br/><br>"
                 + '<b langtag="word-httpscert"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.CertFile + '</div>&emsp;<br/>'
                 + '<b langtag="word-httpskey"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.KeyFile + '</div>&emsp;<br/><br>'
             }
-            return tmp
+            return '<div class="resource-details">'
+                + resourceDetailSection('section-limits', usage)
+                + resourceDetailSection('section-transport', transport)
+                + resourceDetailSection('section-tls', tls)
+                + resourceDetailSection('section-access', access)
+                + resourceDetailSection('section-routing', routing)
+                + '</div>'
         },
         // 表格的列
         columns: [

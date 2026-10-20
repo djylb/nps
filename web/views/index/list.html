@@ -73,20 +73,23 @@
         onLoadSuccess:function (data) { $('body').setLang('.detail-view'); },
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
         detailFormatter: function (index, row, element) {
-            proxyprotocol = ''
+            var proxyprotocol = ''
             if (row.Mode == "tcp" || row.Mode == "udp") {
                 proxyprotocol = '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
             }
-            tmp = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
+            var usage = '<b langtag="word-exportflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>&emsp;'
                 + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>&emsp;'
-                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
+                + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
+                + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
+            var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
-                + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
-                + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
-            if (row.Mode != "secret" && row.Mode != "p2p") {
-                tmp = accessListDetail(row) + tmp
+            var tmp = resourceDetailSection('section-limits', usage)
+                + resourceDetailSection('section-transport', transport)
+            var access = row.Mode != "secret" && row.Mode != "p2p" ? accessListDetail(row) : ''
+            if (row.Mode != "mixProxy") {
+                tmp += resourceDetailSection('section-access', access)
             }
             if (row.Mode == "mixProxy") {
                 // 0=off, 1=whitelist, 2=blacklist
@@ -110,32 +113,32 @@
                         destAclInfo += '<span langtag="word-empty"></span>&emsp;'
                     }
                 }
-                return tmp + "<br/><br>"
+                return tmp + resourceDetailSection('section-access', access
                     + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
                     + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
                     + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
-                    + destAclInfo + '<br/><br>'
+                    ) + resourceDetailSection('section-destination', destAclInfo)
             }
             if (row.Mode == "file") {
-                return tmp + "<br/><br>"
+                return tmp + resourceDetailSection('section-target', ''
                     + '<b langtag="word-localpath"></b>: ' + row.LocalPath + '&emsp;'
                     + '<b langtag="word-stripprefix"></b>: ' + row.StripPre + '&emsp;<br/><br>'
-                    + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;'
+                    + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;')
             }
             if (row.Mode == "p2p") {
-                return tmp + "<br/><br>"
+                return tmp + resourceDetailSection('section-commands', ''
                     + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target=\"" + row.Target.TargetStr + "\" -target_type=\"" + row.TargetType + "\"</code>" + "<br/><br>"
                     + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2ps\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>" + "<br/><br>"
                     + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2pt\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>"
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2pt\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>")
             }
             if (row.Mode == "secret") {
-                return tmp + "<br/><br>" + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target_type=\"" + row.TargetType + "\" -local_type=\"secret\"" + "</code>"
+                return tmp + resourceDetailSection('section-commands', '' + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target_type=\"" + row.TargetType + "\" -local_type=\"secret\"" + "</code>")
             }
-            return tmp
+            return '<div class="resource-details">' + tmp + '</div>'
         },
         // 表格的列
         columns: [

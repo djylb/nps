@@ -3,212 +3,245 @@
         <div class="ibox float-e-margins">
             <h3 class="ibox-title" langtag="page-edit"></h3>
             <div class="ibox-content">
-                <form class="form-horizontal">
+                <form class="form-horizontal resource-form">
+                    <div class="resource-form-tools">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, true)">
+                            <i class="fa fa-angle-double-down" aria-hidden="true"></i> <span langtag="word-expandadvanced"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, false)">
+                            <i class="fa fa-angle-double-up" aria-hidden="true"></i> <span langtag="word-collapseadvanced"></span>
+                        </button>
+                    </div>
                     <input name="id" type="hidden" value="{{.t.Id}}">
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-scheme"></label>
-                        <div class="col-sm-12">
-                            <span class="help-block m-b-none font-bold" langtag="word-usecase"></span>:
-                            <span id="usecase">
-                                <span id="casetcp" langtag="info-casetcp"></span>
-                                <span id="caseudp" langtag="info-caseudp"></span>
-                                <span id="casehttpProxy" langtag="info-casehttpproxy"></span>
-                                <span id="casesocks5" langtag="info-casesocks5"></span>
-                                <span id="casemixProxy" langtag="info-casemixproxy"></span>
-                                <span id="casesecret" langtag="info-casesecret"></span>
-                                <span id="casep2p" langtag="info-casep2p"></span>
-                                <span id="casefile" langtag="info-casefile"></span>
-                            </span>
-                            <select class="form-control selectpicker" id="type" name="type">
-                                <option value="tcp" langtag="scheme-tcp"></option>
-                                <option value="udp" langtag="scheme-udp"></option>
-                                <option value="mixProxy" langtag="scheme-mixProxy"></option>
-                                {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
-                                {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
-                                <option value="secret" langtag="scheme-secret"></option>
-                                <option value="p2p" langtag="scheme-p2p"></option>
-                                {{/*<option value="file" langtag="scheme-file"></option>*/}}
-                            </select>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-basic"></h4>
+                        <div class="resource-section-body">
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-scheme"></label>
+                                <div class="col-sm-12">
+                                    <span class="help-block m-b-none font-bold" langtag="word-usecase"></span>:
+                                    <span id="usecase">
+                                        <span id="casetcp" langtag="info-casetcp"></span>
+                                        <span id="caseudp" langtag="info-caseudp"></span>
+                                        <span id="casehttpProxy" langtag="info-casehttpproxy"></span>
+                                        <span id="casesocks5" langtag="info-casesocks5"></span>
+                                        <span id="casemixProxy" langtag="info-casemixproxy"></span>
+                                        <span id="casesecret" langtag="info-casesecret"></span>
+                                        <span id="casep2p" langtag="info-casep2p"></span>
+                                        <span id="casefile" langtag="info-casefile"></span>
+                                    </span>
+                                    <select class="form-control selectpicker" id="type" name="type">
+                                        <option value="tcp" langtag="scheme-tcp"></option>
+                                        <option value="udp" langtag="scheme-udp"></option>
+                                        <option value="mixProxy" langtag="scheme-mixProxy"></option>
+                                        {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
+                                        {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
+                                        <option value="secret" langtag="scheme-secret"></option>
+                                        <option value="p2p" langtag="scheme-p2p"></option>
+                                        {{/*<option value="file" langtag="scheme-file"></option>*/}}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="client_id">
+                                <label class="control-label font-bold" langtag="word-clientid"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="client_id" data-live-search="true"></select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-remark"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="remark" placeholder="" type="text" value="{{.t.Remark}}">
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="client_id">
-                        <label class="control-label font-bold" langtag="word-clientid"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control" name="client_id" data-live-search="true"></select>
+                    </section>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-connection"></h4>
+                        <div class="resource-section-body">
+                            {{if eq true .allow_multi_ip}}
+                            <div class="form-group" id="server_ip">
+                                <label class="control-label font-bold" langtag="word-serverip"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasip" name="server_ip" placeholder="" type="text" value="{{.t.ServerIp}}">
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="port">
+                                <label class="control-label font-bold" langtag="word-serverport"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text" value="{{.t.Port}}">
+                                </div>
+                            </div>
+                            <div class="form-group" id="target_type">
+                                <label class="control-label font-bold" langtag="word-targettype"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="target_type">
+                                        <option value="all" {{if eq .t.TargetType "all"}}selected{{end}}>ALL</option>
+                                        <option value="tcp" {{if eq .t.TargetType "tcp"}}selected{{end}}>TCP</option>
+                                        <option value="udp" {{if eq .t.TargetType "udp"}}selected{{end}}>UDP</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="target">
+                                <label class="control-label font-bold" langtag="word-target"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4">{{.t.Target.TargetStr}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-targettunnel"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="password">
+                                <label class="control-label font-bold" langtag="word-identificationkey"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="word-identificationkey" name="password" placeholder="" type="text" value="{{.t.Password}}">
+                                    <span class="help-block m-b-none" langtag="info-identificationkey"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="mix_proxy">
+                                <label class="control-label font-bold" langtag="scheme-mixproxy"></label>
+                                <div class="col-sm-12">
+                                <input name="enable_http" type="checkbox" value="1" {{if .t.HttpProxy}}checked{{end}}>
+                                    <span class="help-block m-b-none" langtag="word-enablehttpproxy"></span>
+                                </div>
+                                <div class="col-sm-12">
+                                <input name="enable_socks5" type="checkbox" value="1" {{if .t.Socks5Proxy}}checked{{end}}>
+                                    <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="local_path">
+                                <label class="control-label font-bold" langtag="word-localpath"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text" value="{{.t.LocalPath}}">
+                                </div>
+                            </div>
+                            <div class="form-group" id="strip_pre">
+                                <label class="control-label font-bold" langtag="word-stripprefix"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text" value="{{.t.StripPre}}">
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="remark" placeholder="" type="text" value="{{.t.Remark}}">
+                    </section>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-access"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="auth">
+                                <label class="control-label font-bold" langtag="word-auth"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4">{{.auth}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-targetauth"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="iplistpriority">
+                                <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="iplistpriority">
+                                        <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                        <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="blackiplist">
+                                <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="whiteiplist">
+                                <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="registered_only">
+                                <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="registered_only">
+                                        <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
+                                        <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="dest_acl_mode">
+                                <label class="control-label font-bold" langtag="word-destacl"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="dest_acl_mode">
+                                        <option value="0" {{if eq .t.DestAclMode 0}}selected{{end}} langtag="word-disable"></option>
+                                        <option value="1" {{if eq .t.DestAclMode 1}}selected{{end}} langtag="word-whitelist"></option>
+                                        <option value="2" {{if eq .t.DestAclMode 2}}selected{{end}} langtag="word-blacklist"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-destacl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="dest_acl_rules">
+                                <label class="control-label font-bold" langtag="word-destaclrules"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" name="dest_acl_rules" rows="5" placeholder="">{{.t.DestAclRules}}</textarea>
+                                    <span class="help-block m-b-none" langtag="info-destaclrules"></span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    {{if eq true .allow_multi_ip}}
-                    <div class="form-group" id="server_ip">
-                        <label class="control-label font-bold" langtag="word-serverip"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasip" name="server_ip" placeholder="" type="text" value="{{.t.ServerIp}}">
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-limits"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="flow_reset">
+                                <label class="control-label font-bold" langtag="word-flowreset"></label>
+                                <div class="col-sm-12">
+                                    <input name="flow_reset" type="checkbox" value="1">
+                                    <span class="help-block m-b-none" langtag="info-flowreset"></span>
+                                </div>
+                            </div>
+                            {{if eq true .allow_flow_limit}}
+                            <div class="form-group" id="flow_limit">
+                                <label class="control-label font-bold" langtag="word-flowlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.t.Flow.FlowLimit}}">
+                                    <span class="help-block m-b-none" langtag="word-unit"></span>: M
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_time_limit}}
+                            <div class="form-group" id="time_limit">
+                                <label class="control-label font-bold" langtag="word-timelimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.t.Flow.TimeLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-timelimit"></span>
+                                </div>
+                            </div>
+                            {{end}}
                         </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="port">
-                        <label class="control-label font-bold" langtag="word-serverport"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text" value="{{.t.Port}}">
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
+                            <div class="form-group" id="local_proxy">
+                                <label class="control-label font-bold" langtag="word-proxytolocal"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="local_proxy">
+                                        <option  {{if eq false .t.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option  {{if eq true .t.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="proxy_protocol">
+                                <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="proxy_protocol">
+                                        <option value="0" {{if eq .t.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
+                                        <option value="1" {{if eq .t.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
+                                        <option value="2" {{if eq .t.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="mix_proxy">
-                        <label class="control-label font-bold" langtag="scheme-mixproxy"></label>
-                        <div class="col-sm-12">
-						    <input name="enable_http" type="checkbox" value="1" {{if .t.HttpProxy}}checked{{end}}>
-                            <span class="help-block m-b-none" langtag="word-enablehttpproxy"></span>
-                        </div>
-                        <div class="col-sm-12">
-						    <input name="enable_socks5" type="checkbox" value="1" {{if .t.Socks5Proxy}}checked{{end}}>
-                            <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="iplistpriority">
-                        <label class="control-label font-bold" langtag="word-iplistpriority"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="iplistpriority">
-                                <option value="0" {{if ne 1 .IpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
-                                <option value="1" {{if eq 1 .IpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="blackiplist">
-                        <label class="control-label font-bold" langtag="word-blackiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4">{{.BlackIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="whiteiplist">
-                        <label class="control-label font-bold" langtag="word-whiteiplist"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4">{{.WhiteIpList}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-iplistrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="registered_only">
-                        <label class="control-label font-bold" langtag="word-registeredonly"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="registered_only">
-                                <option value="0" {{if not .RegisteredOnly}}selected{{end}} langtag="word-no"></option>
-                                <option value="1" {{if .RegisteredOnly}}selected{{end}} langtag="word-yes"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-registeredonly"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="dest_acl_mode">
-                        <label class="control-label font-bold" langtag="word-destacl"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="dest_acl_mode">
-                                <option value="0" {{if eq .t.DestAclMode 0}}selected{{end}} langtag="word-disable"></option>
-                                <option value="1" {{if eq .t.DestAclMode 1}}selected{{end}} langtag="word-whitelist"></option>
-                                <option value="2" {{if eq .t.DestAclMode 2}}selected{{end}} langtag="word-blacklist"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-destacl"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="dest_acl_rules">
-                        <label class="control-label font-bold" langtag="word-destaclrules"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" name="dest_acl_rules" rows="5" placeholder="">{{.t.DestAclRules}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-destaclrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="flow_reset">
-                        <label class="control-label font-bold" langtag="word-flowreset"></label>
-                        <div class="col-sm-12">
-                            <input name="flow_reset" type="checkbox" value="1">
-                            <span class="help-block m-b-none" langtag="info-flowreset"></span>
-                        </div>
-                    </div>
-                    {{if eq true .allow_flow_limit}}
-                    <div class="form-group" id="flow_limit">
-                        <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text" value="{{.t.Flow.FlowLimit}}">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: M
-                        </div>
-                    </div>
-                    {{end}}
-                    {{if eq true .allow_time_limit}}
-                    <div class="form-group" id="time_limit">
-                        <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="text" value="{{.t.Flow.TimeLimit}}">
-                            <span class="help-block m-b-none" langtag="info-timelimit"></span>
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="proxy_protocol">
-                        <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="proxy_protocol">
-                                <option value="0" {{if eq .t.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
-                                <option value="1" {{if eq .t.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
-                                <option value="2" {{if eq .t.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
-                            </select>
-                        </div>
-                    </div>
-                    {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
-                    <div class="form-group" id="local_proxy">
-                        <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="local_proxy">
-                                <option  {{if eq false .t.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option  {{if eq true .t.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
-                            </select>
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="form-group" id="auth">
-                        <label class="control-label font-bold" langtag="word-auth"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4">{{.auth}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-targetauth"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="target_type">
-                        <label class="control-label font-bold" langtag="word-targettype"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="target_type">
-                                <option value="all" {{if eq .t.TargetType "all"}}selected{{end}}>ALL</option>
-                                <option value="tcp" {{if eq .t.TargetType "tcp"}}selected{{end}}>TCP</option>
-                                <option value="udp" {{if eq .t.TargetType "udp"}}selected{{end}}>UDP</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="target">
-                        <label class="control-label font-bold" langtag="word-target"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4">{{.t.Target.TargetStr}}</textarea>
-                            <span class="help-block m-b-none" langtag="info-targettunnel"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="local_path">
-                        <label class="control-label font-bold" langtag="word-localpath"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text" value="{{.t.LocalPath}}">
-                        </div>
-                    </div>
-                    <div class="form-group" id="strip_pre">
-                        <label class="control-label font-bold" langtag="word-stripprefix"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text" value="{{.t.StripPre}}">
-                        </div>
-                    </div>
-                    <div class="form-group" id="password">
-                        <label class="control-label font-bold" langtag="word-identificationkey"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="word-identificationkey" name="password" placeholder="" type="text" value="{{.t.Password}}">
-                            <span class="help-block m-b-none" langtag="info-identificationkey"></span>
-                        </div>
-                    </div>
+                    </details>
                     <div class="hr-line-dashed"></div>
                     <div class="form-group">
                         <div class="col-lg-12 col-sm-offset-2">
@@ -250,6 +283,7 @@
             $("#" + arr[o][i]).css("display", "block")
         }
         toggleDestAclRules()
+        refreshResourceSections($("form.resource-form"));
     }
 
     function toggleDestAclRules() {
