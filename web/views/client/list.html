@@ -150,6 +150,15 @@
                 + '<b langtag="word-lastonlinetime"></b>: ' + row.LastOnlineTime + '&emsp;'
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
+            if (row.ConnectionHistory && row.ConnectionHistory.length) {
+                status += '<b langtag="word-connectionhistory"></b>: '
+                    + '<div style="overflow-x:auto;margin-top:4px"><div style="display:grid;grid-template-columns:repeat(5,max-content);column-gap:14px;row-gap:2px;white-space:nowrap;line-height:1.4">'
+                status += row.ConnectionHistory.slice().reverse().map(function (event, index) {
+                    return '<span style="text-align:right;font-variant-numeric:tabular-nums">' + (index + 1) + '.</span>'
+                        + '<span langtag="word-online"></span><span style="font-variant-numeric:tabular-nums">' + $('<span>').text(event.OnlineTime).html() + '</span>'
+                        + '<span langtag="word-offline"></span><span style="font-variant-numeric:tabular-nums">' + $('<span>').text(event.OfflineTime || '-').html() + '</span>'
+                }).join('') + '</div></div><br/>'
+            }
             var account = ''
             if (row.WebUserName || row.WebPassword) {
                 account += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'

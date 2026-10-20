@@ -45,6 +45,7 @@ func dispatch[T any](ch chan<- T, v T) bool {
 }
 
 type Bridge struct {
+	presenceMu         sync.Mutex
 	Client             *sync.Map
 	VirtualTcpListener *netx.ChanListener
 	VirtualTlsListener *netx.ChanListener
@@ -74,6 +75,8 @@ func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 }
 
 func (s *Bridge) DelClient(id int) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
 	if v, ok := s.Client.Load(id); ok {
 		// Only remove the entry that was loaded: a client reconnecting with
 		// the same id may already have replaced it and must stay registered.
@@ -83,6 +86,7 @@ func (s *Bridge) DelClient(id int) {
 			return
 		}
 
+		s.recordConnection(id, false)
 		if file.GetDb().IsPubClient(id) {
 			return
 		}
@@ -98,4 +102,29 @@ func (s *Bridge) DelClient(id int) {
 
 func (s *Bridge) IsServer() bool {
 	return true
+}
+
+// Registry mutations and their history events share a lock so rapid reconnects
+// cannot publish an offline event after a newer connection has arrived.
+func (s *Bridge) recordConnection(id int, online bool) {
+	if c, err := file.GetDb().GetClient(id); err == nil {
+		c.RecordConnection(online, time.Now())
+	}
+}
+
+func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
+	actual, loaded := s.Client.LoadOrStore(id, client)
+	if !loaded {
+		s.recordConnection(id, true)
+	}
+	return actual, loaded
+}
+
+func (s *Bridge) storeClient(id int, client *Client) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
+	s.Client.Store(id, client)
+	s.recordConnection(id, true)
 }

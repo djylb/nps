@@ -112,8 +112,6 @@
             if (row.Mode == "mixProxy") {
                 // 0=off, 1=whitelist, 2=blacklist
                 var destMode = Number(row.DestAclMode || 0)
-                var rulesRaw = row.DestAclRules ? String(row.DestAclRules) : ""
-                var rulesText = rulesRaw ? escapeHtml(rulesRaw).replace(/\r\n/g, "\n").replace(/\n/g, "<br/>") : ""
                 var modeSpan = ''
                 if (destMode === 1) {
                     modeSpan = '<span langtag="word-whitelist"></span>'
@@ -123,14 +121,6 @@
                     modeSpan = '<span langtag="word-disable"></span>'
                 }
                 var destAclInfo = '<b langtag="word-destacl"></b>: ' + modeSpan + '&emsp;'
-                if (destMode !== 0) {
-                    destAclInfo += '<br/><br><b langtag="word-destaclrules"></b>: '
-                    if (rulesText) {
-                        destAclInfo += '<span>' + rulesText + '</span>&emsp;'
-                    } else {
-                        destAclInfo += '<span langtag="word-empty"></span>&emsp;'
-                    }
-                }
                 return tmp + resourceDetailSection('section-access', access
                     + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
                     + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'

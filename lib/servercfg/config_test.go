@@ -259,3 +259,22 @@ func TestAuthTimeWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestClientHistoryLimit(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{{"", 5}, {"0", 0}, {"3", 3}, {"-1", 5}, {"invalid", 5}} {
+		t.Run(tc.value, func(t *testing.T) {
+			resetTestState(t)
+			t.Cleanup(func() { resetTestState(t) })
+			path := writeConfig(t, "nps.conf", "client_history_limit="+tc.value+"\n")
+			if err := Load(path); err != nil {
+				t.Fatal(err)
+			}
+			if got := Current().Runtime.ClientHistoryLimit; got != tc.want {
+				t.Fatalf("got %d want %d", got, tc.want)
+			}
+		})
+	}
+}

@@ -242,8 +242,9 @@ type Client struct {
 	MaxTunnelNum    int
 	Version         string
 	SourceLists
-	CreateTime     string
-	LastOnlineTime string
+	CreateTime        string
+	LastOnlineTime    string
+	ConnectionHistory *ConnectionHistory `json:",omitempty"`
 	// RegisterKey, if set, lets visitors register their address for the
 	// client on the registration page, as the verify key does.
 	RegisterKey string

@@ -1313,6 +1313,10 @@
 		<zh-CN>创建时间</zh-CN>
 		<en-US>Create Time</en-US>
 	</lang>
+	<lang id="word-connectionhistory">
+		<zh-CN>近期上线/离线</zh-CN>
+		<en-US>Recent connections</en-US>
+	</lang>
 	<lang id="word-lastonlinetime">
 		<zh-CN>上次在线时间</zh-CN>
 		<en-US>Last Online Time</en-US>

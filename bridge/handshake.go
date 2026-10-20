@@ -314,7 +314,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
 		//noinspection GoResourceLeak
 		client := NewClient(id, node)
-		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
+		if v, loaded := s.loadOrStoreClient(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
 			client.RemoveOfflineNodesExcept(uuid, true)
@@ -353,7 +353,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
 		//noinspection GoResourceLeak
 		client := NewClient(id, node)
-		if v, loaded := s.Client.LoadOrStore(id, client); loaded {
+		if v, loaded := s.loadOrStoreClient(id, client); loaded {
 			client = v.(*Client)
 			client.MarkConnectedNow()
 			client.RemoveOfflineNodesExcept(uuid, true)
@@ -497,7 +497,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		_ = c.Close()
 		return
 		//muxConn := mux.NewMux(c.Conn, s.tunnelType, s.disconnectTime, false)
-		//if v, loaded := s.Client.LoadOrStore(id, NewClient(id, c.RemoteAddr().String(), nil, muxConn, nil, ver, vs)); loaded {
+		//if v, loaded := s.loadOrStoreClient(id, NewClient(id, c.RemoteAddr().String(), nil, muxConn, nil, ver, vs)); loaded {
 		//	client := v.(*Client)
 		//	//if client.file != nil {
 		//	//	client.files.LoadOrStore(client.file, struct{}{})

@@ -79,7 +79,7 @@ loop:
 			_, _ = c.Write([]byte(client.VerifyKey))
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
-			s.Client.Store(client.Id, NewClient(client.Id, NewNode(uuid, vs, ver)))
+			s.storeClient(client.Id, NewClient(client.Id, NewNode(uuid, vs, ver)))
 
 		case common.FlagNewHost:
 			h, err := c.GetHostInfo()
@@ -178,7 +178,7 @@ loop:
 				}
 				if tl.Mode == "file" {
 					cli := NewClient(client.Id, NewNode(uuid, vs, ver))
-					if clientValue, ok := s.Client.LoadOrStore(client.Id, cli); ok {
+					if clientValue, ok := s.loadOrStoreClient(client.Id, cli); ok {
 						cli, ok = clientValue.(*Client)
 						if !ok {
 							logs.Error("Fail to load client %d", client.Id)

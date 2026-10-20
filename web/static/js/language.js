@@ -582,11 +582,10 @@ function toggleTheme() {
     }
 }
 
-// accessListDetail renders the source access lists of a client, tunnel or
-// host for a detail view.
+// accessListDetail summarizes source access lists without expanding their rules.
 function accessListDetail(row) {
     var list = function (items) {
-        return items && items.length ? escapeHtml(items.join(', ')) : '-';
+        return '<span langtag="word-' + (items && items.length ? 'yes' : 'no') + '"></span>';
     };
     return '<b langtag="word-iplistpriority"></b>: <span langtag="' + (row.IpListPriority === 1 ? 'word-allowfirst' : 'word-denyfirst') + '"></span>&emsp;'
         + '<b langtag="word-blackiplist"></b>: ' + list(row.BlackIpList) + '&emsp;'

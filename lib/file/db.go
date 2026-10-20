@@ -471,6 +471,9 @@ func (s *DbUtils) DelClient(id int) error {
 }
 
 func (s *DbUtils) NewClient(c *Client) error {
+	if c.ConnectionHistory == nil {
+		c.ConnectionHistory = new(ConnectionHistory)
+	}
 	var isNotSet bool
 	if c.WebUserName != "" && !s.VerifyUserName(c.WebUserName, c.Id) {
 		return errors.New("web login username duplicate, please reset")
@@ -536,6 +539,7 @@ func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 func (s *DbUtils) UpdateClient(t *Client) error {
 	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
 		c := v.(*Client)
+		t.ConnectionHistory = c.ConnectionHistory
 		Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
 		if c.Rate != nil {
 			t.Rate = c.Rate

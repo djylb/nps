@@ -91,6 +91,9 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 	Blake2bVkeyIndex.Clear()
 	loadSyncMapFromFile(s.ClientFilePath, Client{}, func(v interface{}) {
 		post := v.(*Client)
+		if post.ConnectionHistory == nil {
+			post.ConnectionHistory = new(ConnectionHistory)
+		}
 		if post.Id == 0 {
 			logs.Warn("Client skipped: no id")
 			return

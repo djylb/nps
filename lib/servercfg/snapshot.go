@@ -119,9 +119,10 @@ type SecurityConfig struct {
 }
 
 type RuntimeConfig struct {
-	PublicVKey        string
-	DisconnectTimeout int
-	FlowStoreInterval int
+	ClientHistoryLimit int
+	PublicVKey         string
+	DisconnectTimeout  int
+	FlowStoreInterval  int
 }
 
 type NetworkConfig struct {
@@ -353,9 +354,14 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	cfg.Runtime = RuntimeConfig{
-		PublicVKey:        r.stringValue("public_vkey"),
-		DisconnectTimeout: r.intDefault(30, "disconnect_timeout"),
-		FlowStoreInterval: r.intDefault(0, "flow_store_interval"),
+		ClientHistoryLimit: r.intDefault(5, "client_history_limit"),
+		PublicVKey:         r.stringValue("public_vkey"),
+		DisconnectTimeout:  r.intDefault(30, "disconnect_timeout"),
+		FlowStoreInterval:  r.intDefault(0, "flow_store_interval"),
+	}
+
+	if cfg.Runtime.ClientHistoryLimit < 0 {
+		cfg.Runtime.ClientHistoryLimit = 5
 	}
 
 	cfg.Network.BridgeIP = r.stringDefault(r.stringDefault("0.0.0.0", "bridge_tcp_ip"), "bridge_ip")
