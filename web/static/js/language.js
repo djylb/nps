@@ -312,6 +312,112 @@ function submitform(action, url, postdata, trigger) {
     });
 }
 
+// initListBatch reuses single-row APIs and their authorization checks. Selection
+// is page-local; requests are serial and never retried after an ambiguous timeout.
+function initListBatch(kind, baseURL) {
+    var table = $('#table'), toolbar = $('#toolbar');
+    if (!toolbar.length) return;
+    toolbar.addClass('resource-list-toolbar');
+    if (kind === 'client') toolbar.addClass('list-toolbar-stacked');
+    function text(id, fallback) {
+        var entry = languages.content && languages.content[id];
+        return entry && (entry[languages.current] || entry[languages.default]) || fallback;
+    }
+    var controls = $('<div class="list-batch-controls"></div>');
+    var select = $('<select class="form-control" aria-label="Batch action"></select>');
+    [['', 'word-batchaction', 'Batch action'], ['start', 'word-start', 'Start'],
+        ['stop', 'word-stop', 'Stop'], ['clear', 'word-clearflow', 'Clear traffic'],
+        ['delete', 'word-delete', 'Delete']].forEach(function (item) {
+        select.append($('<option></option>').val(item[0]).attr('langtag', item[1]).text(item[2]));
+    });
+    var button = $('<button type="button" class="btn btn-primary" disabled><span langtag="word-batchexecute">Apply</span></button>');
+    var count = $('<span class="text-muted small text-nowrap" aria-live="polite"></span>');
+    controls.append(select, button, count);
+    toolbar.append(controls);
+    var busy = false;
+    function update() {
+        var n = table.bootstrapTable('getSelections').length;
+        count.text(text('info-batchselected', 'Selected (current page): {count}').replace('{count}', n));
+        button.prop('disabled', busy || !n || !select.val());
+    }
+    function reset() {
+        if (!busy) table.bootstrapTable('uncheckAll');
+        update();
+    }
+    table.on('check.bs.table uncheck.bs.table check-all.bs.table uncheck-all.bs.table', update);
+    table.on('page-change.bs.table search.bs.table sort.bs.table load-success.bs.table', reset);
+    table.on('post-body.bs.table', update);
+    select.on('change', update);
+    button.on('click', function () {
+        if (busy) return;
+        var action = select.val();
+        if (!['start', 'stop', 'clear', 'delete'].includes(action)) return;
+        var selected = table.bootstrapTable('getSelections');
+        var ids = selected.map(function (row) { return Number(row.Id); })
+            .filter(function (id, index, all) { return Number.isSafeInteger(id) && id !== 0 && all.indexOf(id) === index; });
+        if (!ids.length) return;
+        var label = select.find(':selected').text();
+        var question = text('info-batchconfirm', 'Apply {action} to {count} selected entries?')
+            .replace('{action}', label).replace('{count}', ids.length);
+        if (kind === 'client' && action === 'delete') question += '\n' + text('info-batchdeleteclient', 'Deleting clients also deletes their tunnels and domains.');
+        if (!confirm(question)) return;
+        busy = true;
+        var box = table.closest('.ibox');
+        box.attr('aria-busy', 'true').addClass('list-batch-running');
+        select.prop('disabled', true);
+        button.prop('disabled', true);
+        var completed = 0, succeeded = 0, failures = [];
+        function finish() {
+            busy = false;
+            box.removeAttr('aria-busy').removeClass('list-batch-running');
+            select.prop('disabled', false);
+            table.bootstrapTable('uncheckAll');
+            table.bootstrapTable('refresh', {silent: true});
+            update();
+            var message = text('info-batchresult', 'Succeeded: {success}; failed: {failed}')
+                .replace('{success}', succeeded).replace('{failed}', failures.length);
+            if (failures.length) message += '\n' + failures.slice(0, 20).join('\n');
+            showMsg($('<div>').text(message).html().replace(/\n/g, '<br>'), failures.length ? 'error' : 'success', failures.length ? 10000 : 2000);
+        }
+        function next() {
+            if (completed === ids.length) { finish(); return; }
+            var id = ids[completed], data = {id: id}, endpoint;
+            var row = selected.find(function (item) { return Number(item.Id) === id; });
+            // Starting an already running tunnel must not restart its listener
+            // and disconnect sessions merely because the user selected all rows.
+            var settled = action === 'start' && (kind === 'tunnel' ? row.RunStatus === true :
+                kind === 'host' ? row.IsClose === false : row.Status === true);
+            if (settled) {
+                succeeded++;
+                completed++;
+                setTimeout(next, 0);
+                return;
+            }
+            if (kind === 'client') {
+                endpoint = action === 'delete' ? '/client/del' : action === 'clear' ? '/client/clear' : '/client/changestatus';
+                if (action === 'start' || action === 'stop') data.status = action === 'start' ? 1 : 0;
+            } else if (kind === 'host') {
+                endpoint = '/index/' + ({start: 'starthost', stop: 'stophost', clear: 'clearhost', delete: 'delhost'})[action];
+            } else {
+                endpoint = '/index/' + ({start: 'start', stop: 'stop', clear: 'clear', delete: 'del'})[action];
+            }
+            if (action === 'clear') data.mode = 'flow';
+            count.text(text('info-batchprogress', 'Processing: {done}/{total}').replace('{done}', completed + 1).replace('{total}', ids.length));
+            $.ajax({type: 'POST', url: baseURL + endpoint, data: data, timeout: 20000,
+                success: function (res) {
+                    if (res && res.status) succeeded++;
+                    else failures.push('#' + id + ': ' + langreply(res && res.msg || 'error'));
+                },
+                error: function (xhr, status) { failures.push('#' + id + ': ' + (xhr.statusText || status || 'error')); },
+                complete: function () { completed++; next(); }
+            });
+        }
+        next();
+    });
+    update();
+    $('body').setLang('.list-batch-controls');
+}
+
 // compareVersion compares dotted versions numerically segment by segment,
 // ignoring a leading "v" and build metadata; a pre-release suffix sorts
 // before the release with the same numbers. It matches version.Compare.

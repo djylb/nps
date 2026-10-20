@@ -40,12 +40,12 @@
                 <div class="content">
                     <div class="table-responsive">
                         <div id="toolbar">
-                            <div class="d-flex w-100">
-                                <a class="btn btn-primary dim mr-2" href="{{.web_base_url}}/client/add">
+                            <div class="list-toolbar-primary">
+                                <a class="btn btn-primary dim" href="{{.web_base_url}}/client/add">
                                     <i class="fa fa-fw fa-lg fa-plus"></i>
                                     <span langtag="word-add"></span>
                                 </a>
-                                <a class="btn btn-danger dim mr-2" onclick="submitform('clear', '{{.web_base_url}}/client/clear', {'id': 0, 'mode': 'flow'})">
+                                <a class="btn btn-danger dim" onclick="submitform('clear', '{{.web_base_url}}/client/clear', {'id': 0, 'mode': 'flow'})">
                                     <i class="fa fa-fw fa-lg fa-eraser"></i>
                                     <span langtag="word-clearflow"></span>
                                 </a>
@@ -86,6 +86,9 @@
     /*bootstrap table*/
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
+        idField: "Id",
+        uniqueId: "Id",
+        clickToSelect: false,
         method: 'post', // 服务器数据的请求方式 get or post
         url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
         contentType: "application/x-www-form-urlencoded",
@@ -193,6 +196,11 @@
         },
         //表格的列
         columns: [
+            {{if eq true .isAdmin}}
+            {field: '_selected', checkbox: true, switchable: false, clickToSelect: false,
+                formatter: function (value, row) { return {disabled: {{if eq true .allow_local_proxy}}row.Id <= 0{{else}}false{{end}}}; }},
+            {{end}}
+
             {
                 field: 'Id',//域值
                 title: '<span langtag="word-id"></span>',//标题
@@ -513,6 +521,9 @@
             }
         ]
     });
+    {{if eq true .isAdmin}}
+    initListBatch('client', '{{.web_base_url}}');
+    {{end}}
 
     function pingClient(el, id) {
         var $el = $(el);

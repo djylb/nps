@@ -1326,6 +1326,41 @@
 		<en-US>Confirm</en-US>
 	</lang>
 
+	<lang id="word-batchaction">
+		<zh-CN>批量操作</zh-CN>
+		<en-US>Batch action</en-US>
+	</lang>
+
+	<lang id="word-batchexecute">
+		<zh-CN>执行</zh-CN>
+		<en-US>Apply</en-US>
+	</lang>
+
+	<lang id="info-batchselected">
+		<zh-CN>已选 {count} 项（当前页）</zh-CN>
+		<en-US>Selected (current page): {count}</en-US>
+	</lang>
+
+	<lang id="info-batchconfirm">
+		<zh-CN>确定对选中的 {count} 项执行“{action}”？</zh-CN>
+		<en-US>Apply {action} to {count} selected entries?</en-US>
+	</lang>
+
+	<lang id="info-batchdeleteclient">
+		<zh-CN>删除客户端会同时删除其隧道和域名转发。</zh-CN>
+		<en-US>Deleting clients also deletes their tunnels and domains.</en-US>
+	</lang>
+
+	<lang id="info-batchresult">
+		<zh-CN>成功 {success} 项，失败 {failed} 项</zh-CN>
+		<en-US>Succeeded: {success}; failed: {failed}</en-US>
+	</lang>
+
+	<lang id="info-batchprogress">
+		<zh-CN>正在处理 {done}/{total}</zh-CN>
+		<en-US>Processing: {done}/{total}</en-US>
+	</lang>
+
 	<confirm>
 		<lang id="turn">
 			<zh-CN>你确定你要切换它吗？</zh-CN>

@@ -53,6 +53,9 @@
 
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
+        idField: "Id",
+        uniqueId: "Id",
+        clickToSelect: false,
         method: 'post', // 服务器数据的请求方式 get or post
         url: "{{.web_base_url}}/index/gettunnel", // 服务器数据的加载地址
         queryParams: function (params) {
@@ -156,6 +159,8 @@
         },
         // 表格的列
         columns: [
+            {field: '_selected', checkbox: true, switchable: false, clickToSelect: false},
+
             {
                 field: 'Id', //域值
                 title: '<span langtag="word-id"></span>', //标题
@@ -549,4 +554,5 @@
             }
         ]
     });
+    initListBatch('tunnel', '{{.web_base_url}}');
 </script>

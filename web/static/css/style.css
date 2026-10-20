@@ -12639,3 +12639,41 @@ body.md-skin {
     font-size: 0.9rem;
     border-radius: 0 8px 8px 0;
 }
+
+/* Keep batch actions compact; freeze only this list while its snapshot runs. */
+.resource-list-toolbar,
+.list-toolbar-primary,
+.list-batch-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.resource-list-toolbar { padding: 0; }
+.resource-list-toolbar.list-toolbar-stacked {
+    flex-direction: column;
+    align-items: flex-start;
+}
+.resource-list-toolbar .btn,
+.resource-list-toolbar select.form-control:not([size]):not([multiple]) {
+    height: 2.5rem;
+    margin: 0;
+    padding: 0 .9rem;
+    font-size: inherit;
+    line-height: 1.25;
+}
+.resource-list-toolbar .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.list-batch-controls select { width: auto; max-width: 180px; }
+.list-batch-controls [aria-live] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+}
+.list-batch-running .fixed-table-container,
+.list-batch-running .fixed-table-toolbar,
+.list-batch-running .fixed-table-pagination { pointer-events: none; }
