@@ -60,6 +60,7 @@ type LogConfig struct {
 }
 
 type WebConfig struct {
+	InstanceKeyFile string
 	BaseURL         string
 	HeadCustomCode  string
 	Host            string
@@ -293,6 +294,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	cfg.Web = WebConfig{
+		InstanceKeyFile: r.stringValue("instance_key_file"),
 		BaseURL:         r.stringValue("web_base_url"),
 		HeadCustomCode:  r.stringValue("head_custom_code"),
 		Host:            r.stringValue("web_host"),

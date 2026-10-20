@@ -92,23 +92,23 @@ func (h *ConnectionHistory) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (c *Client) RecordConnection(online bool, now time.Time) {
-	if c.Id <= 0 || c.ConnectionHistory == nil {
+func (s *Client) RecordConnection(online bool, now time.Time) {
+	if s.Id <= 0 || s.ConnectionHistory == nil {
 		return
 	}
-	c.ConnectionHistory.record(online, now)
+	s.ConnectionHistory.record(online, now)
 }
 
 // LastSeenTime snapshots the legacy last-online value without changing its meaning.
-func (c *Client) LastSeenTime() string {
-	c.RLock()
-	defer c.RUnlock()
-	return c.LastOnlineTime
+func (s *Client) LastSeenTime() string {
+	s.RLock()
+	defer s.RUnlock()
+	return s.LastOnlineTime
 }
 
 // MarkSeen updates the legacy last-online value used by full and live lists.
-func (c *Client) MarkSeen(now time.Time) {
-	c.Lock()
-	defer c.Unlock()
-	c.LastOnlineTime = now.Format("2006-01-02 15:04:05")
+func (s *Client) MarkSeen(now time.Time) {
+	s.Lock()
+	defer s.Unlock()
+	s.LastOnlineTime = now.Format("2006-01-02 15:04:05")
 }

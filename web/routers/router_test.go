@@ -29,6 +29,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
@@ -1231,7 +1232,7 @@ func sessionCookiesFromIdentity(t *testing.T, cfg *servercfg.Snapshot, identity 
 	if err != nil {
 		t.Fatalf("MarshalSessionIdentity() error = %v", err)
 	}
-	authKey, encKey := deriveTestSessionKeys(cfg)
+	authKey, encKey := deriveTestSessionKeys(t, cfg)
 	store := sessions.NewCookieStore(authKey, encKey)
 	store.Options = &sessions.Options{
 		Path:     "/",
@@ -1338,11 +1339,21 @@ func sortedKeys(values map[string]bool) []string {
 	return keys
 }
 
-func deriveTestSessionKeys(cfg *servercfg.Snapshot) ([]byte, []byte) {
-	seed := fmt.Sprintf("%s|%s|%s|%s", cfg.Web.Username, cfg.Web.Password, cfg.Auth.Key, cfg.App.Name)
-	authSum := sha256.Sum256([]byte("auth:" + seed))
-	encSum := sha256.Sum256([]byte("enc:" + seed))
-	return authSum[:], encSum[:]
+func deriveTestSessionKeys(t *testing.T, cfg *servercfg.Snapshot) ([]byte, []byte) {
+	t.Helper()
+	key, err := instancekey.LoadOrCreate(cfg.Web.InstanceKeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := key.DeriveKey("nps/session/auth/v1", 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc, err := key.DeriveKey("nps/session/encryption/v1", 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return auth, enc
 }
 
 func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {

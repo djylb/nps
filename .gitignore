@@ -11,3 +11,7 @@ npc
 conf/*.dat
 conf/geodata.version
 conf/*.download
+
+# Persistent instance secrets
+instance.key
+.instance-key-*

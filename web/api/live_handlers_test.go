@@ -63,7 +63,7 @@ func TestLiveStatusFieldsAndOwnership(t *testing.T) {
 		if kind == "client" {
 			ids = []int{1, 2, -1, 99}
 		}
-		items := []map[string]interface{}{}
+		var items []map[string]interface{}
 		for _, id := range ids {
 			items = append(items, map[string]interface{}{"id": id, "fields": []string{"Flow.InletFlow"}})
 		}

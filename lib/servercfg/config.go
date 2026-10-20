@@ -221,6 +221,17 @@ func Load(path string) error {
 		return fmt.Errorf("parse %s config %s: %w", format, path, err)
 	}
 	snapshot := buildSnapshot(values)
+	keyPath := snapshot.Web.InstanceKeyFile
+	if keyPath == "" {
+		keyPath = "instance.key"
+	}
+	if !filepath.IsAbs(keyPath) {
+		keyPath = filepath.Join(filepath.Dir(path), keyPath)
+	}
+	snapshot.Web.InstanceKeyFile, err = filepath.Abs(keyPath)
+	if err != nil {
+		return fmt.Errorf("resolve instance key path: %w", err)
+	}
 
 	mu.Lock()
 	appConfig = &store{values: values, snapshot: snapshot}

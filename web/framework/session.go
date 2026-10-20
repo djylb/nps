@@ -1,13 +1,12 @@
 package framework
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/gin-gonic/gin"
@@ -212,21 +211,19 @@ func newBlankSession(store *sessions.CookieStore) *sessions.Session {
 }
 
 func deriveSessionKeys(cfg *servercfg.Snapshot) ([]byte, []byte, error) {
-	seed := fmt.Sprintf("%s|%s|%s|%s", cfg.Web.Username, cfg.Web.Password, cfg.Auth.Key, cfg.App.Name)
-	if seed == "|||" {
-		authKey := make([]byte, 32)
-		encKey := make([]byte, 32)
-		if _, err := rand.Read(authKey); err != nil {
-			return nil, nil, err
-		}
-		if _, err := rand.Read(encKey); err != nil {
-			return nil, nil, err
-		}
-		return authKey, encKey, nil
+	if cfg == nil || cfg.Web.InstanceKeyFile == "" {
+		return nil, nil, fmt.Errorf("instance key file is not configured")
 	}
-	authSum := sha256.Sum256([]byte("auth:" + seed))
-	encSum := sha256.Sum256([]byte("enc:" + seed))
-	return authSum[:], encSum[:], nil
+	key, err := instancekey.LoadOrCreate(cfg.Web.InstanceKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	auth, err := key.DeriveKey("nps/session/auth/v1", 32)
+	if err != nil {
+		return nil, nil, err
+	}
+	enc, err := key.DeriveKey("nps/session/encryption/v1", 32)
+	return auth, enc, err
 }
 
 func currentSessionConfig() *servercfg.Snapshot {

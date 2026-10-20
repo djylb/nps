@@ -16,7 +16,7 @@ import (
 func TestClientClearAllowsAdminVirtualIDOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	state := NewStateWithApp(webapi.New(&servercfg.Snapshot{}))
-	specs := []webapi.ActionSpec{}
+	var specs []webapi.ActionSpec
 	calls := 0
 	for _, spec := range webapi.ProtectedActionCatalog(state.App) {
 		if spec.Controller != "client" || spec.Name != "clear" {

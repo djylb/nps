@@ -146,7 +146,7 @@ func (a *App) LiveStatus(c Context) {
 					row[f] = values.InletFlow + values.ExportFlow
 				case "ActualFlow":
 					row[f] = (values.InletFlow + values.ExportFlow) * 2
-				case "FlowRemain":
+				default: // The outer switch limits the remaining field to FlowRemain.
 					row[f] = values.FlowLimit*1024*1024 - values.Used
 				}
 			case "NowConn":

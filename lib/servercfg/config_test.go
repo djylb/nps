@@ -278,3 +278,24 @@ func TestClientHistoryLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestInstanceKeyPathRelativeToLoadedConfig(t *testing.T) {
+	resetTestState(t)
+	t.Cleanup(func() { resetTestState(t) })
+	for _, value := range []string{"", "secrets/custom.key", filepath.Join(t.TempDir(), "absolute.key")} {
+		path := writeConfig(t, "nps.conf", "instance_key_file="+filepath.ToSlash(value)+"\n")
+		if err := Load(path); err != nil {
+			t.Fatal(err)
+		}
+		want := value
+		if want == "" {
+			want = "instance.key"
+		}
+		if !filepath.IsAbs(want) {
+			want = filepath.Join(filepath.Dir(path), want)
+		}
+		if got := Current().Web.InstanceKeyFile; got != want {
+			t.Fatalf("key path: %q, want %q", got, want)
+		}
+	}
+}
