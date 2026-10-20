@@ -39,6 +39,18 @@
     $('#langtag').attr('langtag', 'page-list' + name.replace(/:.*/, "")).next().text(name.split(":")[1])
 
     /*bootstrap table*/
+    function uploadLimitValue(row) {
+        var limit = Number(row.UploadLimit) || 0;
+        var value = limit === 0 ? '<span langtag="word-unlimitedrate"></span>' : limit + ' KB/s';
+        return '<span role="button" tabindex="0" style="cursor:pointer" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'upload_limit\'})" onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }">' + value + '</span>';
+    }
+
+    function downloadLimitValue(row) {
+        var limit = Number(row.DownloadLimit) || 0;
+        var value = limit === 0 ? '<span langtag="word-unlimitedrate"></span>' : limit + ' KB/s';
+        return '<span role="button" tabindex="0" style="cursor:pointer" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'download_limit\'})" onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }">' + value + '</span>';
+    }
+
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
         method: 'post', // 服务器数据的请求方式 get or post
@@ -81,6 +93,8 @@
                 + '<b langtag="word-inletflow"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>&emsp;'
                 + '<b langtag="word-flowlimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + 'MB</span>&emsp;'
                 + '<b langtag="word-timelimit"></b>: <span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>&emsp;'
+            usage += '<b langtag="word-uploadlimit"></b>: ' + uploadLimitValue(row) + '&emsp;'
+                + '<b langtag="word-downloadlimit"></b>: ' + downloadLimitValue(row) + '&emsp;'
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
@@ -293,6 +307,42 @@
             },
             {{ end }}
             {
+                field: 'Speed',
+                title: '<span langtag="word-speed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: true,
+                sortable: true,
+                sortName: 'speed',
+                formatter: function (value, row, index) {
+                    return changeunit((Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                }
+            },
+            {
+                field: 'UploadRate',
+                title: '<span langtag="word-uploadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'upload_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.UploadRate) || 0) + '/s';
+                }
+            },
+            {
+                field: 'DownloadRate',
+                title: '<span langtag="word-downloadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'download_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.DownloadRate) || 0) + '/s';
+                }
+            },
+            {
                 field: 'InletFlow', //域值
                 title: '<span langtag="word-inletflow"></span>', //内容
                 align: 'center',
@@ -359,6 +409,26 @@
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + getRemainingTime(row.Flow.TimeLimit).formatted + '</span>'
+                }
+            },
+            {
+                field: 'UploadLimit',
+                title: '<span langtag="word-uploadlimit"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                formatter: function (value, row, index) {
+                    return uploadLimitValue(row);
+                }
+            },
+            {
+                field: 'DownloadLimit',
+                title: '<span langtag="word-downloadlimit"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                formatter: function (value, row, index) {
+                    return downloadLimitValue(row);
                 }
             },
             {

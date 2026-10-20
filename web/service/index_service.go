@@ -80,6 +80,8 @@ type AddTunnelInput struct {
 	DestACLMode    int
 	DestACLRules   string
 	Access         AccessListInput
+	UploadLimit    int // KB/s; zero means unlimited
+	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
 	TimeLimit      string
 	IsAdmin        bool
@@ -106,6 +108,8 @@ type EditTunnelInput struct {
 	DestACLMode    int
 	DestACLRules   string
 	Access         AccessListInput
+	UploadLimit    int // KB/s; zero means unlimited
+	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
 	TimeLimit      string
 	IsAdmin        bool
@@ -130,6 +134,8 @@ type AddHostInput struct {
 	PathRewrite    string
 	RedirectURL    string
 	Access         AccessListInput
+	UploadLimit    int // KB/s; zero means unlimited
+	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
 	TimeLimit      string
 	Scheme         string
@@ -162,6 +168,8 @@ type EditHostInput struct {
 	PathRewrite    string
 	RedirectURL    string
 	Access         AccessListInput
+	UploadLimit    int // KB/s; zero means unlimited
+	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
 	TimeLimit      string
 	Scheme         string
@@ -228,6 +236,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		},
 	}
 
+	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
@@ -327,6 +336,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.DestAclRules = destRules
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Remark = input.Remark
+	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
 		tunnel.Flow.ResetTraffic()
@@ -389,7 +399,19 @@ func (s DefaultIndexService) StartTunnel(id int, mode string) error {
 	return normalizeRuntimeError(s.runtime().StartTunnel(id))
 }
 
-func (DefaultIndexService) ClearTunnel(id int, mode string) error {
+func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
+	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
+		tunnel, err := s.GetTunnel(id)
+		if err != nil {
+			return err
+		}
+		if mode == "upload_limit" {
+			tunnel.ClearUploadLimit()
+		} else {
+			tunnel.ClearDownloadLimit()
+		}
+		return s.repo().SaveTunnel(tunnel)
+	}
 	if strings.TrimSpace(mode) == "" {
 		return ErrModeRequired
 	}
@@ -440,6 +462,18 @@ func (s DefaultIndexService) StopHost(id int, mode string) error {
 }
 
 func (s DefaultIndexService) ClearHost(id int, mode string) error {
+	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
+		host, err := s.GetHost(id)
+		if err != nil {
+			return err
+		}
+		if mode == "upload_limit" {
+			host.ClearUploadLimit()
+		} else {
+			host.ClearDownloadLimit()
+		}
+		return s.repo().SaveHost(host, "")
+	}
 	s.runtime().RemoveHostCache(id)
 	if strings.TrimSpace(mode) == "" {
 		return ErrModeRequired
@@ -487,6 +521,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		CompatMode:     input.CompatMode,
 		TargetIsHttps:  input.TargetIsHTTPS,
 	}
+	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
 
 	client, err := s.repo().GetClient(input.ClientID)
@@ -560,6 +595,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.AutoSSL = input.AutoSSL
 	host.KeyFile = input.KeyFile
 	host.CertFile = input.CertFile
+	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	host.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
 		host.Flow.ResetTraffic()

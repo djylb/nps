@@ -50,6 +50,35 @@ func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 		return true
 	})
 	sort.Ints(keys)
+	// Sample once per client before sorting, including the multi-client
+	// visibility path which pages directly from these keys.
+	switch sortKey {
+	case "speed", "upload_rate", "download_rate", "Speed", "UploadRate", "DownloadRate":
+		if isSort {
+			values := make(map[int]int64, len(keys))
+			for _, key := range keys {
+				if value, ok := m.Load(key); ok {
+					if client, ok := value.(*Client); ok && client != nil {
+						upload, download := client.CurrentRates()
+						switch sortKey {
+						case "upload_rate", "UploadRate":
+							values[key] = upload
+						case "download_rate", "DownloadRate":
+							values[key] = download
+						default:
+							values[key] = upload + download
+						}
+					}
+				}
+			}
+			sort.SliceStable(keys, func(i, j int) bool {
+				if order == "asc" {
+					return values[keys[i]] < values[keys[j]]
+				}
+				return values[keys[i]] > values[keys[j]]
+			})
+		}
+	}
 	return
 }
 
@@ -165,6 +194,11 @@ func (s *DbUtils) NewTask(t *Tunnel) error {
 func (s *DbUtils) UpdateTask(t *Tunnel) error {
 	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
 		return err
+	}
+	if old, ok := s.JsonDb.Tasks.Load(t.Id); ok {
+		if previous, ok := old.(*Tunnel); ok && previous != nil && previous != t {
+			t.RateLimits.adopt(&previous.RateLimits)
+		}
 	}
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)

@@ -16,7 +16,8 @@ import (
 // the limit in bytes per second. Decoding ignores both: they are runtime
 // state, and the limit comes from the client's configuration.
 type Rate struct {
-	l byterate.Rate
+	l       byterate.Rate
+	traffic byterate.Counter
 }
 
 type rateJSON struct {
@@ -75,4 +76,13 @@ func (r *Rate) MarshalJSON() ([]byte, error) {
 		return []byte("null"), nil
 	}
 	return json.Marshal(rateJSON{NowRate: r.Now(), Limit: r.Limit()})
+}
+
+// CurrentRates reports visitor uploads and downloads, without changing the
+// legacy combined limiter or its JSON representation.
+func (r *Rate) CurrentRates() (int64, int64) {
+	if r == nil {
+		return 0, 0
+	}
+	return r.traffic.Throughput()
 }

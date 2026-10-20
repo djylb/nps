@@ -42,10 +42,11 @@ func ResetGlobalTraffic() { SetGlobalTraffic(0, 0) }
 // directions share, and the global traffic, where what the server reads
 // from the npc goes out to visitors and what it writes comes in from them.
 func limiters(r *Rate) (read, write byterate.Limiter) {
-	var client byterate.Limiter
+	var client, in, out byterate.Limiter
 	if r != nil {
 		client = &r.l
+		in, out = r.traffic.Inbound(), r.traffic.Outbound()
 	}
-	return byterate.NewHierarchy(client, &globalRate, globalTraffic.Outbound()),
-		byterate.NewHierarchy(client, &globalRate, globalTraffic.Inbound())
+	return byterate.NewHierarchy(client, out, &globalRate, globalTraffic.Outbound()),
+		byterate.NewHierarchy(client, in, &globalRate, globalTraffic.Inbound())
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -50,7 +51,7 @@ func (a *App) GetTunnel(c Context) {
 		Sort:     requestEscapedString(c, "sort"),
 		Order:    requestEscapedString(c, "order"),
 	})
-	respondTable(c, rows, count)
+	respondTable(c, tunnelRateRows(rows), count)
 }
 
 func (a *App) AddTunnel(c Context) {
@@ -164,7 +165,7 @@ func (a *App) HostList(c Context) {
 		Sort:     requestEscapedString(c, "sort"),
 		Order:    requestEscapedString(c, "order"),
 	})
-	respondTable(c, rows, count)
+	respondTable(c, hostRateRows(rows), count)
 }
 
 func (a *App) GetHost(c Context) {
@@ -298,6 +299,8 @@ func addTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.AddTunnelInpu
 		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
 		DestACLRules:   requestString(c, "dest_acl_rules"),
 		Access:         requestAccessLists(c, ""),
+		UploadLimit:    requestIntValue(c, "upload_limit"),
+		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
 		TimeLimit:      requestEscapedString(c, "time_limit"),
 	}
@@ -327,6 +330,8 @@ func editTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.EditTunnelIn
 		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
 		DestACLRules:   requestString(c, "dest_acl_rules"),
 		Access:         requestAccessLists(c, ""),
+		UploadLimit:    requestIntValue(c, "upload_limit"),
+		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
 		TimeLimit:      requestEscapedString(c, "time_limit"),
 		ResetFlow:      requestBoolValue(c, "flow_reset"),
@@ -352,6 +357,8 @@ func addHostInput(c Context, cfg *servercfg.Snapshot) webservice.AddHostInput {
 		Location:       requestEscapedString(c, "location"),
 		PathRewrite:    requestEscapedString(c, "path_rewrite"),
 		RedirectURL:    requestEscapedString(c, "redirect_url"),
+		UploadLimit:    requestIntValue(c, "upload_limit"),
+		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
 		TimeLimit:      requestEscapedString(c, "time_limit"),
 		Scheme:         requestEscapedString(c, "scheme"),
@@ -387,6 +394,8 @@ func editHostInput(c Context, cfg *servercfg.Snapshot) webservice.EditHostInput 
 		Location:       requestEscapedString(c, "location"),
 		PathRewrite:    requestEscapedString(c, "path_rewrite"),
 		RedirectURL:    requestEscapedString(c, "redirect_url"),
+		UploadLimit:    requestIntValue(c, "upload_limit"),
+		DownloadLimit:  requestIntValue(c, "download_limit"),
 		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
 		TimeLimit:      requestEscapedString(c, "time_limit"),
 		ResetFlow:      requestBoolValue(c, "flow_reset"),
@@ -408,4 +417,47 @@ func indexAllowLocal(cfg *servercfg.Snapshot, isAdmin bool) bool {
 		return isAdmin
 	}
 	return cfg.Feature.AllowUserLocal || isAdmin
+}
+
+// These response fields are snapshots in bytes/s and are never persisted.
+type tunnelRateRow struct {
+	*file.Tunnel
+	UploadRate   int64
+	DownloadRate int64
+}
+
+type hostRateRow struct {
+	*file.Host
+	UploadRate   int64
+	DownloadRate int64
+}
+
+func tunnelRateRows(rows []*file.Tunnel) []*tunnelRateRow {
+	if rows == nil {
+		return nil
+	}
+	result := make([]*tunnelRateRow, len(rows))
+	for i, row := range rows {
+		if row == nil {
+			continue
+		}
+		upload, download := row.CurrentRates()
+		result[i] = &tunnelRateRow{Tunnel: row, UploadRate: upload, DownloadRate: download}
+	}
+	return result
+}
+
+func hostRateRows(rows []*file.Host) []*hostRateRow {
+	if rows == nil {
+		return nil
+	}
+	result := make([]*hostRateRow, len(rows))
+	for i, row := range rows {
+		if row == nil {
+			continue
+		}
+		upload, download := row.CurrentRates()
+		result[i] = &hostRateRow{Host: row, UploadRate: upload, DownloadRate: download}
+	}
+	return result
 }

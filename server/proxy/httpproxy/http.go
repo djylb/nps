@@ -308,7 +308,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		w.WriteHeader(http.StatusBadGateway)
 		return
 	}
-	rawConn := conn.GetConn(targetConn, link.Crypt, link.Compress, host.Client.Rate, true, isLocal)
+	rawConn := conn.GetConn(targetConn, link.Crypt, link.Compress, host.Client.Rate, true, isLocal, host.RateLimiter())
 	// Every path below closes netConn, which wraps wsConn, or hands it to the relay.
 	//noinspection GoResourceLeak
 	wsConn := conn.NewRWConn(rawConn)
@@ -562,7 +562,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, targetAddr, err)
 		return nil, err
 	}
-	rawConn := conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, true, isLocal)
+	rawConn := conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, true, isLocal, h.RateLimiter())
 	flowConn := conn.NewFlowConn(rawConn, h.Flow, h.Client.Flow)
 	if h.Target.ProxyProtocol != 0 {
 		ra, _ := net.ResolveTCPAddr("tcp", remote)

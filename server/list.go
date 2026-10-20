@@ -34,6 +34,9 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 	// sort by field, asc or desc
 	switch sortField {
+	case "speed", "upload_rate", "download_rate", "Speed", "UploadRate", "DownloadRate":
+		sortCurrentRates(allList, sortField, order)
+
 	case "Id":
 		if order == "asc" {
 			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Id < allList[j].Id })
@@ -253,6 +256,9 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 
 	// sort by field, asc or desc
 	switch sortField {
+	case "speed", "upload_rate", "download_rate", "Speed", "UploadRate", "DownloadRate":
+		sortCurrentRates(list, sortField, order)
+
 	case "Id":
 		if order == "asc" {
 			sort.SliceStable(list, func(i, j int) bool { return list[i].Id < list[j].Id })
@@ -628,4 +634,33 @@ func page[T any](list []T, start, length int) []T {
 		list = list[:length]
 	}
 	return list
+}
+
+// Read current rates once so a changing meter cannot invalidate the comparator.
+func sortCurrentRates[T interface{ CurrentRates() (int64, int64) }](rows []T, field, order string) {
+	type entry struct {
+		row   T
+		value int64
+	}
+	values := make([]entry, len(rows))
+	for i, row := range rows {
+		upload, download := row.CurrentRates()
+		value := upload + download
+		switch field {
+		case "upload_rate", "UploadRate":
+			value = upload
+		case "download_rate", "DownloadRate":
+			value = download
+		}
+		values[i] = entry{row, value}
+	}
+	sort.SliceStable(values, func(i, j int) bool {
+		if order == "asc" {
+			return values[i].value < values[j].value
+		}
+		return values[i].value > values[j].value
+	})
+	for i, entry := range values {
+		rows[i] = entry.row
+	}
 }

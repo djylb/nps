@@ -25,18 +25,18 @@ import (
 )
 
 // GetConn get crypt or snappy conn
-func GetConn(conn net.Conn, cpt, snappy bool, rt *rate.Rate, isServer, isLocal bool) io.ReadWriteCloser {
+func GetConn(conn net.Conn, cpt, snappy bool, rt *rate.Rate, isServer, isLocal bool, entry ...*rate.Directional) io.ReadWriteCloser {
 	if !isLocal {
 		if cpt {
 			if isServer {
-				return rate.NewRateConn(crypt.NewTlsServerConn(conn), rt)
+				return rate.NewRateConn(crypt.NewTlsServerConn(conn), rt, entry...)
 			}
-			return rate.NewRateConn(crypt.NewTlsClientConn(conn), rt)
+			return rate.NewRateConn(crypt.NewTlsClientConn(conn), rt, entry...)
 		} else if snappy {
-			return rate.NewRateConn(NewSnappyConn(conn), rt)
+			return rate.NewRateConn(NewSnappyConn(conn), rt, entry...)
 		}
 	}
-	return rate.NewRateConn(conn, rt)
+	return rate.NewRateConn(conn, rt, entry...)
 }
 
 func GetTlsConn(c net.Conn, sni string) (net.Conn, error) {
@@ -221,7 +221,11 @@ func ReadACK(c net.Conn, timeout time.Duration) error {
 // CopyWaitGroup conn1 mux conn
 func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Rate,
 	flows []*file.Flow, isServer bool, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal, isFramed bool) {
-	connHandle := GetConn(conn1, crypt, snappy, rate, isServer, isLocal)
+	var entry *file.Tunnel
+	if isServer {
+		entry = task
+	}
+	connHandle := GetConn(conn1, crypt, snappy, rate, isServer, isLocal, entryRate(entry))
 	if isFramed {
 		// connHandle only wraps conn1, which every path below closes.
 		//noinspection GoResourceLeak
@@ -328,4 +332,12 @@ func GetRealIP(r *http.Request, header string) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// entryRate excludes client-side relay wrappers from server-side policy/metering.
+func entryRate(t *file.Tunnel) *rate.Directional {
+	if t == nil {
+		return nil
+	}
+	return t.RateLimiter()
 }

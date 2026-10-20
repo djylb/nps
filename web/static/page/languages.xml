@@ -666,6 +666,22 @@
 		<zh-CN>流出</zh-CN>
 		<en-US>Out</en-US>
 	</lang>
+	<lang id="word-currentuploadrate">
+		<zh-CN>当前上行速度</zh-CN>
+		<en-US>Current Upload Speed</en-US>
+	</lang>
+	<lang id="word-currentdownloadrate">
+		<zh-CN>当前下行速度</zh-CN>
+		<en-US>Current Download Speed</en-US>
+	</lang>
+	<lang id="info-uploaddirection">
+		<zh-CN>访问者 → 后端</zh-CN>
+		<en-US>Visitor → Backend</en-US>
+	</lang>
+	<lang id="info-downloaddirection">
+		<zh-CN>后端 → 访问者</zh-CN>
+		<en-US>Backend → Visitor</en-US>
+	</lang>
 	<lang id="word-uploadspeed">
 		<zh-CN>上行网速</zh-CN>
 		<en-US>Upload Speed</en-US>
@@ -673,6 +689,26 @@
 	<lang id="word-downloadspeed">
 		<zh-CN>下行网速</zh-CN>
 		<en-US>Download Speed</en-US>
+	</lang>
+	<lang id="word-uploadlimit">
+		<zh-CN>上行限速</zh-CN>
+		<en-US>Upload Rate Limit</en-US>
+	</lang>
+	<lang id="word-downloadlimit">
+		<zh-CN>下行限速</zh-CN>
+		<en-US>Download Rate Limit</en-US>
+	</lang>
+	<lang id="info-directionalratelimit">
+		<zh-CN>单位 KB/s（1 KB = 1024 B），0 表示不限速。上行：访问者 → 后端；下行：后端 → 访问者。</zh-CN>
+		<en-US>Unit: KB/s (1 KB = 1024 B). 0 means unlimited. Upload: visitor → backend; download: backend → visitor.</en-US>
+	</lang>
+	<lang id="info-p2pratelimit">
+		<zh-CN>P2P 限速仅对中继流量生效，直连流量不经过服务端。</zh-CN>
+		<en-US>P2P rate limits apply only to relayed traffic. Direct connections do not pass through the server.</en-US>
+	</lang>
+	<lang id="word-unlimitedrate">
+		<zh-CN>0（不限速）</zh-CN>
+		<en-US>0 (Unlimited)</en-US>
 	</lang>
 	<lang id="word-globalratelimit">
 		<zh-CN>全局带宽限制 (KB/s)</zh-CN>

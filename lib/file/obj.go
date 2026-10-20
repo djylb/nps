@@ -318,6 +318,7 @@ func (s *Client) EnsureWebPassword() {
 }
 
 type Tunnel struct {
+	RateLimits
 	Id           int
 	Port         int
 	ServerIp     string
@@ -422,6 +423,7 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {
 	t := &Tunnel{
+		RateLimits:   host.RateLimits.shared(),
 		ServerIp:     "0.0.0.0",
 		Port:         port,
 		Mode:         "tcp",
@@ -445,6 +447,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 func (t *Tunnel) Clone() *Tunnel {
 	t.RLock()
 	c := &Tunnel{
+		RateLimits:   t.RateLimits.copyConfig(),
 		Id:           t.Id,
 		Port:         t.Port,
 		ServerIp:     t.ServerIp,
@@ -502,6 +505,7 @@ func (t *Tunnel) Clone() *Tunnel {
 }
 
 func (t *Tunnel) Update(other *Tunnel) {
+	t.SetRateLimits(other.UploadLimit, other.DownloadLimit)
 	t.ServerIp = other.ServerIp
 	t.Mode = other.Mode
 	t.Password = other.Password
@@ -542,6 +546,7 @@ type Health struct {
 }
 
 type Host struct {
+	RateLimits
 	Id               int
 	Host             string // host
 	HeaderChange     string // request header change
@@ -582,6 +587,7 @@ func (s *Host) HasCert() bool {
 }
 
 func (s *Host) Update(h *Host) {
+	s.SetRateLimits(h.UploadLimit, h.DownloadLimit)
 	s.HeaderChange = h.HeaderChange
 	s.RespHeaderChange = h.RespHeaderChange
 	s.HostChange = h.HostChange
@@ -724,4 +730,13 @@ func (g *Glob) ApplyLimits() {
 	if g != nil {
 		rate.SetGlobalLimit(int64(g.RateLimit) * 1024)
 	}
+}
+
+// CurrentRates reports the client's visitor upload and download speeds.
+// The existing RateLimit continues to limit their combined throughput.
+func (s *Client) CurrentRates() (int64, int64) {
+	if s == nil {
+		return 0, 0
+	}
+	return s.Rate.CurrentRates()
 }

@@ -240,6 +240,10 @@ func dealHost(s string) *file.Host {
 		switch item[0] {
 		case "host":
 			h.Host = item[1]
+		case "upload_limit":
+			h.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
+		case "download_limit":
+			h.DownloadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "target_addr":
 			h.Target.TargetStr = strings.ReplaceAll(item[1], ",", "\n")
 		case "proxy_protocol":
@@ -332,6 +336,10 @@ func dealTunnel(s string) *file.Tunnel {
 			continue
 		}
 		switch item[0] {
+		case "upload_limit":
+			t.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
+		case "download_limit":
+			t.DownloadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "server_port":
 			t.Ports = item[1]
 		case "server_ip":

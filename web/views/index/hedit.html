@@ -239,6 +239,22 @@
                                     <span class="help-block m-b-none" langtag="info-flowreset"></span>
                                 </div>
                             </div>
+                            {{if eq true .allow_rate_limit}}
+                            <div class="form-group" id="upload_limit">
+                                <label class="control-label font-bold" for="upload_limit_input" langtag="word-uploadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="upload_limit_input" name="upload_limit" type="number" min="0" step="1" value="{{.h.UploadLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="download_limit">
+                                <label class="control-label font-bold" for="download_limit_input" langtag="word-downloadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="download_limit_input" name="download_limit" type="number" min="0" step="1" value="{{.h.DownloadLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                </div>
+                            </div>
+                            {{end}}
                             {{if eq true .allow_flow_limit}}
                             <div class="form-group" id="flow_limit">
                                 <label class="control-label font-bold" langtag="word-flowlimit"></label>

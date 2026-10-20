@@ -249,7 +249,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 				logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)
 				return nil, err
 			}
-			rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal)
+			rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal, s.Task.RateLimiter())
 			return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
 		},
 	}

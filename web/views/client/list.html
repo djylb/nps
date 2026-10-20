@@ -396,13 +396,39 @@
                 }
             },
             {
-                field: 'Rate.NowRate',//域值
-                title: '<span langtag="word-speed"></span>',//内容
+                field: 'Speed',
+                title: '<span langtag="word-speed"></span>',
+                align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
-                sortable: true,//启用排序
+                visible: true,
+                sortable: true,
+                sortName: 'speed',
                 formatter: function (value, row, index) {
-                    return changeunit(value) + "/s"
+                    return changeunit((Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                }
+            },
+            {
+                field: 'UploadRate',
+                title: '<span langtag="word-uploadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'upload_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.UploadRate) || 0) + '/s';
+                }
+            },
+            {
+                field: 'DownloadRate',
+                title: '<span langtag="word-downloadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'download_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.DownloadRate) || 0) + '/s';
                 }
             },
             {

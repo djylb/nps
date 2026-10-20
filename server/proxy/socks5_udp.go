@@ -446,7 +446,7 @@ func (s *socks5UDPSession) openTunnel() error {
 		return err
 	}
 	timeoutConn := netx.NewTimeoutConn(target, link.Option.Timeout)
-	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate)
+	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate, task.RateLimiter())
 	// The session owns the framed connection and closes it in Close.
 	//noinspection GoResourceLeak
 	flowConn := conn.NewFlowConn(rateConn, task.Flow, task.Client.Flow)

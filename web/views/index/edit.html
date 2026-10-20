@@ -196,6 +196,24 @@
                                     <span class="help-block m-b-none" langtag="info-flowreset"></span>
                                 </div>
                             </div>
+                            {{if eq true .allow_rate_limit}}
+                            <div class="form-group" id="upload_limit">
+                                <label class="control-label font-bold" for="upload_limit_input" langtag="word-uploadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="upload_limit_input" name="upload_limit" type="number" min="0" step="1" value="{{.t.UploadLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                    <span class="help-block m-b-none p2p-rate-hint" langtag="info-p2pratelimit" style="display:none"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="download_limit">
+                                <label class="control-label font-bold" for="download_limit_input" langtag="word-downloadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="download_limit_input" name="download_limit" type="number" min="0" step="1" value="{{.t.DownloadLimit}}">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                    <span class="help-block m-b-none p2p-rate-hint" langtag="info-p2pratelimit" style="display:none"></span>
+                                </div>
+                            </div>
+                            {{end}}
                             {{if eq true .allow_flow_limit}}
                             <div class="form-group" id="flow_limit">
                                 <label class="control-label font-bold" langtag="word-flowlimit"></label>
@@ -264,21 +282,22 @@
 
 <script>
     var arr = []
-    arr["all"] = ["auth", "server_ip", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["tcp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["udp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["secret"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
-    arr["p2p"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "time_limit", "local_proxy"]
-    arr["file"] = ["client_id", "port", "local_path", "strip_pre", "server_ip", "flow_reset", "flow_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["all"] = ["auth", "server_ip", "port", "target", "password", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["tcp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["client_id", "port", "target", "proxy_protocol", "local_proxy", "server_ip", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["mixProxy"] = ["auth", "client_id", "port", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit"]
+    //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit"]
+    arr["secret"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["p2p"] = ["client_id", "target_type", "target", "password", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["file"] = ["client_id", "port", "local_path", "strip_pre", "server_ip", "flow_reset", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 
     function resetForm() {
         $(".form-group[id]").css("display", "none");
         $("#usecase span").css("display", "none");
         o = $("#type").val();
         $('#case' + o).css("display", "inline")
+        $('.p2p-rate-hint').toggle(o === 'p2p');
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }

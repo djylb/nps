@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/rate"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -29,7 +30,7 @@ func (a *App) ListClients(c Context) {
 		inBps, outBps := rate.GlobalThroughput()
 		traffic = &GlobalTrafficPayload{In: in, Out: out, InBps: inBps, OutBps: outBps, Limit: rate.GlobalLimit()}
 	}
-	respondClientList(c, result.Rows, result.Total, result.BridgeIP, result.BridgeAddr, result.BridgeType, result.BridgePort, traffic)
+	respondClientList(c, clientRateRows(result.Rows), result.Total, result.BridgeIP, result.BridgeAddr, result.BridgeType, result.BridgePort, traffic)
 }
 
 func (a *App) AddClient(c Context) {
@@ -200,4 +201,26 @@ func (a *App) ClientQRCode(c Context) {
 		return
 	}
 	c.RespondData(200, "image/png", png)
+}
+
+// Directional speeds are response-only; the client's combined RateLimit remains unchanged.
+type clientRateRow struct {
+	*file.Client
+	UploadRate   int64
+	DownloadRate int64
+}
+
+func clientRateRows(rows []*file.Client) []*clientRateRow {
+	if rows == nil {
+		return nil
+	}
+	result := make([]*clientRateRow, len(rows))
+	for i, row := range rows {
+		if row == nil {
+			continue
+		}
+		upload, download := row.CurrentRates()
+		result[i] = &clientRateRow{Client: row, UploadRate: upload, DownloadRate: download}
+	}
+	return result
 }

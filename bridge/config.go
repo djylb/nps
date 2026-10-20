@@ -132,6 +132,7 @@ loop:
 
 			for i := 0; i < len(ports); i++ {
 				tl := &file.Tunnel{
+					RateLimits:   file.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
 					Mode:         t.Mode,
 					Port:         ports[i],
 					ServerIp:     t.ServerIp,
