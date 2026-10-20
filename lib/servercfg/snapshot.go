@@ -107,8 +107,8 @@ type FeatureConfig struct {
 
 type SecurityConfig struct {
 	SecureMode        bool
-	AuthTimeWindow    int64
 	ForcePoW          bool
+	AuthTimeWindow    int64
 	PoWBits           int
 	LoginBanTime      int64
 	LoginIPBanTime    int64
