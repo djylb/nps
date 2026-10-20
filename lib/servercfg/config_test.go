@@ -238,3 +238,24 @@ func TestFlowLimitType(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthTimeWindow(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int64
+	}{
+		{"", 300}, {"0", 0}, {"60", 60}, {"600", 600}, {"-1", 300}, {"invalid", 300}, {"999999999999999999999999", 300},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			resetTestState(t)
+			t.Cleanup(func() { resetTestState(t) })
+			path := writeConfig(t, "nps.conf", "auth_time_window="+tc.value+"\n")
+			if err := Load(path); err != nil {
+				t.Fatal(err)
+			}
+			if got := Current().Security.AuthTimeWindow; got != tc.want {
+				t.Fatalf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

@@ -26,6 +26,7 @@ nps.exe -conf_path=D:\test\nps
 | `appname`      | 应用名称                           |
 | `runmode`      | 运行模式（dev/pro）                  |
 | `secure_mode`  | 安全模式（默认 `true`，开启后不再兼容旧版客户端连接） |
+| `auth_time_window` | 客户端认证允许的时间偏差（秒），默认 `300`，`0` 关闭时间校验，负数或无效值使用默认值；仅 `secure_mode=true` 生效。防重放缓存保留两倍窗口（`0` 时保留 600 秒），重启清空；关闭时间校验后，缓存过期的旧认证请求仍可重放。不影响 Web 登录的 `login_max_skew`。 |
 | `dns_server`   | DNS 服务器                        |
 | `timezone`     | 时区                             |
 | `ntp_server`   | NTP 服务器                        |

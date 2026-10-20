@@ -107,6 +107,7 @@ type FeatureConfig struct {
 
 type SecurityConfig struct {
 	SecureMode        bool
+	AuthTimeWindow    int64
 	ForcePoW          bool
 	PoWBits           int
 	LoginBanTime      int64
@@ -336,6 +337,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Security = SecurityConfig{
 		SecureMode:        r.boolDefault(false, "secure_mode"),
+		AuthTimeWindow:    r.int64Default(300, "auth_time_window"),
 		ForcePoW:          r.boolDefault(false, "force_pow"),
 		PoWBits:           r.intDefault(20, "pow_bits"),
 		LoginBanTime:      r.int64Default(5, "login_ban_time"),
@@ -344,6 +346,10 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		LoginMaxFailTimes: r.intDefault(10, "login_max_fail_times"),
 		LoginMaxBody:      r.int64Default(1024, "login_max_body"),
 		LoginMaxSkew:      r.int64Default(5*60*1000, "login_max_skew"),
+	}
+
+	if cfg.Security.AuthTimeWindow < 0 {
+		cfg.Security.AuthTimeWindow = 300
 	}
 
 	cfg.Runtime = RuntimeConfig{

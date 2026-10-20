@@ -15,6 +15,7 @@ import (
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
 )
@@ -106,7 +107,8 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		}
 		ts := common.BytesToTimestamp(tsBuf)
 		now := common.TimeNow().Unix()
-		if ServerSecureMode && (ts > now+rep.ttl || ts < now-rep.ttl) {
+		window := servercfg.Current().Security.AuthTimeWindow
+		if ServerSecureMode && !authTimestampValid(ts, now, window) {
 			logs.Error("Timestamp validation failed for %v: ts=%d, now=%d", c.Conn.RemoteAddr(), ts, now)
 			_ = c.Close()
 			return
@@ -198,7 +200,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			_ = c.Close()
 			return
 		}
-		if ServerSecureMode && IsReplay(string(hmacBuf)) {
+		if ServerSecureMode && rep.seen(string(hmacBuf), common.TimeNow().Unix(), window) {
 			logs.Error("Replay detected for client %v", c.Conn.RemoteAddr())
 			_ = c.Close()
 			return
