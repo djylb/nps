@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -25,6 +26,17 @@ import (
 // through the bridge, connects QUIC over it and carries a TCP connection to
 // a target behind the provider, with the relay disabled.
 func TestP2PEndToEnd(t *testing.T) {
+	for _, secure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("secure=%t", secure), func(t *testing.T) {
+			old := bridge.ServerSecureMode
+			bridge.ServerSecureMode = secure
+			t.Cleanup(func() { bridge.ServerSecureMode = old })
+			testP2PEndToEnd(t)
+		})
+	}
+}
+
+func testP2PEndToEnd(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end")
 	}

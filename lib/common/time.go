@@ -69,6 +69,8 @@ func SyncTime() {
 	offset, err := CalibrateTimeOffset(srv)
 	if err != nil {
 		logs.Error("ntp[%s] sync failed: %v", srv, err)
+		// Keep the last successful correction when the NTP server is unavailable.
+		return
 	}
 	timeMutex.Lock()
 	timeOffset = offset
