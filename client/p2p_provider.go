@@ -43,7 +43,7 @@ func (s *TRPClient) serveP2P(tunnel any, invite p2pproto.Invite) {
 	}
 	// The provider accepts a background session whenever the server offers
 	// one: the visitor relays meanwhile.
-	sess, err := holepunch.Punch(s.ctx, tc, p2pOptions(s.localIP, s.mapper, true))
+	sess, err := holepunch.Punch(s.ctx, tc, p2pOptions(s.localIP, s.mapper, true, "P2P provider: "))
 	_ = tc.Close()
 	if err != nil {
 		var herr *holepunch.Error
@@ -55,21 +55,25 @@ func (s *TRPClient) serveP2P(tunnel any, invite p2pproto.Invite) {
 		return
 	}
 	diag := sess.Diagnostics()
-	logs.Info("P2P session %s: punched %s; local NAT %s", invite.SessionID, p2pResultSummary(sess), p2pNATSummary(&diag))
-	t, err := acceptP2PTransport(s.ctx, sess)
+	logs.Info("P2P session %s: punched; local NAT %s", invite.SessionID, p2pNATSummary(&diag))
+	pc, err := acceptP2PTransport(s.ctx, sess)
 	if err != nil {
 		logs.Warn("P2P session %s: visitor did not connect over the direct path: %v", invite.SessionID, err)
 		return
 	}
-	defer t.Close(p2pCodeClosed, "closed")
-	logs.Info("P2P session %s: direct QUIC connection from %v established", invite.SessionID, t.qc.RemoteAddr())
+	defer func() { _ = pc.Close() }()
+	qc := pc.QUIC()
+	logs.Info("P2P session %s: direct QUIC connection from %v established", invite.SessionID, qc.RemoteAddr())
 	for {
-		st, err := t.qc.AcceptStream(s.ctx)
+		st, err := qc.AcceptStream(s.ctx)
 		if err != nil {
-			logs.Info("P2P session %s: direct connection from %v closed: %v", invite.SessionID, t.qc.RemoteAddr(), err)
+			if cause := pc.Err(); cause != nil {
+				err = cause
+			}
+			logs.Info("P2P session %s: direct connection from %v closed: %v", invite.SessionID, qc.RemoteAddr(), err)
 			return
 		}
-		go s.handleChan(conn.NewQuicStreamConn(st, t.qc))
+		go s.handleChan(conn.NewQuicStreamConn(st, qc))
 	}
 }
 

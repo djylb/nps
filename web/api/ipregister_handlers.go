@@ -54,7 +54,7 @@ func (a *App) renderIPRegisterPage(c Context, base string, login bool) {
 	}
 	m := data.Map()
 	m["key"] = requestString(c, "key")
-	m["ip"] = requestVisitorIP(c, cfg)
+	m["ip"] = VisitorIP(c, cfg)
 	m["hour_options"] = ipRegisterHourOptions
 	m["login_link"] = login
 	renderPage(c, newStandaloneSpecPage(ipRegisterSpec, m))
@@ -78,7 +78,7 @@ var ipRegisterHourOptions = []IPRegisterHourOption{
 func (a *App) IPRegister(c Context) {
 	cfg := a.currentConfig()
 	policy := a.loginPolicy()
-	ip := requestVisitorIP(c, cfg)
+	ip := VisitorIP(c, cfg)
 	if policy.IsIPBanned(ip) {
 		c.RespondJSON(200, IPRegisterResponse{Msg: "too many attempts, try again later"})
 		return

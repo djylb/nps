@@ -50,5 +50,5 @@ func RootGroup() *byterate.Group { return &globalGroup }
 func init() {
 	globalGroup.SetLimiters(&globalRate, &globalRate)
 	globalGroup.SetTraffic(globalTraffic)
-	sample(globalTraffic)
+	globalTraffic.SampleEverySecond()
 }

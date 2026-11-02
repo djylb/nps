@@ -2,6 +2,7 @@ package file
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -125,6 +126,69 @@ func TestTunnelAllowsDestination(t *testing.T) {
 	})
 }
 
+// pickTarget returns the address Dial tries first.
+func pickTarget(target *Target) (string, error) {
+	var picked string
+	err := target.Dial(func(addr string) (bool, error) {
+		picked = addr
+		return false, nil
+	})
+	return picked, err
+}
+
+func TestTargetDialRetriesAndEjects(t *testing.T) {
+	target := &Target{TargetStr: "a:1\nb:2\nc:3"}
+	errDown := errors.New("refused")
+	var tried []string
+	err := target.Dial(func(addr string) (bool, error) {
+		tried = append(tried, addr)
+		return true, errDown
+	})
+	if err != errDown || len(tried) != 3 {
+		t.Fatalf("Dial = %v after %v, want every target tried once", err, tried)
+	}
+
+	// a failure on the way to the target is not retried
+	tried = nil
+	if err := target.Dial(func(addr string) (bool, error) {
+		tried = append(tried, addr)
+		return false, errDown
+	}); err != errDown || len(tried) != 1 {
+		t.Fatalf("Dial = %v after %v, want one attempt", err, tried)
+	}
+
+	// a:1 keeps failing and is ejected; the others take its connections
+	for i := 0; i < 2*targetOutlier.ConsecutiveFailures; i++ {
+		_ = target.Dial(func(addr string) (bool, error) {
+			if addr == "a:1" {
+				return true, errDown
+			}
+			return true, nil
+		})
+	}
+	for i := 0; i < 6; i++ {
+		if addr, _ := pickTarget(target); addr == "a:1" {
+			t.Fatalf("ejected target picked")
+		}
+	}
+	// the client's checks clear the ejection once it reports a:1 healthy again
+	target.SetHealthy("a:1", false)
+	target.SetHealthy("a:1", true)
+	seen := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		addr, _ := pickTarget(target)
+		seen[addr] = true
+	}
+	if !seen["a:1"] {
+		t.Fatalf("target not restored: %v", seen)
+	}
+
+	empty := &Target{}
+	if _, err := pickTarget(empty); err != ErrNoTarget {
+		t.Fatalf("empty target list: %v", err)
+	}
+}
+
 func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	target := &Target{TargetStr: "a:1\r\nb:2\n\nc：3"}
 	var wg sync.WaitGroup
@@ -133,7 +197,7 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 200; j++ {
-				_, _ = target.Pick()
+				_, _ = pickTarget(target)
 			}
 		}()
 		go func() {
@@ -149,7 +213,7 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	pick := func(n int) map[string]int {
 		seen := map[string]int{}
 		for i := 0; i < n; i++ {
-			addr, err := target.Pick()
+			addr, err := pickTarget(target)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -171,7 +235,7 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	}
 	target.SetHealthy("b:2", false)
 	target.SetHealthy("c:3", false)
-	if _, err := target.Pick(); err == nil {
+	if _, err := pickTarget(target); err == nil {
 		t.Fatalf("expected an error with every target down")
 	}
 
@@ -303,6 +367,9 @@ func TestFlowLimitActual(t *testing.T) {
 	client := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
 	client.MarkClient()
 	tunnel := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
+	if got := client.Budget().Remaining(); got != 324<<10+1 {
+		t.Fatalf("client Remaining() = %d, want %d", got, 324<<10+1)
+	}
 	if traffic, _ := client.Over(); traffic {
 		t.Fatal("700 KiB of traffic over a 1 MiB client limit on the in/out traffic")
 	}
@@ -312,6 +379,13 @@ func TestFlowLimitActual(t *testing.T) {
 	}
 	if traffic, _ := tunnel.Over(); traffic {
 		t.Fatal("a tunnel limit counted the actual usage")
+	}
+	if v := client.Values(); v.Used != 1400<<10 {
+		t.Fatalf("client Used = %d, want %d", v.Used, 1400<<10)
+	}
+	SetFlowLimitActual(false)
+	if traffic, _ := client.Over(); traffic {
+		t.Fatal("the factor change back not followed")
 	}
 }
 
@@ -330,5 +404,31 @@ func TestClientFlowsMarked(t *testing.T) {
 	_ = db.UpdateClient(u)
 	if traffic, _ := u.Flow.Over(); !traffic {
 		t.Fatal("an updated client's flow not marked")
+	}
+}
+
+func TestClientFlowTotalsRaceFree(t *testing.T) {
+	c := NewClient("vk", false, false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := int64(0); i < 1000; i++ {
+			c.InletFlow.Store(i)
+			c.ExportFlow.Store(i)
+		}
+	}()
+	for i := 0; i < 100; i++ {
+		if _, err := json.Marshal(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-done
+	b, err := json.Marshal(c)
+	if err != nil || !strings.Contains(string(b), `"ExportFlow":999,"InletFlow":999`) {
+		t.Fatalf("marshal = %s, %v", b, err)
+	}
+	var back Client
+	if err := json.Unmarshal(b, &back); err != nil || back.InletFlow.Load() != 999 {
+		t.Fatalf("unmarshal inlet = %d, %v", back.InletFlow.Load(), err)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/geomatch"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/logs"
 )
@@ -49,7 +51,7 @@ func (l *SourceLists) CopySourceLists(other *SourceLists) {
 // CompileSourceLists compiles the lists. Rules that cannot be used, such as
 // geoip: rules without geodata, are logged and skipped.
 func (l *SourceLists) CompileSourceLists(scope acl.Scope, owner string) {
-	src, err := acl.CompileSource(scope, l.IpListPriority, l.BlackIpList, l.WhiteIpList)
+	src, err := acl.CompileSource(scope, l.IpListPriority, l.BlackIpList, l.WhiteIpList, "the access lists of "+owner)
 	if err != nil {
 		logs.Warn("Access lists of %s: rules skipped: %v", owner, err)
 	}
@@ -67,13 +69,6 @@ func (l *SourceLists) SourceACL() *acl.Source {
 		l.CompileSourceLists(acl.ScopeUser, "an entry")
 	}
 	return l.sourceAcl.Load()
-}
-
-// RefreshSourceLists recompiles lists whose geodata changed.
-func (l *SourceLists) RefreshSourceLists(owner string) {
-	if err := l.sourceAcl.Load().Refresh(); err != nil {
-		logs.Warn("Access lists of %s: geodata update not applied to some rules: %v", owner, err)
-	}
 }
 
 // GlobalDenied reports whether the global access lists, the firewall in
@@ -106,50 +101,25 @@ func (s *DbUtils) GlobalDeniedString(addr, what string) bool {
 	return true
 }
 
-// RefreshAccessLists recompiles the access lists whose geodata changed.
-func (s *DbUtils) RefreshAccessLists() {
-	if g := s.GetGlobal(); g != nil {
-		g.RefreshSourceLists("the global settings")
-	}
-	s.JsonDb.Clients.Range(func(_, v any) bool {
-		c := v.(*Client)
-		c.RefreshSourceLists(clientOwner(c))
-		return true
-	})
-	s.JsonDb.Tasks.Range(func(_, v any) bool {
-		t := v.(*Tunnel)
-		t.RefreshSourceLists(taskOwner(t))
-		t.RLock()
-		d := t.destAcl
-		t.RUnlock()
-		if err := d.Refresh(); err != nil {
-			logs.Warn("Destination list of tunnel %d: geodata update not applied to some rules: %v", t.Id, err)
-		}
-		return true
-	})
-	s.JsonDb.Hosts.Range(func(_, v any) bool {
-		h := v.(*Host)
-		h.RefreshSourceLists(hostOwner(h))
-		return true
-	})
+// RefreshAccessLists recompiles the access lists whose geodata changed, and
+// logs the lists that keep their rules because the new geodata breaks some.
+func RefreshAccessLists() {
+	reportGeoRefresh(acl.RefreshGeoData())
 }
 
 // WatchAccessLists checks the geodata files every interval until ctx ends
 // and refreshes the access lists when one of them changed, so that updated
 // geodata takes effect. Checking reads file metadata only.
 func WatchAccessLists(ctx context.Context, interval time.Duration) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	last := acl.GeoGeneration()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if gen := acl.GeoGeneration(); gen != last {
-				last = gen
-				GetDb().RefreshAccessLists()
-			}
+	_ = acl.WatchGeoData(ctx, interval, reportGeoRefresh)
+}
+
+func reportGeoRefresh(res geomatch.RefreshResult) {
+	for _, l := range res.Failed {
+		owner, _ := l.Tag().(string)
+		if owner == "" {
+			owner = "an access list"
 		}
+		logs.Warn("Geodata update not applied to some rules of %s: %v", owner, acl.RefreshError(l))
 	}
 }

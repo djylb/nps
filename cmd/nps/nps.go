@@ -356,8 +356,8 @@ func run() {
 	go common.SyncTime()
 	connection.InitConnectionService()
 	//crypt.InitTls(filepath.Join(common.GetRunPath(), "conf", "server.pem"), filepath.Join(common.GetRunPath(), "conf", "server.key"))
-	cert, ok := common.LoadCert(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
-	if !ok {
+	cert, err := common.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
+	if err != nil {
 		logs.Info("Using randomly generated certificate.")
 	}
 	crypt.InitTls(cert)

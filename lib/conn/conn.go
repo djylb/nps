@@ -171,8 +171,6 @@ func (s *Conn) SetAlive() {
 		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Time{})
 	case *tls.Conn:
 		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Time{})
-	case *TlsConn:
-		_ = s.Conn.(*TlsConn).SetReadDeadline(time.Time{})
 	default:
 		if conn, ok := s.Conn.(interface{ SetReadDeadline(time.Time) error }); ok {
 			_ = conn.SetReadDeadline(time.Time{})
@@ -189,8 +187,6 @@ func (s *Conn) SetReadDeadlineBySecond(t time.Duration) {
 		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Now().Add(t * time.Second))
 	case *tls.Conn:
 		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Now().Add(t * time.Second))
-	case *TlsConn:
-		_ = s.Conn.(*TlsConn).SetReadDeadline(time.Now().Add(t * time.Second))
 	default:
 		if conn, ok := s.Conn.(interface{ SetReadDeadline(time.Time) error }); ok {
 			_ = conn.SetReadDeadline(time.Now().Add(t * time.Second))

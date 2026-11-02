@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"net"
 
 	"github.com/djylb/netx"
@@ -33,12 +34,12 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	defer release()
 
 	connType := common.ConnTCP
-	host, _ := s.Task.Target.Pick()
+	host := ""
 	localProxy := false
 	needAck := false
 
 	var rb []byte
-	tee := conn.NewTeeConn(src)
+	tee := netx.NewRecordingConn(src, 0)
 	// c wraps src only; it is closed on failure and CopyWaitGroup closes it otherwise.
 	//noinspection GoResourceLeak
 	c := conn.NewConn(tee)
@@ -46,7 +47,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	if err != nil || lk == nil {
 		rb = tee.Buffered()
 	}
-	tee.StopAndClean()
+	tee.Discard()
 
 	if lk != nil {
 		needAck = lk.Option.NeedAck
@@ -74,8 +75,22 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 		}
 	}
 	localProxy = s.AllowLocalProxy && localProxy || s.Task.Client.Id < 0
-	link := conn.NewLink(connType, host, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, c.Conn.RemoteAddr().String(), localProxy)
-	target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
+	var link *conn.Link
+	var target net.Conn
+	dial := func(addr string) (bool, error) {
+		link = conn.NewLink(connType, addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, c.Conn.RemoteAddr().String(), localProxy)
+		var err error
+		target, err = s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
+		return localProxy, err
+	}
+	if host == "" {
+		err = s.Task.Target.Dial(dial)
+		if errors.Is(err, file.ErrNoTarget) {
+			_, err = dial("")
+		}
+	} else {
+		_, err = dial(host)
+	}
 	if err != nil {
 		_ = c.Close()
 		logs.Warn("failed to get backend connection: %v", err)

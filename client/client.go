@@ -160,8 +160,8 @@ func (s *TRPClient) handleMain(tunnel any) {
 		}
 		flags, err := s.signal.ReadFlag()
 		if err != nil {
-			s.noteCloseReason("signal read failed: " + conn.DescribeNetError(err, s.signal.Conn))
-			logs.Error("Accept server data error %s, end this service", conn.DescribeNetError(err, s.signal.Conn))
+			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, s.signal.Conn).String())
+			logs.Error("Accept server data error %s, end this service", netx.NetErrorDetails(err, s.signal.Conn))
 			return
 		}
 		switch flags {

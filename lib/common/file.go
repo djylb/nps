@@ -6,7 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+
+	"github.com/djylb/netx/tlsconn"
 )
 
 // ReadAllFromFile Read file content by file path
@@ -44,34 +45,18 @@ func GetCertContent(filePath, header string) (string, error) {
 	return NormalizeNewlines(string(content)), nil
 }
 
-func LoadCertPair(certFile, keyFile string) (certContent, keyContent string, ok bool) {
-	var wg sync.WaitGroup
-	var certErr, keyErr error
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		certContent, certErr = GetCertContent(certFile, "CERTIFICATE")
-	}()
-	go func() {
-		defer wg.Done()
-		keyContent, keyErr = GetCertContent(keyFile, "PRIVATE")
-	}()
-	wg.Wait()
-	if certErr != nil || keyErr != nil || certContent == "" || keyContent == "" {
-		return "", "", false
+// LoadKeyPair loads a certificate and its key, each given as PEM text or as
+// the path of a PEM file, relative to the run path.
+func LoadKeyPair(certFile, keyFile string) (tls.Certificate, error) {
+	certContent, err := GetCertContent(certFile, "CERTIFICATE")
+	if err != nil {
+		return tls.Certificate{}, err
 	}
-	return certContent, keyContent, true
-}
-
-func LoadCert(certFile, keyFile string) (tls.Certificate, bool) {
-	certContent, keyContent, ok := LoadCertPair(certFile, keyFile)
-	if ok {
-		certificate, err := tls.X509KeyPair([]byte(certContent), []byte(keyContent))
-		if err == nil {
-			return certificate, true
-		}
+	keyContent, err := GetCertContent(keyFile, "PRIVATE")
+	if err != nil {
+		return tls.Certificate{}, err
 	}
-	return tls.Certificate{}, false
+	return tlsconn.ParseKeyPair([]byte(certContent), []byte(keyContent))
 }
 
 func GetCertType(s string) string {

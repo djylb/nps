@@ -17,6 +17,9 @@ func InitIPRegister() http.Handler {
 	state := NewState(nil)
 	ui.SetRoot(filepath.Join(common.GetRunPath(), "web", "views"))
 	engine := gin.New()
+	// The visitor address comes from webapi.VisitorIP; forwarding headers
+	// are not trusted from any peer.
+	_ = engine.SetTrustedProxies(nil)
 	engine.Use(gin.Recovery())
 	engine.Use(globalFirewallMiddleware(state))
 	engine.Static("/static", filepath.Join(common.GetRunPath(), "web", "static"))

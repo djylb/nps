@@ -255,24 +255,6 @@ func containsFile(paths []string, p string) bool {
 	return false
 }
 
-// renameRetry is how long renameFile keeps retrying on Windows, where a
-// scanner or indexer briefly opening a file makes renaming it fail.
-const renameRetry = 2 * time.Second
-
-func renameFile(from, to string) error {
-	err := os.Rename(from, to)
-	if err == nil || !common.IsWindows() || errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	for deadline := time.Now().Add(renameRetry); time.Now().Before(deadline); {
-		time.Sleep(100 * time.Millisecond)
-		if err = os.Rename(from, to); err == nil {
-			return nil
-		}
-	}
-	return err
-}
-
 // NPC installs the npc executable and returns the path the service should run.
 func NPC() (string, error) {
 	if err := os.MkdirAll(common.GetInstallPath(), 0o755); err != nil {

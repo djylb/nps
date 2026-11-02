@@ -118,3 +118,45 @@ func TestNodeCloseIfSignalCurrentKeepsReplacedNode(t *testing.T) {
 		t.Fatal("node not closed by its current signal")
 	}
 }
+
+func TestClientNodeSelectModes(t *testing.T) {
+	defer func() { ClientSelectMode = Primary }()
+	ClientSelectMode = Primary
+	client := NewClient(-1, NewNode("a", "", 8))
+	client.AddNode(NewNode("b", "", 8))
+	for i := 0; i < 3; i++ {
+		if n := client.GetNode(); n == nil || n.UUID != "b" {
+			t.Fatalf("Primary must stick to the last node, got %v", n)
+		}
+	}
+
+	ClientSelectMode = RoundRobin
+	seen := map[string]int{}
+	for i := 0; i < 4; i++ {
+		seen[client.GetNode().UUID]++
+	}
+	if seen["a"] != 2 || seen["b"] != 2 {
+		t.Fatalf("RoundRobin rotation = %v", seen)
+	}
+	if client.LastUUID == "" {
+		t.Fatalf("the chosen node must become the last node")
+	}
+}
+
+func TestClientCheckNodeSkipsOfflineNodesInGrace(t *testing.T) {
+	defer func() { ClientSelectMode = Primary }()
+	ClientSelectMode = Primary
+	node := NewNode("n4", "", 6)
+	client := NewClient(3, node)
+	if got := client.CheckNode(); got != nil {
+		t.Fatalf("an offline node in its grace window must not be chosen, got %v", got)
+	}
+	if client.NodeCount() != 1 {
+		t.Fatalf("an offline node in its grace window must be kept")
+	}
+	client.lastConnectNano.Store(time.Now().Add(-10 * time.Second).UnixNano())
+	node.joinNano = time.Now().Add(-10 * time.Second).UnixNano()
+	if got := client.CheckNode(); got != nil || client.NodeCount() != 0 {
+		t.Fatalf("an offline node past its grace window must be removed, got %v count %d", got, client.NodeCount())
+	}
+}

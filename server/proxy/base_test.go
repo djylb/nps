@@ -70,11 +70,11 @@ func TestFlowAddAndFlowAddHost(t *testing.T) {
 	s.FlowAdd(10, 20)
 	s.FlowAddHost(h, 30, 40)
 
-	if taskFlow.InletFlow != 10 || taskFlow.ExportFlow != 20 {
-		t.Fatalf("task flow mismatch: inlet=%d export=%d", taskFlow.InletFlow, taskFlow.ExportFlow)
+	if v := taskFlow.Values(); v.InletFlow != 10 || v.ExportFlow != 20 {
+		t.Fatalf("task flow mismatch: inlet=%d export=%d", v.InletFlow, v.ExportFlow)
 	}
-	if hostFlow.InletFlow != 30 || hostFlow.ExportFlow != 40 {
-		t.Fatalf("host flow mismatch: inlet=%d export=%d", hostFlow.InletFlow, hostFlow.ExportFlow)
+	if v := hostFlow.Values(); v.InletFlow != 30 || v.ExportFlow != 40 {
+		t.Fatalf("host flow mismatch: inlet=%d export=%d", v.InletFlow, v.ExportFlow)
 	}
 }
 

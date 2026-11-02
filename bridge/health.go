@@ -3,6 +3,7 @@ package bridge
 import (
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -21,14 +22,14 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 		info, status, err := c.GetHealthInfo()
 		if err != nil {
 			//logs.Trace("GetHealthInfo error, id=%d, retry=%d, err=%v", id, retry, err)
-			if conn.IsTimeout(err) && retry < maxRetry {
+			if netx.IsTimeout(err) && retry < maxRetry {
 				retry++
 				continue
 			}
 			//if !firstSuccess {
 			//	return
 			//}
-			logs.Trace("GetHealthInfo error, id=%d, retry=%d, detail=%s", id, retry, conn.DescribeNetError(err, c.Conn))
+			logs.Trace("GetHealthInfo error, id=%d, retry=%d, detail=%s", id, retry, netx.NetErrorDetails(err, c.Conn))
 			break
 		}
 		//logs.Trace("GetHealthInfo: %v, %v, %v", info, err, status)

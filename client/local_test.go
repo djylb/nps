@@ -147,9 +147,32 @@ func newTestTransportDrop(t *testing.T, serverCfg *quic.Config) (*p2pTransport, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := newP2PTransport(qc, trC, pcC.Close)
-	t.Cleanup(func() { tr.Close(p2pCodeClosed, "test") })
+	tr := newP2PTransport(&testPipe{qc: qc, tr: trC, pc: pcC})
+	t.Cleanup(func() { _ = tr.Close() })
 	return tr, sc, dc
+}
+
+// testPipe is a p2pPipe on a plain QUIC connection.
+type testPipe struct {
+	qc *quic.Conn
+	tr *quic.Transport
+	pc net.PacketConn
+}
+
+func (p *testPipe) QUIC() *quic.Conn      { return p.qc }
+func (p *testPipe) Done() <-chan struct{} { return p.qc.Context().Done() }
+
+func (p *testPipe) Err() error {
+	if p.qc.Context().Err() == nil {
+		return nil
+	}
+	return context.Cause(p.qc.Context())
+}
+
+func (p *testPipe) Close() error {
+	_ = p.qc.CloseWithError(0, "closed")
+	_ = p.tr.Close()
+	return p.pc.Close()
 }
 
 // echoLink answers a relayed connection by echoing it.

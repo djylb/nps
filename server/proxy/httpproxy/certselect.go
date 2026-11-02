@@ -4,8 +4,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"strings"
+	"slices"
 
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
@@ -19,37 +20,19 @@ const (
 	matchExact
 )
 
-// matchCert reports how leaf covers name, by its DNS SANs, or by its common
-// name if it has none, following RFC 6125: a wildcard stands for exactly the
-// leftmost label, so "*.example.com" covers a.example.com but neither
-// example.com nor x.a.example.com. Names compare case-insensitively,
-// ignoring a trailing dot.
+// matchCert reports how leaf covers name, by the rules of tlsconn.Names:
+// an exact name or IP address, or a wildcard for the leftmost label.
 func matchCert(leaf *x509.Certificate, name string) certMatch {
-	if leaf == nil {
+	names := tlsconn.CertNames(leaf)
+	if !names.Covers(name) {
 		return matchNone
 	}
-	name = normalizeName(name)
-	names := leaf.DNSNames
-	if len(names) == 0 && leaf.Subject.CommonName != "" {
-		names = []string{leaf.Subject.CommonName}
-	}
-	best := matchNone
-	for _, n := range names {
-		n = normalizeName(n)
-		if n == name {
-			return matchExact
-		}
-		if suffix, ok := strings.CutPrefix(n, "*."); ok && suffix != "" {
-			if label, rest, ok := strings.Cut(name, "."); ok && label != "" && rest == suffix {
-				best = matchWildcard
-			}
+	if c, err := tlsconn.CanonicalName(name); err == nil {
+		if _, exact := slices.BinarySearch(names.DNS, c); !exact {
+			return matchWildcard
 		}
 	}
-	return best
-}
-
-func normalizeName(name string) string {
-	return strings.TrimSuffix(strings.ToLower(name), ".")
+	return matchExact
 }
 
 func certCovers(cert *tls.Certificate, name string) certMatch {

@@ -397,39 +397,45 @@ func dealClientData() {
 		} else {
 			v.IsConnect = false
 		}
-		v.InletFlow = 0
-		v.ExportFlow = 0
 		return true
 	})
-	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		h, ok := value.(*file.Host)
-		if !ok || h == nil || h.Client == nil {
-			return true
+	// Sum the traffic of each client's hosts and tasks first, so that the
+	// client totals are set once per pass.
+	type inOut struct{ in, out int64 }
+	sums := make(map[*file.Client]inOut)
+	addFlow := func(owner *file.Client, f *file.Flow) {
+		if owner == nil {
+			return
 		}
-		c, err := file.GetDb().GetClient(h.Client.Id)
+		c, err := file.GetDb().GetClient(owner.Id)
 		if err != nil {
-			return true
+			return
 		}
-		f := h.Flow.Values()
-		c.InletFlow += f.InletFlow
-		c.ExportFlow += f.ExportFlow
+		v := f.Values()
+		sum := sums[c]
+		sum.in += v.InletFlow
+		sum.out += v.ExportFlow
+		sums[c] = sum
+	}
+	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
+		if h, ok := value.(*file.Host); ok && h != nil {
+			addFlow(h.Client, h.Flow)
+		}
 		return true
 	})
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		t, ok := value.(*file.Tunnel)
-		if !ok || t == nil || t.Client == nil {
-			return true
+		if t, ok := value.(*file.Tunnel); ok && t != nil {
+			addFlow(t.Client, t.Flow)
 		}
-		c, err := file.GetDb().GetClient(t.Client.Id)
-		if err != nil {
-			return true
-		}
-		f := t.Flow.Values()
-		c.InletFlow += f.InletFlow
-		c.ExportFlow += f.ExportFlow
 		return true
 	})
-	//return
+	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
+		c := value.(*file.Client)
+		sum := sums[c]
+		c.InletFlow.Store(sum.in)
+		c.ExportFlow.Store(sum.out)
+		return true
+	})
 }
 
 // flowSession periodically persists flow counters and other runtime state.

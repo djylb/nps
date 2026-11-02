@@ -68,10 +68,6 @@ func (c *ginAPIContext) RemoteAddr() string {
 	return c.gin.Request.RemoteAddr
 }
 
-func (c *ginAPIContext) ClientIP() string {
-	return c.gin.ClientIP()
-}
-
 func (c *ginAPIContext) RequestHeader(key string) string {
 	return c.gin.GetHeader(key)
 }

@@ -65,17 +65,6 @@ func TestIsExecutableOf(t *testing.T) {
 	}
 }
 
-func TestRenameFileMissingSourceFailsAtOnce(t *testing.T) {
-	dir := t.TempDir()
-	start := time.Now()
-	if err := renameFile(filepath.Join(dir, "missing"), filepath.Join(dir, "dest")); err == nil {
-		t.Fatal("renameFile of a missing file succeeded")
-	}
-	if d := time.Since(start); d > renameRetry/2 {
-		t.Fatalf("renameFile of a missing file took %v", d)
-	}
-}
-
 func TestHelperSleep(t *testing.T) {
 	if os.Getenv("NPS_TEST_SLEEP") != "1" {
 		t.Skip("helper process")

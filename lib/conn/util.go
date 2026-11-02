@@ -3,14 +3,12 @@ package conn
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/djylb/netx"
@@ -23,34 +21,27 @@ import (
 	"github.com/djylb/nps/lib/rate"
 )
 
-// GetConn get crypt or snappy conn
+// GetConn returns LinkConn of conn limited and counted by rt and entry, as
+// rate.NewRateConn does.
 func GetConn(conn net.Conn, cpt, snappy bool, rt *rate.Rate, isServer, isLocal bool, entry ...*rate.Directional) io.ReadWriteCloser {
-	if !isLocal {
-		if cpt {
-			if isServer {
-				return rate.NewRateConn(crypt.NewTlsServerConn(conn), rt, entry...)
-			}
-			return rate.NewRateConn(crypt.NewTlsClientConn(conn), rt, entry...)
-		} else if snappy {
-			return rate.NewRateConn(NewSnappyConn(conn), rt, entry...)
-		}
-	}
-	return rate.NewRateConn(conn, rt, entry...)
+	return rate.NewRateConn(LinkConn(conn, cpt, snappy, isServer, isLocal), rt, entry...)
 }
 
-func GetTlsConn(c net.Conn, sni string) (net.Conn, error) {
-	serverName := common.RemovePortFromHost(sni)
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         serverName,
+// LinkConn wraps conn, a link to an npc, with its encryption or compression;
+// a local link is used as it is.
+func LinkConn(conn net.Conn, cpt, snappy bool, isServer, isLocal bool) io.ReadWriteCloser {
+	switch {
+	case isLocal:
+		return conn
+	case cpt && isServer:
+		return crypt.NewTlsServerConn(conn)
+	case cpt:
+		return crypt.NewTlsClientConn(conn)
+	case snappy:
+		return NewSnappyConn(conn)
+	default:
+		return conn
 	}
-	tlsConn := tls.Client(c, tlsConf)
-	if err := tlsConn.Handshake(); err != nil {
-		logs.Error("TLS handshake with backend failed: %v", err)
-		_ = tlsConn.Close()
-		return nil, err
-	}
-	return tlsConn, nil
 }
 
 // GetLenBytes get the assembled amount data(len 4 and content)
@@ -64,18 +55,6 @@ func GetLenBytes(buf []byte) (b []byte, err error) {
 	}
 	b = raw.Bytes()
 	return
-}
-
-func IsTimeout(err error) bool {
-	if err == nil {
-		return false
-	}
-	var ne net.Error
-	if errors.As(err, &ne) {
-		return ne.Timeout()
-	}
-	s := strings.ToLower(strings.ReplaceAll(err.Error(), " ", ""))
-	return strings.Contains(s, "timeout")
 }
 
 // udp5HeaderRoom is the length of the longest SOCKS5 UDP header for an IP
@@ -126,7 +105,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 					logs.Debug("local UDP closed, exiting goroutine")
 					return
 				}
-				if IsTimeout(err) {
+				if netx.IsTimeout(err) {
 					logs.Debug("temporary UDP read error, retrying: %v", err)
 					continue
 				}
@@ -186,7 +165,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 			_, err = local.WriteToUDP(payload, rAddr)
 		}
 		if err != nil {
-			if IsTimeout(err) {
+			if netx.IsTimeout(err) {
 				logs.Debug("temporary UDP write error to %v, retrying: %v", dst, err)
 				continue
 			}

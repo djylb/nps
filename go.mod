@@ -8,10 +8,11 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.18.1
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261101042508-94c24f3c6200
-	github.com/djylb/geomatch v0.0.0-20261030215706-7b4bf710e8f5
+	github.com/djylb/byterate v0.0.0-20261102213921-a52663558fe4
+	github.com/djylb/geomatch v0.0.0-20261102213508-e60147d6301c
 	github.com/djylb/guard v0.0.0-20261102202301-6a4f1d966e43
-	github.com/djylb/holepunch v0.0.0-20261101044251-78103b7ce5e4
+	github.com/djylb/holepunch v0.0.0-20261102213915-36a108640e1d
+	github.com/djylb/holepunch/quicpath v0.0.0-20261102215033-b889feff2dec
 	github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4
 	github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7
 	github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0

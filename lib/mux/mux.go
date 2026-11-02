@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	connx "github.com/djylb/nps/lib/conn"
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -333,7 +333,7 @@ func (s *Mux) writeFailed(err error) {
 	if s.IsClosed() {
 		return
 	}
-	reason := fmt.Sprintf("write session pack failed: %s", connx.DescribeNetError(err, s.conn))
+	reason := fmt.Sprintf("write session pack failed: %s", netx.NetErrorDetails(err, s.conn))
 	logs.Error("mux: %s", reason)
 	_ = s.closeWithReason(reason)
 }
@@ -442,7 +442,7 @@ func (s *Mux) readSession() {
 					muxPack.Put(pack)
 					return
 				}
-				reason := fmt.Sprintf("read session unpack failed: %s", connx.DescribeNetError(err, s.conn))
+				reason := fmt.Sprintf("read session unpack failed: %s", netx.NetErrorDetails(err, s.conn))
 				logs.Error("mux: %s", reason)
 				_ = s.closeWithReason(reason)
 				muxPack.Put(pack)

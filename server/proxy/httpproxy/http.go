@@ -3,6 +3,7 @@ package httpproxy
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -291,26 +294,30 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {
 	// Get target addr
-	targetAddr, err := host.Target.Pick()
-	if err != nil {
-		logs.Warn("No backend found for host: %s Err: %v", r.Host, err)
-		w.WriteHeader(http.StatusBadGateway)
-		return
-	}
-
-	logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, targetAddr)
 	isLocal := s.AllowLocalProxy && host.Target.LocalProxy || host.Client.Id < 0
-	link := conn.NewLink("tcp", targetAddr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
-	targetConn, err := s.Bridge.SendLinkInfo(host.Client.Id, link, nil)
+	var link *conn.Link
+	var targetConn net.Conn
+	err := host.Target.Dial(func(addr string) (bool, error) {
+		logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, addr)
+		link = conn.NewLink("tcp", addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
+		var err error
+		targetConn, err = s.Bridge.SendLinkInfo(host.Client.Id, link, nil)
+		if err != nil {
+			logs.Info("handleWebsocket: connection to target %s failed: %v", addr, err)
+		}
+		return isLocal, err
+	})
 	if err != nil {
-		logs.Info("handleWebsocket: connection to target %s failed: %v", link.Host, err)
+		if errors.Is(err, file.ErrNoTarget) {
+			logs.Warn("No backend found for host: %s Err: %v", r.Host, err)
+		}
 		w.WriteHeader(http.StatusBadGateway)
 		return
 	}
 	rawConn := conn.GetConn(targetConn, link.Crypt, link.Compress, host.Client.Rate, true, isLocal, host.RateLimiter())
 	// Every path below closes netConn, which wraps wsConn, or hands it to the relay.
 	//noinspection GoResourceLeak
-	wsConn := conn.NewRWConn(rawConn)
+	wsConn := netx.WrapConn(rawConn, nil)
 	var netConn net.Conn = wsConn
 
 	if host.Target.ProxyProtocol != 0 {
@@ -331,9 +338,9 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 
 	if host.TargetIsHttps {
 		sni, _ := r.Context().Value(ctxSNI).(string)
-		tlsConn, err := conn.GetTlsConn(netConn, sni)
+		tlsConn, err := tlsconn.Client(r.Context(), netConn, backendTLSConfig(sni))
 		if err != nil {
-			_ = netConn.Close()
+			logs.Error("TLS handshake with backend failed: %v", err)
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
@@ -409,7 +416,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 	if backendReader.Buffered() > 0 {
 		pending := make([]byte, backendReader.Buffered())
 		if _, err := backendReader.Read(pending); err == nil {
-			netConn = conn.NewConn(netConn).SetRb(pending)
+			netConn = netx.NewPrefixConn(netConn, pending)
 		} else {
 			logs.Error("handleWebsocket: read backend buffered data failed: %v", err)
 			_ = netConn.Close()
@@ -427,7 +434,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 			_ = clientConn.Close()
 			return
 		}
-		clientConn = conn.NewConn(clientConn).SetRb(pending)
+		clientConn = netx.NewPrefixConn(clientConn, pending)
 	}
 
 	conn.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
@@ -549,16 +556,22 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
 	remote := ctx.Value(ctxRemoteAddr).(string)
 	h := ctx.Value(ctxHost).(*file.Host)
-	targetAddr, err := h.Target.Pick()
-	if err != nil {
-		logs.Warn("No backend found for h: %d Err: %v", h.Id, err)
-		return nil, err
-	}
 	isLocal := s.AllowLocalProxy && h.Target.LocalProxy || h.Client.Id < 0
-	link := conn.NewLink("tcp", targetAddr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
-	target, err := s.Bridge.SendLinkInfo(h.Client.Id, link, nil)
+	var link *conn.Link
+	var target net.Conn
+	err := h.Target.Dial(func(addr string) (bool, error) {
+		link = conn.NewLink("tcp", addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
+		var err error
+		target, err = s.Bridge.SendLinkInfo(h.Client.Id, link, nil)
+		if err != nil {
+			logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, addr, err)
+		}
+		return isLocal, err
+	})
 	if err != nil {
-		logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, targetAddr, err)
+		if errors.Is(err, file.ErrNoTarget) {
+			logs.Warn("No backend found for h: %d Err: %v", h.Id, err)
+		}
 		return nil, err
 	}
 	rawConn := conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, true, isLocal, h.RateLimiter())
@@ -589,11 +602,16 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 
 	sni := ctx.Value(ctxSNI).(string)
 
-	tlsConn, err := conn.GetTlsConn(c, sni)
+	tlsConn, err := tlsconn.Client(ctx, c, backendTLSConfig(sni))
 	if err != nil {
-		_ = c.Close()
+		logs.Error("TLS handshake with backend failed: %v", err)
 		return nil, err
 	}
-
 	return tlsConn, nil
+}
+
+// backendTLSConfig is the TLS client configuration for a backend reached
+// with the SNI of the client request.
+func backendTLSConfig(sni string) *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true, ServerName: common.RemovePortFromHost(sni)}
 }

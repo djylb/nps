@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"errors"
 	"net"
 	"strconv"
 	"sync"
@@ -84,24 +85,64 @@ func (p *portMux) Close() error {
 	return p.mux.Close()
 }
 
-// register installs a new listener for kind, closing any listener it replaces,
-// and updates the routes of all listeners for the new set.
+// register installs a new listener for kind, replacing and closing any
+// listener it had, and updates the routes of all listeners for the new set.
+// The new route, the removal of the old one and the changed matchers are
+// applied in one batch, so connections never see a partial configuration
+// and a failure changes nothing.
 func (p *portMux) register(kind muxKind) (net.Listener, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	old := p.routes[kind]
-	r, err := p.mux.Add(portmux.RouteConfig{})
-	if err != nil {
-		return nil, err
+	routes := p.routes
+	routes[kind] = nil
+	rules := p.rules(func(k muxKind) bool { return k == kind || routes[k] != nil })
+	for {
+		// Closed listeners keep their slot but are no longer routes of
+		// the mux, so they are left out of the batch.
+		var live [kindCount]bool
+		for k, r := range routes {
+			live[k] = r != nil && !r.Info().Removed
+		}
+		var added *portmux.Route
+		err := p.mux.Batch(func(b *portmux.Batch) error {
+			for k, r := range routes {
+				if !live[k] {
+					continue
+				}
+				if muxKind(k) == kind {
+					if err := b.Remove(r); err != nil {
+						return err
+					}
+					continue
+				}
+				if err := b.SetPriority(r, rules[k].priority); err != nil {
+					return err
+				}
+				if err := b.SetMatchers(r, rules[k].matchers...); err != nil {
+					return err
+				}
+			}
+			var err error
+			added, err = b.Add(portmux.RouteConfig{Priority: rules[kind].priority, Matchers: rules[kind].matchers})
+			return err
+		})
+		if err == nil {
+			p.routes[kind] = added
+			return added, nil
+		}
+		// A listener closed while the batch was prepared makes it fail
+		// with net.ErrClosed; retry without it. Any other failure, or
+		// net.ErrClosed from a closed mux, is returned.
+		retry := false
+		for k, r := range routes {
+			if live[k] && r.Info().Removed {
+				retry = true
+			}
+		}
+		if !retry || !errors.Is(err, net.ErrClosed) {
+			return nil, err
+		}
 	}
-	p.routes[kind] = r
-	if old != nil {
-		_ = old.Close()
-	}
-	if err := p.apply(); err != nil {
-		return nil, err
-	}
-	return r, nil
 }
 
 type routeRule struct {
@@ -109,11 +150,15 @@ type routeRule struct {
 	matchers []portmux.Matcher
 }
 
-// rules computes the route of every registered listener.
-func (p *portMux) rules() [kindCount]routeRule {
+// rules computes the route of every listener for which has reports true.
+func (p *portMux) rules(has func(muxKind) bool) [kindCount]routeRule {
 	var out [kindCount]routeRule
-	has := func(k muxKind) bool { return p.routes[k] != nil }
 	methods := portmux.Prefix(httpMethodPrefixes...)
+	// The catch-all route is an explicit Not(Prefix(...)) rather than a
+	// Fallback route: a fallback also takes the connections whose own route
+	// was closed and those other matchers ruled out (e.g. an HTTP request
+	// for an unknown host when the HTTP proxy slot is closed), which would
+	// send them to the HTTPS proxy instead of dropping them.
 	other := portmux.Not(portmux.Prefix(append([]string{common.ConnTest}, httpMethodPrefixes...)...))
 
 	out[kindClient] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(common.ConnTest)}}
@@ -153,22 +198,4 @@ func (p *portMux) rules() [kindCount]routeRule {
 		out[kindClientWss] = routeRule{matchers: []portmux.Matcher{other}}
 	}
 	return out
-}
-
-func (p *portMux) apply() error {
-	rules := p.rules()
-	return p.mux.Batch(func(b *portmux.Batch) error {
-		for k, r := range p.routes {
-			if r == nil || r.Info().Removed {
-				continue
-			}
-			if err := b.SetPriority(r, rules[k].priority); err != nil {
-				return err
-			}
-			if err := b.SetMatchers(r, rules[k].matchers...); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }

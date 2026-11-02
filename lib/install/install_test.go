@@ -224,21 +224,18 @@ func TestReleaseSHA256(t *testing.T) {
 		{"none.tar.gz", ""},
 		{"short.tar.gz", "sha256:abcd"},
 	} {
-		rl.Assets = append(rl.Assets, struct {
-			Name   string `json:"name"`
-			Digest string `json:"digest"`
-		}{Name: a.name, Digest: a.digest})
+		rl.Assets = append(rl.Assets, releaseAsset{Name: a.name, Digest: a.digest, Size: 7})
 	}
 
-	if got, err := rl.sha256("ok.tar.gz"); err != nil || got != sum {
-		t.Fatalf("sha256(ok) = (%q, %v), want %q", got, err, sum)
+	if got, size, err := rl.asset("ok.tar.gz"); err != nil || got != sum || size != 7 {
+		t.Fatalf("asset(ok) = (%q, %d, %v), want (%q, 7)", got, size, err, sum)
 	}
-	if got, err := rl.sha256("none.tar.gz"); err != nil || got != "" {
-		t.Fatalf("sha256(none) = (%q, %v), want (\"\", nil)", got, err)
+	if got, _, err := rl.asset("none.tar.gz"); err != nil || got != "" {
+		t.Fatalf("asset(none) = (%q, %v), want (\"\", nil)", got, err)
 	}
 	for _, name := range []string{"short.tar.gz", "missing.tar.gz"} {
-		if _, err := rl.sha256(name); err == nil {
-			t.Fatalf("sha256(%s) error = nil, want error", name)
+		if _, _, err := rl.asset(name); err == nil {
+			t.Fatalf("asset(%s) error = nil, want error", name)
 		}
 	}
 }
@@ -266,11 +263,11 @@ func TestHTTPClientCertificateFallback(t *testing.T) {
 	}
 
 	dest := filepath.Join(t.TempDir(), "geoip.dat")
-	if err := downloadChecked(c, srv.URL, dest, strings.Repeat("00", 32)); err == nil {
+	if err := downloadChecked(c, geoSource{url: srv.URL, digest: strings.Repeat("00", 32)}, dest); err == nil {
 		t.Fatal("downloadChecked(wrong digest) error = nil, want error")
 	}
 	sum := sha256.Sum256(payload)
-	if err := downloadChecked(c, srv.URL, dest, hex.EncodeToString(sum[:])); err != nil {
+	if err := downloadChecked(c, geoSource{url: srv.URL, digest: hex.EncodeToString(sum[:])}, dest); err != nil {
 		t.Fatalf("downloadChecked(unverified, digest) error = %v", err)
 	}
 	// Updates go through RoundTrip, which falls back the same way.

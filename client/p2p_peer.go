@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/djylb/holepunch"
+	"github.com/djylb/holepunch/quicpath"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -31,13 +32,17 @@ type p2pPeer struct {
 	label    string
 	relay    atomic.Bool // some section relays when the direct path is down
 
+	// demand wakes a peer that gave up punching: a connection waits for
+	// the direct path.
+	demand chan struct{}
+
 	mu        sync.Mutex
 	transport *p2pTransport
 	changed   chan struct{} // closed and replaced whenever a transport is installed
 }
 
 func newP2PPeer(mgr *P2PManager, password, label string) *p2pPeer {
-	return &p2pPeer{mgr: mgr, password: password, label: label, changed: make(chan struct{})}
+	return &p2pPeer{mgr: mgr, password: password, label: label, changed: make(chan struct{}), demand: make(chan struct{}, 1)}
 }
 
 // active returns the live direct transport that is not under suspicion, or
@@ -60,6 +65,10 @@ func (p *p2pPeer) waitActive(ctx context.Context) *p2pTransport {
 		p.mu.Unlock()
 		if t != nil && t.Alive() && !t.suspect.Load() {
 			return t
+		}
+		select {
+		case p.demand <- struct{}{}:
+		default:
 		}
 		select {
 		case <-changed:
@@ -93,7 +102,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 	if p.mgr.ctx.Err() != nil || !t.suspect.CompareAndSwap(false, true) {
 		return
 	}
-	logs.Info("%s: direct path to %v failed a connection (%v), checking it", p.label, t.qc.RemoteAddr(), err)
+	logs.Info("%s: direct path to %v failed a connection (%v), checking it", p.label, t.QUIC().RemoteAddr(), err)
 	p.mgr.wg.Go(func() {
 		var last error
 		for range p2pCheckAttempts {
@@ -103,7 +112,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 				close(p.changed)
 				p.changed = make(chan struct{})
 				p.mu.Unlock()
-				logs.Info("%s: direct path to %v answers again", p.label, t.qc.RemoteAddr())
+				logs.Info("%s: direct path to %v answers again", p.label, t.QUIC().RemoteAddr())
 				return
 			}
 			if !t.Alive() || p.mgr.ctx.Err() != nil {
@@ -117,9 +126,9 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 // lost takes a dead transport out of use and closes it, which wakes the
 // goroutine holding it to punch again.
 func (p *p2pPeer) lost(t *p2pTransport, err error) {
-	logs.Warn("%s: direct path to %v failed: %v", p.label, t.qc.RemoteAddr(), err)
+	logs.Warn("%s: direct path to %v failed: %v", p.label, t.QUIC().RemoteAddr(), err)
 	p.uninstall(t)
-	t.Close(p2pCodeLost, "lost")
+	_ = t.Close()
 }
 
 // hold serves t until its QUIC connection ends or the manager closes, and
@@ -129,33 +138,59 @@ func (p *p2pPeer) hold(t *p2pTransport) time.Duration {
 	p.install(t)
 	select {
 	case <-t.Done():
-		logs.Warn("%s: direct path to %v closed: %v", p.label, t.qc.RemoteAddr(), context.Cause(t.qc.Context()))
+		err := t.Err()
+		if errors.Is(err, quicpath.ErrIdleTimeout) {
+			logs.Warn("%s: direct path to %v went silent: %v", p.label, t.QUIC().RemoteAddr(), err)
+		} else {
+			logs.Info("%s: direct path to %v closed: %v", p.label, t.QUIC().RemoteAddr(), err)
+		}
 	case <-p.mgr.ctx.Done():
 	}
 	p.uninstall(t)
-	t.Close(p2pCodeClosed, "closed")
+	_ = t.Close()
 	return time.Since(start)
 }
 
-// run punches and holds direct paths until the manager closes.
+// run punches and holds direct paths until the manager closes. After a
+// failure it follows holepunch.NextAttempt; once that gives up it punches
+// again only when a connection waits for the direct path.
 func (p *p2pPeer) run() {
 	ctx := p.mgr.ctx
 	var b p2pBackoff
 	var wait time.Duration
-	background := false
+	background, gaveUp := false, false
 	for {
-		if !sleepWithContext(ctx, wait) {
+		if gaveUp {
+			select {
+			case <-p.demand:
+			case <-ctx.Done():
+				return
+			}
+			gaveUp = false
+		} else if !sleepWithContext(ctx, wait) {
 			return
 		}
 		t, err := p.punch(ctx, background)
 		if ctx.Err() != nil {
 			if t != nil {
-				t.Close(p2pCodeClosed, "closed")
+				_ = t.Close()
 			}
 			return
 		}
 		if err != nil {
-			wait, background = b.failed(err, p.relay.Load(), background)
+			a := b.failed(err)
+			wait = a.Delay
+			background = a.Action == holepunch.ActionBackground && p.relay.Load()
+			if a.Action == holepunch.ActionGiveUp {
+				// Demand from before this attempt does not count.
+				select {
+				case <-p.demand:
+				default:
+				}
+				gaveUp = true
+				logs.Warn("%s: no direct path: %v; next attempt when a connection waits for it", p.label, err)
+				continue
+			}
 			logs.Warn("%s: no direct path: %v; next %s attempt in %s", p.label, err, p2pModeName(background), wait.Round(time.Second))
 			continue
 		}
@@ -164,7 +199,7 @@ func (p *p2pPeer) run() {
 			b.reset()
 			wait = 0
 		} else {
-			wait, _ = b.failed(errP2PPathLost, false, false)
+			wait = b.failed(errP2PPathLost).Delay
 		}
 	}
 }
@@ -187,7 +222,7 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	logs.Debug("%s: punching in session %s (%s)", p.label, sessionID, p2pModeName(background))
 	// tc is closed right below; on success the session is handed to the transport.
 	//noinspection GoResourceLeak
-	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background))
+	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.label+": "))
 	_ = tc.Close()
 	if err != nil {
 		var herr *holepunch.Error
@@ -197,12 +232,12 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 		return nil, err
 	}
 	diag := sess.Diagnostics()
-	logs.Info("%s: punched %s; local NAT %s", p.label, p2pResultSummary(sess), p2pNATSummary(&diag))
+	logs.Info("%s: punched; local NAT %s", p.label, p2pNATSummary(&diag))
 	t, err := dialP2PTransport(ctx, sess)
 	if err != nil {
 		return nil, err
 	}
-	logs.Info("%s: direct QUIC connection to %v established", p.label, t.qc.RemoteAddr())
+	logs.Info("%s: direct QUIC connection to %v established", p.label, t.QUIC().RemoteAddr())
 	return t, nil
 }
 

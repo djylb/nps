@@ -4,10 +4,11 @@
 package acl
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
+	"time"
 
 	"github.com/djylb/geomatch"
 )
@@ -17,7 +18,7 @@ import (
 var geo = geomatch.NewGeoData(geomatch.GeoFiles{})
 
 // SetGeoData sets the geoip and geosite files. Lists compiled from other
-// files report stale and are refreshed by Refresh. ext-ip: rules of the
+// files are recompiled by RefreshGeoData. ext-ip: rules of the
 // global lists resolve relative names next to the geoip file.
 func SetGeoData(ipFile, siteFile string) {
 	geo.SetFiles(geomatch.GeoFiles{IP: ipFile, Site: siteFile})
@@ -29,11 +30,24 @@ func GeoFiles() (ipFile, siteFile string) {
 	return f.IP, f.Site
 }
 
-// GeoGeneration checks the geodata files and returns a number that grows
-// whenever one of them changed, so that callers refresh their lists only
-// then.
-func GeoGeneration() uint64 {
-	return geo.Check()
+// RefreshGeoData checks the geodata files once for all lists and recompiles
+// the lists whose files changed. A list that new geodata breaks keeps its
+// rules and is reported in Failed; RefreshError tells why, and its Tag is the
+// owner CompileSource was given.
+func RefreshGeoData() geomatch.RefreshResult {
+	return geo.RefreshLives()
+}
+
+// WatchGeoData runs RefreshGeoData every interval until ctx ends, and calls
+// report with each result that changed a list.
+func WatchGeoData(ctx context.Context, interval time.Duration, report func(geomatch.RefreshResult)) error {
+	return geo.WatchLives(ctx, interval, report)
+}
+
+// RefreshError returns the rules of a list of RefreshGeoData's Failed that
+// the new geodata cannot serve, by line.
+func RefreshError(l *geomatch.Live) error {
+	return ruleError(l.RefreshErr())
 }
 
 // Scope tells who may write a list, which bounds what it may contain.
@@ -69,14 +83,18 @@ func SetMaxRules(n int) {
 	maxRules = n
 }
 
+// sourceCompiler compiles source rules: they match the visitor's address,
+// whose port says nothing about the visitor, so rules with ports are
+// rejected.
 func sourceCompiler(s Scope) geomatch.Compiler {
 	if s == ScopeGlobal {
-		return geomatch.Compiler{GeoData: geo, Kinds: geomatch.IPKinds, ExtFiles: geomatch.ExtLocal}
+		return geomatch.Compiler{GeoData: geo, Kinds: geomatch.IPKinds, ExtFiles: geomatch.ExtLocal, NoPorts: true}
 	}
 	return geomatch.Compiler{
 		GeoData:  geo,
 		Kinds:    geomatch.IPKinds,
 		ExtFiles: geomatch.ExtNone,
+		NoPorts:  true,
 		Limits:   geomatch.Limits{MaxRules: maxRules, MaxRuleLen: maxRuleLen},
 	}
 }
@@ -125,47 +143,7 @@ func normalize(c geomatch.Compiler, lines []string) ([]string, error) {
 // duplicates. The error names the rules that were rejected; they are left
 // out of the result.
 func NormalizeSource(scope Scope, rules []string) ([]string, error) {
-	c := sourceCompiler(scope)
-	lines, index, portErrs := withoutPorts(c, ruleLines(rules))
-	out, err := c.Normalize(lines)
-	var errs geomatch.RuleErrors
-	errors.As(err, &errs)
-	for _, re := range errs {
-		re.Index = index[re.Index]
-	}
-	return out, ruleError(mergeRuleErrors(portErrs, errs, err))
-}
-
-// errSourcePort rejects source rules with ports: a source is matched by the
-// visitor's address, whose port says nothing about the visitor.
-var errSourcePort = fmt.Errorf("%w: source rules cannot name ports", geomatch.ErrInvalidRule)
-
-// withoutPorts returns the lines without the rules that name ports, the
-// position in lines of each kept line, and errors for the dropped rules.
-func withoutPorts(c geomatch.Compiler, lines []string) (kept []string, index []int, errs geomatch.RuleErrors) {
-	for i, l := range lines {
-		if r, err := c.ParseRule(l); err == nil && len(r.Ports) > 0 {
-			errs = append(errs, &geomatch.RuleError{Index: i, Rule: l, Err: errSourcePort})
-			continue
-		}
-		kept = append(kept, l)
-		index = append(index, i)
-	}
-	return kept, index, errs
-}
-
-// mergeRuleErrors joins the port errors and the compile errors errs, by line;
-// err is returned as it is when it holds no rule errors.
-func mergeRuleErrors(portErrs, errs geomatch.RuleErrors, err error) error {
-	if len(portErrs) == 0 {
-		return err
-	}
-	if err != nil && len(errs) == 0 {
-		return errors.Join(portErrs, err)
-	}
-	all := append(portErrs, errs...)
-	slices.SortFunc(all, func(a, b *geomatch.RuleError) int { return a.Index - b.Index })
-	return all
+	return normalize(sourceCompiler(scope), ruleLines(rules))
 }
 
 // ruleLines splits rules into lines: older versions stored the lines

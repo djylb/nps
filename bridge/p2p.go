@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -187,7 +186,7 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}
-	reg, probe, err := startObservers(cfg.BasePort, p2pLogger())
+	reg, probe, err := startObservers(cfg.BasePort, p2pproto.NewLogger("P2P observers: "))
 	if err != nil {
 		return nil, err
 	}
@@ -255,45 +254,6 @@ func startObservers(basePort int, logger *slog.Logger) (*natprobe.Registry, *nat
 	}
 	return nil, nil, dualErr
 }
-
-// p2pLogger passes natprobe's log lines (stopped listeners, a wildcard bind
-// that cannot reply from the probed address) to the nps log.
-func p2pLogger() *slog.Logger { return slog.New(p2pLogHandler{}) }
-
-type p2pLogHandler struct{ attrs []slog.Attr }
-
-func (p2pLogHandler) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h p2pLogHandler) Handle(_ context.Context, r slog.Record) error {
-	var b strings.Builder
-	b.WriteString("P2P observers: ")
-	b.WriteString(r.Message)
-	write := func(a slog.Attr) bool {
-		b.WriteString(" " + a.Key + "=" + a.Value.String())
-		return true
-	}
-	for _, a := range h.attrs {
-		write(a)
-	}
-	r.Attrs(write)
-	switch {
-	case r.Level >= slog.LevelError:
-		logs.Error("%s", b.String())
-	case r.Level >= slog.LevelWarn:
-		logs.Warn("%s", b.String())
-	case r.Level >= slog.LevelInfo:
-		logs.Info("%s", b.String())
-	default:
-		logs.Debug("%s", b.String())
-	}
-	return nil
-}
-
-func (h p2pLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return p2pLogHandler{attrs: append(slices.Clone(h.attrs), attrs...)}
-}
-
-func (h p2pLogHandler) WithGroup(string) slog.Handler { return h }
 
 func (p *p2pService) close() {
 	p.cancel()

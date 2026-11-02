@@ -149,7 +149,7 @@ func (s DefaultSystemService) UpdateGeoData() (GeoDataStatus, error) {
 	ipPath, sitePath := acl.GeoFiles()
 	res, err := install.UpdateGeoData(ipPath, sitePath)
 	if res != nil && len(res.Updated) > 0 {
-		file.GetDb().RefreshAccessLists()
+		file.RefreshAccessLists()
 	}
 	return s.GeoDataStatus(), err
 }

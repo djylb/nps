@@ -91,9 +91,8 @@ func runExchange(t *testing.T, relay relayFunc, up, down int) {
 type flowValues struct{ inlet, export int64 }
 
 func valuesOf(f *file.Flow) flowValues {
-	f.RLock()
-	defer f.RUnlock()
-	return flowValues{f.InletFlow, f.ExportFlow}
+	v := f.Values()
+	return flowValues{v.InletFlow, v.ExportFlow}
 }
 
 func newRelayTask() *file.Tunnel {
@@ -167,11 +166,11 @@ func TestCopyWaitGroupStopsAtFlowLimit(t *testing.T) {
 	tk := newRelayTask()
 	tk.Flow = &file.Flow{FlowLimit: 1}
 	relayUntilStopped(t, tk, []*file.Flow{tk.Flow, tk.Client.Flow})
-	// Every byte passed visitor to backend, counted once as inlet, which
-	// went just over the 1 MiB limit.
+	// Every byte passed visitor to backend, counted once as inlet, up to
+	// the first byte over the 1 MiB limit.
 	got := valuesOf(tk.Flow)
-	if got.export != 0 || got.inlet <= 1<<20 || got.inlet > 1<<20+64<<10 {
-		t.Fatalf("task flow = %+v, want inlet just over 1 MiB", got)
+	if got.export != 0 || got.inlet != 1<<20+1 {
+		t.Fatalf("task flow = %+v, want inlet of 1 MiB and a byte", got)
 	}
 }
 

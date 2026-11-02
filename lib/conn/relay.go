@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/djylb/byterate"
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -30,43 +31,75 @@ func Join(visitor, client net.Conn, flows []*file.Flow, task *file.Tunnel, remot
 // until either direction ends, closes both, and returns the bytes written
 // out to the visitor and in from it. See Join for flows, task and remote.
 func relay(client, visitor io.ReadWriteCloser, flows []*file.Flow, task *file.Tunnel, remote string) (out, in int64) {
-	out, in, _ = netx.Relay(context.Background(), client, visitor,
-		netx.WithRelayFlows(relayFlow(flows, task, remote, false), relayFlow(flows, task, remote, true)))
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	var budgets []byterate.Limiter
+	var counters []*byterate.Counter
+	for _, fl := range flows {
+		if fl == nil {
+			continue
+		}
+		budgets = append(budgets, fl.Budget())
+		counters = append(counters, fl.Traffic())
+		if _, expired := fl.Over(); !expired {
+			stop := fl.Budget().AfterExpiry(func() { cancel(errTimeLimit) })
+			defer stop()
+		}
+	}
+	limit := byterate.NewHierarchy(budgets...)
+	out, in, _ = netx.Relay(ctx, client, visitor,
+		netx.WithRelayFlows(relayFlow(limit, counters, flows, task, remote, false), relayFlow(limit, counters, flows, task, remote, true)))
 	return out, in
 }
 
 // relayFlow returns the RelayFlow of a direction of a relay, in from the
-// visitor or out to it: Done counts the bytes written to each flow and ends
-// the relay at a limit, First tells whether the direction carries HTTP.
-func relayFlow(flows []*file.Flow, task *file.Tunnel, remote string, inbound bool) *netx.RelayFlow {
+// visitor or out to it: Wait lets bytes pass up to the traffic limits of
+// the flows, Done counts them in their counters and budgets, and First
+// tells whether the direction carries HTTP.
+func relayFlow(limit byterate.Limiter, counters []*byterate.Counter, flows []*file.Flow, task *file.Tunnel, remote string, inbound bool) *netx.RelayFlow {
 	f := new(netx.RelayFlow)
-	if len(flows) > 0 {
+	if limit != nil {
+		f.Wait = func(ctx context.Context, n int64) (int64, error) {
+			n, err := limit.Ready(ctx, n)
+			return n, flowsError(flows, err)
+		}
 		f.Done = func(n int64) error {
-			in, out := int64(0), n
-			if inbound {
-				in, out = n, 0
-			}
-			for _, fl := range flows {
-				if fl == nil {
-					continue
-				}
-				traffic, expired := fl.AddOver(in, out)
-				if traffic {
-					logs.Info("Flow limit exceeded")
-					return errFlowLimit
-				}
-				if expired {
-					logs.Info("Time limit exceeded")
-					return errTimeLimit
+			// A counter's reads are the outbound and its writes the inbound
+			// traffic, as for a FlowConn wrapping the connection to the client.
+			for _, c := range counters {
+				if inbound {
+					c.Add(0, n)
+				} else {
+					c.Add(n, 0)
 				}
 			}
-			return nil
+			return flowsError(flows, limit.Charge(n))
 		}
 	}
 	if task != nil {
 		f.First = func(b []byte) { detectHTTP(b, task, remote) }
 	}
 	return f
+}
+
+// flowsError turns a budget's refusal into the error of the limit of flows
+// that was reached.
+func flowsError(flows []*file.Flow, err error) error {
+	if !errors.Is(err, byterate.ErrBudgetExhausted) {
+		return err
+	}
+	for _, fl := range flows {
+		traffic, expired := fl.Over()
+		if traffic {
+			logs.Info("Flow limit exceeded")
+			return errFlowLimit
+		}
+		if expired {
+			logs.Info("Time limit exceeded")
+			return errTimeLimit
+		}
+	}
+	return err
 }
 
 // httpPrefixes are the first three bytes of the HTTP requests and responses

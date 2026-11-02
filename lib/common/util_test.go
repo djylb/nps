@@ -378,13 +378,6 @@ func TestCertHelpers(t *testing.T) {
 		t.Fatalf("GetCertContent(missing) = (%q, %v), want empty,error", got, err)
 	}
 
-	if c, k, ok := LoadCertPair(certPath, keyPath); !ok || c == "" || k == "" {
-		t.Fatal("LoadCertPair(valid files) failed")
-	}
-	if _, _, ok := LoadCertPair(certPath, filepath.Join(tmpDir, "missing.key")); ok {
-		t.Fatal("LoadCertPair(missing key) = ok, want false")
-	}
-
 	if got := GetCertType(""); got != "empty" {
 		t.Fatalf("GetCertType(empty) = %q, want empty", got)
 	}

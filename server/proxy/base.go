@@ -135,6 +135,34 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 		_ = c.Close()
 		return err
 	}
+	return s.relayClient(target, c, link, isLocal, client, rb, tp, f, flows, proxyProtocol, task)
+}
+
+// DealTarget is DealClient to one of the addresses of dest, retrying the
+// next address if the server fails to dial one itself. It returns
+// file.ErrNoTarget, leaving c open, if no address can be tried.
+func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client, dest *file.Target,
+	rb []byte, tp string, f func(), flows []*file.Flow, task *file.Tunnel) error {
+	var target net.Conn
+	var link *conn.Link
+	var isLocal bool
+	err := dest.Dial(func(addr string) (bool, error) {
+		var err error
+		target, link, isLocal, err = s.openClientLink(c, client, addr, tp, dest.LocalProxy, task)
+		return isLocal, err
+	})
+	if errors.Is(err, file.ErrNoTarget) {
+		return err
+	}
+	if err != nil {
+		_ = c.Close()
+		return err
+	}
+	return s.relayClient(target, c, link, isLocal, client, rb, tp, f, flows, dest.ProxyProtocol, task)
+}
+
+func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link, isLocal bool, client *file.Client,
+	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, task *file.Tunnel) error {
 	if target == nil || link == nil {
 		_ = c.Close()
 		return nil
@@ -163,7 +191,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 	target, err := s.Bridge.SendLinkInfo(client.Id, link, task)
 	if err != nil {
 		logs.Warn("get connection from client Id %d  error %v", client.Id, err)
-		return nil, nil, false, err
+		return nil, nil, isLocal, err
 	}
 	return target, link, isLocal, nil
 }

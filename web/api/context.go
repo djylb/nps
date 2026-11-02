@@ -12,7 +12,6 @@ type Context interface {
 	Method() string
 	Host() string
 	RemoteAddr() string
-	ClientIP() string
 	RequestHeader(string) string
 	SessionValue(string) interface{}
 	// SetSessionValue and DeleteSessionValue change the session and save it

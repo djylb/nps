@@ -68,7 +68,7 @@ func taskPort(task *file.Tunnel) int {
 // (for example behind 1:1 NAT), and the zero address tells the client to reuse
 // the server address of its control connection instead.
 func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP, wantV6 bool) net.IP {
-	publicClient := client != nil && common.IsPublicIP(client)
+	publicClient := isGlobalIP(client)
 	trySpecificIP := func(value net.IP) net.IP {
 		value = common.NormalizeIP(value)
 		if value == nil || value.IsUnspecified() || common.IsZeroIP(value) {
@@ -103,12 +103,18 @@ func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP
 		if specific == nil {
 			continue
 		}
-		if publicClient && !common.IsPublicIP(specific) {
+		if publicClient && !isGlobalIP(specific) {
 			continue
 		}
 		return specific
 	}
 	return nil
+}
+
+// isGlobalIP reports whether ip is a globally reachable address.
+func isGlobalIP(ip net.IP) bool {
+	a, ok := netip.AddrFromSlice(ip)
+	return ok && netx.IsGlobal(a.Unmap())
 }
 
 func socks5ReplyPort(primary, secondary net.Addr, fallback int) int {

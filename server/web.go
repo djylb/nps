@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -111,7 +112,7 @@ func loadCertPair(prefix, certFile, keyFile string) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	cert, err := tls.X509KeyPair([]byte(certContent), []byte(keyContent))
+	cert, err := tlsconn.ParseKeyPair([]byte(certContent), []byte(keyContent))
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("%s certificate: %w", prefix, err)
 	}

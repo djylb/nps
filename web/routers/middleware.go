@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/servercfg"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -86,7 +84,7 @@ func ensureAutoAdminSession(c *gin.Context, state *State) {
 		logs.Error("Automatic administrator session could not be saved: %v", err)
 		return
 	}
-	state.System().RegisterManagementAccess(c.ClientIP(), nil, true)
+	state.System().RegisterManagementAccess(webapi.VisitorIP(newAPIContext(c), state.CurrentConfig()), nil, true)
 }
 
 func protectedRouteMiddleware(state *State) gin.HandlerFunc {
@@ -305,27 +303,10 @@ func currentPrincipal(c *gin.Context) webservice.Principal {
 // login page included. The visitor address is read as the login reads it.
 func globalFirewallMiddleware(state *State) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if file.GetDb().GlobalDeniedString(webClientIP(c, state.CurrentConfig()), "Web") {
+		if file.GetDb().GlobalDeniedString(webapi.VisitorIP(newAPIContext(c), state.CurrentConfig()), "Web") {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		c.Next()
 	}
-}
-
-// webClientIP returns the visitor address of a web request: the peer, or
-// the X-Real-IP header a trusted proxy sets.
-func webClientIP(c *gin.Context, cfg *servercfg.Snapshot) string {
-	ip := c.Request.RemoteAddr
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
-	}
-	pass := cfg.Auth.HTTPOnlyPass
-	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
-		(pass != "" && c.GetHeader("X-NPS-Http-Only") == pass) {
-		if realIP := strings.TrimSpace(c.GetHeader("X-Real-IP")); realIP != "" {
-			ip = realIP
-		}
-	}
-	return ip
 }

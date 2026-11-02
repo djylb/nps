@@ -36,7 +36,7 @@ func TestUdpModeServerRelaysLargeDatagrams(t *testing.T) {
 		t.Fatalf("ListenUDP() error = %v", err)
 	}
 	defer func() { _ = client.Close() }()
-	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: server.listener.LocalAddr().(*net.UDPAddr).Port}
+	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: server.listener.Addr().(*net.UDPAddr).Port}
 
 	var tunnel net.Conn
 	defer func() {

@@ -7,9 +7,10 @@ import (
 	"math/big"
 	"net/http"
 	"net/netip"
-	"strconv"
 	"strings"
+	"sync/atomic"
 
+	"github.com/djylb/geomatch"
 	"github.com/djylb/netx/forwarded"
 )
 
@@ -51,57 +52,36 @@ func ValidatePoW(bits int, parts ...string) bool {
 // TrustedProxies parses a comma-separated list of trusted proxies: IP
 // addresses, CIDR prefixes, IPv4 patterns whose trailing octets are "*"
 // (such as "192.168.*.*"), or "*" for every address. Entries that are none
-// of these are skipped.
+// of these are skipped. The set of the last list parsed is cached, so that
+// callers may pass the configured list on every request.
 func TrustedProxies(list string) *forwarded.PrefixSet {
+	if c := trustedProxyCache.Load(); c != nil && c.list == list {
+		return c.set
+	}
 	var prefixes []netip.Prefix
 	for _, raw := range strings.Split(list, ",") {
 		entry := strings.TrimSpace(raw)
-		switch {
-		case entry == "":
-		case entry == "*":
+		if entry == "*" {
 			prefixes = append(prefixes, netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
-		case strings.Contains(entry, "/"):
-			if p, err := netip.ParsePrefix(entry); err == nil {
-				prefixes = append(prefixes, p)
-			}
-		case strings.Contains(entry, "*"):
-			if p, ok := wildcardPrefix(entry); ok {
-				prefixes = append(prefixes, p)
-			}
-		default:
-			if a, err := netip.ParseAddr(entry); err == nil {
-				a = a.WithZone("")
-				prefixes = append(prefixes, netip.PrefixFrom(a, a.BitLen()))
-			}
-		}
-	}
-	return forwarded.NewPrefixSet(prefixes...)
-}
-
-// wildcardPrefix returns the prefix of an IPv4 pattern such as "10.0.*.*".
-func wildcardPrefix(entry string) (netip.Prefix, bool) {
-	segs := strings.Split(entry, ".")
-	if len(segs) != 4 {
-		return netip.Prefix{}, false
-	}
-	var b [4]byte
-	bits := 0
-	for i, seg := range segs {
-		if seg == "*" {
 			continue
 		}
-		if bits != i*8 {
-			return netip.Prefix{}, false // a fixed octet after a wildcard
+		r, err := geomatch.ParseRule(entry)
+		if err != nil || r.Kind != geomatch.RuleIP || r.Last.IsValid() || len(r.Ports) > 0 {
+			continue
 		}
-		n, err := strconv.Atoi(seg)
-		if err != nil || n < 0 || n > 255 {
-			return netip.Prefix{}, false
-		}
-		b[i] = byte(n)
-		bits += 8
+		prefixes = append(prefixes, r.Prefix)
 	}
-	return netip.PrefixFrom(netip.AddrFrom4(b), bits), true
+	set := forwarded.NewPrefixSet(prefixes...)
+	trustedProxyCache.Store(&trustedProxySet{list: list, set: set})
+	return set
 }
+
+type trustedProxySet struct {
+	list string
+	set  *forwarded.PrefixSet
+}
+
+var trustedProxyCache atomic.Pointer[trustedProxySet]
 
 // IsTrustedProxy reports whether addr, an IP address with or without a
 // port, is in the trusted proxy list as TrustedProxies parses it.

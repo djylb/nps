@@ -42,3 +42,20 @@ func TestRegistered(t *testing.T) {
 		t.Fatalf("Count = %d, want 2", n)
 	}
 }
+
+func TestRegisterSweepsExpired(t *testing.T) {
+	Reset()
+	t.Cleanup(Reset)
+	stale := netip.MustParseAddr("192.0.2.9")
+	Register(5, stale, -time.Second)
+	mu.Lock()
+	nextSweep = time.Time{}
+	mu.Unlock()
+	Register(6, netip.MustParseAddr("192.0.2.10"), time.Hour)
+	mu.Lock()
+	_, left := reg[5]
+	mu.Unlock()
+	if left {
+		t.Fatal("expired registration not swept")
+	}
+}

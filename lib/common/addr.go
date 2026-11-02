@@ -366,32 +366,6 @@ func GetOutboundIPv6() net.IP {
 	return addr.IP
 }
 
-func IsPublicIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	if ip.IsLoopback() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
-		return false
-	}
-	if ip4 := ip.To4(); ip4 != nil {
-		switch {
-		case ip4[0] == 10:
-			return false
-		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
-			return false
-		case ip4[0] == 192 && ip4[1] == 168:
-			return false
-		default:
-			return true
-		}
-	}
-	// IPv6
-	if ip6 := ip.To16(); ip6 != nil {
-		return !ip6.IsPrivate()
-	}
-	return false
-}
-
 func GetServerIp(ip string) string {
 	if ip != "" && ip != "0.0.0.0" && ip != "::" {
 		return ip

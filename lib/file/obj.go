@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,19 +27,28 @@ const (
 	AclBlacklist = 2
 )
 
+// Flow is the payload traffic of a client, tunnel or host and its limits.
+// The exported fields are what is persisted: InletFlow and ExportFlow give
+// the traffic counted before, which the Flow takes over on first use; read
+// the current values with Values. The traffic counts in a Counter, and the
+// limits are kept by a Budget that stops all bytes at FlowLimit MiB and
+// after TimeLimit; FlowConn charges both directions of its connection to it.
 type Flow struct {
-	counter       *byterate.Counter
-	trafficBudget byterate.Budget
-	expiryBudget  byterate.Budget
-	budgetLimit   int64
-	budgetExpiry  time.Time
-	ExportFlow    int64     // outbound traffic
-	InletFlow     int64     // inbound traffic
-	FlowLimit     int64     // traffic limit
-	TimeLimit     time.Time // expire time
+	ExportFlow int64     // outbound traffic
+	InletFlow  int64     // inbound traffic
+	FlowLimit  int64     // traffic limit
+	TimeLimit  time.Time // expire time
 	// client marks a client's flow, whose limit FlowLimitFactor scales;
 	// the limits of tunnels and hosts always count the in/out traffic.
 	client bool
+	// started is set once the counter and the budget took over the fields.
+	started bool
+	// factor is the FlowLimitFactor that the budget's step is set for.
+	factor int64
+	// traffic counts the bytes read from the connections as its reads,
+	// ExportFlow, and those written to them as its writes, InletFlow.
+	traffic byterate.Counter
+	budget  byterate.Budget
 	sync.RWMutex
 }
 
@@ -49,16 +59,86 @@ func (s *Flow) MarkClient() {
 	}
 	s.Lock()
 	s.client = true
+	if s.started {
+		s.applyLimitLocked()
+	}
 	s.Unlock()
 }
 
+// startLocked makes the counter and the budget take over the persisted
+// fields on first use, and follows a change of FlowLimitFactor. s must be
+// locked.
+func (s *Flow) startLocked() {
+	if !s.started {
+		s.started = true
+		s.traffic.Set(s.ExportFlow, s.InletFlow)
+		s.budget.SetUsed(s.InletFlow + s.ExportFlow)
+		s.budget.SetExpiry(s.TimeLimit)
+		s.budget.OnStep(func(_ int, used int64) {
+			logs.Info("Traffic limit reached after %d bytes", used)
+		})
+		s.applyLimitLocked()
+		return
+	}
+	if s.factor != s.limitFactor() {
+		s.applyLimitLocked()
+	}
+}
+
+func (s *Flow) limitFactor() int64 {
+	if s.client {
+		return FlowLimitFactor.Load()
+	}
+	return 1
+}
+
+// applyLimitLocked sets the budget's stop just past FlowLimit MiB, counted
+// as limitFactor times the traffic: a flow exactly at its quota is still
+// admitted, and the first byte over it is the last that passes.
+func (s *Flow) applyLimitLocked() {
+	s.factor = s.limitFactor()
+	if s.FlowLimit > 0 && s.FlowLimit < math.MaxInt64>>20 {
+		s.budget.SetSteps(byterate.Step{After: (s.FlowLimit<<20)/s.factor + 1, Stop: true})
+	} else {
+		s.budget.SetSteps()
+	}
+}
+
+// Budget returns the budget that the traffic of s is charged to, nil for a
+// nil s.
+func (s *Flow) Budget() *byterate.Budget {
+	if s == nil {
+		return nil
+	}
+	s.Lock()
+	s.startLocked()
+	s.Unlock()
+	return &s.budget
+}
+
+// Traffic returns the counter of s, whose reads are the outbound traffic
+// and whose writes are the inbound traffic, nil for a nil s.
+func (s *Flow) Traffic() *byterate.Counter {
+	if s == nil {
+		return nil
+	}
+	s.Lock()
+	s.startLocked()
+	s.Unlock()
+	return &s.traffic
+}
+
+// Add counts in bytes of inbound and out bytes of outbound traffic that
+// passed outside a FlowConn.
 func (s *Flow) Add(in, out int64) {
 	s.Lock()
-	s.addLocked(in, out)
+	s.startLocked()
 	s.Unlock()
+	s.traffic.Add(out, in)
+	_ = s.budget.Charge(in + out)
 }
 
-// MarshalJSON snapshots the persisted adapter fields while transfers update them.
+// MarshalJSON snapshots the persisted fields while transfers update them.
 func (s *Flow) MarshalJSON() ([]byte, error) {
 	if s == nil {
 		return []byte("null"), nil
@@ -75,8 +155,10 @@ func (s *Flow) MarshalJSON() ([]byte, error) {
 // ResetTraffic zeroes the inbound and outbound traffic.
 func (s *Flow) ResetTraffic() {
 	s.Lock()
-	s.InletFlow = 0
-	s.ExportFlow = 0
+	s.startLocked()
+	s.InletFlow, s.ExportFlow = 0, 0
+	s.traffic.Set(0, 0)
+	s.budget.Reset()
 	s.Unlock()
 }
 
@@ -84,6 +166,9 @@ func (s *Flow) ResetTraffic() {
 func (s *Flow) SetFlowLimit(limit int64) {
 	s.Lock()
 	s.FlowLimit = limit
+	if s.started {
+		s.applyLimitLocked()
+	}
 	s.Unlock()
 }
 
@@ -91,6 +176,9 @@ func (s *Flow) SetFlowLimit(limit int64) {
 func (s *Flow) SetTimeLimit(limit time.Time) {
 	s.Lock()
 	s.TimeLimit = limit
+	if s.started {
+		s.budget.SetExpiry(limit)
+	}
 	s.Unlock()
 }
 
@@ -99,17 +187,11 @@ func (s *Flow) SetLimits(flowLimit int64, timeLimit time.Time) {
 	s.Lock()
 	s.FlowLimit = flowLimit
 	s.TimeLimit = timeLimit
+	if s.started {
+		s.applyLimitLocked()
+		s.budget.SetExpiry(timeLimit)
+	}
 	s.Unlock()
-}
-
-// AddOver adds like Add and reports, under the same lock, whether the flow
-// is then over its traffic limit or past its time limit.
-func (s *Flow) AddOver(in, out int64) (traffic, expired bool) {
-	s.Lock()
-	s.addLocked(in, out)
-	traffic, expired = s.overLocked()
-	s.Unlock()
-	return traffic, expired
 }
 
 // FlowValues is a snapshot of a Flow. Used is the traffic its limit counts:
@@ -119,38 +201,42 @@ type FlowValues struct {
 	TimeLimit                              time.Time
 }
 
-// Values returns a snapshot of the flow, taken under its lock; a nil flow
-// gives zero values.
+// Values returns a snapshot of the flow; a nil flow gives zero values.
 func (s *Flow) Values() FlowValues {
 	if s == nil {
 		return FlowValues{}
 	}
-	s.RLock()
-	defer s.RUnlock()
-	used := s.InletFlow + s.ExportFlow
-	if s.client {
-		used *= FlowLimitFactor.Load()
+	s.Lock()
+	defer s.Unlock()
+	s.startLocked()
+	out, in := s.traffic.Total()
+	used := in + out
+	if used > math.MaxInt64/s.factor {
+		used = math.MaxInt64
+	} else {
+		used *= s.factor
 	}
-	return FlowValues{InletFlow: s.InletFlow, ExportFlow: s.ExportFlow, FlowLimit: s.FlowLimit, Used: used, TimeLimit: s.TimeLimit}
+	return FlowValues{InletFlow: in, ExportFlow: out, FlowLimit: s.FlowLimit, Used: used, TimeLimit: s.TimeLimit}
 }
 
 // Over reports whether the flow is over its traffic limit (FlowLimit MiB of
-// inbound and outbound traffic together) or past its time limit. The fields
-// are read under the lock, so that a 64-bit counter is never seen half
-// written on 32-bit platforms.
+// inbound and outbound traffic together, scaled for a client by
+// FlowLimitFactor) or past its time limit.
 func (s *Flow) Over() (traffic, expired bool) {
 	if s == nil {
 		return false, false
 	}
 	s.Lock()
-	traffic, expired = s.overLocked()
+	s.startLocked()
 	s.Unlock()
-	return
+	exp := s.budget.Expiry()
+	return s.budget.Step() >= 0, !exp.IsZero() && !time.Now().Before(exp)
 }
 
 // FlowLimitFactor is what the flow limits of clients multiply the inbound
 // and outbound traffic by: 1 to count the traffic, 2 to count the actual
-// usage on both sides of the server.
+// usage on both sides of the server. A change applies to each client flow
+// at its next use.
 var FlowLimitFactor atomic.Int64
 
 func init() { FlowLimitFactor.Store(1) }
@@ -163,51 +249,6 @@ func SetFlowLimitActual(actual bool) {
 	} else {
 		FlowLimitFactor.Store(1)
 	}
-}
-
-// addLocked mirrors payload traffic to the persisted JSON fields. This counter
-// stays separate from Group.Traffic: framed headers and transport records must
-// not change the established payload quota/persistence accounting.
-func (s *Flow) addLocked(in, out int64) {
-	if s.counter == nil {
-		s.counter = new(byterate.Counter)
-	}
-	currentIn, currentOut := s.counter.Total()
-	// Restore imported/reset values without counting them as new throughput.
-	if currentIn != s.InletFlow || currentOut != s.ExportFlow {
-		s.counter.Restore(s.InletFlow-currentIn, s.ExportFlow-currentOut)
-	}
-	s.counter.Add(in, out)
-	s.InletFlow, s.ExportFlow = s.counter.Total()
-}
-
-func (s *Flow) overLocked() (traffic, expired bool) {
-	used := s.InletFlow + s.ExportFlow
-	if s.client {
-		factor := FlowLimitFactor.Load()
-		if factor > 1 && used > math.MaxInt64/factor {
-			used = math.MaxInt64
-		} else {
-			used *= factor
-		}
-	}
-	if s.budgetLimit != s.FlowLimit {
-		s.budgetLimit = s.FlowLimit
-		if s.FlowLimit > 0 && s.FlowLimit < math.MaxInt64>>20 {
-			// Keep the established rule: exactly at the quota is still admitted.
-			s.trafficBudget.SetSteps(byterate.Step{After: (s.FlowLimit << 20) + 1, Stop: true})
-		} else {
-			s.trafficBudget.SetSteps()
-		}
-	}
-	s.trafficBudget.SetUsed(used)
-	_, trafficErr := s.trafficBudget.Ready(context.Background(), 1)
-	if !s.budgetExpiry.Equal(s.TimeLimit) {
-		s.budgetExpiry = s.TimeLimit
-		s.expiryBudget.SetExpiry(s.TimeLimit)
-	}
-	_, expiryErr := s.expiryBudget.Ready(context.Background(), 1)
-	return trafficErr != nil, expiryErr != nil
 }
 
 type Config struct {
@@ -229,8 +270,8 @@ type Client struct {
 	IsConnect       bool       // connected now
 	RateLimit       int        // rate limit (KB/s)
 	Flow            *Flow      // flow
-	ExportFlow      int64      // outbound flow
-	InletFlow       int64      // inbound flow
+	ExportFlow      FlowTotal  // outbound flow of the client's hosts and tasks
+	InletFlow       FlowTotal  // inbound flow of the client's hosts and tasks
 	Rate            *rate.Rate // rate limiter
 	NoStore         bool       // do not store to file
 	NoDisplay       bool       // do not display on web
@@ -253,6 +294,24 @@ type Client struct {
 	// lasts; 0 means the server default.
 	RegisterMaxHours int
 	sync.RWMutex
+}
+
+// FlowTotal is a traffic total that is updated while it is read and
+// marshalled; it is stored and read atomically and encodes as a JSON number.
+type FlowTotal struct{ v atomic.Int64 }
+
+func (t *FlowTotal) Load() int64   { return t.v.Load() }
+func (t *FlowTotal) Store(n int64) { t.v.Store(n) }
+
+func (t *FlowTotal) MarshalJSON() ([]byte, error) { return json.Marshal(t.v.Load()) }
+
+func (t *FlowTotal) UnmarshalJSON(b []byte) error {
+	var n int64
+	if err := json.Unmarshal(b, &n); err != nil {
+		return err
+	}
+	t.v.Store(n)
+	return nil
 }
 
 // RegisterHoursLimit returns how long a registration made on the page may
@@ -430,7 +489,7 @@ func (t *Tunnel) compileDestACLLocked() {
 	if t.DestAclMode != AclOff && t.DestAclMode != AclWhitelist && t.DestAclMode != AclBlacklist {
 		t.DestAclMode = AclOff
 	}
-	d, err := acl.CompileDest(t.DestAclMode, t.DestAclRules)
+	d, err := acl.CompileDest(t.DestAclMode, t.DestAclRules, "the destination list of tunnel "+strconv.Itoa(t.Id))
 	if err != nil {
 		logs.Warn("Destination list of tunnel %d: rules skipped: %v", t.Id, err)
 	}
@@ -546,9 +605,8 @@ func (t *Tunnel) Clone() *Tunnel {
 	t.RUnlock()
 
 	if flow != nil {
-		flow.RLock()
-		c.Flow = &Flow{ExportFlow: flow.ExportFlow, InletFlow: flow.InletFlow, FlowLimit: flow.FlowLimit, TimeLimit: flow.TimeLimit}
-		flow.RUnlock()
+		v := flow.Values()
+		c.Flow = &Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit}
 	}
 
 	t.Health.RLock()
@@ -697,11 +755,20 @@ type Target struct {
 	source string
 }
 
-// errNoTarget is returned when no target address can take a connection.
-var errNoTarget = errors.New("all inward-bending targets are offline")
+// ErrNoTarget is returned when no target address can take a connection.
+var ErrNoTarget = errors.New("all inward-bending targets are offline")
 
 // errTargetDown records that the client reported a target unhealthy.
 var errTargetDown = errors.New("target reported unhealthy by the client")
+
+// targetOutlier ejects a target address for a while after repeated failed
+// dials, so that connections go to the others meanwhile. It counts only
+// dials whose result is known, those the server makes itself.
+var targetOutlier = upstream.OutlierConfig{
+	ConsecutiveFailures: 5,
+	BaseEjection:        30 * time.Second,
+	MaxEjection:         5 * time.Minute,
+}
 
 func parseTargets(targetStr string) []string {
 	return common.TrimArr(common.SplitLines(strings.ReplaceAll(targetStr, "：", ":")))
@@ -709,7 +776,8 @@ func parseTargets(targetStr string) []string {
 
 // targetPool returns the pool of the configured addresses, synchronizing
 // it first if TargetStr changed. An address listed several times gets a
-// matching weight. Addresses kept across a change keep their health.
+// matching weight. Addresses kept across a change keep their health. A
+// failed dial is retried on each other address once.
 func (s *Target) targetPool() *upstream.Pool[string] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -717,7 +785,7 @@ func (s *Target) targetPool() *upstream.Pool[string] {
 		return s.pool
 	}
 	if s.pool == nil {
-		s.pool = upstream.New[string](upstream.Config{})
+		s.pool = upstream.New[string](upstream.Config{Outlier: targetOutlier})
 	}
 	s.source = s.TargetStr
 	addrs := parseTargets(s.TargetStr)
@@ -734,23 +802,40 @@ func (s *Target) targetPool() *upstream.Pool[string] {
 	if err := s.pool.Sync(targets); err != nil {
 		logs.Warn("invalid target list %q: %v", s.TargetStr, err)
 	}
+	_ = s.pool.SetConfig(upstream.Config{Outlier: targetOutlier, Retry: upstream.RetryConfig{Attempts: len(targets)}})
 	return s.pool
 }
 
-// Pick returns the next healthy target address, in weighted round-robin
-// order.
-func (s *Target) Pick() (string, error) {
-	lease, err := s.targetPool().Pick()
-	if err != nil {
-		return "", errNoTarget
+// Dial connects to a target: it calls dial with the next healthy target
+// address, in weighted round-robin order, and again with another address
+// each time dial fails for that address, trying each address at most once.
+// dial reports whether it reached the address itself; only such results
+// judge the address, while a failure on the way to it, such as on the link
+// to the client that dials it, ends Dial without a retry. Dial returns
+// ErrNoTarget if no address can be tried, and otherwise dial's last error.
+func (s *Target) Dial(dial func(addr string) (direct bool, err error)) error {
+	req := s.targetPool().Request("")
+	picked := false
+	err := req.Do(context.Background(), func(l *upstream.Lease[string]) (bool, error) {
+		picked = true
+		direct, err := dial(l.Value())
+		if !direct {
+			l.Release(upstream.Neutral)
+			return false, err
+		}
+		l.Release(upstream.OutcomeOf(err))
+		return err != nil, err
+	})
+	if !picked {
+		return ErrNoTarget
 	}
-	addr := lease.Value()
-	lease.Release(upstream.Neutral)
-	return addr, nil
+	return err
 }
 
 // SetHealthy takes addr out of the rotation or puts it back, and reports
-// whether addr is one of the configured targets.
+// whether addr is one of the configured targets. The client's checks
+// override failed dials: an address it reports healthy again is no longer
+// ejected for them.
 func (s *Target) SetHealthy(addr string, healthy bool) bool {
 	p := s.targetPool()
 	b, ok := p.Backend(addr)
@@ -760,6 +845,8 @@ func (s *Target) SetHealthy(addr string, healthy bool) bool {
 	h, r := upstream.HealthUp, upstream.CheckResult{Time: time.Now()}
 	if !healthy {
 		h, r.Err = upstream.HealthDown, errTargetDown
+	} else if b.State() == upstream.StateUnhealthy {
+		p.ResetOutlier(addr)
 	}
 	return p.ReportCheck(b, h, r)
 }

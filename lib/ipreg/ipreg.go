@@ -14,18 +14,28 @@ import (
 // login does.
 const AnyClient = 0
 
+// sweepInterval is how often Register removes expired registrations, so that
+// addresses that are never looked up again do not accumulate.
+const sweepInterval = time.Minute
+
 var (
-	mu  sync.Mutex
-	reg = map[int]map[netip.Addr]time.Time{}
+	mu        sync.Mutex
+	reg       = map[int]map[netip.Addr]time.Time{}
+	nextSweep time.Time
 )
 
 // Register registers ip for client until ttl from now; a registration that
 // already lasts longer is kept.
 func Register(client int, ip netip.Addr, ttl time.Duration) time.Time {
 	ip = ip.Unmap().WithZone("")
-	until := time.Now().Add(ttl)
+	now := time.Now()
+	until := now.Add(ttl)
 	mu.Lock()
 	defer mu.Unlock()
+	if !now.Before(nextSweep) {
+		sweep(now)
+		nextSweep = now.Add(sweepInterval)
+	}
 	m := reg[client]
 	if m == nil {
 		m = map[netip.Addr]time.Time{}
@@ -78,6 +88,12 @@ func Count() int {
 	now := time.Now()
 	mu.Lock()
 	defer mu.Unlock()
+	return sweep(now)
+}
+
+// sweep removes the registrations expired at now and returns the number of
+// those left. mu must be held.
+func sweep(now time.Time) int {
 	n := 0
 	for client, m := range reg {
 		for ip, until := range m {

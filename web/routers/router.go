@@ -23,6 +23,9 @@ func Init() http.Handler {
 	}
 
 	engine := gin.New()
+	// The visitor address comes from webapi.VisitorIP; forwarding headers
+	// are not trusted from any peer.
+	_ = engine.SetTrustedProxies(nil)
 	engine.RedirectTrailingSlash = false
 	engine.RedirectFixedPath = false
 	engine.HandleMethodNotAllowed = false

@@ -12,10 +12,8 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
-	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/nps/lib/version"
 )
@@ -84,16 +82,15 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 
 // p2pOptions are the holepunch options of both sides: this side's pin as
 // transport data, the local address of local_ip, the port mapper and
-// whether this side accepts a background session.
-func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool) holepunch.Options {
+// whether this side accepts a background session; the session logs to the
+// nps log with logPrefix.
+func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, logPrefix string) holepunch.Options {
 	opts := holepunch.Options{
 		LocalAddr:        p2pLocalAddr(localIP),
 		TransportMode:    p2pproto.TransportMode,
 		TransportData:    p2pLocalPin(),
 		AcceptBackground: background,
-		OnProgress: func(p protocol.Progress) {
-			logs.Trace("P2P session %s %s: %s %s %s", p.SessionID, p.Role, p.Stage, p.Status, p.Detail)
-		},
+		Logger:           p2pproto.NewLogger(logPrefix),
 	}
 	if mapper != nil {
 		opts.PortMapper = mapper
@@ -109,14 +106,6 @@ func p2pLocalAddr(localIP string) netip.Addr {
 		return netip.Addr{}
 	}
 	return a.Unmap()
-}
-
-// p2pResultSummary describes a punched path for the log.
-func p2pResultSummary(sess *holepunch.Session) string {
-	res := sess.Result()
-	p := res.Path
-	return fmt.Sprintf("%s path %s -> %s over %s, rtt %s, keepalive %s (%s), %d rounds",
-		p.Kind, p.LocalAddr, p.RemoteAddr, p.Family, p.RTT, p.Keepalive.Interval, p.Keepalive.Reason, res.Rounds)
 }
 
 // p2pNATSummary describes this side's NAT as the session measured it.

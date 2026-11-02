@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,6 +50,11 @@ func newSocks5UDPRegistry(bridge NetBridge, task *file.Tunnel, allowLocalProxy b
 	listener, err := conn.NewUdpConnByAddr(addr)
 	if err != nil {
 		return nil, err
+	}
+	if task != nil && task.Client != nil {
+		// Visitor datagrams over the task's rates are dropped rather than
+		// stalling the tunnels of every session.
+		listener = rate.NewVisitorPacketConn(listener, task.Client.Rate, task.RateLimiter())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &socks5UDPRegistry{
@@ -163,7 +167,7 @@ func (r *socks5UDPRegistry) readLoop() {
 	for {
 		n, addr, err := r.listener.ReadFrom(buf)
 		if err != nil {
-			if r.ctx.Err() != nil || isClosedPacketConnError(err) {
+			if r.ctx.Err() != nil || netx.IsClosed(err) {
 				return
 			}
 			logs.Debug("socks5 udp listener read error: %v", err)
@@ -446,10 +450,9 @@ func (s *socks5UDPSession) openTunnel() error {
 		return err
 	}
 	timeoutConn := netx.NewTimeoutConn(target, link.Option.Timeout)
-	rateConn := rate.NewRateConn(timeoutConn, task.Client.Rate, task.RateLimiter())
 	// The session owns the framed connection and closes it in Close.
 	//noinspection GoResourceLeak
-	flowConn := conn.NewFlowConn(rateConn, task.Flow, task.Client.Flow)
+	flowConn := conn.NewFlowConn(timeoutConn, task.Flow, task.Client.Flow)
 	s.framed = netx.NewFramedConn(flowConn, netx.WithFramedDatagrams())
 	return nil
 }
@@ -642,13 +645,6 @@ func cloneUDPAddr(addr *net.UDPAddr) *net.UDPAddr {
 	return &out
 }
 
-func isClosedPacketConnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "use of closed network connection")
-}
-
 // allowsDestination applies the destination list of a mixProxy task to the
 // destination of a datagram.
 func (s *socks5UDPSession) allowsDestination(addr string) bool {
@@ -657,4 +653,26 @@ func (s *socks5UDPSession) allowsDestination(addr string) bool {
 		return true
 	}
 	return t.AllowsDestination(addr)
+}
+
+// takeUDPPacket returns a buffer holding the n-byte datagram read into buf,
+// a small pooled copy for a datagram that fits one, or else buf itself, and
+// the buffer to read the next datagram into. buf is from common.BufPool.
+func takeUDPPacket(buf []byte, n int) (pkt, next []byte) {
+	if n <= common.PoolSizeUdp {
+		pkt = common.BufPoolUdp.Get()
+		copy(pkt, buf[:n])
+		return pkt, buf
+	}
+	// Hand the large buffer over instead of copying it.
+	return buf, common.BufPool.Get()
+}
+
+// putUDPPacketBuf returns a buffer of takeUDPPacket to the pool it came from.
+func putUDPPacketBuf(buf []byte) {
+	if cap(buf) == common.PoolSize {
+		common.BufPool.Put(buf)
+		return
+	}
+	common.BufPoolUdp.Put(buf)
 }

@@ -9,9 +9,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -19,6 +21,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/portmux/tlshello"
 )
 
 const (
@@ -55,8 +58,9 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 		defaultKeyFile:  cfg.Proxy.SSL.DefaultKeyFile,
 	}
 
-	_, https.hasDefaultCert = common.LoadCert(https.defaultCertFile, https.defaultKeyFile)
 	https.cert = newCertFiles(cfg.Proxy.SSL)
+	_, err := https.loadCert(https.defaultCertFile, https.defaultKeyFile, "file")
+	https.hasDefaultCert = err == nil
 	https.httpsServeListener = NewHttpsListener(l)
 	https.httpsServer = https.NewServer(https.HttpsPort, "https")
 
@@ -125,15 +129,15 @@ func (s *HttpsServer) Start() error {
 	s.httpsStatus = true
 	conn.Accept(s.httpsListener, func(c net.Conn) {
 		_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
-		helloInfo, rb, err := crypt.ReadClientHello(c, nil)
-		if err != nil || helloInfo == nil {
+		hello, rb, err := readClientHello(c)
+		if err != nil {
 			logs.Debug("Failed to read clientHello from %v, err=%v", c.RemoteAddr(), err)
 			// Check if the request is an HTTP request.
 			checkHTTPAndRedirect(c, rb)
 			return
 		}
 
-		serverName := helloInfo.ServerName
+		serverName := hello.ServerName
 		if serverName == "" {
 			logs.Debug("IP access to HTTPS port is not allowed. Remote address: %v", c.RemoteAddr())
 			_ = c.Close()
@@ -171,7 +175,7 @@ func (s *HttpsServer) Start() error {
 			handshakeTimeout = autoSSLHandshakeTimeout
 		}
 
-		acceptConn := conn.NewConn(c).SetRb(rb)
+		acceptConn := netx.NewPrefixConn(c, rb)
 		tlsConn := tls.Server(acceptConn, tlsConfig)
 		_ = c.SetDeadline(time.Now().Add(handshakeTimeout))
 		if err := tlsConn.Handshake(); err != nil {
@@ -187,6 +191,40 @@ func (s *HttpsServer) Start() error {
 	})
 	s.httpsStatus = false
 	return nil
+}
+
+// maxClientHelloBytes bounds the bytes read while looking for a complete
+// ClientHello.
+const maxClientHelloBytes = 64 * 1024
+
+// readClientHello reads from c until it holds a complete TLS ClientHello and
+// returns it with every byte read, which the caller replays. On failure the
+// bytes read so far are returned as well, such as a plain HTTP request.
+func readClientHello(c net.Conn) (*tlshello.Hello, []byte, error) {
+	var s tlshello.Scanner
+	data := make([]byte, 0, 2048)
+	for {
+		if len(data) == cap(data) {
+			data = slices.Grow(data, cap(data))
+		}
+		n, err := c.Read(data[len(data):cap(data)])
+		data = data[:len(data)+n]
+		if n > 0 {
+			hello, perr := s.Scan(data)
+			if perr == nil {
+				return hello, data, nil
+			}
+			if !errors.Is(perr, io.ErrUnexpectedEOF) {
+				return nil, data, perr
+			}
+			if len(data) >= maxClientHelloBytes {
+				return nil, data, tlshello.ErrInvalid
+			}
+		}
+		if err != nil {
+			return nil, data, err
+		}
+	}
 }
 
 func checkHTTPAndRedirect(c net.Conn, rb []byte) {
@@ -234,17 +272,14 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 	}
 	defer release()
 
-	targetAddr, err := host.Target.Pick()
-	if err != nil {
-		logs.Warn("%v", err)
-		_ = c.Close()
-		return
-	}
 	logs.Info("New HTTPS connection, clientId %d, host %s, remote address %v", host.Client.Id, sni, c.RemoteAddr())
 	task := file.NewTunnelByHost(host, s.HttpsPort)
-	// DealClient owns the connection and closes it.
+	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	_ = s.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
+	if err := s.DealTarget(conn.NewConn(c), host.Client, host.Target, rb, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
+		logs.Warn("%v", err)
+		_ = c.Close()
+	}
 }
 
 func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni string) {
@@ -256,17 +291,14 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 	}
 	defer release()
 
-	targetAddr, err := host.Target.Pick()
-	if err != nil {
+	logs.Info("New TLS offload connection, clientId %d, host %s, remote %v", host.Client.Id, sni, tlsConn.RemoteAddr())
+	task := file.NewTunnelByHost(host, s.HttpsPort)
+	// DealTarget owns the connection once it found a target.
+	//noinspection GoResourceLeak
+	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, host.Target, nil, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = tlsConn.Close()
-		return
 	}
-	logs.Info("New TLS offload connection, clientId %d, host %s, remote %v -> %s", host.Client.Id, sni, tlsConn.RemoteAddr(), targetAddr)
-	task := file.NewTunnelByHost(host, s.HttpsPort)
-	// DealClient owns the connection and closes it.
-	//noinspection GoResourceLeak
-	_ = s.DealClient(conn.NewConn(tlsConn), host.Client, targetAddr, nil, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, host.Target.ProxyProtocol, host.Target.LocalProxy, task)
 }
 
 func (s *HttpsServer) Close() error {

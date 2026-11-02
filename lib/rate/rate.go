@@ -101,7 +101,7 @@ func (r *Rate) Group() *byterate.Group {
 		_ = r.group.SetParent(RootGroup())
 		r.group.SetLimiters(&r.l, &r.l)
 		r.group.SetTraffic(&r.traffic)
-		sample(&r.traffic)
+		r.traffic.SampleEverySecond()
 	})
 	return &r.group
 }

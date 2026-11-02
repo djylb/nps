@@ -18,8 +18,6 @@ import (
 // its first stream or protocol upgrade before it is dropped.
 const HandshakeTimeout = 10 * time.Second
 
-const maxAcceptBackoff = time.Second
-
 func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
 	kcpListener, err := kcp.ListenWithOptions(addr, nil, 10, 3)
 	if err != nil {
@@ -68,27 +66,15 @@ func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
 	f(NewQuicAutoCloseConn(stream, sess))
 }
 
-// Accept serves l until it is closed, backing off on transient errors.
+// Accept serves l until it is closed or fails; netx.Accept retries
+// transient errors with a backoff.
 func Accept(l net.Listener, f func(c net.Conn)) {
-	var delay time.Duration
 	for {
-		c, err := l.Accept()
+		c, err := netx.Accept(context.Background(), l)
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return
+			if !netx.IsClosed(err) {
+				logs.Error("accept error: %v", err)
 			}
-			if delay == 0 {
-				delay = 5 * time.Millisecond
-			} else {
-				delay = min(delay*2, maxAcceptBackoff)
-			}
-			logs.Warn("accept error: %v; retrying in %v", err, delay)
-			time.Sleep(delay)
-			continue
-		}
-		delay = 0
-		if c == nil {
-			logs.Warn("nil connection")
 			return
 		}
 		go f(c)

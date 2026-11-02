@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/holepunch"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -74,11 +75,12 @@ func TestP2PDeclinedByProvider(t *testing.T) {
 	defer cancel()
 	tr, err := newP2PPeer(mgr, p2pTestPassword, "test").punch(ctx, false)
 	if err == nil {
-		tr.Close(p2pCodeClosed, "closed")
+		_ = tr.Close()
 		t.Fatal("punched a direct path to a provider with P2P disabled")
 	}
-	if class, _, _ := classifyP2PError(err); class != p2pBackoffFatal || !strings.Contains(err.Error(), "declined") {
-		t.Fatalf("punch = %v (backoff class %d), want the provider's refusal", err, class)
+	var b p2pBackoff
+	if a := b.failed(err).Action; a != holepunch.ActionGiveUp || !strings.Contains(err.Error(), "declined") {
+		t.Fatalf("punch = %v (next %s), want the provider's refusal", err, a)
 	}
 }
 

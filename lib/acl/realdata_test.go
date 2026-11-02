@@ -16,7 +16,7 @@ func TestRealGeoIP(t *testing.T) {
 	SetGeoData(path, "")
 	t.Cleanup(func() { geo.SetFiles(old) })
 
-	s, err := CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn"}, nil)
+	s, err := CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestRealGeoIP(t *testing.T) {
 	if !Allows(addr("8.8.8.8:53"), nil, nil, s) {
 		t.Fatal("geoip:cn blacklist denied 8.8.8.8")
 	}
-	neg, err := CompileSource(ScopeUser, DenyFirst, nil, []string{"geoip:!cn"})
+	neg, err := CompileSource(ScopeUser, DenyFirst, nil, []string{"geoip:!cn"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

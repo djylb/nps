@@ -21,7 +21,7 @@ func TestNormalizeSource(t *testing.T) {
 	}
 	// "a" and "b.c" are no IP rules, and a source has no port to match
 	var re *RuleError
-	if !errors.As(err, &re) || len(re.errs) != 3 || !errors.Is(err, geomatch.ErrKindDisabled) || !errors.Is(err, errSourcePort) {
+	if !errors.As(err, &re) || len(re.errs) != 3 || !errors.Is(err, geomatch.ErrKindDisabled) || !errors.Is(err, geomatch.ErrPortsDisabled) {
 		t.Fatalf("err = %v, want the port rule and the two host names rejected", err)
 	}
 	if !strings.Contains(err.Error(), "line 8") || !strings.Contains(err.Error(), "line 10") {
@@ -82,7 +82,7 @@ func addr(s string) net.Addr {
 
 func mustSource(t *testing.T, priority int, black, white []string) *Source {
 	t.Helper()
-	s, err := CompileSource(ScopeUser, priority, black, white)
+	s, err := CompileSource(ScopeUser, priority, black, white, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,21 +158,21 @@ func TestLevels(t *testing.T) {
 }
 
 func TestGeoIPWithoutData(t *testing.T) {
-	s, err := CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn", "1.2.3.4"}, nil)
+	s, err := CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn", "1.2.3.4"}, nil, nil)
 	if !errors.Is(err, geomatch.ErrGeoData) {
 		t.Fatalf("err = %v, want the geoip: rule skipped for missing data", err)
 	}
 	if Allows(addr("1.2.3.4:1"), nil, nil, s) {
 		t.Fatal("the other rules were not applied")
 	}
-	w, _ := CompileSource(ScopeUser, DenyFirst, nil, []string{"geoip:cn"})
+	w, _ := CompileSource(ScopeUser, DenyFirst, nil, []string{"geoip:cn"}, nil)
 	if Allows(addr("1.2.3.4:1"), nil, nil, w) {
 		t.Fatal("a whitelist whose rules all failed allowed an address")
 	}
 }
 
 func TestDestPolicy(t *testing.T) {
-	d, err := CompileDest(1, "full:example.com\n*.example.org\nads")
+	d, err := CompileDest(1, "full:example.com\n*.example.org\nads", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestDestPolicy(t *testing.T) {
 			t.Errorf("Allows(%q) = %v, want %v", a, got, want)
 		}
 	}
-	if d, _ := CompileDest(0, "example.com"); d != nil || !d.Allows("x:1") {
+	if d, _ := CompileDest(0, "example.com", nil); d != nil || !d.Allows("x:1") {
 		t.Fatal("off mode compiled a list")
 	}
 }
@@ -201,7 +201,7 @@ func TestRejectedRulesSayWhy(t *testing.T) {
 	}
 }
 
-func TestGeoGenerationGrowsWhenAFileChanges(t *testing.T) {
+func TestRefreshGeoDataTagsOwner(t *testing.T) {
 	old := geo.Files()
 	t.Cleanup(func() { geo.SetFiles(old) })
 	path := filepath.Join(t.TempDir(), "geoip.dat")
@@ -209,23 +209,26 @@ func TestGeoGenerationGrowsWhenAFileChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	SetGeoData(path, "")
-	_, _ = CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn"}, nil)
-	before := GeoGeneration()
-	if GeoGeneration() != before {
-		t.Fatal("generation grew without a change")
+	src, _ := CompileSource(ScopeUser, DenyFirst, []string{"geoip:cn"}, nil, "owner")
+	RefreshGeoData() // lists of other tests compiled with other files
+	if RefreshGeoData().Changed() {
+		t.Fatal("refresh changed a list without a file change")
 	}
 	if err := os.WriteFile(path, []byte("changed"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	future := time.Now().Add(time.Hour)
 	_ = os.Chtimes(path, future, future)
-	if GeoGeneration() == before {
-		t.Fatal("generation did not grow after the geoip file changed")
+	res := RefreshGeoData()
+	if !slices.ContainsFunc(append(res.Replaced, res.Failed...), func(l *geomatch.Live) bool {
+		return l == src.black && l.Tag() == "owner"
+	}) {
+		t.Fatalf("refresh = %+v, want the tagged list", res)
 	}
 }
 
 func TestDecideNamesLevel(t *testing.T) {
-	client, err := CompileSource(ScopeUser, DenyFirst, []string{"192.0.2.0/24"}, nil)
+	client, err := CompileSource(ScopeUser, DenyFirst, []string{"192.0.2.0/24"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +240,7 @@ func TestDecideNamesLevel(t *testing.T) {
 
 // Older versions stored the lines entered on a page as one rule.
 func TestCompileSourceSplitsStoredLines(t *testing.T) {
-	s, err := CompileSource(ScopeUser, DenyFirst, []string{"203.0.113.9\n\n10.9.9.9\r\n"}, nil)
+	s, err := CompileSource(ScopeUser, DenyFirst, []string{"203.0.113.9\n\n10.9.9.9\r\n"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

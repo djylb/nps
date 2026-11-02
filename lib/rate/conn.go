@@ -13,16 +13,23 @@ import (
 // npc. A net.Conn stays a net.Conn. A nil r leaves only the global limit.
 // Close wakes a Read or Write waiting for a limit.
 func NewRateConn(conn io.ReadWriteCloser, r *Rate, entry ...*Directional) io.ReadWriteCloser {
-	group := r.Group()
-	for _, e := range entry {
-		if e != nil {
-			group = e.connectionGroup(group)
-		}
-	}
+	group := connectionGroup(r, entry)
 	limits := byterate.WithLimiters(group.Reads(), group.Writes())
 
 	if c, ok := conn.(net.Conn); ok {
 		return byterate.NewConn(c, limits)
 	}
 	return byterate.NewStream(conn, limits)
+}
+
+// connectionGroup is the Group that limits one standalone wrapper: r's, under
+// the global limit, with each non-nil entry's directional limits on top.
+func connectionGroup(r *Rate, entry []*Directional) *byterate.Group {
+	group := r.Group()
+	for _, e := range entry {
+		if e != nil {
+			group = e.connectionGroup(group)
+		}
+	}
+	return group
 }

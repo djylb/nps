@@ -6,12 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/netip"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/djylb/holepunch"
+	"github.com/djylb/holepunch/quicpath"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/p2pproto"
@@ -32,24 +31,10 @@ const (
 	// p2pCheckAttempts how many it gets before it is closed.
 	p2pCheckTimeout  = 2 * time.Second
 	p2pCheckAttempts = 2
-	// p2pDialAttempts bounds the QUIC handshake attempts within the
-	// session's transport timeout, p2pDialRetryDelay separating them.
-	p2pDialAttempts   = 3
-	p2pDialRetryDelay = 200 * time.Millisecond
-	// p2pDefaultTransportTimeout applies when the session carries none.
-	p2pDefaultTransportTimeout = 10 * time.Second
-	// p2pDefaultIdleTimeout applies when the path has no keepalive advice.
-	p2pDefaultIdleTimeout = 30 * time.Second
 )
 
-// QUIC application error codes on the punched path.
-const (
-	p2pCodeClosed         quic.ApplicationErrorCode = 0
-	p2pCodeUnexpectedPeer quic.ApplicationErrorCode = 1
-	p2pCodeLost           quic.ApplicationErrorCode = 2
-	// p2pStreamAbandoned resets a stream whose link was not delivered.
-	p2pStreamAbandoned quic.StreamErrorCode = 1
-)
+// p2pStreamAbandoned resets a stream whose link was not delivered.
+const p2pStreamAbandoned quic.StreamErrorCode = 1
 
 // p2pALPN is the application protocol of the QUIC connection on the punched
 // path: HTTP/3's, the most common one on UDP, so that the connection does not
@@ -59,31 +44,32 @@ const p2pALPN = "h3"
 
 var errP2PTransportMode = errors.New("p2p session did not settle on a pinned QUIC transport")
 
-// p2pTransport is a QUIC connection on a punched path, together with the
-// QUIC transport reading the socket and the release of the punched socket
-// (the holepunch session's Close, which also drops a port mapping). Close
-// releases all three; it follows the QUIC connection's end.
+// p2pPipe is a QUIC connection on a punched path: a *quicpath.Conn, which
+// also owns the holepunch session.
+type p2pPipe interface {
+	QUIC() *quic.Conn
+	Done() <-chan struct{}
+	Err() error
+	Close() error
+}
+
+// p2pTransport is the visitor's pipe to the provider together with the
+// liveness the visitor tracks on it.
 type p2pTransport struct {
-	qc      *quic.Conn
-	tr      *quic.Transport
-	release func() error
+	p2pPipe
 
 	lastHeard atomic.Int64 // unix nanoseconds of the provider's last answer
 	suspect   atomic.Bool  // a connection failed on it; a check is deciding
-	closeOnce sync.Once
 }
 
-func newP2PTransport(qc *quic.Conn, tr *quic.Transport, release func() error) *p2pTransport {
-	t := &p2pTransport{qc: qc, tr: tr, release: release}
+func newP2PTransport(c p2pPipe) *p2pTransport {
+	t := &p2pTransport{p2pPipe: c}
 	t.heard() // the handshake just completed
 	return t
 }
 
-// Done is closed when the QUIC connection ends, for whatever reason.
-func (t *p2pTransport) Done() <-chan struct{} { return t.qc.Context().Done() }
-
 // Alive reports whether the QUIC connection is still up.
-func (t *p2pTransport) Alive() bool { return t.qc.Context().Err() == nil }
+func (t *p2pTransport) Alive() bool { return t.Err() == nil }
 
 // heard records an answer of the provider.
 func (t *p2pTransport) heard() { t.lastHeard.Store(time.Now().UnixNano()) }
@@ -91,18 +77,6 @@ func (t *p2pTransport) heard() { t.lastHeard.Store(time.Now().UnixNano()) }
 // silence is the time since the provider last answered.
 func (t *p2pTransport) silence() time.Duration {
 	return time.Since(time.Unix(0, t.lastHeard.Load()))
-}
-
-// Close closes the QUIC connection with code, stops the transport and
-// releases the socket. It is idempotent.
-func (t *p2pTransport) Close(code quic.ApplicationErrorCode, reason string) {
-	t.closeOnce.Do(func() {
-		_ = t.qc.CloseWithError(code, reason)
-		_ = t.tr.Close()
-		if t.release != nil {
-			_ = t.release()
-		}
-	})
 }
 
 // openLink opens a stream and sends link over it; when the provider has not
@@ -127,7 +101,7 @@ func (t *p2pTransport) check(ctx context.Context) error {
 
 func (t *p2pTransport) open(ctx context.Context, link conn.Link, timeout time.Duration) (net.Conn, error) {
 	octx, cancel := context.WithTimeout(ctx, timeout)
-	stream, err := t.qc.OpenStreamSync(octx)
+	stream, err := t.QUIC().OpenStreamSync(octx)
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("open stream: %w", err)
@@ -137,7 +111,7 @@ func (t *p2pTransport) open(ctx context.Context, link conn.Link, timeout time.Du
 		stream.CancelRead(p2pStreamAbandoned)
 		return nil, err
 	}
-	nc := conn.NewQuicStreamConn(stream, t.qc)
+	nc := conn.NewQuicStreamConn(stream, t.QUIC())
 	_ = stream.SetWriteDeadline(time.Now().Add(timeout))
 	// The wrapper only writes to nc, whose stream fail cancels on failure.
 	//noinspection GoResourceLeak
@@ -154,32 +128,10 @@ func (t *p2pTransport) open(ctx context.Context, link conn.Link, timeout time.Du
 	return nc, nil
 }
 
-// p2pQUICConfig derives the QUIC configuration from the punched path: the
-// keepalive and idle timeout follow the path's keepalive advice, so that a
-// dead path is noticed as early as the NAT allows, and the handshake is
-// bounded by the session's transport timeout.
-func p2pQUICConfig(res holepunch.Result) *quic.Config {
-	idle := res.Path.Keepalive.Timeout
-	if idle <= 0 {
-		idle = p2pDefaultIdleTimeout
-	}
-	keepalive := res.Path.Keepalive.Interval
-	if keepalive <= 0 || keepalive >= idle {
-		keepalive = idle / 3
-	}
-	return &quic.Config{
-		HandshakeIdleTimeout: p2pTransportTimeout(res),
-		MaxIdleTimeout:       idle,
-		KeepAlivePeriod:      keepalive,
-		MaxIncomingStreams:   QuicConfig.MaxIncomingStreams,
-	}
-}
-
-func p2pTransportTimeout(res holepunch.Result) time.Duration {
-	if res.TransportTimeout > 0 {
-		return res.TransportTimeout
-	}
-	return p2pDefaultTransportTimeout
+// p2pQUICConfig is the QUIC configuration on a punched path; quicpath
+// derives the keepalive, idle and handshake timeouts from the session.
+func p2pQUICConfig() *quic.Config {
+	return &quic.Config{MaxIncomingStreams: QuicConfig.MaxIncomingStreams}
 }
 
 // p2pLocalPin is this side's certificate fingerprint, sent to the peer as
@@ -213,96 +165,45 @@ func p2pClientTLS(pin []byte) *tls.Config {
 	})
 }
 
-// p2pSocket checks that sess settled on a pinned QUIC transport and returns
-// the peer's pin and the punched socket, whose deadlines the session has
-// cleared.
-func p2pSocket(sess *holepunch.Session) (holepunch.Result, []byte, net.PacketConn, error) {
+// p2pPeerPin checks that sess settled on a pinned QUIC transport and
+// returns the peer's pin.
+func p2pPeerPin(sess *holepunch.Session) ([]byte, error) {
 	res := sess.Result()
 	if res.TransportMode != p2pproto.TransportMode || len(res.PeerTransportData) == 0 {
-		return res, nil, nil, fmt.Errorf("%w: mode %q", errP2PTransportMode, res.TransportMode)
+		return nil, fmt.Errorf("%w: mode %q", errP2PTransportMode, res.TransportMode)
 	}
-	return res, res.PeerTransportData, sess.PacketConn(), nil
+	return res.PeerTransportData, nil
 }
 
-// dialP2PTransport connects QUIC to the provider over the punched path, in
-// at most p2pDialAttempts within the session's transport timeout. It takes
-// sess over: on failure sess is closed.
+// dialP2PTransport connects QUIC to the provider over the punched path. It
+// takes sess over: on failure sess is closed.
 func dialP2PTransport(ctx context.Context, sess *holepunch.Session) (*p2pTransport, error) {
-	res, pin, pc, err := p2pSocket(sess)
+	pin, err := p2pPeerPin(sess)
 	if err != nil {
 		_ = sess.Close()
 		return nil, err
 	}
-	tr := &quic.Transport{Conn: pc}
-	dctx, cancel := context.WithTimeout(ctx, p2pTransportTimeout(res))
-	defer cancel()
-	remote := net.UDPAddrFromAddrPort(res.Path.RemoteAddr)
-	tlsCfg, qcfg := p2pClientTLS(pin), p2pQUICConfig(res)
-	var last error
-	for attempt := 1; ; attempt++ {
-		qc, err := tr.Dial(dctx, remote, tlsCfg, qcfg)
-		if err == nil {
-			return newP2PTransport(qc, tr, sess.Close), nil
-		}
-		last = err
-		if attempt >= p2pDialAttempts || dctx.Err() != nil || p2pDialFinal(err) || !sleepWithContext(dctx, p2pDialRetryDelay) {
-			break
-		}
+	c, err := quicpath.Dial(ctx, sess, p2pClientTLS(pin), p2pQUICConfig())
+	if err != nil {
+		_ = sess.Close()
+		return nil, fmt.Errorf("quic dial %v: %w", sess.Result().Path.RemoteAddr, err)
 	}
-	_ = tr.Close()
-	_ = sess.Close()
-	return nil, fmt.Errorf("quic dial %v: %w", res.Path.RemoteAddr, last)
+	return newP2PTransport(c), nil
 }
 
-// acceptP2PTransport waits, within the session's transport timeout, for the
-// visitor's QUIC connection from the punched address with the visitor's pin.
-// It takes sess over: on failure sess is closed.
-func acceptP2PTransport(ctx context.Context, sess *holepunch.Session) (*p2pTransport, error) {
-	res, pin, pc, err := p2pSocket(sess)
+// acceptP2PTransport waits for the visitor's QUIC connection from the
+// punched address with the visitor's pin. It takes sess over: on failure
+// sess is closed.
+func acceptP2PTransport(ctx context.Context, sess *holepunch.Session) (*quicpath.Conn, error) {
+	pin, err := p2pPeerPin(sess)
 	if err != nil {
 		_ = sess.Close()
 		return nil, err
 	}
-	tr := &quic.Transport{Conn: pc}
-	ln, err := tr.Listen(p2pServerTLS(pin), p2pQUICConfig(res))
+	c, err := quicpath.Accept(ctx, sess, p2pServerTLS(pin), p2pQUICConfig())
 	if err != nil {
-		_ = tr.Close()
 		_ = sess.Close()
-		return nil, fmt.Errorf("quic listen: %w", err)
+		return nil, fmt.Errorf("quic accept: %w", err)
 	}
-	defer func() { _ = ln.Close() }()
-	actx, cancel := context.WithTimeout(ctx, p2pTransportTimeout(res))
-	defer cancel()
-	for {
-		qc, err := ln.Accept(actx)
-		if err != nil {
-			_ = tr.Close()
-			_ = sess.Close()
-			return nil, fmt.Errorf("quic accept: %w", err)
-		}
-		if sameAddrPort(qc.RemoteAddr(), res.Path.RemoteAddr) {
-			return newP2PTransport(qc, tr, sess.Close), nil
-		}
-		_ = qc.CloseWithError(p2pCodeUnexpectedPeer, "unexpected peer")
-	}
-}
-
-// p2pDialFinal reports a dial error another attempt cannot cure: a closed
-// socket or transport, or a TLS failure such as a pin mismatch.
-func p2pDialFinal(err error) bool {
-	if errors.Is(err, net.ErrClosed) {
-		return true
-	}
-	var te *quic.TransportError
-	return errors.As(err, &te) && te.ErrorCode.IsCryptoError()
-}
-
-// sameAddrPort compares a socket address with the punched peer address.
-func sameAddrPort(a net.Addr, want netip.AddrPort) bool {
-	ua, ok := a.(*net.UDPAddr)
-	if !ok {
-		return false
-	}
-	got := ua.AddrPort()
-	return got.Addr().Unmap() == want.Addr().Unmap() && got.Port() == want.Port()
+	return c, nil
 }

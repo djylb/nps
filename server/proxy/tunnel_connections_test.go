@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"io"
 	"net"
 	"testing"
@@ -87,9 +86,9 @@ func TestUDPTunnelRejectionReleasesClientSlot(t *testing.T) {
 			t.Fatal("reserve")
 		}
 		server := NewUdpModeServer(&localDialBridge{}, task, false)
-		ctx, cancel := context.WithCancel(context.Background())
-		session := &entry{ctx: ctx, cancel: cancel, ch: make(chan packet)}
-		server.clientWorker(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234}, session)
+		visitor, peer := net.Pipe()
+		server.serve(visitor)
+		_ = peer.Close()
 		wantClient := int32(1)
 		if flowFailure {
 			wantClient = 0

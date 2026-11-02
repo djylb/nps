@@ -30,7 +30,7 @@ func (a *App) LoginVerify(c Context) {
 	setSession(c, "login_nonce", nonce)
 
 	username := requestString(c, "username")
-	ip := requestVisitorIP(c, cfg)
+	ip := VisitorIP(c, cfg)
 
 	isIPBan := loginPolicy.IsIPBanned(ip)
 	isUserBan := loginPolicy.IsUserBanned(username)
@@ -213,7 +213,7 @@ func (a *App) LogoutRedirect(c Context) {
 func (a *App) doLogin(c Context, username, password, totp string) bool {
 	cfg := a.currentConfig()
 	loginPolicy := a.loginPolicy()
-	ip := requestVisitorIP(c, cfg)
+	ip := VisitorIP(c, cfg)
 
 	if loginPolicy.IsIPBanned(ip) {
 		return false
@@ -236,15 +236,16 @@ func (a *App) doLogin(c Context, username, password, totp string) bool {
 		logs.Error("Login of user %s from %s succeeded but the session could not be saved: %v", username, ip, err)
 		return false
 	}
-	a.system().RegisterManagementAccess(c.ClientIP(), identity.ClientIDs, identity.IsAdmin)
+	a.system().RegisterManagementAccess(ip, identity.ClientIDs, identity.IsAdmin)
 
 	loginPolicy.ClearUserFailures(username)
 	return true
 }
 
-// requestVisitorIP returns the address of the visitor: the peer, or the
-// X-Real-IP header a trusted proxy sets.
-func requestVisitorIP(c Context, cfg *servercfg.Snapshot) string {
+// VisitorIP returns the address of the visitor of a web request: the peer,
+// or the X-Real-IP header a trusted proxy sets. It is the one resolver of the
+// visitor address for the web interface; gin's own ClientIP is not used.
+func VisitorIP(c Context, cfg *servercfg.Snapshot) string {
 	ip := requestRemoteIP(c)
 	httpOnlyPass := cfg.Auth.HTTPOnlyPass
 	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||

@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/djylb/byterate"
 )
 
 var conn1 net.Conn
@@ -369,9 +371,7 @@ func TestNewMux2(t *testing.T) {
 		server(tc.Eth.EthAddr)
 		client(tc.Eth.EthAddr)
 		time.Sleep(time.Second * 3)
-		rate := NewRate(1024 * 1024 * 3)
-		rate.Start()
-		conn2 = NewRateConn(rate, conn2)
+		conn2 = byterate.NewConn(conn2, byterate.WithLimiter(byterate.NewRate(1024*1024*3)))
 		go func() {
 			m2 := NewMux(conn2, "tcp", 60, true)
 			for {

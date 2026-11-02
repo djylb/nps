@@ -34,8 +34,9 @@ type Source struct {
 
 // CompileSource compiles the source lists of a level. Rules that cannot be
 // used, for example geoip: rules without geodata, are skipped and named by
-// the error; the returned Source applies the others.
-func CompileSource(scope Scope, priority int, black, white []string) (*Source, error) {
+// the error; the returned Source applies the others. owner tags the lists
+// for RefreshGeoData.
+func CompileSource(scope Scope, priority int, black, white []string, owner any) (*Source, error) {
 	if len(black) == 0 && len(white) == 0 {
 		return nil, nil
 	}
@@ -46,18 +47,14 @@ func CompileSource(scope Scope, priority int, black, white []string) (*Source, e
 		rules []string
 		live  **geomatch.Live
 	}{{black, &s.black}, {white, &s.white}} {
-		lines, index, portErrs := withoutPorts(c, ruleLines(list.rules))
-		if len(lines) == 0 && len(portErrs) == 0 {
+		lines := ruleLines(list.rules)
+		if len(lines) == 0 {
 			continue
 		}
 		l, err := geomatch.NewLive(c, lines)
+		l.SetTag(owner)
 		*list.live = l
-		var re geomatch.RuleErrors
-		errors.As(err, &re)
-		for _, e := range re {
-			e.Index = index[e.Index]
-		}
-		errs = append(errs, mergeRuleErrors(portErrs, re, err))
+		errs = append(errs, err)
 	}
 	return s, joinRuleErrors(errs...)
 }
@@ -77,23 +74,6 @@ func (s *Source) Policy() geomatch.Policy {
 	return p
 }
 
-// Refresh recompiles the lists whose geodata files changed. It returns the
-// rules the new data cannot serve; the lists then keep their previous rules.
-func (s *Source) Refresh() error {
-	if s == nil {
-		return nil
-	}
-	var errs []error
-	for _, l := range []*geomatch.Live{s.black, s.white} {
-		if l != nil {
-			if _, err := l.Refresh(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-	}
-	return joinRuleErrors(errs...)
-}
-
 // Dest is the compiled destination access policy of a tunnel. A nil Dest
 // allows every destination.
 type Dest struct {
@@ -102,13 +82,15 @@ type Dest struct {
 }
 
 // CompileDest compiles a destination list in mode AclOff, AclWhitelist or
-// AclBlacklist (0, 1, 2). An empty whitelist allows nothing.
-func CompileDest(mode int, rules string) (*Dest, error) {
+// AclBlacklist (0, 1, 2). An empty whitelist allows nothing. owner tags the
+// list for RefreshGeoData.
+func CompileDest(mode int, rules string, owner any) (*Dest, error) {
 	m := geomatch.Mode(mode)
 	if m != geomatch.ModeAllowlist && m != geomatch.ModeDenylist {
 		return nil, nil
 	}
 	l, err := geomatch.NewLive(destCompiler(), geomatch.SplitLines(rules))
+	l.SetTag(owner)
 	return &Dest{rules: l, policy: m.Policy(l)}, ruleError(err)
 }
 
@@ -119,15 +101,6 @@ func (d *Dest) Allows(addr string) bool {
 		return true
 	}
 	return d.policy.Allows(addr)
-}
-
-// Refresh recompiles the list when its geodata files changed.
-func (d *Dest) Refresh() error {
-	if d == nil {
-		return nil
-	}
-	_, err := d.rules.Refresh()
-	return ruleError(err)
 }
 
 // Allows reports whether every level allows addr. Levels are the global,

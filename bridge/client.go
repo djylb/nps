@@ -3,6 +3,7 @@ package bridge
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
-	"github.com/djylb/nps/lib/pool"
+	"github.com/djylb/upstream"
 	"github.com/quic-go/quic-go"
 )
 
@@ -179,6 +180,7 @@ func (n *Node) addSignal(signal *conn.Conn) {
 	}
 	n.signal = signal
 	n.touchJoinTime()
+	n.Client.markOnline(n)
 }
 
 func (n *Node) AddTunnel(tunnel any) {
@@ -192,6 +194,7 @@ func (n *Node) addTunnel(tunnel any) {
 		_ = n.closeTunnel("override")
 		n.tunnel = tunnel
 		n.touchJoinTime()
+		n.Client.markOnline(n)
 	}
 }
 
@@ -327,25 +330,55 @@ type Client struct {
 	mu              sync.RWMutex
 	Id              int
 	LastUUID        string
-	nodeList        *pool.Pool[string] // nodeUUID
-	nodes           sync.Map           // map[nodeUUID]*Node
-	files           sync.Map           // map[fileUUID]nodeUUID
-	retryTime       int                // it will add 1 when ping not ok until to 3 will close the client
+	nodes           sync.Map // map[nodeUUID]*Node
+	nodePool        *upstream.Pool[*Node]
+	poolMode        atomic.Int32 // the SelectMode nodePool is configured for
+	files           sync.Map     // map[fileUUID]nodeUUID
+	retryTime       int          // it will add 1 when ping not ok until to 3 will close the client
 	closed          uint32
 	lastConnectNano atomic.Int64
+}
+
+// errNodeOffline marks a node that is offline within a grace window, so that
+// it is skipped until it connects again.
+var errNodeOffline = errors.New("node offline")
+
+// nodePoolConfig returns the node pool configuration of mode. Primary
+// fails over in round-robin order; a request may try every node.
+func nodePoolConfig(mode SelectMode) upstream.Config {
+	cfg := upstream.Config{Balancer: upstream.RoundRobin(), Retry: upstream.RetryConfig{Attempts: math.MaxInt}}
+	if mode == Random {
+		cfg.Balancer = upstream.Random()
+	}
+	return cfg
 }
 
 func NewClient(id int, n *Node) *Client {
 	c := &Client{
 		Id:       id,
 		LastUUID: n.UUID,
-		nodeList: pool.New[string](),
+		nodePool: upstream.New[*Node](nodePoolConfig(ClientSelectMode)),
 	}
+	c.poolMode.Store(int32(ClientSelectMode))
 	c.MarkConnectedNow()
 	n.Client = c
 	c.nodes.Store(n.UUID, n)
-	c.nodeList.Add(n.UUID)
+	c.putNode(n)
 	return c
+}
+
+func (c *Client) putNode(n *Node) {
+	_ = c.nodePool.Put(upstream.Target[*Node]{ID: n.UUID, Weight: 1, Value: n})
+}
+
+// markOnline lets a node that connected again take connections.
+func (c *Client) markOnline(n *Node) {
+	if c == nil {
+		return
+	}
+	if b, ok := c.nodePool.Backend(n.UUID); ok && b.Value() == n {
+		c.nodePool.MarkOnline(b)
+	}
 }
 
 func (c *Client) AddNode(n *Node) {
@@ -366,7 +399,7 @@ func (c *Client) AddNode(n *Node) {
 	}
 	n.Client = c
 	c.nodes.Store(n.UUID, n)
-	c.nodeList.Add(n.UUID)
+	c.putNode(n)
 	c.LastUUID = n.UUID
 }
 
@@ -431,89 +464,77 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 	return nil, false
 }
 
-func (c *Client) CheckNode() *Node {
-	c.mu.RLock()
-	size := c.nodeList.Size()
-	c.mu.RUnlock()
-	if size == 0 {
-		logs.Warn("Client %d has no nodes to switch to", c.Id)
-		return nil
+// CheckNode returns the current node: in Primary mode the last node used
+// while it is online, otherwise, as in every mode, the next online node
+// chosen by the mode, which becomes the current one. Offline nodes are
+// skipped; outside the grace windows they are removed. CheckNode returns
+// nil if no node is online.
+func (c *Client) CheckNode() *Node { return c.selectNode(true) }
+
+// GetNode is CheckNode, except that the RoundRobin and Random modes choose
+// a node for every call.
+func (c *Client) GetNode() *Node { return c.selectNode(ClientSelectMode == Primary) }
+
+func (c *Client) selectNode(sticky bool) *Node {
+	mode := ClientSelectMode
+	if c.poolMode.Swap(int32(mode)) != int32(mode) {
+		_ = c.nodePool.SetConfig(nodePoolConfig(mode))
 	}
-	first := true
-	graceChecksLeft := size
+	c.mu.RLock()
+	last := c.LastUUID
+	c.mu.RUnlock()
+	if sticky && last != "" {
+		if b, ok := c.nodePool.Backend(last); ok && c.usable(b) {
+			return b.Value()
+		}
+	}
+	req := c.nodePool.Request("")
 	for {
-		var lastUUID string
-		c.mu.RLock()
-		lastUUID = c.LastUUID
-		c.mu.RUnlock()
-		if lastUUID == "" {
-			var nextUUID string
-			switch ClientSelectMode {
-			case Primary, RoundRobin:
-				nextUUID, _ = c.nodeList.Next()
-			case Random:
-				nextUUID, _ = c.nodeList.Random()
-			default:
-				nextUUID, _ = c.nodeList.Next()
-			}
-			if nextUUID == "" {
+		l, err := req.Next()
+		if err != nil {
+			if c.nodePool.Len() == 0 {
 				logs.Warn("Client %d has no nodes to switch to", c.Id)
-				return nil
 			}
-			c.mu.Lock()
-			c.LastUUID = nextUUID
-			c.mu.Unlock()
-			lastUUID = nextUUID
+			return nil
 		}
-		c.mu.RLock()
-		raw, _ := c.nodes.Load(lastUUID)
-		c.mu.RUnlock()
-		node, _ := raw.(*Node)
-		if node != nil {
-			if !node.IsOffline() {
-				if !first {
-					logs.Info("Client %d switched to backup node %s", c.Id, lastUUID)
-				}
-				return node
-			}
-			if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
-				first = false
-				graceChecksLeft--
-				if graceChecksLeft <= 0 {
-					return nil
-				}
-				c.mu.Lock()
-				c.LastUUID = ""
-				c.mu.Unlock()
-				continue
-			}
+		b := l.Backend()
+		l.Release(upstream.Neutral)
+		if !c.usable(b) {
+			continue
 		}
-		first = false
-		// If the entry changed or came back online meanwhile, the next
-		// iteration re-evaluates it.
-		if c.closeAndRemoveNodeIfCurrent(lastUUID, node, (*Node).IsOffline) {
-			logs.Info("Client %d removed node %s", c.Id, lastUUID)
+		c.mu.Lock()
+		c.LastUUID = b.ID()
+		c.mu.Unlock()
+		if sticky && last != "" && last != b.ID() {
+			logs.Info("Client %d switched to backup node %s", c.Id, b.ID())
 		}
+		return b.Value()
 	}
 }
 
-func (c *Client) GetNode() *Node {
-	switch ClientSelectMode {
-	case Primary:
-		return c.CheckNode()
-	case RoundRobin:
-		c.mu.Lock()
-		c.LastUUID, _ = c.nodeList.Next()
-		c.mu.Unlock()
-		return c.CheckNode()
-	case Random:
-		c.mu.Lock()
-		c.LastUUID, _ = c.nodeList.Random()
-		c.mu.Unlock()
-		return c.CheckNode()
-	default:
+// usable reports whether the node of b is online. An offline node is taken
+// out of rotation until it connects again while the client or the node is
+// within its grace window, and removed otherwise.
+func (c *Client) usable(b *upstream.Backend[*Node]) bool {
+	node := b.Value()
+	if !node.IsOffline() {
+		return true
 	}
-	return c.CheckNode()
+	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+		c.nodePool.MarkOffline(b, errNodeOffline)
+		// It may have connected again meanwhile.
+		if !node.IsOffline() {
+			c.nodePool.MarkOnline(b)
+			return true
+		}
+		return false
+	}
+	// If the entry changed or came back online meanwhile, the next pick
+	// re-evaluates it.
+	if c.closeAndRemoveNodeIfCurrent(b.ID(), node, (*Node).IsOffline) {
+		logs.Info("Client %d removed node %s", c.Id, b.ID())
+	}
+	return false
 }
 
 func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) {
@@ -531,7 +552,7 @@ func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) {
 func (c *Client) NodeCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.nodeList.Size()
+	return c.nodePool.Len()
 }
 
 func (c *Client) RemoveOfflineNodes(ignoreClientGrace bool) (removed int) {
@@ -543,7 +564,7 @@ func (c *Client) RemoveOfflineNodesExcept(keepUUID string, ignoreClientGrace boo
 }
 
 func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGrace bool) (removed int) {
-	if c.nodeList.Size() == 0 {
+	if c.nodePool.Len() == 0 {
 		return 0
 	}
 	if !force && !ignoreClientGrace && c.InConnectGraceWindow(connectGraceProtectWindow) {
@@ -611,12 +632,11 @@ func (c *Client) closeAndRemoveNodeIfCurrent(uuid string, node *Node, dead func(
 
 func (c *Client) removeNode(uuid string) {
 	c.nodes.Delete(uuid)
-	c.nodeList.Remove(uuid)
+	c.nodePool.Remove(uuid)
 	if c.LastUUID == uuid {
-		if next, ok := c.nodeList.Next(); ok {
-			c.LastUUID = next
-		} else {
-			c.LastUUID = ""
+		c.LastUUID = ""
+		if bs := c.nodePool.Backends(); len(bs) > 0 {
+			c.LastUUID = bs[0].ID()
 		}
 	}
 	c.files.Range(func(key, value interface{}) bool {
@@ -643,7 +663,7 @@ func (c *Client) Close() error {
 		}
 		return true
 	})
-	c.nodeList.Clear(nil)
+	c.nodePool.Close()
 	c.nodes = sync.Map{}
 	c.files = sync.Map{}
 	return nil

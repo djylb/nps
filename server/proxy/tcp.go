@@ -162,17 +162,17 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 
 // ProcessTunnel tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
-	targetAddr, err := s.Task.Target.Pick()
-	if err != nil {
-		if s.Task.Mode != "file" && s.Bridge.IsServer() {
-			_ = c.Close()
-			logs.Warn("tcp port %d, client Id %d, task Id %d connect error %v", s.Task.Port, s.Task.Client.Id, s.Task.Id, err)
-			return err
-		}
-		targetAddr = ""
+	flows := []*file.Flow{s.Task.Flow, s.Task.Client.Flow}
+	err := s.DealTarget(c, s.Task.Client, s.Task.Target, nil, common.ConnTCP, nil, flows, s.Task)
+	if !errors.Is(err, file.ErrNoTarget) {
+		return err
 	}
-
-	return s.DealClient(c, s.Task.Client, targetAddr, nil, common.ConnTCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	if s.Task.Mode != "file" && s.Bridge.IsServer() {
+		_ = c.Close()
+		logs.Warn("tcp port %d, client Id %d, task Id %d connect error %v", s.Task.Port, s.Task.Client.Id, s.Task.Id, err)
+		return err
+	}
+	return s.DealClient(c, s.Task.Client, "", nil, common.ConnTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 }
 
 // httpProxyHeaderTimeout bounds how long a client may take to send a request header.

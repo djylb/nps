@@ -239,8 +239,8 @@ func clearClientStatus(client *file.Client, name string) {
 	switch strings.TrimSpace(name) {
 	case "flow":
 		client.Flow.ResetTraffic()
-		client.ExportFlow = 0
-		client.InletFlow = 0
+		client.ExportFlow.Store(0)
+		client.InletFlow.Store(0)
 		DefaultBackend().repo().RangeHosts(func(host *file.Host) bool {
 			if host.Client.Id == client.Id {
 				host.Flow.ResetTraffic()

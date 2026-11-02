@@ -295,21 +295,6 @@ func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, ve
 	return sum[:], verified
 }
 
-func VerifyTLS(connection net.Conn, host string) (fingerprint []byte, verified bool) {
-	var tlsConn *tls.Conn
-	if tc, ok := connection.(*conn.TlsConn); ok {
-		tlsConn = tc.Conn
-	} else if std, ok := connection.(*tls.Conn); ok {
-		tlsConn = std
-	} else {
-		return nil, false
-	}
-	if err := tlsConn.Handshake(); err != nil {
-		return nil, false
-	}
-	return VerifyState(tlsConn.ConnectionState(), host)
-}
-
 func EnsurePort(server string, tp string) string {
 	_, port, err := net.SplitHostPort(server)
 	if err == nil && port != "" {
@@ -383,12 +368,14 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
-		connection, err = conn.NewTlsConn(rawConn, timeout, conf)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
+		cancel()
 		if err != nil {
-			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
-		tlsFp, tlsVerify = VerifyTLS(connection, sni)
+		connection = tlsConn
+		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
 	case "ws":
 		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
 		if err != nil {
@@ -404,15 +391,18 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
-		// The WebSocket stream returned by DialWS owns tlsConn from here on.
-		//noinspection GoResourceLeak
-		tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: sni})
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		tlsConn, err := tlsconn.Client(ctx, rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: sni})
+		cancel()
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
 		connection, err = conn.DialWS(tlsConn, "wss://"+server+path, host, timeout)
 		if err != nil {
 			_ = tlsConn.Close()
 			return nil, "", serverInfo{}, err
 		}
-		tlsFp, tlsVerify = VerifyTLS(tlsConn, sni)
+		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
 	case "quic":
 		isTls = true
 		tlsCfg := &tls.Config{

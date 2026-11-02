@@ -37,7 +37,7 @@ func (d *Directional) Throughput() (int64, int64) {
 func (d *Directional) Group(parent *byterate.Group) *byterate.Group {
 	d.groupOnce.Do(func() {
 		d.group.SetLimiters(&d.download, &d.upload)
-		sample(d.group.Traffic())
+		d.group.Traffic().SampleEverySecond()
 	})
 	if parent != nil && parent != &d.group {
 		d.parentMu.Lock()
