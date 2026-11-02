@@ -48,7 +48,7 @@ func (a *App) LoginVerify(c Context) {
 		captchaVerified = framework.VerifyCaptcha(captchaID, captchaCode)
 		if isIPBan || (!captchaVerified && totpCode == "") || (!captchaVerified && isUserBan) {
 			logs.Warn("Captcha failed for user %s from %s", username, ip)
-			loginPolicy.RecordFailure(ip, true)
+			loginPolicy.RecordIPFailure(ip)
 			setSession(c, "login_nonce", nonce)
 			ajaxWithNonce(c, "the verification code is wrong, please get it again and try again", 0, nonce)
 			return
@@ -61,9 +61,9 @@ func (a *App) LoginVerify(c Context) {
 		bits := requestIntValue(c, "bits")
 		if bits != cfg.Security.PoWBits || !common.ValidatePoW(cfg.Security.PoWBits, rawPassword, powX) {
 			logs.Warn("PoW failed for user %s from %s", username, ip)
-			loginPolicy.RecordFailure(ip, true)
+			loginPolicy.RecordIPFailure(ip)
 			if !captchaVerified {
-				loginPolicy.RecordFailure(username, true)
+				loginPolicy.RecordUserFailure(username)
 			}
 			setSession(c, "login_nonce", nonce)
 			ajaxWithNonceBits(c, "pow verification failed", 0, nonce, cfg.Security.PoWBits)
@@ -74,9 +74,9 @@ func (a *App) LoginVerify(c Context) {
 	payload, err := crypt.ParseLoginPayload(rawPassword)
 	if err != nil {
 		logs.Warn("Decrypt error for user %s from %s: %v", username, ip, err)
-		loginPolicy.RecordFailure(ip, true)
+		loginPolicy.RecordIPFailure(ip)
 		if !captchaVerified {
-			loginPolicy.RecordFailure(username, true)
+			loginPolicy.RecordUserFailure(username)
 		}
 		cert, _ := crypt.GetRSAPublicKeyPEM()
 		ajaxWithNonceCert(c, "decrypt error", 0, nonce, cert)
@@ -86,9 +86,9 @@ func (a *App) LoginVerify(c Context) {
 	storedNonce, _ := stored.(string)
 	if storedNonce == "" || storedNonce != payload.Nonce {
 		logs.Warn("Invalid nonce for user %s from %s", username, ip)
-		loginPolicy.RecordFailure(ip, true)
+		loginPolicy.RecordIPFailure(ip)
 		if !captchaVerified {
-			loginPolicy.RecordFailure(username, true)
+			loginPolicy.RecordUserFailure(username)
 		}
 		ajaxWithNonce(c, "invalid nonce", 0, nonce)
 		return
@@ -98,9 +98,9 @@ func (a *App) LoginVerify(c Context) {
 		nowMillis := common.TimeNow().UnixMilli()
 		if payload.Timestamp < nowMillis-settings.MaxSkew || payload.Timestamp > nowMillis+settings.MaxSkew {
 			logs.Warn("Timestamp expired for user %s from %s", username, ip)
-			loginPolicy.RecordFailure(ip, true)
+			loginPolicy.RecordIPFailure(ip)
 			if !captchaVerified {
-				loginPolicy.RecordFailure(username, true)
+				loginPolicy.RecordUserFailure(username)
 			}
 			ajaxWithNonceTimestamp(c, "timestamp expired", 0, nonce, nowMillis)
 			return
@@ -108,7 +108,7 @@ func (a *App) LoginVerify(c Context) {
 	}
 
 	time.Sleep(time.Millisecond * time.Duration(rand.Intn(20)))
-	if a.doLogin(c, username, payload.Password, totpCode, true) {
+	if a.doLogin(c, username, payload.Password, totpCode) {
 		logs.Info("Login success for user %s from %s", username, ip)
 		deleteSession(c, "login_nonce")
 		a.Emit(c, Event{
@@ -122,7 +122,7 @@ func (a *App) LoginVerify(c Context) {
 	}
 
 	logs.Warn("Login failed for user %s from %s", username, ip)
-	loginPolicy.RecordFailure(username, true)
+	loginPolicy.RecordUserFailure(username)
 	ajaxWithNonce(c, "username or password incorrect", 0, nonce)
 }
 
@@ -210,14 +210,12 @@ func (a *App) LogoutRedirect(c Context) {
 	c.Redirect(302, joinBase(a.currentConfig().Web.BaseURL, "/login/index"))
 }
 
-func (a *App) doLogin(c Context, username, password, totp string, explicit bool) bool {
+func (a *App) doLogin(c Context, username, password, totp string) bool {
 	cfg := a.currentConfig()
 	loginPolicy := a.loginPolicy()
-	loginPolicy.Clean(false)
-
 	ip := requestVisitorIP(c, cfg)
 
-	if explicit && loginPolicy.IsIPBanned(ip) {
+	if loginPolicy.IsIPBanned(ip) {
 		return false
 	}
 
@@ -230,7 +228,7 @@ func (a *App) doLogin(c Context, username, password, totp string, explicit bool)
 		if !errors.Is(err, webservice.ErrInvalidCredentials) {
 			logs.Warn("Authentication error for user %s from %s: %v", username, ip, err)
 		}
-		loginPolicy.RecordFailure(ip, explicit)
+		loginPolicy.RecordIPFailure(ip)
 		return false
 	}
 
@@ -240,7 +238,7 @@ func (a *App) doLogin(c Context, username, password, totp string, explicit bool)
 	}
 	a.system().RegisterManagementAccess(c.ClientIP(), identity.ClientIDs, identity.IsAdmin)
 
-	loginPolicy.RemoveBan(ip)
+	loginPolicy.ClearUserFailures(username)
 	return true
 }
 

@@ -42,16 +42,22 @@ func CompileSource(scope Scope, priority int, black, white []string) (*Source, e
 	c := sourceCompiler(scope)
 	s := &Source{priority: geomatch.Priority(NormalizePriority(priority))}
 	var errs []error
-	black, white = ruleLines(black), ruleLines(white)
-	if len(black) > 0 {
-		l, err := geomatch.NewLive(c, black)
-		s.black = l
-		errs = append(errs, err)
-	}
-	if len(white) > 0 {
-		l, err := geomatch.NewLive(c, white)
-		s.white = l
-		errs = append(errs, err)
+	for _, list := range []struct {
+		rules []string
+		live  **geomatch.Live
+	}{{black, &s.black}, {white, &s.white}} {
+		lines, index, portErrs := withoutPorts(c, ruleLines(list.rules))
+		if len(lines) == 0 && len(portErrs) == 0 {
+			continue
+		}
+		l, err := geomatch.NewLive(c, lines)
+		*list.live = l
+		var re geomatch.RuleErrors
+		errors.As(err, &re)
+		for _, e := range re {
+			e.Index = index[e.Index]
+		}
+		errs = append(errs, mergeRuleErrors(portErrs, re, err))
 	}
 	return s, joinRuleErrors(errs...)
 }

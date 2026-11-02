@@ -55,6 +55,7 @@
         cookie: true,
         cookieIdTable: 'banlist',
         cookieStorage: 'localStorage',
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         smartDisplay: true,
         responseHandler: function (res) {
             if (res && Array.isArray(res.rows)) {

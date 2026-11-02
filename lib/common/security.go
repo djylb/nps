@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"math/big"
-	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/djylb/netx/forwarded"
 )
 
 func RandomBytes(maxLen int) ([]byte, error) {
@@ -46,70 +48,69 @@ func ValidatePoW(bits int, parts ...string) bool {
 	return true
 }
 
-func IsTrustedProxy(list, ipStr string) bool {
-	if list == "" || ipStr == "" {
-		return false
-	}
-	ipStr = strings.TrimSpace(ipStr)
-	if h, _, err := net.SplitHostPort(ipStr); err == nil {
-		ipStr = h
-	}
-	if strings.HasPrefix(ipStr, "[") && strings.HasSuffix(ipStr, "]") {
-		ipStr = ipStr[1 : len(ipStr)-1]
-	}
-	if i := strings.LastIndex(ipStr, "%"); i != -1 { // fe80::1%eth0
-		ipStr = ipStr[:i]
-	}
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	ip4 := ip.To4()
+// TrustedProxies parses a comma-separated list of trusted proxies: IP
+// addresses, CIDR prefixes, IPv4 patterns whose trailing octets are "*"
+// (such as "192.168.*.*"), or "*" for every address. Entries that are none
+// of these are skipped.
+func TrustedProxies(list string) *forwarded.PrefixSet {
+	var prefixes []netip.Prefix
 	for _, raw := range strings.Split(list, ",") {
 		entry := strings.TrimSpace(raw)
-		if entry == "" {
-			continue
-		}
-		if entry == "*" {
-			return true
-		}
-		// CIDR（IPv4/IPv6）
-		if strings.Contains(entry, "/") {
-			if _, cidr, err := net.ParseCIDR(entry); err == nil && cidr.Contains(ip) {
-				return true
+		switch {
+		case entry == "":
+		case entry == "*":
+			prefixes = append(prefixes, netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
+		case strings.Contains(entry, "/"):
+			if p, err := netip.ParsePrefix(entry); err == nil {
+				prefixes = append(prefixes, p)
 			}
-			continue
-		}
-		// if "192.168.*.*"
-		if strings.Contains(entry, "*") {
-			if ip4 == nil {
-				continue
+		case strings.Contains(entry, "*"):
+			if p, ok := wildcardPrefix(entry); ok {
+				prefixes = append(prefixes, p)
 			}
-			pSegs := strings.Split(entry, ".")
-			if len(pSegs) != 4 {
-				continue
+		default:
+			if a, err := netip.ParseAddr(entry); err == nil {
+				a = a.WithZone("")
+				prefixes = append(prefixes, netip.PrefixFrom(a, a.BitLen()))
 			}
-			matched := true
-			for i := 0; i < 4; i++ {
-				if pSegs[i] == "*" {
-					continue
-				}
-				n, err := strconv.Atoi(pSegs[i])
-				if err != nil || n < 0 || n > 255 || int(ip4[i]) != n {
-					matched = false
-					break
-				}
-			}
-			if matched {
-				return true
-			}
-			continue
-		}
-		if e := net.ParseIP(entry); e != nil && e.Equal(ip) {
-			return true
 		}
 	}
-	return false
+	return forwarded.NewPrefixSet(prefixes...)
+}
+
+// wildcardPrefix returns the prefix of an IPv4 pattern such as "10.0.*.*".
+func wildcardPrefix(entry string) (netip.Prefix, bool) {
+	segs := strings.Split(entry, ".")
+	if len(segs) != 4 {
+		return netip.Prefix{}, false
+	}
+	var b [4]byte
+	bits := 0
+	for i, seg := range segs {
+		if seg == "*" {
+			continue
+		}
+		if bits != i*8 {
+			return netip.Prefix{}, false // a fixed octet after a wildcard
+		}
+		n, err := strconv.Atoi(seg)
+		if err != nil || n < 0 || n > 255 {
+			return netip.Prefix{}, false
+		}
+		b[i] = byte(n)
+		bits += 8
+	}
+	return netip.PrefixFrom(netip.AddrFrom4(b), bits), true
+}
+
+// IsTrustedProxy reports whether addr, an IP address with or without a
+// port, is in the trusted proxy list as TrustedProxies parses it.
+func IsTrustedProxy(list, addr string) bool {
+	if list == "" {
+		return false
+	}
+	ap, ok := forwarded.ParseNode(strings.TrimSpace(addr))
+	return ok && TrustedProxies(list).Contains(ap.Addr())
 }
 
 // CheckAuthWithAccountMap

@@ -44,7 +44,7 @@ func TestHandleUdp5RelaysDatagrams(t *testing.T) {
 			_ = peer.SetDeadline(time.Now().Add(3 * time.Second))
 
 			target := echo.LocalAddr().(*net.UDPAddr).AddrPort()
-			dst := socks5.Addr{IP: target.Addr(), Port: target.Port()}
+			dst := netx.Addr{IP: target.Addr(), Port: target.Port()}
 
 			// A fragment is dropped; the datagram after it still goes through.
 			frag := []byte{0, 0, 1, 1, 127, 0, 0, 1, 0, 9, 'x'}

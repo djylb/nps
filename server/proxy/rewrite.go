@@ -1,12 +1,11 @@
 package proxy
 
 import (
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"slices"
-	"strings"
 
+	"github.com/djylb/netx/forwarded"
 	"golang.org/x/net/http/httpguts"
 )
 
@@ -38,12 +37,9 @@ func KeepClientForwarding(pr *httputil.ProxyRequest) {
 // AppendForwardedFor appends the client IP taken from remoteAddr to the
 // X-Forwarded-For header of h, creating the header when it is absent.
 func AppendForwardedFor(h http.Header, remoteAddr string) {
-	clientIP, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
+	peer, ok := forwarded.ParseNode(remoteAddr)
+	if !ok {
 		return
 	}
-	if prior := h["X-Forwarded-For"]; len(prior) > 0 {
-		clientIP = strings.Join(prior, ", ") + ", " + clientIP
-	}
-	h.Set("X-Forwarded-For", clientIP)
+	h.Set("X-Forwarded-For", string(forwarded.AppendXForwardedFor(nil, h["X-Forwarded-For"], peer.Addr())))
 }

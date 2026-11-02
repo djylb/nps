@@ -13,7 +13,6 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/web/controllers"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +33,7 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 	t.Cleanup(func() { common.ConfPath = oldConfPath })
 
 	resetTestDB(t)
-	controllers.RemoveAllLoginBan()
+	webservice.SharedLoginPolicy().RemoveAllBans()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
 		"web_password=secret",

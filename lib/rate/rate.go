@@ -71,7 +71,8 @@ func (r *Rate) Now() int64 {
 	if r == nil {
 		return 0
 	}
-	return r.l.Throughput()
+	read, written := r.traffic.Throughput()
+	return read + written
 }
 
 func (r *Rate) MarshalJSON() ([]byte, error) {
@@ -98,9 +99,9 @@ func (r *Rate) Group() *byterate.Group {
 	}
 	r.groupOnce.Do(func() {
 		_ = r.group.SetParent(RootGroup())
-		r.group.SetReadLimiter(&r.l)
-		r.group.SetWriteLimiter(&r.l)
+		r.group.SetLimiters(&r.l, &r.l)
 		r.group.SetTraffic(&r.traffic)
+		sample(&r.traffic)
 	})
 	return &r.group
 }

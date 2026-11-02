@@ -56,7 +56,7 @@ func (s DefaultGlobalService) UnbanAll() {
 }
 
 func (s DefaultGlobalService) CleanBans() {
-	s.loginPolicy().Clean(true)
+	s.loginPolicy().Clean()
 }
 
 func (s DefaultGlobalService) loginPolicy() LoginPolicyService {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/djylb/netx/httprewrite"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
@@ -205,302 +206,185 @@ func (s *HttpProxy) Close() error {
 
 // ChangeHostAndHeader Change headers and host of request
 func (s *HttpProxy) ChangeHostAndHeader(r *http.Request, host string, header string, httpOnly bool) {
-	s.changeHostAndHeader(r, r.Header, host, header, httpOnly)
+	in := *r
+	if header != "" {
+		in.Header = r.Header.Clone()
+	}
+	s.changeHostAndHeader(r, &in, host, header, httpOnly)
 }
 
-// changeHostAndHeader applies the host and header rules to r. The
-// ${http_upgrade} and ${http_connection} variables read conn, the header the
-// client sent, since connection-scoped headers may already be gone from r.
-func (s *HttpProxy) changeHostAndHeader(r *http.Request, conn http.Header, host string, header string, httpOnly bool) {
-	cfg := servercfg.Current()
-	// 设置 Host 头部信息
+// changeHostAndHeader applies the host and header rules to out, the request
+// sent on. Rule variables read in, the request as the client sent it.
+func (s *HttpProxy) changeHostAndHeader(out, in *http.Request, host string, header string, httpOnly bool) {
 	scheme := "http"
-	ssl := "off"
-	serverPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
-	if r.TLS != nil {
+	if in.TLS != nil {
 		scheme = "https"
-		ssl = "on"
-		serverPort = proxyPortString(cfg.Network.HTTPSProxyPort, "443")
 	}
-	// Host 不带端口
-	origHost := r.Host
-	hostOnly := common.RemovePortFromHost(origHost)
-
-	// 替换 Host
 	if host != "" {
-		r.Host = host
-		if orig := r.Header.Get("Origin"); orig != "" {
-			r.Header.Set("Origin", scheme+"://"+host)
+		out.Host = host
+		if orig := out.Header.Get("Origin"); orig != "" {
+			out.Header.Set("Origin", scheme+"://"+host)
 		}
 	}
 
-	// 获取请求的客户端 IP Port
-	remoteAddr := r.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	//logs.Debug("get X-Remote-IP = " + clientIP)
-
-	// 获取 X-Forwarded-For 头部的先前值
-	proxyAddXFF := clientIP
-	if prior, ok := r.Header["X-Forwarded-For"]; ok {
-		proxyAddXFF = strings.Join(prior, ", ") + ", " + clientIP
-	}
-
-	//logs.Debug("get X-Forwarded-For = " + proxyAddXFF)
-
-	// 判断是否需要添加真实 IP 信息
-	var addOrigin bool
-	if !httpOnly {
-		addOrigin = cfg.Proxy.AddOriginHeader
-		//r.Header.Set("X-Forwarded-For", proxyAddXFF)
-	} else {
-		addOrigin = false
-	}
-
-	// 添加头部信息
-	if addOrigin {
-		if r.Header.Get("X-Forwarded-Proto") == "" {
-			r.Header.Set("X-Forwarded-Proto", scheme)
+	if !httpOnly && servercfg.Current().Proxy.AddOriginHeader {
+		if out.Header.Get("X-Forwarded-Proto") == "" {
+			out.Header.Set("X-Forwarded-Proto", scheme)
 		}
-		if r.Header.Get("X-Forwarded-Host") == "" && host == "" {
-			r.Header.Set("X-Forwarded-Host", origHost)
+		if out.Header.Get("X-Forwarded-Host") == "" && host == "" {
+			out.Header.Set("X-Forwarded-Host", in.Host)
 		}
-		//r.Header.Set("X-Forwarded-For", clientIP)
-		r.Header.Set("X-Real-IP", clientIP)
+		out.Header.Set("X-Real-IP", common.GetIpByAddr(in.RemoteAddr))
 	}
 
 	if header == "" {
 		return
 	}
-
-	expandVars := func(val string) string {
-		rep := strings.NewReplacer(
-			// 协议/SSL
-			"${scheme}", scheme,
-			"${ssl}", ssl,
-			"${forwarded_ssl}", ssl,
-
-			// 主机
-			"${host}", hostOnly,
-			"${http_host}", origHost,
-
-			// 客户端
-			"${remote_addr}", remoteAddr,
-			"${remote_ip}", clientIP,
-			"${remote_port}", clientPort,
-			"${proxy_add_x_forwarded_for}", proxyAddXFF,
-
-			// URL 相关
-			"${request_uri}", r.RequestURI, // 包括 ?args
-			"${uri}", r.URL.Path, // 不含 args
-			"${args}", r.URL.RawQuery, // 不含 “?”
-			"${query_string}", r.URL.RawQuery, // 同 $args
-			"${scheme_host}", scheme+"://"+origHost, // 组合变量
-
-			// 连接头
-			"${http_upgrade}", conn.Get("Upgrade"),
-			"${http_connection}", conn.Get("Connection"),
-
-			// 端口
-			"${server_port}", serverPort,
-
-			// Range 相关
-			"${http_range}", r.Header.Get("Range"),
-			"${http_if_range}", r.Header.Get("If-Range"),
-		)
-		return rep.Replace(val)
-	}
-
-	// 设置自定义头部信息
-	h := common.SplitLines(header)
-	for _, v := range h {
-		hd := strings.SplitN(v, ":", 2)
-		if len(hd) == 2 {
-			key := strings.TrimSpace(hd[0])
-			if key == "" {
-				continue
-			}
-			val := strings.TrimSpace(hd[1])
-			val = html.UnescapeString(val)
-			if val == "${unset}" {
-				if !strings.EqualFold(key, "Host") {
-					r.Header.Del(key)
-				}
-				continue
-			}
-			val = expandVars(val)
-			r.Header.Set(key, val)
-		}
-	}
+	c := httprewrite.Context{Request: in}
+	_ = httprewrite.ApplyRequest(out, parseHeaderRules(header), &c)
 }
 
 // ChangeResponseHeader Change headers of response
 func (s *HttpProxy) ChangeResponseHeader(resp *http.Response, header string) {
-	cfg := servercfg.Current()
-	if header == "" {
+	if header == "" || resp == nil || resp.Request == nil {
 		return
 	}
-
-	if resp == nil || resp.Request == nil {
-		return
-	}
-
-	httpPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
-	httpsPort := proxyPortString(cfg.Network.HTTPSProxyPort, "443")
-	http3Port := proxyPortString(cfg.Network.HTTP3ProxyPort, httpsPort)
-
-	scheme := "http"
-	ssl := "off"
-	serverPort := httpPort
-	if resp.Request.TLS != nil {
-		scheme = "https"
-		ssl = "on"
-		serverPort = httpsPort
-	}
-
-	origHost := resp.Request.Host
-	hostOnly := common.RemovePortFromHost(origHost)
-
-	remoteAddr := resp.Request.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	timeNow := time.Now()
-
-	expandVars := func(val string) string {
-		rep := strings.NewReplacer(
-			// Protocol/SSL
-			"${scheme}", scheme,
-			"${ssl}", ssl,
-
-			// Ports
-			"${server_port}", serverPort,
-			"${server_port_http}", httpPort,
-			"${server_port_https}", httpsPort,
-			"${server_port_http3}", http3Port,
-
-			// Host info
-			"${host}", hostOnly,
-			"${http_host}", origHost,
-
-			// Client info
-			"${remote_addr}", remoteAddr,
-			"${remote_ip}", clientIP,
-			"${remote_port}", clientPort,
-
-			// Request info
-			"${request_method}", resp.Request.Method,
-			"${request_host}", resp.Request.Host,
-			"${request_uri}", resp.Request.RequestURI,
-			"${request_path}", resp.Request.URL.Path,
-			"${uri}", resp.Request.URL.Path,
-			"${query_string}", resp.Request.URL.RawQuery,
-			"${args}", resp.Request.URL.RawQuery,
-			"${origin}", resp.Request.Header.Get("Origin"),
-			"${user_agent}", resp.Request.Header.Get("User-Agent"),
-			"${http_referer}", resp.Request.Header.Get("Referer"),
-			"${scheme_host}", scheme+"://"+origHost,
-
-			// Response info
-			"${status}", resp.Status,
-			"${status_code}", strconv.Itoa(resp.StatusCode),
-			"${content_length}", strconv.FormatInt(resp.ContentLength, 10),
-			"${content_type}", resp.Header.Get("Content-Type"),
-			"${via}", resp.Header.Get("Via"),
-
-			// Time variables
-			"${date}", timeNow.UTC().Format(http.TimeFormat),
-			"${timestamp}", strconv.FormatInt(timeNow.UTC().Unix(), 10),
-			"${timestamp_ms}", strconv.FormatInt(timeNow.UTC().UnixNano()/1e6, 10),
-		)
-		return rep.Replace(val)
-	}
-
-	// 设置自定义头部信息
-	h := common.SplitLines(header)
-	for _, v := range h {
-		hd := strings.SplitN(v, ":", 2)
-		if len(hd) == 2 {
-			key := strings.TrimSpace(hd[0])
-			if key == "" {
-				continue
-			}
-			val := strings.TrimSpace(hd[1])
-			val = html.UnescapeString(val)
-			if val == "${unset}" {
-				resp.Header.Del(key)
-				continue
-			}
-			val = expandVars(val)
-			resp.Header.Set(key, val)
-		}
-	}
+	c := httprewrite.Context{Request: resp.Request, Response: resp}
+	_ = httprewrite.ApplyHeader(resp.Header, parseHeaderRules(header), &c)
 }
 
 // ChangeRedirectURL Change redirect URL
 func (s *HttpProxy) ChangeRedirectURL(r *http.Request, url string) string {
-	cfg := servercfg.Current()
-	val := strings.TrimSpace(url)
-	val = html.UnescapeString(val)
-
+	val := html.UnescapeString(strings.TrimSpace(url))
 	if !strings.Contains(val, "${") {
 		return val
 	}
+	t, err := httprewrite.Compile(val, ruleVars)
+	if err != nil {
+		logs.Debug("redirect URL %q: %v", val, err)
+		return val
+	}
+	c := httprewrite.Context{Request: r}
+	if expanded, err := t.Expand(&c); err == nil {
+		return expanded
+	}
+	return val
+}
 
-	// 设置 Host 头部信息
-	scheme := "http"
-	ssl := "off"
-	serverPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
+// parseHeaderRules parses header rules, one "Name: value" per line with
+// HTML entities in values decoded. A line that does not parse, such as one
+// with an unknown variable, is left out.
+func parseHeaderRules(text string) []httprewrite.Rule {
+	var rules []httprewrite.Rule
+	for _, line := range common.SplitLines(text) {
+		rs, err := httprewrite.ParseRules(html.UnescapeString(line), ruleVars)
+		if err != nil {
+			logs.Debug("header rule %q: %v", line, err)
+			continue
+		}
+		rules = append(rules, rs...)
+	}
+	return rules
+}
+
+// ruleVars are the variables of header rules and redirect URLs besides the
+// built-in ones of httprewrite.
+var ruleVars = httprewrite.Vars{
+	// remote_addr keeps the port, as ip:port, unlike the built-in one.
+	"remote_addr": func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Client.Addr.IsValid() {
+			return c.Client.Addr.AppendTo(dst)
+		}
+		if c.Request == nil {
+			return dst
+		}
+		return append(dst, c.Request.RemoteAddr...)
+	},
+	"ssl":           sslVar,
+	"forwarded_ssl": sslVar,
+	"scheme_host": func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Request == nil {
+			return dst
+		}
+		dst = append(dst, requestScheme(c.Request)...)
+		return append(append(dst, "://"...), c.Request.Host...)
+	},
+	"server_port": func(dst []byte, c *httprewrite.Context) []byte {
+		cfg := servercfg.Current()
+		if c.Request != nil && c.Request.TLS != nil {
+			return append(dst, proxyPortString(cfg.Network.HTTPSProxyPort, "443")...)
+		}
+		return append(dst, proxyPortString(cfg.Network.HTTPProxyPort, "80")...)
+	},
+	"server_port_http": func(dst []byte, _ *httprewrite.Context) []byte {
+		return append(dst, proxyPortString(servercfg.Current().Network.HTTPProxyPort, "80")...)
+	},
+	"server_port_https": func(dst []byte, _ *httprewrite.Context) []byte {
+		return append(dst, proxyPortString(servercfg.Current().Network.HTTPSProxyPort, "443")...)
+	},
+	"server_port_http3": func(dst []byte, _ *httprewrite.Context) []byte {
+		cfg := servercfg.Current()
+		return append(dst, proxyPortString(cfg.Network.HTTP3ProxyPort, proxyPortString(cfg.Network.HTTPSProxyPort, "443"))...)
+	},
+	"request_host": requestVar(func(r *http.Request) string { return r.Host }),
+	"request_path": requestVar(func(r *http.Request) string { return r.URL.Path }),
+	"origin":       requestVar(func(r *http.Request) string { return r.Header.Get("Origin") }),
+	"user_agent":   requestVar(func(r *http.Request) string { return r.Header.Get("User-Agent") }),
+	"status":       responseVar(func(r *http.Response) string { return r.Status }),
+	"status_code":  responseVar(func(r *http.Response) string { return strconv.Itoa(r.StatusCode) }),
+	"content_length": responseVar(func(r *http.Response) string {
+		return strconv.FormatInt(r.ContentLength, 10)
+	}),
+	"content_type": responseVar(func(r *http.Response) string { return r.Header.Get("Content-Type") }),
+	"via":          responseVar(func(r *http.Response) string { return r.Header.Get("Via") }),
+	"date": func(dst []byte, c *httprewrite.Context) []byte {
+		return ruleTime(c).UTC().AppendFormat(dst, http.TimeFormat)
+	},
+	"timestamp": func(dst []byte, c *httprewrite.Context) []byte {
+		return strconv.AppendInt(dst, ruleTime(c).Unix(), 10)
+	},
+	"timestamp_ms": func(dst []byte, c *httprewrite.Context) []byte {
+		return strconv.AppendInt(dst, ruleTime(c).UnixMilli(), 10)
+	},
+}
+
+func sslVar(dst []byte, c *httprewrite.Context) []byte {
+	if c.Request != nil && c.Request.TLS != nil {
+		return append(dst, "on"...)
+	}
+	return append(dst, "off"...)
+}
+
+func requestScheme(r *http.Request) string {
 	if r.TLS != nil {
-		scheme = "https"
-		ssl = "on"
-		serverPort = proxyPortString(cfg.Network.HTTPSProxyPort, "443")
+		return "https"
 	}
+	return "http"
+}
 
-	// Host 不带端口
-	origHost := r.Host
-	hostOnly := common.RemovePortFromHost(origHost)
-
-	// 获取请求的客户端 IP Port
-	remoteAddr := r.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	// 获取 X-Forwarded-For 头部的先前值
-	proxyAddXFF := clientIP
-	if prior, ok := r.Header["X-Forwarded-For"]; ok {
-		proxyAddXFF = strings.Join(prior, ", ") + ", " + clientIP
+func requestVar(get func(*http.Request) string) httprewrite.Func {
+	return func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Request == nil {
+			return dst
+		}
+		return append(dst, get(c.Request)...)
 	}
+}
 
-	rep := strings.NewReplacer(
-		// 协议/SSL
-		"${scheme}", scheme,
-		"${ssl}", ssl,
-		"${forwarded_ssl}", ssl,
+func responseVar(get func(*http.Response) string) httprewrite.Func {
+	return func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Response == nil {
+			return dst
+		}
+		return append(dst, get(c.Response)...)
+	}
+}
 
-		// 主机
-		"${host}", hostOnly,
-		"${http_host}", origHost,
-
-		// 客户端
-		"${remote_addr}", remoteAddr,
-		"${remote_ip}", clientIP,
-		"${remote_port}", clientPort,
-		"${proxy_add_x_forwarded_for}", proxyAddXFF,
-
-		// URL 相关
-		"${request_uri}", r.RequestURI, // 包括 ?args
-		"${uri}", r.URL.Path, // 不含 args
-		"${args}", r.URL.RawQuery, // 不含 “?”
-		"${query_string}", r.URL.RawQuery, // 同 $args
-		"${scheme_host}", scheme+"://"+origHost, // 组合变量
-
-		// 端口
-		"${server_port}", serverPort,
-	)
-
-	return rep.Replace(val)
+func ruleTime(c *httprewrite.Context) time.Time {
+	if c.Time.IsZero() {
+		return time.Now()
+	}
+	return c.Time
 }
 
 func proxyPortString(port int, fallback string) string {

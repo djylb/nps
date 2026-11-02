@@ -21,9 +21,9 @@ func TestHelperRestart(t *testing.T) {
 		os.Exit(2)
 	}
 	switch os.Getenv("NPS_TEST_STAGE") {
-	case "relaunch":
+	case "restart":
 		_ = os.Setenv("NPS_TEST_STAGE", "write")
-		_ = Relaunch(exe)
+		_ = RestartSelf(exe)
 		os.Exit(3)
 	case "write":
 		_ = os.WriteFile(out, []byte(strconv.Itoa(os.Getpid())), 0o644)
@@ -53,9 +53,12 @@ func helperCommand(t *testing.T, stage, out string) *exec.Cmd {
 	return cmd
 }
 
-func TestRelaunch(t *testing.T) {
+func TestRestartSelf(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("only a Windows service restarts itself")
+	}
 	out := filepath.Join(t.TempDir(), "pid")
-	cmd := helperCommand(t, "relaunch", out)
+	cmd := helperCommand(t, "restart", out)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +66,7 @@ func TestRelaunch(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("relaunching process: %v", err)
 	}
-	if runtime.GOOS != "windows" && pid != strconv.Itoa(cmd.Process.Pid) {
+	if pid != strconv.Itoa(cmd.Process.Pid) {
 		t.Fatalf("relaunched as process %s, want the same process %d", pid, cmd.Process.Pid)
 	}
 }

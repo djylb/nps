@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
 )
@@ -42,7 +43,7 @@ const (
 // announced, as its own observer group, up to natprobe's limits, which keep
 // the first: a client probes them all and an unreachable one costs nothing
 // but its probes. For a client at a public address, candidates that are not
-// public (common.IsPublicIPStrict) go last: behind a port mapping or a 1:1
+// public (netx.IsGlobal) go last: behind a port mapping or a 1:1
 // NAT they are this host's view, not the client's.
 type p2pAnnouncer struct {
 	p2pIP  string
@@ -212,7 +213,7 @@ func orderCandidates(explicit, auto []netip.Addr, client netip.Addr, families [2
 
 // p2pPublic reports whether a is a public address.
 func p2pPublic(a netip.Addr) bool {
-	return a.IsValid() && common.IsPublicIPStrict(a.AsSlice())
+	return a.IsValid() && netx.IsGlobal(a)
 }
 
 func addrIP(a net.Addr) netip.Addr {

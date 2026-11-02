@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 )
 
@@ -47,7 +48,7 @@ func httpProxy(t *testing.T, got chan<- *http.Request) net.Listener {
 
 // socks5Proxy answers one no-auth SOCKS5 CONNECT request, reports the
 // requested address and then echoes the tunnel.
-func socks5Proxy(t *testing.T, got chan<- socks5.Addr) net.Listener {
+func socks5Proxy(t *testing.T, got chan<- netx.Addr) net.Listener {
 	return serveOnce(t, func(c net.Conn) {
 		hdr := make([]byte, 2)
 		if _, err := io.ReadFull(c, hdr); err != nil {
@@ -133,7 +134,7 @@ func TestGetProxyConnWithoutSchemeIsHttp(t *testing.T) {
 func TestGetProxyConnSocks5(t *testing.T) {
 	for _, scheme := range []string{"socks5", "socks5h"} {
 		t.Run(scheme, func(t *testing.T) {
-			got := make(chan socks5.Addr, 1)
+			got := make(chan netx.Addr, 1)
 			ln := socks5Proxy(t, got)
 
 			c, err := GetProxyConn(scheme+"://"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
@@ -151,7 +152,7 @@ func TestGetProxyConnSocks5(t *testing.T) {
 }
 
 func TestGetProxyConnEnvironment(t *testing.T) {
-	got := make(chan socks5.Addr, 1)
+	got := make(chan netx.Addr, 1)
 	ln := socks5Proxy(t, got)
 	target := serveOnce(t, func(c net.Conn) { _, _ = io.Copy(struct{ io.Writer }{c}, c) })
 

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -32,7 +33,7 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 			if errors.Is(err, socks5.ErrAddrType) {
 				rep = socks5.ReplyAddrTypeNotSupported
 			}
-			_ = socks5.WriteReply(c, rep, socks5.Addr{})
+			_ = socks5.WriteReply(c, rep, netx.Addr{})
 		}
 		_ = c.Close()
 		return
@@ -45,16 +46,16 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 	case socks5.CmdUDPAssociate:
 		s.handleSocks5Associate(c, dst)
 	default:
-		_ = socks5.WriteReply(c, socks5.ReplyCommandNotSupported, socks5.Addr{})
+		_ = socks5.WriteReply(c, socks5.ReplyCommandNotSupported, netx.Addr{})
 		_ = c.Close()
 	}
 }
 
-func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst socks5.Addr) {
+func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
 	targetAddr := dst.String()
 	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff && !s.Task.AllowsDestination(targetAddr) {
 		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(targetAddr))
-		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, socks5.Addr{})
+		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, netx.Addr{})
 		_ = c.Close()
 		return
 	}
@@ -69,7 +70,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst socks5.Addr) {
 		if errors.Is(err, errProxyAccessDenied) {
 			rep = socks5.ReplyNotAllowed
 		}
-		_ = socks5.WriteReply(c, rep, socks5.Addr{})
+		_ = socks5.WriteReply(c, rep, netx.Addr{})
 		_ = c.Close()
 		return
 	}
@@ -87,7 +88,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst socks5.Addr) {
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
 }
 
-func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst socks5.Addr) {
+func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst netx.Addr) {
 	if tcpConn, ok := c.(*net.TCPConn); ok {
 		_ = tcpConn.SetKeepAliveConfig(net.KeepAliveConfig{
 			Enable:   true,
@@ -101,7 +102,7 @@ func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst socks5.Addr) {
 	logs.Trace("ASSOCIATE %s", dst)
 	if s.socks5UDP == nil {
 		logs.Error("socks5 udp listener is unavailable on task %d", s.Task.Id)
-		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, socks5.Addr{})
+		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, netx.Addr{})
 		return
 	}
 
@@ -109,7 +110,7 @@ func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst socks5.Addr) {
 	session, err := s.socks5UDP.newSession(c, int(dst.Port))
 	if err != nil {
 		logs.Warn("open socks5 udp associate tunnel failed: client=%d task=%d err=%v", s.Task.Client.Id, s.Task.Id, err)
-		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, socks5.Addr{})
+		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, netx.Addr{})
 		return
 	}
 	defer session.Close()

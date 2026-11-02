@@ -2,11 +2,8 @@ package install
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,263 +12,19 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/c4milo/unpackit"
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/version"
-	"github.com/shirou/gopsutil/v4/process"
+	"github.com/djylb/selfupdate"
 )
-
-var BuildTarget string
 
 // systemBinDirs are the directories that install places the executable in,
 // in order of preference.
 var systemBinDirs = []string{"/usr/bin", "/usr/local/bin"}
-
-// UpdateResult describes a completed update.
-type UpdateResult struct {
-	// Version is the version updated to.
-	Version string
-	// Replaced are the executables replaced with the new version.
-	Replaced []string
-	// Running are the other processes that ran a replaced executable when it
-	// was replaced; they keep running the old version until restarted.
-	Running []int32
-}
-
-// UpdateNps replaces the nps executables with the latest release and then
-// refreshes the web assets of the current run directory. A nil result with a
-// nil error means the running version is already the latest.
-func UpdateNps(service string) (*UpdateResult, error) {
-	return update("server", "nps", service, false)
-}
-
-// UpdateNpc replaces the npc executables with the latest release. A nil
-// result with a nil error means the running version is already the latest.
-func UpdateNpc(service string) (*UpdateResult, error) {
-	return update("client", "npc", service, false)
-}
-
-// ForceUpdateNps installs the latest server release regardless of the running version.
-func ForceUpdateNps(service string) (*UpdateResult, error) {
-	return update("server", "nps", service, true)
-}
-
-// ForceUpdateNpc installs the latest client release regardless of the running version.
-func ForceUpdateNpc(service string) (*UpdateResult, error) {
-	return update("client", "npc", service, true)
-}
-
-func update(kind, bin, service string, force bool) (*UpdateResult, error) {
-	RemoveStaleExecutables()
-	return updateWithClient(newHTTPClient(), kind, bin, service, force)
-}
-
-func updateWithClient(c *httpClient, kind, bin, service string, force bool) (*UpdateResult, error) {
-	filename := packageName(kind)
-	var (
-		tag    string
-		digest string
-		urls   []string
-	)
-	rl, verified, err := fetchLatestRelease(c, "djylb/nps")
-	if err != nil {
-		fmt.Println("Query latest release failed:", err)
-		fmt.Println("Falling back to the CDN @latest mirrors; their packages carry no SHA-256 digest")
-		urls = []string{
-			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://github.com/djylb/nps/releases/latest/download/%s", filename),
-			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-		}
-	} else {
-		if !verified {
-			fmt.Println("WARNING: the release metadata was fetched without certificate verification, so its SHA-256 digests are unverified as well; they only guard against transfer corruption, not against tampering")
-		}
-		tag = rl.TagName
-		fmt.Println("The latest version is", tag)
-		if !force && version.Compare(tag, version.VERSION) <= 0 {
-			fmt.Println("Already up to date, current version is", version.VERSION)
-			return nil, nil
-		}
-		if digest, err = rl.sha256(filename); err != nil {
-			return nil, err
-		}
-		if digest == "" {
-			fmt.Println("No SHA-256 digest published for", filename)
-		}
-		urls = []string{
-			fmt.Sprintf("https://github.com/djylb/nps/releases/download/%s/%s", tag, filename),
-			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", tag, filename),
-			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", tag, filename),
-			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", tag, filename),
-			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", tag, filename),
-		}
-	}
-
-	tmpDir, err := updateTempDir()
-	if err != nil {
-		return nil, fmt.Errorf("create temp directory: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	pkgDir := filepath.Join(tmpDir, "pkg")
-	if err := downloadPackage(c, urls, digest, filepath.Join(tmpDir, filename), pkgDir); err != nil {
-		return nil, err
-	}
-	src := filepath.Join(pkgDir, executableName(bin))
-	if ok, err := pathExists(src); err != nil {
-		return nil, err
-	} else if !ok {
-		return nil, fmt.Errorf("%s not found in the release package", executableName(bin))
-	}
-	// Running the new executable proves it starts on this system, for example
-	// that it was built for this CPU variant, before anything is replaced.
-	v, err := executableVersion(src)
-	if err != nil {
-		return nil, fmt.Errorf("the downloaded %s does not run on this system: %w", executableName(bin), err)
-	}
-	fmt.Println("The downloaded version is", v)
-	if tag == "" {
-		if !force && version.Compare(v, version.VERSION) <= 0 {
-			fmt.Println("Already up to date, current version is", version.VERSION)
-			return nil, nil
-		}
-		tag = v
-	} else if version.Compare(v, tag) != 0 {
-		return nil, fmt.Errorf("the downloaded %s is version %s, want %s", executableName(bin), v, tag)
-	}
-
-	targets, err := executableTargets(bin, service)
-	if err != nil {
-		return nil, err
-	}
-	running := processesRunning(targets)
-	if err := replaceExecutables(src, targets, common.IsWindows()); err != nil {
-		if errors.Is(err, fs.ErrPermission) {
-			if common.IsWindows() {
-				err = fmt.Errorf("%w; run the update as administrator", err)
-			} else {
-				err = fmt.Errorf("%w; run the update as root", err)
-			}
-		}
-		return nil, err
-	}
-	for _, t := range targets {
-		fmt.Println("Replaced", t)
-	}
-	res := &UpdateResult{Version: tag, Replaced: targets, Running: running}
-	if bin == "nps" {
-		if err := copyServerAssets(pkgDir, common.GetRunPath()); err != nil {
-			return res, fmt.Errorf("executables replaced, but updating web assets failed: %w", err)
-		}
-		ipPath, sitePath := geoDataPaths(common.GetRunPath())
-		if err := SyncGeoData(filepath.Join(pkgDir, "conf"), ipPath, sitePath); err != nil {
-			return res, fmt.Errorf("executables replaced, but updating geodata failed: %w", err)
-		}
-	}
-	fmt.Println("Update completed:", tag)
-	return res, nil
-}
-
-// processesRunning returns the other processes whose executable is one of
-// paths. It has to run before the executables are replaced: afterwards the
-// processes report the moved or deleted original.
-func processesRunning(paths []string) []int32 {
-	procs, err := process.Processes()
-	if err != nil {
-		return nil
-	}
-	self := int32(os.Getpid())
-	var pids []int32
-	for _, p := range procs {
-		if p.Pid == self {
-			continue
-		}
-		if exe, err := p.Exe(); err == nil && exe != "" && containsFile(paths, exe) {
-			pids = append(pids, p.Pid)
-		}
-	}
-	return pids
-}
-
-// WarnOldProcesses reports the processes among pids that still run, and so
-// still run the version an update replaced.
-func WarnOldProcesses(pids []int32) {
-	var alive []string
-	for _, pid := range pids {
-		if ok, err := process.PidExists(pid); err == nil && ok {
-			alive = append(alive, strconv.Itoa(int(pid)))
-		}
-	}
-	if len(alive) > 0 {
-		fmt.Printf("WARNING: processes %s still run the old version; restart them to use the new one\n", strings.Join(alive, ", "))
-	}
-}
-
-// updateTempDir creates the directory the release is unpacked in, next to
-// the running executable when possible: the system temp directory may be
-// mounted noexec, which would keep the new executable from being run.
-func updateTempDir() (string, error) {
-	if exe, err := currentExecutable(); err == nil {
-		if dir, err := os.MkdirTemp(filepath.Dir(exe), ".nps-update-"); err == nil {
-			return dir, nil
-		}
-	}
-	return os.MkdirTemp("", "nps-update-")
-}
-
-func executableVersion(path string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, path, "-version").Output()
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Version:"); ok {
-			return strings.TrimSpace(v), nil
-		}
-	}
-	return "", errors.New("no version in output")
-}
-
-type release struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-		Digest             string `json:"digest"`
-	} `json:"assets"`
-}
-
-// sha256 returns the hex SHA-256 digest published for the named asset, or ""
-// when the release publishes none.
-func (r *release) sha256(name string) (string, error) {
-	for _, a := range r.Assets {
-		if a.Name != name {
-			continue
-		}
-		if a.Digest == "" {
-			return "", nil
-		}
-		sum, ok := strings.CutPrefix(a.Digest, "sha256:")
-		if raw, err := hex.DecodeString(sum); !ok || err != nil || len(raw) != sha256.Size {
-			return "", fmt.Errorf("release %s has a malformed digest for %s: %q", r.TagName, name, a.Digest)
-		}
-		return strings.ToLower(sum), nil
-	}
-	return "", fmt.Errorf("release %s has no asset %s", r.TagName, name)
-}
 
 // httpClient sends requests with certificate verification against the system
 // roots and retries a request without verification only when the certificate
@@ -365,126 +118,6 @@ func isCertificateError(err error) bool {
 		errors.As(err, &invalidErr) || errors.As(err, &hostErr)
 }
 
-// fetchLatestRelease queries the latest release and reports whether the
-// server certificate was verified.
-// fetchLatestRelease fetches the latest release of the GitHub repository repo,
-// owner/name.
-func fetchLatestRelease(c *httpClient, repo string) (*release, bool, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+repo+"/releases/latest", nil)
-	if err != nil {
-		return nil, false, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, verified, err := c.do(req)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	rl := new(release)
-	if err := json.NewDecoder(resp.Body).Decode(rl); err != nil {
-		return nil, false, err
-	}
-	if rl.TagName == "" {
-		return nil, false, errors.New("release has no tag")
-	}
-	return rl, verified, nil
-}
-
-// packageName returns the release archive built for this binary. It must match
-// the names produced by build.assets.sh.
-func packageName(kind string) string {
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-	switch {
-	case BuildTarget == "win7":
-		return fmt.Sprintf("%s_%s_%s_old.tar.gz", osName, archName, kind)
-	case BuildTarget != "":
-		return fmt.Sprintf("%s_%s_%s_%s.tar.gz", osName, archName, BuildTarget, kind)
-	default:
-		return fmt.Sprintf("%s_%s_%s.tar.gz", osName, archName, kind)
-	}
-}
-
-// downloadPackage fetches the archive from the first mirror that passes
-// downloadArchive and unpacks cleanly into pkgDir.
-func downloadPackage(c *httpClient, urls []string, digest, archive, pkgDir string) error {
-	var lastErr error
-	for _, url := range urls {
-		fmt.Println("Trying:", url)
-		err := downloadArchive(c, url, archive, digest)
-		if err == nil {
-			err = unpackArchive(archive, pkgDir)
-		}
-		if err != nil {
-			fmt.Println("  → failed:", err)
-			_ = os.RemoveAll(pkgDir)
-			lastErr = err
-			continue
-		}
-		return nil
-	}
-	return fmt.Errorf("all mirrors failed; last error: %w", lastErr)
-}
-
-func unpackArchive(archive, dest string) error {
-	f, err := os.Open(archive)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	if err := unpackit.Unpack(f, dest); err != nil {
-		return fmt.Errorf("unpack %s: %w", filepath.Base(archive), err)
-	}
-	return nil
-}
-
-// downloadArchive writes the body of url to dest. With a digest the content
-// must match it. Without one the content is only trusted when the connection
-// passed certificate verification.
-func downloadArchive(c *httpClient, url, dest, digest string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, verified, err := c.do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	if digest == "" && !verified {
-		return errors.New("no SHA-256 digest and the certificate could not be verified; refusing an unauthenticated package")
-	}
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h), resp.Body)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	if digest == "" {
-		fmt.Println("  → no SHA-256 digest; trusting the verified TLS connection")
-		return nil
-	}
-	if sum := hex.EncodeToString(h.Sum(nil)); sum != digest {
-		return fmt.Errorf("checksum mismatch: got %s, want %s", sum, digest)
-	}
-	if !verified {
-		fmt.Println("  → downloaded without certificate verification; SHA-256 digest matched")
-	}
-	return nil
-}
-
 // copyServerAssets copies the web UI and the reference config from srcDir to
 // destDir. Each item is handled on its own: an item missing from srcDir keeps
 // the copy already in destDir and is an error only when destDir has none.
@@ -523,45 +156,6 @@ func copyServerAssets(srcDir, destDir string) error {
 	return nil
 }
 
-// executableTargets returns the running executable, on Unix the copies
-// install placed in the system bin directories, and the executable the
-// installed service runs.
-func executableTargets(bin, service string) ([]string, error) {
-	exe, err := currentExecutable()
-	if err != nil {
-		return nil, err
-	}
-	targets := []string{exe}
-	if !common.IsWindows() {
-		for _, dir := range systemBinDirs {
-			p, err := filepath.EvalSymlinks(filepath.Join(dir, bin))
-			if err != nil {
-				continue
-			}
-			if !containsFile(targets, p) {
-				targets = append(targets, p)
-			}
-		}
-	}
-	if p := serviceExecutable(service); p != "" && isExecutableOf(p, bin) && !containsFile(targets, p) {
-		targets = append(targets, p)
-	}
-	return targets, nil
-}
-
-// isExecutableOf reports whether p is an existing file named like the
-// executable of bin.
-func isExecutableOf(p, bin string) bool {
-	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
-		return false
-	}
-	name := filepath.Base(p)
-	if common.IsWindows() {
-		return strings.EqualFold(name, executableName(bin))
-	}
-	return name == bin
-}
-
 // installExecutable copies the executable found in srcDir to its install
 // location and returns that path. Windows keeps the executable where it is.
 // Helper copies named <bin>-update left by older installs are removed.
@@ -587,7 +181,7 @@ func installExecutable(srcDir, bin string) (string, error) {
 		}
 		err := os.MkdirAll(dir, 0o755)
 		if err == nil {
-			err = replaceExecutables(src, []string{target}, false)
+			err = installFile(src, target)
 		}
 		if err == nil {
 			return dest, nil
@@ -595,6 +189,42 @@ func installExecutable(srcDir, bin string) (string, error) {
 		errs = append(errs, fmt.Errorf("install %s: %w", dest, err))
 	}
 	return "", errors.Join(errs...)
+}
+
+// installFile replaces target with a copy of the executable src through the
+// update journal of target, so that a running target is never truncated and
+// an interrupted install is undone on the next start. Installing a file
+// over itself does nothing.
+func installFile(src, target string) error {
+	if same, _ := sameFile(src, target); same {
+		return nil
+	}
+	ctx := context.Background()
+	staged, err := selfupdate.JournalFor(target).Stage(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = staged.Abort(ctx) }()
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(staged.Paths()[0], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return staged.Replace(ctx, selfupdate.ReplaceOptions{Version: version.VERSION})
 }
 
 func currentExecutable() (string, error) {
@@ -625,168 +255,6 @@ func containsFile(paths []string, p string) bool {
 	return false
 }
 
-// stagedExecutable is one replacement of replaceExecutables.
-type stagedExecutable struct {
-	dest   string
-	staged string
-	backup string
-}
-
-// replaceExecutables replaces every dest with a copy of src as one unit. All
-// copies are first written next to their dest; only when every copy is in
-// place are they renamed over their dest, so a running executable is never
-// truncated. If a rename fails, the executables already replaced are
-// restored. Each dest is backed up as *.old before its rename: a hard link
-// (or copy) on Unix, and with aside set the renamed original itself, since
-// Windows refuses to replace a running image. Backups are removed on success;
-// a still running Windows image is removed later by RemoveStaleExecutables.
-func replaceExecutables(src string, dests []string, aside bool) error {
-	staged, err := stageExecutables(src, dests)
-	if err != nil {
-		return err
-	}
-	return commitExecutables(staged, aside)
-}
-
-// stageExecutables writes a copy of src next to every dest that is not src.
-func stageExecutables(src string, dests []string) ([]*stagedExecutable, error) {
-	srcInfo, err := os.Stat(src)
-	if err != nil {
-		return nil, err
-	}
-	var staged []*stagedExecutable
-	for _, dest := range dests {
-		if fi, err := os.Stat(dest); err == nil && os.SameFile(srcInfo, fi) {
-			continue
-		}
-		s := &stagedExecutable{dest: dest, staged: dest + ".new"}
-		staged = append(staged, s)
-		if err := writeExecutable(src, s.staged); err != nil {
-			removeStaged(staged)
-			return nil, fmt.Errorf("stage %s: %w", dest, err)
-		}
-	}
-	return staged, nil
-}
-
-// commitExecutables renames the staged copies over their dest, restoring the
-// already replaced ones if any rename fails.
-func commitExecutables(staged []*stagedExecutable, aside bool) error {
-	for i, s := range staged {
-		if err := s.commit(aside); err != nil {
-			removeStaged(staged)
-			err = fmt.Errorf("replace %s: %w", s.dest, err)
-			for j := i - 1; j >= 0; j-- {
-				if rbErr := staged[j].restore(); rbErr != nil {
-					err = fmt.Errorf("%w; restore %s failed: %v", err, staged[j].dest, rbErr)
-				}
-			}
-			return err
-		}
-	}
-	for _, s := range staged {
-		if s.backup != "" {
-			_ = os.Remove(s.backup)
-		}
-	}
-	return nil
-}
-
-func removeStaged(staged []*stagedExecutable) {
-	for _, s := range staged {
-		_ = os.Remove(s.staged)
-	}
-}
-
-func (s *stagedExecutable) commit(aside bool) error {
-	backup, err := backupExecutable(s.dest, aside)
-	if err != nil {
-		return err
-	}
-	s.backup = backup
-	if err := renameFile(s.staged, s.dest); err != nil {
-		if rbErr := s.restore(); rbErr != nil {
-			return fmt.Errorf("%w; restore failed: %v", err, rbErr)
-		}
-		return err
-	}
-	return nil
-}
-
-// restore puts the original dest back, or removes dest if there was none.
-func (s *stagedExecutable) restore() error {
-	if s.backup == "" {
-		if err := os.Remove(s.dest); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-	// renaming a hard link over its own target is a no-op that keeps both names
-	if bi, err := os.Stat(s.backup); err == nil {
-		if di, err := os.Stat(s.dest); err == nil && os.SameFile(bi, di) {
-			backup := s.backup
-			s.backup = ""
-			return os.Remove(backup)
-		}
-	}
-	if err := renameFile(s.backup, s.dest); err != nil {
-		return err
-	}
-	s.backup = ""
-	return nil
-}
-
-// backupExecutable preserves dest as a *.old file and returns its path, or ""
-// when dest does not exist. With aside set dest itself is moved.
-func backupExecutable(dest string, aside bool) (string, error) {
-	if _, err := os.Lstat(dest); errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	} else if err != nil {
-		return "", err
-	}
-	backup := asidePath(dest)
-	if aside {
-		if err := renameFile(dest, backup); err != nil {
-			return "", err
-		}
-		return backup, nil
-	}
-	if err := os.Link(dest, backup); err == nil {
-		return backup, nil
-	}
-	if err := writeExecutable(dest, backup); err != nil {
-		_ = os.Remove(backup)
-		return "", err
-	}
-	return backup, nil
-}
-
-func writeExecutable(src, dest string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, in)
-	if err == nil {
-		err = out.Sync()
-	}
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	if !common.IsWindows() {
-		return os.Chmod(dest, 0o755)
-	}
-	return nil
-}
-
 // renameRetry is how long renameFile keeps retrying on Windows, where a
 // scanner or indexer briefly opening a file makes renaming it fail.
 const renameRetry = 2 * time.Second
@@ -803,42 +271,6 @@ func renameFile(from, to string) error {
 		}
 	}
 	return err
-}
-
-// asidePath returns a free name to move dest to. A locked dest.old left by an
-// update whose process is still running gets a unique sibling instead.
-func asidePath(dest string) string {
-	old := dest + ".old"
-	if err := os.Remove(old); err == nil || errors.Is(err, fs.ErrNotExist) {
-		return old
-	}
-	return dest + "." + strconv.FormatInt(time.Now().UnixNano(), 36) + ".old"
-}
-
-// RemoveStaleExecutables deletes executables that an earlier update moved
-// aside on Windows. They stay locked until the process running them exits, so
-// failures are ignored and retried on the next start or update.
-func RemoveStaleExecutables() {
-	if !common.IsWindows() {
-		return
-	}
-	if exe, err := currentExecutable(); err == nil {
-		removeAsideFiles(exe)
-	}
-}
-
-func removeAsideFiles(path string) {
-	dir, base := filepath.Split(path)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if !e.IsDir() && strings.HasPrefix(name, base+".") && strings.HasSuffix(name, ".old") {
-			_ = os.Remove(filepath.Join(dir, name))
-		}
-	}
 }
 
 // NPC installs the npc executable and returns the path the service should run.

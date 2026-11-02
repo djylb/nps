@@ -41,7 +41,6 @@ var (
 )
 
 func main() {
-	install.WaitForRelaunch()
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -87,7 +86,7 @@ func main() {
 		}
 	}
 
-	install.RemoveStaleExecutables()
+	install.RecoverUpdate()
 	svcConfig := newServiceConfig()
 	prg := &nps{exit: make(chan struct{})}
 
@@ -105,11 +104,7 @@ func main() {
 			cfg := servercfg.Current()
 			install.SetGeoDataPaths(common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath))
 		}
-		update := install.UpdateNps
-		if cmd == "update-force" {
-			update = install.ForceUpdateNps
-		}
-		res, err := update(svcConfig.Name)
+		res, err := install.Update(context.Background(), "nps", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
 		}
@@ -337,6 +332,7 @@ func (p *nps) run() error {
 }
 
 func run() {
+	install.StartUpdate()
 	cfg := servercfg.Current()
 	server.SetWebHandler(routers.Init())
 	server.StartIPRegisterServer(routers.InitIPRegister())

@@ -8,11 +8,10 @@ import (
 
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/mux"
-	"github.com/djylb/nps/lib/pmux"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
-var pMux *pmux.PortMux
+var pMux *portMux
 var BridgeIp string
 var BridgeHost string
 var BridgeTcpIp string
@@ -86,7 +85,7 @@ func InitConnectionService() {
 			os.Exit(0)
 		}
 		var err error
-		if pMux, err = pmux.NewPortMux(BridgePort, cfg.Web.Host, cfg.Network.BridgeHost); err != nil {
+		if pMux, err = newPortMux(BridgePort, cfg.Web.Host, cfg.Network.BridgeHost); err != nil {
 			logs.Error("Port multiplexing on %d failed: %v", BridgePort, err)
 			os.Exit(1)
 		}
@@ -99,7 +98,7 @@ func GetBridgeTcpListener() (net.Listener, error) {
 		return nil, fmt.Errorf("invalid tcp bridge port %d", BridgeTcpPort)
 	}
 	if pMux != nil && BridgeTcpPort == BridgePort {
-		return pMux.GetClientListener(), nil
+		return pMux.register(kindClient)
 	}
 	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeTcpIp), Port: BridgeTcpPort})
 }
@@ -110,7 +109,7 @@ func GetBridgeTlsListener() (net.Listener, error) {
 		return nil, fmt.Errorf("invalid tls bridge port %d", BridgeTlsPort)
 	}
 	if pMux != nil && BridgeTlsPort == BridgePort {
-		return pMux.GetClientTlsListener(), nil
+		return pMux.register(kindClientTls)
 	}
 	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeTlsIp), Port: BridgeTlsPort})
 }
@@ -121,7 +120,7 @@ func GetBridgeWsListener() (net.Listener, error) {
 		return nil, fmt.Errorf("invalid ws bridge port %d", BridgeWsPort)
 	}
 	if pMux != nil && BridgeWsPort == BridgePort {
-		return pMux.GetClientWsListener(), nil
+		return pMux.register(kindClientWs)
 	}
 	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeWsIp), Port: BridgeWsPort})
 }
@@ -132,7 +131,7 @@ func GetBridgeWssListener() (net.Listener, error) {
 		return nil, fmt.Errorf("invalid wss bridge port %d", BridgeWssPort)
 	}
 	if pMux != nil && BridgeWssPort == BridgePort {
-		return pMux.GetClientWssListener(), nil
+		return pMux.register(kindClientWss)
 	}
 	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeWssIp), Port: BridgeWssPort})
 }
@@ -140,7 +139,7 @@ func GetBridgeWssListener() (net.Listener, error) {
 func GetHttpListener() (net.Listener, error) {
 	if pMux != nil && HttpPort == BridgePort {
 		logs.Info("start http listener, port is %d", BridgePort)
-		return pMux.GetHttpListener(), nil
+		return pMux.register(kindHttp)
 	}
 	logs.Info("start http listener, port is %d", HttpPort)
 	return getTcpListener(HttpIp, HttpPort)
@@ -149,7 +148,7 @@ func GetHttpListener() (net.Listener, error) {
 func GetHttpsListener() (net.Listener, error) {
 	if pMux != nil && HttpsPort == BridgePort {
 		logs.Info("start https listener, port is %d", BridgePort)
-		return pMux.GetHttpsListener(), nil
+		return pMux.register(kindHttps)
 	}
 	logs.Info("start https listener, port is %d", HttpsPort)
 	return getTcpListener(HttpIp, HttpsPort)
@@ -158,7 +157,7 @@ func GetHttpsListener() (net.Listener, error) {
 func GetWebManagerListener() (net.Listener, error) {
 	if pMux != nil && WebPort == BridgePort {
 		logs.Info("Web management start, access port is %d", BridgePort)
-		return pMux.GetManagerListener(), nil
+		return pMux.register(kindManager)
 	}
 	logs.Info("web management start, access port is %d", WebPort)
 	return getTcpListener(WebIp, WebPort)

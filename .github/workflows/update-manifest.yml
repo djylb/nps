@@ -1,0 +1,59 @@
+name: Renew update manifest
+
+# The update manifest of a release expires (see scripts/release_manifest.sh);
+# signing it again keeps self-update working between releases.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Build the selfupdate tool
+        run: go build -o "$RUNNER_TEMP/selfupdate" github.com/djylb/selfupdate/cmd/selfupdate
+
+      - name: Download the manifest of the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(gh release view --json tagName --jq .tagName)
+          echo "RELEASE_TAG=$tag" >> $GITHUB_ENV
+          mkdir -p dist
+          gh release download "$tag" --dir dist --pattern manifest.json
+
+      - name: Renew the update manifest
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          SELFUPDATE: ${{ runner.temp }}/selfupdate
+        run: bash scripts/release_manifest.sh --renew dist
+
+      - name: Upload the update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$RELEASE_TAG" dist/manifest.json --clobber
+
+      - name: Trigger Sync to nps-mirror
+        run: |
+          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -d '{
+              "event_type": "sync_nps_release",
+              "client_payload": {
+                "tag": "${{ env.RELEASE_TAG }}"
+              }
+            }'

@@ -72,6 +72,7 @@ func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdent
 
 	var matchedClientIDs []int
 	loginMode := "password"
+	verifyTOTP := totpVerifier()
 	s.repo().RangeClients(func(client *file.Client) bool {
 		if !client.Status || client.NoDisplay {
 			return true
@@ -84,7 +85,7 @@ func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdent
 				loginMode = "verify_key"
 			}
 		case client.WebUserName == username:
-			if clientCredentialsMatch(client, input.Password, input.TOTP) {
+			if clientCredentialsMatch(client, input.Password, input.TOTP, verifyTOTP) {
 				matchedClientIDs = appendUniqueClientID(matchedClientIDs, client.Id)
 			}
 		}
@@ -195,24 +196,25 @@ func adminCredentialsMatch(password, totp string, cfg *servercfg.Snapshot) bool 
 		return false
 	}
 	totpSecret := strings.TrimSpace(cfg.Web.TOTPSecret)
-	expectedPassword := cfg.Web.Password
-	if totpSecret != "" {
-		valid := false
-		if totp != "" {
-			valid, _ = crypt.ValidateTOTPCode(totpSecret, totp)
-		} else {
-			passwordLength := len(password)
-			if passwordLength >= crypt.TotpLen {
-				code := password[passwordLength-crypt.TotpLen:]
-				password = password[:passwordLength-crypt.TotpLen]
-				valid, _ = crypt.ValidateTOTPCode(totpSecret, code)
-			}
-		}
-		if !valid {
-			return false
-		}
+	if totpSecret == "" {
+		return password == cfg.Web.Password
 	}
-	return password == expectedPassword
+	password, totp = splitTOTP(password, totp)
+	// The password is checked first, so that a wrong one does not use up
+	// the code.
+	return password == cfg.Web.Password && crypt.VerifyTOTP(totpSecret, totp)
+}
+
+// splitTOTP returns the password and the TOTP code of a login: the code
+// given on its own, or else the last TotpLen characters of the password.
+func splitTOTP(password, totp string) (string, string) {
+	if totp != "" {
+		return password, totp
+	}
+	if n := len(password); n >= crypt.TotpLen {
+		return password[:n-crypt.TotpLen], password[n-crypt.TotpLen:]
+	}
+	return password, ""
 }
 
 func AutoAdminIdentity(cfg *servercfg.Snapshot) (*SessionIdentity, bool) {
@@ -251,28 +253,35 @@ func newAdminIdentity(cfg *servercfg.Snapshot, loginMode string) *SessionIdentit
 	}
 }
 
-func clientCredentialsMatch(client *file.Client, password, totp string) bool {
+// totpVerifier returns a crypt.VerifyTOTP for one login, which may check a
+// code against several clients that share a secret: a code it accepted
+// once stays accepted for the same secret.
+func totpVerifier() func(secret, code string) bool {
+	accepted := make(map[string]string)
+	return func(secret, code string) bool {
+		if c, ok := accepted[secret]; ok {
+			return c == code
+		}
+		if !crypt.VerifyTOTP(secret, code) {
+			return false
+		}
+		accepted[secret] = code
+		return true
+	}
+}
+
+func clientCredentialsMatch(client *file.Client, password, totp string, verifyTOTP func(secret, code string) bool) bool {
 	if client == nil {
 		return false
 	}
-	passwordInput := password
-	valid := true
-	if client.WebTotpSecret != "" {
-		valid = false
-		if totp != "" {
-			valid, _ = crypt.ValidateTOTPCode(client.WebTotpSecret, totp)
-		} else {
-			passwordLength := len(password)
-			if passwordLength >= crypt.TotpLen {
-				passwordInput = password[:passwordLength-crypt.TotpLen]
-				code := password[passwordLength-crypt.TotpLen:]
-				valid, _ = crypt.ValidateTOTPCode(client.WebTotpSecret, code)
-			}
+	if client.WebTotpSecret == "" {
+		if client.WebPassword == "" && client.VerifyKey == password {
+			return true
 		}
-	} else if client.WebPassword == "" && client.VerifyKey == password {
-		return true
+		return client.WebPassword == password
 	}
-	return valid && client.WebPassword == passwordInput
+	password, totp = splitTOTP(password, totp)
+	return client.WebPassword == password && verifyTOTP(client.WebTotpSecret, totp)
 }
 
 func appendUniqueClientID(clientIDs []int, clientID int) []int {

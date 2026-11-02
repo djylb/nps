@@ -4,16 +4,16 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/djylb/netx/socks5"
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 )
 
-func socks5ConnectReplyAddr(task *file.Tunnel, clientConn net.Conn) socks5.Addr {
+func socks5ConnectReplyAddr(task *file.Tunnel, clientConn net.Conn) netx.Addr {
 	return socks5ReplyAddrFromNetAddr(task, addrOf(clientConn), nil, taskPort(task))
 }
 
-func socks5UDPReplyAddr(task *file.Tunnel, tcpConn net.Conn, udpConn net.PacketConn, clientIP net.IP) socks5.Addr {
+func socks5UDPReplyAddr(task *file.Tunnel, tcpConn net.Conn, udpConn net.PacketConn, clientIP net.IP) netx.Addr {
 	var tcpLocal net.Addr
 	if tcpConn != nil {
 		tcpLocal = tcpConn.LocalAddr()
@@ -29,7 +29,7 @@ func socks5UDPReplyAddr(task *file.Tunnel, tcpConn net.Conn, udpConn net.PacketC
 	return socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, fallbackPort, clientIP)
 }
 
-func socks5ReplyAddrFromNetAddr(task *file.Tunnel, tcpLocal, udpLocal net.Addr, fallbackPort int, clientIP ...net.IP) socks5.Addr {
+func socks5ReplyAddrFromNetAddr(task *file.Tunnel, tcpLocal, udpLocal net.Addr, fallbackPort int, clientIP ...net.IP) netx.Addr {
 	var client net.IP
 	if len(clientIP) > 0 {
 		client = common.NormalizeIP(clientIP[0])
@@ -45,7 +45,7 @@ func socks5ReplyAddrFromNetAddr(task *file.Tunnel, tcpLocal, udpLocal net.Addr, 
 	if !ok {
 		return socks5ZeroReplyAddr(wantV6, port)
 	}
-	return socks5.Addr{IP: addr.Unmap(), Port: uint16(port)}
+	return netx.Addr{IP: addr.Unmap(), Port: uint16(port)}
 }
 
 func addrOf(c net.Conn) net.Addr {
@@ -127,9 +127,9 @@ func socks5ReplyPort(primary, secondary net.Addr, fallback int) int {
 	return fallback
 }
 
-func socks5ZeroReplyAddr(wantV6 bool, port int) socks5.Addr {
+func socks5ZeroReplyAddr(wantV6 bool, port int) netx.Addr {
 	if wantV6 {
-		return socks5.Addr{IP: netip.IPv6Unspecified(), Port: uint16(port)}
+		return netx.Addr{IP: netip.IPv6Unspecified(), Port: uint16(port)}
 	}
-	return socks5.Addr{IP: netip.IPv4Unspecified(), Port: uint16(port)}
+	return netx.Addr{IP: netip.IPv4Unspecified(), Port: uint16(port)}
 }

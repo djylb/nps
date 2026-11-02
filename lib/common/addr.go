@@ -3,12 +3,15 @@ package common
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/djylb/netx"
 )
 
 var (
@@ -477,49 +480,6 @@ func SplitCommaAddrList(s string) []string {
 	return out
 }
 
-// IsPublicIPStrict checks if IP is globally routable on the Internet.
-// It excludes RFC1918, loopback, link-local, multicast, unspecified,
-// and also excludes CGNAT / TEST-NET / benchmarking / documentation ranges.
-func IsPublicIPStrict(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	ip = NormalizeIP(ip)
-	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-		return false
-	}
-	if ip4 := ip.To4(); ip4 != nil {
-		// CGNAT 100.64.0.0/10
-		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
-			return false
-		}
-		// TEST-NET-1/2/3: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
-		if ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 2 {
-			return false
-		}
-		if ip4[0] == 198 && ip4[1] == 51 && ip4[2] == 100 {
-			return false
-		}
-		if ip4[0] == 203 && ip4[1] == 0 && ip4[2] == 113 {
-			return false
-		}
-		// 198.18.0.0/15 benchmark
-		if ip4[0] == 198 && (ip4[1] == 18 || ip4[1] == 19) {
-			return false
-		}
-		// 192.88.99.0/24 (6to4 relay anycast, deprecated)
-		if ip4[0] == 192 && ip4[1] == 88 && ip4[2] == 99 {
-			return false
-		}
-		return true
-	}
-	// IPv6 documentation: 2001:db8::/32
-	if len(ip) >= 4 && ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8 {
-		return false
-	}
-	return true
-}
-
 // PickBestV4V6FromLocalList picks best IPv4/IPv6 address from localStr (comma-separated).
 // Rules within each family:
 // - First seen becomes candidate.
@@ -541,13 +501,13 @@ func PickBestV4V6FromLocalList(localStr string) (bestV4 string, bestV6 string, f
 			continue
 		}
 		if ip.To4() != nil {
-			pub := IsPublicIPStrict(ip)
+			pub := isGlobalIP(ip)
 			if bestV4 == "" || (!bestV4Public && pub) {
 				bestV4, bestV4Public = a, pub
 			}
 			continue
 		}
-		pub := IsPublicIPStrict(ip)
+		pub := isGlobalIP(ip)
 		if bestV6 == "" || (!bestV6Public && pub) {
 			bestV6, bestV6Public = a, pub
 		}
@@ -647,12 +607,18 @@ func IsPublicHost(addr string) bool {
 	if host == "" {
 		return false
 	}
-	if ip := net.ParseIP(host); ip != nil {
-		return IsPublicIPStrict(ip)
+	if a, err := netip.ParseAddr(host); err == nil {
+		return netx.IsGlobal(a)
 	}
 	return true
 }
 
 func BuildAddress(host string, port string) string {
 	return net.JoinHostPort(host, port)
+}
+
+// isGlobalIP reports whether ip is globally reachable unicast.
+func isGlobalIP(ip net.IP) bool {
+	a, ok := netip.AddrFromSlice(ip)
+	return ok && netx.IsGlobal(a)
 }

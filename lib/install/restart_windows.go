@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"strconv"
 	"syscall"
 )
 
@@ -47,16 +46,4 @@ func restartDetached(exe string) error {
 		return err
 	}
 	return p.Release()
-}
-
-func relaunch(exe string) error {
-	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), relaunchWaitEnv+"="+strconv.Itoa(os.Getpid()))
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	_ = cmd.Process.Release()
-	os.Exit(0)
-	return nil
 }

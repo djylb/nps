@@ -133,35 +133,57 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 200; j++ {
-				_, _ = target.GetRandomTarget()
+				_, _ = target.Pick()
 			}
 		}()
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 200; j++ {
-				target.RemoveTarget("b:2")
-				target.RestoreTarget("b:2")
+				target.SetHealthy("b:2", false)
+				target.SetHealthy("b:2", true)
 			}
 		}()
 	}
 	wg.Wait()
 
-	seen := map[string]int{}
-	for i := 0; i < 3; i++ {
-		addr, err := target.GetRandomTarget()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	pick := func(n int) map[string]int {
+		seen := map[string]int{}
+		for i := 0; i < n; i++ {
+			addr, err := target.Pick()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			seen[addr]++
 		}
-		seen[addr]++
+		return seen
 	}
-	if len(seen) != 3 || seen["a:1"] != 1 || seen["b:2"] != 1 || seen["c:3"] != 1 {
+	if seen := pick(3); len(seen) != 3 || seen["a:1"] != 1 || seen["b:2"] != 1 || seen["c:3"] != 1 {
 		t.Fatalf("unexpected rotation: %v", seen)
 	}
-	if target.RestoreTarget("d:4") {
+	if target.SetHealthy("d:4", true) {
 		t.Fatalf("an unconfigured target must not be added")
 	}
-	if !target.RemoveTarget("a:1") || target.RemoveTarget("a:1") {
-		t.Fatalf("unexpected RemoveTarget result")
+	if !target.SetHealthy("a:1", false) {
+		t.Fatalf("a configured target must be found")
+	}
+	if seen := pick(4); seen["a:1"] != 0 || seen["b:2"] != 2 || seen["c:3"] != 2 {
+		t.Fatalf("unexpected rotation without a:1: %v", seen)
+	}
+	target.SetHealthy("b:2", false)
+	target.SetHealthy("c:3", false)
+	if _, err := target.Pick(); err == nil {
+		t.Fatalf("expected an error with every target down")
+	}
+
+	// a changed list keeps the health of the addresses it keeps, and an
+	// address listed twice gets twice the share
+	target.TargetStr = "c:3\nd:4\nd:4"
+	if seen := pick(4); seen["c:3"] != 0 || seen["d:4"] != 4 {
+		t.Fatalf("unexpected rotation after change: %v", seen)
+	}
+	target.SetHealthy("c:3", true)
+	if seen := pick(3); seen["c:3"] != 1 || seen["d:4"] != 2 {
+		t.Fatalf("unexpected weighted rotation: %v", seen)
 	}
 }
 

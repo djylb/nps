@@ -136,7 +136,7 @@ func dialSocks5ImplicitNoAuth(t *testing.T, port int) net.Conn {
 func requestUDPAssociate(t *testing.T, c net.Conn) (string, int) {
 	t.Helper()
 
-	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, socks5.Addr{}); err != nil {
+	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, netx.Addr{}); err != nil {
 		t.Fatalf("write udp associate: %v", err)
 	}
 	return readSocks5Reply(t, c)
@@ -149,7 +149,7 @@ func requestUDPAssociateFromIPv4(t *testing.T, c net.Conn, ip net.IP, port int) 
 	if !ok {
 		t.Fatal("requestUDPAssociateFromIPv4 requires IPv4 address")
 	}
-	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, socks5.Addr{IP: addr, Port: uint16(port)}); err != nil {
+	if err := socks5.WriteRequest(c, socks5.CmdUDPAssociate, netx.Addr{IP: addr, Port: uint16(port)}); err != nil {
 		t.Fatalf("write udp associate: %v", err)
 	}
 	return readSocks5Reply(t, c)
@@ -209,12 +209,12 @@ func readSocks5ReplyCode(t *testing.T, c net.Conn) socks5.Reply {
 }
 
 type testSocks5Datagram struct {
-	addr socks5.Addr
+	addr netx.Addr
 	data []byte
 }
 
 func writeSocks5Datagram(w *bytes.Buffer, addr net.Addr, payload []byte) error {
-	b, err := socks5.AppendDatagram(nil, socks5.AddrFromNetAddr(addr), payload)
+	b, err := socks5.AppendDatagram(nil, netx.AddrFromNetAddr(addr), payload)
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func TestTunnelModeServerSocks5ConnectFailureReturnsReply(t *testing.T) {
 		t.Fatalf("unexpected negotiation reply %v", negotiation)
 	}
 
-	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
+	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, netx.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
 		t.Fatalf("write connect request: %v", err)
 	}
 	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != socks5.ReplyGeneralFailure {
@@ -457,7 +457,7 @@ func TestTunnelModeServerSocks5NoAuthAcceptsEmptyMethodList(t *testing.T) {
 		t.Fatalf("unexpected negotiation reply %v", negotiation)
 	}
 
-	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
+	if err := socks5.WriteRequest(clientSide, socks5.CmdConnect, netx.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}); err != nil {
 		t.Fatalf("write connect request: %v", err)
 	}
 	if replyCode := readSocks5ReplyCode(t, clientSide); replyCode != socks5.ReplyGeneralFailure {
@@ -995,7 +995,7 @@ func TestTunnelModeServerSocks5UserPass(t *testing.T) {
 				if err != nil {
 					t.Fatalf("auth status: %v", err)
 				}
-				if err := socks5.WriteRequest(c, socks5.CmdConnect, socks5.Addr{Name: "example.com", Port: 443}); err != nil {
+				if err := socks5.WriteRequest(c, socks5.CmdConnect, netx.Addr{Name: "example.com", Port: 443}); err != nil {
 					t.Fatal(err)
 				}
 				if rep := readSocks5ReplyCode(t, c); rep != socks5.ReplyGeneralFailure {
@@ -1040,7 +1040,7 @@ func TestTunnelModeServerSocks5NoAuthAcceptsUserPassOnlyClient(t *testing.T) {
 	if err := socks5.ReadUserPassStatus(c); err != nil {
 		t.Fatalf("auth status: %v", err)
 	}
-	if err := socks5.WriteRequest(c, socks5.CmdConnect, socks5.Addr{IP: netip.MustParseAddr("2001:db8::1"), Port: 80}); err != nil {
+	if err := socks5.WriteRequest(c, socks5.CmdConnect, netx.Addr{IP: netip.MustParseAddr("2001:db8::1"), Port: 80}); err != nil {
 		t.Fatal(err)
 	}
 	if rep := readSocks5ReplyCode(t, c); rep != socks5.ReplyGeneralFailure {
@@ -1088,7 +1088,7 @@ func TestSocks5ReplyAddrIPv6Client(t *testing.T) {
 		t.Fatalf("reply addr = %v", got)
 	}
 	got = socks5ReplyAddrFromNetAddr(&file.Tunnel{Port: 1080}, &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 1080}, nil, 1080, net.ParseIP("2001:db8::9"))
-	if b, _ := got.AppendBinary(nil); !bytes.Equal(b, append(append([]byte{4}, make([]byte, 16)...), 0x04, 0x38)) {
+	if b, _ := socks5.AppendAddr(nil, got); !bytes.Equal(b, append(append([]byte{4}, make([]byte, 16)...), 0x04, 0x38)) {
 		t.Fatalf("IPv6 client without IPv6 local address: encoded %x, want the IPv6 zero address", b)
 	}
 }

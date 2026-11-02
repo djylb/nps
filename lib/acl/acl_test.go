@@ -14,17 +14,17 @@ import (
 )
 
 func TestNormalizeSource(t *testing.T) {
-	got, err := NormalizeSource(ScopeUser, []string{" 1.2.3.4 ", "", "# comment", "10.1.2.3/8", "192.168.*", "1.2.3.4", "geoip:private", "[2001:db8::1]:80", "a\r\nb.c"})
-	want := []string{"1.2.3.4", "10.0.0.0/8", "192.168.0.0/16", "geoip:private", "2001:db8::1"}
+	got, err := NormalizeSource(ScopeUser, []string{" 1.2.3.4 ", "", "# comment", "10.1.2.3/8", "192.168.*", "1.2.3.4", "geoip:private", "[2001:db8::1]:80", "a\r\nb.c", "1.1.1.1-1.1.1.5"})
+	want := []string{"1.2.3.4", "10.0.0.0/8", "192.168.0.0/16", "geoip:private", "1.1.1.1-1.1.1.5"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("rules = %q, want %q", got, want)
 	}
-	// "a" and "b.c" are no IP rules
+	// "a" and "b.c" are no IP rules, and a source has no port to match
 	var re *RuleError
-	if !errors.As(err, &re) || len(re.errs) != 2 || !errors.Is(err, geomatch.ErrKindDisabled) {
-		t.Fatalf("err = %v, want the two host names rejected", err)
+	if !errors.As(err, &re) || len(re.errs) != 3 || !errors.Is(err, geomatch.ErrKindDisabled) || !errors.Is(err, errSourcePort) {
+		t.Fatalf("err = %v, want the port rule and the two host names rejected", err)
 	}
-	if !strings.Contains(err.Error(), "line 9") {
+	if !strings.Contains(err.Error(), "line 8") || !strings.Contains(err.Error(), "line 10") {
 		t.Fatalf("err = %v, want line numbers", err)
 	}
 }
@@ -63,7 +63,7 @@ func TestNormalizeDest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// the rules mean what geomatch defines; a bare host name is a keyword
-	want := "full:example.com\nkeyword:ads.example\n*.sub.com\ndomain:root.com\n10.0.0.0/8\n1.2.3.4"
+	want := "full:example.com\nads.example\n*.sub.com\ndomain:root.com\n10.0.0.0/8\n1.2.3.4:80\nkeyword:ads.example"
 	if got != want {
 		t.Fatalf("rules = %q, want %q", got, want)
 	}
@@ -190,9 +190,9 @@ func TestRejectedRulesSayWhy(t *testing.T) {
 	if _, err := NormalizeDest("ful:example.com"); !errors.Is(err, geomatch.ErrInvalidRule) {
 		t.Fatalf("misspelt kind: err = %v, want it rejected", err)
 	}
-	_, err := NormalizeSource(ScopeUser, []string{"1.1.1.1-1.1.1.5"})
+	_, err := NormalizeSource(ScopeUser, []string{"1.1.1.1:80"})
 	if !errors.Is(err, geomatch.ErrInvalidRule) {
-		t.Fatalf("IP range: err = %v, want it rejected", err)
+		t.Fatalf("source port: err = %v, want it rejected", err)
 	}
 	_, err = NormalizeSource(ScopeUser, []string{"example.com"})
 	var ke *geomatch.KindError

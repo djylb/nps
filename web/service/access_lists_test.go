@@ -29,7 +29,7 @@ func TestAccessListInputValidate(t *testing.T) {
 
 func TestNormalizeDestRules(t *testing.T) {
 	got, err := normalizeDestRules("full:Example.com\n*.a.com\nads")
-	if err != nil || got != "full:example.com\n*.a.com\nkeyword:ads" {
+	if err != nil || got != "full:example.com\n*.a.com\nads" {
 		t.Fatalf("normalizeDestRules = %q, %v", got, err)
 	}
 	if _, err := normalizeDestRules("regexp:("); !errors.Is(err, ErrInvalidAccessList) {

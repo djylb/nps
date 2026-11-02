@@ -154,15 +154,12 @@ func TestTunnelCloneCopiesAllFields(t *testing.T) {
 
 type healthSnapshot struct {
 	Timeout, MaxFail, Interval int
-	Next                       time.Time
-	Map                        map[string]int
 	URL                        string
-	Removed                    []string
 	Type, Target               string
 }
 
 func healthFields(t *Tunnel) healthSnapshot {
-	return healthSnapshot{t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval, t.HealthNextTime, t.HealthMap, t.HttpHealthUrl, t.HealthRemoveArr, t.HealthCheckType, t.HealthCheckTarget}
+	return healthSnapshot{t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval, t.HttpHealthUrl, t.HealthCheckType, t.HealthCheckTarget}
 }
 
 // fill sets every exported field of v to a non-zero value.

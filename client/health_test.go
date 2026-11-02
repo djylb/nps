@@ -2,178 +2,89 @@ package client
 
 import (
 	"context"
-	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/upstream"
+	"github.com/djylb/upstream/health"
 )
 
-func TestNewHealthCheckerInitializesOnlyValidHealthConfigs(t *testing.T) {
-	healths := []*file.Health{
-		{HealthMaxFail: 1, HealthCheckInterval: 1, HealthCheckTimeout: 1, HealthCheckTarget: "127.0.0.1:80"},
-		{HealthMaxFail: 0, HealthCheckInterval: 1, HealthCheckTimeout: 1, HealthCheckTarget: "127.0.0.1:81"},
-	}
-
-	hc := NewHealthChecker(context.Background(), healths, nil)
-	t.Cleanup(hc.Stop)
-
-	if got := hc.heap.Len(); got != 1 {
-		t.Fatalf("expected only one valid health entry in heap, got %d", got)
-	}
-	if len(hc.healths) != 1 || hc.healths[0] != healths[0] {
-		t.Fatalf("expected only the valid health entry to be scheduled, got %d entries", len(hc.healths))
-	}
-	if healths[0].HealthMap == nil {
-		t.Fatal("expected valid health entry to initialize HealthMap")
-	}
-	if healths[0].HealthNextTime.IsZero() {
-		t.Fatal("expected valid health entry to have HealthNextTime initialized")
-	}
-	if healths[1].HealthMap != nil {
-		t.Fatal("expected invalid health entry to keep nil HealthMap")
-	}
-}
-
-func TestDoCheckUnsupportedTypeSendsDownEvent(t *testing.T) {
-	sideA, sideB := net.Pipe()
-	defer func() { _ = sideA.Close() }()
-	defer func() { _ = sideB.Close() }()
-
-	readCh := make(chan string, 1)
-	errCh := make(chan error, 1)
+// readHealth decodes health reports on the server side of a pipe as
+// "addr=0" or "addr=1".
+func readHealth(t *testing.T, c net.Conn) <-chan string {
+	t.Helper()
+	ch := make(chan string, 16)
 	go func() {
-		_ = sideB.SetReadDeadline(time.Now().Add(2 * time.Second))
-		buf := make([]byte, 128)
-		n, err := sideB.Read(buf)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		readCh <- string(buf[:n])
-	}()
-
-	hc := &HealthChecker{ctx: context.Background(), serverConn: conn.NewConn(sideA)}
-	h := &file.Health{HealthCheckTimeout: 1, HealthMaxFail: 1, HealthCheckType: "invalid", HealthCheckTarget: "node-a", HealthMap: map[string]int{}}
-
-	hc.doCheck(h)
-
-	select {
-	case err := <-errCh:
-		t.Fatalf("expected health event to be written, got error: %v", err)
-	case payload := <-readCh:
-		if !strings.Contains(payload, "node-a") || !strings.Contains(payload, common.ConnDataSeq+"0") {
-			t.Fatalf("unexpected health payload: %q", payload)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for health event")
-	}
-	if got := h.HealthMap["node-a"]; got != 1 {
-		t.Fatalf("expected fail count to be incremented to 1, got %d", got)
-	}
-}
-
-func TestDoCheckTCPSuccessAfterFailuresSendsRecoveryEvent(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen failed: %v", err)
-	}
-	defer func() { _ = ln.Close() }()
-	go func() {
+		defer close(ch)
+		sc := conn.NewConn(c)
 		for {
-			c, err := ln.Accept()
+			info, status, err := sc.GetHealthInfo()
 			if err != nil {
 				return
 			}
-			_ = c.Close()
+			if status {
+				ch <- info + "=1"
+			} else {
+				ch <- info + "=0"
+			}
 		}
 	}()
+	return ch
+}
 
+func TestHealthCheckerReportsFailingTarget(t *testing.T) {
 	sideA, sideB := net.Pipe()
-	defer func() { _ = sideA.Close() }()
 	defer func() { _ = sideB.Close() }()
+	reports := readHealth(t, sideB)
 
-	readCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		_ = sideB.SetReadDeadline(time.Now().Add(2 * time.Second))
-		buf := make([]byte, 128)
-		n, err := sideB.Read(buf)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		readCh <- string(buf[:n])
-	}()
-
-	hc := &HealthChecker{ctx: context.Background(), serverConn: conn.NewConn(sideA)}
-	target := ln.Addr().String()
-	h := &file.Health{HealthCheckTimeout: 1, HealthMaxFail: 1, HealthCheckType: "tcp", HealthCheckTarget: target, HealthMap: map[string]int{target: 1}}
-
-	hc.doCheck(h)
+	healths := []*file.Health{
+		{HealthCheckTimeout: 1, HealthMaxFail: 1, HealthCheckInterval: 1, HealthCheckType: "invalid", HealthCheckTarget: "node-a"},
+		{HealthCheckTimeout: 1, HealthMaxFail: 0, HealthCheckInterval: 1, HealthCheckType: "invalid", HealthCheckTarget: "node-b"},
+	}
+	hc := NewHealthChecker(context.Background(), healths, conn.NewConn(sideA))
+	defer hc.Stop()
 
 	select {
-	case err := <-errCh:
-		t.Fatalf("expected recovery event to be written, got error: %v", err)
-	case payload := <-readCh:
-		if !strings.Contains(payload, target) || !strings.Contains(payload, common.ConnDataSeq+"1") {
-			t.Fatalf("unexpected recovery payload: %q", payload)
+	case payload := <-reports:
+		if payload != "node-a=0" {
+			t.Fatalf("unexpected health payload: %q", payload)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for recovery event")
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for health event")
 	}
-	if got := h.HealthMap[target]; got != 0 {
-		t.Fatalf("expected fail count to reset to 0, got %d", got)
-	}
-}
-
-func TestStopAndDrainHandlesTriggeredTimer(t *testing.T) {
-	timer := time.NewTimer(10 * time.Millisecond)
-	time.Sleep(20 * time.Millisecond)
-
-	stopAndDrain(timer)
-
-	select {
-	case <-timer.C:
-		t.Fatal("expected timer channel to be drained")
-	default:
+	if got := hc.checker.Len(); got != 1 {
+		t.Fatalf("expected only the valid section to be checked, got %d targets", got)
 	}
 }
 
-func TestDoCheckHTTPStatusNotOKIncrementsFailCountWithoutEventBeforeThreshold(t *testing.T) {
-	server := &httpStatusServer{statusCode: 503}
-	ts := server.start(t)
-	defer ts.Close()
-
-	hc := &HealthChecker{ctx: context.Background(), client: ts.Client()}
-	h := &file.Health{
-		HealthCheckTimeout: 1,
-		HealthMaxFail:      3,
-		HealthCheckType:    "http",
-		HealthCheckTarget:  strings.TrimPrefix(ts.URL, "http://"),
-		HttpHealthUrl:      "/health",
-		HealthMap:          map[string]int{},
+func TestHealthCheckerReportCadence(t *testing.T) {
+	sideA, sideB := net.Pipe()
+	defer func() { _ = sideB.Close() }()
+	reports := readHealth(t, sideB)
+	hc := &HealthChecker{serverConn: conn.NewConn(sideA), fails: make(map[healthKey]int)}
+	key := healthKey{h: &file.Health{HealthMaxFail: 2}, addr: "a:1"}
+	report := func(prev, cur upstream.Health) {
+		r := health.Report[healthKey]{Key: key}
+		r.Previous, r.Health = prev, cur
+		hc.onResult(r)
 	}
 
-	hc.doCheck(h)
+	report(upstream.HealthUnknown, upstream.HealthUp) // nothing
+	report(upstream.HealthUp, upstream.HealthDown)    // 0
+	report(upstream.HealthDown, upstream.HealthDown)  // nothing
+	report(upstream.HealthDown, upstream.HealthDown)  // 0 again
+	report(upstream.HealthDown, upstream.HealthUp)    // 1
+	_ = sideA.Close()
 
-	if got := h.HealthMap[h.HealthCheckTarget]; got != 1 {
-		t.Fatalf("expected fail count to be 1, got %d", got)
+	var got []string
+	for p := range reports {
+		got = append(got, p)
 	}
-}
-
-type httpStatusServer struct{ statusCode int }
-
-func (s *httpStatusServer) start(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(s.statusCode)
-		_, _ = io.WriteString(w, "ok")
-	}))
+	if strings.Join(got, ",") != "a:1=0,a:1=0,a:1=1" {
+		t.Fatalf("unexpected reports %q", got)
+	}
 }

@@ -1,70 +1,64 @@
 package conn
 
 import (
+	"bufio"
+	"context"
 	"io"
-	"net/http"
-	"net/http/httptest"
+	"net"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/djylb/netx/httphead"
+	"github.com/djylb/netx/wsconn"
 )
 
-func TestWsConnReadStreamsAcrossCalls(t *testing.T) {
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-	msg := []byte("0123456789")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ws, err := upgrader.Upgrade(w, r, nil)
+func TestWSListenerRoundTripAndRealIP(t *testing.T) {
+	base, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln := NewWSListener(base, "/ws", "127.0.0.1", "X-Real-IP")
+	defer func() { _ = ln.Close() }()
+
+	done := make(chan error, 1)
+	go func() {
+		c, err := ln.Accept()
 		if err != nil {
-			t.Fatalf("upgrade failed: %v", err)
+			done <- err
+			return
 		}
-		defer func() { _ = ws.Close() }()
-		_ = ws.SetWriteDeadline(time.Now().Add(2 * time.Second))
-		if err = ws.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-			t.Fatalf("write message failed: %v", err)
+		defer func() { _ = c.Close() }()
+		if got := c.RemoteAddr().String(); got != "192.0.2.7:0" {
+			t.Errorf("RemoteAddr = %q", got)
 		}
-		_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	}))
-	defer server.Close()
-	dialer := websocket.Dialer{}
-	url := "ws" + server.URL[len("http"):]
-	client, _, err := dialer.Dial(url, nil)
-	if err != nil {
-		t.Fatalf("dial failed: %v", err)
-	}
-	defer func() { _ = client.Close() }()
-	conn := NewWsConn(client)
-	buf := make([]byte, 4)
+		_, err = io.Copy(c, io.LimitReader(c, 10))
+		done <- err
+	}()
 
-	n, err := conn.Read(buf)
+	raw, err := net.Dial("tcp", base.Addr().String())
 	if err != nil {
-		t.Fatalf("first read failed: %v", err)
+		t.Fatal(err)
 	}
-	if got := string(buf[:n]); got != "0123" {
-		t.Fatalf("first read mismatch: got %q", got)
-	}
-
-	n, err = conn.Read(buf)
+	// The listener trusts 127.0.0.1, so the X-Real-IP it sends is believed.
+	ws, _, err := wsconn.Client(context.Background(), raw, "ws://"+base.Addr().String()+"/ws",
+		&wsconn.ClientOptions{Header: httphead.Header{{Name: "X-Real-IP", Value: "192.0.2.7"}}})
 	if err != nil {
-		t.Fatalf("second read failed: %v", err)
+		t.Fatal(err)
 	}
-	if got := string(buf[:n]); got != "4567" {
-		t.Fatalf("second read mismatch: got %q", got)
+	c := wsconn.NewStreamConn(ws)
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err = c.Write([]byte("01234")); err != nil {
+		t.Fatal(err)
 	}
-
-	n, err = conn.Read(buf)
-	if err != nil {
-		t.Fatalf("third read failed: %v", err)
+	if _, err = c.Write([]byte("56789")); err != nil {
+		t.Fatal(err)
 	}
-	if got := string(buf[:n]); got != "89" {
-		t.Fatalf("third read mismatch: got %q", got)
+	got, err := io.ReadAll(io.LimitReader(bufio.NewReader(c), 10))
+	if err != nil || string(got) != "0123456789" {
+		t.Fatalf("echo = %q, %v", got, err)
 	}
-
-	_, err = conn.Read(buf)
-	if err == nil {
-		t.Fatal("expected EOF after close frame")
-	}
-	if err != io.EOF && !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-		t.Fatalf("expected EOF or close-normal error, got: %v", err)
+	if err = <-done; err != nil {
+		t.Fatal(err)
 	}
 }

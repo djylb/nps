@@ -1,222 +1,119 @@
 package client
 
 import (
-	"container/heap"
 	"context"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/sheap"
+	"github.com/djylb/upstream"
+	"github.com/djylb/upstream/health"
+	"github.com/djylb/upstream/uphttp"
 )
 
-const minDelay = 10 * time.Millisecond
+// healthKey identifies one checked address of one health check section;
+// sections may check the same address with different settings.
+type healthKey struct {
+	h    *file.Health
+	addr string
+}
 
+// HealthChecker checks the targets of the configured health sections and
+// reports to the server when a target goes down or comes back up.
 type HealthChecker struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	healths    []*file.Health
+	checker    *health.Checker[healthKey, struct{}]
 	serverConn *conn.Conn
-	mu         sync.Mutex
-	heap       *sheap.IntHeap
-	timer      *time.Timer
-	client     *http.Client
+	// fails counts the failing checks of each target that is down; it is
+	// only used from the checker's callback goroutine.
+	fails map[healthKey]int
 }
 
 func NewHealthChecker(parentCtx context.Context, healths []*file.Health, c *conn.Conn) *HealthChecker {
-	ctx, cancel := context.WithCancel(parentCtx)
-	hq := &sheap.IntHeap{}
-	heap.Init(hq)
-	now := time.Now()
-	valid := make([]*file.Health, 0, len(healths))
+	hc := &HealthChecker{serverConn: c, fails: make(map[healthKey]int)}
+	hc.checker = health.New[healthKey, struct{}](parentCtx, health.Config[healthKey]{
+		OnResult: hc.onResult,
+		OnRemove: func(k healthKey, _ uint64) { delete(hc.fails, k) },
+	})
 	for _, h := range healths {
 		if !healthConfigValid(h) {
 			continue
 		}
-		h.HealthNextTime = now
-		heap.Push(hq, h.HealthNextTime.Unix())
-		h.HealthMap = make(map[string]int)
-		valid = append(valid, h)
+		t := health.Target{Probe: healthProbe(h), Options: health.Options{
+			Interval: time.Duration(h.HealthCheckInterval) * time.Second,
+			Timeout:  time.Duration(h.HealthCheckTimeout) * time.Second,
+			Rise:     1,
+			Fall:     h.HealthMaxFail,
+		}}
+		for _, addr := range strings.Split(h.HealthCheckTarget, ",") {
+			t.Address = addr
+			hc.checker.Put(healthKey{h: h, addr: addr}, t)
+		}
 	}
-
-	tmr := time.NewTimer(0)
-	if !tmr.Stop() {
-		<-tmr.C
-	}
-
-	return &HealthChecker{
-		ctx:        ctx,
-		cancel:     cancel,
-		healths:    valid,
-		serverConn: c,
-		heap:       hq,
-		timer:      tmr,
-		client:     &http.Client{},
-	}
+	return hc
 }
 
 // healthConfigValid reports whether h can be scheduled: a zero fail count,
-// interval or timeout would divide by zero or never time out.
+// interval or timeout would never mark a target down or never time out.
 func healthConfigValid(h *file.Health) bool {
 	return h != nil && h.HealthMaxFail > 0 && h.HealthCheckInterval > 0 && h.HealthCheckTimeout > 0
 }
 
-func (hc *HealthChecker) Start() {
-	hc.wg.Add(1)
-	go func() {
-		defer hc.wg.Done()
-		hc.loop()
-	}()
+// healthProbe returns the check for h's health_check_type.
+func healthProbe(h *file.Health) health.Probe {
+	switch h.HealthCheckType {
+	case "tcp":
+		return health.TCP(health.TCPOptions{})
+	case "http", "https":
+		return uphttp.Probe(uphttp.Check{
+			Scheme: h.HealthCheckType,
+			Path:   h.HttpHealthUrl,
+			Status: uphttp.StatusRange{Min: 200, Max: 200},
+		})
+	default:
+		err := fmt.Errorf("unsupported health check type: %s", h.HealthCheckType)
+		return func(context.Context, health.Target) (health.Observation, error) {
+			return health.Observation{}, err
+		}
+	}
 }
 
+// onResult reports a target down when it fails health_check_max_failed
+// times in a row, and again after every further health_check_max_failed
+// failures, and reports it up on its first passing check after that.
+func (hc *HealthChecker) onResult(r health.Report[healthKey]) {
+	switch r.Health {
+	case upstream.HealthDown:
+		if r.Changed() {
+			hc.fails[r.Key] = 0
+		}
+		hc.fails[r.Key]++
+		if (hc.fails[r.Key]-1)%r.Key.h.HealthMaxFail == 0 {
+			hc.send(r.Key.addr, "0")
+		}
+	case upstream.HealthUp:
+		if r.Previous == upstream.HealthDown {
+			hc.send(r.Key.addr, "1")
+		}
+		delete(hc.fails, r.Key)
+	case upstream.HealthUnknown:
+		// No verdict yet: nothing to report.
+	}
+}
+
+func (hc *HealthChecker) send(addr, status string) {
+	if hc.serverConn == nil {
+		return
+	}
+	if _, err := hc.serverConn.SendHealthInfo(addr, status); err != nil {
+		logs.Trace("send health info of %s: %v", addr, err)
+	}
+}
+
+// Stop ends all checks and waits until no check or report is running.
 func (hc *HealthChecker) Stop() {
-	hc.cancel()
-	hc.mu.Lock()
-	stopAndDrain(hc.timer)
-	hc.mu.Unlock()
-	hc.wg.Wait()
-}
-
-func (hc *HealthChecker) Reset() {
-	hc.mu.Lock()
-	defer hc.mu.Unlock()
-	hq := &sheap.IntHeap{}
-	heap.Init(hq)
-	now := time.Now()
-	for _, h := range hc.healths {
-		h.HealthNextTime = now.Add(time.Duration(h.HealthCheckInterval) * time.Second)
-		heap.Push(hq, h.HealthNextTime.Unix())
-		h.HealthMap = make(map[string]int)
-	}
-	hc.heap = hq
-	stopAndDrain(hc.timer)
-}
-
-func (hc *HealthChecker) loop() {
-	for {
-		hc.mu.Lock()
-		if hc.heap.Len() == 0 {
-			hc.mu.Unlock()
-			logs.Warn("health check list empty, exiting")
-			return
-		}
-		nextUnix := (*hc.heap)[0]
-		nextTime := time.Unix(nextUnix, 0)
-		delay := time.Until(nextTime)
-		if delay < minDelay {
-			delay = minDelay
-		}
-		stopAndDrain(hc.timer)
-		hc.timer.Reset(delay)
-		hc.mu.Unlock()
-		select {
-		case <-hc.ctx.Done():
-			return
-		case <-hc.timer.C:
-			hc.runChecks()
-		}
-	}
-}
-
-func (hc *HealthChecker) runChecks() {
-	now := time.Now()
-	hc.mu.Lock()
-	type entry struct {
-		h       *file.Health
-		oldUnix int64
-	}
-	var due []entry
-	for _, h := range hc.healths {
-		if !h.HealthNextTime.After(now) {
-			due = append(due, entry{h: h, oldUnix: h.HealthNextTime.Unix()})
-		}
-	}
-	hc.mu.Unlock()
-	for _, e := range due {
-		hc.doCheck(e.h)
-	}
-	hc.mu.Lock()
-	defer hc.mu.Unlock()
-	newHQ := &sheap.IntHeap{}
-	heap.Init(newHQ)
-
-	oldMap := make(map[*file.Health]int64, len(due))
-	for _, e := range due {
-		oldMap[e.h] = e.oldUnix
-	}
-
-	for _, h := range hc.healths {
-		if oldUnix, ok := oldMap[h]; ok {
-			interval := time.Duration(h.HealthCheckInterval) * time.Second
-			missed := (now.Unix()-oldUnix)/int64(interval.Seconds()) + 1
-			h.HealthNextTime = time.Unix(oldUnix, 0).Add(time.Duration(missed) * interval)
-		}
-		heap.Push(newHQ, h.HealthNextTime.Unix())
-	}
-	hc.heap = newHQ
-}
-
-func (hc *HealthChecker) doCheck(h *file.Health) {
-	timeout := time.Duration(h.HealthCheckTimeout) * time.Second
-	for _, target := range strings.Split(h.HealthCheckTarget, ",") {
-		var err error
-		switch h.HealthCheckType {
-		case "tcp":
-			c, errDial := net.DialTimeout("tcp", target, timeout)
-			if errDial == nil {
-				_ = c.Close()
-			} else {
-				err = errDial
-			}
-		case "http", "https":
-			// HTTP/HTTPS Check
-			scheme := h.HealthCheckType // "http" or "https"
-			url := fmt.Sprintf("%s://%s%s", scheme, target, h.HttpHealthUrl)
-			ctx, cancel := context.WithTimeout(hc.ctx, timeout)
-			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-			resp, getErr := hc.client.Do(req)
-			cancel()
-			if getErr != nil {
-				err = getErr
-			} else {
-				_, _ = io.Copy(io.Discard, resp.Body)
-				if resp.StatusCode != http.StatusOK {
-					err = fmt.Errorf("unexpected status %d", resp.StatusCode)
-				}
-				_ = resp.Body.Close()
-			}
-		default:
-			err = fmt.Errorf("unsupported health check type: %s", h.HealthCheckType)
-		}
-		h.Lock()
-		if err != nil {
-			h.HealthMap[target]++
-			if h.HealthMap[target]%h.HealthMaxFail == 0 {
-				_, _ = hc.serverConn.SendHealthInfo(target, "0")
-			}
-		} else {
-			if h.HealthMap[target] >= h.HealthMaxFail {
-				_, _ = hc.serverConn.SendHealthInfo(target, "1")
-			}
-			h.HealthMap[target] = 0
-		}
-		h.Unlock()
-	}
-}
-
-func stopAndDrain(t *time.Timer) {
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
-		}
-	}
+	hc.checker.Close()
+	<-hc.checker.Done()
 }

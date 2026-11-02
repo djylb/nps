@@ -162,7 +162,7 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 
 // ProcessTunnel tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
-	targetAddr, err := s.Task.Target.GetRandomTarget()
+	targetAddr, err := s.Task.Target.Pick()
 	if err != nil {
 		if s.Task.Mode != "file" && s.Bridge.IsServer() {
 			_ = c.Close()

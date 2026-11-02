@@ -3,18 +3,14 @@ package install
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/djylb/nps/lib/version"
 )
 
 func TestPathExists(t *testing.T) {
@@ -142,66 +138,6 @@ func TestCopyDirValidationErrors(t *testing.T) {
 	}
 }
 
-func TestReplaceExecutables(t *testing.T) {
-	for _, aside := range []bool{false, true} {
-		tmpDir := t.TempDir()
-		src := filepath.Join(tmpDir, "src")
-		writeTestFile(t, src, "new")
-		a := filepath.Join(tmpDir, "a")
-		b := filepath.Join(tmpDir, "b")
-		writeTestFile(t, a, "old")
-		writeTestFile(t, b, "old")
-
-		if err := replaceExecutables(src, []string{a, b}, aside); err != nil {
-			t.Fatalf("replaceExecutables(aside=%v) error = %v", aside, err)
-		}
-		for _, p := range []string{a, b} {
-			if got, err := os.ReadFile(p); err != nil || string(got) != "new" {
-				t.Fatalf("aside=%v: ReadFile(%s) = (%q, %v), want new", aside, p, got, err)
-			}
-			if runtime.GOOS != "windows" {
-				fi, err := os.Stat(p)
-				if err != nil {
-					t.Fatalf("aside=%v: Stat(%s) error = %v", aside, p, err)
-				}
-				if fi.Mode().Perm() != 0o755 {
-					t.Fatalf("aside=%v: %s mode = %v, want 0755", aside, p, fi.Mode().Perm())
-				}
-			}
-		}
-		assertOnlyFiles(t, tmpDir, "a", "b", "src")
-	}
-}
-
-func TestCommitExecutablesRollback(t *testing.T) {
-	for _, aside := range []bool{false, true} {
-		tmpDir := t.TempDir()
-		src := filepath.Join(tmpDir, "src")
-		writeTestFile(t, src, "new")
-		a := filepath.Join(tmpDir, "a")
-		b := filepath.Join(tmpDir, "b")
-		writeTestFile(t, a, "old-a")
-		writeTestFile(t, b, "old-b")
-
-		staged, err := stageExecutables(src, []string{a, b})
-		if err != nil {
-			t.Fatalf("stageExecutables() error = %v", err)
-		}
-		if err := os.Remove(b + ".new"); err != nil {
-			t.Fatalf("Remove() error = %v", err)
-		}
-		if err := commitExecutables(staged, aside); err == nil {
-			t.Fatalf("commitExecutables(aside=%v) error = nil, want error", aside)
-		}
-		for p, want := range map[string]string{a: "old-a", b: "old-b"} {
-			if got, err := os.ReadFile(p); err != nil || string(got) != want {
-				t.Fatalf("aside=%v: ReadFile(%s) = (%q, %v), want %q", aside, p, got, err, want)
-			}
-		}
-		assertOnlyFiles(t, tmpDir, "a", "b", "src")
-	}
-}
-
 func TestParseServiceExecutable(t *testing.T) {
 	if got := parseSystemdExecStart("{ path=/usr/bin/nps ; argv[]=/usr/bin/nps service ; ignore_errors=no }\n"); got != "/usr/bin/nps" {
 		t.Fatalf("parseSystemdExecStart() = %q", got)
@@ -224,18 +160,6 @@ func writeTestFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
-}
-
-func TestRemoveAsideFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-	for _, name := range []string{"nps.exe", "nps.exe.old", "nps.exe.k3x9.old", "npc.exe.old", "nps.exe.new"} {
-		if err := os.WriteFile(filepath.Join(tmpDir, name), nil, 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", name, err)
-		}
-	}
-
-	removeAsideFiles(filepath.Join(tmpDir, "nps.exe"))
-	assertOnlyFiles(t, tmpDir, "npc.exe.old", "nps.exe", "nps.exe.new")
 }
 
 func TestCopyServerAssetsPerItem(t *testing.T) {
@@ -301,9 +225,8 @@ func TestReleaseSHA256(t *testing.T) {
 		{"short.tar.gz", "sha256:abcd"},
 	} {
 		rl.Assets = append(rl.Assets, struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-			Digest             string `json:"digest"`
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
 		}{Name: a.name, Digest: a.digest})
 	}
 
@@ -342,13 +265,23 @@ func TestHTTPClientCertificateFallback(t *testing.T) {
 		t.Fatalf("do(self-signed) = (%q, verified=%v), want (%q, false)", body, verified, payload)
 	}
 
-	dest := filepath.Join(t.TempDir(), "pkg.tar.gz")
-	if err := downloadArchive(c, srv.URL, dest, ""); err == nil {
-		t.Fatal("downloadArchive(unverified, no digest) error = nil, want error")
+	dest := filepath.Join(t.TempDir(), "geoip.dat")
+	if err := downloadChecked(c, srv.URL, dest, strings.Repeat("00", 32)); err == nil {
+		t.Fatal("downloadChecked(wrong digest) error = nil, want error")
 	}
 	sum := sha256.Sum256(payload)
-	if err := downloadArchive(c, srv.URL, dest, hex.EncodeToString(sum[:])); err != nil {
-		t.Fatalf("downloadArchive(unverified, digest) error = %v", err)
+	if err := downloadChecked(c, srv.URL, dest, hex.EncodeToString(sum[:])); err != nil {
+		t.Fatalf("downloadChecked(unverified, digest) error = %v", err)
+	}
+	// Updates go through RoundTrip, which falls back the same way.
+	resp, err = (&http.Client{Transport: c}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("RoundTrip(self-signed) error = %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != string(payload) {
+		t.Fatalf("RoundTrip(self-signed) = %q, want %q", body, payload)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -363,42 +296,33 @@ func TestHTTPClientCertificateFallback(t *testing.T) {
 	}
 }
 
-// Even with force, release metadata and package validation must remain mandatory.
-func TestForceUpdateBypassesVersionGateButValidatesDigest(t *testing.T) {
-	for _, kind := range []string{"client", "server"} {
-		for _, tag := range []string{"v" + version.VERSION, "v0.1.0"} {
-			for _, force := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%s/force=%v", kind, tag, force), func(t *testing.T) {
-					requests := 0
-					transport := updateTestTransport(func(req *http.Request) (*http.Response, error) {
-						requests++
-						if req.URL.Host != "api.github.com" {
-							t.Fatalf("unexpected download: %s", req.URL)
-						}
-						body := fmt.Sprintf(`{"tag_name":%q,"assets":[{"name":%q,"digest":"sha256:invalid"}]}`, tag, packageName(kind))
-						return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
-					})
-					c := &httpClient{verified: &http.Client{Transport: transport}}
-					res, err := updateWithClient(c, kind, "unused", "unused", force)
-					if res != nil {
-						t.Fatal("unexpected replacement")
-					}
-					if force {
-						if err == nil || !strings.Contains(err.Error(), "malformed digest") {
-							t.Fatalf("forced update must validate digest: %v", err)
-						}
-					} else if err != nil {
-						t.Fatalf("normal update should skip current/older release: %v", err)
-					}
-					if requests != 1 {
-						t.Fatalf("requests = %d, want metadata only", requests)
-					}
-				})
-			}
-		}
+func TestInstallFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	writeTestFile(t, src, "new")
+	dest := filepath.Join(dir, "npc")
+	writeTestFile(t, dest, "old")
+	if err := installFile(src, dest); err != nil {
+		t.Fatalf("installFile() error = %v", err)
 	}
+	if got, err := os.ReadFile(dest); err != nil || string(got) != "new" {
+		t.Fatalf("ReadFile() = (%q, %v), want new", got, err)
+	}
+	if err := installFile(dest, dest); err != nil {
+		t.Fatalf("installFile(onto itself) error = %v", err)
+	}
+	assertOnlyFiles(t, dir, "npc", "src")
 }
 
-type updateTestTransport func(*http.Request) (*http.Response, error)
-
-func (f updateTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func TestArtifactName(t *testing.T) {
+	orig := BuildTarget
+	t.Cleanup(func() { BuildTarget = orig })
+	BuildTarget = ""
+	if got := artifactName("npc"); got != "npc" {
+		t.Fatalf("artifactName() = %q", got)
+	}
+	BuildTarget = "v7"
+	if got := artifactName("nps"); got != "nps-v7" {
+		t.Fatalf("artifactName(v7) = %q", got)
+	}
+}

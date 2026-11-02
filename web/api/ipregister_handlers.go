@@ -84,14 +84,14 @@ func (a *App) IPRegister(c Context) {
 		return
 	}
 	if cfg.Feature.OpenCaptcha && !framework.VerifyCaptcha(requestString(c, framework.CaptchaIDField), requestString(c, framework.CaptchaValueField)) {
-		policy.RecordFailure(ip, true)
+		policy.RecordIPFailure(ip)
 		c.RespondJSON(200, IPRegisterResponse{Msg: "the verification code is wrong"})
 		return
 	}
 	id, until, err := a.Services.Clients.RegisterVisitorIP(requestString(c, "key"), ip, requestIntValue(c, "hours"))
 	if err != nil {
 		if errors.Is(err, webservice.ErrRegisterKeyInvalid) {
-			policy.RecordFailure(ip, true)
+			policy.RecordIPFailure(ip)
 		}
 		c.RespondJSON(200, IPRegisterResponse{Msg: "invalid registration key"})
 		return

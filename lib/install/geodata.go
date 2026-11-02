@@ -3,6 +3,7 @@ package install
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -190,7 +191,7 @@ func downloadGeoFile(c *httpClient, urls []string, digest, dest string) error {
 	var errs []error
 	for _, url := range urls {
 		fmt.Println("Trying:", url)
-		if err := downloadArchive(c, url, tmp, digest); err != nil {
+		if err := downloadChecked(c, url, tmp, digest); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", url, err))
 			continue
 		}
@@ -285,4 +286,93 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+type release struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name   string `json:"name"`
+		Digest string `json:"digest"`
+	} `json:"assets"`
+}
+
+// sha256 returns the hex SHA-256 digest published for the named asset, or ""
+// when the release publishes none.
+func (r *release) sha256(name string) (string, error) {
+	for _, a := range r.Assets {
+		if a.Name != name {
+			continue
+		}
+		if a.Digest == "" {
+			return "", nil
+		}
+		sum, ok := strings.CutPrefix(a.Digest, "sha256:")
+		if raw, err := hex.DecodeString(sum); !ok || err != nil || len(raw) != sha256.Size {
+			return "", fmt.Errorf("release %s has a malformed digest for %s: %q", r.TagName, name, a.Digest)
+		}
+		return strings.ToLower(sum), nil
+	}
+	return "", fmt.Errorf("release %s has no asset %s", r.TagName, name)
+}
+
+// fetchLatestRelease fetches the latest release of the GitHub repository
+// repo, owner/name, and reports whether the server certificate was verified.
+func fetchLatestRelease(c *httpClient, repo string) (*release, bool, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, verified, err := c.do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	rl := new(release)
+	if err := json.NewDecoder(resp.Body).Decode(rl); err != nil {
+		return nil, false, err
+	}
+	if rl.TagName == "" {
+		return nil, false, errors.New("release has no tag")
+	}
+	return rl, verified, nil
+}
+
+// downloadChecked writes the body of url to dest and checks it against the
+// hex SHA-256 digest.
+func downloadChecked(c *httpClient, url, dest, digest string) error {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, verified, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	h := sha256.New()
+	_, err = io.Copy(io.MultiWriter(f, h), resp.Body)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	if sum := hex.EncodeToString(h.Sum(nil)); sum != digest {
+		return fmt.Errorf("checksum mismatch: got %s, want %s", sum, digest)
+	}
+	if !verified {
+		fmt.Println("  → downloaded without certificate verification; SHA-256 digest matched")
+	}
+	return nil
 }

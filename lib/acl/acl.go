@@ -6,6 +6,7 @@ package acl
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/djylb/geomatch"
@@ -124,7 +125,47 @@ func normalize(c geomatch.Compiler, lines []string) ([]string, error) {
 // duplicates. The error names the rules that were rejected; they are left
 // out of the result.
 func NormalizeSource(scope Scope, rules []string) ([]string, error) {
-	return normalize(sourceCompiler(scope), ruleLines(rules))
+	c := sourceCompiler(scope)
+	lines, index, portErrs := withoutPorts(c, ruleLines(rules))
+	out, err := c.Normalize(lines)
+	var errs geomatch.RuleErrors
+	errors.As(err, &errs)
+	for _, re := range errs {
+		re.Index = index[re.Index]
+	}
+	return out, ruleError(mergeRuleErrors(portErrs, errs, err))
+}
+
+// errSourcePort rejects source rules with ports: a source is matched by the
+// visitor's address, whose port says nothing about the visitor.
+var errSourcePort = fmt.Errorf("%w: source rules cannot name ports", geomatch.ErrInvalidRule)
+
+// withoutPorts returns the lines without the rules that name ports, the
+// position in lines of each kept line, and errors for the dropped rules.
+func withoutPorts(c geomatch.Compiler, lines []string) (kept []string, index []int, errs geomatch.RuleErrors) {
+	for i, l := range lines {
+		if r, err := c.ParseRule(l); err == nil && len(r.Ports) > 0 {
+			errs = append(errs, &geomatch.RuleError{Index: i, Rule: l, Err: errSourcePort})
+			continue
+		}
+		kept = append(kept, l)
+		index = append(index, i)
+	}
+	return kept, index, errs
+}
+
+// mergeRuleErrors joins the port errors and the compile errors errs, by line;
+// err is returned as it is when it holds no rule errors.
+func mergeRuleErrors(portErrs, errs geomatch.RuleErrors, err error) error {
+	if len(portErrs) == 0 {
+		return err
+	}
+	if err != nil && len(errs) == 0 {
+		return errors.Join(portErrs, err)
+	}
+	all := append(portErrs, errs...)
+	slices.SortFunc(all, func(a, b *geomatch.RuleError) int { return a.Index - b.Index })
+	return all
 }
 
 // ruleLines splits rules into lines: older versions stored the lines

@@ -38,8 +38,8 @@ func relay(client, visitor io.ReadWriteCloser, flows []*file.Flow, task *file.Tu
 // relayFlow returns the RelayFlow of a direction of a relay, in from the
 // visitor or out to it: Done counts the bytes written to each flow and ends
 // the relay at a limit, First tells whether the direction carries HTTP.
-func relayFlow(flows []*file.Flow, task *file.Tunnel, remote string, inbound bool) netx.RelayFlow {
-	var f netx.RelayFlow
+func relayFlow(flows []*file.Flow, task *file.Tunnel, remote string, inbound bool) *netx.RelayFlow {
+	f := new(netx.RelayFlow)
 	if len(flows) > 0 {
 		f.Done = func(n int64) error {
 			in, out := int64(0), n

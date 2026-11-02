@@ -33,7 +33,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	defer release()
 
 	connType := common.ConnTCP
-	host, _ := s.Task.Target.GetRandomTarget()
+	host, _ := s.Task.Target.Pick()
 	localProxy := false
 	needAck := false
 

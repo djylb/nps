@@ -106,12 +106,13 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			return
 		}
 		ts := common.BytesToTimestamp(tsBuf)
-		now := common.TimeNow().Unix()
 		window := servercfg.Current().Security.AuthTimeWindow
-		if ServerSecureMode && !authTimestampValid(ts, now, window) {
-			logs.Error("Timestamp validation failed for %v: ts=%d, now=%d", c.Conn.RemoteAddr(), ts, now)
-			_ = c.Close()
-			return
+		if ServerSecureMode {
+			if err := authReplays.checkTime(ts, window); err != nil {
+				logs.Error("Timestamp validation failed for %v: ts=%d, now=%d: %v", c.Conn.RemoteAddr(), ts, common.TimeNow().Unix(), err)
+				_ = c.Close()
+				return
+			}
 		}
 		keyBuf, err := c.GetShortContent(64)
 		if err != nil {
@@ -200,10 +201,12 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			_ = c.Close()
 			return
 		}
-		if ServerSecureMode && rep.seen(string(hmacBuf), common.TimeNow().Unix(), window) {
-			logs.Error("Replay detected for client %v", c.Conn.RemoteAddr())
-			_ = c.Close()
-			return
+		if ServerSecureMode {
+			if err := authReplays.check(ts, hmacBuf, window); err != nil {
+				logs.Error("Replay detected for client %v: %v", c.Conn.RemoteAddr(), err)
+				_ = c.Close()
+				return
+			}
 		}
 		if _, err := c.BufferWrite(crypt.ComputeHMAC(client.VerifyKey, ts, hmacBuf, []byte(version.GetVersion(ver)))); err != nil {
 			logs.Error("Failed to write HMAC response to %v: %v", c.Conn.RemoteAddr(), err)

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -135,7 +134,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 				return
 			}
 
-			from := socks5.Addr{IP: src.Addr().Unmap(), Port: src.Port()}
+			from := netx.Addr{IP: src.Addr().Unmap(), Port: src.Port()}
 			start := udp5HeaderRoom - (3 + 1 + 4 + 2)
 			if from.IP.Is6() {
 				start = 0
@@ -295,43 +294,6 @@ func ProxyProtocolHeader(version int, client, target net.Addr) *proxyproto.Heade
 		return &proxyproto.Header{Version: v}
 	}
 	return h
-}
-
-func GetRealIP(r *http.Request, header string) string {
-	if header != "" {
-		if v := r.Header.Get(header); v != "" {
-			for _, p := range strings.Split(v, ",") {
-				if ip := common.GetIpByAddr(strings.TrimSpace(p)); ip != "" {
-					return ip
-				}
-			}
-		}
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			return host
-		}
-		return r.RemoteAddr
-	}
-
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		for _, p := range strings.Split(xff, ",") {
-			if ip := common.GetIpByAddr(strings.TrimSpace(p)); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
-		for _, p := range strings.Split(xrip, ",") {
-			if ip := common.GetIpByAddr(strings.TrimSpace(p)); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 // entryRate excludes client-side relay wrappers from server-side policy/metering.

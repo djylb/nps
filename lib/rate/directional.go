@@ -35,7 +35,10 @@ func (d *Directional) Throughput() (int64, int64) {
 
 // Group is the tunnel/domain level. A nil parent keeps its current ancestry.
 func (d *Directional) Group(parent *byterate.Group) *byterate.Group {
-	d.groupOnce.Do(func() { d.group.SetReadLimiter(&d.download); d.group.SetWriteLimiter(&d.upload) })
+	d.groupOnce.Do(func() {
+		d.group.SetLimiters(&d.download, &d.upload)
+		sample(d.group.Traffic())
+	})
 	if parent != nil && parent != &d.group {
 		d.parentMu.Lock()
 		d.pinned = true

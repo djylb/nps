@@ -95,7 +95,7 @@ func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
 		check = -1
 	}
 	return &tlsconn.CertFiles{
-		MaxEntries:    cfg.CacheMax,
+		MaxEntries:    max(cfg.CacheMax, 0),
 		IdleTimeout:   time.Duration(cfg.CacheIdle) * time.Minute,
 		CheckInterval: check,
 		OnError: func(err *tlsconn.CertError) {
@@ -234,7 +234,7 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 	}
 	defer release()
 
-	targetAddr, err := host.Target.GetRandomTarget()
+	targetAddr, err := host.Target.Pick()
 	if err != nil {
 		logs.Warn("%v", err)
 		_ = c.Close()
@@ -256,7 +256,7 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 	}
 	defer release()
 
-	targetAddr, err := host.Target.GetRandomTarget()
+	targetAddr, err := host.Target.Pick()
 	if err != nil {
 		logs.Warn("%v", err)
 		_ = tlsConn.Close()

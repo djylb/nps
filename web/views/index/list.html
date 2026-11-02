@@ -51,6 +51,8 @@
         return '<span role="button" tabindex="0" style="cursor:pointer" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'download_limit\'})" onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }">' + value + '</span>';
     }
 
+    var clientScoped = new URLSearchParams(location.search).has('client_id')
+
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
         idField: "Id",
@@ -80,8 +82,11 @@
         pageNumber: 1,
         pageList: [5, 10, 20, 50, 100, 'all'],
         cookie: true,
-        cookieIdTable: '{{.type}}',
+        cookieIdTable: '{{if .type}}{{.type}}{{else}}tunnel{{end}}',
         cookieStorage: 'localStorage',
+        // Only the layout is kept across visits; a search or page left over
+        // from another list or client would hide rows without notice.
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () { $('body').setLang('.detail-view'); },
@@ -543,7 +548,10 @@
                     return btn_group
                 }
             }
-        ]
+        ].filter(function (c) {
+            // A list opened for one client shows that client in its title.
+            return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
+        })
     });
     initListLive('tunnel', '{{.web_base_url}}');
     initListBatch('tunnel', '{{.web_base_url}}');

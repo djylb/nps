@@ -197,6 +197,10 @@ func (a *App) ClientQRCode(c Context) {
 			c.RespondString(400, "missing text")
 			return
 		}
+		if errors.Is(err, webservice.ErrClientQRCodeSecretInvalid) {
+			c.RespondString(400, "invalid secret")
+			return
+		}
 		c.RespondString(500, "QR encode failed")
 		return
 	}

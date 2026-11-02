@@ -104,6 +104,9 @@
         cookie: true,
         cookieIdTable: 'client',
         cookieStorage: 'localStorage',
+        // Only the layout is kept across visits; a search or page left over
+        // from another list or client would hide rows without notice.
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () {$('body').setLang ('.detail-view');},
@@ -277,6 +280,42 @@
                 }
             },
             {
+                field: 'Speed',
+                title: '<span langtag="word-speed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: true,
+                sortable: true,
+                sortName: 'speed',
+                formatter: function (value, row, index) {
+                    return changeunit(typeof value === 'number' ? value : (Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                }
+            },
+            {
+                field: 'UploadRate',
+                title: '<span langtag="word-uploadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'upload_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.UploadRate) || 0) + '/s';
+                }
+            },
+            {
+                field: 'DownloadRate',
+                title: '<span langtag="word-downloadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'download_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.DownloadRate) || 0) + '/s';
+                }
+            },
+            {
                 field: 'InletFlow',//域值
                 title: '<span langtag="word-inletflow"></span>',//标题
                 halign: 'center',
@@ -405,42 +444,6 @@
                 }
             },
             {
-                field: 'Speed',
-                title: '<span langtag="word-speed"></span>',
-                align: 'center',
-                halign: 'center',
-                visible: true,
-                sortable: true,
-                sortName: 'speed',
-                formatter: function (value, row, index) {
-                    return changeunit(typeof value === 'number' ? value : (Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
-                }
-            },
-            {
-                field: 'UploadRate',
-                title: '<span langtag="word-uploadspeed"></span>',
-                align: 'center',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                sortName: 'upload_rate',
-                formatter: function (value, row, index) {
-                    return changeunit(Number(row.UploadRate) || 0) + '/s';
-                }
-            },
-            {
-                field: 'DownloadRate',
-                title: '<span langtag="word-downloadspeed"></span>',
-                align: 'center',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                sortName: 'download_rate',
-                formatter: function (value, row, index) {
-                    return changeunit(Number(row.DownloadRate) || 0) + '/s';
-                }
-            },
-            {
                 field: 'Status',//域值
                 title: '<span langtag="word-status"></span>',//内容
                 align: 'center',
@@ -468,6 +471,19 @@
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
+                }
+            },
+            {
+                field: 'show',//域值
+                title: '<span langtag="word-show">',//内容
+                align: 'center',
+                halign: 'center',
+                visible: true,//false表示不显示
+                formatter: function (value, row, index) {
+                    return '<div class="btn-group"><a href="{{.web_base_url}}/index/all?client_id=' + row.Id
+                        + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>'
+                        + '<a href="{{.web_base_url}}/index/hostlist?client_id=' + row.Id
+                        + '" class="btn btn-outline btn-success" langtag="word-host"></a></div>'
                 }
             },
             {
@@ -500,19 +516,6 @@
                     btn_group += '<a href="{{.web_base_url}}/client/edit?id=' + row.Id
                     btn_group += '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a></div>'
                     return btn_group
-                }
-            },
-            {
-                field: 'show',//域值
-                title: '<span langtag="word-show">',//内容
-                align: 'center',
-                halign: 'center',
-                visible: true,//false表示不显示
-                formatter: function (value, row, index) {
-                    return '<div class="btn-group"><a href="{{.web_base_url}}/index/all?client_id=' + row.Id
-                        + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>'
-                        + '<a href="{{.web_base_url}}/index/hostlist?client_id=' + row.Id
-                        + '" class="btn btn-outline btn-success" langtag="word-host"></a></div>'
                 }
             }
         ]

@@ -33,7 +33,6 @@ import (
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/web/controllers"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
@@ -947,7 +946,7 @@ func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 	}()
 
 	resetTestDB(t)
-	controllers.RemoveAllLoginBan()
+	webservice.SharedLoginPolicy().RemoveAllBans()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
 		"web_password=secret",

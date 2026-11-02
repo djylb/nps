@@ -48,7 +48,7 @@ func ResetGlobalTraffic() { SetGlobalTraffic(0, 0) }
 func RootGroup() *byterate.Group { return &globalGroup }
 
 func init() {
-	globalGroup.SetReadLimiter(&globalRate)
-	globalGroup.SetWriteLimiter(&globalRate)
+	globalGroup.SetLimiters(&globalRate, &globalRate)
 	globalGroup.SetTraffic(globalTraffic)
+	sample(globalTraffic)
 }

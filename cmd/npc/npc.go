@@ -72,7 +72,6 @@ var (
 )
 
 func main() {
-	install.WaitForRelaunch()
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -104,7 +103,7 @@ func main() {
 		version.PrintVersion(*protoVer)
 		return
 	}
-	install.RemoveStaleExecutables()
+	install.RecoverUpdate()
 	client.Ver = *protoVer
 	client.SkipTLSVerify = *skipVerify
 	client.DisableP2P = *disableP2P
@@ -154,11 +153,15 @@ func main() {
 				logs.Info("Remote update ignored: on Windows only npc installed as a service updates itself")
 				return nil
 			}
-			if err := install.UpdateSelfNpc(svcConfig.Name); err != nil {
+			u, err := install.UpdateSelf("npc", svcConfig.Name)
+			if u == nil {
+				if err == nil {
+					logs.Info("Remote update finished: npc is already the latest version")
+				}
 				return err
 			}
-			logs.Info("Remote update finished: npc is already the latest version or restarts as the new one")
-			return nil
+			logs.Info("Remote update to %s finished, restarting", u.Version)
+			return u.Restart()
 		}
 	}
 
@@ -185,11 +188,7 @@ func main() {
 			logs.Warn("service function disabled %v", err)
 			s = nil
 		}
-		update := install.UpdateNpc
-		if cmd == "update-force" {
-			update = install.ForceUpdateNpc
-		}
-		res, err := update(svcConfig.Name)
+		res, err := install.Update(context.Background(), "npc", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
 		}
@@ -363,6 +362,7 @@ func (p *Npc) run() error {
 
 // 主运行逻辑
 func run(ctx context.Context, cancel context.CancelFunc) {
+	install.StartUpdate()
 	common.InitPProfByAddr(*pprofAddr)
 	if *tlsEnable {
 		*connType = "tls"

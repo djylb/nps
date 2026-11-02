@@ -19,10 +19,10 @@ func NewRateConn(conn io.ReadWriteCloser, r *Rate, entry ...*Directional) io.Rea
 			group = e.connectionGroup(group)
 		}
 	}
-	read, write := group.Reader(), group.Writer()
+	limits := byterate.WithLimiters(group.Reads(), group.Writes())
 
 	if c, ok := conn.(net.Conn); ok {
-		return byterate.NewDuplexConn(c, read, write)
+		return byterate.NewConn(c, limits)
 	}
-	return byterate.NewDuplexReadWriteCloser(conn, read, write)
+	return byterate.NewStream(conn, limits)
 }

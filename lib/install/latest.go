@@ -1,6 +1,7 @@
 package install
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -12,7 +13,7 @@ const (
 	latestRetry = 10 * time.Minute
 )
 
-// latest caches the tag of the latest release, so that pages can tell
+// latest caches the version of the latest release, so that pages can tell
 // whether an update exists without waiting for GitHub.
 var latest struct {
 	sync.Mutex
@@ -21,17 +22,13 @@ var latest struct {
 	fetching bool
 }
 
-// fetchLatest queries the latest release tag; tests replace it.
+// fetchLatest queries the latest release version; tests replace it.
 var fetchLatest = func() (string, error) {
-	rl, _, err := fetchLatestRelease(newHTTPClient(), "djylb/nps")
-	if err != nil {
-		return "", err
-	}
-	return rl.TagName, nil
+	return latestRelease(context.Background(), "nps")
 }
 
-// LatestVersion returns the tag of the latest release as last queried, or ""
-// before a query succeeded. A stale or missing tag is queried again in the
+// LatestVersion returns the version of the latest release as last queried, or ""
+// before a query succeeded. A stale or missing version is queried again in the
 // background, every 6 hours, or 10 minutes after a failure.
 func LatestVersion() string {
 	latest.Lock()

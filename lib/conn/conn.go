@@ -19,7 +19,6 @@ import (
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/pmux"
 	"github.com/xtaci/kcp-go/v5"
 )
 
@@ -170,8 +169,6 @@ func (s *Conn) SetAlive() {
 		_ = s.Conn.(*kcp.UDPSession).SetReadDeadline(time.Time{})
 	case *net.TCPConn:
 		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Time{})
-	case *pmux.PortConn:
-		_ = s.Conn.(*pmux.PortConn).SetReadDeadline(time.Time{})
 	case *tls.Conn:
 		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Time{})
 	case *TlsConn:
@@ -190,8 +187,6 @@ func (s *Conn) SetReadDeadlineBySecond(t time.Duration) {
 		_ = s.Conn.(*kcp.UDPSession).SetReadDeadline(time.Now().Add(t * time.Second))
 	case *net.TCPConn:
 		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Now().Add(t * time.Second))
-	case *pmux.PortConn:
-		_ = s.Conn.(*pmux.PortConn).SetReadDeadline(time.Now().Add(t * time.Second))
 	case *tls.Conn:
 		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Now().Add(t * time.Second))
 	case *TlsConn:

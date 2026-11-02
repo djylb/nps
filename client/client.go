@@ -142,7 +142,6 @@ func (s *TRPClient) Start(ctx context.Context) {
 	//start health check if it's open
 	if s.cnf != nil && len(s.cnf.Healths) > 0 {
 		s.healthChecker = NewHealthChecker(s.ctx, s.cnf.Healths, s.signal)
-		s.healthChecker.Start()
 	}
 	NowStatus = 1
 	s.markConnected()

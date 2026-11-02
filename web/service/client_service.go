@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/subtle"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -379,7 +380,11 @@ func (DefaultClientService) BuildQRCode(input ClientQRCodeInput) ([]byte, error)
 			text = decoded
 		}
 	} else if input.Account != "" && input.Secret != "" {
-		text = crypt.BuildTotpUri(input.AppName, input.Account, input.Secret)
+		uri, err := crypt.BuildTotpUri(input.AppName, input.Account, input.Secret)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrClientQRCodeSecretInvalid, err)
+		}
+		text = uri
 	}
 	if text == "" {
 		return nil, ErrClientQRCodeTextRequired

@@ -233,7 +233,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 			// Header rules cannot change connection-scoped headers; ReverseProxy
 			// has already set them for the outbound hop.
 			hop := snapshotHeaders(req.Header, hopHeaders)
-			s.changeHostAndHeader(req, pr.In.Header, host.HostChange, host.HeaderChange, isHttpOnlyRequest)
+			s.changeHostAndHeader(req, pr.In, host.HostChange, host.HeaderChange, isHttpOnlyRequest)
 			restoreHeaders(req.Header, hopHeaders, hop)
 			req.URL.Host = r.Host
 			if isHttpOnlyRequest {
@@ -291,7 +291,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {
 	// Get target addr
-	targetAddr, err := host.Target.GetRandomTarget()
+	targetAddr, err := host.Target.Pick()
 	if err != nil {
 		logs.Warn("No backend found for host: %s Err: %v", r.Host, err)
 		w.WriteHeader(http.StatusBadGateway)
@@ -549,7 +549,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
 	remote := ctx.Value(ctxRemoteAddr).(string)
 	h := ctx.Value(ctxHost).(*file.Host)
-	targetAddr, err := h.Target.GetRandomTarget()
+	targetAddr, err := h.Target.Pick()
 	if err != nil {
 		logs.Warn("No backend found for h: %d Err: %v", h.Id, err)
 		return nil, err

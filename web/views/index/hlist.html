@@ -4,7 +4,7 @@
         <div class="col-lg-12">
             <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 langtag="page-hostlist"></h5>
+                    <h5><span langtag="page-hostlist"></span><span id="clientScope"></span></h5>
 
                     <div class="ibox-tools">
                         <a class="collapse-link">
@@ -60,6 +60,11 @@
         return '<span role="button" tabindex="0" style="cursor:pointer" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'download_limit\'})" onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }">' + value + '</span>';
     }
 
+    var clientScoped = new URLSearchParams(location.search).has('client_id')
+    if (clientScoped) {
+        $('#clientScope').text(' - ').append($('<span langtag="word-clientid"></span>'), document.createTextNode(': ' + new URLSearchParams(location.search).get('client_id')))
+    }
+
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
         idField: "Id",
@@ -90,6 +95,9 @@
         cookie: true,
         cookieIdTable: 'host',
         cookieStorage: 'localStorage',
+        // Only the layout is kept across visits; a search or page left over
+        // from another list or client would hide rows without notice.
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () { $('body').setLang('.detail-view'); },
@@ -554,7 +562,10 @@
                     return btn_group
                 }
             }
-        ]
+        ].filter(function (c) {
+            // A list opened for one client shows that client in its title.
+            return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
+        })
     });
     initListLive('host', '{{.web_base_url}}');
     initListBatch('host', '{{.web_base_url}}');

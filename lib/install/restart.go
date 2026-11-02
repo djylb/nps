@@ -1,27 +1,27 @@
 package install
 
 import (
+	"context"
 	"errors"
-	"os"
 	"runtime"
-	"strconv"
 	"time"
 
+	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/selfupdate"
 	"github.com/kardianos/service"
-	"github.com/shirou/gopsutil/v4/process"
 )
-
-// relaunchWaitEnv names the variable through which Relaunch passes its
-// process ID to the process that replaces it on Windows.
-const relaunchWaitEnv = "NPS_RELAUNCH_WAIT"
-
-// relaunchWait bounds how long a relaunched process waits for its
-// predecessor to exit.
-const relaunchWait = 30 * time.Second
 
 // ErrRestartUnsupported is returned by UpdateSelf where the calling process
 // cannot restart itself reliably.
 var ErrRestartUnsupported = errors.New("a process not run as a Windows service cannot restart itself reliably")
+
+// updateBoots is how many starts of a pending update may end before it
+// confirms itself; the next start rolls it back.
+const updateBoots = 3
+
+// updateHealthy is how long a pending update has to run before it confirms
+// itself.
+const updateHealthy = 30 * time.Second
 
 // CanRestartSelf reports whether the calling process can restart itself as a
 // new version without its parent noticing. On Unix the process image is
@@ -46,29 +46,12 @@ func (u *SelfUpdate) Restart() error {
 	return RestartSelf(u.exe)
 }
 
-// UpdateSelfNpc updates the running npc, installed as the system service
-// name or not, to the latest release and restarts it as the new version. It
-// returns nil without restarting when the running version is the latest;
-// otherwise it returns only on failure, or at once for a Windows service,
-// which the service manager then restarts.
-func UpdateSelfNpc(name string) error {
-	u, err := updateSelf("client", "npc", name)
-	if u == nil {
-		return err
-	}
-	return u.Restart()
-}
-
-// UpdateSelfNps updates the running nps, installed as the system service
-// name or not, to the latest release, leaving the restart to the caller. A
-// nil update with a nil error means the running version is the latest; an
-// update with an error means the executables were replaced but the web
-// assets were not, and the restart is still due.
-func UpdateSelfNps(name string) (*SelfUpdate, error) {
-	return updateSelf("server", "nps", name)
-}
-
-func updateSelf(kind, bin, name string) (*SelfUpdate, error) {
+// UpdateSelf updates the running bin ("nps" or "npc"), installed as the
+// system service name or not, to the latest release as a pending update,
+// leaving the restart to the caller; the new version confirms itself in
+// StartUpdate. A nil update with a nil error means the running version is
+// the latest.
+func UpdateSelf(bin, name string) (*SelfUpdate, error) {
 	if !CanRestartSelf() {
 		return nil, ErrRestartUnsupported
 	}
@@ -78,13 +61,11 @@ func updateSelf(kind, bin, name string) (*SelfUpdate, error) {
 	if err != nil {
 		return nil, err
 	}
-	// An error with a result means the executables were replaced, so the
-	// restart is still due.
-	res, err := update(kind, bin, name, false)
+	res, err := Update(context.Background(), bin, name, UpdateOptions{Pending: true})
 	if res == nil {
 		return nil, err
 	}
-	return &SelfUpdate{Version: res.Version, exe: exe}, err
+	return &SelfUpdate{Version: res.Version, exe: exe}, nil
 }
 
 // RestartSelf makes the calling process continue as exe, the executable an
@@ -94,40 +75,61 @@ func updateSelf(kind, bin, name string) (*SelfUpdate, error) {
 // which keeps its process ID, so a service manager supervising it does not
 // see the restart; this holds in containers as well.
 func RestartSelf(exe string) error {
-	if runtime.GOOS == "windows" && !service.Interactive() {
+	if runtime.GOOS == "windows" {
+		if service.Interactive() {
+			return ErrRestartUnsupported
+		}
 		return restartDetached(exe)
 	}
-	return Relaunch(exe)
+	return selfupdate.Relaunch(exe, nil)
 }
 
-// Relaunch replaces the calling process, which does not run as a service,
-// with exe run with the same arguments and environment. On Unix the process
-// image is replaced in place. Windows has no such call: exe is started to
-// wait for the caller to exit, and the caller exits.
-func Relaunch(exe string) error {
-	return relaunch(exe)
-}
-
-// WaitForRelaunch waits, in a process started by Relaunch, until the process
-// it replaces has exited and released what it held, such as its ports.
-func WaitForRelaunch() {
-	v := os.Getenv(relaunchWaitEnv)
-	if v == "" {
-		return
+// RecoverUpdate finishes or undoes an update of the running executable that
+// a crash interrupted, and deletes what a finished one left behind. Call it
+// on every start; StartUpdate does it as well.
+func RecoverUpdate() {
+	j, err := selfupdate.ExecutableJournal()
+	if err == nil {
+		_, err = j.Recover(context.Background())
 	}
-	_ = os.Unsetenv(relaunchWaitEnv)
-	pid, err := strconv.ParseInt(v, 10, 32)
 	if err != nil {
-		return
+		logs.Warn("Recover the last update: %v", err)
 	}
-	waitForExit(int32(pid), relaunchWait)
 }
 
-func waitForExit(pid int32, timeout time.Duration) {
-	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		if ok, err := process.PidExists(pid); err != nil || !ok {
-			return
+// StartUpdate is called when the program starts its real work. The first
+// starts of a pending update confirm it once they have run for a while; a
+// pending update that failed to do so too often is rolled back, and the
+// process restarts as the previous version.
+func StartUpdate() {
+	exe, err := currentExecutable()
+	if err != nil {
+		logs.Warn("Check the last update: %v", err)
+		return
+	}
+	j := selfupdate.JournalFor(exe)
+	out, err := j.Startup(context.Background(), updateBoots)
+	if err != nil {
+		logs.Warn("Check the last update: %v", err)
+		return
+	}
+	switch out.Status {
+	case selfupdate.StatusPending:
+		logs.Info("Running the update to %s; it is kept if this start stays up for %v", out.Version, updateHealthy)
+		go func() {
+			time.Sleep(updateHealthy)
+			if err := j.Commit(context.Background()); err != nil {
+				logs.Warn("Confirm the update to %s: %v", out.Version, err)
+				return
+			}
+			logs.Info("Update to %s confirmed", out.Version)
+		}()
+	case selfupdate.StatusRolledBack:
+		logs.Warn("The update to %s did not start properly and was rolled back to %s; restarting", out.Version, out.Previous)
+		if err := RestartSelf(exe); err != nil {
+			logs.Warn("Restart as %s failed, restart manually: %v", out.Previous, err)
 		}
-		time.Sleep(100 * time.Millisecond)
+	case selfupdate.StatusIdle, selfupdate.StatusInProgress, selfupdate.StatusCleanup:
+		// No update to confirm; Startup reports the last two to Peek only.
 	}
 }

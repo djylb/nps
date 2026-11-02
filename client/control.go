@@ -394,37 +394,25 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
-		urlStr := "ws://" + server + path
-		//logs.Debug("URL: %s", urlStr)
-		wsConn, resp, err := conn.DialWS(rawConn, urlStr, host, timeout)
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
+		connection, err = conn.DialWS(rawConn, "ws://"+server+path, host, timeout)
 		if err != nil {
-			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
-		connection = conn.NewWsConn(wsConn)
 	case "wss":
 		isTls = true
-		urlStr := "wss://" + server + path
-		//logs.Debug("URL: %s Host: %s SNI: %s", urlStr, host, sni)
 		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
-		wsConn, resp, err := conn.DialWSS(rawConn, urlStr, host, sni, timeout)
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
+		// The WebSocket stream returned by DialWS owns tlsConn from here on.
+		//noinspection GoResourceLeak
+		tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: sni})
+		connection, err = conn.DialWS(tlsConn, "wss://"+server+path, host, timeout)
 		if err != nil {
-			_ = rawConn.Close()
+			_ = tlsConn.Close()
 			return nil, "", serverInfo{}, err
 		}
-		if underlying := wsConn.NetConn(); underlying != nil {
-			tlsFp, tlsVerify = VerifyTLS(underlying, sni)
-		}
-		connection = conn.NewWsConn(wsConn)
+		tlsFp, tlsVerify = VerifyTLS(tlsConn, sni)
 	case "quic":
 		isTls = true
 		tlsCfg := &tls.Config{

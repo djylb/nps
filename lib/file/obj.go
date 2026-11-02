@@ -16,6 +16,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/upstream"
 )
 
 // ACLMode: 0=off, 1=whitelist(deny-by-default), 2=blacklist(allow-by-default)
@@ -554,15 +555,7 @@ func (t *Tunnel) Clone() *Tunnel {
 	c.HealthCheckTimeout = t.HealthCheckTimeout
 	c.HealthMaxFail = t.HealthMaxFail
 	c.HealthCheckInterval = t.HealthCheckInterval
-	c.HealthNextTime = t.HealthNextTime
-	if t.HealthMap != nil {
-		c.HealthMap = make(map[string]int, len(t.HealthMap))
-		for k, v := range t.HealthMap {
-			c.HealthMap[k] = v
-		}
-	}
 	c.HttpHealthUrl = t.HttpHealthUrl
-	c.HealthRemoveArr = append([]string(nil), t.HealthRemoveArr...)
 	c.HealthCheckType = t.HealthCheckType
 	c.HealthCheckTarget = t.HealthCheckTarget
 	t.Health.RUnlock()
@@ -618,10 +611,7 @@ type Health struct {
 	HealthCheckTimeout  int
 	HealthMaxFail       int
 	HealthCheckInterval int
-	HealthNextTime      time.Time
-	HealthMap           map[string]int
 	HttpHealthUrl       string
-	HealthRemoveArr     []string
 	HealthCheckType     string
 	HealthCheckTarget   string
 	sync.RWMutex
@@ -700,79 +690,78 @@ type Target struct {
 	LocalProxy    bool
 	ProxyProtocol int // 0=off, 1=v1, 2=v2
 
-	// targets is the runtime list of healthy targets parsed from TargetStr;
-	// source is the TargetStr it was parsed from. Both, and nowIndex, are
-	// guarded by the embedded mutex.
-	targets  []string
-	source   string
-	nowIndex int
-	sync.RWMutex
+	// pool balances the addresses parsed from source, the TargetStr it was
+	// last synchronized with. Both are guarded by mu.
+	mu     sync.Mutex
+	pool   *upstream.Pool[string]
+	source string
 }
+
+// errNoTarget is returned when no target address can take a connection.
+var errNoTarget = errors.New("all inward-bending targets are offline")
+
+// errTargetDown records that the client reported a target unhealthy.
+var errTargetDown = errors.New("target reported unhealthy by the client")
 
 func parseTargets(targetStr string) []string {
 	return common.TrimArr(common.SplitLines(strings.ReplaceAll(targetStr, "：", ":")))
 }
 
-// syncTargetsLocked (re)builds the target list whenever TargetStr changed.
-// The caller must hold the write lock.
-func (s *Target) syncTargetsLocked() {
-	if s.targets == nil || s.source != s.TargetStr {
-		s.source = s.TargetStr
-		s.targets = parseTargets(s.TargetStr)
-		s.nowIndex = 0
+// targetPool returns the pool of the configured addresses, synchronizing
+// it first if TargetStr changed. An address listed several times gets a
+// matching weight. Addresses kept across a change keep their health.
+func (s *Target) targetPool() *upstream.Pool[string] {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pool != nil && s.source == s.TargetStr {
+		return s.pool
 	}
-}
-
-func (s *Target) GetRandomTarget() (string, error) {
-	s.Lock()
-	defer s.Unlock()
-	s.syncTargetsLocked()
-	if len(s.targets) == 0 {
-		return "", errors.New("all inward-bending targets are offline")
+	if s.pool == nil {
+		s.pool = upstream.New[string](upstream.Config{})
 	}
-	if s.nowIndex >= len(s.targets) {
-		s.nowIndex = 0
-	}
-	target := s.targets[s.nowIndex]
-	s.nowIndex++
-	return target, nil
-}
-
-// RemoveTarget takes addr out of the rotation and reports whether it was
-// present.
-func (s *Target) RemoveTarget(addr string) bool {
-	s.Lock()
-	defer s.Unlock()
-	s.syncTargetsLocked()
-	for i, v := range s.targets {
-		if v == addr {
-			targets := make([]string, 0, len(s.targets)-1)
-			targets = append(targets, s.targets[:i]...)
-			s.targets = append(targets, s.targets[i+1:]...)
-			return true
+	s.source = s.TargetStr
+	addrs := parseTargets(s.TargetStr)
+	targets := make([]upstream.Target[string], 0, len(addrs))
+	index := make(map[string]int, len(addrs))
+	for _, addr := range addrs {
+		if i, ok := index[addr]; ok {
+			targets[i].Weight++
+			continue
 		}
+		index[addr] = len(targets)
+		targets = append(targets, upstream.Target[string]{ID: addr, Weight: 1, Value: addr})
 	}
-	return false
+	if err := s.pool.Sync(targets); err != nil {
+		logs.Warn("invalid target list %q: %v", s.TargetStr, err)
+	}
+	return s.pool
 }
 
-// RestoreTarget puts addr back into the rotation if it is a configured target
-// that is currently out of it, and reports whether it was restored.
-func (s *Target) RestoreTarget(addr string) bool {
-	s.Lock()
-	defer s.Unlock()
-	s.syncTargetsLocked()
-	if common.IsArrContains(s.targets, addr) || !common.IsArrContains(parseTargets(s.TargetStr), addr) {
+// Pick returns the next healthy target address, in weighted round-robin
+// order.
+func (s *Target) Pick() (string, error) {
+	lease, err := s.targetPool().Pick()
+	if err != nil {
+		return "", errNoTarget
+	}
+	addr := lease.Value()
+	lease.Release(upstream.Neutral)
+	return addr, nil
+}
+
+// SetHealthy takes addr out of the rotation or puts it back, and reports
+// whether addr is one of the configured targets.
+func (s *Target) SetHealthy(addr string, healthy bool) bool {
+	p := s.targetPool()
+	b, ok := p.Backend(addr)
+	if !ok {
 		return false
 	}
-	s.targets = append(s.targets, addr)
-	return true
-}
-
-// HasTarget reports whether addr is one of the configured targets.
-func (s *Target) HasTarget(addr string) bool {
-	s.RLock()
-	defer s.RUnlock()
-	return common.IsArrContains(parseTargets(s.TargetStr), addr)
+	h, r := upstream.HealthUp, upstream.CheckResult{Time: time.Now()}
+	if !healthy {
+		h, r.Err = upstream.HealthDown, errTargetDown
+	}
+	return p.ReportCheck(b, h, r)
 }
 
 type MultiAccount struct {

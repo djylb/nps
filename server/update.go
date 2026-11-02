@@ -43,13 +43,10 @@ func UpdateSelf() (string, error) {
 	if !updating.CompareAndSwap(false, true) {
 		return "", ErrUpdateRunning
 	}
-	u, err := install.UpdateSelfNps(ServiceName)
+	u, err := install.UpdateSelf("nps", ServiceName)
 	if u == nil {
 		updating.Store(false)
 		return "", err
-	}
-	if err != nil {
-		logs.Warn("Update to %s: %v", u.Version, err)
 	}
 	logs.Info("Updated to %s, restarting", u.Version)
 	go func() {
@@ -59,5 +56,5 @@ func UpdateSelf() (string, error) {
 			updating.Store(false)
 		}
 	}()
-	return u.Version, err
+	return u.Version, nil
 }
