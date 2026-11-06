@@ -1,6 +1,7 @@
 package httpproxy
 
 import (
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -8,9 +9,12 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/server/connection"
+	"github.com/djylb/nps/server/proxy"
 )
 
 func TestServeReturnsListenerError(t *testing.T) {
@@ -24,7 +28,7 @@ func TestServeReturnsListenerError(t *testing.T) {
 	connection.HttpIp = "127.0.0.1"
 	connection.HttpPort = taken.Addr().(*net.TCPAddr).Port
 
-	s := &HttpProxy{HttpPort: connection.HttpPort}
+	s := &HttpProxy{BaseServer: proxy.NewBaseServer(nil, nil, false), HttpPort: connection.HttpPort}
 	err = s.serve()
 	if err == nil || !strings.Contains(err.Error(), "HTTP listener") {
 		t.Fatalf("serve() = %v, want an HTTP listener error", err)
@@ -43,6 +47,39 @@ func TestStopErrorHidesClosing(t *testing.T) {
 }
 
 // A connection of a host with a PROXY header must not serve a second visitor.
+// Close may run at any point of serve: serve must end either way, and a
+// server it bound must not outlive Close.
+func TestServeAndCloseConcurrently(t *testing.T) {
+	ip, port := connection.HttpIp, connection.HttpPort
+	defer func() { connection.HttpIp, connection.HttpPort = ip, port }()
+	connection.HttpIp = "127.0.0.1"
+	for range 20 {
+		probe, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		connection.HttpPort = probe.Addr().(*net.TCPAddr).Port
+		_ = probe.Close()
+
+		s := &HttpProxy{
+			BaseServer:     proxy.NewBaseServer(nil, nil, false),
+			HttpPort:       connection.HttpPort,
+			HttpProxyCache: index.NewAnyIntIndex(),
+		}
+		done := make(chan error, 1)
+		go func() { done <- s.serve() }()
+		_ = s.Close()
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, proxy.ErrServerClosed) {
+				t.Fatalf("serve() = %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("serve() did not end after Close()")
+		}
+	}
+}
+
 func TestProxyProtocolConnectionsAreNotReused(t *testing.T) {
 	var accepted atomic.Int32
 	backend := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))

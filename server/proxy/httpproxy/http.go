@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/netx"
@@ -34,14 +35,13 @@ const (
 
 type HttpServer struct {
 	*HttpProxy
-	httpStatus   bool
+	httpStatus   atomic.Bool
 	httpListener net.Listener
 	httpServer   *http.Server
 }
 
 func NewHttpServer(httpProxy *HttpProxy, l net.Listener) *HttpServer {
 	hs := &HttpServer{
-		httpStatus:   false,
 		HttpProxy:    httpProxy,
 		httpListener: l,
 	}
@@ -50,15 +50,14 @@ func NewHttpServer(httpProxy *HttpProxy, l net.Listener) *HttpServer {
 }
 
 func (s *HttpServer) Start() error {
-	if s.httpStatus {
+	if !s.httpStatus.CompareAndSwap(false, true) {
 		return errors.New("http server already started")
 	}
-	s.httpStatus = true
 	if err := s.httpServer.Serve(s.httpListener); err != nil {
-		s.httpStatus = false
+		s.httpStatus.Store(false)
 		return err
 	}
-	s.httpStatus = false
+	s.httpStatus.Store(false)
 	return nil
 }
 
@@ -69,7 +68,7 @@ func (s *HttpServer) Close() error {
 	if s.httpListener != nil {
 		_ = s.httpListener.Close()
 	}
-	s.httpStatus = false
+	s.httpStatus.Store(false)
 	return nil
 }
 

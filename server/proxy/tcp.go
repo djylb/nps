@@ -40,7 +40,7 @@ func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel, a
 
 // Bind opens the TCP listener and, for SOCKS5, the UDP associate socket.
 func (s *TunnelModeServer) Bind() error {
-	return s.bindLocked(func() error {
+	return s.BindLocked(func() error {
 		if s.listener != nil {
 			return nil
 		}
@@ -90,7 +90,7 @@ func (s *TunnelModeServer) Start() error {
 func (s *TunnelModeServer) Close() error {
 	var listener net.Listener
 	var registry *socks5UDPRegistry
-	s.markClosed(func() {
+	s.MarkClosed(func() {
 		listener = s.listener
 		registry = s.socks5UDP
 	})

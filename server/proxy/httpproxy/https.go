@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/netx"
@@ -45,7 +46,7 @@ type HttpsServer struct {
 	defaultKeyFile     string
 	ticketKeys         [][32]byte
 	tlsNextProtos      []string
-	httpsStatus        bool
+	httpsStatus        atomic.Bool
 	hasDefaultCert     bool
 }
 
@@ -53,7 +54,6 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 	cfg := servercfg.Current()
 	https := &HttpsServer{
 		HttpServer:      httpServer,
-		httpsStatus:     false,
 		httpsListener:   l,
 		defaultCertFile: cfg.Proxy.SSL.DefaultCertFile,
 		defaultKeyFile:  cfg.Proxy.SSL.DefaultKeyFile,
@@ -124,10 +124,9 @@ func (s *HttpsServer) loadCert(certFile, keyFile, certType string) (*tls.Certifi
 }
 
 func (s *HttpsServer) Start() error {
-	if s.httpsStatus {
+	if !s.httpsStatus.CompareAndSwap(false, true) {
 		return errors.New("https server already started")
 	}
-	s.httpsStatus = true
 	conn.Accept(s.httpsListener, func(c net.Conn) {
 		// Only the global list: the entry lists depend on the request's host,
 		// which may differ from the SNI.
@@ -196,7 +195,7 @@ func (s *HttpsServer) Start() error {
 		}
 		s.httpsServeListener.push(tlsConn)
 	})
-	s.httpsStatus = false
+	s.httpsStatus.Store(false)
 	return nil
 }
 
@@ -312,7 +311,7 @@ func (s *HttpsServer) Close() error {
 	_ = s.httpsServer.Close()
 	_ = s.httpsServeListener.Close()
 	s.cert.Clear()
-	s.httpsStatus = false
+	s.httpsStatus.Store(false)
 	return s.httpsListener.Close()
 }
 

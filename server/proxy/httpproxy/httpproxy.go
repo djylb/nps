@@ -139,37 +139,43 @@ func (s *HttpProxy) serve() error {
 		})
 	}
 
-	if s.HttpPort > 0 {
-		httpListener, err := connection.GetHttpListener()
-		if err != nil {
-			return fmt.Errorf("start HTTP listener: %w", err)
-		}
-		s.HttpServer = NewHttpServer(s, httpListener)
-		logs.Info("HTTP server listening on port %d", s.HttpPort)
-		run("HTTP", s.HttpServer.Start)
-	}
-
-	if s.HttpsPort > 0 {
-		httpsListener, err := connection.GetHttpsListener()
-		if err != nil {
-			return fmt.Errorf("start HTTPS listener: %w", err)
-		}
-		if s.HttpServer == nil {
-			s.HttpServer = NewHttpServer(s, nil)
-		}
-		s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
-		logs.Info("HTTPS server listening on port %d", s.HttpsPort)
-		run("HTTPS", s.HttpsServer.Start)
-
-		if s.Http3Port > 0 {
-			http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.HttpIp), Port: s.Http3Port})
+	err := s.BindLocked(func() error {
+		if s.HttpPort > 0 {
+			httpListener, err := connection.GetHttpListener()
 			if err != nil {
-				return fmt.Errorf("start HTTP/3 listener: %w", err)
+				return fmt.Errorf("start HTTP listener: %w", err)
 			}
-			logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
-			s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
-			run("HTTP/3", s.Http3Server.Start)
+			s.HttpServer = NewHttpServer(s, httpListener)
+			logs.Info("HTTP server listening on port %d", s.HttpPort)
+			run("HTTP", s.HttpServer.Start)
 		}
+
+		if s.HttpsPort > 0 {
+			httpsListener, err := connection.GetHttpsListener()
+			if err != nil {
+				return fmt.Errorf("start HTTPS listener: %w", err)
+			}
+			if s.HttpServer == nil {
+				s.HttpServer = NewHttpServer(s, nil)
+			}
+			s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
+			logs.Info("HTTPS server listening on port %d", s.HttpsPort)
+			run("HTTPS", s.HttpsServer.Start)
+
+			if s.Http3Port > 0 {
+				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.HttpIp), Port: s.Http3Port})
+				if err != nil {
+					return fmt.Errorf("start HTTP/3 listener: %w", err)
+				}
+				logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
+				s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
+				run("HTTP/3", s.Http3Server.Start)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	go func() {
 		running.Wait()
@@ -202,14 +208,20 @@ func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
 }
 
 func (s *HttpProxy) Close() error {
-	if s.HttpServer != nil {
-		_ = s.HttpServer.Close()
+	var httpServer *HttpServer
+	var httpsServer *HttpsServer
+	var http3Server *Http3Server
+	s.MarkClosed(func() {
+		httpServer, httpsServer, http3Server = s.HttpServer, s.HttpsServer, s.Http3Server
+	})
+	if httpServer != nil {
+		_ = httpServer.Close()
 	}
-	if s.HttpsServer != nil {
-		_ = s.HttpsServer.Close()
+	if httpsServer != nil {
+		_ = httpsServer.Close()
 	}
-	if s.Http3Server != nil {
-		_ = s.Http3Server.Close()
+	if http3Server != nil {
+		_ = http3Server.Close()
 	}
 	s.HttpProxyCache.Clear()
 	return nil

@@ -33,7 +33,7 @@ func NewUdpModeServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool)
 // datagrams of all of them are limited by the task's rates, dropping those
 // over the limits.
 func (s *UdpModeServer) Bind() error {
-	return s.bindLocked(func() error {
+	return s.BindLocked(func() error {
 		if s.listener != nil {
 			return nil
 		}
@@ -157,7 +157,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 
 func (s *UdpModeServer) Close() error {
 	var listener *netx.PacketListener
-	s.markClosed(func() { listener = s.listener })
+	s.MarkClosed(func() { listener = s.listener })
 	if listener != nil {
 		_ = listener.Close()
 	}

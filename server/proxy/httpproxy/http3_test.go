@@ -48,11 +48,11 @@ func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
 
 func TestHttp3CloseBeforeStart(t *testing.T) {
 	s := newTestHttp3Server(t)
-	s.httpsStatus = true
+	s.httpsStatus.Store(true)
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if !s.httpsStatus {
+	if !s.httpsStatus.Load() {
 		t.Fatalf("closing HTTP/3 must not change the HTTPS server status")
 	}
 }

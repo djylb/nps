@@ -51,8 +51,8 @@ type BaseServer struct {
 	closed      bool
 }
 
-// bindLocked runs bind under the lifecycle lock unless the server is closed.
-func (s *BaseServer) bindLocked(bind func() error) error {
+// BindLocked runs bind under the lifecycle lock unless the server is closed.
+func (s *BaseServer) BindLocked(bind func() error) error {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 	if s.closed {
@@ -61,10 +61,10 @@ func (s *BaseServer) bindLocked(bind func() error) error {
 	return bind()
 }
 
-// markClosed marks the server closed and runs snapshot under the lifecycle
+// MarkClosed marks the server closed and runs snapshot under the lifecycle
 // lock, so snapshot observes every resource a concurrent Bind opened. The
-// resources should be released after markClosed returns.
-func (s *BaseServer) markClosed(snapshot func()) {
+// resources should be released after MarkClosed returns.
+func (s *BaseServer) MarkClosed(snapshot func()) {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 	s.closed = true
