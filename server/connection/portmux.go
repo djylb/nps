@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/portmux"
 	"github.com/djylb/portmux/hostmatch"
@@ -159,9 +160,9 @@ func (p *portMux) rules(has func(muxKind) bool) [kindCount]routeRule {
 	// was closed and those other matchers ruled out (e.g. an HTTP request
 	// for an unknown host when the HTTP proxy slot is closed), which would
 	// send them to the HTTPS proxy instead of dropping them.
-	other := portmux.Not(portmux.Prefix(append([]string{common.ConnTest}, httpMethodPrefixes...)...))
+	other := portmux.Not(portmux.Prefix(append([]string{legacy.Magic}, httpMethodPrefixes...)...))
 
-	out[kindClient] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(common.ConnTest)}}
+	out[kindClient] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(legacy.Magic)}}
 
 	n := 0
 	for _, k := range []muxKind{kindHttp, kindManager, kindClientWs} {

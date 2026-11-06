@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/version"
 )
 
 // updateRequestTimeout bounds writing an update request to a client.
@@ -19,7 +19,7 @@ var (
 	ErrClientOffline = errors.New("client is offline")
 	// ErrUpdateUnsupported is returned by RequestClientUpdate when no
 	// connected npc of the client acts on update requests.
-	ErrUpdateUnsupported = fmt.Errorf("client version does not support remote update, npc %s or newer is required", version.RemoteUpdateMinVersion)
+	ErrUpdateUnsupported = fmt.Errorf("client version does not support remote update, npc %s or newer is required", legacy.RemoteUpdateMinVersion)
 )
 
 // updateRequest is the body of an update request; it carries no fields yet.
@@ -40,7 +40,7 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 		if !ok || node.GetSignal() == nil {
 			return true
 		}
-		if _, vs := node.versions(); !version.SupportsRemoteUpdate(vs) {
+		if !node.Caps().RemoteUpdate {
 			unsupported++
 			return true
 		}

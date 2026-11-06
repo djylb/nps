@@ -11,15 +11,15 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/proxy"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
 
@@ -57,8 +57,8 @@ type P2pBridge struct {
 
 func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
 	useP2P := l.Type != "secret" && !DisableP2P
-	if useP2P && Ver < version.P2PMinIndex {
-		logs.Warn("P2P needs protocol version %d or newer (running %d); local port %d relays only", version.P2PMinIndex, Ver, l.Port)
+	if useP2P && !clientCaps().P2P {
+		logs.Warn("P2P needs protocol version %d or newer (running %d); local port %d relays only", legacy.P2PMinIndex, Ver, l.Port)
 		useP2P = false
 	}
 	b := &P2pBridge{
@@ -367,10 +367,10 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 		uuid = mgr.uuid
 	}
 	mgr.mu.Unlock()
-	if Ver <= 5 {
+	if !clientCaps().VisitorTunnel {
 		return pc, server, nil
 	}
-	if err = SendType(pc, common.WorkVisitor, uuid); err != nil {
+	if err = SendType(pc, legacy.WorkVisitor, uuid); err != nil {
 		logs.Error("secret SendType failed: %v", err)
 		_ = pc.Close()
 		return nil, serverInfo{}, err
@@ -422,7 +422,7 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 	}
 	// The wrapper only writes to c, which is closed on failure and returned otherwise.
 	//noinspection GoResourceLeak
-	if err := SendType(conn.NewConn(c), common.WorkSecret, mgr.getUUID()); err != nil {
+	if err := SendType(conn.NewConn(c), legacy.WorkSecret, mgr.getUUID()); err != nil {
 		logs.Error("secret SendType failed: %v", err)
 		_ = c.Close()
 		return nil, err

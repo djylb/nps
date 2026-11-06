@@ -12,10 +12,10 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/p2pproto"
-	"github.com/djylb/nps/lib/version"
 )
 
 // p2pControlTimeout bounds sending the request and the TLS handshake of a
@@ -29,8 +29,8 @@ const (
 
 // errP2PServerIncompatible is a P2P request the server closed or answered
 // without a reply of this protocol: an nps server older than
-// version.P2PMinVersion.
-var errP2PServerIncompatible = errors.New("the nps server does not speak this P2P protocol (it needs nps " + version.P2PMinVersion + " or newer)")
+// legacy.P2PMinVersion.
+var errP2PServerIncompatible = errors.New("the nps server does not speak this P2P protocol (it needs nps " + legacy.P2PMinVersion + " or newer)")
 
 // openP2PControl turns a fresh bridge stream into a P2P control stream: it
 // sends the work type and msg, reads the bridge's reply and runs a TLS

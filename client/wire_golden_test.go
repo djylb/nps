@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -30,6 +31,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/tunnelwire"
 )
 
 const (
@@ -189,7 +191,7 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 
 	in, out := rec.snapshot()
 	v := handshakeVector{
-		Index: index, CoreVer: version.GetVersion(index), ClientVer: goldenClientVer, Key: goldenKey,
+		Index: index, CoreVer: legacy.CoreVersion(index), ClientVer: goldenClientVer, Key: goldenKey,
 		Timestamp: goldenTimestamp, Seed: seed, ClientHex: in, ServerHex: out, UUID: uuid,
 		Work: map[string]string{},
 	}
@@ -225,7 +227,7 @@ func TestWireGoldenHandshake(t *testing.T) {
 	if version.VERSION != goldenClientVer {
 		t.Skip("the vectors announce client " + goldenClientVer)
 	}
-	for index := range version.GetCount() {
+	for index := range tunnelwire.IndexCount() {
 		v := recordHandshake(t, index, uint64(1000+index))
 		checkGolden(t, fmt.Sprintf("handshake_%d.json", index), v)
 	}

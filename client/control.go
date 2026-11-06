@@ -21,6 +21,7 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxydial"
 	"github.com/djylb/netx/tlsconn"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -36,7 +37,7 @@ const MaxPad = 64
 
 const dialTimeout = 10 * time.Second
 
-var Ver = version.GetLatestIndex()
+var Ver = legacy.LatestIndex
 var SkipTLSVerify = false
 var DisableP2P = false
 var AutoReconnect = true
@@ -59,11 +60,11 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	//defer c.Close()
-	err = SendType(c, common.WorkConfig, uuid)
+	err = SendType(c, legacy.WorkConfig, uuid)
 	if err != nil {
 		log.Fatalf("Failed to send type: %v", err)
 	}
-	if _, err := c.BufferWrite([]byte(common.WorkStatus)); err != nil {
+	if _, err := c.BufferWrite([]byte(legacy.WorkStatus)); err != nil {
 		log.Fatalf("Failed to write WorkStatus: %v", err)
 	}
 	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
@@ -106,7 +107,7 @@ func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, loc
 		log.Fatalln(err)
 	}
 	//defer c.Close()
-	err = SendType(c, common.WorkRegister, uuid)
+	err = SendType(c, legacy.WorkRegister, uuid)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -142,7 +143,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 
 	common.SetCustomDNS(cnf.CommonConfig.DnsServer)
 
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetLatest())
+	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 
 	common.SetNtpServer(cnf.CommonConfig.NtpServer)
 	if cnf.CommonConfig.NtpInterval > 0 {
@@ -210,7 +211,7 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	if uuid == "" {
 		uuid = cid
 	}
-	if err = SendType(c, common.WorkConfig, uuid); err != nil {
+	if err = SendType(c, legacy.WorkConfig, uuid); err != nil {
 		_ = c.Close()
 		return uuid, fmt.Errorf("failed to send type: %w", err)
 	}
@@ -572,169 +573,49 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 	defer func() { _ = connection.SetDeadline(time.Time{}) }()
 
 	c := conn.NewConn(connection)
-	if c == nil {
-		_ = connection.Close()
-		return nil, "", serverInfo{}, fmt.Errorf("conn.NewConn returned nil (tp=%q)", tp)
-	}
-	if _, err := c.BufferWrite([]byte(common.ConnTest)); err != nil {
-		_ = c.Close()
-		return nil, "", serverInfo{}, err
-	}
-	minVerBytes := []byte(version.GetVersion(Ver))
-	if err := c.WriteLenContent(minVerBytes); err != nil {
-		_ = c.Close()
-		return nil, "", serverInfo{}, err
-	}
-	vs := []byte(version.VERSION)
-	padLen := HandshakeHooks.PadLen()
-	if padLen > 0 {
-		vs = append(vs, make([]byte, padLen)...)
-	}
-	if err := c.WriteLenContent(vs); err != nil {
-		_ = c.Close()
-		return nil, "", serverInfo{}, err
-	}
-	var uuid string
-	if Ver == 0 {
-		// 0.26.0
-		b, err := c.GetShortContent(32)
-		if err != nil {
-			logs.Error("%v", err)
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		if crypt.Md5(version.GetVersion(Ver)) != string(b) {
-			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
-			//_ = c.Close()
-			//return nil, err
-		}
-		if _, err := c.BufferWrite([]byte(crypt.Md5(vkey))); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		if s, err := c.ReadFlag(); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		} else if s == common.VerifyErr {
-			_ = c.Close()
-			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
-		}
-	} else {
-		// 0.27.0
-		ts := HandshakeHooks.Timestamp()
-		if _, err := c.BufferWrite(common.TimestampToBytes(ts)); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		if _, err := c.BufferWrite([]byte(crypt.Blake2b(vkey))); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		var infoBuf []byte
-		if Ver < 3 {
-			// 0.27.0 0.28.0
-			var err error
-			infoBuf, err = crypt.EncryptBytes(common.EncodeIP(HandshakeHooks.OutboundIP()), vkey)
-			if err != nil {
-				_ = c.Close()
-				return nil, "", serverInfo{}, err
-			}
-		} else {
-			// 0.29.0
-			ipPart := common.EncodeIP(HandshakeHooks.OutboundIP()) // 17bit
-			tpBytes := []byte(tp)
-			tpLen := len(tpBytes)
-			if tpLen > 32 {
-				_ = c.Close()
-				return nil, "", serverInfo{}, fmt.Errorf("tp too long: %d bytes (max %d)", tpLen, 32)
-			}
-			length := byte(tpLen)
-			// IP(17 bit) + len(1 bit) + tpBytes
-			buf := make([]byte, 0, len(ipPart)+1+len(tpBytes))
-			buf = append(buf, ipPart...)
-			buf = append(buf, length)
-			buf = append(buf, tpBytes...)
-			var err error
-			infoBuf, err = crypt.EncryptBytes(buf, vkey)
-			if err != nil {
-				_ = c.Close()
-				return nil, "", serverInfo{}, err
-			}
-		}
-		if err := c.WriteLenContent(infoBuf); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		randBuf, err := common.RandomBytes(1000)
-		if err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		if err := c.WriteLenContent(randBuf); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		hmacBuf := crypt.ComputeHMAC(vkey, ts, minVerBytes, vs, infoBuf, randBuf)
-		if _, err := c.BufferWrite(hmacBuf); err != nil {
-			_ = c.Close()
-			return nil, "", serverInfo{}, err
-		}
-		b, err := c.GetShortContent(32)
-		if err != nil {
-			logs.Error("error reading server response: %v", err)
-			_ = c.Close()
-			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
-		}
-		if !bytes.Equal(b, crypt.ComputeHMAC(vkey, ts, hmacBuf, []byte(version.GetVersion(Ver)))) {
-			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
-			_ = c.Close()
-			return nil, "", serverInfo{}, fmt.Errorf("the client does not match the server version %s", version.GetVersion(Ver))
-		}
-		if Ver > 1 {
-			fpBuf, err := c.GetShortLenContent()
-			if err != nil {
-				_ = c.Close()
-				return nil, "", serverInfo{}, err
-			}
-			fpDec, err := crypt.DecryptBytes(fpBuf, vkey)
-			if err != nil {
-				_ = c.Close()
-				return nil, "", serverInfo{}, err
-			}
-			if !SkipTLSVerify && isTls && !tlsVerify && !bytes.Equal(fpDec, tlsFp) {
+	res, err := legacy.ClientHandshake(c, legacy.ClientConfig{
+		Index:         Ver,
+		ClientVersion: version.VERSION,
+		Key:           vkey,
+		Transport:     tp,
+		LocalIP:       HandshakeHooks.OutboundIP(),
+		Timestamp:     HandshakeHooks.Timestamp,
+		PadLen:        HandshakeHooks.PadLen,
+		VerifyFingerprint: func(fp []byte) error {
+			if !SkipTLSVerify && isTls && !tlsVerify && !bytes.Equal(fp, tlsFp) {
 				logs.Warn("Certificate verification failed. To skip verification, please set -skip_verify=true")
-				_ = c.Close()
-				return nil, "", serverInfo{}, errors.New("validation cert incorrect")
+				return errors.New("validation cert incorrect")
 			}
-			crypt.AddTrustedCert(vkey, fpDec)
-			info.fingerprint = fpDec
-			if Ver > 3 {
-				// v0.30.0
-				if Ver > 5 {
-					// v0.32.0
-					uuidBuf, err := c.GetShortLenContent()
-					if err != nil {
-						_ = c.Close()
-						return nil, "", serverInfo{}, err
-					}
-					uuid = string(uuidBuf)
-				}
-				_, err := c.GetShortLenContent()
-				if err != nil {
-					_ = c.Close()
-					return nil, "", serverInfo{}, err
-				}
-			}
+			crypt.AddTrustedCert(vkey, fp)
+			return nil
+		},
+	})
+	if err != nil {
+		_ = c.Close()
+		switch {
+		case errors.Is(err, legacy.ErrUnauthorized):
+			logs.Error("error reading server response: %v", err)
+			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
+		case errors.Is(err, legacy.ErrVersionMismatch):
+			logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(Ver))
 		}
+		return nil, "", serverInfo{}, err
 	}
+	if res.VersionWarning {
+		logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(Ver))
+	}
+	uuid := res.ServerUUID
+	info.fingerprint = res.Fingerprint
 	if proxyUrl == "" && tp != common.ConnWS && tp != common.ConnWSS {
 		if ap, perr := netip.ParseAddrPort(connection.RemoteAddr().String()); perr == nil {
 			info.ip = ap.Addr().Unmap().String()
 		}
 	}
-	//_, err = SendType(c, connType, uuid)
 	return c, uuid, info, err
 }
+
+// clientCaps returns what this client speaks.
+func clientCaps() legacy.Caps { return legacy.CapsOf(Ver, version.VERSION) }
 
 func SendType(c *conn.Conn, connType, uuid string) error {
 	if c == nil {
@@ -742,30 +623,7 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 	}
 	_ = c.SetWriteDeadline(time.Now().Add(dialTimeout))
 	defer func() { _ = c.SetWriteDeadline(time.Time{}) }()
-	if _, err := c.BufferWrite([]byte(connType)); err != nil {
-		_ = c.Close()
-		return err
-	}
-	if Ver > 3 {
-		// v0.30.0
-		if Ver > 5 {
-			// v0.32.0
-			if err := c.WriteLenContent([]byte(uuid)); err != nil {
-				_ = c.Close()
-				return err
-			}
-		}
-		randByte, err := common.RandomBytes(1000)
-		if err != nil {
-			_ = c.Close()
-			return err
-		}
-		if err := c.WriteLenContent(randByte); err != nil {
-			_ = c.Close()
-			return err
-		}
-	}
-	if err := c.FlushBuf(); err != nil {
+	if err := legacy.WriteWork(c, clientCaps(), connType, uuid); err != nil {
 		_ = c.Close()
 		return err
 	}

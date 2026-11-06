@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
@@ -20,8 +21,8 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
 )
@@ -56,7 +57,7 @@ var (
 	logColor       = flag.Bool("log_color", true, "Enable ANSI color codes in console output (true or false)")
 	debug          = flag.Bool("debug", true, "Enable debug mode")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
-	protoVer       = flag.Int("proto_version", version.GetLatestIndex(), fmt.Sprintf("Protocol version (0-%d)", version.GetLatestIndex()))
+	protoVer       = flag.Int("proto_version", legacy.LatestIndex, fmt.Sprintf("Protocol version (0-%d)", legacy.LatestIndex))
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
 	disconnectTime = flag.Int("disconnect_timeout", 30, "Disconnect timeout in seconds")
 	keepAlive      = flag.Int("keepalive", 0, "KeepAlive Period in seconds")
@@ -101,7 +102,7 @@ func main() {
 	}
 	// Version
 	if *ver {
-		version.PrintVersion(*protoVer)
+		version.PrintVersion(legacy.CoreVersion(*protoVer))
 		return
 	}
 	install.RecoverUpdate()
@@ -374,7 +375,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	//p2p or secret command
 	if *password != "" {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion(*protoVer))
+		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
 		common.SyncTime()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
@@ -411,7 +412,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	hasCommand := *verifyKey != "" && *serverAddr != ""
 	if hasCommand {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion(*protoVer))
+		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
 		common.SyncTime()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")

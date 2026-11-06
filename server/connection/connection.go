@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/tunnelwire/mux"
 )
 
 var pMux *portMux

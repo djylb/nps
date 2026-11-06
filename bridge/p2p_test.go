@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -55,7 +56,7 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req p2pproto.Request) (p
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.handleP2PVisitor(conn.NewConn(server), 1, version.GetLatestIndex(), vs, "node-1", "tcp")
+		b.handleP2PVisitor(conn.NewConn(server), 1, legacy.LatestIndex, vs, "node-1", "tcp")
 	}()
 	c := conn.NewConn(client)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))

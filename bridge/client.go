@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/tunnelwire/mux"
@@ -105,6 +105,7 @@ type Node struct {
 	UUID      string
 	Version   string
 	BaseVer   int
+	caps      legacy.Caps
 	signal    *conn.Conn
 	tunnel    any //*mux.Mux or *quic.Conn
 	retryTime int
@@ -116,6 +117,7 @@ func NewNode(uuid, vs string, bv int) *Node {
 		UUID:     uuid,
 		Version:  vs,
 		BaseVer:  bv,
+		caps:     legacy.CapsOf(bv, vs),
 		joinNano: time.Now().UnixNano(),
 	}
 }
@@ -140,6 +142,13 @@ func (n *Node) sendSignal(flag string, v any, timeout time.Duration) error {
 	return err
 }
 
+// Caps returns what the node's npc speaks.
+func (n *Node) Caps() legacy.Caps {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.caps
+}
+
 // versions returns the node's protocol index and npc version.
 func (n *Node) versions() (int, string) {
 	n.mu.RLock()
@@ -160,6 +169,7 @@ func (n *Node) AddNode(node *Node) {
 	if node.BaseVer != 0 {
 		n.BaseVer = node.BaseVer
 	}
+	n.caps = legacy.CapsOf(n.BaseVer, n.Version)
 	n.touchJoinTime()
 	if node.signal != nil {
 		n.addSignal(node.signal)
@@ -257,7 +267,7 @@ func (n *Node) isTunnelClosed() bool {
 func (n *Node) IsOffline() bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	if n.BaseVer < 5 {
+	if !n.caps.TunnelStreams {
 		return n.isTunnelClosed() && (n.signal == nil || n.signal.IsClosed()) && n.Client.Id > 0
 	}
 	return !n.isOnline()
@@ -390,7 +400,7 @@ func (c *Client) AddNode(n *Node) {
 	defer c.mu.Unlock()
 	if v, ok := c.nodes.Load(n.UUID); ok {
 		existing := v.(*Node)
-		if existing.IsOnline() && n.BaseVer < 6 {
+		if existing.IsOnline() && !n.caps.NodeID {
 			_ = n.Close()
 			return
 		}

@@ -19,13 +19,13 @@ import (
 	"github.com/djylb/holepunch/coord"
 	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/p2pproto"
-	"github.com/djylb/nps/lib/version"
 )
 
 const (
@@ -382,9 +382,9 @@ func (p *p2pService) onResult(r coord.Result) {
 // handleP2PVisitor serves a WorkP2P stream: it checks the request and
 // admits it to the visitor's budgets, then opens the session.
 func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelType string) {
-	if !version.SupportsP2P(ver, vs) {
+	if !legacy.CapsOf(ver, vs).P2P {
 		logs.Error("P2P request of client %d from %v refused: npc %s (protocol %s) does not speak the P2P protocol of this server, upgrade npc to %s or newer",
-			id, c.RemoteAddr(), vs, version.GetVersion(ver), version.P2PMinVersion)
+			id, c.RemoteAddr(), vs, legacy.CoreVersion(ver), legacy.P2PMinVersion)
 		_ = c.Close()
 		return
 	}
@@ -501,7 +501,7 @@ func waitJoin(svc *p2pService, cs *coord.Session, inv *p2pInvite) (p2pJoined, bo
 // invitation, and the stream goes to the visitor's handler.
 func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string) {
 	svc := s.p2p.Load()
-	if svc == nil || !version.SupportsP2P(ver, vs) {
+	if svc == nil || !legacy.CapsOf(ver, vs).P2P {
 		_ = c.Close()
 		return
 	}
@@ -555,9 +555,9 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *file.Tunnel, node *Nod
 	if node == nil || node.GetSignal() == nil {
 		return nil, nil, p2pproto.CodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
-	if ver, vs := node.versions(); !version.SupportsP2P(ver, vs) {
+	if _, vs := node.versions(); !node.Caps().P2P {
 		return nil, nil, p2pproto.CodeUnsupported, fmt.Sprintf("npc %s of client %d does not speak the P2P protocol of this server, upgrade it to %s or newer",
-			vs, t.Client.Id, version.P2PMinVersion)
+			vs, t.Client.Id, legacy.P2PMinVersion)
 	}
 	return t, node, "", ""
 }

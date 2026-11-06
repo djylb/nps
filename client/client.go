@@ -14,12 +14,13 @@ import (
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/p2pproto"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
 
@@ -69,7 +70,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	defer s.Close()
 	NowStatus = 0
-	if Ver < 5 {
+	if !clientCaps().TunnelStreams {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
 			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
@@ -78,7 +79,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 		if s.uuid == "" {
 			s.uuid = uuid
 		}
-		err = SendType(c, common.WorkMain, s.uuid)
+		err = SendType(c, legacy.WorkMain, s.uuid)
 		if err != nil {
 			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 			_ = c.Close()
@@ -89,8 +90,8 @@ func (s *TRPClient) Start(ctx context.Context) {
 	}
 	//start a channel connection
 	tunnel := s.newChan()
-	if Ver > 4 {
-		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, common.WorkMain, s.proxyUrl)
+	if clientCaps().TunnelStreams {
+		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, legacy.WorkMain, s.proxyUrl)
 		if tunnel == nil {
 			logs.Error("The tunnel is not connected")
 			return
@@ -105,7 +106,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 			}
 			mc.SetPriority()
 			c := conn.NewConn(mc)
-			err = SendType(c, common.WorkMain, s.uuid)
+			err = SendType(c, legacy.WorkMain, s.uuid)
 			if err != nil {
 				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 				_ = mc.Close()
@@ -121,7 +122,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 			}
 			sc := conn.NewQuicAutoCloseConn(stream, t)
 			c := conn.NewConn(sc)
-			err = SendType(c, common.WorkMain, s.uuid)
+			err = SendType(c, legacy.WorkMain, s.uuid)
 			if err != nil {
 				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 				_ = sc.Close()
@@ -162,7 +163,7 @@ func (s *TRPClient) handleMain(tunnel any) {
 			return
 		}
 		switch flags {
-		case common.P2PPunchStart:
+		case legacy.P2PPunchStart:
 			raw, err := s.signal.GetShortLenContent()
 			if err != nil {
 				logs.Warn("%v", err)
@@ -174,7 +175,7 @@ func (s *TRPClient) handleMain(tunnel any) {
 				continue
 			}
 			go s.serveP2P(tunnel, invite)
-		case common.UpdateRequest:
+		case legacy.UpdateRequest:
 			if _, err := s.signal.GetShortLenContent(); err != nil {
 				logs.Warn("%v", err)
 				return
@@ -206,7 +207,7 @@ func (s *TRPClient) newChan() any {
 		s.uuid = uuid
 	}
 	s.server = server
-	err = SendType(tunnel, common.WorkChan, s.uuid)
+	err = SendType(tunnel, legacy.WorkChan, s.uuid)
 	if err != nil {
 		logs.Error("Failed to send type to server %s error: %v", s.svrAddr, err)
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
@@ -214,7 +215,7 @@ func (s *TRPClient) newChan() any {
 		return nil
 	}
 	var tun any
-	if Ver > 4 && s.bridgeConnType == common.ConnQUIC {
+	if clientCaps().NativeQUIC && s.bridgeConnType == common.ConnQUIC {
 		qc, ok := tunnel.Conn.(*conn.QuicAutoCloseConn)
 		if !ok {
 			logs.Error("failed to get quic session")
@@ -333,7 +334,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		_ = src.Close()
 	} else {
 		logs.Trace("new %s connection with the goal of %s, remote address:%s", lk.ConnType, lk.Host, lk.RemoteAddr)
-		isFramed := lk.ConnType == "udp" && Ver > 6
+		isFramed := lk.ConnType == "udp" && clientCaps().FramedUDP
 		//logs.Debug("%t", isFramed)
 		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, false, 0, nil, nil, false, isFramed)
 	}

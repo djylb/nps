@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/web/ui"
 )
 
@@ -229,7 +229,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 		BridgeIP:        bridge.Primary.IP,
 		BridgePort:      bridge.Primary.Port,
 		ProxyPort:       pageIntString(cfg.Network.HTTPProxyPort),
-		ClientUpdateMin: version.RemoteUpdateMinVersion,
+		ClientUpdateMin: legacy.RemoteUpdateMinVersion,
 		Features: map[string]bool{
 			"allow_user_login":           cfg.Feature.AllowUserLogin,
 			"allow_flow_limit":           cfg.Feature.AllowFlowLimit,

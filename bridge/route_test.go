@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/tunnelwire/mux"
-	"github.com/djylb/nps/lib/version"
 )
 
 // routeNode is one connected npc instance: its mux stream carries the links
@@ -30,7 +30,7 @@ func joinRouteNode(t *testing.T, b *Bridge, clientId int, uuid string) *routeNod
 	serverMux := mux.NewMux(bridgeSide, "tcp", 30, true)
 	npcMux := mux.NewMux(npcSide, "tcp", 30, false)
 	n := &routeNode{links: make(chan string, 16)}
-	_, n.node = b.joinNode(clientId, uuid, NewNode(uuid, "", version.GetLatestIndex()), func(*Node) {})
+	_, n.node = b.joinNode(clientId, uuid, NewNode(uuid, "", legacy.LatestIndex), func(*Node) {})
 	n.node.AddSignal(conn.NewConn(signal))
 	n.node.AddTunnel(serverMux)
 	go func() {
@@ -127,9 +127,9 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 	task := func(target string) *file.Tunnel {
 		return &file.Tunnel{Mode: "tcp", Ports: port, Remark: "r", Target: &file.Target{TargetStr: target}}
 	}
-	publish(t, b, client, "a", version.GetLatestIndex(), common.FlagNewTask, task("127.0.0.1:1"))
+	publish(t, b, client, "a", legacy.LatestIndex, common.FlagNewTask, task("127.0.0.1:1"))
 	opened := <-b.OpenTask
-	publish(t, b, client, "c", version.GetLatestIndex(), common.FlagNewTask, task("127.0.0.1:2"))
+	publish(t, b, client, "c", legacy.LatestIndex, common.FlagNewTask, task("127.0.0.1:2"))
 	select {
 	case <-b.OpenTask:
 		t.Fatal("a joining instance restarted the running task")
@@ -192,8 +192,8 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 	host := func(target string) *file.Host {
 		return &file.Host{Host: "npc.example.com", Remark: "r", Target: &file.Target{TargetStr: target}}
 	}
-	publish(t, b, client, "a", version.GetLatestIndex(), common.FlagNewHost, host("127.0.0.1:1"))
-	publish(t, b, client, "c", version.GetLatestIndex(), common.FlagNewHost, host("127.0.0.1:2"))
+	publish(t, b, client, "a", legacy.LatestIndex, common.FlagNewHost, host("127.0.0.1:1"))
+	publish(t, b, client, "c", legacy.LatestIndex, common.FlagNewHost, host("127.0.0.1:2"))
 	entry, ok := client.HasHost(&file.Host{Host: "npc.example.com", Location: "/"})
 	if !ok || entry.Routes.Len() != 2 {
 		t.Fatalf("entry %+v, want one host with two routes", entry)
@@ -224,7 +224,7 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 // and the entry stays until the client goes.
 func TestLegacyClientHasNoRoutes(t *testing.T) {
 	b, client := routeFixture(t)
-	const ver = routedVersion
+	const ver = 5
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver)))
 	publish(t, b, client, "config-conn", ver, common.FlagNewTask, &file.Tunnel{
 		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "r", Target: &file.Target{TargetStr: "127.0.0.1:1"},

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/version"
 )
 
 // signalNode returns a node announcing vs whose signal connection is one end
@@ -21,7 +21,7 @@ func signalNode(t *testing.T, uuid, vs string) (*Node, *conn.Conn) {
 		_ = a.Close()
 		_ = b.Close()
 	})
-	n := NewNode(uuid, vs, version.GetLatestIndex())
+	n := NewNode(uuid, vs, legacy.LatestIndex)
 	n.AddSignal(conn.NewConn(a))
 	return n, conn.NewConn(b)
 }
@@ -39,7 +39,7 @@ func TestRequestClientUpdate(t *testing.T) {
 		t.Fatalf("old npc only: err = %v, want ErrUpdateUnsupported", err)
 	}
 
-	cur, peer := signalNode(t, "new", version.RemoteUpdateMinVersion)
+	cur, peer := signalNode(t, "new", legacy.RemoteUpdateMinVersion)
 	v, _ := b.Client.Load(1)
 	v.(*Client).AddNode(cur)
 	got := make(chan string, 1)

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/tunnelwire/mux"
 )
 
 func writeTestConfig(t *testing.T, content string) string {

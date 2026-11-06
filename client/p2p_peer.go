@@ -9,7 +9,7 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/quicpath"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
@@ -214,7 +214,7 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	}
 	// openP2PControl owns the stream and closes it on failure.
 	//noinspection GoResourceLeak
-	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), common.WorkP2P, mgr.getUUID(), server.fingerprint,
+	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), legacy.WorkP2P, mgr.getUUID(), server.fingerprint,
 		p2pproto.Request{Password: crypt.Md5(p.password), Background: background, ServerIP: server.ip})
 	if err != nil {
 		return nil, err

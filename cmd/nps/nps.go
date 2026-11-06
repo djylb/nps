@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -73,7 +74,7 @@ func main() {
 	}
 	// show version
 	if *ver {
-		version.PrintVersion(version.GetLatestIndex())
+		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
 	}
 
@@ -394,7 +395,7 @@ func run() {
 		bridge.ServerSecureMode = true
 	}
 	logs.Info("the config path is: %s", servercfg.Path())
-	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, version.GetMinVersion(bridge.ServerSecureMode))
+	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, legacy.MinCoreVersion(bridge.ServerSecureMode))
 	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
 	applyNtp(cfg)
 	connection.InitConnectionService()

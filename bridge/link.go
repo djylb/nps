@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/tool"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
 
@@ -190,7 +190,8 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		return
 	}
 
-	if link.Option.NeedAck && node.BaseVer > 5 {
+	caps := node.Caps()
+	if link.Option.NeedAck && caps.LinkAck {
 		if err := conn.ReadACK(target, link.Option.Timeout); err != nil {
 			_ = target.Close()
 			logs.Trace("ReadACK failed: %v", err)
@@ -199,8 +200,8 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		}
 	}
 
-	if link.ConnType == "udp" && node.BaseVer < 7 {
-		logs.Warn("UDP connection requires client v%s or newer.", version.GetVersion(7))
+	if link.ConnType == "udp" && !caps.FramedUDP {
+		logs.Warn("UDP connection needs a newer client than protocol %s.", legacy.CoreVersion(caps.Index))
 	}
 
 	return

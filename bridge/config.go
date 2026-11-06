@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -103,10 +104,10 @@ loop:
 				h.Location = "/"
 			}
 
-			if ver > routedVersion {
+			if legacy.CapsOf(ver, vs).NodeID {
 				s.joinNode(client.Id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
 			}
-			hh, err := s.publishHost(h, client, uuid, ver)
+			hh, err := s.publishHost(h, client, uuid, legacy.CapsOf(ver, vs))
 			if err != nil {
 				logs.Warn("Add host %s of client %d error: %v", h.Host, client.Id, err)
 				if !writeAddFail(c) {
@@ -193,7 +194,7 @@ loop:
 				if tl.MultiAccount == nil {
 					tl.MultiAccount = new(file.MultiAccount)
 				}
-				if ver > routedVersion {
+				if legacy.CapsOf(ver, vs).NodeID {
 					s.joinNode(client.Id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
 				}
 				if tl.Mode == "file" {
@@ -215,7 +216,7 @@ loop:
 					tl.Target.TargetStr = fmt.Sprintf("file://%s", key.String())
 				}
 
-				tt, created, err := s.publishTask(tl, client, uuid, ver)
+				tt, created, err := s.publishTask(tl, client, uuid, legacy.CapsOf(ver, vs))
 				if err != nil {
 					logs.Warn("Add task %s of client %d error: %v", tl.Remark, client.Id, err)
 					if !writeAddFail(c) {
@@ -244,20 +245,15 @@ loop:
 	}
 
 	if fail && client != nil {
-		s.dropConfigNode(client.Id, uuid, ver)
+		s.dropConfigNode(client.Id, uuid, legacy.CapsOf(ver, vs))
 	}
 	_ = c.Close()
 }
 
-// routedVersion is the last protocol index without a UUID that stays the same
-// across the connections of an npc. Entries of such clients have no routes:
-// any node serves them, and they go when the client does.
-const routedVersion = 5
-
 // dropConfigNode ends the node whose configuration failed. The other
 // instances on the same key stay; the last one takes the client with it.
-func (s *Bridge) dropConfigNode(id int, uuid string, ver int) {
-	if v, ok := s.Client.Load(id); ok && ver > routedVersion {
+func (s *Bridge) dropConfigNode(id int, uuid string, caps legacy.Caps) {
+	if v, ok := s.Client.Load(id); ok && caps.NodeID {
 		client := v.(*Client)
 		if node, ok := client.GetNodeByUUID(uuid); ok && client.NodeCount() > 1 {
 			client.closeAndRemoveNodeIfCurrent(uuid, node, func(*Node) bool { return true })
@@ -276,7 +272,9 @@ func (s *Bridge) newRoutes(clientId int) *file.RouteSet {
 
 // publishHost adds h as uuid's route of its domain, creating the entry if it
 // is new. It returns the existing entry that was changed, if any.
-func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, ver int) (*file.Host, error) {
+// Entries of clients without a stable node UUID have no routes: any node
+// serves them, and they go when the client does.
+func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, caps legacy.Caps) (*file.Host, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	hh, ok := client.HasHost(h)
@@ -285,7 +283,7 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, ver
 			return nil, errors.New("the host already exists")
 		}
 		h.Routes = s.newRoutes(client.Id)
-		if ver > routedVersion {
+		if caps.NodeID {
 			h.Routes.Publish(uuid, h.Target)
 		}
 		return nil, file.GetDb().NewHost(h)
@@ -293,7 +291,7 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, ver
 	if !hh.NoStore {
 		return nil, nil
 	}
-	if ver > routedVersion {
+	if caps.NodeID {
 		hh.Routes.Publish(uuid, h.Target)
 	}
 	hh.Update(h)
@@ -304,7 +302,7 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, ver
 // is new. It returns the entry whose service has to be restarted, if any, and
 // whether it was created. Another instance joining a running entry does not
 // restart it, which would cut the traffic of the instances already there.
-func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, ver int) (*file.Tunnel, bool, error) {
+func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, caps legacy.Caps) (*file.Tunnel, bool, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	tt, ok := client.HasTunnel(tl)
@@ -313,7 +311,7 @@ func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, 
 			return nil, false, fmt.Errorf("port %d is not available", tl.Port)
 		}
 		tl.Routes = s.newRoutes(client.Id)
-		if ver > routedVersion {
+		if caps.NodeID {
 			tl.Routes.Publish(uuid, tl.Target)
 		}
 		if err := file.GetDb().NewTask(tl); err != nil {
@@ -329,7 +327,7 @@ func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, 
 		return nil, false, err
 	}
 	joining := tt.Routes.HasOther(uuid) && tt.Mode == tl.Mode && tt.ServerIp == tl.ServerIp
-	if ver > routedVersion {
+	if caps.NodeID {
 		tt.Routes.Publish(uuid, tl.Target)
 	}
 	tt.Update(tl)

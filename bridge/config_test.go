@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/version"
 )
 
 func TestNewConfigIgnoresClientIdentity(t *testing.T) {
@@ -30,7 +30,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.getConfig(conn.NewConn(serverSide), true, nil, version.GetLatestIndex(), "", "node-1")
+		b.getConfig(conn.NewConn(serverSide), true, nil, legacy.LatestIndex, "", "node-1")
 	}()
 
 	c := conn.NewConn(clientSide)
@@ -90,13 +90,13 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 
 	b := NewTunnel(&sync.Map{}, 30)
 	b.OpenTask = make(chan *file.Tunnel, 8)
-	b.Client.Store(client.Id, NewClient(client.Id, NewNode("node", "", version.GetLatestIndex())))
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("node", "", legacy.LatestIndex)))
 	clientSide, serverSide := net.Pipe()
 	defer func() { _ = clientSide.Close() }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.getConfig(conn.NewConn(serverSide), false, client, version.GetLatestIndex(), "", "node")
+		b.getConfig(conn.NewConn(serverSide), false, client, legacy.LatestIndex, "", "node")
 	}()
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))

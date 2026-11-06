@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/common"
@@ -44,7 +45,7 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string
 			logs.Warn("--%s is ignored because --launch is set", name)
 		}
 	}
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion(*protoVer))
+	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
 	common.SyncTime()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
 	for i, input := range inputs {
