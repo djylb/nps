@@ -1,6 +1,7 @@
 package servercfg
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -505,6 +506,40 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	return cfg
+}
+
+// RestartRequired names the settings that differ between two snapshots and
+// are only read at startup, so a reload does not apply them.
+func RestartRequired(old, cur *Snapshot) []string {
+	var names []string
+	for _, f := range []struct {
+		name     string
+		old, cur any
+	}{
+		{"web listener", []any{old.Network.WebIP, old.Network.WebPort, old.Web.Host}, []any{cur.Network.WebIP, cur.Network.WebPort, cur.Web.Host}},
+		{"http/https/http3 listeners", []any{old.Network.HTTPProxyIP, old.Network.HTTPProxyPort, old.Network.HTTPSProxyPort, old.Network.HTTP3ProxyPort}, []any{cur.Network.HTTPProxyIP, cur.Network.HTTPProxyPort, cur.Network.HTTPSProxyPort, cur.Network.HTTP3ProxyPort}},
+		{"bridge listeners", bridgeListeners(old), bridgeListeners(cur)},
+		{"p2p listener", []any{old.Network.P2PIP, old.Network.P2PPort}, []any{cur.Network.P2PIP, cur.Network.P2PPort}},
+		{"quic transport", []any{old.Network.QUICALPNList, old.Network.QUICKeepAlivePeriod, old.Network.QUICMaxIdleTimeout, old.Network.QUICMaxIncomingStreams}, []any{cur.Network.QUICALPNList, cur.Network.QUICKeepAlivePeriod, cur.Network.QUICMaxIdleTimeout, cur.Network.QUICMaxIncomingStreams}},
+		{"pprof listener", []any{old.App.PprofIP, old.App.PprofPort}, []any{cur.App.PprofIP, cur.App.PprofPort}},
+		{"public_vkey", old.Runtime.PublicVKey, cur.Runtime.PublicVKey},
+		{"visitor_vkey", old.Runtime.VisitorVKey, cur.Runtime.VisitorVKey},
+	} {
+		if !reflect.DeepEqual(f.old, f.cur) {
+			names = append(names, f.name)
+		}
+	}
+	return names
+}
+
+func bridgeListeners(c *Snapshot) []any {
+	n, b := c.Network, c.Bridge
+	return []any{
+		n.BridgeIP, n.BridgeHost, n.BridgePath, n.BridgePort, n.BridgeTrustedIPs, n.BridgeRealIPHeader,
+		n.BridgeTCPIP, n.BridgeTCPPort, n.BridgeKCPIP, n.BridgeKCPPort, n.BridgeQUICIP, n.BridgeQUICPort,
+		n.BridgeTLSIP, n.BridgeTLSPort, n.BridgeWSIP, n.BridgeWSPort, n.BridgeWSSIP, n.BridgeWSSPort,
+		b.ServerTCPEnabled, b.ServerKCPEnabled, b.ServerQUICEnabled, b.ServerTLSEnabled, b.ServerWSEnabled, b.ServerWSSEnabled,
+	}
 }
 
 func (r valueReader) stringValue(keys ...string) string {
