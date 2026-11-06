@@ -9,6 +9,11 @@ on:
 
 jobs:
   renew:
+    # Shared with the release_manifest job of pkg.yml: each reads the manifest,
+    # changes it and publishes it, so one running over another would lose a release.
+    concurrency:
+      group: update-manifest
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
