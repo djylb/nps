@@ -69,8 +69,11 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
 		log.Fatalf("Failed to write auth key: %v", err)
 	}
+	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 	var isPub bool
-	_ = binary.Read(c, binary.LittleEndian, &isPub)
+	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
+		log.Fatalf("Failed to read status: %v", err)
+	}
 	length, err := c.GetLen()
 	//log.Println(length)
 	if err != nil {
@@ -198,68 +201,16 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 			continue
 		}
 
-		var isPub bool
-		_ = binary.Read(c, binary.LittleEndian, &isPub)
-
-		// get tmp password
-		var b []byte
-		vkey := cnf.CommonConfig.VKey
-		if isPub {
-			// send global configuration to server and get status of config setting
-			if _, err := c.SendInfo(cnf.CommonConfig.Client, common.FlagNewConf); err != nil {
-				logs.Error("%v", err)
-				_ = c.Close()
-				continue
-			}
-			if !c.GetAddStatus() {
-				logs.Error("the web_user may have been occupied!")
-				_ = c.Close()
-				continue
-			}
-
-			if b, err = c.GetShortContent(16); err != nil {
-				logs.Error("%v", err)
-				_ = c.Close()
-				continue
-			}
-			vkey = string(b)
-		}
-
-		//if err := ioutil.WriteFile(filepath.Join(common.GetTmpPath(), "npc_vkey.txt"), []byte(vkey), 0600); err != nil {
-		//	logs.Debug("Failed to write vkey file: %v", err)
-		//	c.Close()
-		//	continue
-		//}
-
-		//send hosts to server
-		for _, v := range cnf.Hosts {
-			if _, err := c.SendInfo(v, common.FlagNewHost); err != nil {
-				logs.Error("%v", err)
-				continue
-			}
-			if !c.GetAddStatus() {
-				logs.Error("%v %s", errAdd, v.Host)
-				continue
-			}
-		}
-
 		ctx, cancel := context.WithCancel(pCtx)
 		fsm := NewFileServerManager(ctx)
-
-		//send  task to server
-		for _, v := range cnf.Tasks {
-			if _, err := c.SendInfo(v, common.FlagNewTask); err != nil {
-				logs.Error("%v", err)
-				continue
-			}
-			if !readTaskAddStatus(c, v) {
-				logs.Error("%v %s %s", errAdd, v.Ports, v.Remark)
-				continue
-			}
-			if v.Mode == "file" {
-				//start local file server
-				go fsm.StartFileServer(v, vkey)
-			}
+		deadline := time.Now().Add(configExchangeTimeout(cnf))
+		vkey, err := exchangeConfig(c, cnf, fsm, deadline)
+		if err != nil {
+			logs.Error("Config exchange failed: %v", err)
+			_ = c.Close()
+			fsm.CloseAll()
+			cancel()
+			continue
 		}
 		_ = c.Close()
 		if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
@@ -274,19 +225,94 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 	}
 }
 
+// configExchangeTimeout bounds a whole config exchange; the server handles
+// the entries one at a time, so it grows with their number.
+func configExchangeTimeout(cnf *config.Config) time.Duration {
+	return 30*time.Second + time.Duration(len(cnf.Hosts)+len(cnf.Tasks))*5*time.Second
+}
+
+// exchangeConfig sends the configuration on c, finished by deadline, and
+// returns the vkey to run with. A refused host or task is logged and skipped;
+// any error means the connection is unusable and the client must reconnect.
+func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, deadline time.Time) (string, error) {
+	if err := c.SetDeadline(deadline); err != nil {
+		return "", err
+	}
+	var isPub bool
+	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
+		return "", err
+	}
+
+	// get tmp password
+	vkey := cnf.CommonConfig.VKey
+	if isPub {
+		// send global configuration to server and get status of config setting
+		if _, err := c.SendInfo(cnf.CommonConfig.Client, common.FlagNewConf); err != nil {
+			return "", err
+		}
+		ok, err := c.GetAddStatus()
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", errors.New("the web_user may have been occupied")
+		}
+		b, err := c.GetShortContent(16)
+		if err != nil {
+			return "", err
+		}
+		vkey = string(b)
+	}
+
+	//send hosts to server
+	for _, v := range cnf.Hosts {
+		if _, err := c.SendInfo(v, common.FlagNewHost); err != nil {
+			return "", err
+		}
+		ok, err := c.GetAddStatus()
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			logs.Error("%v %s", errAdd, v.Host)
+		}
+	}
+
+	//send task to server
+	for _, v := range cnf.Tasks {
+		if _, err := c.SendInfo(v, common.FlagNewTask); err != nil {
+			return "", err
+		}
+		ok, err := readTaskAddStatus(c, v)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			logs.Error("%v %s %s", errAdd, v.Ports, v.Remark)
+			continue
+		}
+		if v.Mode == "file" {
+			//start local file server
+			go fsm.StartFileServer(v, vkey)
+		}
+	}
+	return vkey, nil
+}
+
 // readTaskAddStatus reads the add statuses the server reports for a FlagNewTask:
 // one per port the task expands to, ending at the first failure.
-func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) bool {
+func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) (bool, error) {
 	n := 1
 	if ports, _, ok := file.ConfigTaskPorts(t); ok {
 		n = len(ports)
 	}
 	for i := 0; i < n; i++ {
-		if !c.GetAddStatus() {
-			return false
+		ok, err := c.GetAddStatus()
+		if err != nil || !ok {
+			return false, err
 		}
 	}
-	return true
+	return true, nil
 }
 
 func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, verified bool) {
@@ -672,6 +698,8 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 	if c == nil {
 		return fmt.Errorf("sendType: nil conn (connType=%s uuid=%s)", connType, uuid)
 	}
+	_ = c.SetWriteDeadline(time.Now().Add(dialTimeout))
+	defer func() { _ = c.SetWriteDeadline(time.Time{}) }()
 	if _, err := c.BufferWrite([]byte(connType)); err != nil {
 		_ = c.Close()
 		return err

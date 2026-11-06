@@ -3,15 +3,20 @@ package client
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
+	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/file"
 )
 
 // serveOnce accepts one connection on a new listener and runs handle on it.
@@ -245,4 +250,35 @@ func TestWaitReconnectEndsWithContext(t *testing.T) {
 	if WaitReconnect(ctx) {
 		t.Fatal("WaitReconnect went on after the context ended")
 	}
+}
+
+// A silent server, or one lost in the middle, must end the config exchange
+// with an error so that the client reconnects.
+func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
+	task := &file.Tunnel{Mode: "tcp", Ports: "1"}
+	cnf := &config.Config{CommonConfig: &config.CommonConfig{VKey: "k"}, Tasks: []*file.Tunnel{task}}
+	fsm := NewFileServerManager(t.Context())
+	t.Cleanup(fsm.CloseAll)
+
+	t.Run("silent", func(t *testing.T) {
+		a, b := net.Pipe()
+		defer func() { _ = a.Close(); _ = b.Close() }()
+		_, err := exchangeConfig(conn.NewConn(a), cnf, fsm, time.Now().Add(100*time.Millisecond))
+		if !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("exchangeConfig = %v, want a deadline error", err)
+		}
+	})
+	t.Run("lost after a reply", func(t *testing.T) {
+		a, b := net.Pipe()
+		defer func() { _ = a.Close() }()
+		go func() {
+			defer func() { _ = b.Close() }()
+			_, _ = b.Write([]byte{0}) // isPub
+			_, _ = io.ReadAll(b)
+		}()
+		_, err := exchangeConfig(conn.NewConn(a), cnf, fsm, time.Now().Add(200*time.Millisecond))
+		if err == nil {
+			t.Fatal("exchangeConfig = nil, want an error for the missing task status")
+		}
+	})
 }

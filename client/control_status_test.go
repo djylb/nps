@@ -25,10 +25,10 @@ func TestReadTaskAddStatusConsumesEveryPort(t *testing.T) {
 		_ = server.WriteAddFail()
 	}()
 
-	if !readTaskAddStatus(client, multi) {
+	if ok, _ := readTaskAddStatus(client, multi); !ok {
 		t.Fatalf("multi-port task must succeed")
 	}
-	if readTaskAddStatus(client, next) {
+	if ok, _ := readTaskAddStatus(client, next); ok {
 		t.Fatalf("second task must see its own failure status")
 	}
 }

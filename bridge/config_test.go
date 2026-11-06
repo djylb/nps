@@ -40,7 +40,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	if _, err := c.SendInfo(sent, common.FlagNewConf); err != nil {
 		t.Fatal(err)
 	}
-	if !c.GetAddStatus() {
+	if ok, _ := c.GetAddStatus(); !ok {
 		t.Fatal("config was not accepted")
 	}
 	buf := make([]byte, 16)
@@ -106,7 +106,8 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 		if _, err := c.SendInfo(task, common.FlagNewTask); err != nil {
 			t.Fatal(err)
 		}
-		return c.GetAddStatus()
+		ok, _ := c.GetAddStatus()
+		return ok
 	}
 	if send(takenPort, "conflict") {
 		t.Fatal("task on a taken port was accepted")

@@ -448,8 +448,8 @@ func (s *Conn) WriteChan() (int, error) {
 }
 
 // GetAddStatus get task or host result of add
-func (s *Conn) GetAddStatus() (b bool) {
-	_ = binary.Read(s, binary.LittleEndian, &b)
+func (s *Conn) GetAddStatus() (b bool, err error) {
+	err = binary.Read(s, binary.LittleEndian, &b)
 	return
 }
 
