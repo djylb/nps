@@ -55,6 +55,11 @@ func NewConfig(path string) (*Config, error) {
 	return parseConfig(string(b))
 }
 
+// Parse parses npc configuration text, as NewConfig does for a file.
+func Parse(content string) (*Config, error) {
+	return parseConfig(content)
+}
+
 func parseConfig(raw string) (*Config, error) {
 	content, err := common.ParseStr(common.NormalizeNewlines(raw))
 	if err != nil {

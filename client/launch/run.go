@@ -1,0 +1,67 @@
+package launch
+
+import (
+	"context"
+	"sync"
+
+	"github.com/djylb/nps/client"
+	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/logs"
+)
+
+// Options holds the command line defaults a payload does not set.
+type Options struct {
+	DisconnectTimeout int
+	P2PTimeout        int
+}
+
+// Run runs the profiles until the first one stops or ctx ends, then stops the
+// others and waits for them. uuids keeps each profile's client uuid across
+// runs. It returns the error of the profile that stopped first, if any.
+func Run(ctx context.Context, profiles []Profile, uuids map[string]string, opts Options) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var (
+		wg    sync.WaitGroup
+		mu    sync.Mutex
+		first error
+		done  bool
+	)
+	for _, p := range profiles {
+		wg.Go(func() {
+			uuid, err := p.run(ctx, uuids[p.Name], opts)
+			mu.Lock()
+			defer mu.Unlock()
+			uuids[p.Name] = uuid
+			if !done {
+				first, done = err, true
+			}
+			cancel()
+		})
+	}
+	wg.Wait()
+	return first
+}
+
+func (p Profile) run(ctx context.Context, uuid string, opts Options) (string, error) {
+	c := p.Config.CommonConfig
+	logs.Info("Start launch profile %s: server %s type %s", p.Name, c.Server, c.Tp)
+	if p.Direct {
+		disconnect := c.DisconnectTime
+		if disconnect == 0 {
+			disconnect = opts.DisconnectTimeout
+		}
+		client.NewRPClient(c.Server, c.VKey, c.Tp, c.ProxyUrl, c.LocalIP, "", nil, disconnect, nil).Start(ctx)
+		return uuid, nil
+	}
+	if c.DnsServer != "" {
+		common.SetCustomDNS(c.DnsServer)
+	}
+	if c.NtpServer != "" {
+		common.SetNtpServer(c.NtpServer)
+	}
+	if len(p.Config.LocalServer) > 0 && c.DisconnectTime == 0 {
+		c.DisconnectTime = opts.P2PTimeout
+	}
+	return client.RunConfigOnce(ctx, p.Config, uuid)
+}

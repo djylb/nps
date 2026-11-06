@@ -120,7 +120,49 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 
 ---
 
-## 6. 群晖支持
+## 6. 快速启动（`--launch`）
+
+`--launch` 用一段内容启动 npc，不需要配置文件。可以重复传入，每个输入独立运行；也可以用环境变量 `NPC_LAUNCH` 传一个。设置后 `-server`、`-vkey`、`-config` 等连接参数被忽略，日志、`-skip_verify`、`-proto_version` 等进程级设置仍只由命令行决定。
+
+| 形式 | 示例 |
+|------|------|
+| npc URL | `npc://vkey@1.2.3.4:8024?type=tls` |
+| 多服务器 | `npc://?server=a:8024,b:8024&vkey=k1,k2&type=tls,tcp` |
+| 本地 P2P/Secret | `npc://vkey@1.2.3.4:8024?password=pw&target=127.0.0.1:22&local_port=2000` |
+| 远程内容 | `https://example.com/npc.yaml` |
+| 本地文件 | `@/etc/npc/launch.json` |
+| Base64 | 以下任一内容的 Base64（标准或 URL 安全） |
+| JSON / YAML / INI | 见下 |
+
+npc URL 还支持 `conn_type`、`proxy`、`local_ip`、`local_type`、`target_type`、`fallback_secret`、`local_proxy`、`name` 参数，未知参数会报错。
+
+JSON 与 YAML 结构相同，顶层是一个配置、配置列表，或 `{"profiles": [...]}`：
+
+```yaml
+profiles:
+  - name: direct            # 只有连接字段：用已有客户端的 vkey 直接连接
+    server: a:8024,b:8024
+    vkey: k1,k2
+    type: tls
+  - name: office            # 含 common 或下列列表：与配置文件模式相同
+    common: {server_addr: a:8024, vkey: k3, conn_type: tls}
+    hosts:
+      - {remark: web, host: a.example.com, target_addr: [127.0.0.1:80], headers: {X-From: npc}}
+    tasks:
+      - {remark: ssh, mode: tcp, server_port: 2222, target_addr: 127.0.0.1:22}
+    healths: []
+    locals: []
+```
+
+各节的键名与[配置文件](example.md)完全相同；INI 内容就是配置文件本身，并按配置文件模式运行。`remark` 不能以 `secret`、`p2p`、`health` 开头。
+
+**运行与回退：** 同一输入的多个配置一起运行，任一配置断开时整组重启（5 秒后），并重新读取来源。远程来源获取或解析失败时继续使用内存中最后一份有效内容，并至少隔 30 秒再请求；首次启动没有可用内容时每 30 秒重试。来源返回 `410 Gone` 表示已撤销：停止运行，5 分钟后重试。最后一份有效内容不写入磁盘，npc 重启后需要来源可用。非远程内容无效时直接退出。
+
+**安全：** 来源可以决定 npc 连接哪个服务器、开放哪些隧道，能让对方访问本机可达的服务，只使用你信任的来源，并尽量使用 https（http 会告警，https 不允许跳转到 http）。远程内容限制 1 MiB，不执行命令，也不能使用模板、引用其他 URL 或本地文件，不能设置 `multi_account`、`cert_file`、`key_file`、`local_path`、`strip_pre`、`pprof_addr` 或 `mode=file`。需要这些功能时使用本地配置文件。
+
+---
+
+## 7. 群晖支持
 
 📌 **推荐使用 Docker 部署**
 ```bash

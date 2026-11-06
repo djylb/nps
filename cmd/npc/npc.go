@@ -69,6 +69,7 @@ var (
 	genTOTP        = flag.Bool("gen2fa", false, "Generate TOTP Secret")
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 	autoReconnect  = flag.Bool("auto_reconnect", true, "Auto Reconnect")
+	launchInputs   = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
 )
 
 func main() {
@@ -366,6 +367,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	common.InitPProfByAddr(*pprofAddr)
 	if *tlsEnable {
 		*connType = "tls"
+	}
+	if inputs := launchPayloads(); len(inputs) > 0 {
+		startLaunch(ctx, cancel, inputs)
+		return
 	}
 	//p2p or secret command
 	if *password != "" {

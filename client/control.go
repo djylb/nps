@@ -186,43 +186,68 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 			return
 		}
 
-		c, cid, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP)
+		uuid, err = RunConfigOnce(pCtx, cnf, uuid)
 		if err != nil {
-			logs.Error("Failed to connect: %v", err)
-			continue
+			logs.Error("%v", err)
 		}
-		if uuid == "" {
-			uuid = cid
-		}
-		err = SendType(c, common.WorkConfig, uuid)
-		if err != nil {
-			logs.Error("Failed to send type: %v", err)
-			_ = c.Close()
-			continue
-		}
-
-		ctx, cancel := context.WithCancel(pCtx)
-		fsm := NewFileServerManager(ctx)
-		deadline := time.Now().Add(configExchangeTimeout(cnf))
-		vkey, err := exchangeConfig(c, cnf, fsm, deadline)
-		if err != nil {
-			logs.Error("Config exchange failed: %v", err)
-			_ = c.Close()
-			fsm.CloseAll()
-			cancel()
-			continue
-		}
-		_ = c.Close()
-		if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
-			logs.Info("web access login username:user password:%s", vkey)
-		} else {
-			logs.Info("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUserName, cnf.CommonConfig.Client.WebPassword)
-		}
-
-		NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
-		fsm.CloseAll()
-		cancel()
 	}
+}
+
+// RunConfigOnce runs cnf until the session closes or ctx ends and returns the
+// client uuid to pass to the next run. Local servers run until ctx ends or one
+// of them fails to start.
+func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string, error) {
+	if cnf.CommonConfig.TlsEnable {
+		cnf.CommonConfig.Tp = "tls"
+	}
+	if len(cnf.LocalServer) > 0 {
+		return uuid, runLocalServers(ctx, cnf)
+	}
+	c, cid, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP)
+	if err != nil {
+		return uuid, fmt.Errorf("failed to connect: %w", err)
+	}
+	if uuid == "" {
+		uuid = cid
+	}
+	if err = SendType(c, common.WorkConfig, uuid); err != nil {
+		_ = c.Close()
+		return uuid, fmt.Errorf("failed to send type: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	fsm := NewFileServerManager(ctx)
+	defer fsm.CloseAll()
+	deadline := time.Now().Add(configExchangeTimeout(cnf))
+	vkey, err := exchangeConfig(c, cnf, fsm, deadline)
+	if err != nil {
+		_ = c.Close()
+		return uuid, fmt.Errorf("config exchange failed: %w", err)
+	}
+	_ = c.Close()
+	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
+		logs.Info("web access login username:user password:%s", vkey)
+	} else {
+		logs.Info("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUserName, cnf.CommonConfig.Client.WebPassword)
+	}
+
+	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
+	return uuid, nil
+}
+
+func runLocalServers(ctx context.Context, cnf *config.Config) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	mgr := NewP2PManager(ctx, cancel, cnf.CommonConfig)
+	defer mgr.Close()
+	for _, l := range cnf.LocalServer {
+		if err := mgr.StartLocalServer(l); err != nil {
+			return err
+		}
+	}
+	<-ctx.Done()
+	return nil
 }
 
 // configExchangeTimeout bounds a whole config exchange; the server handles
