@@ -56,7 +56,11 @@ func (s *TunnelModeServer) Bind() error {
 				return err
 			}
 		}
-		listener, err := net.Listen("tcp", s.address)
+		listen := func(address string) (net.Listener, error) { return net.Listen("tcp", address) }
+		if s.Task.Mode == "tcpTrans" || s.Task.Mode == "p2pt" {
+			listen = listenTransparent
+		}
+		listener, err := listen(s.address)
 		if err != nil {
 			if registry != nil {
 				_ = registry.Close()

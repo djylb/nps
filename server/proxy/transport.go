@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 
 	"github.com/djylb/netx/transparent"
@@ -15,6 +17,19 @@ import (
 // errNotRedirected is returned for a connection that reached the
 // transparent proxy directly: its destination is the proxy itself.
 var errNotRedirected = errors.New("connection was not redirected to the transparent proxy")
+
+// listenTransparent opens the listener of a transparent proxy mode. TPROXY
+// delivers connections only to a socket with the transparent option, which
+// takes elevated privileges. REDIRECT and pf rdr work without it, so an
+// unprivileged process falls back to a plain listener.
+func listenTransparent(address string) (net.Listener, error) {
+	l, err := transparent.Listen(context.Background(), "tcp", address)
+	if errors.Is(err, fs.ErrPermission) {
+		logs.Warn("trans: %s: no privilege for transparent sockets, TPROXY rules will not reach this listener: %v", address, err)
+		return net.Listen("tcp", address)
+	}
+	return l, err
+}
 
 // HandleTrans forwards a connection redirected to the transparent proxy, by
 // iptables REDIRECT or TPROXY on Linux or pf on macOS and FreeBSD, to its
