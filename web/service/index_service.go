@@ -344,12 +344,12 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
-	if input.ResetFlow {
-		tunnel.Flow.ResetTraffic()
-	}
 
 	if err := s.repo().SaveTunnel(tunnel); err != nil {
 		return TunnelMutation{}, err
+	}
+	if input.ResetFlow {
+		tunnel.Flow.ResetTraffic()
 	}
 	if err := s.runtime().StopTunnel(tunnel.Id); err != nil && !isTaskNotRunning(err) {
 		return TunnelMutation{}, err
@@ -445,12 +445,12 @@ func (s DefaultIndexService) GetHost(id int) (*file.Host, error) {
 }
 
 func (s DefaultIndexService) DeleteHost(id int) error {
-	s.runtime().RemoveHostCache(id)
+	defer s.runtime().RemoveHostCache(id)
 	return s.repo().DeleteHostRecord(id)
 }
 
 func (s DefaultIndexService) StartHost(id int, mode string) error {
-	s.runtime().RemoveHostCache(id)
+	defer s.runtime().RemoveHostCache(id)
 	if mode != "" {
 		return changeHostStatus(id, mode, "start")
 	}
@@ -463,7 +463,7 @@ func (s DefaultIndexService) StartHost(id int, mode string) error {
 }
 
 func (s DefaultIndexService) StopHost(id int, mode string) error {
-	s.runtime().RemoveHostCache(id)
+	defer s.runtime().RemoveHostCache(id)
 	if mode != "" {
 		return changeHostStatus(id, mode, "stop")
 	}
@@ -496,7 +496,7 @@ func (s DefaultIndexService) ClearHost(id int, mode string) error {
 		}
 		return s.repo().SaveHost(host, "")
 	}
-	s.runtime().RemoveHostCache(id)
+	defer s.runtime().RemoveHostCache(id)
 	if strings.TrimSpace(mode) == "" {
 		return ErrModeRequired
 	}
@@ -571,7 +571,8 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	if err != nil {
 		return HostMutation{}, err
 	}
-	s.runtime().RemoveHostCache(input.ID)
+	// After the edit: a request in between would cache a transport of the old settings.
+	defer s.runtime().RemoveHostCache(input.ID)
 
 	host, err := s.repo().GetHost(input.ID)
 	if err != nil {

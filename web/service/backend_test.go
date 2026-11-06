@@ -304,3 +304,25 @@ func TestDefaultAuthServiceRegisterUserUsesInjectedRepository(t *testing.T) {
 		t.Fatalf("RegisterUser() = %+v, want client id 73", result)
 	}
 }
+
+type cacheOrderRuntime struct {
+	stubRuntime
+	removed func()
+}
+
+func (r cacheOrderRuntime) RemoveHostCache(int) { r.removed() }
+
+// The transport cache entry goes after the edit: a request in between would
+// cache a transport of the old settings again.
+func TestEditHostRemovesCacheAfterEdit(t *testing.T) {
+	host := &file.Host{Id: 1, Host: "a.example", Client: &file.Client{Id: 1}, Flow: &file.Flow{}, Target: &file.Target{}}
+	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*file.Client, error) { return host.Client, nil }}, host: host}
+	var hostAtRemoval string
+	s := DefaultIndexService{Backend: Backend{Repository: r, Runtime: cacheOrderRuntime{removed: func() { hostAtRemoval = host.Host }}}}
+	if _, err := s.EditHost(EditHostInput{ID: 1, Host: "b.example"}); err != nil {
+		t.Fatal(err)
+	}
+	if hostAtRemoval != "b.example" {
+		t.Fatalf("cache removed while the host was %q", hostAtRemoval)
+	}
+}
