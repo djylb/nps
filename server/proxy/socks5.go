@@ -63,7 +63,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
 	// clientConn wraps c only, which every path below closes or relays.
 	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(c)
-	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task)
+	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
 		rep := socks5.ReplyGeneralFailure

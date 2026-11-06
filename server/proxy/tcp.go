@@ -167,7 +167,7 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 // ProcessTunnel tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	flows := []*file.Flow{s.Task.Flow, s.Task.Client.Flow}
-	err := s.DealTarget(c, s.Task.Client, s.Task.Target, nil, common.ConnTCP, nil, flows, s.Task)
+	err := s.DealTarget(c, s.Task.Client, nil, common.ConnTCP, nil, flows, s.Task)
 	if !errors.Is(err, file.ErrNoTarget) {
 		return err
 	}
@@ -230,6 +230,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 			}
 			isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
 			link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
+			link.Option.Node = s.Task.Route().Node
 			target, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, nil)
 			if err != nil {
 				logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)

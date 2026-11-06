@@ -537,6 +537,12 @@ func (c *Client) usable(b *upstream.Backend[*Node]) bool {
 	return false
 }
 
+// usableNode reports whether the node of uuid can take connections.
+func (c *Client) usableNode(uuid string) bool {
+	b, ok := c.nodePool.Backend(uuid)
+	return ok && c.usable(b)
+}
+
 func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

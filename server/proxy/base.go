@@ -130,7 +130,11 @@ func (s *BaseServer) AcquireForwarding(client *file.Client, group *byterate.Grou
 
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
-	target, link, isLocal, err := s.openClientLink(c, client, addr, tp, localProxy, task)
+	var node string
+	if task != nil {
+		node = task.Route().Node
+	}
+	target, link, isLocal, err := s.openClientLink(c, client, addr, tp, localProxy, node, task)
 	if err != nil {
 		_ = c.Close()
 		return err
@@ -138,17 +142,20 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	return s.relayClient(target, c, link, isLocal, client, rb, tp, f, flows, proxyProtocol, task)
 }
 
-// DealTarget is DealClient to one of the addresses of dest, retrying the
+// DealTarget is DealClient along a route of task, to one of the addresses of
+// its target, retrying the
 // next address if the server fails to dial one itself. It returns
 // file.ErrNoTarget, leaving c open, if no address can be tried.
-func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client, dest *file.Target,
+func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
 	rb []byte, tp string, f func(), flows []*file.Flow, task *file.Tunnel) error {
 	var target net.Conn
 	var link *conn.Link
 	var isLocal bool
+	route := task.Route()
+	dest := route.Target
 	err := dest.Dial(func(addr string) (bool, error) {
 		var err error
-		target, link, isLocal, err = s.openClientLink(c, client, addr, tp, dest.LocalProxy, task)
+		target, link, isLocal, err = s.openClientLink(c, client, addr, tp, dest.LocalProxy, route.Node, task)
 		return isLocal, err
 	})
 	if errors.Is(err, file.ErrNoTarget) {
@@ -175,7 +182,7 @@ func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link,
 	return nil
 }
 
-func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp string, localProxy bool, task *file.Tunnel) (net.Conn, *conn.Link, bool, error) {
+func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp string, localProxy bool, node string, task *file.Tunnel) (net.Conn, *conn.Link, bool, error) {
 	if SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
@@ -188,6 +195,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 	}
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
+	link.Option.Node = node
 	target, err := s.Bridge.SendLinkInfo(client.Id, link, task)
 	if err != nil {
 		logs.Warn("get connection from client Id %d  error %v", client.Id, err)

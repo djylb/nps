@@ -35,6 +35,9 @@ type Option func(*Options)
 type Options struct {
 	Timeout time.Duration
 	NeedAck bool
+	// Node is the UUID of the node to open the link through, chosen by the
+	// server; empty leaves the choice to the client's select mode.
+	Node string `json:"-"`
 }
 
 var defaultTimeOut = time.Second * 5

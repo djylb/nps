@@ -282,7 +282,7 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 	task := file.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(c), host.Client, host.Target, rb, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = c.Close()
 	}
@@ -301,7 +301,7 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 	task := file.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, host.Target, nil, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, common.ConnTCP, nil, []*file.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = tlsConn.Close()
 	}

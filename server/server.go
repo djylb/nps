@@ -101,11 +101,18 @@ func addKeyClient(vkey string, kind file.KeyKind) {
 	RunList.Store(c.Id, nil)
 }
 
+// routePruneInterval is how often departed nodes lose their routes.
+const routePruneInterval = 2 * time.Second
+
 // DealBridgeTask get bridge command
 func DealBridgeTask() {
 	cfg := servercfg.Current()
+	prune := time.NewTicker(routePruneInterval)
+	defer prune.Stop()
 	for {
 		select {
+		case <-prune.C:
+			Bridge.PruneRoutes(func(id int) { _ = DelTask(id) }, delHost)
 		case h := <-Bridge.OpenHost:
 			if h != nil {
 				HttpProxyCache.Remove(h.Id)
@@ -361,9 +368,13 @@ func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 		return true
 	})
 	for _, id := range ids {
-		HttpProxyCache.Remove(id)
-		_ = file.GetDb().DelHost(id)
+		delHost(id)
 	}
+}
+
+func delHost(id int) {
+	HttpProxyCache.Remove(id)
+	_ = file.GetDb().DelHost(id)
 }
 
 // RequestClientUpdate asks the connected npc of client clientId to update

@@ -58,6 +58,7 @@ type Bridge struct {
 	SecretChan         chan *conn.Secret
 	runList            *sync.Map //map[int]interface{}
 	disconnectTime     int
+	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 }
 

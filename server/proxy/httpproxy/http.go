@@ -298,12 +298,14 @@ func (s *HttpServer) newTransport(host *file.Host) *http.Transport {
 
 func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {
 	// Get target addr
-	isLocal := s.AllowLocalProxy && host.Target.LocalProxy || host.Client.Id < 0
+	route := host.Route()
+	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || host.Client.Id < 0
 	var link *conn.Link
 	var targetConn net.Conn
-	err := host.Target.Dial(func(addr string) (bool, error) {
+	err := route.Target.Dial(func(addr string) (bool, error) {
 		logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, addr)
 		link = conn.NewLink("tcp", addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
+		link.Option.Node = route.Node
 		var err error
 		targetConn, err = s.Bridge.SendLinkInfo(host.Client.Id, link, nil)
 		if err != nil {
@@ -324,13 +326,13 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 	wsConn := netx.WrapConn(rawConn, nil)
 	var netConn net.Conn = wsConn
 
-	if host.Target.ProxyProtocol != 0 {
+	if route.Target.ProxyProtocol != 0 {
 		ra, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
 		if ra == nil || ra.IP == nil {
 			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
 		}
 		la, _ := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		if hdr := conn.ProxyProtocolHeader(host.Target.ProxyProtocol, ra, la); hdr != nil {
+		if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, ra, la); hdr != nil {
 			_ = netConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if _, err := hdr.WriteTo(netConn); err != nil {
 				_ = netConn.Close()
@@ -560,11 +562,13 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
 	remote := ctx.Value(ctxRemoteAddr).(string)
 	h := ctx.Value(ctxHost).(*file.Host)
-	isLocal := s.AllowLocalProxy && h.Target.LocalProxy || h.Client.Id < 0
+	route := h.Route()
+	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || h.Client.Id < 0
 	var link *conn.Link
 	var target net.Conn
-	err := h.Target.Dial(func(addr string) (bool, error) {
+	err := route.Target.Dial(func(addr string) (bool, error) {
 		link = conn.NewLink("tcp", addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
+		link.Option.Node = route.Node
 		var err error
 		target, err = s.Bridge.SendLinkInfo(h.Client.Id, link, nil)
 		if err != nil {
@@ -580,13 +584,13 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	}
 	rawConn := conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, true, isLocal, h.RateLimiter())
 	flowConn := conn.NewFlowConn(rawConn, h.Flow, h.Client.Flow)
-	if h.Target.ProxyProtocol != 0 {
+	if route.Target.ProxyProtocol != 0 {
 		ra, _ := net.ResolveTCPAddr("tcp", remote)
 		if ra == nil || ra.IP == nil {
 			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
 		}
 		la, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		if hdr := conn.ProxyProtocolHeader(h.Target.ProxyProtocol, ra, la); hdr != nil {
+		if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, ra, la); hdr != nil {
 			_ = flowConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if _, err := hdr.WriteTo(flowConn); err != nil {
 				_ = flowConn.Close()

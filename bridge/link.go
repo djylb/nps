@@ -105,9 +105,20 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	var tunnel any
 	var node *Node
-	if strings.Contains(link.Host, "file://") {
-		key := strings.TrimPrefix(strings.TrimSpace(link.Host), "file://")
+	isFile := strings.Contains(link.Host, "file://")
+	if isFile {
 		link.ConnType = "file"
+	}
+	if link.Option.Node != "" {
+		// The route chose the node; its absence says nothing about the others.
+		if node, ok = client.GetNodeByUUID(link.Option.Node); ok {
+			tunnel = node.GetTunnel()
+		}
+		if tunnel == nil {
+			return nil, fmt.Errorf("node %s of client %d is not connected", link.Option.Node, clientId)
+		}
+	} else if isFile {
+		key := strings.TrimPrefix(strings.TrimSpace(link.Host), "file://")
 		node, ok = client.GetNodeByFile(key)
 		if ok {
 			tunnel = node.GetTunnel()

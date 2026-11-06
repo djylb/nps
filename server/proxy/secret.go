@@ -80,16 +80,18 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 		}
 	}
 	localProxy = s.AllowLocalProxy && localProxy || s.Task.Client.Id < 0
+	route := s.Task.Route()
 	var link *conn.Link
 	var target net.Conn
 	dial := func(addr string) (bool, error) {
 		link = conn.NewLink(connType, addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, c.Conn.RemoteAddr().String(), localProxy)
+		link.Option.Node = route.Node
 		var err error
 		target, err = s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
 		return localProxy, err
 	}
 	if host == "" {
-		err = s.Task.Target.Dial(dial)
+		err = route.Target.Dial(dial)
 		if errors.Is(err, file.ErrNoTarget) {
 			_, err = dial("")
 		}
@@ -116,7 +118,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	// while probing for link information go to it. Encryption and
 	// compression only apply to links through the client and are skipped
 	// for local ones.
-	proxyProtocol := s.Task.Target.ProxyProtocol
+	proxyProtocol := route.Target.ProxyProtocol
 	visitor := c.Conn
 	if connType == common.ConnUDP {
 		// The visitor stream carries length-framed datagrams, where a single

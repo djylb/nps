@@ -478,6 +478,7 @@ type Tunnel struct {
 	StripPre     string
 	ReadOnly     bool
 	Target       *Target
+	Routes       *RouteSet `json:"-"`
 	UserAuth     *MultiAccount
 	MultiAccount *MultiAccount
 	Health
@@ -566,6 +567,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 		Flow:         host.Flow,
 		NoStore:      true,
 		Target:       host.Target,
+		Routes:       host.Routes,
 		UserAuth:     host.UserAuth,
 		MultiAccount: host.MultiAccount,
 	}
@@ -600,6 +602,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		DestAclRules: t.DestAclRules,
 		destAcl:      t.destAcl,
 		NoStore:      t.NoStore,
+		Routes:       t.Routes,
 		IsHttp:       t.IsHttp,
 		HttpProxy:    t.HttpProxy,
 		Socks5Proxy:  t.Socks5Proxy,
@@ -728,6 +731,7 @@ type Host struct {
 	Client           *Client
 	TargetIsHttps    bool
 	Target           *Target
+	Routes           *RouteSet `json:"-"`
 	UserAuth         *MultiAccount
 	MultiAccount     *MultiAccount
 	SourceLists

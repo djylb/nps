@@ -87,8 +87,10 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		}
 	}
 	addr := visitor.RemoteAddr()
-	isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
-	link := conn.NewLink(common.ConnUDP, s.Task.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
+	route := s.Task.Route()
+	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || s.Task.Client.Id < 0
+	link := conn.NewLink(common.ConnUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
+	link.Option.Node = route.Node
 	clientConn, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
 	if err != nil {
 		logs.Trace("SendLinkInfo error: %v", err)
@@ -125,7 +127,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	defer common.BufPool.Put(buf)
 	// The PROXY header, if any, goes in front of the first datagram only.
 	var header []byte
-	if hdr := conn.ProxyProtocolHeader(s.Task.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {
+	if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {
 		if header, err = hdr.AppendBinary(nil); err != nil {
 			logs.Warn("build PROXY protocol header for %v: %v", addr, err)
 			header = nil

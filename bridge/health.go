@@ -41,14 +41,14 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 		file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 			v := value.(*file.Tunnel)
 			if v.Client.Id == id && v.Mode == "tcp" {
-				v.Target.SetHealthy(info, status)
+				v.Routes.Target(node.UUID, v.Target).SetHealthy(info, status)
 			}
 			return true
 		})
 		file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
 			v := value.(*file.Host)
 			if v.Client.Id == id {
-				v.Target.SetHealthy(info, status)
+				v.Routes.Target(node.UUID, v.Target).SetHealthy(info, status)
 			}
 			return true
 		})

@@ -444,6 +444,7 @@ func (s *socks5UDPSession) openTunnel() error {
 		s.registry.allowLocalProxy && task.Target.LocalProxy,
 	)
 	link.Option.Timeout = s.timeout
+	link.Option.Node = task.Route().Node
 
 	target, err := s.registry.bridge.SendLinkInfo(task.Client.Id, link, task)
 	if err != nil {

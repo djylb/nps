@@ -547,7 +547,11 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *file.Tunnel, node *Nod
 	if !ok {
 		return nil, nil, p2pproto.CodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
-	node = v.(*Client).GetNode()
+	if route := t.Route(); route.Node != "" {
+		node, _ = v.(*Client).GetNodeByUUID(route.Node)
+	} else {
+		node = v.(*Client).GetNode()
+	}
 	if node == nil || node.GetSignal() == nil {
 		return nil, nil, p2pproto.CodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
