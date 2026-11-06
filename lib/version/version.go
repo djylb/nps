@@ -3,7 +3,7 @@ package version
 import (
 	"fmt"
 
-	"github.com/djylb/tunnelwire"
+	"github.com/djylb/nps/internal/tunnelwire"
 )
 
 // VERSION is the release of nps and npc.

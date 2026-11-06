@@ -27,12 +27,12 @@ import (
 	"encoding/binary"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/version"
-	"github.com/djylb/tunnelwire"
 	"io"
 )
 

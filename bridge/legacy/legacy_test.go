@@ -13,7 +13,7 @@ import (
 
 	"encoding/hex"
 	"github.com/djylb/netx"
-	"github.com/djylb/tunnelwire"
+	"github.com/djylb/nps/internal/tunnelwire"
 	"golang.org/x/crypto/blake2b"
 )
 

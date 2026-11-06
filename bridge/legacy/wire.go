@@ -4,9 +4,9 @@ import (
 	"io"
 	"net"
 
+	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/tunnelwire"
 )
 
 // Caps are what a peer speaks; every version decision reads one of these.

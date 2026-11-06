@@ -46,8 +46,8 @@ github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0 h1:c11sm9wmKzRulp
 github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0/go.mod h1:jwvG+iLmIl5k7riU04b3EFqDv0HfOJe+OoRxMPjXkcc=
 github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f h1:ApndOPGF7m6Byx+F399FGmNCOgLH6DDZgNyr8MXYokw=
 github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f/go.mod h1:btb4BaMuOhpcFZzNgd0ZiXt621fpdKjgi6uClfmtZek=
-github.com/djylb/upstream v0.0.0-20261030215706-f9377d0cac8c h1:CZz3ZbcSH1moEmkv5Jn3LKg2E3M9kUa4XDT8ehutR9M=
-github.com/djylb/upstream v0.0.0-20261030215706-f9377d0cac8c/go.mod h1:FhUjSK43O/SYGhVQ8DSodfYwXqy6h5Ah4C9zASs4eak=
+github.com/djylb/upstream v0.0.0-20261106113312-bb3198022f11 h1:MM6QH3Qp1P7ixNcOLqNyMCiTE86e6WyBQpypiyOPE14=
+github.com/djylb/upstream v0.0.0-20261106113312-bb3198022f11/go.mod h1:FhUjSK43O/SYGhVQ8DSodfYwXqy6h5Ah4C9zASs4eak=
 github.com/ebitengine/purego v0.11.2 h1:WWiTx8rD8zYdOwSj8O/NiNbsOvSAgJMTlyV1XlbUSeU=
 github.com/ebitengine/purego v0.11.2/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=

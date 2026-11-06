@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/internal/tunnelwire"
+	"github.com/djylb/nps/internal/tunnelwire/control"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/rate"
-	"github.com/djylb/tunnelwire"
-	"github.com/djylb/tunnelwire/control"
 )
 
 // ReadTask reads a task sent with FlagNewTask. It holds no state of the sender:

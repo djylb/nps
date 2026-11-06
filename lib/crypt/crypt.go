@@ -11,7 +11,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/djylb/tunnelwire"
+	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/google/uuid"
 )
 

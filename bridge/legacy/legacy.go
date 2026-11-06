@@ -9,10 +9,10 @@ import (
 	"net"
 	"time"
 
+	"github.com/djylb/nps/internal/tunnelwire/carrier"
+	"github.com/djylb/nps/internal/tunnelwire/mux"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/carrier"
-	"github.com/djylb/tunnelwire/mux"
 )
 
 type muxLogger struct{}

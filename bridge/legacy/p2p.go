@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/djylb/nps/internal/tunnelwire/control"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/control"
 )
 
 // The P2P messages npc and the bridge exchange on a control stream before it
