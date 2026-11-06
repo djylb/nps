@@ -221,18 +221,19 @@ func TestReceiveWindowQueuePopSeesPushBeforeStop(t *testing.T) {
 	}
 }
 
-// A stream with one queued frame is served before a bulk stream's backlog,
-// control frames go first, and each stream keeps its own frame order.
-func TestPriorityQueueRoundRobinPerStream(t *testing.T) {
+// Control frames go first, an idle stream overtakes a backlogged one, each
+// backlogged stream gets streamQuantum frames per turn, and a stream's frames
+// stay in order.
+func TestPriorityQueueStreamScheduling(t *testing.T) {
 	var q priorityQueue
 	q.New()
 	frame := func(flag uint8, id int32) {
 		pack := muxPack.Get()
 		var data interface{}
-		if flag == muxNewMsg {
+		switch flag {
+		case muxNewMsg:
 			data = []byte("x")
-		}
-		if flag == muxMsgSendOk {
+		case muxMsgSendOk:
 			data = uint64(0)
 		}
 		if err := pack.Set(flag, id, data); err != nil {
@@ -240,23 +241,32 @@ func TestPriorityQueueRoundRobinPerStream(t *testing.T) {
 		}
 		q.Push(pack)
 	}
-	for i := 0; i < 3; i++ {
-		frame(muxNewMsg, 1)
-	}
-	frame(muxConnClose, 1)
-	frame(muxNewMsg, 3)
-	frame(muxMsgSendOk, 3)
-	want := []struct {
-		flag uint8
-		id   int32
-	}{{muxMsgSendOk, 3}, {muxNewMsg, 1}, {muxNewMsg, 3}, {muxNewMsg, 1}, {muxNewMsg, 1}, {muxConnClose, 1}}
-	for i, w := range want {
+	pop := func(flag uint8, id int32) {
+		t.Helper()
 		pack := q.TryPop()
-		if pack == nil || pack.flag != w.flag || pack.id != w.id {
-			t.Fatalf("pop %d = %+v, want %+v", i, pack, w)
+		if pack == nil || pack.flag != flag || pack.id != id {
+			t.Fatalf("pop = %+v, want flag %d id %d", pack, flag, id)
 		}
 		muxPack.Put(pack)
 	}
+	for _, id := range []int32{1, 3} {
+		for i := 0; i < streamQuantum+1; i++ {
+			frame(muxNewMsg, id)
+		}
+	}
+	frame(muxConnClose, 3)
+	for _, id := range []int32{1, 3} { // both use a fresh turn
+		for i := 0; i < streamQuantum; i++ {
+			pop(muxNewMsg, id)
+		}
+	}
+	frame(muxNewMsg, 5)
+	frame(muxMsgSendOk, 7)
+	pop(muxMsgSendOk, 7)
+	pop(muxNewMsg, 5)
+	pop(muxNewMsg, 1)
+	pop(muxNewMsg, 3)
+	pop(muxConnClose, 3)
 	if q.TryPop() != nil || q.Len() != 0 {
 		t.Fatalf("queue not empty, len %d", q.Len())
 	}
