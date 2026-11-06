@@ -367,3 +367,64 @@ func TestAcceptBacklogFullRefusesStream(t *testing.T) {
 		t.Fatal("unaccepted stream not closed with the mux")
 	}
 }
+
+func newBudgetMux(t *testing.T) *Mux {
+	t.Helper()
+	m := &Mux{closeChan: make(chan struct{}), connMap: NewConnMap(), bw: NewBandwidth(nil)}
+	m.writeQueue.New()
+	t.Cleanup(func() { close(m.closeChan); m.release() })
+	return m
+}
+
+func TestSessionBudgetLimitsWindowButKeepsEmptyStreamsMoving(t *testing.T) {
+	m := newBudgetMux(t)
+	w := NewConn(1, m).receiveWindow
+
+	m.sessionRecvQueued.Store(maxSessionReceiveWindow)
+	if got := w.effectiveMaxSize(maximumWindowSize); got != initialConnWindow {
+		t.Fatalf("empty stream window = %d, want the initial window", got)
+	}
+	w.buffered.Store(5000)
+	if got := w.effectiveMaxSize(maximumWindowSize); got != 5000 {
+		t.Fatalf("buffering stream window = %d, want its buffered bytes", got)
+	}
+	if got := w.remainingSize(maximumWindowSize, 0); got != 0 {
+		t.Fatalf("remaining = %d, want 0 over budget", got)
+	}
+	w.buffered.Store(0)
+	m.sessionRecvQueued.Store(0)
+	if got := w.effectiveMaxSize(maximumWindowSize); got != maximumWindowSize {
+		t.Fatalf("free session window = %d, want the stream limit", got)
+	}
+}
+
+func TestSessionBudgetReleasedOnReadAndClose(t *testing.T) {
+	m := newBudgetMux(t)
+	c := NewConn(1, m)
+	m.connMap.Set(c.connId, c)
+	for _, n := range []uint16{100, 200, 300} {
+		if err := c.receiveWindow.Write(windowBuff.Get(), n, false, c.connId); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := m.sessionRecvQueued.Load(); got != 600 {
+		t.Fatalf("queued = %d, want 600", got)
+	}
+	buf := make([]byte, 100)
+	if _, err := c.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.sessionRecvQueued.Load(); got != 500 {
+		t.Fatalf("after full read queued = %d, want 500", got)
+	}
+	if _, err := c.Read(buf); err != nil { // partly reads the 200 byte frame
+		t.Fatal(err)
+	}
+	if got := m.sessionRecvQueued.Load(); got != 500 {
+		t.Fatalf("partial element released early, queued = %d", got)
+	}
+	_ = c.Close()
+	if got := m.sessionRecvQueued.Load(); got != 0 {
+		t.Fatalf("after close queued = %d, want 0", got)
+	}
+}

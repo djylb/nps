@@ -193,6 +193,9 @@ type receiveWindow struct {
 	readMu   sync.Mutex
 	bufQueue *receiveWindowQueue
 	element  *listElement
+	// buffered counts received bytes until fully read, including the element
+	// being read; these bytes also count toward the session budget.
+	buffered atomic.Uint32
 	count    int8
 	bw       *writeBandwidth
 	priority atomic.Bool
@@ -204,18 +207,53 @@ func (Self *receiveWindow) New(mux *Mux) {
 	// initial a window for receive
 	Self.bufQueue = newReceiveWindowQueue()
 	Self.element = listEle.Get()
-	Self.maxSizeDone = Self.pack(maximumSegmentSize*30, 0, false)
+	Self.maxSizeDone = Self.pack(initialConnWindow, 0, false)
 	Self.mux = mux
 	Self.window.New()
 	Self.bw = newWriteBandwidth()
 }
 
+func (Self *receiveWindow) reserveBytes(l uint16) {
+	Self.buffered.Add(uint32(l))
+	Self.mux.sessionRecvQueued.Add(uint64(l))
+}
+
+func (Self *receiveWindow) releaseBytes(l uint16) {
+	Self.buffered.Add(^(uint32(l) - 1))
+	Self.mux.sessionRecvQueued.Add(^(uint64(l) - 1))
+}
+
+// effectiveMaxSize applies the session budget to a window size. A stream with
+// nothing buffered always keeps the initial window, so streams that are being
+// read keep moving however much an idle stream holds.
+func (Self *receiveWindow) effectiveMaxSize(maxSize uint32) uint32 {
+	if maxSize < initialConnWindow {
+		maxSize = initialConnWindow
+	}
+	if maxSize > maximumWindowSize {
+		maxSize = maximumWindowSize
+	}
+	buffered := Self.buffered.Load()
+	var free uint64
+	if queued := Self.mux.sessionRecvQueued.Load(); queued < maxSessionReceiveWindow {
+		free = maxSessionReceiveWindow - queued
+	}
+	allowed := uint64(buffered) + free
+	if buffered == 0 && allowed < initialConnWindow {
+		allowed = initialConnWindow
+	}
+	if uint64(maxSize) > allowed {
+		maxSize = uint32(allowed)
+	}
+	return maxSize
+}
+
 func (Self *receiveWindow) remainingSize(maxSize uint32, delta uint16) (n uint32) {
 	// receive window remaining
-	l := int64(maxSize) - int64(Self.bufQueue.Len())
-	l -= int64(delta)
-	if l > 0 {
-		n = uint32(l)
+	maxSize = Self.effectiveMaxSize(maxSize)
+	used := uint64(Self.buffered.Load()) + uint64(delta)
+	if used < uint64(maxSize) {
+		n = uint32(uint64(maxSize) - used)
 	}
 	return
 }
@@ -234,8 +272,8 @@ func (Self *receiveWindow) calcSize() {
 			}
 			n = uint32(latency * (muxBw + connBw))
 		}
-		if n < maximumSegmentSize*30 {
-			n = maximumSegmentSize * 30
+		if n < initialConnWindow {
+			n = initialConnWindow
 		}
 		if n < uint32(float64(maximumSegmentSize*3000)*latency) {
 			// latency gain
@@ -246,6 +284,7 @@ func (Self *receiveWindow) calcSize() {
 		for {
 			ptrs := atomic.LoadUint64(&Self.maxSizeDone)
 			size, read, wait := Self.unpack(ptrs)
+			size = Self.effectiveMaxSize(size)
 			rem := Self.remainingSize(size, 0)
 			ra := float64(rem) / float64(size)
 			if ra > 0.8 {
@@ -263,7 +302,7 @@ func (Self *receiveWindow) calcSize() {
 			}
 			// set the minimal size
 			if n > 2*size {
-				if size == maximumSegmentSize*30 {
+				if size == initialConnWindow {
 					// we give more ratio when the initial window size, to reduce the time window grow up
 					if n > size*6 {
 						n = size * 6
@@ -281,6 +320,7 @@ func (Self *receiveWindow) calcSize() {
 				}
 			}
 			// set the maximum size
+			n = Self.effectiveMaxSize(n)
 			if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(n, read, wait)) {
 				// only change the maxSize
 				break
@@ -301,35 +341,42 @@ func (Self *receiveWindow) Write(buf []byte, l uint16, part bool, id int32) (err
 		return
 	}
 	Self.calcSize() // calculate the max window size
-	var wait bool
-	var maxSize, read uint32
+	var wait, sendUpdate bool
+	var rawMaxSize, maxSize, read, nextRead uint32
 start:
 	ptrs := atomic.LoadUint64(&Self.maxSizeDone)
-	maxSize, read, wait = Self.unpack(ptrs)
-	remain := Self.remainingSize(maxSize, l)
-	// calculate the remaining window size now, plus the element we will push
-	if remain == 0 && !wait {
+	rawMaxSize, read, wait = Self.unpack(ptrs)
+	maxSize = Self.effectiveMaxSize(rawMaxSize)
+	// a full window waits for the reader, which acknowledges when it frees space
+	if Self.remainingSize(maxSize, l) == 0 {
 		wait = true
-		if !atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, read, wait)) {
-			// only change the wait status, not send the read size
-			goto start
-			// another goroutine change the status, make sure shall we need wait
-		}
-	} else if !wait {
-		if !atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, 0, wait)) {
-			// reset read size here, and send the read size directly
-			goto start
-			// another goroutine change the status, make sure shall we need wait
-		}
-	} // maybe there are still some data received even if window is full, just keep the wait status
-	// and push into queue. when receive window read enough, send window will be acknowledged.
+	}
+	// a frame alone is no reason to acknowledge: only a changed limit or enough
+	// bytes read, which the reader normally reports itself
+	sendUpdate = maxSize != rawMaxSize || !wait && read >= ackThreshold(maxSize)
+	nextRead = read
+	if sendUpdate {
+		nextRead = 0
+	}
+	if !atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, nextRead, wait)) {
+		goto start
+	}
+	Self.reserveBytes(l)
 	Self.bufQueue.Push(element)
-	// status check finish, now we can push the element into the queue
-	if !wait {
+	if sendUpdate {
 		Self.mux.sendInfo(muxMsgSendOk, id, Self.priority.Load(), Self.pack(maxSize, read, false))
-		// send the current status to send window
+	}
+	if Self.closed() {
+		// closed after the check above: release may have missed this element,
+		// and its bytes must not stay charged to the session
+		Self.release()
 	}
 	return nil
+}
+
+// ackThreshold is how many read bytes are worth a window update.
+func ackThreshold(maxSize uint32) uint32 {
+	return min(maxSize/2, maximumSegmentSize*4)
 }
 
 func (Self *receiveWindow) Read(p []byte, id int32) (n int, err error) {
@@ -385,6 +432,7 @@ copyData:
 	//l = 0
 	if Self.off == uint32(Self.element.L) {
 		windowBuff.Put(Self.element.Buf)
+		Self.releaseBytes(Self.element.L)
 		Self.sendStatus(id, Self.element.L)
 		// check the window full status
 	}
@@ -396,42 +444,24 @@ copyData:
 }
 
 func (Self *receiveWindow) sendStatus(id int32, l uint16) {
-	var maxSize, read uint32
-	var wait bool
 	for {
 		ptrs := atomic.LoadUint64(&Self.maxSizeDone)
-		maxSize, read, wait = Self.unpack(ptrs)
-		if read <= (read+uint32(l))&mask31 {
-			read += uint32(l)
-			remain := Self.remainingSize(maxSize, 0)
-			if wait && remain > 0 || read >= maxSize/2 || remain == maxSize {
-				if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, 0, false)) {
-					// now we get the current window status success
-					// receive window free up some space we need acknowledge send window, also reset the read size
-					// still having a condition that receive window is empty and not send the status to send window
-					// so send the status here
-					Self.mux.sendInfo(muxMsgSendOk, id, Self.priority.Load(), Self.pack(maxSize, read, false))
-					break
-				}
-			} else {
-				if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, read, wait)) {
-					// receive window not into the wait status, or still not having any space now,
-					// just change the read size
-					break
-				}
-			}
-		} else {
-			//overflow
-			if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, uint32(l), wait)) {
-				// reset to l
+		rawMaxSize, read, wait := Self.unpack(ptrs)
+		// acknowledged at the threshold, so read stays far below the 31 bit limit
+		read += uint32(l)
+		maxSize := Self.effectiveMaxSize(rawMaxSize)
+		remain := Self.remainingSize(maxSize, 0)
+		if maxSize != rawMaxSize || wait && remain > 0 || read >= ackThreshold(maxSize) || remain == maxSize {
+			if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, 0, false)) {
 				Self.mux.sendInfo(muxMsgSendOk, id, Self.priority.Load(), Self.pack(maxSize, read, false))
-				break
+				return
 			}
+		} else if atomic.CompareAndSwapUint64(&Self.maxSizeDone, ptrs, Self.pack(maxSize, read, wait)) {
+			return
 		}
 		runtime.Gosched()
 		// another goroutine change remaining or wait status, make sure
 	}
-	//return
 }
 
 func (Self *receiveWindow) SetTimeOut(t time.Time) {
@@ -456,9 +486,12 @@ func (Self *receiveWindow) release() {
 	Self.readMu.Lock()
 	defer Self.readMu.Unlock()
 	if Self.element != nil {
-		if Self.off < uint32(Self.element.L) && Self.element.Buf != nil {
-			// a fully read element has already returned its buffer
-			windowBuff.Put(Self.element.Buf)
+		if Self.off < uint32(Self.element.L) {
+			// a fully read element has already returned its buffer and bytes
+			Self.releaseBytes(Self.element.L)
+			if Self.element.Buf != nil {
+				windowBuff.Put(Self.element.Buf)
+			}
 		}
 		listEle.Put(Self.element)
 		Self.element = listEle.Get()
@@ -469,6 +502,7 @@ func (Self *receiveWindow) release() {
 		if ele == nil {
 			return
 		}
+		Self.releaseBytes(ele.L)
 		if ele.Buf != nil {
 			windowBuff.Put(ele.Buf)
 		}
@@ -494,7 +528,7 @@ type sendWindow struct {
 func (Self *sendWindow) New(mux *Mux) {
 	Self.setSizeCh = make(chan struct{}, 1)
 	Self.deadlineCh = make(chan struct{}, 1)
-	Self.maxSizeDone = Self.pack(maximumSegmentSize*30, 0, false)
+	Self.maxSizeDone = Self.pack(initialConnWindow, 0, false)
 	Self.mux = mux
 	Self.window.New()
 }

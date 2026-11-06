@@ -31,6 +31,10 @@ const (
 	maximumSegmentSize       = poolSizeWindow
 	maximumWindowSize        = 1 << 27 // 1<<31-1 TCP slide window size is very large,
 	// we use 128M, reduce memory usage
+	// initialConnWindow is assumed by both ends of a new stream: part of the wire contract
+	initialConnWindow = maximumSegmentSize * 30
+	// maxSessionReceiveWindow bounds what one mux advertises across its streams.
+	maxSessionReceiveWindow = maximumWindowSize * 2
 )
 
 var (
@@ -64,7 +68,9 @@ type Mux struct {
 	writeQueue  priorityQueue
 	once        sync.Once
 	reasonMu    sync.RWMutex
-	closeReason string
+	// sessionRecvQueued is the sum of the streams\' buffered bytes.
+	sessionRecvQueued atomic.Uint64
+	closeReason       string
 }
 
 func NewMux(c net.Conn, connType string, pingCheckThreshold int, isInitiator bool) *Mux {
