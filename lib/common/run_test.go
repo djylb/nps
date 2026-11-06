@@ -115,9 +115,6 @@ func TestLogAndTmpPaths(t *testing.T) {
 		if got := GetNpcLogPath(); got != filepath.Join(appPath, "npc.log") {
 			t.Fatalf("GetNpcLogPath() = %q, want %q", got, filepath.Join(appPath, "npc.log"))
 		}
-		if got := GetTmpPath(); got != appPath {
-			t.Fatalf("GetTmpPath() = %q, want %q", got, appPath)
-		}
 		if got := GetConfigPath(); got != filepath.Join(appPath, "conf/npc.conf") {
 			t.Fatalf("GetConfigPath() = %q, want %q", got, filepath.Join(appPath, "conf/npc.conf"))
 		}
@@ -129,9 +126,6 @@ func TestLogAndTmpPaths(t *testing.T) {
 	}
 	if got := GetNpcLogPath(); got != "/var/log/npc.log" {
 		t.Fatalf("GetNpcLogPath() = %q, want %q", got, "/var/log/npc.log")
-	}
-	if got := GetTmpPath(); got != "/tmp" {
-		t.Fatalf("GetTmpPath() = %q, want %q", got, "/tmp")
 	}
 	if got := GetConfigPath(); got != "conf/npc.conf" {
 		t.Fatalf("GetConfigPath() = %q, want %q", got, "conf/npc.conf")

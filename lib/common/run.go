@@ -85,17 +85,6 @@ func GetNpcLogPath() string {
 	return path
 }
 
-// GetTmpPath interface pid file path
-func GetTmpPath() string {
-	var path string
-	if IsWindows() {
-		path = GetAppPath()
-	} else {
-		path = "/tmp"
-	}
-	return path
-}
-
 // GetConfigPath config file path
 func GetConfigPath() string {
 	var path string
