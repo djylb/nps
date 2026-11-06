@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
@@ -19,7 +20,7 @@ import (
 
 type Http3Server struct {
 	*HttpsServer
-	http3Status     bool
+	http3Status     atomic.Bool
 	http3Listener   net.PacketConn
 	http3Server     *http3.Server
 	http3NextProtos []string
@@ -33,17 +34,16 @@ type Http3Server struct {
 
 func NewHttp3Server(httpsSrv *HttpsServer, udpConn net.PacketConn) *Http3Server {
 	return &Http3Server{
-		http3Status:   false,
 		HttpsServer:   httpsSrv,
 		http3Listener: udpConn,
 	}
 }
 
 func (s *Http3Server) Start() error {
-	if s.http3Status {
+	if s.http3Status.Load() {
 		return errors.New("http3 server is already running")
 	}
-	s.http3Status = true
+	s.http3Status.Store(true)
 	s.http3NextProtos = []string{http3.NextProtoH3}
 	tlsConfig := &tls.Config{
 		NextProtos:         s.http3NextProtos,
@@ -52,17 +52,18 @@ func (s *Http3Server) Start() error {
 	tlsConfig.SetSessionTicketKeys(s.ticketKeys)
 
 	if !s.Http3Bridge {
-		s.http3Server = &http3.Server{
+		srv := &http3.Server{
 			Handler:   s.httpsServer.Handler,
 			TLSConfig: tlsConfig,
 		}
+		s.setServer(srv)
 
-		if err := s.http3Server.Serve(s.http3Listener); err != nil {
+		if err := srv.Serve(s.http3Listener); err != nil {
 			logs.Error("HTTP/3 Serve error: %v", err)
-			s.http3Status = false
+			s.http3Status.Store(false)
 			return err
 		}
-		s.http3Status = false
+		s.http3Status.Store(false)
 		return nil
 	}
 
@@ -75,7 +76,7 @@ func (s *Http3Server) Start() error {
 	}
 
 	if !s.addWorker() {
-		s.http3Status = false
+		s.http3Status.Store(false)
 		return nil
 	}
 	defer s.workers.Done()
@@ -83,12 +84,12 @@ func (s *Http3Server) Start() error {
 	defer func() { _ = tr.Close() }()
 	ln, err := tr.ListenEarly(tlsConfig, quicConfig)
 	if err != nil {
-		s.http3Status = false
+		s.http3Status.Store(false)
 		return err
 	}
-	s.http3Server = &http3.Server{
+	s.setServer(&http3.Server{
 		Handler: s.httpsServer.Handler,
-	}
+	})
 
 	ctx := context.Background()
 	for {
@@ -113,8 +114,14 @@ func (s *Http3Server) Start() error {
 		}()
 	}
 	_ = ln.Close()
-	s.http3Status = false
+	s.http3Status.Store(false)
 	return nil
+}
+
+func (s *Http3Server) setServer(srv *http3.Server) {
+	s.closeMu.Lock()
+	s.http3Server = srv
+	s.closeMu.Unlock()
 }
 
 // addWorker counts a new worker unless Close has begun.
@@ -133,12 +140,13 @@ func (s *Http3Server) addWorker() bool {
 func (s *Http3Server) Close() error {
 	s.closeMu.Lock()
 	s.closing = true
+	srv := s.http3Server
 	s.closeMu.Unlock()
 	defer s.workers.Wait()
-	if s.http3Server != nil {
-		_ = s.http3Server.Close()
+	if srv != nil {
+		_ = srv.Close()
 	}
-	s.http3Status = false
+	s.http3Status.Store(false)
 	return s.http3Listener.Close()
 }
 
