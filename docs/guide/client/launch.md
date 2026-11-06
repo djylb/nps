@@ -67,3 +67,5 @@ INI 内容就是配置文件本身，并按配置文件模式运行。
 - 设置 `dns_server`、`multi_account`、`cert_file`、`key_file`、`local_path`、`strip_pre`、`pprof_addr` 或 `mode=file`。
 
 需要这些功能时使用本地配置文件。
+
+此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。

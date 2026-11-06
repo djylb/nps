@@ -100,3 +100,5 @@ func verify(secret string, r *http.Request, body []byte) bool {
 	return hmac.Equal([]byte(want), []byte(r.Header.Get("X-NPS-Signature")))
 }
 ```
+
+此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。

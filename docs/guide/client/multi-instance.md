@@ -13,3 +13,5 @@ Web 管理的隧道和域名不受影响。
 一个实例的配置交换失败时只断开该实例，不影响同一 `vkey` 的其他实例；新实例加入不重启正在运行的隧道。
 
 Web 管理的条目按 `bridge_select_mode` 选择实例：主备（`0`/`Primary`/`p`）、轮询（`1`/`RoundRobin`/`rr`）、随机（`2`/`Random`/`rand`）。
+
+此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。
