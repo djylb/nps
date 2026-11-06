@@ -1,6 +1,12 @@
-# NPC SDK 文档
+# NPC SDK
 
----
+把 npc 编译为 C 动态库：
+
+```bash
+CGO_ENABLED=1 go build -tags sdk -buildmode=c-shared -o npc_sdk.so ./cmd/npc
+```
+
+生成 `npc_sdk.so` 和头文件 `npc_sdk.h`。
 
 ## 接口说明
 
@@ -12,7 +18,7 @@
 **参数：**  
 - **p0 (char\*)** ：连接地址，格式示例 `"192.168.1.100:8080"`。
 - **p1 (char\*)** ：验证密钥（vkey），用于身份认证。
-- **p2 (char\*)** ：连接类型，支持 `"tcp"`、`"tls"`、`"udp"`。
+- **p2 (char\*)** ：连接类型，支持 `"tcp"`、`"tls"`、`"kcp"`、`"quic"`、`"ws"`、`"wss"`。
 - **p3 (char\*)** ：连接代理地址，格式示例 `"socks5://user:password@127.0.0.1:9007"`。如不使用代理，请传入空字符串。
 
 **返回值：**  
@@ -54,7 +60,7 @@ extern void CloseClient();
 ### 4. Version
 
 **功能描述：**  
-获取当前客户端版本信息，返回一个 C 字符串指针，包含版本号（例如 `"v0.26.10"`）。
+获取当前客户端版本信息，返回一个 C 字符串指针，包含版本号。
 
 **接口原型：**
 ```c

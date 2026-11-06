@@ -5,7 +5,9 @@
 
 ## Web API 验证机制
 
-每次 API 请求都需附带两个参数：
+每次 API 请求都需在 **URL 查询参数**中附带两个参数（放在表单里不会通过认证）：
+
+所有接口也可通过 `/api/v1` 前缀访问，例如 `/api/v1/client/list`；配置了 `web_base_url` 时带上该前缀。
 
 - **`auth_key`** ：
   - 生成规则：`auth_key = md5(配置文件中的auth_key + 当前时间戳)`
@@ -23,21 +25,21 @@ System.out.println(authKey);
 
 ```bash
 curl -X POST \
-  --url http://127.0.0.1:8080/client/list \
-  --data 'auth_key=your_generated_auth_key&timestamp=current_unix_timestamp&start=0&limit=10'
+  --url 'http://127.0.0.1:8081/client/list?auth_key=your_generated_auth_key&timestamp=current_unix_timestamp' \
+  --data 'offset=0&limit=10'
 ```
 
 **安全提醒：** 为保障安全性，每次请求的时间戳有效范围为 20 秒内。
 
 ## 获取服务端时间
 
-**接口：** `POST /auth/gettime`
+**接口：** `GET /auth/gettime`
 
 - **返回值**：当前服务端 Unix 时间戳（单位：秒）。
 
 ## 获取服务端 authKey
 
-**接口：** `POST /auth/getauthkey`
+**接口：** `GET /auth/getauthkey`
 
 - **返回值**：AES CBC 加密后的 authKey。
 - **注意事项**：
@@ -50,7 +52,7 @@ curl -X POST \
 
 ## 获取服务端证书
 
-**接口：** `POST /auth/getcert`
+**接口：** `GET /auth/getcert`
 
 - **返回值**：NPS的证书公钥。
 
@@ -63,7 +65,7 @@ curl -X POST \
 
 ### 仪表盘数据（仅管理员）
 
-- **接口：** `POST /index/stats`
+- **接口：** `GET /index/stats`
 - **返回示例：**
   - 成功：`{"code":1,"data":{...}}`
   - 失败（非管理员）：`{"code":0}`
@@ -99,7 +101,7 @@ curl -X POST \
   | 参数 | 说明 |
   |------|------|
   | `client_id` | 需要查询的客户端 ID（整数） |
-  | `type` | 隧道类型（`tcp`, `udp`, `httpProxy`, `socks5`, `secret`, `p2p`） |
+  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`, `p2p`） |
   | `search` | 关键词搜索（字符串） |
   | `sort` | 排序字段（如 `id`） |
   | `order` | 排序方式（`asc` 或 `desc`） |
@@ -116,11 +118,18 @@ curl -X POST \
   | `client_id` | 关联客户端 ID（整数） |
   | `port` | 服务器监听端口，若 ≤0 则自动分配 |
   | `server_ip` | 服务器 IP 地址 |
-  | `type` | 隧道类型（`tcp`, `udp`, `httpProxy`, `socks5`, `secret`, `p2p`） |
+  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`, `p2p`） |
   | `target` | 目标地址（如 `127.0.0.1:8080`，支持多行换行 `\n`） |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |
   | `time_limit` | 时间限制（字符串，空则不限制） |
+  | `max_conn` | 最大连接数（`0` 不限） |
+  | `upload_limit` / `download_limit` | 上行、下行限速（KB/s，`0` 不限） |
+  | `health_check` | 启用健康检查（`0/1`，TCP、Secret 隧道） |
+  | `health_check_type` | `tcp`、`http`、`https` |
+  | `health_check_path` | HTTP、HTTPS 检查路径 |
+  | `health_check_interval` / `health_check_timeout` | 间隔、超时（秒） |
+  | `health_check_max_fail` | 失败阈值（次） |
   | `proxy_protocol` | 代理协议标识（整数） |
   | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
   | `target_type` | 目标类型（字符串） |
@@ -128,9 +137,9 @@ curl -X POST \
   | `enable_http` | 是否启用 HTTP 代理能力（`0/1` 或 `true/false`） |
   | `enable_socks5` | 是否启用 SOCKS5 代理能力（`0/1` 或 `true/false`） |
   | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单） |
-  | `dest_acl_rules` | 出站 ACL 规则（多行，语法见“混合代理黑/白名单”） |
+  | `dest_acl_rules` | 出站 ACL 规则（多行，语法见[混合代理](/guide/tunnels/mixed-proxy.md)） |
   | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
-  | `blackiplist` | 来源 IP 黑名单（多行，语法见“IP 黑白名单”） |
+  | `blackiplist` | 来源 IP 黑名单（多行，语法见[访问控制](/guide/server/access-control.md)） |
   | `whiteiplist` | 来源 IP 白名单（多行） |
   | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
   | `remark` | 隧道备注（字符串） |
@@ -175,6 +184,9 @@ curl -X POST \
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |
   | `time_limit` | 时间限制（字符串，空则不限制） |
+  | `max_conn` | 最大连接数（`0` 不限） |
+  | `upload_limit` / `download_limit` | 上行、下行限速（KB/s，`0` 不限） |
+  | `health_check`、`health_check_type`、`health_check_path`、`health_check_interval`、`health_check_timeout`、`health_check_max_fail` | 健康检查，含义同隧道 |
   | `proxy_protocol` | 代理协议标识（整数） |
   | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
   | `header` | 修改的请求头（字符串） |
@@ -210,6 +222,7 @@ curl -X POST \
   - `id`：域名解析 ID
   - `mode`：`flow` / `flow_limit` / `time_limit` / `auto_ssl` / `https_just_proxy` / `tls_offload` / `auto_https` / `auto_cors` / `compat_mode` / `target_is_https`
 - **删除域名解析**：`POST /index/delhost`（参数 `id`）
+- **证书建议**：`POST /index/certsuggestion`，参数 `host`、`exclude_id`（排除的条目）、`client_id`（非管理员必填）；有可复用证书时返回 `code: 1` 和来源条目、证书内容
 
 ## 客户端管理接口
 
@@ -248,7 +261,7 @@ curl -X POST \
   | `web_password` | 客户端 Web 登录密码（字符串） |
   | `web_totp_secret` | 客户端 Web 登录 TOTP 密钥（字符串） |
   | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
-  | `blackiplist` | 来源 IP 黑名单（多行，语法见“IP 黑白名单”） |
+  | `blackiplist` | 来源 IP 黑名单（多行，语法见[访问控制](/guide/server/access-control.md)） |
   | `whiteiplist` | 来源 IP 白名单（多行） |
   | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
   | `register_key` | IP 登记口令（字符串，留空则只能用 vkey 登记） |
@@ -263,6 +276,8 @@ curl -X POST \
 - **清理客户端配额/统计**：`POST /client/clear`，参数：
   - `id`：客户端 ID，传 `0` 表示对所有客户端生效
   - `mode`：`flow` / `flow_limit` / `time_limit` / `rate_limit` / `conn_limit` / `tunnel_limit`
+- **踢下线**：`POST /client/kick`（参数 `id`，仅管理员）；配置不变，客户端可重连
+- **远程更新**：`POST /client/update`（参数 `id`，仅管理员）
 - **删除客户端**：`POST /client/del`（参数 `id`）
 
 ### 二维码接口
@@ -288,7 +303,7 @@ curl -X POST \
 
 ### 用户登出
 
-- **接口：** `GET /login/out`
+- **接口：** `GET /login/out`，或 `POST /api/v1/login/logout`
 
 ### 用户注册
 
@@ -314,9 +329,12 @@ curl -X POST \
 
 - **查看页面：** `GET /global/index`
 - **保存配置：** `POST /global/save`
-  - 参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`（多行）、`globalWhiteIpList`（多行）
+  - 参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`（多行）、`globalWhiteIpList`（多行）、`globalRateLimit`（全局带宽，KB/s）、`globalMaxConn`（全局最大转发连接数）
   - 规则有误时返回 `status: 0`，`msg` 中给出名单和行号
 - **更新 Geo 数据：** `POST /global/updategeo`
+- **导出配置：** `GET /global/export`；含明文密钥，见[导出与导入配置](/guide/server/config-transfer.md)
+- **导入配置：** `POST /global/import`（表单字段 `data` 为文件内容）
+- **更新服务端：** `POST /index/updateserver`
 
 ### 登录封禁管理
 
@@ -324,3 +342,9 @@ curl -X POST \
 - **解除指定封禁：** `POST /global/unban`（参数：`key`）
 - **解除全部封禁：** `POST /global/unbanall`
 - **立即清理过期封禁：** `POST /global/banclean`
+
+## 实时状态
+
+**接口：** `POST /live/status`。参数 `resource=client|tunnel|host` 和 `items`（JSON 数组，例如 `[{"id":1,"fields":["Speed","NowConn"]}]`，每次最多 500 项）。逐项按资源归属和读取权限过滤，只返回 ID 和允许且请求的运行字段，不返回配置、密钥或名单内容。全局流量仅管理员可请求。
+
+事件推送见 [Webhook](/guide/server/webhook.md)。

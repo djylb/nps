@@ -1,3 +1,7 @@
+* [首页](/README.md)
+* [快速开始](/getting-started/quick-start.md)
+* [操作指南](/guide/README.md)
+* [参考资料](/reference/README.md)
+* [社区](/community/README.md)
 * [![GitHub stars](https://img.shields.io/github/stars/djylb/nps.svg?style=social)](https://github.com/djylb/nps)
-
 * [![GitHub forks](https://img.shields.io/github/forks/djylb/nps?style=social)](https://github.com/djylb/nps/network)

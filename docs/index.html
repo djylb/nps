@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Document</title>
+    <title>NPS 文档</title>
     <meta content="IE=edge,chrome=1" http-equiv="X-UA-Compatible"/>
-    <meta content="Description" name="description">
+    <meta content="NPS 文档：安装、启动、隧道与域名转发、配置参考和 Web API。" name="description">
     <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
           name="viewport">
     <link href="//cdn.jsdelivr.net/npm/docsify/lib/themes/vue.css" rel="stylesheet">
@@ -14,25 +14,48 @@
 <script src="//cdn.jsdelivr.net/npm/docsify-edit-on-github/index.js"></script>
 
 <script>
-
     window.$docsify = {
-        name: '',
-        repo: '',
-        loadSidebar: true,
+        name: 'NPS',
+        nameLink: '#/README',
+        repo: 'https://github.com/djylb/nps',
+        homepage: 'README.md',
+        // 旧版文档地址继续可用
+        alias: {
+            '/install': '/getting-started/install.md',
+            '/run': '/getting-started/deployment.md',
+            '/example': '/getting-started/tunnel-types.md',
+            '/introduction': '/getting-started/architecture.md',
+            '/nps_use': '/guide/server/operations.md',
+            '/nps_extend': '/guide/server/https-and-proxy.md',
+            '/server_config': '/reference/server-config.md',
+            '/use': '/guide/client/connect.md',
+            '/npc_extend': '/reference/npc-cli.md',
+            '/feature': '/reference/features.md',
+            '/description': '/reference/notes.md',
+            '/api': '/reference/web-api.md',
+            '/npc_sdk': '/reference/npc-sdk.md',
+            '/faq': '/reference/faq.md',
+            '/contribute': '/community/contribute.md',
+            '/donate': '/community/donate.md',
+            '/thanks': '/community/thanks.md',
+            '/discuss': '/community/discuss.md',
+        },
+        loadSidebar: '/_sidebar.md',
         coverpage: true,
-        loadNavbar: true,
+        loadNavbar: '/_navbar.md',
+        auto2top: true,
+        relativePath: true,
         subMaxLevel: 2,
         maxLevel: 4,
         search: {
             noData: "没有结果",
             paths: 'auto',
             placeholder: "搜索",
-            hideOtherSidebarContent: true, // whether or not to hide other sidebar content
+            hideOtherSidebarContent: true,
         },
         plugins: [
             EditOnGithubPlugin.create("https://github.com/djylb/nps/tree/master/docs/", "", "在 GitHub 上编辑"),
         ]
-
     }
 </script>
 <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>

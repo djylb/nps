@@ -97,7 +97,7 @@ nps update-force
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
-> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/install.md#windows7)。
+> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/getting-started/install-windows.md#windows7)。
 ```powershell
 .\nps.exe install
 .\nps.exe start|stop|restart|uninstall
@@ -124,7 +124,7 @@ npc update-force
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
-> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/install.md#windows7)。
+> 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/getting-started/install-windows.md#windows7)。
 ```powershell
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
 .\npc.exe start|stop|restart|uninstall
