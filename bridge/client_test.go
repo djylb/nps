@@ -168,22 +168,21 @@ func TestAllowsFlag(t *testing.T) {
 		ctl = 1 << file.KeyControl
 		pub = 1 << file.KeyPublic
 		vis = 1 << file.KeyVisitor
-		acc = 1 << file.KeyAccess
 	)
 	want := map[string]int{
 		common.WorkMain:       ctl,
 		common.WorkChan:       ctl | pub,
 		common.WorkFile:       ctl | pub,
 		common.WorkP2PSession: ctl | pub,
-		common.WorkConfig:     ctl | pub | acc,
-		common.WorkRegister:   ctl | pub | acc,
-		common.WorkVisitor:    ctl | pub | vis | acc,
-		common.WorkSecret:     ctl | pub | vis | acc,
-		common.WorkP2P:        ctl | pub | vis | acc,
+		common.WorkConfig:     ctl | pub,
+		common.WorkRegister:   ctl | pub,
+		common.WorkVisitor:    ctl | pub | vis,
+		common.WorkSecret:     ctl | pub | vis,
+		common.WorkP2P:        ctl | pub | vis,
 		"none":                0,
 	}
 	for flag, mask := range want {
-		for _, kind := range []file.KeyKind{file.KeyControl, file.KeyPublic, file.KeyVisitor, file.KeyAccess} {
+		for _, kind := range []file.KeyKind{file.KeyControl, file.KeyPublic, file.KeyVisitor} {
 			if got := allowsFlag(kind, flag); got != (mask&(1<<kind) != 0) {
 				t.Errorf("allowsFlag(%d, %q) = %v", kind, flag, got)
 			}

@@ -82,14 +82,11 @@ func InitFromDb() {
 
 // addKeyClients creates the unstored clients of the public and visitor keys.
 func addKeyClients(public, visitor string) {
-	if public != "" && public == visitor {
-		addKeyClient(public, file.KeyAccess)
-		return
-	}
 	if public != "" {
 		addKeyClient(public, file.KeyPublic)
 	}
-	if visitor != "" {
+	// the public key can already do all that the visitor key can
+	if visitor != "" && visitor != public {
 		addKeyClient(visitor, file.KeyVisitor)
 	}
 }

@@ -582,7 +582,7 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 
 func (s *DbUtils) IsPubClient(id int) bool {
 	client, err := s.GetClient(id)
-	return err == nil && (client.KeyKind == KeyPublic || client.KeyKind == KeyAccess)
+	return err == nil && (client.KeyKind == KeyPublic)
 }
 
 func (s *DbUtils) GetClient(id int) (c *Client, err error) {

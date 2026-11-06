@@ -263,9 +263,8 @@ type KeyKind uint8
 
 const (
 	KeyControl KeyKind = iota // a stored client: every workflow
-	KeyPublic                 // public_vkey: client configuration and IP registration
+	KeyPublic                 // public_vkey: every workflow but the main one
 	KeyVisitor                // visitor_vkey: visiting secret and P2P tasks
-	KeyAccess                 // both keys are the same: public and visitor workflows
 )
 
 type Client struct {
