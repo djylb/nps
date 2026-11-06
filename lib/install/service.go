@@ -169,6 +169,7 @@ func ConfigureService(c *service.Config) {
 	}
 	c.Dependencies = []string{
 		"Requires=network.target",
+		"Wants=network-online.target",
 		"After=network-online.target syslog.target"}
 	c.Option["LimitNOFILE"] = 65536
 }
