@@ -128,6 +128,10 @@ func NewNode(uuid, vs string, bv int) *Node {
 	}
 }
 
+func newNode(uuid string, caps legacy.Caps) *Node {
+	return NewNode(uuid, caps.ClientVersion, caps.Index)
+}
+
 // sendSignal writes one message to the node's signal connection within
 // timeout. Writers are serialized, so that messages never interleave; a
 // failed or late write may have left part of a message behind, so it closes

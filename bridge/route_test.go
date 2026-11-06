@@ -68,7 +68,7 @@ func publish(t *testing.T, b *Bridge, client *file.Client, uuid string, ver int,
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.getConfig(conn.NewConn(serverSide), false, client, ver, "", uuid)
+		b.getConfig(conn.NewConn(serverSide), false, client, legacy.CapsOf(ver, ""), uuid)
 	}()
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))

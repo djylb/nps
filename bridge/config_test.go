@@ -29,7 +29,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.getConfig(conn.NewConn(serverSide), true, nil, legacy.LatestIndex, "", "node-1")
+		b.getConfig(conn.NewConn(serverSide), true, nil, legacy.CapsOf(legacy.LatestIndex, ""), "node-1")
 	}()
 
 	c := conn.NewConn(clientSide)
@@ -95,7 +95,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.getConfig(conn.NewConn(serverSide), false, client, legacy.LatestIndex, "", "node")
+		b.getConfig(conn.NewConn(serverSide), false, client, legacy.CapsOf(legacy.LatestIndex, ""), "node")
 	}()
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))

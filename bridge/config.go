@@ -20,11 +20,11 @@ func writeAddFail(c *conn.Conn) bool {
 	return legacy.WriteStatus(c, false) == nil
 }
 
-func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, ver int, vs, uuid string) {
+func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, caps legacy.Caps, uuid string) {
 	var fail bool
 	var published *Node // the node that awaits its tunnel after this exchange
 	join := func(id int) {
-		_, published = s.joinNode(id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
+		_, published = s.joinNode(id, uuid, newNode(uuid, caps), func(*Node) {})
 		published.awaitTunnel()
 	}
 loop:
@@ -88,9 +88,9 @@ loop:
 			_, _ = c.Write([]byte(client.VerifyKey))
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
-			node := NewNode(uuid, vs, ver)
+			node := newNode(uuid, caps)
 			s.storeClient(client.Id, NewClient(client.Id, node))
-			if legacy.CapsOf(ver, vs).NodeID {
+			if caps.NodeID {
 				published = node
 				published.awaitTunnel()
 			}
@@ -108,10 +108,10 @@ loop:
 				h.Location = "/"
 			}
 
-			if legacy.CapsOf(ver, vs).NodeID {
+			if caps.NodeID {
 				join(client.Id)
 			}
-			hh, err := s.publishHost(h, client, uuid, legacy.CapsOf(ver, vs))
+			hh, err := s.publishHost(h, client, uuid, caps)
 			if err != nil {
 				logs.Warn("Add host %s of client %d error: %v", h.Host, client.Id, err)
 				if !writeAddFail(c) {
@@ -198,20 +198,11 @@ loop:
 				if tl.MultiAccount == nil {
 					tl.MultiAccount = new(file.MultiAccount)
 				}
-				if legacy.CapsOf(ver, vs).NodeID {
+				if caps.NodeID {
 					join(client.Id)
 				}
 				if tl.Mode == "file" {
-					cli := NewClient(client.Id, NewNode(uuid, vs, ver))
-					if clientValue, ok := s.loadOrStoreClient(client.Id, cli); ok {
-						cli, ok = clientValue.(*Client)
-						if !ok {
-							logs.Error("Fail to load client %d", client.Id)
-							fail = true
-							_ = legacy.WriteStatus(c, false)
-							break loop
-						}
-					}
+					cli, _ := s.joinNode(client.Id, uuid, newNode(uuid, caps), func(*Node) {})
 					key := legacy.FileKey(client.VerifyKey, tl)
 					err = cli.AddFile(key, uuid)
 					if err != nil {
@@ -220,7 +211,7 @@ loop:
 					tl.Target.TargetStr = fmt.Sprintf("file://%s", key)
 				}
 
-				tt, created, err := s.publishTask(tl, client, uuid, legacy.CapsOf(ver, vs))
+				tt, created, err := s.publishTask(tl, client, uuid, caps)
 				if err != nil {
 					logs.Warn("Add task %s of client %d error: %v", tl.Remark, client.Id, err)
 					if !writeAddFail(c) {
@@ -249,7 +240,7 @@ loop:
 	}
 
 	if fail && client != nil {
-		s.dropConfigNode(client.Id, uuid, legacy.CapsOf(ver, vs))
+		s.dropConfigNode(client.Id, uuid, caps)
 	} else if published != nil {
 		published.awaitTunnel() // the npc dials from here on
 	}

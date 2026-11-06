@@ -380,10 +380,10 @@ func (p *p2pService) onResult(r coord.Result) {
 
 // handleP2PVisitor serves a WorkP2P stream: it checks the request and
 // admits it to the visitor's budgets, then opens the session.
-func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelType string) {
-	if !legacy.CapsOf(ver, vs).P2P {
+func (s *Bridge) handleP2PVisitor(c *conn.Conn, id int, caps legacy.Caps, uuid, tunnelType string) {
+	if !caps.P2P {
 		logs.Error("P2P request of client %d from %v refused: npc %s (protocol %s) does not speak the P2P protocol of this server, upgrade npc to %s or newer",
-			id, c.RemoteAddr(), vs, legacy.CoreVersion(ver), legacy.P2PMinVersion)
+			id, c.RemoteAddr(), caps.ClientVersion, legacy.CoreVersion(caps.Index), legacy.P2PMinVersion)
 		_ = c.Close()
 		return
 	}
@@ -498,9 +498,9 @@ func waitJoin(svc *p2pService, cs *coord.Session, inv *p2pInvite) (p2pJoined, bo
 
 // handleP2PJoin serves a WorkP2PSession stream: the provider answers an
 // invitation, and the stream goes to the visitor's handler.
-func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string) {
+func (s *Bridge) handleP2PJoin(c *conn.Conn, id int, caps legacy.Caps, tunnelType string) {
 	svc := s.p2p.Load()
-	if svc == nil || !legacy.CapsOf(ver, vs).P2P {
+	if svc == nil || !caps.P2P {
 		_ = c.Close()
 		return
 	}

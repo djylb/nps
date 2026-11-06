@@ -55,7 +55,7 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.handleP2PVisitor(conn.NewConn(server), 1, legacy.LatestIndex, vs, "node-1", "tcp")
+		b.handleP2PVisitor(conn.NewConn(server), 1, legacy.CapsOf(legacy.LatestIndex, vs), "node-1", "tcp")
 	}()
 	c := conn.NewConn(client)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))

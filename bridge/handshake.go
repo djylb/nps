@@ -84,12 +84,11 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			client.Unlock()
 		}
 	}
-	go s.typeDeal(c, res.ClientID, res.Caps.Index, res.Caps.ClientVersion, tunnelType, true)
+	go s.typeDeal(c, res.ClientID, res.Caps, tunnelType, true)
 }
 
-func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, first bool) {
+func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType string, first bool) {
 	addr := c.RemoteAddr()
-	caps := legacy.CapsOf(ver, vs)
 	flag, uuid, err := legacy.ReadWork(c, caps, addr.String())
 	if err != nil {
 		logs.Warn("Failed to read the work request from %v: %v", addr, err)
@@ -114,7 +113,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		}
 
 		//the vKey connect by another, close the client of before
-		node := NewNode(uuid, vs, ver)
+		node := newNode(uuid, caps)
 		node.AddSignal(c)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddSignal(c) })
 		go s.GetHealthFromClient(id, c, client, node)
@@ -127,7 +126,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			return
 		}
 		tunnel := legacy.NewTunnel(c, tunnelType, caps, s.disconnectTime, false)
-		node := NewNode(uuid, vs, ver)
+		node := newNode(uuid, caps)
 		node.AddTunnel(tunnel)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddTunnel(tunnel) })
 		if caps.TunnelStreams {
@@ -156,7 +155,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 					if p, ok := stream.(interface{ SetPriority() }); ok {
 						p.SetPriority()
 					}
-					go s.typeDeal(conn.NewConn(stream), id, ver, vs, tunnelType, false)
+					go s.typeDeal(conn.NewConn(stream), id, caps, tunnelType, false)
 				})
 			}()
 		}
@@ -168,7 +167,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			return
 		}
 		_ = binary.Write(c, binary.LittleEndian, isPub)
-		go s.getConfig(c, isPub, client, ver, vs, uuid)
+		go s.getConfig(c, isPub, client, caps, uuid)
 
 	case legacy.WorkRegister:
 		go s.register(c, id)
@@ -192,7 +191,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 				idle.Inc()
 				go s.typeDeal(conn.NewConn(stream).OnClose(func(*conn.Conn) {
 					idle.Dec()
-				}), id, ver, vs, tunnelType, false)
+				}), id, caps, tunnelType, false)
 			})
 		}()
 
@@ -225,11 +224,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		//}
 
 	case legacy.WorkP2P:
-		s.handleP2PVisitor(c, id, ver, vs, uuid, tunnelType)
+		s.handleP2PVisitor(c, id, caps, uuid, tunnelType)
 		return
 
 	case legacy.WorkP2PSession:
-		s.handleP2PJoin(c, id, ver, vs, tunnelType)
+		s.handleP2PJoin(c, id, caps, tunnelType)
 		return
 	}
 
