@@ -7,10 +7,10 @@
 ```bash
 sudo npc update  # Linux/macOS
 npc.exe update   # Windows
-npc update-force # 已是最新版本时重新安装，并重试失败过的版本
+npc update-force # 无论当前版本如何，都安装最新发布版本
 ```
 
-已是最新版本时 `update` 不替换文件也不重启。能否直接升级由发布清单决定，规则的唯一来源是仓库中的 `release/update-rules.json`，当前规则不允许通过更新跨大版本（如 0.x.x 到 1.x.x），需手动升级。`update-force` 只重新安装当前版本或重试失败过的版本，不会降级，也解除不了没有解除条件的规则。失败时手动下载[最新版本](https://github.com/djylb/nps/releases/latest)，覆盖原有 `npc` 文件。
+已是最新版本时 `update` 不替换文件也不重启。能否直接升级由发布清单决定，规则的唯一来源是仓库中的 `release/update-rules.json`，当前规则不允许通过更新跨大版本（如 0.x.x 到 1.x.x），需手动升级。`update-force` 无论当前版本是否更新，都安装最新发布版本，包括重新安装、从较新版本退回和重试失败过的版本，但解除不了没有解除条件的规则。失败时手动下载[最新版本](https://github.com/djylb/nps/releases/latest)，覆盖原有 `npc` 文件。
 
 ## 远程更新
 

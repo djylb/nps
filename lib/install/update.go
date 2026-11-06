@@ -46,10 +46,10 @@ var manifestURLs = []string{
 
 // UpdateOptions selects how Update installs a release.
 type UpdateOptions struct {
-	// Force installs the latest release again when the running version is
-	// that release, and retries a release that failed before. It lifts no
-	// gate of the manifest without an unlock, and never installs an older
-	// version.
+	// Force installs the latest release whatever the running version is:
+	// again when it is that release, back when it is newer, and also when
+	// that release failed before. It lifts no gate of the manifest without
+	// an unlock, so it stays within what the rules allow.
 	Force bool
 	// Pending keeps the replaced files until the new version confirms
 	// itself (see StartUpdate); a start that does not is rolled back. Set
@@ -202,8 +202,8 @@ func latestRelease(ctx context.Context, bin string) (string, error) {
 }
 
 // newUpdater returns an updater of bin without files or journal. An update
-// always runs on somebody's request, hence the grants; force reinstalls and
-// retries a failed release, but never goes back to an older version.
+// always runs on somebody's request, hence the grants; force installs the
+// latest release even if it is not newer or failed before.
 func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 	key, err := selfupdate.ParsePublicKey(ReleaseSigningKey)
 	if err != nil {
@@ -216,7 +216,7 @@ func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 	}
 	grants := []string{"user", "rollout"}
 	if force {
-		grants = append(grants, "force", "reinstall", "retry-failed")
+		grants = append(grants, "force", "reinstall", selfupdate.GrantDowngradeAny, "retry-failed")
 	}
 	return &selfupdate.Updater{
 		Sources: sources,
