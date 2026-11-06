@@ -28,9 +28,11 @@ func allowsFlag(kind file.KeyKind, flag string) bool {
 	case common.WorkConfig:
 		return kind != file.KeyVisitor
 	case common.WorkVisitor, common.WorkSecret, common.WorkP2P:
-		return kind != file.KeyPublic
-	case common.WorkMain, common.WorkChan, common.WorkFile, common.WorkP2PSession:
+		return true
+	case common.WorkMain:
 		return kind == file.KeyControl
+	case common.WorkChan, common.WorkFile, common.WorkP2PSession:
+		return kind == file.KeyControl || kind == file.KeyPublic
 	}
 	return false
 }

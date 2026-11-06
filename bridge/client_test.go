@@ -172,14 +172,14 @@ func TestAllowsFlag(t *testing.T) {
 	)
 	want := map[string]int{
 		common.WorkMain:       ctl,
-		common.WorkChan:       ctl,
-		common.WorkFile:       ctl,
-		common.WorkP2PSession: ctl,
+		common.WorkChan:       ctl | pub,
+		common.WorkFile:       ctl | pub,
+		common.WorkP2PSession: ctl | pub,
 		common.WorkConfig:     ctl | pub | acc,
 		common.WorkRegister:   ctl | pub | vis | acc,
-		common.WorkVisitor:    ctl | vis | acc,
-		common.WorkSecret:     ctl | vis | acc,
-		common.WorkP2P:        ctl | vis | acc,
+		common.WorkVisitor:    ctl | pub | vis | acc,
+		common.WorkSecret:     ctl | pub | vis | acc,
+		common.WorkP2P:        ctl | pub | vis | acc,
 		"none":                0,
 	}
 	for flag, mask := range want {
