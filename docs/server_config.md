@@ -103,7 +103,7 @@ nps.exe -conf_path=D:\test\nps
 | `bridge_cert_file`            | 客户端与服务端通信 TLS 证书文件路径                                                                    |
 | `bridge_key_file`             | 客户端与服务端通信 TLS 证书密钥文件路径                                                                  |
 | `bridge_http3`                | 客户端与服务端通信允许通过 HTTP/3 端口连接                                                               |
-| `bridge_select_mode`          | 相同`vkey`客户端连接选取模式（主备：`0`/`Primary`/`p`，轮询：`1`/`RoundRobin`/`rr`，随机：`2`/`Random`/`rand`）；npc 配置文件发布的条目固定在发布实例间轮询 |
+| `bridge_select_mode`          | 相同`vkey`客户端连接选取模式（主备：`0`/`Primary`/`p`，轮询：`1`/`RoundRobin`/`rr`，随机：`2`/`Random`/`rand`）；npc 配置文件发布的条目固定在发布实例间轮询（HTTP 复用的后端连接留在原实例上，带 PROXY 头的实例不复用） |
 | `bridge_addr`                 | Web 命令行中展示给客户端的连接地址（留空时自动使用 Web 访问地址）                                                   |
 | `quic_alpn`                   | QUIC 握手时允许协商的 ALPN 列表，逗号分隔（默认 `nps`）                                                    |
 | `quic_keep_alive_period`      | QUIC 空闲保活周期（单位：s，默认 `10`）                                                               |

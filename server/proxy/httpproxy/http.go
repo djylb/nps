@@ -31,6 +31,7 @@ const (
 	ctxRemoteAddr ctxKey = "nps_remote_addr"
 	ctxHost       ctxKey = "nps_host"
 	ctxSNI        ctxKey = "nps_sni"
+	ctxRoute      ctxKey = "nps_route"
 )
 
 type HttpServer struct {
@@ -207,13 +208,15 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var tr *http.Transport
+	var trs *hostTransports
 	if v, ok := s.HttpProxyCache.Get(host.Id); ok {
-		tr = v.(*http.Transport)
+		trs = v.(*hostTransports)
 	} else {
-		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, s.newTransport(host))
-		tr = v.(*http.Transport)
+		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, s.newTransports(host))
+		trs = v.(*hostTransports)
 	}
+	route := host.Route()
+	r = r.WithContext(context.WithValue(r.Context(), ctxRoute, route))
 
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -236,7 +239,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 				proxy.AppendForwardedFor(req.Header, pr.In.RemoteAddr)
 			}
 		},
-		Transport: tr,
+		Transport: trs.forRoute(route),
 		//FlushInterval: 100 * time.Millisecond,
 		BufferPool: common.BufPoolCopy,
 		ModifyResponse: func(resp *http.Response) error {
@@ -283,16 +286,35 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	rp.ServeHTTP(w, r)
 }
 
-func (s *HttpServer) newTransport(host *file.Host) *http.Transport {
+// hostTransports are the backend transports of one host. The route of each
+// request chooses between them: a PROXY header names one visitor, so the
+// connection of a route that sends one serves no other request. On the routes
+// without it a reused connection stays with the instance that it was dialed to,
+// whichever route the request picked.
+type hostTransports struct {
+	reuse, single *http.Transport
+}
+
+func (t *hostTransports) forRoute(route file.Route) *http.Transport {
+	if route.Target.ProxyProtocol != 0 {
+		return t.single
+	}
+	return t.reuse
+}
+
+func (s *HttpServer) newTransports(host *file.Host) *hostTransports {
+	return &hostTransports{reuse: s.newTransport(host.CompatMode), single: s.newTransport(true)}
+}
+
+func (s *HttpServer) newTransport(disableKeepAlives bool) *http.Transport {
 	return &http.Transport{
 		ResponseHeaderTimeout: s.ResponseHeaderTimeout,
-		// A PROXY header names one visitor, so its connection serves no other.
-		DisableKeepAlives:   host.CompatMode || host.Target.ProxyProtocol != 0,
-		DialContext:         s.DialContext,
-		DialTLSContext:      s.DialTlsContext,
-		MaxIdleConns:        1024,
-		MaxIdleConnsPerHost: 256,
-		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:     disableKeepAlives,
+		DialContext:           s.DialContext,
+		DialTLSContext:        s.DialTlsContext,
+		MaxIdleConns:          1024,
+		MaxIdleConnsPerHost:   256,
+		IdleConnTimeout:       90 * time.Second,
 	}
 }
 
@@ -562,7 +584,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
 	remote := ctx.Value(ctxRemoteAddr).(string)
 	h := ctx.Value(ctxHost).(*file.Host)
-	route := h.Route()
+	route := ctx.Value(ctxRoute).(file.Route)
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || h.Client.Id < 0
 	var link *conn.Link
 	var target net.Conn

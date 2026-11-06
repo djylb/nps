@@ -116,7 +116,17 @@ func (r *RouteSet) pick(fallback *Target) Route {
 }
 
 // Route picks the route of one request of t.
-func (t *Tunnel) Route() Route { return t.Routes.pick(t.Target) }
+func (t *Tunnel) Route() Route {
+	t.RLock()
+	fallback := t.Target
+	t.RUnlock()
+	return t.Routes.pick(fallback)
+}
 
 // Route picks the route of one request of s.
-func (s *Host) Route() Route { return s.Routes.pick(s.Target) }
+func (s *Host) Route() Route {
+	s.RLock()
+	fallback := s.Target
+	s.RUnlock()
+	return s.Routes.pick(fallback)
+}

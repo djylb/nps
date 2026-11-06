@@ -94,7 +94,8 @@ func TestProxyProtocolConnectionsAreNotReused(t *testing.T) {
 	count := func(proxyProtocol int) int32 {
 		accepted.Store(0)
 		s := &HttpServer{HttpProxy: &HttpProxy{}}
-		tr := s.newTransport(&file.Host{Target: &file.Target{ProxyProtocol: proxyProtocol}})
+		// The route decides, not the target of the last publisher on the host.
+		tr := s.newTransports(&file.Host{Target: &file.Target{}}).forRoute(file.Route{Target: &file.Target{ProxyProtocol: proxyProtocol}})
 		tr.DialContext, tr.DialTLSContext = nil, nil
 		defer tr.CloseIdleConnections()
 		for range 2 {
