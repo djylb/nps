@@ -222,6 +222,8 @@ func TestFetchedPayloadCannotUseLineEndings(t *testing.T) {
 		"multi_account": web + "x=y\rmulti_account=" + secret + "\n",
 		"local_path":    web + "x=y\rlocal_path=/etc\n",
 		"mode file":     head + "[web]\nserver_port=80\rmode=file\n",
+		"dns_server":    head + "x=y\rdns_server=1.1.1.1\n",
+		"plain dns":     head + "dns_server=1.1.1.1\n",
 		"pprof":         head + "x=y\rpprof_addr=127.0.0.1:0\n",
 		"host cert":     head + "[h]\nhost=x.test\rcert_file=" + secret + "\n",
 	} {

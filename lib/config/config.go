@@ -87,11 +87,11 @@ func ParseUntrusted(raw string) (*Config, error) {
 	return c, c.checkUntrusted()
 }
 
-// localKeys reach the local machine's files or open debug listeners, which
-// only the local user may ask for.
+// localKeys reach the local machine's files, open debug listeners or change
+// the resolver of the whole process, which only the local user may ask for.
 var localKeys = map[string]bool{
 	"multi_account": true, "cert_file": true, "key_file": true,
-	"local_path": true, "strip_pre": true, "pprof_addr": true,
+	"local_path": true, "strip_pre": true, "pprof_addr": true, "dns_server": true,
 }
 
 // checkUntrusted refuses a parsed configuration that serves or reads local
