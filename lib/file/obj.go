@@ -711,6 +711,7 @@ type Host struct {
 	AutoCORS         bool
 	CompatMode       bool
 	Flow             *Flow
+	MaxConn          int // concurrent HTTP requests and HTTPS connections; zero means unlimited
 	NowConn          int32
 	Client           *Client
 	TargetIsHttps    bool
@@ -728,6 +729,7 @@ func (s *Host) HasCert() bool {
 }
 
 func (s *Host) Update(h *Host) {
+	s.SetMaxConn(h.MaxConn)
 	s.SetRateLimits(h.UploadLimit, h.DownloadLimit)
 	s.HeaderChange = h.HeaderChange
 	s.RespHeaderChange = h.RespHeaderChange
@@ -751,8 +753,26 @@ func (s *Host) Update(h *Host) {
 }
 
 // ControlGroup is a domain's leaf under its client; byte controls share it.
-func (s *Host) ControlGroup() *byterate.Group { return s.RateLimiter().Group(s.Client.ControlGroup()) }
-func (s *Host) CurrentConnections() int32     { return s.RateLimits.connectionCount() }
+func (s *Host) ControlGroup() *byterate.Group {
+	g := s.RateLimiter().Group(s.Client.ControlGroup())
+	s.RLock()
+	g.SetMaxConns(int64(s.MaxConn))
+	s.RUnlock()
+	return g
+}
+
+// SetMaxConn updates the library cap without reclaiming active slots.
+func (s *Host) SetMaxConn(limit int) {
+	s.Lock()
+	s.MaxConn = max(limit, 0)
+	s.rateMu.Lock()
+	if s.runtimeRate != nil {
+		s.runtimeRate.Group(nil).SetMaxConns(int64(s.MaxConn))
+	}
+	s.rateMu.Unlock()
+	s.Unlock()
+}
+func (s *Host) CurrentConnections() int32 { return s.RateLimits.connectionCount() }
 
 type Target struct {
 	TargetStr     string

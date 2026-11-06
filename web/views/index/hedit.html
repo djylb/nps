@@ -239,6 +239,15 @@
                                     <span class="help-block m-b-none" langtag="info-flowreset"></span>
                                 </div>
                             </div>
+                            {{if eq true .allow_connection_num_limit}}
+                            <div class="form-group" id="max_conn">
+                                <label class="control-label font-bold" for="max_conn_input" langtag="word-maxconnections"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="max_conn_input" name="max_conn" type="number" min="0" step="1" value="{{.h.MaxConn}}">
+                                    <span class="help-block m-b-none" langtag="info-hostmaxconn"></span>
+                                </div>
+                            </div>
+                            {{end}}
                             {{if eq true .allow_rate_limit}}
                             <div class="form-group" id="upload_limit">
                                 <label class="control-label font-bold" for="upload_limit_input" langtag="word-uploadlimit"></label>

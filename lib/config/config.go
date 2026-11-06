@@ -240,6 +240,8 @@ func dealHost(s string) *file.Host {
 		switch item[0] {
 		case "host":
 			h.Host = item[1]
+		case "max_conn":
+			h.SetMaxConn(common.GetIntNoErrByStr(item[1]))
 		case "upload_limit":
 			h.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "download_limit":

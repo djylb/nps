@@ -136,6 +136,7 @@ type AddHostInput struct {
 	PathRewrite    string
 	RedirectURL    string
 	Access         AccessListInput
+	MaxConn        int
 	UploadLimit    int // KB/s; zero means unlimited
 	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
@@ -170,6 +171,7 @@ type EditHostInput struct {
 	PathRewrite    string
 	RedirectURL    string
 	Access         AccessListInput
+	MaxConn        int
 	UploadLimit    int // KB/s; zero means unlimited
 	DownloadLimit  int // KB/s; zero means unlimited
 	FlowLimit      int64
@@ -474,6 +476,14 @@ func (s DefaultIndexService) StopHost(id int, mode string) error {
 }
 
 func (s DefaultIndexService) ClearHost(id int, mode string) error {
+	if strings.TrimSpace(mode) == "max_conn" {
+		host, err := s.GetHost(id)
+		if err != nil {
+			return err
+		}
+		host.SetMaxConn(0)
+		return s.repo().SaveHost(host, "")
+	}
 	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
 		host, err := s.GetHost(id)
 		if err != nil {
@@ -533,6 +543,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		CompatMode:     input.CompatMode,
 		TargetIsHttps:  input.TargetIsHTTPS,
 	}
+	host.SetMaxConn(input.MaxConn)
 	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
 
@@ -607,6 +618,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.AutoSSL = input.AutoSSL
 	host.KeyFile = input.KeyFile
 	host.CertFile = input.CertFile
+	host.SetMaxConn(input.MaxConn)
 	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	host.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {

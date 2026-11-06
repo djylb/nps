@@ -1378,6 +1378,11 @@
         <en-US>0 means unlimited. Applies together with the client limit: TCP connections, UDP sessions, and SOCKS5 UDP control connections. Applies to nps forwarding, not direct P2P traffic.</en-US>
     </lang>
 
+    <lang id="info-hostmaxconn">
+        <zh-CN>0 表示不限。与客户端总连接数限制同时生效；HTTP 按并发请求计数，HTTPS 透传和 TLS 卸载按连接计数。</zh-CN>
+        <en-US>0 means unlimited. Applies together with the client limit: concurrent HTTP requests, and connections for HTTPS passthrough and TLS offload.</en-US>
+    </lang>
+
     <lang id="word-globalmaxconn">
         <zh-CN>全局最大转发连接数</zh-CN>
         <en-US>Global Forwarding Connection Limit</en-US>
