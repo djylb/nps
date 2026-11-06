@@ -122,26 +122,8 @@ func Init(
 	compress bool,
 	color bool,
 ) {
-	lvlKey := strings.ToLower(logLevel)
-	var lvl zerolog.Level
-	switch lvlKey {
-	case "0", "off", "disabled":
-		lvl = zerolog.Disabled
-	case "1", "panic", "emergency":
-		lvl = zerolog.PanicLevel
-	case "2", "fatal", "critical":
-		lvl = zerolog.FatalLevel
-	case "3", "error", "alert":
-		lvl = zerolog.ErrorLevel
-	case "4", "warn", "warning":
-		lvl = zerolog.WarnLevel
-	case "5", "info", "informational", "notice":
-		lvl = zerolog.InfoLevel
-	case "6", "debug":
-		lvl = zerolog.DebugLevel
-	case "7", "trace":
-		lvl = zerolog.TraceLevel
-	default:
+	lvl, ok := parseLevel(logLevel)
+	if !ok {
 		lvl = zerolog.InfoLevel
 	}
 	zapLevel.SetLevel(zapLevelOf(lvl))
@@ -222,9 +204,32 @@ func Error(msg string, v ...interface{})  { Logger.Error().Msgf(msg, v...) }
 func Println(v ...interface{})            { Logger.Println(v...) }
 func Printf(msg string, v ...interface{}) { Logger.Printf(msg, v...) }
 
+// parseLevel reads a level as Init takes it.
+func parseLevel(level string) (zerolog.Level, bool) {
+	switch strings.ToLower(level) {
+	case "0", "off", "disabled":
+		return zerolog.Disabled, true
+	case "1", "panic", "emergency":
+		return zerolog.PanicLevel, true
+	case "2", "fatal", "critical":
+		return zerolog.FatalLevel, true
+	case "3", "error", "alert":
+		return zerolog.ErrorLevel, true
+	case "4", "warn", "warning":
+		return zerolog.WarnLevel, true
+	case "5", "info", "informational", "notice":
+		return zerolog.InfoLevel, true
+	case "6", "debug":
+		return zerolog.DebugLevel, true
+	case "7", "trace":
+		return zerolog.TraceLevel, true
+	}
+	return zerolog.InfoLevel, false
+}
+
 // SetLevel updates the global minimum level
 func SetLevel(levelStr string) {
-	if lvl, err := zerolog.ParseLevel(strings.ToLower(levelStr)); err == nil {
+	if lvl, ok := parseLevel(levelStr); ok {
 		zerolog.SetGlobalLevel(lvl)
 		zapLevel.SetLevel(zapLevelOf(lvl))
 	}

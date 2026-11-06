@@ -255,10 +255,25 @@ func reloadConfig() {
 		logs.Warn("Config reload failed: %v", err)
 		return
 	}
-	if names := servercfg.RestartRequired(old, servercfg.Current()); len(names) > 0 {
+	cfg := servercfg.Current()
+	logs.SetLevel(cfg.Log.Level)
+	applyNtp(cfg)
+	tool.StartSystemInfo()
+	handler, err := routers.Init()
+	if err != nil {
+		logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
+	} else {
+		server.SetWebHandler(handler)
+	}
+	if names := servercfg.RestartRequired(old, cfg); len(names) > 0 {
 		logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
 	}
-	server.SetWebHandler(routers.Init())
+}
+
+func applyNtp(cfg *servercfg.Snapshot) {
+	common.SetNtpServer(cfg.App.NTPServer)
+	common.SetNtpInterval(time.Duration(cfg.App.NTPInterval) * time.Minute)
+	go common.SyncTime()
 }
 
 func newServiceConfig() *service.Config {
@@ -347,7 +362,11 @@ func (p *nps) run() error {
 func run() {
 	install.StartUpdate()
 	cfg := servercfg.Current()
-	server.SetWebHandler(routers.Init())
+	handler, err := routers.Init()
+	if err != nil {
+		panic(err)
+	}
+	server.SetWebHandler(handler)
 	server.StartIPRegisterServer(routers.InitIPRegister())
 	if server.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
@@ -362,11 +381,7 @@ func run() {
 	logs.Info("the config path is: %s", servercfg.Path())
 	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, version.GetMinVersion(bridge.ServerSecureMode))
 	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
-	ntpServer := cfg.App.NTPServer
-	ntpInterval := cfg.App.NTPInterval
-	common.SetNtpServer(ntpServer)
-	common.SetNtpInterval(time.Duration(ntpInterval) * time.Minute)
-	go common.SyncTime()
+	applyNtp(cfg)
 	connection.InitConnectionService()
 	//crypt.InitTls(filepath.Join(common.GetRunPath(), "conf", "server.pem"), filepath.Join(common.GetRunPath(), "conf", "server.key"))
 	cert, err := common.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/bridge"
@@ -28,20 +29,30 @@ type httpServeTarget struct {
 	serve    func(net.Listener) error
 }
 
-var webHandler = http.NotFoundHandler()
+type webHandlerBox struct{ http.Handler }
+
+// webHandler is the handler of the web manager, replaced on a config reload.
+var webHandler atomic.Pointer[webHandlerBox]
 
 func SetWebHandler(handler http.Handler) {
 	if handler == nil {
-		webHandler = http.NotFoundHandler()
+		handler = http.NotFoundHandler()
+	}
+	webHandler.Store(&webHandlerBox{handler})
+}
+
+func serveWeb(w http.ResponseWriter, r *http.Request) {
+	if h := webHandler.Load(); h != nil {
+		h.ServeHTTP(w, r)
 		return
 	}
-	webHandler = handler
+	http.NotFound(w, r)
 }
 
 func (s *WebServer) Start() error {
 	ip := connection.WebIp
 	p := connection.WebPort
-	handler := webHandler
+	handler := http.HandlerFunc(serveWeb)
 	cfg := servercfg.Current()
 
 	var tlsConfig *tls.Config

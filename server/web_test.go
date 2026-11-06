@@ -3,6 +3,8 @@ package server
 import (
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -71,5 +73,22 @@ func TestServeHTTPListenersClosesPeersOnFirstExit(t *testing.T) {
 	case <-secondary.closed:
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("secondary listener was not closed after peer serve exit")
+	}
+}
+
+func TestSetWebHandlerAppliesToRunningServer(t *testing.T) {
+	t.Cleanup(func() { webHandler.Store(nil) })
+	running := http.HandlerFunc(serveWeb)
+	SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	rec := httptest.NewRecorder()
+	running.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusTeapot {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) }))
+	rec = httptest.NewRecorder()
+	running.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("after replacing: status = %d", rec.Code)
 	}
 }

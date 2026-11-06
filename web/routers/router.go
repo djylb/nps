@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -12,14 +13,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Init() http.Handler {
+func Init() (http.Handler, error) {
 	state := NewState(nil)
 	cfg := state.CurrentConfig()
 
 	ui.SetRoot(filepath.Join(common.GetRunPath(), "web", "views"))
 	framework.SetSessionConfigProvider(state.CurrentConfig)
 	if err := framework.InitSessionStore(cfg); err != nil {
-		panic(err)
+		return nil, fmt.Errorf("init session store: %w", err)
 	}
 
 	engine := gin.New()
@@ -52,7 +53,7 @@ func Init() http.Handler {
 	}
 	protected.GET("/", redirectToIndex(state))
 
-	return engine
+	return engine, nil
 }
 
 func unknownRouteHandler(closeOnNotFound bool) gin.HandlerFunc {

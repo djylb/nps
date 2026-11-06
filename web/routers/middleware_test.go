@@ -57,7 +57,11 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	f.handler = Init()
+	handler, err := Init()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.handler = handler
 	f.cookies = sessionCookiesFromIdentity(t, servercfg.Current(), (&webservice.SessionIdentity{
 		Version:       webservice.SessionIdentityVersion,
 		Authenticated: true,

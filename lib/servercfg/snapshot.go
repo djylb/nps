@@ -522,6 +522,14 @@ func RestartRequired(old, cur *Snapshot) []string {
 		{"p2p listener", []any{old.Network.P2PIP, old.Network.P2PPort}, []any{cur.Network.P2PIP, cur.Network.P2PPort}},
 		{"quic transport", []any{old.Network.QUICALPNList, old.Network.QUICKeepAlivePeriod, old.Network.QUICMaxIdleTimeout, old.Network.QUICMaxIncomingStreams}, []any{cur.Network.QUICALPNList, cur.Network.QUICKeepAlivePeriod, cur.Network.QUICMaxIdleTimeout, cur.Network.QUICMaxIncomingStreams}},
 		{"pprof listener", []any{old.App.PprofIP, old.App.PprofPort}, []any{cur.App.PprofIP, cur.App.PprofPort}},
+		{"log output", logOutput(old), logOutput(cur)},
+		{"timezone", old.App.Timezone, cur.App.Timezone},
+		{"dns_server", old.App.DNSServer, cur.App.DNSServer},
+		{"geodata and access list limits", []any{old.App.GeoIPPath, old.App.GeoSitePath, old.App.AclMaxRules}, []any{cur.App.GeoIPPath, cur.App.GeoSitePath, cur.App.AclMaxRules}},
+		{"secure_mode", old.Security.SecureMode, cur.Security.SecureMode},
+		{"bridge select mode", old.Bridge.SelectMode, cur.Bridge.SelectMode},
+		{"bridge certificate", []any{old.Bridge.CertFile, old.Bridge.KeyFile}, []any{cur.Bridge.CertFile, cur.Bridge.KeyFile}},
+		{"allow_ports", old.Feature.AllowPorts, cur.Feature.AllowPorts},
 		{"public_vkey", old.Runtime.PublicVKey, cur.Runtime.PublicVKey},
 		{"visitor_vkey", old.Runtime.VisitorVKey, cur.Runtime.VisitorVKey},
 	} {
@@ -530,6 +538,11 @@ func RestartRequired(old, cur *Snapshot) []string {
 		}
 	}
 	return names
+}
+
+func logOutput(c *Snapshot) []any {
+	l := c.Log
+	return []any{l.Type, l.Path, l.MaxFiles, l.MaxDays, l.MaxSize, l.Compress, l.Color}
 }
 
 func bridgeListeners(c *Snapshot) []any {
