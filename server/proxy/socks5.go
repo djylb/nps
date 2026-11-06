@@ -178,7 +178,7 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	// the source lists apply before any handshake, so that denied
 	// addresses cannot try the proxy credentials
-	if SourceDenied(c.RemoteAddr(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
+	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
 		_ = c.Close()
 		return errProxyAccessDenied
 	}

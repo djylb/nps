@@ -116,7 +116,11 @@
 <script>
     function importConfig(btn) {
         var $btn = $(btn), file = $('#config_import_file')[0].files[0];
-        if ($btn.data('busy') || !file) return;
+        if ($btn.data('busy')) return;
+        if (!file) {
+            showMsg(langreply('selectimportfile'), 'error', 3000);
+            return;
+        }
         var langobj = languages['content']['confirm']['importconfig'];
         if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
         var form = new FormData();

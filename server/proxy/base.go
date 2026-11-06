@@ -184,7 +184,7 @@ func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link,
 }
 
 func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp string, localProxy bool, node string, task *file.Tunnel) (net.Conn, *conn.Link, bool, error) {
-	if SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
+	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
 	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != file.AclOff {

@@ -1498,8 +1498,8 @@
 			<en-US>Disconnect this client? Its configuration stays, and with auto reconnect it is back in seconds; to keep it out, disable it.</en-US>
 		</lang>
 		<lang id="importconfig">
-			<zh-CN>确定要导入该文件吗？其中的客户端、隧道和域名会作为新条目加入。</zh-CN>
-			<en-US>Import this file? Its clients, tunnels and hosts are added as new entries.</en-US>
+			<zh-CN>确定要导入该文件吗？其中的客户端、隧道和域名会作为新条目加入；与现有配置冲突（如 vkey 相同）时整体不导入，所以本实例自己的导出不能直接再导入。</zh-CN>
+			<en-US>Import this file? Its clients, tunnels and hosts are added as new entries. A conflict with what exists (such as the same vkey) refuses it as a whole, so an export of this instance cannot be imported back as is.</en-US>
 		</lang>
 		<lang id="updategeo">
 			<zh-CN>确定要从网络下载最新的 Geo 数据吗？</zh-CN>
@@ -1723,6 +1723,10 @@
 		<lang id="registrationkeyduplicatepleasereset">
 			<zh-CN>登记口令与其他客户端重复或与 vkey 相同，请重新设置</zh-CN>
 			<en-US>The registration key is used by another client or equals the vkey, please change it</en-US>
+		</lang>
+		<lang id="selectimportfile">
+			<zh-CN>请先选择要导入的文件</zh-CN>
+			<en-US>Select a file to import first</en-US>
 		</lang>
 		<lang id="totalx2">
 			<zh-CN>上下行流量 x 2：估算服务器两侧（访问者与客户端）的实际消耗</zh-CN>

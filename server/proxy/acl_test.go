@@ -146,7 +146,7 @@ func TestProcessMixDeniesSourceBeforeHandshake(t *testing.T) {
 	defer func() { _ = peer.Close() }()
 	done := make(chan error, 1)
 	go func() {
-		done <- ProcessMix(conn.NewConn(&remoteConn{Conn: server, remote: tcpAddr("127.0.0.1:5000")}), &TunnelModeServer{BaseServer: &BaseServer{Task: task}})
+		done <- ProcessMix(conn.NewConn(&remoteConn{Conn: server, remote: tcpAddr("127.0.0.1:5000")}), &TunnelModeServer{BaseServer: &BaseServer{Bridge: &localDialBridge{}, Task: task}})
 	}()
 	select {
 	case err := <-done:
