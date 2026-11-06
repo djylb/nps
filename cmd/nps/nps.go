@@ -41,6 +41,7 @@ var (
 )
 
 func main() {
+	daemon.WatchReload(reloadConfig)
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -246,6 +247,18 @@ func main() {
 		}
 	}
 	_ = s.Run()
+}
+
+func reloadConfig() {
+	old := servercfg.Current()
+	if err := servercfg.Reload(); err != nil {
+		logs.Warn("Config reload failed: %v", err)
+		return
+	}
+	if names := servercfg.RestartRequired(old, servercfg.Current()); len(names) > 0 {
+		logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
+	}
+	server.SetWebHandler(routers.Init())
 }
 
 func newServiceConfig() *service.Config {

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -50,19 +51,27 @@ func reload(f string, pidPath string) {
 		log.Println("reload fail")
 		return
 	}
-	var c *exec.Cmd
-	var err error
-	b, err := os.ReadFile(filepath.Join(pidPath, f+".pid"))
-	if err == nil {
-		c = exec.Command("/bin/bash", "-c", `kill -30 `+string(b))
-	} else {
+	pid, err := readPID(filepath.Join(pidPath, f+".pid"))
+	if err != nil {
 		log.Fatalln("reload error,pid file does not exist")
 	}
-	if c.Run() == nil {
+	if signalReload(pid) == nil {
 		log.Println("reload success")
 	} else {
 		log.Println("reload fail")
 	}
+}
+
+func readPID(path string) (int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("invalid pid in %s", path)
+	}
+	return pid, nil
 }
 
 func status(f string, pidPath string) bool {

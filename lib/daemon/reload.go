@@ -5,30 +5,20 @@ package daemon
 import (
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
-
-	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/server"
-	"github.com/djylb/nps/web/routers"
 )
 
-func init() {
+// WatchReload calls fn for every reload signal, one at a time.
+func WatchReload(fn func()) {
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGUSR1)
 	go func() {
-		for {
-			<-s
-			old := servercfg.Current()
-			if err := servercfg.Reload(); err != nil {
-				logs.Warn("Config reload failed: %v", err)
-				continue
-			}
-			if names := servercfg.RestartRequired(old, servercfg.Current()); len(names) > 0 {
-				logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
-			}
-			server.SetWebHandler(routers.Init())
+		for range s {
+			fn()
 		}
 	}()
+}
+
+func signalReload(pid int) error {
+	return syscall.Kill(pid, syscall.SIGUSR1)
 }
