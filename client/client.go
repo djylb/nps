@@ -64,7 +64,6 @@ func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, 
 }
 
 var NowStatus int
-var HasFailed = false
 
 func (s *TRPClient) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
@@ -73,7 +72,6 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if Ver < 5 {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
-			HasFailed = true
 			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 			return
 		}
@@ -82,7 +80,6 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		err = SendType(c, common.WorkMain, s.uuid)
 		if err != nil {
-			HasFailed = true
 			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
 			_ = c.Close()
 			return
@@ -198,12 +195,10 @@ func (s *TRPClient) newChan() any {
 	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
 		logs.Error("Failed to connect to server %s error: %v", s.svrAddr, err)
-		HasFailed = true
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
 		return nil
 	}
 	if tunnel == nil {
-		HasFailed = true
 		logs.Error("NewConn returned nil tunnel without error (server=%s tp=%s)", s.svrAddr, s.bridgeConnType)
 		return nil
 	}
@@ -214,7 +209,6 @@ func (s *TRPClient) newChan() any {
 	err = SendType(tunnel, common.WorkChan, s.uuid)
 	if err != nil {
 		logs.Error("Failed to send type to server %s error: %v", s.svrAddr, err)
-		HasFailed = true
 		logs.Warn("The connection server failed and will be reconnected in five seconds.")
 		_ = tunnel.Close()
 		return nil

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +33,8 @@ import (
 )
 
 const MaxPad = 64
+
+const dialTimeout = 10 * time.Second
 
 var Ver = version.GetLatestIndex()
 var SkipTLSVerify = false
@@ -339,19 +343,8 @@ type serverInfo struct {
 
 // dialServer is NewConn returning the server information as well.
 func dialServer(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, serverInfo, error) {
-	var info serverInfo
-	//logs.Debug("NewConn: %s %s %s %s %s", tp, vkey, server, connType, proxyUrl)
-	var err error
-	var connection net.Conn
-	var sess *kcp.UDPSession
-	var path string
-	var isTls = false
-	var tlsVerify = false
-	var tlsFp []byte
-
-	timeout := time.Second * 10
 	alpn := "nps"
-	server, path = common.SplitServerAndPath(server)
+	server, path := common.SplitServerAndPath(server)
 	if path == "" {
 		path = "/ws"
 	} else {
@@ -360,14 +353,69 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 	addr, host, sni := common.SplitAddrAndHost(server)
 	server = EnsurePort(addr, tp)
 
-	if HasFailed {
-		if s, e := common.GetFastAddr(server, tp); e == nil {
-			server = s
-			//logs.Debug("Fast Server: %s", server)
-		} else {
-			logs.Debug("Server: %s Path: %s Error: %v", server, path, e)
+	var (
+		c    *conn.Conn
+		uuid string
+		info serverInfo
+		err  error
+	)
+	for _, target := range dialTargets(tp, server) {
+		c, uuid, info, err = dialBridge(tp, vkey, target, path, alpn, host, sni, proxyUrl, localIP)
+		if err == nil {
+			return c, uuid, info, nil
 		}
+		logs.Debug("Dial %s %s failed: %v", tp, target, err)
 	}
+	return nil, "", serverInfo{}, err
+}
+
+// dialTargets lists the addresses to try for server. TCP dials try every
+// address of a name themselves. A UDP dial takes only the first one, and only
+// the handshake tells whether it is alive, so UDP transports try each in turn.
+func dialTargets(tp, server string) []string {
+	switch tp {
+	case "tcp", common.ConnTLS, common.ConnWS, common.ConnWSS:
+		return []string{server}
+	}
+	host, port, err := net.SplitHostPort(server)
+	if err != nil || net.ParseIP(host) != nil {
+		return []string{server}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil || len(ips) == 0 {
+		// The dial reports the lookup error.
+		return []string{server}
+	}
+	slices.SortStableFunc(ips, func(a, b net.IP) int {
+		return cmp.Compare(ipFamilyOrder(a), ipFamilyOrder(b))
+	})
+	targets := make([]string, len(ips))
+	for i, ip := range ips {
+		targets[i] = net.JoinHostPort(ip.String(), port)
+	}
+	return targets
+}
+
+func ipFamilyOrder(ip net.IP) int {
+	if ip.To4() != nil {
+		return 0
+	}
+	return 1
+}
+
+// dialBridge connects to one server address and verifies the connection.
+func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP string) (*conn.Conn, string, serverInfo, error) {
+	var info serverInfo
+	var err error
+	var connection net.Conn
+	var sess *kcp.UDPSession
+	var isTls = false
+	var tlsVerify = false
+	var tlsFp []byte
+
+	timeout := dialTimeout
 
 	switch tp {
 	case "tcp":

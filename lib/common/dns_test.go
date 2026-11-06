@@ -2,7 +2,6 @@ package common
 
 import (
 	"net"
-	"strings"
 	"testing"
 )
 
@@ -61,30 +60,5 @@ func TestSetCustomDNSEmptyInputKeepsPreviousValue(t *testing.T) {
 	SetCustomDNS("")
 	if gotAfter := GetCustomDNS(); gotAfter != gotBefore {
 		t.Fatalf("empty SetCustomDNS should keep previous value: before=%q after=%q", gotBefore, gotAfter)
-	}
-}
-
-func TestTestLatencyUnsupportedType(t *testing.T) {
-	_, err := TestLatency("127.0.0.1:1", "icmp")
-	if err == nil {
-		t.Fatal("TestLatency() error = nil, want unsupported test type error")
-	}
-	if !strings.Contains(err.Error(), "unsupported test type") {
-		t.Fatalf("TestLatency() error = %q, want contains %q", err.Error(), "unsupported test type")
-	}
-}
-
-func TestUniqueRemovesDuplicatesAndKeepsOrder(t *testing.T) {
-	input := []string{"1.1.1.1", "2.2.2.2", "1.1.1.1", "3.3.3.3", "2.2.2.2"}
-	got := unique(input)
-	want := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
-
-	if len(got) != len(want) {
-		t.Fatalf("len(unique()) = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("unique()[%d] = %q, want %q", i, got[i], want[i])
-		}
 	}
 }
