@@ -3,7 +3,9 @@ package httpproxy
 import (
 	"crypto/tls"
 	"net"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/djylb/nps/lib/file"
 )
@@ -52,5 +54,28 @@ func TestHttp3CloseBeforeStart(t *testing.T) {
 	}
 	if !s.httpsStatus {
 		t.Fatalf("closing HTTP/3 must not change the HTTPS server status")
+	}
+}
+
+func TestHttp3CloseWaitsForBridgeAcceptLoop(t *testing.T) {
+	s := newTestHttp3Server(t)
+	s.httpsServer = &http.Server{}
+	s.Http3Bridge = true
+	s.ticketKeys = [][32]byte{{1}}
+	started := make(chan error, 1)
+	go func() { started <- s.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	closed := make(chan error, 1)
+	go func() { closed <- s.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Start did not return after Close")
 	}
 }

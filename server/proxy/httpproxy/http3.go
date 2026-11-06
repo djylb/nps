@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
@@ -22,6 +23,12 @@ type Http3Server struct {
 	http3Listener   net.PacketConn
 	http3Server     *http3.Server
 	http3NextProtos []string
+
+	// workers counts the accept loop of the bridge mode and its QUIC
+	// connection handlers; Close waits for them.
+	workers sync.WaitGroup
+	closeMu sync.Mutex
+	closing bool
 }
 
 func NewHttp3Server(httpsSrv *HttpsServer, udpConn net.PacketConn) *Http3Server {
@@ -67,7 +74,13 @@ func (s *Http3Server) Start() error {
 		Allow0RTT:          true,
 	}
 
+	if !s.addWorker() {
+		s.http3Status = false
+		return nil
+	}
+	defer s.workers.Done()
 	tr := &quic.Transport{Conn: s.http3Listener}
+	defer func() { _ = tr.Close() }()
 	ln, err := tr.ListenEarly(tlsConfig, quicConfig)
 	if err != nil {
 		s.http3Status = false
@@ -82,7 +95,7 @@ func (s *Http3Server) Start() error {
 		qc, err := ln.Accept(ctx)
 		if err != nil {
 			logs.Trace("HTTP/3 Accept transient error: %v", err)
-			if errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, quic.ErrServerClosed) {
+			if errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, quic.ErrServerClosed) || errors.Is(err, quic.ErrTransportClosed) {
 				break
 			}
 			continue
@@ -90,14 +103,38 @@ func (s *Http3Server) Start() error {
 		state := qc.ConnectionState()
 		alpn := state.TLS.NegotiatedProtocol
 		sni := state.TLS.ServerName
-		go s.HandleQUIC(qc, alpn, sni)
+		if !s.addWorker() {
+			_ = qc.CloseWithError(0, "server closed")
+			continue
+		}
+		go func() {
+			defer s.workers.Done()
+			s.HandleQUIC(qc, alpn, sni)
+		}()
 	}
 	_ = ln.Close()
 	s.http3Status = false
 	return nil
 }
 
+// addWorker counts a new worker unless Close has begun.
+func (s *Http3Server) addWorker() bool {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.closing {
+		return false
+	}
+	s.workers.Add(1)
+	return true
+}
+
+// Close stops the server. Closing the socket ends the QUIC transport and its
+// connections, so the workers return.
 func (s *Http3Server) Close() error {
+	s.closeMu.Lock()
+	s.closing = true
+	s.closeMu.Unlock()
+	defer s.workers.Wait()
 	if s.http3Server != nil {
 		_ = s.http3Server.Close()
 	}
