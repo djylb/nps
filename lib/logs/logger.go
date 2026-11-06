@@ -20,6 +20,8 @@ var (
 	Logger       zerolog.Logger
 	ZapLogger    *zap.Logger
 	bufferWriter *BufferWriter
+	// zapLevel gates ZapLogger; SetLevel changes it along with zerolog's.
+	zapLevel = zap.NewAtomicLevel()
 )
 
 const defaultBufSize = 64 * 1024 // 64KB
@@ -122,36 +124,27 @@ func Init(
 ) {
 	lvlKey := strings.ToLower(logLevel)
 	var lvl zerolog.Level
-	var zapLvl zapcore.Level
 	switch lvlKey {
 	case "0", "off", "disabled":
 		lvl = zerolog.Disabled
-		zapLvl = zapcore.InvalidLevel
 	case "1", "panic", "emergency":
 		lvl = zerolog.PanicLevel
-		zapLvl = zapcore.PanicLevel
 	case "2", "fatal", "critical":
 		lvl = zerolog.FatalLevel
-		zapLvl = zapcore.FatalLevel
 	case "3", "error", "alert":
 		lvl = zerolog.ErrorLevel
-		zapLvl = zapcore.ErrorLevel
 	case "4", "warn", "warning":
 		lvl = zerolog.WarnLevel
-		zapLvl = zapcore.WarnLevel
 	case "5", "info", "informational", "notice":
 		lvl = zerolog.InfoLevel
-		zapLvl = zapcore.InfoLevel
 	case "6", "debug":
 		lvl = zerolog.DebugLevel
-		zapLvl = zapcore.DebugLevel
 	case "7", "trace":
 		lvl = zerolog.TraceLevel
-		zapLvl = zapcore.DebugLevel
 	default:
 		lvl = zerolog.InfoLevel
-		zapLvl = zapcore.InfoLevel
 	}
+	zapLevel.SetLevel(zapLevelOf(lvl))
 	zerolog.SetGlobalLevel(lvl)
 	zerolog.TimeFieldFormat = time.RFC3339
 
@@ -214,7 +207,7 @@ func Init(
 		EncodeLevel:   zapcore.CapitalLevelEncoder,
 	}
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
-	coreZap := zapcore.NewCore(encoder, writer, zapLvl)
+	coreZap := zapcore.NewCore(encoder, writer, zapLevel)
 	ZapLogger = zap.New(coreZap)
 	zap.ReplaceGlobals(ZapLogger)
 }
@@ -233,6 +226,26 @@ func Printf(msg string, v ...interface{}) { Logger.Printf(msg, v...) }
 func SetLevel(levelStr string) {
 	if lvl, err := zerolog.ParseLevel(strings.ToLower(levelStr)); err == nil {
 		zerolog.SetGlobalLevel(lvl)
+		zapLevel.SetLevel(zapLevelOf(lvl))
+	}
+}
+
+func zapLevelOf(lvl zerolog.Level) zapcore.Level {
+	switch lvl {
+	case zerolog.Disabled:
+		return zapcore.InvalidLevel
+	case zerolog.PanicLevel:
+		return zapcore.PanicLevel
+	case zerolog.FatalLevel:
+		return zapcore.FatalLevel
+	case zerolog.ErrorLevel:
+		return zapcore.ErrorLevel
+	case zerolog.WarnLevel:
+		return zapcore.WarnLevel
+	case zerolog.DebugLevel, zerolog.TraceLevel:
+		return zapcore.DebugLevel
+	default:
+		return zapcore.InfoLevel
 	}
 }
 

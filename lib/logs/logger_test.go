@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"go.uber.org/zap/zapcore"
 )
 
 func resetTestLoggerState() {
@@ -137,5 +138,24 @@ func TestZapAdapterWriteRoutesLevels(t *testing.T) {
 		if !strings.Contains(logs, msg) {
 			t.Fatalf("expected logs to include %q, got %q", msg, logs)
 		}
+	}
+}
+
+func TestSetLevelChangesZapLevel(t *testing.T) {
+	resetTestLoggerState()
+	defer resetTestLoggerState()
+	EnableInMemoryBuffer(1024)
+	Init("off", "info", "", 0, 0, 0, false, false)
+	core := ZapLogger.Core()
+	if core.Enabled(zapcore.DebugLevel) {
+		t.Fatal("debug enabled at info level")
+	}
+	SetLevel("debug")
+	if !core.Enabled(zapcore.DebugLevel) {
+		t.Fatal("SetLevel(debug) did not reach the zap logger")
+	}
+	SetLevel("disabled")
+	if core.Enabled(zapcore.FatalLevel) {
+		t.Fatal("SetLevel(disabled) left the zap logger enabled")
 	}
 }
