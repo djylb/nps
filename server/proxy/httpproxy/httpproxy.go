@@ -2,13 +2,14 @@ package httpproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -122,58 +123,68 @@ func (s *HttpProxy) Start() error {
 
 	s.ResponseHeaderTimeout = time.Duration(cfg.Proxy.ResponseTimeout) * time.Second
 
-	// Start Server
+	return s.serve()
+}
+
+// serve binds and runs the HTTP, HTTPS and HTTP/3 servers. It returns the
+// first error of any of them, or nil once all were closed.
+func (s *HttpProxy) serve() error {
+	var running sync.WaitGroup
+	errs := make(chan error, 3)
+	run := func(name string, start func() error) {
+		running.Go(func() {
+			if err := stopError(name, start()); err != nil {
+				errs <- err
+			}
+		})
+	}
+
 	if s.HttpPort > 0 {
 		httpListener, err := connection.GetHttpListener()
 		if err != nil {
-			logs.Error("Failed to start HTTP listener: %v", err)
-			os.Exit(0)
+			return fmt.Errorf("start HTTP listener: %w", err)
 		}
 		s.HttpServer = NewHttpServer(s, httpListener)
 		logs.Info("HTTP server listening on port %d", s.HttpPort)
-		go func() {
-			if err := s.HttpServer.Start(); err != nil {
-				logs.Error("HTTP server stopped: %v", err)
-				os.Exit(0)
-			}
-		}()
+		run("HTTP", s.HttpServer.Start)
 	}
 
 	if s.HttpsPort > 0 {
 		httpsListener, err := connection.GetHttpsListener()
 		if err != nil {
-			logs.Error("Failed to start HTTPS listener: %v", err)
-			os.Exit(0)
+			return fmt.Errorf("start HTTPS listener: %w", err)
 		}
 		if s.HttpServer == nil {
 			s.HttpServer = NewHttpServer(s, nil)
 		}
 		s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
 		logs.Info("HTTPS server listening on port %d", s.HttpsPort)
-		go func() {
-			if err := s.HttpsServer.Start(); err != nil {
-				logs.Error("HTTPS server stopped: %v", err)
-				os.Exit(0)
-			}
-		}()
+		run("HTTPS", s.HttpsServer.Start)
 
 		if s.Http3Port > 0 {
 			http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.HttpIp), Port: s.Http3Port})
 			if err != nil {
-				logs.Error("Failed to start HTTP/3 listener: %v", err)
-				os.Exit(0)
+				return fmt.Errorf("start HTTP/3 listener: %w", err)
 			}
 			logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
 			s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
-			go func() {
-				if err := s.Http3Server.Start(); err != nil {
-					logs.Error("HTTP/3 server stopped: %v", err)
-					os.Exit(0)
-				}
-			}()
+			run("HTTP/3", s.Http3Server.Start)
 		}
 	}
-	return nil
+	go func() {
+		running.Wait()
+		close(errs)
+	}()
+	return <-errs
+}
+
+// stopError is the error of a server that stopped with err, nil if closing it
+// stopped it.
+func stopError(name string, err error) error {
+	if err == nil || errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return fmt.Errorf("%s server stopped: %w", name, err)
 }
 
 func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {

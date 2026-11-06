@@ -212,15 +212,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if v, ok := s.HttpProxyCache.Get(host.Id); ok {
 		tr = v.(*http.Transport)
 	} else {
-		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, &http.Transport{
-			ResponseHeaderTimeout: s.ResponseHeaderTimeout,
-			DisableKeepAlives:     host.CompatMode,
-			DialContext:           s.DialContext,
-			DialTLSContext:        s.DialTlsContext,
-			MaxIdleConns:          1024,
-			MaxIdleConnsPerHost:   256,
-			IdleConnTimeout:       90 * time.Second,
-		})
+		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, s.newTransport(host))
 		tr = v.(*http.Transport)
 	}
 
@@ -290,6 +282,19 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	rp.ServeHTTP(w, r)
+}
+
+func (s *HttpServer) newTransport(host *file.Host) *http.Transport {
+	return &http.Transport{
+		ResponseHeaderTimeout: s.ResponseHeaderTimeout,
+		// A PROXY header names one visitor, so its connection serves no other.
+		DisableKeepAlives:   host.CompatMode || host.Target.ProxyProtocol != 0,
+		DialContext:         s.DialContext,
+		DialTLSContext:      s.DialTlsContext,
+		MaxIdleConns:        1024,
+		MaxIdleConnsPerHost: 256,
+		IdleConnTimeout:     90 * time.Second,
+	}
 }
 
 func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {

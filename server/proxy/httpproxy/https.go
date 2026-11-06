@@ -21,6 +21,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/server/proxy"
 	"github.com/djylb/portmux/tlshello"
 )
 
@@ -128,6 +129,12 @@ func (s *HttpsServer) Start() error {
 	}
 	s.httpsStatus = true
 	conn.Accept(s.httpsListener, func(c net.Conn) {
+		// Only the global list: the entry lists depend on the request's host,
+		// which may differ from the SNI.
+		if proxy.SourceDenied(c.RemoteAddr(), nil, nil, "") {
+			_ = c.Close()
+			return
+		}
 		_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 		hello, rb, err := readClientHello(c)
 		if err != nil {
