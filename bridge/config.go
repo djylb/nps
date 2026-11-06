@@ -14,6 +14,14 @@ import (
 	"github.com/djylb/nps/server/tool"
 )
 
+// writeAddFail reports one host or task that could not be added, after which
+// the client goes on with its next one: npc takes a failure as the end of the
+// statuses of that task, so nothing more is written for its remaining ports.
+// It returns false if the client is gone.
+func writeAddFail(c *conn.Conn) bool {
+	return c.WriteAddFail() == nil
+}
+
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, ver int, vs, uuid string) {
 	var fail bool
 loop:
@@ -97,23 +105,38 @@ loop:
 			hh, ok := client.HasHost(h)
 			if !ok {
 				if file.GetDb().IsHostExist(h) {
-					fail = true
-					_ = c.WriteAddFail()
-					break loop
+					logs.Warn("Host %s of client %d already exists", h.Host, client.Id)
+					if !writeAddFail(c) {
+						fail = true
+						break loop
+					}
+					continue
 				}
-				_ = file.GetDb().NewHost(h)
+				if err := file.GetDb().NewHost(h); err != nil {
+					logs.Warn("Add host %s of client %d error: %v", h.Host, client.Id, err)
+					if !writeAddFail(c) {
+						fail = true
+						break loop
+					}
+					continue
+				}
 			} else {
 				if hh.NoStore {
 					hh.Update(h)
 					if !dispatch(s.OpenHost, hh) {
 						logs.Warn("Open host %s of client %d timed out", hh.Host, client.Id)
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						continue
 					}
 				}
 			}
-			_ = c.WriteAddOk()
+			if c.WriteAddOk() != nil {
+				fail = true
+				break loop
+			}
 
 		case common.FlagNewTask:
 			t, err := c.GetTaskInfo()
@@ -125,11 +148,15 @@ loop:
 
 			ports, targets, ok := file.ConfigTaskPorts(t)
 			if !ok {
-				fail = true
-				_ = c.WriteAddFail()
-				break loop
+				logs.Warn("Task %s of client %d has invalid ports", t.Remark, client.Id)
+				if !writeAddFail(c) {
+					fail = true
+					break loop
+				}
+				continue
 			}
 
+		ports:
 			for i := 0; i < len(ports); i++ {
 				tl := &file.Tunnel{
 					MaxConn:      t.MaxConn,
@@ -197,42 +224,56 @@ loop:
 
 				tt, ok := client.HasTunnel(tl)
 				if !ok {
+					if b := tool.TestTunnelPort(tl); !b && t.Mode != "secret" && t.Mode != "p2p" && tl.Port > 0 {
+						logs.Warn("Port %d of task %s of client %d is not available", tl.Port, tl.Remark, client.Id)
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						break ports
+					}
 					if err := file.GetDb().NewTask(tl); err != nil {
 						logs.Warn("Add task %s of client %d error: %v", tl.Remark, client.Id, err)
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
-					}
-
-					if b := tool.TestTunnelPort(tl); !b && t.Mode != "secret" && t.Mode != "p2p" && tl.Port > 0 {
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						break ports
 					}
 
 					if !dispatch(s.OpenTask, tl) {
 						logs.Warn("Open task %s of client %d timed out", tl.Remark, client.Id)
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
+						_ = file.GetDb().DelTask(tl.Id)
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						break ports
 					}
 				} else if tt.NoStore {
 					tl.Id = tt.Id
 					if err := file.GetDb().ReserveTaskPassword(tl); err != nil {
 						logs.Warn("Update task %s of client %d error: %v", tl.Remark, client.Id, err)
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						break ports
 					}
 					tt.Update(tl)
 					if !dispatch(s.OpenTask, tt) {
 						logs.Warn("Open task %s of client %d timed out", tt.Remark, client.Id)
-						fail = true
-						_ = c.WriteAddFail()
-						break loop
+						if !writeAddFail(c) {
+							fail = true
+							break loop
+						}
+						break ports
 					}
 				}
-				_ = c.WriteAddOk()
+				if c.WriteAddOk() != nil {
+					fail = true
+					break loop
+				}
 			}
 		}
 	}

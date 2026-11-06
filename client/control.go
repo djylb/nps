@@ -256,8 +256,7 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 }
 
 // readTaskAddStatus reads the add statuses the server reports for a FlagNewTask:
-// one per port the task expands to, or a single failure. It stops at the first
-// failure, after which the server closes the connection.
+// one per port the task expands to, ending at the first failure.
 func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) bool {
 	n := 1
 	if ports, _, ok := file.ConfigTaskPorts(t); ok {

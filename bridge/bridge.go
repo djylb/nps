@@ -122,6 +122,37 @@ func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
 	return actual, loaded
 }
 
+// joinNode adds node, which holds a new connection, to client id, whose node
+// of the same UUID takes the connection through addConn if there is one. A
+// client being closed is replaced, so a node never joins one that is gone.
+func (s *Bridge) joinNode(id int, uuid string, node *Node, addConn func(*Node)) (*Client, *Node) {
+	for {
+		// Either the client map owns the new client, or it is dropped: it holds only node.
+		//noinspection GoResourceLeak
+		client := NewClient(id, node)
+		v, loaded := s.loadOrStoreClient(id, client)
+		if !loaded {
+			client.MarkConnectedNow()
+			return client, node
+		}
+		client = v.(*Client)
+		client.MarkConnectedNow()
+		client.RemoveOfflineNodesExcept(uuid, true)
+		joined := node
+		if n, ok := client.GetNodeByUUID(uuid); ok {
+			joined = n
+			addConn(n)
+		} else {
+			client.AddNode(node)
+		}
+		if !client.IsClosed() {
+			client.MarkConnectedNow()
+			return client, joined
+		}
+		s.Client.CompareAndDelete(id, client)
+	}
+}
+
 func (s *Bridge) storeClient(id int, client *Client) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()

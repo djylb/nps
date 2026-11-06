@@ -458,7 +458,6 @@ func (s *Conn) WriteAddOk() error {
 }
 
 func (s *Conn) WriteAddFail() error {
-	defer func() { _ = s.Close() }()
 	return binary.Write(s, binary.LittleEndian, false)
 }
 

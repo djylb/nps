@@ -331,22 +331,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		//the vKey connect by another, close the client of before
 		node := NewNode(uuid, vs, ver)
 		node.AddSignal(c)
-		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
-		//noinspection GoResourceLeak
-		client := NewClient(id, node)
-		if v, loaded := s.loadOrStoreClient(id, client); loaded {
-			client = v.(*Client)
-			client.MarkConnectedNow()
-			client.RemoveOfflineNodesExcept(uuid, true)
-			n, ok := client.GetNodeByUUID(uuid)
-			if ok {
-				node = n
-				node.AddSignal(c)
-			} else {
-				client.AddNode(node)
-			}
-		}
-		client.MarkConnectedNow()
+		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddSignal(c) })
 		go s.GetHealthFromClient(id, c, client, node)
 		logs.Info("ClientId %d connection succeeded, address:%v ", id, addr)
 
@@ -370,22 +355,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		}
 		node := NewNode(uuid, vs, ver)
 		node.AddTunnel(anyConn)
-		// Either the client map owns the new client, or it is dropped: it holds only node, which the stored client takes over below.
-		//noinspection GoResourceLeak
-		client := NewClient(id, node)
-		if v, loaded := s.loadOrStoreClient(id, client); loaded {
-			client = v.(*Client)
-			client.MarkConnectedNow()
-			client.RemoveOfflineNodesExcept(uuid, true)
-			n, ok := client.GetNodeByUUID(uuid)
-			if ok {
-				node = n
-				node.AddTunnel(anyConn)
-			} else {
-				client.AddNode(node)
-			}
-		}
-		client.MarkConnectedNow()
+		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddTunnel(anyConn) })
 		if ver > 4 {
 			go func() {
 				defer func() {
@@ -500,12 +470,14 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		}()
 
 	case common.WorkSecret:
+		c.SetReadDeadlineBySecond(bridgeHandshakeReadTimeout)
 		b, err := c.GetShortContent(32)
 		if err != nil {
 			logs.Error("secret error, failed to match the key successfully")
 			_ = c.Close()
 			return
 		}
+		c.SetAlive()
 		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c)) {
 			logs.Warn("secret connection from %v dropped: server busy", addr)
 			_ = c.Close()
