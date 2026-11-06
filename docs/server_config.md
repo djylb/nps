@@ -119,7 +119,7 @@ nps.exe -conf_path=D:\test\nps
 | `auth_key`       | Web API 认证密钥（建议填充复杂密钥）        |
 | `auth_crypt_key` | 获取 `authKey` 的 AES 加密密钥（16 位） |
 | `public_vkey`    | 客户端以配置文件模式启动时的密钥 |
-| `visitor_vkey`   | 访客密钥，只能访问 secret/P2P 隧道和登记 IP；设置后网页上的访问命令使用此密钥 |
+| `visitor_vkey`   | 访客密钥，只能访问 secret/P2P 隧道；设置后网页上的访问命令使用此密钥 |
 
 ---
 

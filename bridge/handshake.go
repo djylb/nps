@@ -23,9 +23,7 @@ import (
 // allowsFlag is the one rule for which workflows each kind of vkey may open.
 func allowsFlag(kind file.KeyKind, flag string) bool {
 	switch flag {
-	case common.WorkRegister:
-		return true
-	case common.WorkConfig:
+	case common.WorkRegister, common.WorkConfig:
 		return kind != file.KeyVisitor
 	case common.WorkVisitor, common.WorkSecret, common.WorkP2P:
 		return true

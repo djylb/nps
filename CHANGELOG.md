@@ -9,7 +9,7 @@
 
 ### v0.35.0
 - 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错
-- 新增 `visitor_vkey`：只能访问 secret/P2P 隧道和登记 IP，设置后网页上的访问命令使用此密钥
+- 新增 `visitor_vkey`：只能访问 secret/P2P 隧道，设置后网页上的访问命令使用此密钥
 - 域名支持最大连接数限制（Web、API、npc 配置 `max_conn`）
 - 新增 `login_acl_mode`、`login_acl_rules` 限制登录和注册的来源
 - 重载配置时提示需要重启才生效的变更

@@ -176,7 +176,7 @@ func TestAllowsFlag(t *testing.T) {
 		common.WorkFile:       ctl | pub,
 		common.WorkP2PSession: ctl | pub,
 		common.WorkConfig:     ctl | pub | acc,
-		common.WorkRegister:   ctl | pub | vis | acc,
+		common.WorkRegister:   ctl | pub | acc,
 		common.WorkVisitor:    ctl | pub | vis | acc,
 		common.WorkSecret:     ctl | pub | vis | acc,
 		common.WorkP2P:        ctl | pub | vis | acc,
