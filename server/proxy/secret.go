@@ -55,6 +55,11 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 			connType = lk.ConnType
 			if lk.Host != "" {
 				host = common.FormatAddress(lk.Host)
+				if s.Task.DestAclMode != file.AclOff && !s.Task.AllowsDestination(host) {
+					logs.Warn("secret dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(host))
+					_ = c.Close()
+					return errProxyAccessDenied
+				}
 			}
 			if s.allowSecretLocal {
 				localProxy = lk.LocalProxy

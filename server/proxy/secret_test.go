@@ -211,3 +211,21 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 	_ = visitor.Close()
 	<-done
 }
+
+func TestSecretLinkDestinationDenied(t *testing.T) {
+	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
+	task := &file.Tunnel{Client: &file.Client{Id: 1, Cnf: &file.Config{}, Flow: &file.Flow{}}, Flow: &file.Flow{}, Target: &file.Target{}, DestAclMode: file.AclBlacklist, DestAclRules: "denied.example"}
+	s := NewSecretServer(bridge, task, true, true, true)
+	visitor, srv := tcpConnPair(t)
+	go func() {
+		_, _ = conn.NewConn(visitor).SendInfo(conn.NewLink("tcp", "denied.example:80", false, false, "", false), "")
+	}()
+	if err := s.HandleSecret(srv); err == nil {
+		t.Fatal("link to a denied destination was served")
+	}
+	select {
+	case <-bridge.links:
+		t.Fatal("denied destination was dialed")
+	default:
+	}
+}
