@@ -458,7 +458,6 @@ func ipFamilyOrder(ip net.IP) int {
 
 // dialBridge connects to one server address and verifies the connection.
 func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP string) (*conn.Conn, string, serverInfo, error) {
-	var info serverInfo
 	var err error
 	var connection net.Conn
 	var sess *kcp.UDPSession
@@ -550,14 +549,32 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 		return nil, "", serverInfo{}, fmt.Errorf("newConn: unexpected nil connection for tp=%q server=%q", tp, server)
 	}
 
-	//logs.Debug("SetDeadline")
-	_ = connection.SetDeadline(time.Now().Add(timeout))
+	return handshakeConn(connection, tp, vkey, isTls, tlsVerify, tlsFp, proxyUrl)
+}
+
+// HandshakeHooks fix the time and address a handshake sends, for tests that
+// record it.
+var HandshakeHooks = struct {
+	Timestamp  func() int64
+	OutboundIP func() net.IP
+	PadLen     func() int
+}{
+	Timestamp:  func() int64 { return common.TimeNow().Unix() - int64(rand.Intn(6)) },
+	OutboundIP: common.GetOutboundIP,
+	PadLen:     func() int { return rand.Intn(MaxPad) },
+}
+
+// handshakeConn verifies connection, which reached the server through tp.
+func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, tlsFp []byte, proxyUrl string) (*conn.Conn, string, serverInfo, error) {
+	var info serverInfo
+	var err error
+	_ = connection.SetDeadline(time.Now().Add(dialTimeout))
 	defer func() { _ = connection.SetDeadline(time.Time{}) }()
 
 	c := conn.NewConn(connection)
 	if c == nil {
 		_ = connection.Close()
-		return nil, "", serverInfo{}, fmt.Errorf("conn.NewConn returned nil (tp=%q server=%q)", tp, server)
+		return nil, "", serverInfo{}, fmt.Errorf("conn.NewConn returned nil (tp=%q)", tp)
 	}
 	if _, err := c.BufferWrite([]byte(common.ConnTest)); err != nil {
 		_ = c.Close()
@@ -569,7 +586,7 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 		return nil, "", serverInfo{}, err
 	}
 	vs := []byte(version.VERSION)
-	padLen := rand.Intn(MaxPad)
+	padLen := HandshakeHooks.PadLen()
 	if padLen > 0 {
 		vs = append(vs, make([]byte, padLen)...)
 	}
@@ -604,7 +621,7 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 		}
 	} else {
 		// 0.27.0
-		ts := common.TimeNow().Unix() - int64(rand.Intn(6))
+		ts := HandshakeHooks.Timestamp()
 		if _, err := c.BufferWrite(common.TimestampToBytes(ts)); err != nil {
 			_ = c.Close()
 			return nil, "", serverInfo{}, err
@@ -617,14 +634,14 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 		if Ver < 3 {
 			// 0.27.0 0.28.0
 			var err error
-			infoBuf, err = crypt.EncryptBytes(common.EncodeIP(common.GetOutboundIP()), vkey)
+			infoBuf, err = crypt.EncryptBytes(common.EncodeIP(HandshakeHooks.OutboundIP()), vkey)
 			if err != nil {
 				_ = c.Close()
 				return nil, "", serverInfo{}, err
 			}
 		} else {
 			// 0.29.0
-			ipPart := common.EncodeIP(common.GetOutboundIP()) // 17bit
+			ipPart := common.EncodeIP(HandshakeHooks.OutboundIP()) // 17bit
 			tpBytes := []byte(tp)
 			tpLen := len(tpBytes)
 			if tpLen > 32 {

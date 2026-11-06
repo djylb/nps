@@ -35,6 +35,10 @@ func allowsFlag(kind file.KeyKind, flag string) bool {
 	return false
 }
 
+// NewServerUUID makes the server UUID a handshake sends; tests that record
+// the handshake fix it.
+var NewServerUUID = func() string { return crypt.GetUUID().String() }
+
 func (s *Bridge) verifyError(c *conn.Conn) {
 	if !ServerSecureMode {
 		_, _ = c.Write([]byte(common.VerifyErr))
@@ -244,7 +248,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			}
 			if ver > 3 {
 				if ver > 5 {
-					err := c.WriteLenContent([]byte(crypt.GetUUID().String()))
+					err := c.WriteLenContent([]byte(NewServerUUID()))
 					if err != nil {
 						logs.Error("Failed to write UUID for %v: %v", c.Conn.RemoteAddr(), err)
 						_ = c.Close()
