@@ -679,7 +679,7 @@ func (Self *sendWindow) WriteFull(buf []byte, id int32) (n int, err error) {
 		if Self.off < uint32(len(Self.buf)) {
 			// wait for queue room before taking a segment, so a failed wait
 			// never consumes send window for data that was not sent
-			if err = Self.mux.applyWriteBackpressure(Self); err != nil {
+			if err = Self.mux.applyWriteBackpressure(Self, id); err != nil {
 				break
 			}
 		}

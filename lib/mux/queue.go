@@ -67,6 +67,13 @@ func (Self *priorityQueue) push(packager *muxPackager) {
 	}
 }
 
+// streamQueued reports whether a normal stream has frames waiting.
+func (Self *priorityQueue) streamQueued(id int32) bool {
+	Self.mu.Lock()
+	defer Self.mu.Unlock()
+	return Self.streams.buckets[id] != nil
+}
+
 func (Self *priorityQueue) Len() uint64 {
 	return Self.length.Load()
 }
@@ -182,75 +189,6 @@ func (Self *priorityQueue) Stop() {
 	Self.cond.Broadcast()
 	Self.mu.Unlock()
 	Self.wakeLowWater()
-}
-
-type connQueue struct {
-	chain *bufChain
-	//starving uint8
-	stop uint32
-	cond *sync.Cond
-}
-
-func (Self *connQueue) New() {
-	Self.chain = new(bufChain)
-	Self.chain.new(32)
-	locker := new(sync.Mutex)
-	Self.cond = sync.NewCond(locker)
-}
-
-func (Self *connQueue) Push(connection *Conn) {
-	Self.chain.pushHead(unsafe.Pointer(connection))
-	// broadcast while holding the lock, so a consumer that has checked the
-	// queue but not yet entered Wait cannot miss the wake-up
-	Self.cond.L.Lock()
-	Self.cond.Broadcast()
-	Self.cond.L.Unlock()
-}
-
-func (Self *connQueue) Pop() (connection *Conn) {
-	var iter bool
-	for {
-		connection = Self.TryPop()
-		if connection != nil {
-			return
-		}
-		if atomic.LoadUint32(&Self.stop) == 1 {
-			return
-		}
-		if iter {
-			break
-			// trying to pop twice
-		}
-		iter = true
-		runtime.Gosched()
-	}
-	Self.cond.L.Lock()
-	defer Self.cond.L.Unlock()
-	for connection = Self.TryPop(); connection == nil; {
-		if atomic.LoadUint32(&Self.stop) == 1 {
-			return
-		}
-		Self.cond.Wait()
-		// wait for it with no more iter
-		connection = Self.TryPop()
-	}
-	return
-}
-
-func (Self *connQueue) TryPop() (connection *Conn) {
-	ptr, ok := Self.chain.popTail()
-	if ok {
-		connection = (*Conn)(ptr)
-		return
-	}
-	return
-}
-
-func (Self *connQueue) Stop() {
-	atomic.StoreUint32(&Self.stop, 1)
-	Self.cond.L.Lock()
-	Self.cond.Broadcast()
-	Self.cond.L.Unlock()
 }
 
 type listElement struct {

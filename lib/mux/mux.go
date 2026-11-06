@@ -42,28 +42,29 @@ var (
 const (
 	writeQueueHighWater uint64 = 2048
 	writeQueueLowWater  uint64 = 1024
+	// acceptBacklog bounds streams waiting for Accept; more are refused.
+	acceptBacklog = 1024
 )
 
 type Mux struct {
 	latency       uint64 // we store latency in bits, but it's float64
 	lastAliveTime int64
 	net.Listener
-	conn         net.Conn
-	connMap      *ConnMap
-	newConnCh    chan *Conn
-	id           int32
-	isInitiator  bool
-	closeChan    chan struct{}
-	counter      *latencyCounter
-	bw           *Bandwidth
-	pingCh       chan *muxPackager
-	pingTimeout  time.Duration
-	connType     string
-	writeQueue   priorityQueue
-	newConnQueue connQueue
-	once         sync.Once
-	reasonMu     sync.RWMutex
-	closeReason  string
+	conn        net.Conn
+	connMap     *ConnMap
+	newConnCh   chan *Conn
+	id          int32
+	isInitiator bool
+	closeChan   chan struct{}
+	counter     *latencyCounter
+	bw          *Bandwidth
+	pingCh      chan *muxPackager
+	pingTimeout time.Duration
+	connType    string
+	writeQueue  priorityQueue
+	once        sync.Once
+	reasonMu    sync.RWMutex
+	closeReason string
 }
 
 func NewMux(c net.Conn, connType string, pingCheckThreshold int, isInitiator bool) *Mux {
@@ -98,7 +99,7 @@ func NewMux(c net.Conn, connType string, pingCheckThreshold int, isInitiator boo
 		connMap:       NewConnMap(),
 		id:            startId,
 		closeChan:     make(chan struct{}, 1),
-		newConnCh:     make(chan *Conn),
+		newConnCh:     make(chan *Conn, acceptBacklog),
 		bw:            NewBandwidth(fd),
 		connType:      connType,
 		pingCh:        make(chan *muxPackager),
@@ -107,7 +108,6 @@ func NewMux(c net.Conn, connType string, pingCheckThreshold int, isInitiator boo
 		counter:       newLatencyCounter(),
 	}
 	m.writeQueue.New()
-	m.newConnQueue.New()
 	//read session by flag
 	m.readSession()
 	//ping
@@ -245,20 +245,25 @@ func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) bo
 }
 
 // applyWriteBackpressure blocks a data writer while the write queue is above
-// the high water mark, until it drains below the low water mark. The wait
-// also ends when the mux or the stream closes or the write deadline passes.
-func (s *Mux) applyWriteBackpressure(w *sendWindow) error {
+// the high water mark, until it drains below the low water mark. A stream with
+// nothing queued passes, so bulk streams filling the queue cannot delay it and
+// the overshoot is one frame per stream. The wait also ends when the mux or the
+// stream closes or the write deadline passes.
+func (s *Mux) applyWriteBackpressure(w *sendWindow, id int32) error {
 	q := &s.writeQueue
-	if w.priority.Load() || q.Len() < writeQueueHighWater {
+	if w.priority.Load() || q.Len() < writeQueueHighWater || !q.streamQueued(id) {
 		return nil
 	}
 	drainSignal(w.deadlineCh)
+	var crossed bool
 	for {
 		lowWater := q.lowWater()
 		if s.IsClosed() || q.stopped() {
 			return fmt.Errorf("conn.writeWindow: mux closed: %w", net.ErrClosed)
 		}
-		if q.Len() < writeQueueLowWater {
+		// a crossing is enough: other writers may have refilled the queue by
+		// now, and re-checking the length would let them starve this one
+		if crossed || q.Len() < writeQueueLowWater {
 			return nil
 		}
 		timer, timeout, expired := deadlineTimer(w.deadline.Load())
@@ -267,6 +272,7 @@ func (s *Mux) applyWriteBackpressure(w *sendWindow) error {
 		}
 		select {
 		case <-lowWater:
+			crossed = true
 		case <-s.closeChan:
 		case <-w.closeOpCh:
 			stopTimer(timer)
@@ -407,27 +413,6 @@ func (s *Mux) ping() {
 
 func (s *Mux) readSession() {
 	go func() {
-		var connection *Conn
-		for {
-			if s.IsClosed() {
-				return
-			}
-			connection = s.newConnQueue.Pop()
-			if connection == nil {
-				return
-			}
-			s.connMap.Set(connection.connId, connection) //it has been Set before send ok
-			select {
-			case <-s.closeChan:
-				// the stream may have missed the close sweep of connMap
-				connection.closeLocal()
-				return
-			case s.newConnCh <- connection:
-			}
-			s.sendInfo(muxNewConnOk, connection.connId, false, nil)
-		}
-	}()
-	go func() {
 		var pack *muxPackager
 		var l uint16
 		var err error
@@ -459,8 +444,11 @@ func (s *Mux) readSession() {
 			//}
 			switch pack.flag {
 			case muxNewConn: //New connection
-				connection := NewConn(pack.id, s)
-				s.newConnQueue.Push(connection)
+				if connection := NewConn(pack.id, s); s.enqueueAccepted(connection) {
+					s.sendInfo(muxNewConnOk, connection.connId, false, nil)
+				} else {
+					s.sendInfo(muxNewConnFail, connection.connId, false, nil)
+				}
 				muxPack.Put(pack)
 				continue
 			case muxPingFlag: //ping
@@ -523,6 +511,24 @@ func (s *Mux) readSession() {
 			muxPack.Put(pack)
 		}
 	}()
+}
+
+// enqueueAccepted registers a stream from the peer and queues it for Accept; it
+// reports false when the backlog is full. The stream is registered first so that
+// frames sent right after our reply find it, and the close sweep can reach it.
+func (s *Mux) enqueueAccepted(connection *Conn) bool {
+	s.connMap.Set(connection.connId, connection)
+	select {
+	case s.newConnCh <- connection:
+		if s.IsClosed() {
+			// the close sweep of connMap may have missed it
+			connection.closeLocal()
+		}
+		return true
+	default:
+		connection.closeLocal()
+		return false
+	}
 }
 
 // pingReturnPayload builds the ping reply from a received ping. A ping
@@ -657,14 +663,7 @@ func (s *Mux) drainWriteQueue() {
 
 func (s *Mux) release() {
 	s.drainWriteQueue()
-	for {
-		connection := s.newConnQueue.TryPop()
-		if connection == nil {
-			break
-		}
-	}
 	s.writeQueue.Stop()
-	s.newConnQueue.Stop()
 }
 
 // Get New connId as unique flag

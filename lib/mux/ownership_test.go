@@ -37,7 +37,6 @@ func TestReceivedPayloadOwnership(t *testing.T) {
 func TestMessageTransfersPayloadToWindow(t *testing.T) {
 	m := &Mux{closeChan: make(chan struct{}), bw: new(Bandwidth)}
 	m.writeQueue.New()
-	m.newConnQueue.New()
 	defer m.release()
 	c := NewConn(1, m)
 	defer c.receiveWindow.CloseWindow()

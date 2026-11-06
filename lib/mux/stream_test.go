@@ -312,21 +312,13 @@ func TestMuxAcceptOnClosedMuxClosesStream(t *testing.T) {
 
 	for i := 0; i < 32; i++ {
 		c := NewConn(int32(2*i+2), m)
-		delivered := make(chan bool, 1)
-		go func() {
-			select {
-			case m.newConnCh <- c:
-				delivered <- true
-			case <-time.After(100 * time.Millisecond):
-				delivered <- false
-			}
-		}()
+		m.enqueueAccepted(c)
+		if !c.IsClosed() {
+			t.Fatal("stream queued on a closed mux was not closed")
+		}
 		conn, err := m.Accept()
 		if err == nil || conn != nil {
 			t.Fatalf("Accept() = %v, %v; want error on closed mux", conn, err)
-		}
-		if <-delivered && !c.IsClosed() {
-			t.Fatal("stream handed to Accept on a closed mux was not closed")
 		}
 	}
 }
@@ -335,7 +327,6 @@ func TestConnWriteOnClosedMuxReportsError(t *testing.T) {
 	// the stream itself is still open, only the mux has gone away
 	m := &Mux{closeChan: make(chan struct{})}
 	m.writeQueue.New()
-	m.newConnQueue.New()
 	close(m.closeChan)
 	c := NewConn(1, m)
 
@@ -345,5 +336,34 @@ func TestConnWriteOnClosedMuxReportsError(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("Write() n = %d, want 0", n)
+	}
+}
+
+func TestAcceptBacklogFullRefusesStream(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	m := NewMux(a, "tcp", 30, false)
+	defer m.Close()
+	for i := 0; i < acceptBacklog; i++ {
+		if c := NewConn(int32(2*i+2), m); !m.enqueueAccepted(c) {
+			t.Fatalf("stream %d refused below the backlog", i)
+		}
+	}
+	c := NewConn(1, m)
+	if m.enqueueAccepted(c) {
+		t.Fatal("stream accepted over the backlog")
+	}
+	if !c.IsClosed() {
+		t.Fatal("refused stream not closed")
+	}
+	if _, ok := m.connMap.Get(1); ok {
+		t.Fatal("refused stream still registered")
+	}
+	// the sweep on close reaches streams nobody accepted
+	first, _ := m.connMap.Get(2)
+	_ = m.Close()
+	if !first.IsClosed() {
+		t.Fatal("unaccepted stream not closed with the mux")
 	}
 }

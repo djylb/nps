@@ -85,7 +85,6 @@ func newBackpressuredConn(t *testing.T) (*Mux, *Conn) {
 	t.Helper()
 	m := &Mux{closeChan: make(chan struct{}), connMap: NewConnMap()}
 	m.writeQueue.New()
-	m.newConnQueue.New()
 	for i := uint64(0); i < writeQueueHighWater; i++ {
 		m.writeQueue.Push(newTestPack())
 	}
@@ -134,6 +133,16 @@ func TestBackpressureWaitEndsOnWriteDeadline(t *testing.T) {
 	}
 	if _, err := c.Write([]byte("data")); err != nil {
 		t.Fatalf("Write() after drain error = %v", err)
+	}
+}
+
+// A stream with nothing queued is not held back by other streams' backlog.
+func TestBackpressureSkipsStreamWithNothingQueued(t *testing.T) {
+	m, _ := newBackpressuredConn(t)
+	c := NewConn(3, m)
+	m.connMap.Set(c.connId, c)
+	if _, err := c.Write([]byte("data")); err != nil {
+		t.Fatalf("Write() error = %v", err)
 	}
 }
 

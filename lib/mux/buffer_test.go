@@ -13,7 +13,6 @@ import (
 func TestMuxReleaseReturnsEachBufferOnce(t *testing.T) {
 	m := &Mux{closeChan: make(chan struct{})}
 	m.writeQueue.New()
-	m.newConnQueue.New()
 	const packs = 64
 	for i := 0; i < packs; i++ {
 		pack := muxPack.Get()
