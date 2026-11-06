@@ -431,6 +431,9 @@ func parseNPC(raw string, trusted bool) ([]Profile, error) {
 		m["server"] = host
 	}
 	if u.User != nil {
+		if _, ok := u.User.Password(); ok {
+			return nil, errors.New("this npc URL has a newer format; upgrade npc to use it")
+		}
 		m["vkey"] = u.User.Username()
 	}
 	var local map[string]any

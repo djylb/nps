@@ -120,6 +120,7 @@ func TestResolveRejects(t *testing.T) {
 	for name, input := range map[string]string{
 		"empty":            " ",
 		"no vkey":          "npc://a:1",
+		"newer format":     "npc://7:k@a:1",
 		"unknown param":    "npc://k@a:1?skip_verify=true",
 		"unknown key":      `{"server":"a:1","vkey":"k","x":1}`,
 		"duplicate name":   `[{"name":"a","server":"a:1","vkey":"k"},{"name":"a","server":"b:1","vkey":"k"}]`,
