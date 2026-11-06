@@ -2,7 +2,12 @@ package client
 
 import (
 	"context"
+	"io"
+	"log"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,5 +77,85 @@ func TestHealthCheckerReportCadence(t *testing.T) {
 	case got := <-reports:
 		t.Fatalf("unexpected report %q", got)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// wantReport waits for one report.
+func wantReport(t *testing.T, reports <-chan string, want string, timeout time.Duration) {
+	t.Helper()
+	select {
+	case got := <-reports:
+		if got != want {
+			t.Fatalf("report %q, want %q", got, want)
+		}
+	case <-time.After(timeout):
+		t.Fatalf("no report %q", want)
+	}
+}
+
+// A self-signed backend is alive: an HTTPS check does not judge its certificate.
+func TestHTTPSCheckAcceptsSelfSigned(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	addr := srv.Listener.Addr().String()
+	sideA, sideB := net.Pipe()
+	defer func() { _ = sideB.Close() }()
+	reports := readHealth(t, sideB)
+	hc := NewHealthChecker(context.Background(), legacyHealthSink{signal: conn.NewConn(sideA)})
+	defer hc.Stop()
+	hc.setGroup(healthcheck.Group{Name: "t1", Type: "https", Path: "/", Interval: 60, Timeout: 3, Fall: 1, Targets: []string{addr}})
+	wantReport(t, reports, "t1/"+addr+"=1", 5*time.Second)
+}
+
+// Connections succeed while the backend answers 500: traffic must not keep an
+// HTTP check from finding that, while a TCP check is postponed by it.
+func TestTouchPostponesOnlyTCPChecks(t *testing.T) {
+	var fail atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	addr := srv.Listener.Addr().String()
+	sideA, sideB := net.Pipe()
+	defer func() { _ = sideB.Close() }()
+	reports := readHealth(t, sideB)
+	hc := NewHealthChecker(context.Background(), legacyHealthSink{signal: conn.NewConn(sideA)})
+	defer hc.Stop()
+	hc.setGroup(healthcheck.Group{Name: "h", Type: "http", Path: "/", Interval: 1, Timeout: 1, Fall: 1, Targets: []string{addr}})
+	hc.setGroup(healthcheck.Group{Name: "c", Type: "tcp", Interval: 1, Timeout: 1, Fall: 1, Targets: []string{addr}})
+	for range 2 {
+		select {
+		case <-reports:
+		case <-time.After(5 * time.Second):
+			t.Fatal("no first verdict")
+		}
+	}
+	tcp := hc.checker.GroupKeys("c")[0]
+	st, _ := hc.checker.Status(tcp)
+	before := st.Checks
+	fail.Store(true)
+	stop := time.After(1500 * time.Millisecond)
+	down := false
+	for done := false; !done; {
+		hc.touch(addr)
+		select {
+		case got := <-reports:
+			if got != "h/"+addr+"=0" {
+				t.Fatalf("report %q", got)
+			}
+			down = true
+		case <-stop:
+			done = true
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	if !down {
+		t.Fatal("HTTP check held back by traffic")
+	}
+	if st, _ := hc.checker.Status(tcp); st.Checks != before {
+		t.Fatalf("%d TCP probes during traffic", st.Checks-before)
 	}
 }

@@ -1,8 +1,10 @@
 package bridge
 
 import (
+	"maps"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/file"
@@ -23,51 +25,57 @@ type healthPeer interface {
 	DelHealthGroup(name string) error
 }
 
-// applyHealthReport takes an unhealthy target out of the rotation of the group's
-// entry, or puts a healthy one back.
-func applyHealthReport(id int, node string, rep healthcheck.Report) {
-	if target := healthGroupTarget(id, node, rep.Group); target != nil {
-		target.SetHealthy(rep.Addr, rep.Up)
+// healthPush is the state of the health groups of one connection. Its goroutine
+// alone changes sent, under mu; mu is never held across network I/O.
+type healthPush struct {
+	mu   sync.Mutex
+	sent map[string]healthGroup
+	quit chan struct{}
+	done chan struct{}
+}
+
+// apply takes an unhealthy target out of the rotation of the group's entry, or
+// puts a healthy one back. A report of a group this connection no longer has was
+// on its way when the group closed; it is dropped, since nothing would ever
+// correct it. mu orders it with the clearing of the group's verdicts.
+func (p *healthPush) apply(rep healthcheck.Report) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if g, ok := p.sent[rep.Group]; ok {
+		g.target.SetHealthy(rep.Addr, rep.Up)
 	}
 }
 
-func tunnelTarget(t *file.Tunnel) *file.Target {
-	t.RLock()
-	defer t.RUnlock()
-	return t.Target
+// remember records a group before it is sent, so that no report of it is missed.
+func (p *healthPush) remember(g healthGroup) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sent[g.msg.Name] = g
 }
 
-func hostTarget(h *file.Host) *file.Target {
-	h.RLock()
-	defer h.RUnlock()
-	return h.Target
+// forget closes a group: later reports of it are dropped, and what its checks
+// took out goes back in the rotation, since nothing will report on it any more.
+func (p *healthPush) forget(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	g, ok := p.sent[name]
+	if !ok {
+		return
+	}
+	delete(p.sent, name)
+	for _, addr := range g.msg.Targets {
+		g.target.SetHealthy(addr, true)
+	}
+}
+
+// stop ends the goroutine. Each of its calls is bounded, so this waits briefly.
+func (p *healthPush) stop() {
+	close(p.quit)
+	<-p.done
 }
 
 func tunnelHealthGroup(id int) string { return "t" + strconv.Itoa(id) }
 func hostHealthGroup(id int) string   { return "h" + strconv.Itoa(id) }
-
-// healthGroupTarget returns the target that a report of group from node of
-// client id is about, if the group is an entry of that client.
-func healthGroupTarget(id int, node, group string) *file.Target {
-	if len(group) < 2 {
-		return nil
-	}
-	entry, err := strconv.Atoi(group[1:])
-	if err != nil {
-		return nil
-	}
-	switch group[0] {
-	case 't':
-		if t, err := file.GetDb().GetTask(entry); err == nil && t.Client != nil && t.Client.Id == id {
-			return t.Routes.Target(node, tunnelTarget(t))
-		}
-	case 'h':
-		if h, err := file.GetDb().GetHostById(entry); err == nil && h.Client != nil && h.Client.Id == id {
-			return h.Routes.Target(node, hostTarget(h))
-		}
-	}
-	return nil
-}
 
 // healthGroup is a health group as it should be on a node, or as it was sent.
 type healthGroup struct {
@@ -124,7 +132,7 @@ func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGr
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 		v := value.(*file.Tunnel)
 		v.RLock()
-		mine := v.Client != nil && v.Client.Id == id && v.Status && (v.Mode == "tcp" || v.Mode == "udp" || v.Mode == "secret")
+		mine := v.Client != nil && v.Client.Id == id && v.Status && (v.Mode == "tcp" || v.Mode == "secret")
 		target := v.Target
 		v.RUnlock()
 		if mine {
@@ -165,74 +173,61 @@ func (c *Client) healthNode() string {
 // connection, so a new connection starts empty and gets them all. It returns
 // after the goroutine ended; since each write is bounded and fails once c is
 // closed, stopping waits briefly at most.
-func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *Node) (stop func()) {
+func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *Node) *healthPush {
 	kick := make(chan struct{}, 1)
-	quit, done := make(chan struct{}), make(chan struct{})
+	p := &healthPush{sent: make(map[string]healthGroup), quit: make(chan struct{}), done: make(chan struct{})}
 	node.healthKick.Store(&kick)
 	kickClientHealth(client) // who checks shared targets may have changed
 	go func() {
-		defer close(done)
+		defer close(p.done)
 		defer node.healthKick.CompareAndSwap(&kick, nil)
-		sent := make(map[string]healthGroup)
 		// The verdicts of this connection end with it.
 		defer func() {
-			for _, g := range sent {
-				clearHealthVerdicts(g)
+			for _, name := range slices.Collect(maps.Keys(p.sent)) {
+				p.forget(name)
 			}
 		}()
 		ticker := time.NewTicker(healthResync)
 		defer ticker.Stop()
 		for {
-			if err := syncHealthGroups(id, peer, client, node, sent); err != nil {
+			if err := p.sync(id, peer, client, node); err != nil {
 				logs.Trace("send health groups to client %d: %v", id, err)
 				return
 			}
 			select {
-			case <-quit:
+			case <-p.quit:
 				return
 			case <-kick:
 			case <-ticker.C:
 			}
 		}
 	}()
-	return func() {
-		close(quit)
-		<-done
-	}
+	return p
 }
 
-// syncHealthGroups makes what node checks through peer match the entries. A changed
-// or removed group is deleted first; a changed one is then sent again.
-func syncHealthGroups(id int, peer healthPeer, client *Client, node *Node, sent map[string]healthGroup) error {
+// sync makes what node checks through peer match the entries. A changed or
+// removed group is deleted first; a changed one is then sent again.
+func (p *healthPush) sync(id int, peer healthPeer, client *Client, node *Node) error {
 	want := desiredHealthGroups(id, node, client)
-	for name, old := range sent {
+	for name, old := range p.sent {
 		if g, ok := want[name]; ok && g.same(old) {
 			continue
 		}
+		p.forget(name)
 		if err := peer.DelHealthGroup(name); err != nil {
 			return err
 		}
-		delete(sent, name)
-		clearHealthVerdicts(old)
 	}
 	for name, g := range want {
-		if _, ok := sent[name]; ok {
+		if _, ok := p.sent[name]; ok {
 			continue
 		}
+		p.remember(g)
 		if err := peer.SetHealthGroup(g.msg); err != nil {
 			return err
 		}
-		sent[name] = g
 	}
 	return nil
-}
-
-// clearHealthVerdicts puts back in the rotation what a group's checks took out,
-// since nothing will report on those addresses any more.
-func clearHealthVerdicts(g healthGroup) {
-	for _, addr := range g.msg.Targets {
-		g.target.SetHealthy(addr, true)
-	}
 }
 
 // kickHealth has every node compare its health groups with the entries. It

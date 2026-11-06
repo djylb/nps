@@ -40,9 +40,9 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	if id <= 0 {
 		return
 	}
-	stopPush := func() {}
+	var push *healthPush
 	if node.Caps().ServerHealth {
-		stopPush = s.startHealthPush(id, legacyHealthPeer{node: node, signal: c}, client, node)
+		push = s.startHealthPush(id, legacyHealthPeer{node: node, signal: c}, client, node)
 	}
 
 	const maxRetry = 3
@@ -58,13 +58,16 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 			break
 		}
 		retry = 0
-		if rep.Group == "" {
+		switch {
+		case rep.Group == "":
 			legacy.ApplyOwnHealthReport(id, node.UUID, rep)
-		} else {
-			applyHealthReport(id, node.UUID, rep)
+		case push != nil:
+			push.apply(rep)
 		}
 	}
-	stopPush()
+	if push != nil {
+		push.stop()
+	}
 	if !node.CloseIfSignalCurrent(c) {
 		// a newer signal connection has taken over the node
 		_ = c.Close()

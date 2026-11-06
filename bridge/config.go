@@ -331,6 +331,7 @@ func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, 
 		tt.Routes.Publish(uuid, tl.Target)
 	}
 	tt.Update(tl)
+	file.GetDb().TunnelChanged(tt)
 	if joining {
 		return nil, false, nil
 	}

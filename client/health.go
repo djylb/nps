@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -69,17 +71,34 @@ func NewHealthChecker(parentCtx context.Context, sink healthSink) *HealthChecker
 	return hc
 }
 
+// insecureProbeClient sends HTTPS checks. A check asks whether the target is
+// alive, not who it is: backends often have self-signed or private certificates.
+// Otherwise it is as the default client of a check: direct, without redirects,
+// and without keeping connections.
+var insecureProbeClient = &http.Client{
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+		ForceAttemptHTTP2: true,
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+	},
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
 // healthProbe returns the check of a type.
 func healthProbe(typ, path string) health.Probe {
 	switch typ {
 	case "tcp":
 		return health.TCP(health.TCPOptions{})
 	case "http", "https":
-		return uphttp.Probe(uphttp.Check{
+		c := uphttp.Check{
 			Scheme: typ,
 			Path:   path,
 			Status: uphttp.StatusRange{Min: 200, Max: 200},
-		})
+		}
+		if typ == "https" {
+			c.Client = insecureProbeClient
+		}
+		return uphttp.Probe(c)
 	default:
 		err := fmt.Errorf("unsupported health check type: %s", typ)
 		return func(context.Context, health.Target) (health.Observation, error) {
@@ -138,13 +157,16 @@ func (hc *HealthChecker) delGroup(group string) {
 	}
 }
 
-// touch notes that real traffic just reached addr, so that it is not probed
-// while in use.
+// touch notes that a connection to addr just succeeded, so that its TCP checks,
+// which would learn nothing more, do not probe while it is in use. An HTTP check
+// asks more than a connection answers, so it keeps its schedule.
 func (hc *HealthChecker) touch(addr string) {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
 	for key := range hc.byAddr[addr] {
-		hc.checker.Touch(key)
+		if key.spec.typ == "tcp" {
+			hc.checker.Touch(key)
+		}
 	}
 }
 

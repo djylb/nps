@@ -4,12 +4,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/healthcheck"
 )
 
 // healthEnv stores a client with one entry that has checks over two targets.
@@ -140,5 +142,63 @@ func TestHealthGroupOfPublishedEntry(t *testing.T) {
 	other := NewNode("n2", "0.35.0", legacy.LatestIndex)
 	if _, ok := desiredHealthGroups(client.Id, other, c)["t9"]; ok {
 		t.Fatal("a node that does not publish the entry checks it")
+	}
+}
+
+// A report that was on its way when its group closed must not take the target
+// out for good: nothing would correct it.
+func TestLateHealthReportDropped(t *testing.T) {
+	target := &file.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}
+	p := &healthPush{sent: make(map[string]healthGroup)}
+	inRotation := func() int {
+		seen := map[string]bool{}
+		for range 4 {
+			_ = target.Dial(func(addr string) (bool, error) {
+				seen[addr] = true
+				return false, nil
+			})
+		}
+		return len(seen)
+	}
+	g := healthGroup{target: target, msg: healthcheck.Group{Name: "t1", Targets: target.Addresses()}}
+	p.remember(g)
+	down := healthcheck.Report{Group: "t1", Addr: "127.0.0.1:2"}
+	p.apply(down)
+	if n := inRotation(); n != 1 {
+		t.Fatalf("%d in rotation after a report, want 1", n)
+	}
+	p.forget("t1")
+	if n := inRotation(); n != 2 {
+		t.Fatalf("%d in rotation after closing, want 2", n)
+	}
+	p.apply(down)
+	if n := inRotation(); n != 2 {
+		t.Fatalf("%d in rotation after a late report, want 2", n)
+	}
+}
+
+func TestUDPTunnelGetsNoHealthGroup(t *testing.T) {
+	client, tn := healthEnv(t)
+	tn.Mode = "udp"
+	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
+	if got := desiredHealthGroups(client.Id, node, NewClient(client.Id, node)); len(got) != 0 {
+		t.Fatalf("groups %v", got)
+	}
+}
+
+func TestRepublishedTunnelAnnouncesChange(t *testing.T) {
+	client, tn := healthEnv(t)
+	tn.NoStore, tn.Remark, tn.Port = true, "r", 7000
+	tn.Routes = file.NewRouteSet(func(string) bool { return true })
+	s := newBridge(nil, 30)
+	var calls atomic.Int32
+	file.SetEntriesChanged(func() { calls.Add(1) })
+	t.Cleanup(func() { file.SetEntriesChanged(func() {}) })
+	again := &file.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &file.Target{TargetStr: "a:1"}, Client: client}
+	if _, _, err := s.publishTask(again, client, "n1", legacy.CapsOf(legacy.LatestIndex, "0.35.0")); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() == 0 {
+		t.Fatal("no change announced")
 	}
 }

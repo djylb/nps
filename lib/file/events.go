@@ -162,8 +162,15 @@ func (s *DbUtils) hostCreated(h *Host) {
 	}
 }
 
+// TunnelChanged reports that the entry t was changed in place.
+func (s *DbUtils) TunnelChanged(t *Tunnel) {
+	notifyEntriesChanged()
+	s.tunnelSaved(t)
+}
+
 // HostChanged reports that the entry h was changed in place.
 func (s *DbUtils) HostChanged(h *Host) {
+	notifyEntriesChanged()
 	if bus := s.events.bus.Load(); bus != nil {
 		bus.Publish(changeType(&s.events.hosts, h.Id, !h.IsClose, EventHostUpdated, EventHostStarted, EventHostStopped), NewHostInfo(h))
 	}

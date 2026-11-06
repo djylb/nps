@@ -607,8 +607,8 @@
 		<en-US>Health check</en-US>
 	</lang>
 	<lang id="info-healthcheck">
-		<zh-CN>由客户端探测目标，下线的目标不再分配连接。超过 1 个目标时才启动；目标有成功访问时不额外探测。UDP 没有通用探测，请选择同一地址上可用的 TCP 或 HTTP 检查，否则目标会被判为下线。</zh-CN>
-		<en-US>The client probes the targets and offline ones stop getting connections. It runs with more than one target and skips targets with recent successful traffic. UDP has no generic probe: choose a TCP or HTTP check that works on the same address, or the targets are judged offline.</en-US>
+		<zh-CN>由客户端探测目标，下线的目标不再分配连接。超过 1 个目标时才启动；TCP 检查在目标有成功连接时不额外探测；HTTP 和 HTTPS 检查始终按间隔探测，且不校验证书。</zh-CN>
+		<en-US>The client probes the targets and offline ones stop getting connections. It runs with more than one target TCP checks skip targets with recent successful connections; HTTP and HTTPS checks always run on schedule and do not verify certificates.</en-US>
 	</lang>
 	<lang id="word-healthcheckenable">
 		<zh-CN>启用健康检查</zh-CN>
