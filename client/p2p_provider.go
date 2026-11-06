@@ -9,7 +9,7 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/quic-go/quic-go"
 )

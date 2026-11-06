@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/servercfg"
 )
 

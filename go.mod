@@ -44,6 +44,7 @@ require (
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f // indirect
+	github.com/djylb/tunnelwire v0.0.0
 	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect

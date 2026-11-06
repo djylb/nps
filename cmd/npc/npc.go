@@ -20,7 +20,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"

@@ -11,7 +11,7 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/nps/lib/version"
 )
 

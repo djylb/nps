@@ -16,7 +16,7 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
 

@@ -10,9 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	_ "github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/mux"
+	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/upstream"
 	"github.com/quic-go/quic-go"
 )
