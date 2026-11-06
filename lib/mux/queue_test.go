@@ -53,8 +53,10 @@ func TestPriorityQueuePopAcrossLowWaterWhileWaiting(t *testing.T) {
 	// enqueue exactly writeQueueLowWater frames without waking the consumer,
 	// then wake it once: its first pop crosses the low water mark
 	for i := uint64(0); i < writeQueueLowWater; i++ {
-		atomic.AddUint64(&q.length, 1)
+		q.length.Add(1)
+		q.mu.Lock()
 		q.push(newTestPack())
+		q.mu.Unlock()
 	}
 	q.cond.L.Lock()
 	q.cond.Signal()
@@ -73,7 +75,7 @@ func TestPriorityQueuePopAcrossLowWaterWhileWaiting(t *testing.T) {
 		t.Fatalf("Len() = %d, want %d", l, writeQueueLowWater-1)
 	}
 	q.Stop()
-	for q.drainPop() != nil {
+	for q.TryPop() != nil {
 	}
 }
 
@@ -216,5 +218,46 @@ func TestReceiveWindowQueuePopSeesPushBeforeStop(t *testing.T) {
 		if <-res == nil {
 			t.Fatalf("iteration %d: Pop lost data queued before Stop", i)
 		}
+	}
+}
+
+// A stream with one queued frame is served before a bulk stream's backlog,
+// control frames go first, and each stream keeps its own frame order.
+func TestPriorityQueueRoundRobinPerStream(t *testing.T) {
+	var q priorityQueue
+	q.New()
+	frame := func(flag uint8, id int32) {
+		pack := muxPack.Get()
+		var data interface{}
+		if flag == muxNewMsg {
+			data = []byte("x")
+		}
+		if flag == muxMsgSendOk {
+			data = uint64(0)
+		}
+		if err := pack.Set(flag, id, data); err != nil {
+			t.Fatal(err)
+		}
+		q.Push(pack)
+	}
+	for i := 0; i < 3; i++ {
+		frame(muxNewMsg, 1)
+	}
+	frame(muxConnClose, 1)
+	frame(muxNewMsg, 3)
+	frame(muxMsgSendOk, 3)
+	want := []struct {
+		flag uint8
+		id   int32
+	}{{muxMsgSendOk, 3}, {muxNewMsg, 1}, {muxNewMsg, 3}, {muxNewMsg, 1}, {muxNewMsg, 1}, {muxConnClose, 1}}
+	for i, w := range want {
+		pack := q.TryPop()
+		if pack == nil || pack.flag != w.flag || pack.id != w.id {
+			t.Fatalf("pop %d = %+v, want %+v", i, pack, w)
+		}
+		muxPack.Put(pack)
+	}
+	if q.TryPop() != nil || q.Len() != 0 {
+		t.Fatalf("queue not empty, len %d", q.Len())
 	}
 }

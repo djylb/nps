@@ -12,73 +12,67 @@ import (
 	"unsafe"
 )
 
+// priorityQueue is the mux write queue. Control frames go first; stream frames
+// are served round robin per stream, so a bulk stream cannot delay a small one.
 type priorityQueue struct {
-	length       uint64
-	highestChain *bufChain
-	middleChain  *bufChain
-	lowestChain  *bufChain
-	starving     uint8
-	stop         uint32
-	cond         *sync.Cond // wakes the consumer; only Push/Pop/Stop use it
+	length atomic.Uint64
+	stop   atomic.Bool
+	// mu guards the frames below; cond shares it and wakes the consumer.
+	mu              sync.Mutex
+	cond            *sync.Cond
+	controlHead     *muxPackager
+	controlTail     *muxPackager
+	priorityStreams streamBucketSet
+	streams         streamBucketSet
+	priorityBurst   uint8
 	// lowWaterCh is closed (and replaced lazily) when the length drops below
-	// writeQueueLowWater or the queue stops. It is kept apart from cond so
-	// the consumer, which pops while holding cond.L, never needs another
-	// lock it could already hold.
+	// writeQueueLowWater or the queue stops. Its own lock is a leaf: the
+	// consumer crosses low water while holding mu.
 	lowWaterMu sync.Mutex
 	lowWaterCh chan struct{}
 }
 
 func (Self *priorityQueue) New() {
-	Self.highestChain = new(bufChain)
-	Self.highestChain.new(4)
-	Self.middleChain = new(bufChain)
-	Self.middleChain.new(32)
-	Self.lowestChain = new(bufChain)
-	Self.lowestChain.new(256)
-	locker := new(sync.Mutex)
-	Self.cond = sync.NewCond(locker)
+	Self.priorityStreams.init()
+	Self.streams.init()
+	Self.cond = sync.NewCond(&Self.mu)
 }
 
 func (Self *priorityQueue) Push(packager *muxPackager) {
-	atomic.AddUint64(&Self.length, 1)
+	Self.length.Add(1)
+	Self.mu.Lock()
 	Self.push(packager)
-
-	Self.cond.L.Lock()
-	//Self.cond.Broadcast()
 	Self.cond.Signal()
-	Self.cond.L.Unlock()
-	//return
+	Self.mu.Unlock()
 }
 
+// push requires mu. Data and close frames keep their per-stream order, so a
+// close never overtakes data; everything else is a control frame.
 func (Self *priorityQueue) push(packager *muxPackager) {
 	switch packager.flag {
-	case muxPingFlag, muxPingReturn:
-		Self.highestChain.pushHead(unsafe.Pointer(packager))
-		// ping packages need highest priority
-	case muxNewConn, muxNewConnOk, muxNewConnFail:
-		// new conn packages need some priority too
-		Self.middleChain.pushHead(unsafe.Pointer(packager))
-	case muxMsgSendOk:
-		// window updates describe the receive window of the opposite
-		// direction; sending them ahead of queued data frames is safe and
-		// keeps the peer's send window from stalling behind our own data
-		Self.middleChain.pushHead(unsafe.Pointer(packager))
-	default:
+	case muxNewMsg, muxNewMsgPart, muxConnClose:
 		if packager.priority {
-			Self.middleChain.pushHead(unsafe.Pointer(packager))
+			Self.priorityStreams.push(packager)
 		} else {
-			Self.lowestChain.pushHead(unsafe.Pointer(packager))
+			Self.streams.push(packager)
 		}
+	default:
+		packager.queueNext = nil
+		if Self.controlTail == nil {
+			Self.controlHead = packager
+		} else {
+			Self.controlTail.queueNext = packager
+		}
+		Self.controlTail = packager
 	}
 }
 
 func (Self *priorityQueue) Len() uint64 {
-	return atomic.LoadUint64(&Self.length)
+	return Self.length.Load()
 }
 
 func (Self *priorityQueue) afterPop() {
-	// atomic length--
-	newLen := atomic.AddUint64(&Self.length, ^uint64(0))
+	newLen := Self.length.Add(^uint64(0))
 
 	// Wake up backpressure waiters only when crossing below low water:
 	// oldLen >= lowWater && newLen < lowWater
@@ -112,10 +106,11 @@ func (Self *priorityQueue) wakeLowWater() {
 }
 
 func (Self *priorityQueue) stopped() bool {
-	return atomic.LoadUint32(&Self.stop) == 1
+	return Self.stop.Load()
 }
 
-const maxStarving uint8 = 8
+// maxPriorityBurst bounds priority stream frames served ahead of normal ones.
+const maxPriorityBurst uint8 = 8
 
 func (Self *priorityQueue) Pop() (packager *muxPackager) {
 	var iter bool
@@ -124,7 +119,7 @@ func (Self *priorityQueue) Pop() (packager *muxPackager) {
 		if packager != nil {
 			return
 		}
-		if atomic.LoadUint32(&Self.stop) == 1 {
+		if Self.stopped() {
 			return
 		}
 		if iter {
@@ -134,74 +129,58 @@ func (Self *priorityQueue) Pop() (packager *muxPackager) {
 		iter = true
 		runtime.Gosched()
 	}
-	Self.cond.L.Lock()
-	defer Self.cond.L.Unlock()
-	for packager = Self.TryPop(); packager == nil; {
-		if atomic.LoadUint32(&Self.stop) == 1 {
+	Self.mu.Lock()
+	defer Self.mu.Unlock()
+	for {
+		if packager = Self.popLocked(); packager != nil {
+			return
+		}
+		if Self.stopped() {
 			return
 		}
 		Self.cond.Wait()
-		// wait for it with no more iter
-		packager = Self.TryPop()
 	}
-	return
 }
 
-func (Self *priorityQueue) TryPop() (packager *muxPackager) {
-	ptr, ok := Self.highestChain.popTail()
-	if ok {
-		packager = (*muxPackager)(ptr)
-		Self.afterPop()
-		return
-	}
-	if Self.starving < maxStarving {
-		// not pop too much, lowestChain will wait too long
-		ptr, ok = Self.middleChain.popTail()
-		if ok {
-			packager = (*muxPackager)(ptr)
-			Self.starving++
-			Self.afterPop()
-			return
-		}
-	}
-	ptr, ok = Self.lowestChain.popTail()
-	if ok {
-		packager = (*muxPackager)(ptr)
-		if Self.starving > 0 {
-			Self.starving = Self.starving / 2
-		}
-		Self.afterPop()
-		return
-	}
-	if Self.starving > 0 {
-		ptr, ok = Self.middleChain.popTail()
-		if ok {
-			packager = (*muxPackager)(ptr)
-			Self.starving++
-			Self.afterPop()
-			return
-		}
-	}
-	return
+func (Self *priorityQueue) TryPop() *muxPackager {
+	Self.mu.Lock()
+	defer Self.mu.Unlock()
+	return Self.popLocked()
 }
 
-// drainPop pops any queued packager without touching the starving counter,
-// so it may run concurrently with the single TryPop/Pop consumer.
-func (Self *priorityQueue) drainPop() *muxPackager {
-	for _, chain := range []*bufChain{Self.highestChain, Self.middleChain, Self.lowestChain} {
-		if ptr, ok := chain.popTail(); ok {
-			Self.afterPop()
-			return (*muxPackager)(ptr)
+func (Self *priorityQueue) popLocked() (packager *muxPackager) {
+	if packager = Self.controlHead; packager != nil {
+		Self.controlHead = packager.queueNext
+		if Self.controlHead == nil {
+			Self.controlTail = nil
 		}
+		packager.queueNext = nil
+	} else if packager = Self.popStream(); packager == nil {
+		return nil
 	}
-	return nil
+	Self.afterPop()
+	return packager
+}
+
+func (Self *priorityQueue) popStream() *muxPackager {
+	normalReady := Self.streams.hasPending()
+	if Self.priorityStreams.hasPending() && (!normalReady || Self.priorityBurst < maxPriorityBurst) {
+		if normalReady {
+			Self.priorityBurst++
+		} else {
+			Self.priorityBurst = 0
+		}
+		return Self.priorityStreams.pop()
+	}
+	Self.priorityBurst = 0
+	return Self.streams.pop()
 }
 
 func (Self *priorityQueue) Stop() {
-	atomic.StoreUint32(&Self.stop, 1)
-	Self.cond.L.Lock()
+	Self.stop.Store(true)
+	Self.mu.Lock()
 	Self.cond.Broadcast()
-	Self.cond.L.Unlock()
+	Self.mu.Unlock()
 	Self.wakeLowWater()
 }
 

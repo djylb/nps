@@ -128,6 +128,8 @@ type muxPackager struct {
 	id       int32
 	flag     uint8
 	priority bool
+	// queueNext links the frame into the write queue; guarded by its lock.
+	queueNext *muxPackager
 }
 
 func (Self *muxPackager) Set(flag uint8, id int32, content interface{}) (err error) {

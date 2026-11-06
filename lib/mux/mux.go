@@ -647,7 +647,7 @@ func (s *Mux) closedErr(prefix string) error {
 // pool exactly once through muxPack.Put, including unsent payloads.
 func (s *Mux) drainWriteQueue() {
 	for {
-		pack := s.writeQueue.drainPop()
+		pack := s.writeQueue.TryPop()
 		if pack == nil {
 			return
 		}
