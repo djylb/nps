@@ -8,8 +8,30 @@ import (
 
 	"github.com/djylb/byterate"
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/file"
 )
+
+// Flow is a traffic account that connections count in and charge to. All its
+// methods take a nil receiver of the implementing type, which accounts nothing.
+type Flow interface {
+	Budget() *byterate.Budget
+	Traffic() *byterate.Counter
+	// Over reports whether the account is over its traffic and time limits.
+	Over() (traffic, expired bool)
+}
+
+func flowBudget(f Flow) *byterate.Budget {
+	if f == nil {
+		return nil
+	}
+	return f.Budget()
+}
+
+func flowTraffic(f Flow) *byterate.Counter {
+	if f == nil {
+		return nil
+	}
+	return f.Traffic()
+}
 
 // FlowConn counts the payload of a connection in the flows of its task and
 // client and charges it to their budgets: reads count as outbound and writes
@@ -18,19 +40,19 @@ import (
 // connection is closed once a flow's time limit passes.
 type FlowConn struct {
 	net.Conn
-	taskFlow   *file.Flow
-	clientFlow *file.Flow
+	taskFlow   Flow
+	clientFlow Flow
 	stops      [2]func() bool
 }
 
 // NewFlowConn wraps conn for the flows task and client, either of which may
 // be nil. The addresses and deadlines are those of the connection beneath.
-func NewFlowConn(conn io.ReadWriteCloser, task, client *file.Flow) *FlowConn {
-	budgets := byterate.NewHierarchy(task.Budget(), client.Budget())
+func NewFlowConn(conn io.ReadWriteCloser, task, client Flow) *FlowConn {
+	budgets := byterate.NewHierarchy(flowBudget(task), flowBudget(client))
 	opts := []byterate.Option{
 		byterate.WithLimiters(budgets, budgets),
-		byterate.WithCounter(task.Traffic()),
-		byterate.WithCounter(client.Traffic()),
+		byterate.WithCounter(flowTraffic(task)),
+		byterate.WithCounter(flowTraffic(client)),
 	}
 	var c net.Conn
 	if nc, ok := conn.(net.Conn); ok {
@@ -39,11 +61,15 @@ func NewFlowConn(conn io.ReadWriteCloser, task, client *file.Flow) *FlowConn {
 		c = netx.WrapConn(byterate.NewStream(conn, opts...), netx.InnermostConn(conn))
 	}
 	fc := &FlowConn{Conn: c, taskFlow: task, clientFlow: client}
-	for i, f := range []*file.Flow{task, client} {
-		if _, expired := f.Over(); f != nil && !expired {
+	for i, f := range []Flow{task, client} {
+		budget := flowBudget(f)
+		if budget == nil {
+			continue
+		}
+		if _, expired := f.Over(); !expired {
 			// An expired flow refuses the first read or write instead, with
 			// an error that names it.
-			fc.stops[i] = f.Budget().AfterExpiry(func() { _ = c.Close() })
+			fc.stops[i] = budget.AfterExpiry(func() { _ = c.Close() })
 		}
 	}
 	return fc
@@ -51,7 +77,10 @@ func NewFlowConn(conn io.ReadWriteCloser, task, client *file.Flow) *FlowConn {
 
 // CheckFlowLimits returns an error naming label if f is over its traffic
 // limit or past its time limit.
-func CheckFlowLimits(f *file.Flow, label string) error {
+func CheckFlowLimits(f Flow, label string) error {
+	if f == nil {
+		return nil
+	}
 	traffic, expired := f.Over()
 	if traffic {
 		return fmt.Errorf("%s: flow limit exceeded", label)

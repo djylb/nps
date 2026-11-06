@@ -85,7 +85,7 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
 		_ = c.Close()
 		return
 	}
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
 }
 
 func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst netx.Addr) {

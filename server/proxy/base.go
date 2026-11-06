@@ -129,7 +129,7 @@ func (s *BaseServer) AcquireForwarding(client *file.Client, group *byterate.Grou
 }
 
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
-	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
+	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
 	var node string
 	if task != nil {
 		node = task.Route().Node
@@ -147,7 +147,7 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 // next address if the server fails to dial one itself. It returns
 // file.ErrNoTarget, leaving c open, if no address can be tried.
 func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
-	rb []byte, tp string, f func(), flows []*file.Flow, task *file.Tunnel) error {
+	rb []byte, tp string, f func(), flows []conn.Flow, task *file.Tunnel) error {
 	var target net.Conn
 	var link *conn.Link
 	var isLocal bool
@@ -169,7 +169,7 @@ func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
 }
 
 func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link, isLocal bool, client *file.Client,
-	rb []byte, tp string, f func(), flows []*file.Flow, proxyProtocol int, task *file.Tunnel) error {
+	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, task *file.Tunnel) error {
 	if target == nil || link == nil {
 		_ = c.Close()
 		return nil
@@ -204,7 +204,11 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 	return target, link, isLocal, nil
 }
 
-func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *file.Client, flows []*file.Flow, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool, tp string) {
+func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *file.Client, flows []conn.Flow, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool, tp string) {
 	isFramed := tp == common.ConnUDP
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, task, isLocal, isFramed)
+	var entry conn.Entry
+	if task != nil {
+		entry = task
+	}
+	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, entry, isLocal, isFramed)
 }

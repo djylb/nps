@@ -443,7 +443,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		clientConn = netx.NewPrefixConn(clientConn, pending)
 	}
 
-	conn.Join(clientConn, netConn, []*file.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
+	conn.Join(clientConn, netConn, []conn.Flow{host.Flow, host.Client.Flow}, s.Task, r.RemoteAddr)
 }
 
 // isTunnelRequest reports whether r asks to turn the connection into a tunnel:

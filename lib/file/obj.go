@@ -945,3 +945,18 @@ func (s *Client) CurrentRates() (int64, int64) {
 	}
 	return s.Rate.CurrentRates()
 }
+
+// RelayTarget names where the tunnel forwards to.
+func (s *Tunnel) RelayTarget() string {
+	if s.Target == nil {
+		return ""
+	}
+	return s.Target.TargetStr
+}
+
+// SetIsHTTP records whether the tunnel's traffic looks like HTTP.
+func (s *Tunnel) SetIsHTTP(isHTTP bool) {
+	s.Lock()
+	s.IsHttp = isHTTP
+	s.Unlock()
+}

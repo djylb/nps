@@ -9,8 +9,8 @@ import (
 
 	"github.com/djylb/byterate"
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/rate"
 )
 
 var (
@@ -18,31 +18,42 @@ var (
 	errTimeLimit = errors.New("time limit exceeded")
 )
 
+// Entry is the task or host a relay serves.
+type Entry interface {
+	// RelayTarget names where the entry forwards to, for logs.
+	RelayTarget() string
+	// SetIsHTTP records whether the entry's traffic looks like HTTP.
+	SetIsHTTP(bool)
+	// RateLimiter returns the entry's limiter, nil if it has none.
+	RateLimiter() *rate.Directional
+}
+
 // Join relays between visitor and the connection to the client until either
 // direction ends, then closes both. Each of flows counts the bytes from the
 // visitor as inlet and those back as export traffic, and the relay stops
 // once one of them is over its limits; the first bytes of each direction set
 // task.IsHttp.
-func Join(visitor, client net.Conn, flows []*file.Flow, task *file.Tunnel, remote string) {
+func Join(visitor, client net.Conn, flows []Flow, task Entry, remote string) {
 	relay(client, visitor, flows, task, remote)
 }
 
 // relay copies between client, the connection to the client, and visitor
 // until either direction ends, closes both, and returns the bytes written
 // out to the visitor and in from it. See Join for flows, task and remote.
-func relay(client, visitor io.ReadWriteCloser, flows []*file.Flow, task *file.Tunnel, remote string) (out, in int64) {
+func relay(client, visitor io.ReadWriteCloser, flows []Flow, task Entry, remote string) (out, in int64) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	var budgets []byterate.Limiter
 	var counters []*byterate.Counter
 	for _, fl := range flows {
-		if fl == nil {
+		budget := flowBudget(fl)
+		if budget == nil {
 			continue
 		}
-		budgets = append(budgets, fl.Budget())
+		budgets = append(budgets, budget)
 		counters = append(counters, fl.Traffic())
 		if _, expired := fl.Over(); !expired {
-			stop := fl.Budget().AfterExpiry(func() { cancel(errTimeLimit) })
+			stop := budget.AfterExpiry(func() { cancel(errTimeLimit) })
 			defer stop()
 		}
 	}
@@ -56,7 +67,7 @@ func relay(client, visitor io.ReadWriteCloser, flows []*file.Flow, task *file.Tu
 // visitor or out to it: Wait lets bytes pass up to the traffic limits of
 // the flows, Done counts them in their counters and budgets, and First
 // tells whether the direction carries HTTP.
-func relayFlow(limit byterate.Limiter, counters []*byterate.Counter, flows []*file.Flow, task *file.Tunnel, remote string, inbound bool) *netx.RelayFlow {
+func relayFlow(limit byterate.Limiter, counters []*byterate.Counter, flows []Flow, task Entry, remote string, inbound bool) *netx.RelayFlow {
 	f := new(netx.RelayFlow)
 	if limit != nil {
 		f.Wait = func(ctx context.Context, n int64) (int64, error) {
@@ -84,11 +95,14 @@ func relayFlow(limit byterate.Limiter, counters []*byterate.Counter, flows []*fi
 
 // flowsError turns a budget's refusal into the error of the limit of flows
 // that was reached.
-func flowsError(flows []*file.Flow, err error) error {
+func flowsError(flows []Flow, err error) error {
 	if !errors.Is(err, byterate.ErrBudgetExhausted) {
 		return err
 	}
 	for _, fl := range flows {
+		if fl == nil {
+			continue
+		}
 		traffic, expired := fl.Over()
 		if traffic {
 			logs.Info("Flow limit exceeded")
@@ -109,7 +123,7 @@ var httpPrefixes = [...]string{"HTT", "GET", "POS", "HEA", "PUT", "DEL"}
 // detectHTTP sets task.IsHttp from the first bytes b of a direction, which
 // are left as they are when 3 bytes or fewer, and logs the request line and
 // the line after it of a request.
-func detectHTTP(b []byte, task *file.Tunnel, remote string) {
+func detectHTTP(b []byte, task Entry, remote string) {
 	if len(b) > 4096 {
 		b = b[:4096]
 	}
@@ -127,14 +141,8 @@ func detectHTTP(b []byte, task *file.Tunnel, remote string) {
 		first, rest, ok := strings.Cut(string(b), "\r\n")
 		if ok {
 			second, _, _ := strings.Cut(rest, "\r\n")
-			target := ""
-			if task.Target != nil {
-				target = task.Target.TargetStr
-			}
-			logs.Info("HTTP Request method %s, %s, remote address %s, target %s", first, second, remote, target)
+			logs.Info("HTTP Request method %s, %s, remote address %s, target %s", first, second, remote, task.RelayTarget())
 		}
 	}
-	task.Lock()
-	task.IsHttp = isHTTP
-	task.Unlock()
+	task.SetIsHTTP(isHTTP)
 }

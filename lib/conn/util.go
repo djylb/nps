@@ -14,7 +14,6 @@ import (
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -161,13 +160,14 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 }
 
 // CopyWaitGroup conn1 mux conn
-func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rate *rate.Rate,
-	flows []*file.Flow, isServer bool, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal, isFramed bool) {
-	var entry *file.Tunnel
-	if isServer {
-		entry = task
+func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate,
+	flows []Flow, isServer bool, proxyProtocol int, rb []byte, task Entry, isLocal, isFramed bool) {
+	var limit *rate.Directional
+	if isServer && task != nil {
+		// Client-side relay wrappers stay out of server-side metering.
+		limit = task.RateLimiter()
 	}
-	connHandle := GetConn(conn1, crypt, snappy, rate, isServer, isLocal, entryRate(entry))
+	connHandle := GetConn(conn1, crypt, snappy, rt, isServer, isLocal, limit)
 	if isFramed {
 		// connHandle only wraps conn1, which every path below closes.
 		//noinspection GoResourceLeak
@@ -237,12 +237,4 @@ func ProxyProtocolHeader(version int, client, target net.Addr) *proxyproto.Heade
 		return &proxyproto.Header{Version: v}
 	}
 	return h
-}
-
-// entryRate excludes client-side relay wrappers from server-side policy/metering.
-func entryRate(t *file.Tunnel) *rate.Directional {
-	if t == nil {
-		return nil
-	}
-	return t.RateLimiter()
 }

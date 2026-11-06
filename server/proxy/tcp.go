@@ -166,7 +166,7 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 
 // ProcessTunnel tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
-	flows := []*file.Flow{s.Task.Flow, s.Task.Client.Flow}
+	flows := []conn.Flow{s.Task.Flow, s.Task.Client.Flow}
 	err := s.DealTarget(c, s.Task.Client, nil, common.ConnTCP, nil, flows, s.Task)
 	if !errors.Is(err, file.ErrNoTarget) {
 		return err
@@ -215,7 +215,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	if r.Method == http.MethodConnect {
 		_, _ = c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 		// Bytes the client sent right after the CONNECT header belong to the tunnel.
-		return s.DealClient(c, s.Task.Client, addr, rest, common.ConnTCP, nil, []*file.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
+		return s.DealClient(c, s.Task.Client, addr, rest, common.ConnTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
 	}
 	var server *http.Server
 
