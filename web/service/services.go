@@ -14,6 +14,7 @@ type Services struct {
 	Globals     GlobalService
 	Index       IndexService
 	Pages       PageService
+	Config      ConfigTransferService
 }
 
 func New() Services {
@@ -33,6 +34,7 @@ func New() Services {
 		Clients:     clients,
 		Globals:     globals,
 		Index:       index,
+		Config:      DefaultConfigTransferService{Backend: backend},
 		Pages: DefaultPageService{
 			Clients: clients,
 			Globals: globals,

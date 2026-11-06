@@ -88,9 +88,70 @@
             </div>
         </div>
     </div>
+    <!--配置导出导入-->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5 langtag="word-configtransfer"></h5>
+                </div>
+                <div class="ibox-content">
+                    <p class="help-block" langtag="info-configtransfer"></p>
+                    <a class="btn btn-primary" href="{{.web_base_url}}/global/export">
+                        <i class="fa fa-fw fa-lg fa-download"></i> <span langtag="word-exportconfig"></span>
+                    </a>
+                    <div class="m-t">
+                        <label class="control-label font-bold" for="config_import_file" langtag="word-importfile"></label>
+                        <input accept=".json,application/json" class="form-control" id="config_import_file" type="file">
+                        <button class="btn btn-warning m-t" onclick="importConfig(this)" type="button">
+                            <i class="fa fa-fw fa-lg fa-upload"></i> <span langtag="word-importconfig"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
+    function importConfig(btn) {
+        var $btn = $(btn), file = $('#config_import_file')[0].files[0];
+        if ($btn.data('busy') || !file) return;
+        var langobj = languages['content']['confirm']['importconfig'];
+        if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
+        var form = new FormData();
+        $btn.data('busy', true).addClass('disabled');
+        var reader = new FileReader();
+        reader.onerror = function () {
+            $btn.data('busy', false).removeClass('disabled');
+            showMsg(langreply('error'), 'error', 8000);
+        };
+        reader.onload = function () {
+            form.set('data', reader.result);
+            $.ajax({
+                type: 'POST',
+                url: '{{.web_base_url}}/global/import',
+                data: form,
+                processData: false,
+                contentType: false,
+                success: function (res) {
+                    if (res && res.status) {
+                        showMsg(res.msg, 'success', 3000);
+                        return;
+                    }
+                    showMsg(res && res.msg, 'error', 8000);
+                },
+                error: function (xhr, textStatus) {
+                    showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 8000);
+                },
+                complete: function () {
+                    $btn.data('busy', false).removeClass('disabled');
+                }
+            });
+        };
+        reader.readAsText(file);
+    }
+
     function updateGeoData(btn) {
         var $btn = $(btn);
         if ($btn.data('busy')) return;

@@ -113,6 +113,14 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="form-group" id="cert_suggestion" style="display:none;">
+                                <div class="col-sm-12">
+                                    <div class="alert alert-info m-b-none">
+                                        <span langtag="info-certsuggestion"></span> <strong id="cert_suggestion_source"></strong>
+                                        <button class="btn btn-xs btn-primary" id="cert_suggestion_apply" type="button"><span langtag="word-usecert"></span></button>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="form-group" id="cert_file">
                                 <label class="control-label font-bold" langtag="word-httpscert"></label>
                                 <div class="col-sm-12">
@@ -300,6 +308,39 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="form-group" id="health_check">
+                                <label class="control-label font-bold" langtag="word-healthcheck"></label>
+                                <div class="col-sm-12">
+                                    <label><input name="health_check" type="checkbox" value="1"  onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
+                                    <span class="help-block m-b-none" langtag="info-healthcheck"></span>
+                                </div>
+                                <div class="health-check-fields">
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktype"></label>
+                                        <select class="form-control" name="health_check_type" onchange="toggleHealthCheck(this)">
+                                            <option value="tcp" >TCP</option>
+                                            <option value="http" >HTTP</option>
+                                            <option value="https" >HTTPS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-12 health-check-path">
+                                        <label class="control-label" langtag="word-healthcheckpath"></label>
+                                        <input class="form-control" name="health_check_path" type="text" value="/">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckinterval"></label>
+                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="10">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktimeout"></label>
+                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="3">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckmaxfail"></label>
+                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="3">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </details>
                     <div class="hr-line-dashed"></div>
@@ -320,7 +361,16 @@
 </div>
 
 <script>
+    function toggleHealthCheck(el) {
+        var group = $(el).closest("#health_check");
+        group.find(".health-check-fields").toggle(group.find("input[name='health_check']").prop("checked"));
+        group.find(".health-check-path").toggle(group.find("select[name='health_check_type']").val() !== "tcp");
+    }
+    $(function () { toggleHealthCheck($("#health_check input[name='health_check']")[0]); });
+</script>
+<script>
     $(function () {
+        initCertSuggestion('{{.web_base_url}}/index/certsuggestion', 0);
         const pemText = document.getElementById("pemText");
         const pemKey = document.getElementById("pemKey");
 

@@ -169,6 +169,21 @@ func (a *App) UpdateClient(c Context) {
 	ajax(c, "update requested", 1)
 }
 
+func (a *App) KickClient(c Context) {
+	if err := a.Services.Clients.Kick(requestIntValue(c, "id")); err != nil {
+		switch {
+		case errors.Is(err, webservice.ErrClientOffline):
+			ajax(c, "client is offline", 0)
+		case errors.Is(err, webservice.ErrClientNotFound):
+			ajax(c, "client ID not found", 0)
+		default:
+			ajax(c, "modified fail", 0)
+		}
+		return
+	}
+	ajax(c, "client kicked", 1)
+}
+
 func (a *App) DeleteClient(c Context) {
 	id := requestIntValue(c, "id")
 	if err := a.Services.Clients.Delete(id); err != nil {

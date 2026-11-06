@@ -256,6 +256,53 @@ $(window).on('pageshow', function (e) {
     }
 });
 
+// Offers an existing certificate for the name typed in a domain form, unless
+// the form has a certificate or does not terminate TLS with one.
+function initCertSuggestion(url, excludeId) {
+    var notice = $('#cert_suggestion'), current = null, timer = null, token = 0;
+    function hide() {
+        token++;
+        current = null;
+        notice.hide();
+    }
+    function refresh() {
+        var host = $.trim($("input[name='host']").val());
+        var scheme = $('#scheme_select').val();
+        if (!host || (scheme !== 'all' && scheme !== 'https') || $('#https_just_proxy_select').val() === '1'
+            || $("select[name='auto_ssl']").val() === '1' || $.trim($('#pemText').val()) || $.trim($('#pemKey').val())) {
+            hide();
+            return;
+        }
+        var mine = ++token;
+        $.post(url, {host: host, exclude_id: excludeId, client_id: $("[name='client_id']").val()}).done(function (res) {
+            if (mine !== token) return;
+            if (!res || res.code !== 1 || !res.data) {
+                hide();
+                return;
+            }
+            current = res.data;
+            var location = current.source_location && current.source_location !== '/' ? current.source_location : '';
+            $('#cert_suggestion_source').text(current.source_host + location);
+            notice.show().closest('details').prop('open', true);
+        }).fail(function () {
+            if (mine === token) hide();
+        });
+    }
+    function schedule() {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 300);
+    }
+    $("input[name='host'], #pemText, #pemKey").on('input', schedule);
+    $("#scheme_select, #https_just_proxy_select, select[name='auto_ssl'], [name='client_id']").on('change', schedule);
+    $('#cert_suggestion_apply').on('click', function () {
+        if (!current) return;
+        $('#pemText').val(current.cert_file);
+        $('#pemKey').val(current.key_file);
+        hide();
+    });
+    refresh();
+}
+
 function submitform(action, url, postdata, trigger) {
     var lock = submitScope(trigger);
     if (lock.scope.data('submitting')) return;
@@ -265,6 +312,7 @@ function submitform(action, url, postdata, trigger) {
         case 'clear':
         case 'delete':
         case 'update':
+        case 'kick':
             var langobj = languages['content']['confirm'][action];
             var question = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to ' + action + ' it?');
             if (!confirm(question)) return;

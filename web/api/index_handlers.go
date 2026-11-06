@@ -177,6 +177,24 @@ func (a *App) GetHost(c Context) {
 	}
 }
 
+// CertSuggestion offers a certificate of another entry for a name. Only an
+// administrator is offered those of other clients.
+func (a *App) CertSuggestion(c Context) {
+	clientID := 0
+	if !sessionBool(c, "isAdmin") {
+		if clientID = requestIntValue(c, "client_id"); clientID == 0 {
+			respondCode(c, 0)
+			return
+		}
+	}
+	suggestion := a.Services.Index.SuggestCert(requestString(c, "host"), requestIntValue(c, "exclude_id"), clientID)
+	if suggestion == nil {
+		respondCode(c, 0)
+		return
+	}
+	respondCodeData(c, 1, suggestion)
+}
+
 func (a *App) DeleteHost(c Context) {
 	id := requestIntValue(c, "id")
 	if err := a.Services.Index.DeleteHost(id); err != nil {
@@ -288,6 +306,7 @@ func addTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.AddTunnelInpu
 		TargetType:     requestEscapedString(c, "target_type"),
 		Target:         requestEscapedString(c, "target"),
 		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
+		HealthCheck:    requestHealthCheck(c),
 		LocalProxy:     requestBoolValue(c, "local_proxy"),
 		Auth:           requestEscapedString(c, "auth"),
 		Remark:         requestEscapedString(c, "remark"),
@@ -320,6 +339,7 @@ func editTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.EditTunnelIn
 		TargetType:     requestEscapedString(c, "target_type"),
 		Target:         requestEscapedString(c, "target"),
 		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
+		HealthCheck:    requestHealthCheck(c),
 		LocalProxy:     requestBoolValue(c, "local_proxy"),
 		Auth:           requestEscapedString(c, "auth"),
 		Remark:         requestEscapedString(c, "remark"),
@@ -350,6 +370,7 @@ func addHostInput(c Context, cfg *servercfg.Snapshot) webservice.AddHostInput {
 		Host:           requestEscapedString(c, "host"),
 		Target:         requestEscapedString(c, "target"),
 		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
+		HealthCheck:    requestHealthCheck(c),
 		LocalProxy:     requestBoolValue(c, "local_proxy"),
 		Auth:           requestEscapedString(c, "auth"),
 		Header:         requestEscapedString(c, "header"),
@@ -388,6 +409,7 @@ func editHostInput(c Context, cfg *servercfg.Snapshot) webservice.EditHostInput 
 		Host:           requestEscapedString(c, "host"),
 		Target:         requestEscapedString(c, "target"),
 		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
+		HealthCheck:    requestHealthCheck(c),
 		LocalProxy:     requestBoolValue(c, "local_proxy"),
 		Auth:           requestEscapedString(c, "auth"),
 		Header:         requestEscapedString(c, "header"),
@@ -413,6 +435,17 @@ func editHostInput(c Context, cfg *servercfg.Snapshot) webservice.EditHostInput 
 		AutoCORS:       requestBoolValue(c, "auto_cors"),
 		CompatMode:     requestBoolValue(c, "compat_mode"),
 		TargetIsHTTPS:  requestBoolValue(c, "target_is_https"),
+	}
+}
+
+func requestHealthCheck(c Context) file.HealthCheck {
+	return file.HealthCheck{
+		Enabled:  requestBoolValue(c, "health_check"),
+		Type:     requestString(c, "health_check_type"),
+		Path:     requestString(c, "health_check_path"),
+		Interval: requestIntValue(c, "health_check_interval"),
+		Timeout:  requestIntValue(c, "health_check_timeout"),
+		MaxFail:  requestIntValue(c, "health_check_max_fail"),
 	}
 }
 

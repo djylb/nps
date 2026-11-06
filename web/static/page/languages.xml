@@ -602,6 +602,38 @@
 		<zh-CN>访问地址</zh-CN>
 		<en-US>Access address</en-US>
 	</lang>
+	<lang id="word-healthcheck">
+		<zh-CN>健康检查</zh-CN>
+		<en-US>Health check</en-US>
+	</lang>
+	<lang id="info-healthcheck">
+		<zh-CN>由客户端探测目标，下线的目标不再分配连接。超过 1 个目标时才启动；目标有成功访问时不额外探测。UDP 没有通用探测，请选择同一地址上可用的 TCP 或 HTTP 检查，否则目标会被判为下线。</zh-CN>
+		<en-US>The client probes the targets and offline ones stop getting connections. It runs with more than one target and skips targets with recent successful traffic. UDP has no generic probe: choose a TCP or HTTP check that works on the same address, or the targets are judged offline.</en-US>
+	</lang>
+	<lang id="word-healthcheckenable">
+		<zh-CN>启用健康检查</zh-CN>
+		<en-US>Enable health check</en-US>
+	</lang>
+	<lang id="word-healthchecktype">
+		<zh-CN>检查方式</zh-CN>
+		<en-US>Check type</en-US>
+	</lang>
+	<lang id="word-healthcheckpath">
+		<zh-CN>检查路径</zh-CN>
+		<en-US>Check path</en-US>
+	</lang>
+	<lang id="word-healthcheckinterval">
+		<zh-CN>间隔（秒）</zh-CN>
+		<en-US>Interval (seconds)</en-US>
+	</lang>
+	<lang id="word-healthchecktimeout">
+		<zh-CN>超时（秒）</zh-CN>
+		<en-US>Timeout (seconds)</en-US>
+	</lang>
+	<lang id="word-healthcheckmaxfail">
+		<zh-CN>失败阈值（次）</zh-CN>
+		<en-US>Failure threshold</en-US>
+	</lang>
 	<lang id="word-proxyprotocol">
 		<zh-CN>代理协议 (Proxy Protocol)</zh-CN>
 		<en-US>Proxy Protocol</en-US>
@@ -1193,6 +1225,38 @@
 		<zh-CN>白名单优先</zh-CN>
 		<en-US>Whitelist First</en-US>
 	</lang>
+	<lang id="word-kick">
+		<zh-CN>踢下线</zh-CN>
+		<en-US>Kick</en-US>
+	</lang>
+	<lang id="word-usecert">
+		<zh-CN>使用该证书</zh-CN>
+		<en-US>Use This Certificate</en-US>
+	</lang>
+	<lang id="info-certsuggestion">
+		<zh-CN>可复用已有域名的证书：</zh-CN>
+		<en-US>A certificate you can reuse exists on:</en-US>
+	</lang>
+	<lang id="word-configtransfer">
+		<zh-CN>配置导出导入</zh-CN>
+		<en-US>Configuration Export and Import</en-US>
+	</lang>
+	<lang id="info-configtransfer">
+		<zh-CN>导出文件包含客户端、隧道、域名配置及其密钥和证书，请妥善保管。导入只新增并分配新 ID，不覆盖现有配置；与现有配置冲突（vkey、登录名、端口、域名等）时整体不导入。流量统计不导入。</zh-CN>
+		<en-US>The export holds clients, tunnels and hosts with their keys and certificates; keep it safe. An import only adds, under new IDs, and replaces nothing; a conflict with what exists (vkey, login, port, host) refuses it as a whole. Traffic counts are not imported.</en-US>
+	</lang>
+	<lang id="word-exportconfig">
+		<zh-CN>导出配置</zh-CN>
+		<en-US>Export</en-US>
+	</lang>
+	<lang id="word-importfile">
+		<zh-CN>导入文件</zh-CN>
+		<en-US>File to Import</en-US>
+	</lang>
+	<lang id="word-importconfig">
+		<zh-CN>导入配置</zh-CN>
+		<en-US>Import</en-US>
+	</lang>
 	<lang id="word-geodata">
 		<zh-CN>Geo 数据</zh-CN>
 		<en-US>Geodata</en-US>
@@ -1429,6 +1493,14 @@
 			<zh-CN>确定要将服务端更新到最新版本并重启吗？重启期间所有连接会短暂中断。</zh-CN>
 			<en-US>Are you sure you want to update the server to the latest version and restart it? All connections drop briefly during the restart.</en-US>
 		</lang>
+		<lang id="kick">
+			<zh-CN>确定要断开该客户端的连接吗？配置不变，客户端开启自动重连时几秒后会重新连上；要阻止连接请使用停用。</zh-CN>
+			<en-US>Disconnect this client? Its configuration stays, and with auto reconnect it is back in seconds; to keep it out, disable it.</en-US>
+		</lang>
+		<lang id="importconfig">
+			<zh-CN>确定要导入该文件吗？其中的客户端、隧道和域名会作为新条目加入。</zh-CN>
+			<en-US>Import this file? Its clients, tunnels and hosts are added as new entries.</en-US>
+		</lang>
 		<lang id="updategeo">
 			<zh-CN>确定要从网络下载最新的 Geo 数据吗？</zh-CN>
 			<en-US>Are you sure you want to download the latest geodata?</en-US>
@@ -1619,6 +1691,10 @@
 		<lang id="serverupdateisunavailable">
 			<zh-CN>服务端当前不支持在线更新</zh-CN>
 			<en-US>Server Update Is Unavailable</en-US>
+		</lang>
+		<lang id="clientkicked">
+			<zh-CN>客户端已断开</zh-CN>
+			<en-US>Client Disconnected</en-US>
 		</lang>
 		<lang id="geodataupdated">
 			<zh-CN>Geo 数据已更新</zh-CN>

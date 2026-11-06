@@ -1,6 +1,7 @@
 package service
 
 import (
+	"html"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 
 type IndexService interface {
 	DashboardData(force bool) map[string]interface{}
+	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
 	ListTunnels(TunnelListInput) ([]*file.Tunnel, int)
 	AddTunnel(AddTunnelInput) (TunnelMutation, error)
 	GetTunnel(id int) (*file.Tunnel, error)
@@ -72,6 +74,7 @@ type AddTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
+	HealthCheck    file.HealthCheck
 	Auth           string
 	Remark         string
 	Password       string
@@ -101,6 +104,7 @@ type EditTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
+	HealthCheck    file.HealthCheck
 	Auth           string
 	Remark         string
 	Password       string
@@ -127,6 +131,7 @@ type AddHostInput struct {
 	Host           string
 	Target         string
 	ProxyProtocol  int
+	HealthCheck    file.HealthCheck
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -162,6 +167,7 @@ type EditHostInput struct {
 	Host           string
 	Target         string
 	ProxyProtocol  int
+	HealthCheck    file.HealthCheck
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -240,6 +246,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		},
 	}
 
+	tunnel.SetHealthCheck(input.HealthCheck)
 	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
@@ -341,6 +348,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.DestAclRules = destRules
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Remark = input.Remark
+	tunnel.SetHealthCheck(input.HealthCheck)
 	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
@@ -444,6 +452,33 @@ func (s DefaultIndexService) GetHost(id int) (*file.Host, error) {
 	return host, nil
 }
 
+// CertSuggestion is an existing certificate a domain entry could use. The
+// files are in the form the certificate fields of the form take.
+type CertSuggestion struct {
+	SourceID       int    `json:"source_id"`
+	SourceHost     string `json:"source_host"`
+	SourceLocation string `json:"source_location"`
+	CertFile       string `json:"cert_file"`
+	KeyFile        string `json:"key_file"`
+}
+
+// SuggestCert returns the certificate FindCertByHost's choice would give the
+// name host, among entries with certificate files other than excludeID; with a
+// clientID other than 0, among the entries of that client. Nil means none.
+func (s DefaultIndexService) SuggestCert(host string, excludeID, clientID int) *CertSuggestion {
+	source, err := s.repo().FindReusableCert(strings.TrimSpace(host), excludeID, clientID)
+	if err != nil || source == nil {
+		return nil
+	}
+	return &CertSuggestion{
+		SourceID:       source.Id,
+		SourceHost:     source.Host,
+		SourceLocation: source.Location,
+		CertFile:       html.UnescapeString(source.CertFile), // stored escaped by the form handler
+		KeyFile:        html.UnescapeString(source.KeyFile),
+	}
+}
+
 func (s DefaultIndexService) DeleteHost(id int) error {
 	defer s.runtime().RemoveHostCache(id)
 	return s.repo().DeleteHostRecord(id)
@@ -543,6 +578,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		CompatMode:     input.CompatMode,
 		TargetIsHttps:  input.TargetIsHTTPS,
 	}
+	host.SetHealthCheck(input.HealthCheck)
 	host.SetMaxConn(input.MaxConn)
 	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
@@ -592,19 +628,21 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	if err != nil {
 		return HostMutation{}, err
 	}
-	host.Client = client
-
 	targetFallback := ""
 	if host.Target != nil {
 		targetFallback = host.Target.TargetStr
 	}
 
 	host.Host = input.Host
-	host.Target = &file.Target{
+	target := &file.Target{
 		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
 		ProxyProtocol: input.ProxyProtocol,
 		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
 	}
+	host.Lock()
+	host.Client, host.Target = client, target
+	host.Unlock()
+	host.SetHealthCheck(input.HealthCheck)
 	host.UserAuth = &file.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
 	host.HeaderChange = input.Header
 	host.RespHeaderChange = input.RespHeader

@@ -19,6 +19,7 @@ import (
 )
 
 type ClientService interface {
+	Kick(id int) error
 	List(ListClientsInput) ListClientsResult
 	Add(AddClientInput) (int, error)
 	Ping(id int, remoteAddr string) (int, error)
@@ -278,6 +279,23 @@ func (s DefaultClientService) ChangeStatus(id int, status bool) error {
 		s.runtime().DisconnectClient(client.Id)
 	}
 	return s.repo().SaveClient(client)
+}
+
+// Kick ends the sessions of client id. Its configuration stays, so an npc
+// that reconnects by itself is back after its retry delay; to keep it out, use
+// ChangeStatus.
+func (s DefaultClientService) Kick(id int) error {
+	if id <= 0 {
+		return ErrVirtualClientOperation
+	}
+	if _, err := s.repo().GetClient(id); err != nil {
+		return ErrClientNotFound
+	}
+	if !s.runtime().ClientConnected(id) {
+		return ErrClientOffline
+	}
+	s.runtime().DisconnectClient(id)
+	return nil
 }
 
 // RequestUpdate asks the connected npc of client id to update themselves to
