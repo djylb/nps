@@ -77,6 +77,11 @@ func main() {
 		return
 	}
 
+	if !knownCommand(cmd) {
+		printUsage(cmd)
+		os.Exit(2)
+	}
+
 	// set config path
 	if cp := strings.TrimSpace(*confPath); cp != "" {
 		if servercfg.IsSupportedConfigPath(cp) {
@@ -238,12 +243,25 @@ func main() {
 				_ = os.Remove("/etc/rc.d/K02" + svcConfig.Name)
 			}
 			return
-			//default:
-			//	logs.Error("command is not support")
-			//	return
 		}
 	}
 	_ = s.Run()
+}
+
+// knownCommand reports whether cmd is a command of nps. No command and
+// "service", which the service managers run, both start the server.
+func knownCommand(cmd string) bool {
+	switch cmd {
+	case "", "service", "install", "uninstall", "start", "stop", "restart", "update", "update-force", "update-geo":
+		return true
+	}
+	return false
+}
+
+func printUsage(cmd string) {
+	fmt.Fprintf(os.Stderr, "unknown command %q\n\nUsage: %s [flags] [command]\n\nWithout a command nps runs in the foreground.\n\nCommands:\n", cmd, filepath.Base(os.Args[0]))
+	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update the geodata files\n  service       run as a service, used by the service manager\n\nFlags:\n")
+	flag.PrintDefaults()
 }
 
 func reloadConfig() {
