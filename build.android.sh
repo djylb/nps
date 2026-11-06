@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ===== Config =====
 APP_NAME="npc"
-SRC="./cmd/npc/npc.go"
+SRC="./cmd/npc"
 API="${API:-24}"
 NDK_VERSION="${NDK_VERSION:-r28c}"
 NDK_CACHE_DIR="${NDK_CACHE_DIR:-$HOME}"

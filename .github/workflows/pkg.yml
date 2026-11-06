@@ -159,18 +159,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "v${NPS_VERSION}" dist/manifest.json --clobber
 
-      - name: Trigger Sync to nps-mirror
-        run: |
-          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
-            -d '{
-              "event_type": "sync_nps_release",
-              "client_payload": {
-                "tag": "v${{ env.NPS_VERSION }}"
-              }
-            }'
-
   build_android:
     runs-on: ubuntu-latest
     env:
@@ -246,3 +234,32 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
             -d '{"event_type":"trigger-update"}'
+
+  # Old releases update from the mirror, so it does not wait for a signed
+  # manifest; it follows the release once every job has uploaded.
+  sync_mirror:
+    needs: [ build_assets, build_assets_old, build_android, release_manifest ]
+    if: >-
+      always() &&
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') &&
+      needs.build_assets.result == 'success' &&
+      needs.build_assets_old.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+
+      - name: Read the version
+        run: echo "NPS_VERSION=$(sed -n 's/^const VERSION = "\(.*\)"$/\1/p' lib/version/version.go)" >> "$GITHUB_ENV"
+
+      - name: Trigger Sync to nps-mirror
+        run: |
+          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -d '{
+              "event_type": "sync_nps_release",
+              "client_payload": {
+                "tag": "v${{ env.NPS_VERSION }}"
+              }
+            }'

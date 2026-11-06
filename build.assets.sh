@@ -98,9 +98,9 @@ build_binary() {
   fi
 
   if [[ -n "$envstr" ]]; then
-    eval "CGO_ENABLED=0 GOOS=\"$os\" GOARCH=\"$arch\" $envstr go build -trimpath -ldflags \"$build_ldflags\" -o \"$name$ext\" \"./cmd/$name/$name.go\""
+    eval "CGO_ENABLED=0 GOOS=\"$os\" GOARCH=\"$arch\" $envstr go build -trimpath -ldflags \"$build_ldflags\" -o \"$name$ext\" \"./cmd/$name\""
   else
-    eval "CGO_ENABLED=0 GOOS=\"$os\" GOARCH=\"$arch\" go build -trimpath -ldflags \"$build_ldflags\" -o \"$name$ext\" \"./cmd/$name/$name.go\""
+    eval "CGO_ENABLED=0 GOOS=\"$os\" GOARCH=\"$arch\" go build -trimpath -ldflags \"$build_ldflags\" -o \"$name$ext\" \"./cmd/$name\""
   fi
 }
 

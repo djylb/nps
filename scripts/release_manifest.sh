@@ -53,6 +53,10 @@ count=0
 for f in "$dist"/*_server.tar.gz "$dist"/*_client.tar.gz "$dist"/*_server_old.tar.gz "$dist"/*_client_old.tar.gz; do
   # <os>_<arch>[_<variant>]_<server|client>[_old].tar.gz
   base=$(basename "$f" .tar.gz)
+  # the Android libraries hold no program to update
+  case "$base" in
+    android_libs_*) continue ;;
+  esac
   variant=""
   case "$base" in
     *_old) variant="win7"; base="${base%_old}" ;;
