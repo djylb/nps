@@ -244,3 +244,22 @@ func TestLocalPayloadKeepsLocalKeys(t *testing.T) {
 		t.Fatalf("%+v", c.Tasks[0])
 	}
 }
+
+// Profiles that stop at once write their uuids while the next ones start.
+func TestRunUuidsWithManyProfiles(t *testing.T) {
+	var profiles []Profile
+	for i := range 8 {
+		got, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?name=p"+string(rune('0'+i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		profiles = append(profiles, got...)
+	}
+	uuids := map[string]string{}
+	if err := Run(context.Background(), profiles, uuids, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(uuids) != len(profiles) {
+		t.Fatalf("%v", uuids)
+	}
+}

@@ -32,7 +32,7 @@ func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) i
 
 //export GetClientStatus
 func GetClientStatus() int {
-	return client.NowStatus
+	return int(client.NowStatus.Load())
 }
 
 //export CloseClient

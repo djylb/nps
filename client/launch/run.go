@@ -28,8 +28,9 @@ func Run(ctx context.Context, profiles []Profile, uuids map[string]string, opts 
 		done  bool
 	)
 	for _, p := range profiles {
+		uuid := uuids[p.Name]
 		wg.Go(func() {
-			uuid, err := p.run(ctx, uuids[p.Name], opts)
+			uuid, err := p.run(ctx, uuid, opts)
 			mu.Lock()
 			defer mu.Unlock()
 			uuids[p.Name] = uuid

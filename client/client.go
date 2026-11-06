@@ -62,12 +62,12 @@ func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, 
 	}
 }
 
-var NowStatus int
+var NowStatus atomic.Int32
 
 func (s *TRPClient) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	defer s.Close()
-	NowStatus = 0
+	NowStatus.Store(0)
 	if !clientCaps().TunnelStreams {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
@@ -119,7 +119,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if s.cnf != nil && len(s.cnf.Healths) > 0 {
 		s.healthChecker = NewHealthChecker(s.ctx, s.cnf.Healths, s.signal.Load())
 	}
-	NowStatus = 1
+	NowStatus.Store(1)
 	s.markConnected()
 	//msg connection, eg udp
 	s.handleMain(tunnel)
@@ -329,7 +329,7 @@ func (s *TRPClient) Close() {
 }
 
 func (s *TRPClient) closing() {
-	NowStatus = 0
+	NowStatus.Store(0)
 	if reason := s.snapshotCloseReason(); reason != "" {
 		s.noteCloseReason(reason)
 	}
