@@ -192,9 +192,6 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["minVersion"] = GetMinVersion()
 	data["hostCount"] = common.GetSyncMapLen(&file.GetDb().JsonDb.Hosts)
 	data["clientCount"] = common.GetSyncMapLen(&file.GetDb().JsonDb.Clients)
-	if cfg.Runtime.PublicVKey != "" { // remove public vkey
-		data["clientCount"] = data["clientCount"].(int) - 1
-	}
 
 	dealClientData()
 
@@ -202,6 +199,9 @@ func GetDashboardData(force bool) map[string]interface{} {
 	var in, out int64
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*file.Client)
+		if v.NoDisplay { // the public and visitor keys are not clients to show
+			data["clientCount"] = data["clientCount"].(int) - 1
+		}
 		if v.IsConnect {
 			c++
 		}

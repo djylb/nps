@@ -224,6 +224,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 		ServerUpdate:    info.CanUpdate,
 		Username:        strings.TrimSpace(input.Username),
 		BridgeType:      bridge.Primary.Type,
+		VisitorVKey:     cfg.Runtime.VisitorVKey,
 		BridgeAddr:      bridge.Primary.Addr,
 		BridgeIP:        bridge.Primary.IP,
 		BridgePort:      bridge.Primary.Port,

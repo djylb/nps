@@ -20,6 +20,21 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// allowsFlag is the one rule for which workflows each kind of vkey may open.
+func allowsFlag(kind file.KeyKind, flag string) bool {
+	switch flag {
+	case common.WorkRegister:
+		return true
+	case common.WorkConfig:
+		return kind != file.KeyVisitor
+	case common.WorkVisitor, common.WorkSecret, common.WorkP2P:
+		return kind != file.KeyPublic
+	case common.WorkMain, common.WorkChan, common.WorkFile, common.WorkP2PSession:
+		return kind == file.KeyControl
+	}
+	return false
+}
+
 func (s *Bridge) verifyError(c *conn.Conn) {
 	if !ServerSecureMode {
 		_, _ = c.Write([]byte(common.VerifyErr))
@@ -297,13 +312,15 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 		uuid = crypt.GenerateUUID(uuid).String()
 	}
 	c.SetAlive()
+	keyClient, err := file.GetDb().GetClient(id)
+	if err != nil || !allowsFlag(keyClient.KeyKind, flag) {
+		logs.Warn("Workflow %q of client %d from %v refused", flag, id, addr)
+		_ = c.Close()
+		return
+	}
 	isPub := file.GetDb().IsPubClient(id)
 	switch flag {
 	case common.WorkMain:
-		if isPub {
-			_ = c.Close()
-			return
-		}
 		tcpConn, ok := c.Conn.(*net.TCPConn)
 		if ok {
 			// add tcp keep alive option for signal connection

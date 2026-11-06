@@ -140,15 +140,15 @@
             }
             if (row.Mode == "p2p") {
                 return tmp + resourceDetailSection('section-commands', ''
-                    + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target=\"" + row.Target.TargetStr + "\" -target_type=\"" + row.TargetType + "\"</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2ps\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                    + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2pt\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>")
             }
             if (row.Mode == "secret") {
-                return tmp + resourceDetailSection('section-commands', '' + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + row.Client.VerifyKey
+                return tmp + resourceDetailSection('section-commands', '' + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
                     + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target_type=\"" + row.TargetType + "\" -local_type=\"secret\"" + "</code>")
             }
             return '<div class="resource-details">' + tmp + '</div>'

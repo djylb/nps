@@ -122,6 +122,7 @@ type SecurityConfig struct {
 type RuntimeConfig struct {
 	ClientHistoryLimit int
 	PublicVKey         string
+	VisitorVKey        string
 	DisconnectTimeout  int
 	FlowStoreInterval  int
 }
@@ -358,6 +359,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Runtime = RuntimeConfig{
 		ClientHistoryLimit: r.intDefault(5, "client_history_limit"),
 		PublicVKey:         r.stringValue("public_vkey"),
+		VisitorVKey:        r.stringValue("visitor_vkey"),
 		DisconnectTimeout:  r.intDefault(30, "disconnect_timeout"),
 		FlowStoreInterval:  r.intDefault(0, "flow_store_interval"),
 	}

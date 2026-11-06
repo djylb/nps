@@ -70,13 +70,7 @@ func InitFromDb() {
 		}
 	}
 
-	//Add a public password
-	if vkey := cfg.Runtime.PublicVKey; vkey != "" {
-		c := file.NewClient(vkey, true, true)
-		_ = file.GetDb().NewClient(c)
-		RunList.Store(c.Id, nil)
-		//RunList[c.Id] = nil
-	}
+	addKeyClients(cfg.Runtime.PublicVKey, cfg.Runtime.VisitorVKey)
 	//Initialize services in server-side files
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 		if value.(*file.Tunnel).Status {
@@ -84,6 +78,30 @@ func InitFromDb() {
 		}
 		return true
 	})
+}
+
+// addKeyClients creates the unstored clients of the public and visitor keys.
+func addKeyClients(public, visitor string) {
+	if public != "" && public == visitor {
+		addKeyClient(public, file.KeyAccess)
+		return
+	}
+	if public != "" {
+		addKeyClient(public, file.KeyPublic)
+	}
+	if visitor != "" {
+		addKeyClient(visitor, file.KeyVisitor)
+	}
+}
+
+func addKeyClient(vkey string, kind file.KeyKind) {
+	c := file.NewClient(vkey, true, true)
+	c.KeyKind = kind
+	if err := file.GetDb().NewClient(c); err != nil {
+		logs.Warn("public_vkey or visitor_vkey ignored, use a key of its own: %v", err)
+		return
+	}
+	RunList.Store(c.Id, nil)
 }
 
 // DealBridgeTask get bridge command

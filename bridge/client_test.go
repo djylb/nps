@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/file"
 )
 
 func TestSetClientSelectMode(t *testing.T) {
@@ -158,5 +160,33 @@ func TestClientCheckNodeSkipsOfflineNodesInGrace(t *testing.T) {
 	node.joinNano = time.Now().Add(-10 * time.Second).UnixNano()
 	if got := client.CheckNode(); got != nil || client.NodeCount() != 0 {
 		t.Fatalf("an offline node past its grace window must be removed, got %v count %d", got, client.NodeCount())
+	}
+}
+
+func TestAllowsFlag(t *testing.T) {
+	const (
+		ctl = 1 << file.KeyControl
+		pub = 1 << file.KeyPublic
+		vis = 1 << file.KeyVisitor
+		acc = 1 << file.KeyAccess
+	)
+	want := map[string]int{
+		common.WorkMain:       ctl,
+		common.WorkChan:       ctl,
+		common.WorkFile:       ctl,
+		common.WorkP2PSession: ctl,
+		common.WorkConfig:     ctl | pub | acc,
+		common.WorkRegister:   ctl | pub | vis | acc,
+		common.WorkVisitor:    ctl | vis | acc,
+		common.WorkSecret:     ctl | vis | acc,
+		common.WorkP2P:        ctl | vis | acc,
+		"none":                0,
+	}
+	for flag, mask := range want {
+		for _, kind := range []file.KeyKind{file.KeyControl, file.KeyPublic, file.KeyVisitor, file.KeyAccess} {
+			if got := allowsFlag(kind, flag); got != (mask&(1<<kind) != 0) {
+				t.Errorf("allowsFlag(%d, %q) = %v", kind, flag, got)
+			}
+		}
 	}
 }

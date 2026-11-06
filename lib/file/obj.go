@@ -258,6 +258,16 @@ type Config struct {
 	Crypt    bool
 }
 
+// KeyKind is the scope of a client's vkey on the bridge.
+type KeyKind uint8
+
+const (
+	KeyControl KeyKind = iota // a stored client: every workflow
+	KeyPublic                 // public_vkey: client configuration and IP registration
+	KeyVisitor                // visitor_vkey: visiting secret and P2P tasks and IP registration
+	KeyAccess                 // both keys are the same: public and visitor workflows
+)
+
 type Client struct {
 	Cnf             *Config
 	Id              int        // id
@@ -275,6 +285,7 @@ type Client struct {
 	Rate            *rate.Rate // rate limiter
 	NoStore         bool       // do not store to file
 	NoDisplay       bool       // do not display on web
+	KeyKind         KeyKind    `json:"-"` // what the vkey may do on the bridge
 	MaxConn         int        // max concurrent connections
 	NowConn         int32      // legacy JSON snapshot; use CurrentConnections at runtime
 	WebUserName     string     // web username

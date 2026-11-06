@@ -32,9 +32,11 @@ type ManagementPageCommonData struct {
 	Year           int
 	IsAdmin        bool
 	// ServerUpdate tells whether the server can be updated from the web.
-	ServerUpdate  bool
-	Username      string
-	BridgeType    string
+	ServerUpdate bool
+	Username     string
+	BridgeType   string
+	// VisitorVKey, when set, is the vkey the access commands show.
+	VisitorVKey   string
 	BridgeAddr    string
 	BridgeIP      string
 	BridgePort    string
@@ -72,6 +74,7 @@ func (d ManagementPageCommonData) Map() map[string]interface{} {
 		"username":            d.Username,
 		"bridgeType":          d.BridgeType,
 		"addr":                d.BridgeAddr,
+		"visitor_vkey":        d.VisitorVKey,
 		"ip":                  d.BridgeIP,
 		"p":                   d.BridgePort,
 		"proxyPort":           d.ProxyPort,
