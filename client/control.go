@@ -163,20 +163,6 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 		}
 		first = false
 
-		if cnf.CommonConfig.TlsEnable {
-			cnf.CommonConfig.Tp = "tls"
-		}
-
-		if len(cnf.LocalServer) > 0 {
-			p2pm := NewP2PManager(pCtx, pCancel, cnf.CommonConfig)
-			//create local server secret or p2p
-			for _, v := range cnf.LocalServer {
-				vv := v
-				go func(local *config.LocalServer) { _ = p2pm.StartLocalServer(local) }(vv)
-			}
-			return
-		}
-
 		uuid, err = RunConfigOnce(pCtx, cnf, uuid)
 		if err != nil {
 			logs.Error("%v", err)
