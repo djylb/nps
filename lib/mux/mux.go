@@ -162,6 +162,12 @@ func nextPingDelay() time.Duration {
 }
 
 func (s *Mux) NewConn() (*Conn, error) {
+	return s.NewConnTimeout(0)
+}
+
+// NewConnTimeout is NewConn waiting up to timeout for the peer's answer; if
+// timeout is zero or negative it waits as long as NewConn.
+func (s *Mux) NewConnTimeout(timeout time.Duration) (*Conn, error) {
 	if s.IsClosed() {
 		return nil, s.closedErr("the mux has closed")
 	}
@@ -169,19 +175,8 @@ func (s *Mux) NewConn() (*Conn, error) {
 	// it must be Set before send
 	s.connMap.Set(conn.connId, conn)
 	s.sendInfo(muxNewConn, conn.connId, false, nil)
-	//Set a timer timeout
-	timeout := s.pingTimeout
-	if s.connType == "kcp" {
-		if timeout > 8*time.Second {
-			timeout = 8 * time.Second
-		}
-	} else {
-		if timeout > 15*time.Second {
-			timeout = 15 * time.Second
-		}
-	}
-	if timeout < 8*time.Second {
-		timeout = 8 * time.Second
+	if timeout <= 0 {
+		timeout = s.defaultNewConnTimeout()
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -200,6 +195,14 @@ func (s *Mux) NewConn() (*Conn, error) {
 		conn.closeLocal()
 		return nil, errors.New("create connection timeout")
 	}
+}
+
+func (s *Mux) defaultNewConnTimeout() time.Duration {
+	limit := 15 * time.Second
+	if s.connType == "kcp" {
+		limit = 8 * time.Second
+	}
+	return max(min(s.pingTimeout, limit), 8*time.Second)
 }
 
 func (s *Mux) Accept() (net.Conn, error) {

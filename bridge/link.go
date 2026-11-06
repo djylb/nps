@@ -155,7 +155,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	switch tun := tunnel.(type) {
 	case *mux.Mux:
-		target, err = tun.NewConn()
+		target, err = tun.NewConnTimeout(link.Option.Timeout)
 	case *quic.Conn:
 		var stream *quic.Stream
 		ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
