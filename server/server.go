@@ -107,7 +107,6 @@ const routePruneInterval = 2 * time.Second
 
 // DealBridgeTask get bridge command
 func DealBridgeTask() {
-	cfg := servercfg.Current()
 	prune := time.NewTicker(routePruneInterval)
 	defer prune.Stop()
 	for {
@@ -146,11 +145,9 @@ func DealBridgeTask() {
 				logs.Trace("New secret connection, addr %v", s.Conn.Conn.RemoteAddr())
 				if t := file.GetDb().GetTaskByMd5Password(s.Password); t != nil {
 					if t.Status {
-						allowLocalProxy := cfg.Feature.AllowLocalProxy
-						allowSecretLink := cfg.Feature.AllowSecretLink
-						allowSecretLocal := cfg.Feature.AllowSecretLocal
+						feature := servercfg.Current().Feature
 						go func() {
-							_ = proxy.NewSecretServer(Bridge, t, allowLocalProxy, allowSecretLink, allowSecretLocal).HandleSecret(s.Conn, s.Wire)
+							_ = proxy.NewSecretServer(Bridge, t, feature.AllowLocalProxy, feature.AllowSecretLink, feature.AllowSecretLocal).HandleSecret(s.Conn, s.Wire)
 						}()
 					} else {
 						_ = s.Conn.Close()
