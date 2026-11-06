@@ -9,6 +9,11 @@
 # --renew signs DIST/manifest.json again with a new expiry and the rules of
 # release/update-rules.json, unchanged otherwise.
 #
+# Artifacts are listed by the absolute URL of their tagged release; mirrors map
+# it to their own location (see updateSources in lib/install/update.go). The
+# releases of PREVIOUS_MANIFEST, the current manifest if any, are kept, so the
+# manifest accumulates the history of every major version.
+#
 # release/update-rules.json is the one source of the upgrade rules. The serial
 # is the signing time, so it grows across releases without looking at the last
 # manifest.
@@ -55,7 +60,18 @@ if [ "$version" = "--renew" ]; then
   exit 0
 fi
 
+releases=$(sed -n 's/^[[:space:]]*githubReleases[[:space:]]*= "\(.*\)"$/\1/p' "$root/lib/install/update.go")
+if [ -z "$releases" ]; then
+  echo "githubReleases in lib/install/update.go is empty" >&2
+  exit 1
+fi
+
 cp "$rules" "$manifest"
+if [ -n "${PREVIOUS_MANIFEST:-}" ]; then
+  "$tool" verify -pub "$pub" -in "$PREVIOUS_MANIFEST" -out "$work/previous.json"
+  jq --slurpfile p "$work/previous.json" --arg v "$version" \
+    '.releases = [$p[0].releases[] | select(.version != $v)]' "$rules" > "$manifest"
+fi
 
 shopt -s nullglob
 count=0
@@ -89,7 +105,7 @@ for f in "$dist"/*_server.tar.gz "$dist"/*_client.tar.gz "$dist"/*_server_old.ta
   name="$bin"
   [ -n "$variant" ] && name="$bin-$variant"
   "$tool" artifact -name "$name" -os "$os" -arch "$arch" -member "$member" \
-    -into "$manifest" -version "$version" "$f"
+    -url "${releases}v$version/$(basename "$f")" -into "$manifest" -version "$version" "$f"
   count=$((count + 1))
 done
 if [ "$count" -eq 0 ]; then
@@ -98,5 +114,5 @@ if [ "$count" -eq 0 ]; then
 fi
 
 "$tool" sign -serial "$serial" -key "$work/release.key" -expires "$expires" -in "$manifest" -out "$dist/manifest.json"
-"$tool" verify -pub "$pub" -in "$dist/manifest.json" -dist "$dist"
+"$tool" verify -pub "$pub" -in "$dist/manifest.json" > /dev/null
 echo "Signed $dist/manifest.json with $count artifacts"

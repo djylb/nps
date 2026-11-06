@@ -34,14 +34,51 @@ var BuildTarget string
 // releaseProduct is the product named in the release manifests.
 const releaseProduct = "nps"
 
-// manifestURLs locates the signed manifest, in the order tried. Artifacts are listed relative to the manifest, so each
-// mirror serves them too.
-var manifestURLs = []string{
-	"https://github.com/djylb/nps/releases/latest/download/manifest.json",
-	"https://cdn.jsdelivr.net/gh/djylb/nps-mirror@latest/manifest.json",
-	"https://fastly.jsdelivr.net/gh/djylb/nps-mirror@latest/manifest.json",
-	"https://gcore.jsdelivr.net/gh/djylb/nps-mirror@latest/manifest.json",
-	"https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@latest/manifest.json",
+// All versions read one update manifest at a fixed location, which lists the
+// releases of every major version; its rules decide what may cross a major
+// version. See scripts/publish_manifest.sh for where it is published.
+const (
+	githubReleases = "https://github.com/djylb/nps/releases/download/"
+	mirrorPackage  = "nps-mirror@"
+)
+
+// cdnRepos are the mirrors of the repositories on GitHub, in the order tried.
+var cdnRepos = []string{
+	"https://cdn.jsdelivr.net/gh/djylb/",
+	"https://fastly.jsdelivr.net/gh/djylb/",
+	"https://gcore.jsdelivr.net/gh/djylb/",
+	"https://testingcf.jsdelivr.net/gh/djylb/",
+}
+
+// mirrorSource reads artifacts, listed by their release URL, from the same tag
+// of the mirror repository. The manifest comes from a branch instead: files of a tag
+// are cached for good, so a renewed manifest would never reach the clients.
+type mirrorSource struct {
+	selfupdate.HTTPSource
+}
+
+// Open implements selfupdate.Source.
+func (s *mirrorSource) Open(ctx context.Context, a selfupdate.Artifact, offset int64) (io.ReadCloser, int64, error) {
+	if rest, ok := strings.CutPrefix(a.URL, githubReleases); ok {
+		a.URL = mirrorPackage + rest
+	}
+	return s.HTTPSource.Open(ctx, a, offset)
+}
+
+// updateSources returns the sources of the update manifest, in the order tried.
+func updateSources(client *http.Client) []selfupdate.Source {
+	sources := []selfupdate.Source{&selfupdate.HTTPSource{
+		Client: client,
+		URL:    githubReleases + "channel/manifest.json",
+	}}
+	for _, repo := range cdnRepos {
+		sources = append(sources, &mirrorSource{selfupdate.HTTPSource{
+			Client: client,
+			URL:    repo + "nps@manifest-channel/manifest.json",
+			Base:   repo,
+		}})
+	}
+	return sources
 }
 
 // UpdateOptions selects how Update installs a release.
@@ -209,17 +246,12 @@ func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 	if err != nil {
 		return nil, fmt.Errorf("this build has no valid release signing key, so it cannot verify updates; download the new release instead: %w", err)
 	}
-	client := &http.Client{Transport: newHTTPClient()}
-	sources := make([]selfupdate.Source, 0, len(manifestURLs))
-	for _, url := range manifestURLs {
-		sources = append(sources, &selfupdate.HTTPSource{Client: client, URL: url})
-	}
 	grants := []string{"user", "rollout"}
 	if force {
 		grants = append(grants, "force", "reinstall", selfupdate.GrantDowngradeAny, "retry-failed")
 	}
 	return &selfupdate.Updater{
-		Sources: sources,
+		Sources: updateSources(&http.Client{Transport: newHTTPClient()}),
 		Trust:   selfupdate.Trust{Keys: []selfupdate.TrustedKey{{Public: key}}},
 		Product: releaseProduct,
 		Name:    artifactName(bin),

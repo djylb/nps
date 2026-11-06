@@ -148,16 +148,31 @@ jobs:
             --pattern '*_server.tar.gz' --pattern '*_client.tar.gz' \
             --pattern '*_server_old.tar.gz' --pattern '*_client_old.tar.gz'
 
+      # Only a missing release may start an empty manifest: any other failure
+      # would drop the published releases of every version.
+      - name: Download the update manifest, if any
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p previous
+          if out=$(gh release view channel --json tagName 2>&1); then
+            gh release download channel --dir previous --pattern manifest.json
+            echo "PREVIOUS_MANIFEST=previous/manifest.json" >> "$GITHUB_ENV"
+          elif [[ "$out" != *"release not found"* ]]; then
+            echo "$out" >&2
+            exit 1
+          fi
+
       - name: Sign the update manifest
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           SELFUPDATE: ${{ runner.temp }}/selfupdate
         run: bash scripts/release_manifest.sh "$NPS_VERSION" dist
 
-      - name: Upload the update manifest
+      - name: Publish the update manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "v${NPS_VERSION}" dist/manifest.json --clobber
+        run: bash scripts/publish_manifest.sh dist
 
   build_android:
     runs-on: ubuntu-latest

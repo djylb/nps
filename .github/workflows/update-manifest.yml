@@ -26,14 +26,12 @@ jobs:
       - name: Build the selfupdate tool
         run: go build -o "$RUNNER_TEMP/selfupdate" github.com/djylb/selfupdate/cmd/selfupdate
 
-      - name: Download the manifest of the latest release
+      - name: Download the update manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag=$(gh release view --json tagName --jq .tagName)
-          echo "RELEASE_TAG=$tag" >> $GITHUB_ENV
           mkdir -p dist
-          gh release download "$tag" --dir dist --pattern manifest.json
+          gh release download channel --dir dist --pattern manifest.json
 
       - name: Renew the update manifest
         env:
@@ -41,19 +39,7 @@ jobs:
           SELFUPDATE: ${{ runner.temp }}/selfupdate
         run: bash scripts/release_manifest.sh --renew dist
 
-      - name: Upload the update manifest
+      - name: Publish the update manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" dist/manifest.json --clobber
-
-      - name: Trigger Sync to nps-mirror
-        run: |
-          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
-            -d '{
-              "event_type": "sync_nps_release",
-              "client_payload": {
-                "tag": "${{ env.RELEASE_TAG }}"
-              }
-            }'
+        run: bash scripts/publish_manifest.sh dist
