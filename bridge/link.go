@@ -149,7 +149,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	}
 
 	if node == nil {
-		if client.InConnectGraceWindow(clientConnectGraceWindow) {
+		if client.InConnectGraceWindow(clientConnectGraceWindow) || client.awaitingTunnel() {
 			err = errors.New("client is connecting, please retry")
 			return
 		}
@@ -160,7 +160,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	if tunnel == nil {
 		sig := node.GetSignal()
 		if sig == nil || sig.IsClosed() {
-			if client.InConnectGraceWindow(clientConnectGraceWindow) {
+			if client.InConnectGraceWindow(clientConnectGraceWindow) || client.awaitingTunnel() {
 				err = errors.New("client is connecting, please retry")
 				return
 			}
@@ -168,7 +168,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			err = errors.New("the client is offline")
 			return
 		}
-		if client.InConnectGraceWindow(clientConnectGraceWindow) {
+		if client.InConnectGraceWindow(clientConnectGraceWindow) || client.awaitingTunnel() {
 			err = errors.New("client tunnel is reconnecting, please retry")
 			return
 		}

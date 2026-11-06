@@ -96,6 +96,12 @@ const retryTimeMax = 3
 const connectGraceProtectWindow = 3 * time.Second
 const nodeJoinGraceProtectWindow = 3 * time.Second
 
+// nodeTunnelGrace is how long a node that published configuration waits for
+// its tunnel. npc dials the tunnel after the config exchange, up to ten seconds
+// per server address when a KCP or QUIC address is dead; if the dial fails it
+// publishes again, which starts the grace anew.
+const nodeTunnelGrace = 2 * time.Minute
+
 type Node struct {
 	mu        sync.RWMutex
 	sendMu    sync.Mutex // serializes bridge-initiated writes on the signal connection
@@ -108,6 +114,8 @@ type Node struct {
 	tunnel    legacy.Carrier
 	retryTime int
 	joinNano  int64
+	// tunnelDeadline is when the node stops waiting for a new tunnel.
+	tunnelDeadline time.Time
 }
 
 func NewNode(uuid, vs string, bv int) *Node {
@@ -158,6 +166,20 @@ func (n *Node) touchJoinTime() {
 	n.joinNano = time.Now().UnixNano()
 }
 
+// awaitTunnel keeps the node from being judged offline until a new tunnel
+// arrives or nodeTunnelGrace passes.
+func (n *Node) awaitTunnel() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.tunnelDeadline = time.Now().Add(nodeTunnelGrace)
+}
+
+func (n *Node) awaitingTunnel() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return time.Now().Before(n.tunnelDeadline)
+}
+
 func (n *Node) AddNode(node *Node) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -202,6 +224,7 @@ func (n *Node) addTunnel(tunnel legacy.Carrier) {
 	if n.tunnel != tunnel {
 		n.closeTunnel()
 		n.tunnel = tunnel
+		n.tunnelDeadline = time.Time{}
 		n.touchJoinTime()
 		n.Client.markOnline(n)
 	}
@@ -448,7 +471,7 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 		if node.IsOnline() {
 			return node, true
 		}
-		if c.InConnectGraceWindow(connectGraceProtectWindow) {
+		if c.InConnectGraceWindow(connectGraceProtectWindow) || node.awaitingTunnel() {
 			return nil, false
 		}
 		c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
@@ -506,13 +529,13 @@ func (c *Client) selectNode(sticky bool) *Node {
 
 // usable reports whether the node of b is online. An offline node is taken
 // out of rotation until it connects again while the client or the node is
-// within its grace window, and removed otherwise.
+// within a grace window or the node awaits its tunnel, and removed otherwise.
 func (c *Client) usable(b *upstream.Backend[*Node]) bool {
 	node := b.Value()
 	if !node.IsOffline() {
 		return true
 	}
-	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) || node.awaitingTunnel() {
 		c.nodePool.MarkOffline(b, errNodeOffline)
 		// It may have connected again meanwhile.
 		if !node.IsOffline() {
@@ -533,6 +556,16 @@ func (c *Client) usable(b *upstream.Backend[*Node]) bool {
 func (c *Client) usableNode(uuid string) bool {
 	b, ok := c.nodePool.Backend(uuid)
 	return ok && c.usable(b)
+}
+
+// awaitingTunnel reports whether a node of the client awaits its tunnel.
+func (c *Client) awaitingTunnel() bool {
+	found := false
+	c.nodes.Range(func(_, value any) bool {
+		found = value.(*Node).awaitingTunnel()
+		return !found
+	})
+	return found
 }
 
 func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) {
@@ -579,7 +612,7 @@ func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGra
 		if !ok1 || !ok2 || uuid == keepUUID {
 			return true
 		}
-		if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) {
+		if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) || node.awaitingTunnel() {
 			return true
 		}
 		if node.IsOffline() {

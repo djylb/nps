@@ -22,6 +22,11 @@ func writeAddFail(c *conn.Conn) bool {
 
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, ver int, vs, uuid string) {
 	var fail bool
+	var published *Node // the node that awaits its tunnel after this exchange
+	join := func(id int) {
+		_, published = s.joinNode(id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
+		published.awaitTunnel()
+	}
 loop:
 	for {
 		flag, err := legacy.ReadFlag(c)
@@ -83,7 +88,12 @@ loop:
 			_, _ = c.Write([]byte(client.VerifyKey))
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
-			s.storeClient(client.Id, NewClient(client.Id, NewNode(uuid, vs, ver)))
+			node := NewNode(uuid, vs, ver)
+			s.storeClient(client.Id, NewClient(client.Id, node))
+			if legacy.CapsOf(ver, vs).NodeID {
+				published = node
+				published.awaitTunnel()
+			}
 
 		case legacy.FlagNewHost:
 			h, err := legacy.ReadHost(c)
@@ -99,7 +109,7 @@ loop:
 			}
 
 			if legacy.CapsOf(ver, vs).NodeID {
-				s.joinNode(client.Id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
+				join(client.Id)
 			}
 			hh, err := s.publishHost(h, client, uuid, legacy.CapsOf(ver, vs))
 			if err != nil {
@@ -189,7 +199,7 @@ loop:
 					tl.MultiAccount = new(file.MultiAccount)
 				}
 				if legacy.CapsOf(ver, vs).NodeID {
-					s.joinNode(client.Id, uuid, NewNode(uuid, vs, ver), func(*Node) {})
+					join(client.Id)
 				}
 				if tl.Mode == "file" {
 					cli := NewClient(client.Id, NewNode(uuid, vs, ver))
@@ -240,6 +250,8 @@ loop:
 
 	if fail && client != nil {
 		s.dropConfigNode(client.Id, uuid, legacy.CapsOf(ver, vs))
+	} else if published != nil {
+		published.awaitTunnel() // the npc dials from here on
 	}
 	_ = c.Close()
 }

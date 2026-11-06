@@ -299,3 +299,96 @@ func TestCloseSignalSparesAReturningClient(t *testing.T) {
 		t.Fatal("entries published after the client left were cleaned up")
 	}
 }
+
+// ageNode puts the client and the node past their short join windows.
+func ageNode(t *testing.T, b *Bridge, clientId int, uuid string) (*Client, *Node) {
+	t.Helper()
+	v, ok := b.Client.Load(clientId)
+	if !ok {
+		t.Fatal("client gone")
+	}
+	client := v.(*Client)
+	client.lastConnectNano.Store(time.Now().Add(-time.Minute).UnixNano())
+	node, ok := client.GetNodeByUUID(uuid)
+	if !ok {
+		t.Fatal("node gone")
+	}
+	node.mu.Lock()
+	node.joinNano = time.Now().Add(-time.Minute).UnixNano()
+	node.mu.Unlock()
+	return client, node
+}
+
+// npc connects its tunnel only after the config exchange, and a dial may take
+// seconds per server address: what it published must wait for it.
+func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
+	b, client := routeFixture(t)
+	publish(t, b, client, "slow", legacy.LatestIndex, legacy.FlagNewHost, &file.Host{
+		Host: "slow.test", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	})
+	hostOf := func() *file.Host {
+		h, err := file.GetDb().GetHostById(hostIdByName(t, "slow.test"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+	drop := func(int) { t.Fatal("entry removed while its node dials") }
+
+	c, _ := ageNode(t, b, client.Id, "slow")
+	hostOf().Route()
+	c.RemoveOfflineNodes(true)
+	b.PruneRoutes(drop, drop)
+	for range 5 {
+		b.pingClients()
+	}
+	b.PruneRoutes(drop, drop)
+	// A web-managed entry of the client asks for any node meanwhile.
+	if _, err := b.Session(client.Id).OpenLink(conn.NewLink(common.ConnTCP, "127.0.0.1:1", false, false, "", false), 0); err == nil {
+		t.Fatal("link opened without a tunnel")
+	}
+	if _, ok := b.Client.Load(client.Id); !ok {
+		t.Fatal("client closed while its node dials")
+	}
+	if _, ok := c.GetNodeByUUID("slow"); !ok {
+		t.Fatal("node removed while it dials")
+	}
+
+	n := joinRouteNode(t, b, client.Id, "slow")
+	if !c.usableNode("slow") || n.node.awaitingTunnel() {
+		t.Fatal("node not usable once its tunnel arrived")
+	}
+}
+
+// A node that never connects its tunnel leaves when its grace ends.
+func TestPublishedEntryLeavesWithoutTunnel(t *testing.T) {
+	b, client := routeFixture(t)
+	publish(t, b, client, "gone", legacy.LatestIndex, legacy.FlagNewHost, &file.Host{
+		Host: "gone.test", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	})
+	c, node := ageNode(t, b, client.Id, "gone")
+	node.mu.Lock()
+	node.tunnelDeadline = time.Now().Add(-time.Second)
+	node.mu.Unlock()
+	if c.usableNode("gone") {
+		t.Fatal("node without a tunnel usable after its grace")
+	}
+	if _, ok := c.GetNodeByUUID("gone"); ok {
+		t.Fatal("node kept after its grace")
+	}
+}
+
+func hostIdByName(t *testing.T, name string) int {
+	t.Helper()
+	id := 0
+	file.GetDb().JsonDb.Hosts.Range(func(_, value any) bool {
+		if h := value.(*file.Host); h.Host == name {
+			id = h.Id
+		}
+		return true
+	})
+	if id == 0 {
+		t.Fatalf("host %s not found", name)
+	}
+	return id
+}
