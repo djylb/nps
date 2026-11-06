@@ -355,7 +355,11 @@ func (Self *receiveWindowQueue) Pop() (element *listElement, err error) {
 			continue
 		}
 		if Self.stopped() {
-			// nothing left and no more data will arrive
+			// a push may have landed between the length load and the stop
+			// check; re-read so its data is delivered before EOF
+			if Self.Len() > 0 {
+				continue
+			}
 			return nil, io.EOF
 		}
 		if !atomic.CompareAndSwapUint64(&Self.lengthWait, ptrs, dequeuePack(0, 1)) {

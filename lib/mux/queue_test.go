@@ -197,3 +197,24 @@ func TestDeadlineNanoClampsOutOfRange(t *testing.T) {
 		t.Fatal("far future deadline timer expired")
 	}
 }
+
+// Data pushed just before the stop must be delivered, not lost to an EOF.
+func TestReceiveWindowQueuePopSeesPushBeforeStop(t *testing.T) {
+	for i := 0; i < 20000; i++ {
+		q := newReceiveWindowQueue()
+		res := make(chan *listElement, 1)
+		go func() {
+			e, _ := q.Pop()
+			res <- e
+		}()
+		e, err := newListElement(make([]byte, 1), 1, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q.Push(e)
+		q.Stop()
+		if <-res == nil {
+			t.Fatalf("iteration %d: Pop lost data queued before Stop", i)
+		}
+	}
+}
