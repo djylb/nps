@@ -19,8 +19,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/proxy"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/quic-go/quic-go"
 )
 
 // ------------------------------
@@ -40,7 +38,7 @@ type P2PManager struct {
 	wg           sync.WaitGroup
 	cfg          *config.CommonConfig
 	uuid         string
-	secretConn   any
+	secretConn   legacy.Carrier
 	server       serverInfo          // of the bridge connection carrying secretConn
 	peers        map[string]*p2pPeer // by task password
 	proxyServers []Closer
@@ -121,13 +119,16 @@ func (mgr *P2PManager) getUUID() string {
 	return mgr.uuid
 }
 
-// SendLinkInfo opens a connection to the task's target: over the direct path
+// Session returns the bridge itself: there is one target whatever the client.
+func (b *P2pBridge) Session(int) conn.ClientSession { return b }
+
+// OpenLink opens a connection to the task's target: over the direct path
 // when it is up, otherwise, or when opening a stream on it fails, over the
 // relay if the section allows it. A direct path that fails a connection
 // takes no new connections while it is checked; it is closed and punched
 // again only when its checks fail too. Without a relay the connection waits
 // up to the bridge timeout for a direct path.
-func (b *P2pBridge) SendLinkInfo(_ int, link *conn.Link, _ *file.Tunnel) (net.Conn, error) {
+func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 	if link == nil {
 		return nil, errors.New("link is nil")
 	}
@@ -308,21 +309,10 @@ func (mgr *P2PManager) tunnelStream() (net.Conn, serverInfo, error) {
 	mgr.mu.Lock()
 	tunnel, server := mgr.secretConn, mgr.server
 	mgr.mu.Unlock()
-	var c net.Conn
-	var err error
-	switch tun := tunnel.(type) {
-	case nil:
+	if tunnel == nil {
 		return nil, server, errNoTunnel
-	case *mux.Mux:
-		c, err = tun.NewConn()
-	case *quic.Conn:
-		var stream *quic.Stream
-		if stream, err = tun.OpenStreamSync(mgr.ctx); err == nil {
-			c = conn.NewQuicStreamConn(stream, tun)
-		}
-	default:
-		err = errors.New("the tunnel type error")
 	}
+	c, err := tunnel.OpenStream(mgr.ctx)
 	if err == nil {
 		return c, server, nil
 	}
@@ -331,7 +321,7 @@ func (mgr *P2PManager) tunnelStream() (net.Conn, serverInfo, error) {
 		mgr.secretConn = nil
 	}
 	mgr.mu.Unlock()
-	closeTunnel(tunnel)
+	_ = tunnel.Close()
 	return nil, server, err
 }
 
@@ -375,38 +365,20 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 		_ = pc.Close()
 		return nil, serverInfo{}, err
 	}
-	var c net.Conn
-	var tunnel any
-	if mgr.cfg.Tp == common.ConnQUIC {
-		qc, ok := pc.Conn.(*conn.QuicAutoCloseConn)
-		if !ok {
-			_ = pc.Close()
-			return nil, serverInfo{}, errors.New("failed to get quic session")
-		}
-		sess := qc.GetSession()
-		stream, err := sess.OpenStreamSync(mgr.ctx)
-		if err != nil {
-			logs.Error("secret OpenStreamSync failed: %v", err)
-			_ = pc.Close()
-			return nil, serverInfo{}, err
-		}
-		c, tunnel = conn.NewQuicStreamConn(stream, sess), sess
-	} else {
-		muxConn := mux.NewMux(pc.Conn, mgr.cfg.Tp, mgr.cfg.DisconnectTime, true)
-		if c, err = muxConn.NewConn(); err != nil {
-			logs.Error("secret muxConn failed: %v", err)
-			_ = muxConn.Close()
-			_ = pc.Close()
-			return nil, serverInfo{}, err
-		}
-		tunnel = muxConn
+	tunnel := legacy.NewTunnel(pc, mgr.cfg.Tp, clientCaps(), mgr.cfg.DisconnectTime, true)
+	c, err := tunnel.OpenStream(mgr.ctx)
+	if err != nil {
+		logs.Error("secret open stream failed: %v", err)
+		_ = tunnel.Close()
+		_ = pc.Close()
+		return nil, serverInfo{}, err
 	}
 	mgr.mu.Lock()
 	if err := mgr.ctx.Err(); err != nil {
 		// Close ran meanwhile and will not see this tunnel.
 		mgr.mu.Unlock()
 		_ = c.Close()
-		closeTunnel(tunnel)
+		_ = tunnel.Close()
 		return nil, serverInfo{}, err
 	}
 	mgr.secretConn, mgr.server = tunnel, server
@@ -428,15 +400,6 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 		return nil, err
 	}
 	return c, nil
-}
-
-func closeTunnel(tunnel any) {
-	switch tun := tunnel.(type) {
-	case *mux.Mux:
-		_ = tun.Close()
-	case *quic.Conn:
-		_ = tun.CloseWithError(0, "p2p close")
-	}
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) bool {
@@ -466,7 +429,9 @@ func (mgr *P2PManager) Close() {
 	for _, srv := range psList {
 		_ = srv.Close()
 	}
-	closeTunnel(secretConn)
+	if secretConn != nil {
+		_ = secretConn.Close()
+	}
 	mgr.wg.Wait()
 	if mgr.mapper != nil {
 		_ = mgr.mapper.Close()

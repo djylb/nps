@@ -6,7 +6,12 @@
 package legacy
 
 import (
+	"net"
+	"time"
+
+	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/tunnelwire/carrier"
 	"github.com/djylb/tunnelwire/mux"
 )
 
@@ -18,3 +23,29 @@ func (muxLogger) Warn(format string, v ...any)   { logs.Warn(format, v...) }
 func (muxLogger) Error(format string, v ...any)  { logs.Error(format, v...) }
 
 func init() { mux.SetLogger(muxLogger{}) }
+
+// Carrier is a connection to a peer carrying many streams.
+type Carrier = carrier.Carrier
+
+// NewTunnel returns the carrier of a connection that a peer with caps gave
+// work chan or vstr: the QUIC connection itself where it speaks that, otherwise
+// a mux over c. The carrier owns c's connection.
+func NewTunnel(c *conn.Conn, connType string, caps Caps, disconnectTime int, initiator bool) Carrier {
+	if caps.NativeQUIC {
+		if qc, ok := conn.CarrierOf(c.Conn); ok {
+			return qc
+		}
+	}
+	return NewMuxCarrier(c.Conn, connType, disconnectTime, initiator)
+}
+
+// NewMuxCarrier returns a mux over c.
+func NewMuxCarrier(c net.Conn, connType string, disconnectTime int, initiator bool) Carrier {
+	return mux.NewMux(c, connType, disconnectTime, initiator)
+}
+
+// SetPingInterval sets how often muxes check their peer.
+func SetPingInterval(d time.Duration) { mux.PingInterval = d }
+
+// PingInterval returns how often muxes check their peer.
+func PingInterval() time.Duration { return mux.PingInterval }

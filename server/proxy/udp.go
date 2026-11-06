@@ -91,9 +91,9 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || s.Task.Client.Id < 0
 	link := conn.NewLink(common.ConnUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
 	link.Option.Node = route.Node
-	clientConn, err := s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
+	clientConn, err := s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 	if err != nil {
-		logs.Trace("SendLinkInfo error: %v", err)
+		logs.Trace("OpenLink error: %v", err)
 		return
 	}
 	target := conn.LinkConn(clientConn, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, true, isLocal)

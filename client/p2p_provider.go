@@ -2,23 +2,20 @@ package client
 
 import (
 	"errors"
-	"net"
 	"time"
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/quic-go/quic-go"
 )
 
 // serveP2P answers an invitation as the provider: it joins the session on a
 // new stream of the tunnel, punches, accepts the visitor's QUIC connection
 // and serves its streams like the tunnel's until the connection ends or the
 // client closes.
-func (s *TRPClient) serveP2P(tunnel any, invite legacy.P2PInvite) {
-	stream, err := s.openTunnelStream(tunnel)
+func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
+	stream, err := tunnel.OpenStream(s.ctx)
 	if err != nil {
 		logs.Warn("P2P session %s: cannot open a stream to the server: %v", invite.SessionID, err)
 		return
@@ -74,19 +71,4 @@ func (s *TRPClient) serveP2P(tunnel any, invite legacy.P2PInvite) {
 		}
 		go s.handleChan(conn.NewQuicStreamConn(st, qc))
 	}
-}
-
-// openTunnelStream opens a stream to the bridge on the client's tunnel.
-func (s *TRPClient) openTunnelStream(tunnel any) (net.Conn, error) {
-	switch t := tunnel.(type) {
-	case *mux.Mux:
-		return t.NewConn()
-	case *quic.Conn:
-		st, err := t.OpenStreamSync(s.ctx)
-		if err != nil {
-			return nil, err
-		}
-		return conn.NewQuicStreamConn(st, t), nil
-	}
-	return nil, errors.New("no tunnel to the server")
 }

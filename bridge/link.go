@@ -12,11 +12,8 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/tool"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/quic-go/quic-go"
 )
 
 const clientConnectGraceWindow = 3 * time.Second
@@ -31,7 +28,23 @@ func linkOpenTimeout(link *conn.Link) time.Duration {
 	return defaultLinkOpenTimeout
 }
 
-func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error) {
+// Session returns the way to open links to client clientId.
+func (s *Bridge) Session(clientId int) conn.ClientSession {
+	return clientSession{bridge: s, id: clientId}
+}
+
+type clientSession struct {
+	bridge *Bridge
+	id     int
+}
+
+// OpenLink asks the client for a connection to link's target, or serves a
+// local link itself. taskID is the task the link is for, 0 if none.
+func (c clientSession) OpenLink(link *conn.Link, taskID int) (net.Conn, error) {
+	return c.bridge.openLink(c.id, link, taskID)
+}
+
+func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net.Conn, err error) {
 	if link == nil {
 		return nil, errors.New("link is nil")
 	}
@@ -65,8 +78,8 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 				if convErr != nil {
 					return nil, fmt.Errorf("invalid tunnel id %q: %w", targetStr, convErr)
 				}
-				if t != nil && t.Id == id {
-					return nil, fmt.Errorf("task %d cannot connect to itself (tunnel://%d)", t.Id, id)
+				if taskID != 0 && taskID == id {
+					return nil, fmt.Errorf("task %d cannot connect to itself (tunnel://%d)", taskID, id)
 				}
 				return tool.GetTunnelConn(id, link.RemoteAddr)
 			case "bridge":
@@ -103,7 +116,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	client := clientValue.(*Client)
 
-	var tunnel any
+	var tunnel legacy.Carrier
 	var node *Node
 	isFile := strings.Contains(link.Host, "file://")
 	if isFile {
@@ -164,22 +177,9 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		return
 	}
 
-	switch tun := tunnel.(type) {
-	case *mux.Mux:
-		target, err = tun.NewConnTimeout(link.Option.Timeout)
-	case *quic.Conn:
-		var stream *quic.Stream
-		ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
-		stream, err = tun.OpenStreamSync(ctx)
-		cancel()
-		if err == nil {
-			target = conn.NewQuicStreamConn(stream, tun)
-		}
-	default:
-		err = errors.New("the tunnel type error")
-		return
-	}
-
+	ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
+	target, err = tunnel.OpenStream(ctx)
+	cancel()
 	if err != nil {
 		return
 	}

@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -19,8 +18,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/quic-go/quic-go"
 )
 
 type TRPClient struct {
@@ -32,7 +29,7 @@ type TRPClient struct {
 	uuid           string
 	mapper         *portmapper.Mapper
 	server         serverInfo // of the tunnel's bridge connection; set before handleMain
-	tunnel         any
+	tunnel         legacy.Carrier
 	signal         *conn.Conn
 	fsm            *FileServerManager
 	cnf            *config.Config
@@ -95,43 +92,23 @@ func (s *TRPClient) Start(ctx context.Context) {
 			logs.Error("The tunnel is not connected")
 			return
 		}
-		switch t := tunnel.(type) {
-		case *mux.Mux:
-			mc, err := t.NewConn()
-			if err != nil {
-				logs.Error("Failed to get new connection, possible version mismatch: %v", err)
-				s.Close()
-				return
-			}
-			mc.SetPriority()
-			c := conn.NewConn(mc)
-			err = SendType(c, legacy.WorkMain, s.uuid)
-			if err != nil {
-				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
-				_ = mc.Close()
-				return
-			}
-			s.signal = c
-		case *quic.Conn:
-			stream, err := t.OpenStreamSync(s.ctx)
-			if err != nil {
-				logs.Error("Quic OpenStreamSync failed, retrying: %v", err)
-				s.Close()
-				return
-			}
-			sc := conn.NewQuicAutoCloseConn(stream, t)
-			c := conn.NewConn(sc)
-			err = SendType(c, legacy.WorkMain, s.uuid)
-			if err != nil {
-				logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
-				_ = sc.Close()
-				return
-			}
-			s.signal = c
-		default:
-			logs.Error("Unsupported tunnel type: %v", t)
+		stream, err := tunnel.OpenStream(s.ctx)
+		if err != nil {
+			logs.Error("Failed to open the signal stream, possible version mismatch: %v", err)
+			s.Close()
 			return
 		}
+		if p, ok := stream.(interface{ SetPriority() }); ok {
+			p.SetPriority()
+		}
+		stream = conn.SignalStream(stream)
+		c := conn.NewConn(stream)
+		if err = SendType(c, legacy.WorkMain, s.uuid); err != nil {
+			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
+			_ = stream.Close()
+			return
+		}
+		s.signal = c
 		logs.Info("Successful connection with server %s", s.svrAddr)
 	}
 	//monitor the connection
@@ -147,7 +124,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 }
 
 // handle main connection
-func (s *TRPClient) handleMain(tunnel any) {
+func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 	defer s.Close()
 	for {
 		select {
@@ -191,7 +168,7 @@ func (s *TRPClient) handleMain(tunnel any) {
 }
 
 // newChan connects the mux tunnel and returns it; nil on failure.
-func (s *TRPClient) newChan() any {
+func (s *TRPClient) newChan() legacy.Carrier {
 	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
 		logs.Error("Failed to connect to server %s error: %v", s.svrAddr, err)
@@ -213,18 +190,7 @@ func (s *TRPClient) newChan() any {
 		_ = tunnel.Close()
 		return nil
 	}
-	var tun any
-	if clientCaps().NativeQUIC && s.bridgeConnType == common.ConnQUIC {
-		qc, ok := tunnel.Conn.(*conn.QuicAutoCloseConn)
-		if !ok {
-			logs.Error("failed to get quic session")
-			_ = tunnel.Close()
-			return nil
-		}
-		tun = qc.GetSession()
-	} else {
-		tun = mux.NewMux(tunnel.Conn, s.bridgeConnType, s.disconnectTime, true)
-	}
+	tun := legacy.NewTunnel(tunnel, s.bridgeConnType, clientCaps(), s.disconnectTime, true)
 	s.tunnel = tun
 
 	go func() {
@@ -235,21 +201,7 @@ func (s *TRPClient) newChan() any {
 				return
 			default:
 			}
-			var err error
-			var src net.Conn
-			switch t := tun.(type) {
-			case *mux.Mux:
-				src, err = t.Accept()
-			case *quic.Conn:
-				var stream *quic.Stream
-				stream, err = t.AcceptStream(s.ctx)
-				if err == nil {
-					src = conn.NewQuicStreamConn(stream, t)
-				}
-			default:
-				err = errors.New("unknown tunnel type")
-			}
-
+			src, err := tun.AcceptStream(s.ctx)
 			if err != nil {
 				s.noteCloseReason("tunnel accept failed: " + err.Error())
 				logs.Warn("Accept error on mux: %v", err)
@@ -358,17 +310,7 @@ func (s *TRPClient) ping() {
 }
 
 func (s *TRPClient) isTunnelClosed() bool {
-	if s.tunnel == nil {
-		return true
-	}
-	switch t := s.tunnel.(type) {
-	case *mux.Mux:
-		return t.IsClosed()
-	case *quic.Conn:
-		return t.Context().Err() != nil
-	default:
-		return true
-	}
+	return s.tunnel == nil || s.tunnel.Closed()
 }
 
 func (s *TRPClient) Close() {
@@ -387,7 +329,7 @@ func (s *TRPClient) closing() {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	s.closeTunnel("close")
+	s.closeTunnel()
 	if s.signal != nil {
 		_ = s.signal.Close()
 	}
@@ -422,15 +364,8 @@ func (s *TRPClient) snapshotCloseReason() string {
 		return reason
 	}
 	if s.tunnel != nil {
-		switch t := s.tunnel.(type) {
-		case *mux.Mux:
-			if reason := t.CloseReason(); reason != "" {
-				return reason
-			}
-		case *quic.Conn:
-			if err := t.Context().Err(); err != nil {
-				return "quic tunnel closed: " + err.Error()
-			}
+		if reason := s.tunnel.Reason(); reason != "" {
+			return reason
 		}
 	}
 	if s.signal != nil && s.signal.IsClosed() {
@@ -466,15 +401,9 @@ func (s *TRPClient) logDisconnectSummary() {
 	)
 }
 
-func (s *TRPClient) closeTunnel(err string) {
+func (s *TRPClient) closeTunnel() {
 	if s.tunnel != nil {
-		switch t := s.tunnel.(type) {
-		case *mux.Mux:
-			_ = t.Close()
-		case *quic.Conn:
-			_ = t.CloseWithError(0, err)
-		default:
-		}
+		_ = s.tunnel.Close()
 		s.tunnel = nil
 	}
 }

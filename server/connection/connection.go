@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/tunnelwire/mux"
 )
 
 var pMux *portMux
@@ -77,7 +77,7 @@ func InitConnectionService() {
 	QuicIdleTimeoutSec = cfg.Network.QUICMaxIdleTimeout
 	QuicMaxStreams = cfg.Network.QUICMaxIncomingStreams
 	MuxPingIntervalSec = cfg.Network.MuxPingInterval
-	mux.PingInterval = time.Duration(MuxPingIntervalSec) * time.Second
+	legacy.SetPingInterval(time.Duration(MuxPingIntervalSec) * time.Second)
 
 	if BridgePort != 0 && (HttpPort == BridgePort || HttpsPort == BridgePort || WebPort == BridgePort || BridgeTlsPort == BridgePort) {
 		if BridgePort <= 0 || BridgePort > 65535 {

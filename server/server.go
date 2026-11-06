@@ -131,12 +131,14 @@ func DealBridgeTask() {
 				_ = StopServer(t.Id)
 			}
 		case id := <-Bridge.CloseClient:
-			DelTunnelAndHostByClientId(id, true)
-			if v, ok := file.GetDb().JsonDb.Clients.Load(id); ok {
-				if v.(*file.Client).NoStore {
-					_ = file.GetDb().DelClient(id)
+			Bridge.CloseIfDisconnected(id, func() {
+				DelTunnelAndHostByClientId(id, true)
+				if v, ok := file.GetDb().JsonDb.Clients.Load(id); ok {
+					if v.(*file.Client).NoStore {
+						_ = file.GetDb().DelClient(id)
+					}
 				}
-			}
+			})
 		//case tunnel := <-Bridge.OpenTask:
 		//	_ = StartTask(tunnel.Id)
 		case s := <-Bridge.SecretChan:
@@ -148,7 +150,7 @@ func DealBridgeTask() {
 						allowSecretLink := cfg.Feature.AllowSecretLink
 						allowSecretLocal := cfg.Feature.AllowSecretLocal
 						go func() {
-							_ = proxy.NewSecretServer(Bridge, t, allowLocalProxy, allowSecretLink, allowSecretLocal).HandleSecret(s.Conn)
+							_ = proxy.NewSecretServer(Bridge, t, allowLocalProxy, allowSecretLink, allowSecretLocal).HandleSecret(s.Conn, s.Wire)
 						}()
 					} else {
 						_ = s.Conn.Close()
@@ -209,7 +211,7 @@ func PingClient(id int, addr string) int {
 	link.Option.NeedAck = true
 	link.Option.Timeout = pingTimeout
 	start := time.Now()
-	target, err := Bridge.SendLinkInfo(id, link, nil)
+	target, err := Bridge.Session(id).OpenLink(link, 0)
 	if err != nil {
 		logs.Warn("get connection from client Id %d error %v", id, err)
 		return -1
@@ -414,7 +416,7 @@ func dealClientData() {
 				v.Mode = "local"
 				v.LocalAddr = common.GetOutboundIP().String()
 				// Add Local Client
-				if _, exists := Bridge.Client.Load(v.Id); !exists && v.Status {
+				if !Bridge.Connected(v.Id) && v.Status {
 					Bridge.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewNode("127.0.0.1", version.VERSION, legacy.LatestIndex)))
 					logs.Debug("Inserted virtual client for ID %d", v.Id)
 				}

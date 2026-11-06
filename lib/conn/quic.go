@@ -88,6 +88,67 @@ func (q *QuicAutoCloseConn) Close() error {
 	return nil
 }
 
+// QuicCarrier makes a QUIC connection a carrier of streams, so that nothing
+// but this file has to know about QUIC to use it.
+type QuicCarrier struct {
+	sess *quic.Conn
+}
+
+// NewQuicCarrier returns the carrier of sess.
+func NewQuicCarrier(sess *quic.Conn) *QuicCarrier { return &QuicCarrier{sess: sess} }
+
+// OpenStream opens a stream on the connection.
+func (q *QuicCarrier) OpenStream(ctx context.Context) (net.Conn, error) {
+	stream, err := q.sess.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return NewQuicStreamConn(stream, q.sess), nil
+}
+
+// AcceptStream returns the next stream the peer opened.
+func (q *QuicCarrier) AcceptStream(ctx context.Context) (net.Conn, error) {
+	stream, err := q.sess.AcceptStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return NewQuicStreamConn(stream, q.sess), nil
+}
+
+// Close closes the connection and its streams.
+func (q *QuicCarrier) Close() error { return q.sess.CloseWithError(0, "close") }
+
+// Closed reports whether the connection has closed.
+func (q *QuicCarrier) Closed() bool { return q.sess.Context().Err() != nil }
+
+// Reason says why the connection closed.
+func (q *QuicCarrier) Reason() string {
+	if err := context.Cause(q.sess.Context()); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// CarrierOf returns the carrier of a connection whose first stream is c, if
+// c is a QUIC stream.
+func CarrierOf(c net.Conn) (*QuicCarrier, bool) {
+	qc, ok := c.(*QuicAutoCloseConn)
+	if !ok {
+		return nil, false
+	}
+	return NewQuicCarrier(qc.GetSession()), true
+}
+
+// SignalStream makes a stream opened for a signal connection end its whole
+// connection when it closes, as a signal connection's end means the end of the
+// connection; other streams are returned as they are.
+func SignalStream(c net.Conn) net.Conn {
+	if qs, ok := c.(*QuicStreamConn); ok {
+		return NewQuicAutoCloseConn(qs.stream, qs.sess)
+	}
+	return c
+}
+
 func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config, quicCfg *quic.Config, localIP string) (*quic.Conn, error) {
 	bindAddr := common.BuildUDPBindAddr(localIP)
 	if bindAddr == nil {

@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -26,7 +25,7 @@ func NewSecretServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy, allow
 	}
 }
 
-func (s *SecretServer) HandleSecret(src net.Conn) error {
+func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
 	if err != nil {
 		_ = src.Close()
@@ -44,7 +43,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	// c wraps src only; it is closed on failure and CopyWaitGroup closes it otherwise.
 	//noinspection GoResourceLeak
 	c := conn.NewConn(tee)
-	lk, err := legacy.ReadLink(c)
+	lk, err := wire.ReadLink(c)
 	if err != nil || lk == nil {
 		rb = tee.Buffered()
 	}
@@ -88,7 +87,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 		link = conn.NewLink(connType, addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, c.Conn.RemoteAddr().String(), localProxy)
 		link.Option.Node = route.Node
 		var err error
-		target, err = s.Bridge.SendLinkInfo(s.Task.Client.Id, link, s.Task)
+		target, err = s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 		return localProxy, err
 	}
 	if host == "" {
@@ -106,7 +105,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	}
 
 	if needAck {
-		if err := legacy.WriteAck(c.Conn, link.Option.Timeout); err != nil {
+		if err := wire.WriteAck(c.Conn, link.Option.Timeout); err != nil {
 			logs.Warn("write ACK failed: %v", err)
 			_ = c.Close()
 			_ = target.Close()

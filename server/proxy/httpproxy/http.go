@@ -307,7 +307,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		link = conn.NewLink("tcp", addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
 		link.Option.Node = route.Node
 		var err error
-		targetConn, err = s.Bridge.SendLinkInfo(host.Client.Id, link, nil)
+		targetConn, err = s.Bridge.Session(host.Client.Id).OpenLink(link, 0)
 		if err != nil {
 			logs.Info("handleWebsocket: connection to target %s failed: %v", addr, err)
 		}
@@ -570,7 +570,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		link = conn.NewLink("tcp", addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
 		link.Option.Node = route.Node
 		var err error
-		target, err = s.Bridge.SendLinkInfo(h.Client.Id, link, nil)
+		target, err = s.Bridge.Session(h.Client.Id).OpenLink(link, 0)
 		if err != nil {
 			logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, addr, err)
 		}

@@ -13,9 +13,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/djylb/upstream"
-	"github.com/quic-go/quic-go"
 )
 
 type SelectMode int32
@@ -107,7 +105,7 @@ type Node struct {
 	BaseVer   int
 	caps      legacy.Caps
 	signal    *conn.Conn
-	tunnel    any //*mux.Mux or *quic.Conn
+	tunnel    legacy.Carrier
 	retryTime int
 	joinNano  int64
 }
@@ -194,15 +192,15 @@ func (n *Node) addSignal(signal *conn.Conn) {
 	n.Client.markOnline(n)
 }
 
-func (n *Node) AddTunnel(tunnel any) {
+func (n *Node) AddTunnel(tunnel legacy.Carrier) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.addTunnel(tunnel)
 }
 
-func (n *Node) addTunnel(tunnel any) {
+func (n *Node) addTunnel(tunnel legacy.Carrier) {
 	if n.tunnel != tunnel {
-		_ = n.closeTunnel("override")
+		n.closeTunnel()
 		n.tunnel = tunnel
 		n.touchJoinTime()
 		n.Client.markOnline(n)
@@ -228,7 +226,7 @@ func (n *Node) GetSignal() *conn.Conn {
 	return n.signal
 }
 
-func (n *Node) GetTunnel() any {
+func (n *Node) GetTunnel() legacy.Carrier {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.tunnel
@@ -251,17 +249,7 @@ func (n *Node) IsTunnelClosed() bool {
 }
 
 func (n *Node) isTunnelClosed() bool {
-	if n.tunnel == nil {
-		return true
-	}
-	switch t := n.tunnel.(type) {
-	case *mux.Mux:
-		return t.IsClosed()
-	case *quic.Conn:
-		return t.Context().Err() != nil
-	default:
-		return true
-	}
+	return n.tunnel == nil || n.tunnel.Closed()
 }
 
 func (n *Node) IsOffline() bool {
@@ -304,7 +292,7 @@ func (n *Node) CloseIfSignalCurrent(signal *conn.Conn) bool {
 }
 
 // CloseIfTunnelCurrent is CloseIfSignalCurrent for the tunnel.
-func (n *Node) CloseIfTunnelCurrent(tunnel any) bool {
+func (n *Node) CloseIfTunnelCurrent(tunnel legacy.Carrier) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.tunnel != tunnel {
@@ -315,7 +303,7 @@ func (n *Node) CloseIfTunnelCurrent(tunnel any) bool {
 }
 
 func (n *Node) closeLocked() {
-	_ = n.closeTunnel("node close")
+	n.closeTunnel()
 	if n.signal != nil {
 		_ = n.signal.Close()
 		n.signal = nil
@@ -323,18 +311,11 @@ func (n *Node) closeLocked() {
 	n.retryTime = retryTimeMax
 }
 
-func (n *Node) closeTunnel(err string) error {
+func (n *Node) closeTunnel() {
 	if n.tunnel != nil {
-		switch t := n.tunnel.(type) {
-		case *mux.Mux:
-			_ = t.Close()
-		case *quic.Conn:
-			_ = t.CloseWithError(0, err)
-		default:
-		}
+		_ = n.tunnel.Close()
 		n.tunnel = nil
 	}
-	return nil
 }
 
 type Client struct {

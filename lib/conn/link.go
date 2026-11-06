@@ -1,23 +1,37 @@
 package conn
 
 import (
+	"io"
+	"net"
 	"time"
 )
 
+// Secret is a connection that asked for a secret task by its password.
 type Secret struct {
-	//Type     string // tcp/udp
 	Password string
 	Conn     *Conn
-	//Tunnel   *mux.Mux
+	Wire     SecretWire
 }
 
-func NewSecret(p string, conn *Conn) *Secret {
-	return &Secret{
-		//Type:     tp,
-		Password: p,
-		Conn:     conn,
-		//Tunnel:   tunnel,
-	}
+// SecretWire is what a secret connection's protocol does, as the proxy serving
+// it needs it.
+type SecretWire struct {
+	// ReadLink reads the Link the connection may start with.
+	ReadLink func(io.Reader) (*Link, error)
+	// WriteAck answers a Link that asks for an acknowledgement.
+	WriteAck func(net.Conn, time.Duration) error
+}
+
+func NewSecret(p string, conn *Conn, wire SecretWire) *Secret {
+	return &Secret{Password: p, Conn: conn, Wire: wire}
+}
+
+// ClientSession is how the server's proxies reach a client: they open links on
+// it, whatever protocol carries them.
+type ClientSession interface {
+	// OpenLink opens a connection to link's target through the client. taskID
+	// is the task the link is for, 0 if it is for none.
+	OpenLink(link *Link, taskID int) (net.Conn, error)
 }
 
 type Link struct {

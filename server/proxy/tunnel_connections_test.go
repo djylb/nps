@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -69,7 +70,7 @@ func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
 	s := NewSecretServer(&localDialBridge{}, task, false, false, false)
 	a, b := net.Pipe()
 	defer func() { _ = a.Close(); _ = b.Close() }()
-	if err := s.HandleSecret(a); err == nil {
+	if err := s.HandleSecret(a, legacy.SecretWire); err == nil {
 		t.Fatal("secret bypassed tunnel limit")
 	}
 	if task.CurrentConnections() != 1 || task.Client.CurrentConnections() != 1 {

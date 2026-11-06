@@ -223,7 +223,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 		cnt++
 
-		if _, ok := Bridge.Client.Load(v.Client.Id); ok {
+		if Bridge.Connected(v.Client.Id) {
 			v.Client.IsConnect = true
 		} else {
 			v.Client.IsConnect = false

@@ -16,8 +16,6 @@ import (
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/tunnelwire/mux"
-	"github.com/quic-go/quic-go"
 )
 
 // allowsFlag is the one rule for which workflows each kind of vkey may open.
@@ -128,32 +126,21 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			_ = c.Close()
 			return
 		}
-		var anyConn any
-		qc, ok := c.Conn.(*conn.QuicAutoCloseConn)
-		if ok && caps.NativeQUIC {
-			anyConn = qc.GetSession()
-		} else {
-			anyConn = mux.NewMux(c.Conn, tunnelType, s.disconnectTime, false)
-		}
-		if anyConn == nil {
-			logs.Warn("Failed to create Mux for client %v", addr)
-			_ = c.Close()
-			return
-		}
+		tunnel := legacy.NewTunnel(c, tunnelType, caps, s.disconnectTime, false)
 		node := NewNode(uuid, vs, ver)
-		node.AddTunnel(anyConn)
-		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddTunnel(anyConn) })
+		node.AddTunnel(tunnel)
+		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddTunnel(tunnel) })
 		if caps.TunnelStreams {
 			go func() {
 				defer func() {
-					reason := tunnelCloseReason(anyConn)
+					reason := tunnel.Reason()
 					if reason != "" {
 						logs.Trace("Tunnel connection closed, client %d, remote %v, reason: %s", id, addr, reason)
 					} else {
 						logs.Trace("Tunnel connection closed, client %d, remote %v", id, addr)
 					}
 					_ = c.Close()
-					node.CloseIfTunnelCurrent(anyConn)
+					node.CloseIfTunnelCurrent(tunnel)
 					removed := client.RemoveOfflineNodes(false)
 					logs.Warn(
 						"Disconnect summary event=disconnect_summary role=server client=%d uuid=%s remote=%v removed=%d remaining=%d reason=%q",
@@ -165,29 +152,12 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 						reason,
 					)
 				}()
-				switch t := anyConn.(type) {
-				case *mux.Mux:
-					conn.Accept(t, func(c net.Conn) {
-						mc, ok := c.(*mux.Conn)
-						if ok {
-							mc.SetPriority()
-						}
-						go s.typeDeal(conn.NewConn(c), id, ver, vs, tunnelType, false)
-					})
-					return
-				case *quic.Conn:
-					for {
-						stream, err := t.AcceptStream(context.Background())
-						if err != nil {
-							logs.Trace("QUIC accept stream error: %v", err)
-							return
-						}
-						sc := conn.NewQuicStreamConn(stream, t)
-						go s.typeDeal(conn.NewConn(sc), id, ver, vs, tunnelType, false)
+				serveStreams(tunnel, func(stream net.Conn) {
+					if p, ok := stream.(interface{ SetPriority() }); ok {
+						p.SetPriority()
 					}
-				default:
-					logs.Error("Unknown tunnel type")
-				}
+					go s.typeDeal(conn.NewConn(stream), id, ver, vs, tunnelType, false)
+				})
 			}()
 		}
 
@@ -210,18 +180,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			_ = c.Close()
 			return
 		}
-		var anyConn any
-		qc, ok := c.Conn.(*conn.QuicAutoCloseConn)
-		if ok && caps.NativeQUIC {
-			anyConn = qc.GetSession()
-		} else {
-			anyConn = mux.NewMux(c.Conn, tunnelType, s.disconnectTime, false)
-		}
-		if anyConn == nil {
-			logs.Warn("Failed to create Mux for client %v", addr)
-			_ = c.Close()
-			return
-		}
+		tunnel := legacy.NewTunnel(c, tunnelType, caps, s.disconnectTime, false)
 		go func() {
 			idle := NewIdleTimer(30*time.Second, func() { _ = c.Close() })
 			defer func() {
@@ -229,31 +188,12 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 				idle.Stop()
 				_ = c.Close()
 			}()
-			switch t := anyConn.(type) {
-			case *mux.Mux:
-				conn.Accept(t, func(nc net.Conn) {
-					idle.Inc()
-					go s.typeDeal(conn.NewConn(nc).OnClose(func(*conn.Conn) {
-						idle.Dec()
-					}), id, ver, vs, tunnelType, false)
-				})
-				return
-			case *quic.Conn:
-				for {
-					stream, err := t.AcceptStream(context.Background())
-					if err != nil {
-						logs.Trace("QUIC accept stream error: %v", err)
-						return
-					}
-					sc := conn.NewQuicStreamConn(stream, t)
-					idle.Inc()
-					go s.typeDeal(conn.NewConn(sc).OnClose(func(c *conn.Conn) {
-						idle.Dec()
-					}), id, ver, vs, tunnelType, false)
-				}
-			default:
-				logs.Error("Unknown tunnel type")
-			}
+			serveStreams(tunnel, func(stream net.Conn) {
+				idle.Inc()
+				go s.typeDeal(conn.NewConn(stream).OnClose(func(*conn.Conn) {
+					idle.Dec()
+				}), id, ver, vs, tunnelType, false)
+			})
 		}()
 
 	case legacy.WorkSecret:
@@ -265,7 +205,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 			return
 		}
 		c.SetAlive()
-		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c)) {
+		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c, legacy.SecretWire)) {
 			logs.Warn("secret connection from %v dropped: server busy", addr)
 			_ = c.Close()
 			return
@@ -297,16 +237,17 @@ func (s *Bridge) typeDeal(c *conn.Conn, id, ver int, vs, tunnelType string, firs
 	//return
 }
 
-func tunnelCloseReason(v any) string {
-	switch t := v.(type) {
-	case *mux.Mux:
-		return t.CloseReason()
-	case *quic.Conn:
-		if err := t.Context().Err(); err != nil {
-			return err.Error()
+// serveStreams hands each stream the peer opens on tunnel to handle until the
+// tunnel ends.
+func serveStreams(tunnel legacy.Carrier, handle func(net.Conn)) {
+	for {
+		stream, err := tunnel.AcceptStream(context.Background())
+		if err != nil {
+			logs.Trace("Tunnel accept stream error: %v", err)
+			return
 		}
+		handle(stream)
 	}
-	return ""
 }
 
 // register registers the address of the npc on c for its client, or for

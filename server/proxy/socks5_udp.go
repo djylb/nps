@@ -446,7 +446,7 @@ func (s *socks5UDPSession) openTunnel() error {
 	link.Option.Timeout = s.timeout
 	link.Option.Node = task.Route().Node
 
-	target, err := s.registry.bridge.SendLinkInfo(task.Client.Id, link, task)
+	target, err := s.registry.bridge.Session(task.Client.Id).OpenLink(link, task.Id)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,5 @@ func ClientConnected(id int) bool {
 	if Bridge == nil || Bridge.Client == nil {
 		return false
 	}
-	_, ok := Bridge.Client.Load(id)
-	return ok
+	return Bridge.Connected(id)
 }

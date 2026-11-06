@@ -20,7 +20,9 @@ type localDialBridge struct {
 	links chan *conn.Link
 }
 
-func (b *localDialBridge) SendLinkInfo(_ int, link *conn.Link, _ *file.Tunnel) (net.Conn, error) {
+func (b *localDialBridge) Session(int) conn.ClientSession { return b }
+
+func (b *localDialBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 	b.links <- link
 	return net.DialTimeout(link.ConnType, link.Host, 2*time.Second)
 }
@@ -108,7 +110,7 @@ func TestSecretLocalProxySendsProxyHeaderAndPreReadToBackend(t *testing.T) {
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
 	go func() {
-		_ = s.HandleSecret(src)
+		_ = s.HandleSecret(src, legacy.SecretWire)
 		close(done)
 	}()
 
@@ -180,7 +182,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
 	go func() {
-		_ = s.HandleSecret(src)
+		_ = s.HandleSecret(src, legacy.SecretWire)
 		close(done)
 	}()
 
@@ -221,7 +223,7 @@ func TestSecretLinkDestinationDenied(t *testing.T) {
 	go func() {
 		_ = legacy.WriteLink(visitor, conn.NewLink("tcp", "denied.example:80", false, false, "", false))
 	}()
-	if err := s.HandleSecret(srv); err == nil {
+	if err := s.HandleSecret(srv, legacy.SecretWire); err == nil {
 		t.Fatal("link to a denied destination was served")
 	}
 	select {

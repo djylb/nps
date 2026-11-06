@@ -271,6 +271,7 @@ func (s *Bridge) newRoutes(clientId int) *file.RouteSet {
 func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, caps legacy.Caps) (*file.Host, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
+	s.cancelClose(client.Id)
 	hh, ok := client.HasHost(h)
 	if !ok {
 		if file.GetDb().IsHostExist(h) {
@@ -299,6 +300,7 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, cap
 func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, caps legacy.Caps) (*file.Tunnel, bool, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
+	s.cancelClose(client.Id)
 	tt, ok := client.HasTunnel(tl)
 	if !ok {
 		if b := tool.TestTunnelPort(tl); !b && tl.Mode != "secret" && tl.Mode != "p2p" && tl.Port > 0 {

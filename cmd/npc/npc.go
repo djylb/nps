@@ -22,7 +22,6 @@ import (
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
 )
@@ -135,7 +134,7 @@ func main() {
 	if *keepAlive > 0 {
 		interval := time.Duration(*keepAlive) * time.Second
 		client.QuicConfig.KeepAlivePeriod = interval
-		mux.PingInterval = interval
+		legacy.SetPingInterval(interval)
 	}
 
 	// Init

@@ -20,7 +20,9 @@ type testUDP5Bridge struct {
 	peers chan net.Conn
 }
 
-func (b *testUDP5Bridge) SendLinkInfo(int, *conn.Link, *file.Tunnel) (net.Conn, error) {
+func (b *testUDP5Bridge) Session(int) conn.ClientSession { return b }
+
+func (b *testUDP5Bridge) OpenLink(*conn.Link, int) (net.Conn, error) {
 	serverSide, peerSide := net.Pipe()
 	b.peers <- peerSide
 	return serverSide, nil
@@ -34,7 +36,9 @@ func (b *testUDP5Bridge) CliProcess(*conn.Conn, string) {}
 
 type failBridge struct{}
 
-func (failBridge) SendLinkInfo(int, *conn.Link, *file.Tunnel) (net.Conn, error) {
+func (b failBridge) Session(int) conn.ClientSession { return b }
+
+func (failBridge) OpenLink(*conn.Link, int) (net.Conn, error) {
 	return nil, io.EOF
 }
 

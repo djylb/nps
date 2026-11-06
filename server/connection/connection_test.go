@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/tunnelwire/mux"
 )
 
 func writeTestConfig(t *testing.T, content string) string {
@@ -93,7 +93,7 @@ mux_ping_interval = 8
 	if QuicKeepAliveSec != 12 || QuicIdleTimeoutSec != 34 || QuicMaxStreams != 999 {
 		t.Fatalf("quic values not loaded correctly")
 	}
-	if MuxPingIntervalSec != 8 || mux.PingInterval != 8*time.Second {
+	if MuxPingIntervalSec != 8 || legacy.PingInterval() != 8*time.Second {
 		t.Fatalf("mux ping interval not loaded correctly")
 	}
 }

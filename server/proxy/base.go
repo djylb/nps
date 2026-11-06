@@ -33,7 +33,8 @@ type Binder interface {
 }
 
 type NetBridge interface {
-	SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error)
+	// Session returns the way to open links to client clientId.
+	Session(clientId int) conn.ClientSession
 	IsServer() bool
 	CliProcess(c *conn.Conn, tunnelType string)
 }
@@ -196,7 +197,11 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
 	link.Option.Node = node
-	target, err := s.Bridge.SendLinkInfo(client.Id, link, task)
+	taskID := 0
+	if task != nil {
+		taskID = task.Id
+	}
+	target, err := s.Bridge.Session(client.Id).OpenLink(link, taskID)
 	if err != nil {
 		logs.Warn("get connection from client Id %d  error %v", client.Id, err)
 		return nil, nil, isLocal, err

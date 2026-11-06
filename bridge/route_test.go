@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"context"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/tunnelwire/mux"
 )
 
 // routeNode is one connected npc instance: its mux stream carries the links
@@ -27,15 +27,15 @@ func joinRouteNode(t *testing.T, b *Bridge, clientId int, uuid string) *routeNod
 	t.Helper()
 	bridgeSide, npcSide := net.Pipe()
 	signal, signalPeer := net.Pipe()
-	serverMux := mux.NewMux(bridgeSide, "tcp", 30, true)
-	npcMux := mux.NewMux(npcSide, "tcp", 30, false)
+	serverMux := legacy.NewMuxCarrier(bridgeSide, "tcp", 30, true)
+	npcMux := legacy.NewMuxCarrier(npcSide, "tcp", 30, false)
 	n := &routeNode{links: make(chan string, 16)}
 	_, n.node = b.joinNode(clientId, uuid, NewNode(uuid, "", legacy.LatestIndex), func(*Node) {})
 	n.node.AddSignal(conn.NewConn(signal))
 	n.node.AddTunnel(serverMux)
 	go func() {
 		for {
-			c, err := npcMux.Accept()
+			c, err := npcMux.AcceptStream(context.Background())
 			if err != nil {
 				return
 			}
@@ -73,7 +73,7 @@ func publish(t *testing.T, b *Bridge, client *file.Client, uuid string, ver int,
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	for _, m := range msgs {
-		if _, err := 0, legacy.WriteSignal(c, m, flag); err != nil {
+		if err := legacy.WriteSignal(c, m, flag); err != nil {
 			t.Fatal(err)
 		}
 		if ok, err := legacy.ReadStatus(c); !ok || err != nil {
@@ -111,7 +111,7 @@ func openRoute(b *Bridge, clientId int, r file.Route) error {
 	return r.Target.Dial(func(addr string) (bool, error) {
 		link := conn.NewLink(common.ConnTCP, addr, false, false, "", false)
 		link.Option.Node = r.Node
-		c, err := b.SendLinkInfo(clientId, link, nil)
+		c, err := b.Session(clientId).OpenLink(link, 0)
 		if err == nil {
 			_ = c.Close()
 		}
@@ -255,10 +255,47 @@ func TestDeadRouteNodeDoesNotCloseTheClient(t *testing.T) {
 	joinRouteNode(t, b, client.Id, "a")
 	link := conn.NewLink(common.ConnTCP, "h", false, false, "", false)
 	link.Option.Node = "gone"
-	if _, err := b.SendLinkInfo(client.Id, link, nil); err == nil {
+	if _, err := b.Session(client.Id).OpenLink(link, 0); err == nil {
 		t.Fatal("a link through a missing node succeeded")
 	}
 	if _, ok := b.Client.Load(client.Id); !ok {
 		t.Fatal("the client was closed")
+	}
+}
+
+// A close signal handled after the client came back leaves its entries alone.
+func TestCloseSignalSparesAReturningClient(t *testing.T) {
+	b, client := routeFixture(t)
+	const ver = legacy.LatestIndex
+	cleanups := 0
+	cleanup := func() { cleanups++ }
+
+	// Gone, and still gone when the signal is handled.
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n1", "", ver)))
+	b.DelClient(client.Id)
+	<-b.CloseClient
+	if !b.CloseIfDisconnected(client.Id, cleanup) || cleanups != 1 {
+		t.Fatalf("a client that stayed gone was not cleaned up: %d", cleanups)
+	}
+
+	// Reconnected before the signal is handled.
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n2", "", ver)))
+	b.DelClient(client.Id)
+	<-b.CloseClient
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n3", "", ver)))
+	if b.CloseIfDisconnected(client.Id, cleanup) || cleanups != 1 {
+		t.Fatal("a reconnected client was cleaned up")
+	}
+	b.DelClient(client.Id)
+	<-b.CloseClient
+
+	// Published without a session yet, as clients before NodeID do.
+	publish(t, b, client, "config-conn", 5, legacy.FlagNewTask, &file.Tunnel{
+		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "again", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	})
+	<-b.OpenTask
+	b.Client.Delete(client.Id)
+	if b.CloseIfDisconnected(client.Id, cleanup) || cleanups != 1 {
+		t.Fatal("entries published after the client left were cleaned up")
 	}
 }

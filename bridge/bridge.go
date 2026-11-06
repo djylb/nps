@@ -59,6 +59,8 @@ type Bridge struct {
 	runList            *sync.Map //map[int]interface{}
 	disconnectTime     int
 	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
+	closingMu          sync.Mutex                 // guards closing
+	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 }
 
@@ -72,6 +74,7 @@ func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 		SecretChan:     make(chan *conn.Secret, 100),
 		runList:        runList,
 		disconnectTime: disconnectTime,
+		closing:        make(map[int]struct{}),
 	}
 }
 
@@ -92,6 +95,9 @@ func (s *Bridge) DelClient(id int) {
 			return
 		}
 		if c, err := file.GetDb().GetClient(id); err == nil {
+			s.closingMu.Lock()
+			s.closing[id] = struct{}{}
+			s.closingMu.Unlock()
 			select {
 			case s.CloseClient <- c.Id:
 			default:
@@ -99,6 +105,40 @@ func (s *Bridge) DelClient(id int) {
 			}
 		}
 	}
+}
+
+// Connected reports whether client id has a session.
+func (s *Bridge) Connected(id int) bool {
+	_, ok := s.Client.Load(id)
+	return ok
+}
+
+// CloseIfDisconnected runs cleanup, which removes what client id published,
+// unless the client came back. A close signal is handled after the client
+// left; by then it may have reconnected and published its entries again, which
+// must stay. Publishing waits for cleanup, so entries published after the check
+// are not removed either.
+func (s *Bridge) CloseIfDisconnected(id int, cleanup func()) bool {
+	s.routeMu.Lock()
+	defer s.routeMu.Unlock()
+	s.closingMu.Lock()
+	_, pending := s.closing[id]
+	delete(s.closing, id)
+	s.closingMu.Unlock()
+	if !pending || s.Connected(id) {
+		return false
+	}
+	cleanup()
+	return true
+}
+
+// cancelClose keeps a pending close signal of client id from removing what it
+// publishes now: clients that publish before they connect their tunnel are not
+// connected yet.
+func (s *Bridge) cancelClose(id int) {
+	s.closingMu.Lock()
+	delete(s.closing, id)
+	s.closingMu.Unlock()
 }
 
 func (s *Bridge) IsServer() bool {

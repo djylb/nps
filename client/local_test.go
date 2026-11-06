@@ -16,7 +16,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
 
@@ -44,11 +43,11 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 		t.Fatal(err)
 	}
 	relay := &fakeRelay{}
-	server := mux.NewMux(serverSide, "tcp", 30, false)
+	server := legacy.NewMuxCarrier(serverSide, "tcp", 30, false)
 	t.Cleanup(func() { _ = server.Close() })
 	go func() {
 		for {
-			mc, err := server.Accept()
+			mc, err := server.AcceptStream(context.Background())
 			if err != nil {
 				return
 			}
@@ -79,7 +78,7 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 		pCancel:    cancel,
 		cfg:        &config.CommonConfig{Client: &file.Client{Cnf: &file.Config{}}},
 		peers:      make(map[string]*p2pPeer),
-		secretConn: mux.NewMux(clientSide, "tcp", 30, true),
+		secretConn: legacy.NewMuxCarrier(clientSide, "tcp", 30, true),
 	}
 	t.Cleanup(mgr.Close)
 	return mgr, relay
@@ -182,12 +181,12 @@ func TestP2pBridgeWaitsForDirectPathWithoutRelay(t *testing.T) {
 	mgr, _ := newTestManager(t, echoLink)
 	b := &P2pBridge{mgr: mgr, peer: newP2PPeer(mgr, "pw", "test"), timeout: 80 * time.Millisecond}
 	start := time.Now()
-	_, err := b.SendLinkInfo(0, &conn.Link{}, nil)
+	_, err := b.OpenLink(&conn.Link{}, 0)
 	if err == nil || !strings.Contains(err.Error(), "timeout waiting for the P2P direct path") {
-		t.Fatalf("SendLinkInfo() error = %v, want direct path timeout", err)
+		t.Fatalf("OpenLink() error = %v, want direct path timeout", err)
 	}
 	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
-		t.Fatalf("SendLinkInfo() returned after %s, before the bridge timeout", elapsed)
+		t.Fatalf("OpenLink() returned after %s, before the bridge timeout", elapsed)
 	}
 }
 
@@ -219,9 +218,9 @@ func TestP2PPeerDropsDeadDirectPathAndRelays(t *testing.T) {
 	}
 
 	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
-	c, err := b.SendLinkInfo(0, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), nil)
+	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
 	if err != nil {
-		t.Fatalf("SendLinkInfo() = %v, want relayed connection", err)
+		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
 	defer func() { _ = c.Close() }()
 	assertEcho(t, c, "relayed")
@@ -249,9 +248,9 @@ func TestP2pBridgeRelaysWhenDirectStreamCannotOpen(t *testing.T) {
 
 	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
 	start := time.Now()
-	c, err := b.SendLinkInfo(0, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), nil)
+	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
 	if err != nil {
-		t.Fatalf("SendLinkInfo() = %v, want relayed connection", err)
+		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
 	defer func() { _ = c.Close() }()
 	if elapsed := time.Since(start); elapsed > p2pOpenStreamTimeout+time.Second {
@@ -297,7 +296,7 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
 
 	// A recent answer: the connection goes direct without asking.
-	c, err := b.SendLinkInfo(0, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), nil)
+	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,9 +307,9 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 
 	cut.drop.Store(true)
 	tr.lastHeard.Store(time.Now().Add(-2 * p2pIdleProbeAfter).UnixNano())
-	c, err = b.SendLinkInfo(0, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), nil)
+	c, err = b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
 	if err != nil {
-		t.Fatalf("SendLinkInfo() = %v, want relayed connection", err)
+		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
 	defer func() { _ = c.Close() }()
 	assertEcho(t, c, "relayed")
