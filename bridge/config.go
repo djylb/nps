@@ -293,6 +293,7 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, cap
 		hh.Routes.Publish(uuid, h.Target)
 	}
 	hh.Update(h)
+	file.GetDb().HostChanged(hh)
 	return hh, nil
 }
 

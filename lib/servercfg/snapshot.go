@@ -15,6 +15,7 @@ type Snapshot struct {
 	Feature  FeatureConfig
 	Security SecurityConfig
 	Runtime  RuntimeConfig
+	Webhook  WebhookConfig
 	Network  NetworkConfig
 	Bridge   BridgeConfig
 	Proxy    ProxyConfig
@@ -128,6 +129,17 @@ type RuntimeConfig struct {
 	VisitorVKey        string
 	DisconnectTimeout  int
 	FlowStoreInterval  int
+}
+
+// WebhookConfig configures the webhook; an empty URL turns it off.
+type WebhookConfig struct {
+	URL            string
+	Secret         string
+	TimeoutSeconds int
+	Retries        int
+	QueueSize      int
+	// ReportInterval is the seconds between full reports; 0 turns them off.
+	ReportInterval int
 }
 
 type NetworkConfig struct {
@@ -367,6 +379,21 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		VisitorVKey:        r.stringValue("visitor_vkey"),
 		DisconnectTimeout:  r.intDefault(30, "disconnect_timeout"),
 		FlowStoreInterval:  r.intDefault(0, "flow_store_interval"),
+	}
+
+	cfg.Webhook = WebhookConfig{
+		URL:            r.stringValue("webhook_url"),
+		Secret:         r.stringValue("webhook_secret"),
+		TimeoutSeconds: r.intDefault(5, "webhook_timeout"),
+		Retries:        max(r.intDefault(3, "webhook_retries"), 0),
+		QueueSize:      r.intDefault(1024, "webhook_queue_size"),
+		ReportInterval: max(r.intDefault(60, "webhook_report_interval"), 0),
+	}
+	if cfg.Webhook.TimeoutSeconds <= 0 {
+		cfg.Webhook.TimeoutSeconds = 5
+	}
+	if cfg.Webhook.QueueSize <= 0 {
+		cfg.Webhook.QueueSize = 1024
 	}
 
 	if cfg.Runtime.ClientHistoryLimit < 0 {

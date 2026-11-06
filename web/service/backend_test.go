@@ -76,12 +76,15 @@ func (stubRepository) CreateHost(*file.Host) error         { return nil }
 func (stubRepository) GetHost(int) (*file.Host, error)     { return nil, nil }
 func (stubRepository) SaveHost(*file.Host, string) error   { return nil }
 func (stubRepository) PersistHosts() error                 { return nil }
-func (stubRepository) DeleteHostRecord(int) error          { return nil }
-func (stubRepository) HostExists(*file.Host) bool          { return false }
-func (stubRepository) GetGlobal() *file.Glob               { return nil }
-func (stubRepository) SaveGlobal(*file.Glob) error         { return nil }
-func (stubRepository) ClientOwnsTunnel(int, int) bool      { return false }
-func (stubRepository) ClientOwnsHost(int, int) bool        { return false }
+func (stubRepository) FindReusableCert(string, int, int) (*file.Host, error) {
+	return nil, nil
+}
+func (stubRepository) DeleteHostRecord(int) error     { return nil }
+func (stubRepository) HostExists(*file.Host) bool     { return false }
+func (stubRepository) GetGlobal() *file.Glob          { return nil }
+func (stubRepository) SaveGlobal(*file.Glob) error    { return nil }
+func (stubRepository) ClientOwnsTunnel(int, int) bool { return false }
+func (stubRepository) ClientOwnsHost(int, int) bool   { return false }
 
 type stubRuntime struct {
 	dashboardData func(bool) map[string]interface{}
@@ -101,6 +104,7 @@ func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*file.C
 }
 func (stubRuntime) PingClient(int, string) int           { return 0 }
 func (stubRuntime) DisconnectClient(int)                 {}
+func (stubRuntime) ClientConnected(int) bool             { return false }
 func (stubRuntime) RequestClientUpdate(int) (int, error) { return 0, nil }
 func (stubRuntime) DeleteClientResources(int)            {}
 func (s stubRuntime) GenerateTunnelPort(tunnel *file.Tunnel) int {

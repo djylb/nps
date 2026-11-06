@@ -46,6 +46,7 @@ type virtualClientRuntime struct {
 }
 
 func (r *virtualClientRuntime) RequestClientUpdate(int) (int, error) { r.updateCalls++; return 1, nil }
+func (r *virtualClientRuntime) ClientConnected(int) bool             { return false }
 func (r *virtualClientRuntime) DisconnectClient(id int)              { r.disconnected = append(r.disconnected, id) }
 
 func TestVirtualClientManagementAndRemoteGuards(t *testing.T) {

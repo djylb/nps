@@ -170,6 +170,27 @@ nps.exe -conf_path=D:\test\nps
 
 ---
 
+## Webhook
+
+默认关闭。设置 `webhook_url` 后，客户端上下线、隧道和域名的变更以 JSON POST 发送；修改后 reload 即生效。
+
+| 名称                        | 含义                                         |
+|---------------------------|--------------------------------------------|
+| `webhook_url`             | 接收地址，留空关闭                                  |
+| `webhook_secret`          | HMAC-SHA256 签名密钥，留空则不签名                    |
+| `webhook_timeout`         | 单次请求超时（秒，默认 `5`）                           |
+| `webhook_retries`         | 失败重试次数（默认 `3`，间隔从 1 秒起翻倍，最长 30 秒）          |
+| `webhook_queue_size`      | 待发送队列长度（默认 `1024`），队列满时丢弃新事件并记录日志          |
+| `webhook_report_interval` | 全量上报间隔（秒，默认 `60`，`0` 关闭）                   |
+
+请求体为 `{"id","type","time","data"}`。`id` 在重试时不变，接收方据此去重；投递按顺序、至少一次，事件不落盘，重启或 reload 时未发出的事件会丢失，可用全量上报对账。2xx 为成功；除 408、429 外的 4xx 不重试。
+
+`X-NPS-Signature` 为 `sha256=` 加 `HMAC-SHA256(secret, "<X-NPS-Timestamp>.<请求体>")` 的十六进制。另有 `X-NPS-Event-Id`、`X-NPS-Event-Type`。
+
+事件类型：`client.online`、`client.offline`；`tunnel.`、`host.` 加 `created`、`updated`、`started`、`stopped`、`deleted`；全量上报 `tunnels.report`。Web 上保存隧道会重启它，因此依次收到 `updated`、`stopped`、`started`。事件不含密钥、密码和证书。
+
+---
+
 ## 8. 反向代理与安全
 | 名称                       | 说明                                 |
 |--------------------------|------------------------------------|

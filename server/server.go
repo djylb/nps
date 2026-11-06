@@ -174,6 +174,7 @@ func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
 		}
 	}()
 	go DealBridgeTask()
+	ApplyWebhook(cfg.Webhook)
 	go dealClientFlow()
 	if minute := cfg.Runtime.FlowStoreInterval; minute > 0 {
 		go flowSession(time.Minute * time.Duration(minute))

@@ -18,6 +18,7 @@ import (
 
 type DbUtils struct {
 	JsonDb *JsonDb
+	events entryEvents
 }
 
 var (
@@ -184,6 +185,7 @@ func (s *DbUtils) NewTask(t *Tunnel) error {
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
+	s.tunnelCreated(t)
 	return nil
 }
 
@@ -205,6 +207,7 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
+	s.tunnelSaved(t)
 	return nil
 }
 
@@ -322,8 +325,11 @@ func (s *DbUtils) DelTask(id int) error {
 	taskPasswordLock.Lock()
 	releaseTaskPasswordLocked(id)
 	taskPasswordLock.Unlock()
-	s.JsonDb.Tasks.Delete(id)
+	v, existed := s.JsonDb.Tasks.LoadAndDelete(id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
+	if existed {
+		s.tunnelDeleted(v.(*Tunnel))
+	}
 	return nil
 }
 
@@ -360,12 +366,14 @@ func (s *DbUtils) GetTask(id int) (t *Tunnel, err error) {
 }
 
 func (s *DbUtils) DelHost(id int) error {
-	if v, ok := s.JsonDb.Hosts.Load(id); ok {
-		h := v.(*Host)
-		HostIndex.Remove(h.Host, id)
+	v, existed := s.JsonDb.Hosts.LoadAndDelete(id)
+	if existed {
+		HostIndex.Remove(v.(*Host).Host, id)
 	}
-	s.JsonDb.Hosts.Delete(id)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
+	if existed {
+		s.hostDeleted(v.(*Host))
+	}
 	return nil
 }
 
@@ -428,7 +436,19 @@ func (s *DbUtils) NewHost(t *Host) error {
 	t.CompileSourceLists(acl.ScopeUser, hostOwner(t))
 	s.JsonDb.Hosts.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
+	s.hostCreated(t)
 	return nil
+}
+
+// SaveHost stores the entry h, edited in place, which was named oldHost before.
+func (s *DbUtils) SaveHost(h *Host, oldHost string) error {
+	if oldHost != "" && oldHost != h.Host {
+		HostIndex.Remove(oldHost, h.Id)
+		HostIndex.Add(h.Host, h.Id)
+	}
+	err := s.JsonDb.StoreHostToJsonFile()
+	s.HostChanged(h)
+	return err
 }
 
 func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, int) {
@@ -702,6 +722,19 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 // shortest location, then the lowest id, so the choice never depends on map
 // order. Names compare case-insensitively, ignoring a trailing dot.
 func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
+	return s.findCertHost(host, nil)
+}
+
+// FindReusableCert returns the entry whose certificate FindCertByHost would
+// choose for the server name host among those with certificate files, leaving
+// out the entry excludeID and, unless clientID is 0, entries of other clients.
+func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*Host, error) {
+	return s.findCertHost(host, func(v *Host) bool {
+		return v.HasCert() && v.Id != excludeID && (clientID == 0 || (v.Client != nil && v.Client.Id == clientID))
+	})
+}
+
+func (s *DbUtils) findCertHost(host string, accept func(*Host) bool) (*Host, error) {
 	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
 	if host == "" {
 		return nil, errors.New("invalid Host")
@@ -715,7 +748,7 @@ func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
 			continue
 		}
 		v := value.(*Host)
-		if v.IsClose || v.Scheme == "http" {
+		if v.IsClose || v.Scheme == "http" || (accept != nil && !accept(v)) {
 			continue
 		}
 		rank, ok := rankCertHost(v, host)

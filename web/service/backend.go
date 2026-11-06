@@ -35,6 +35,7 @@ type Repository interface {
 	CreateHost(*file.Host) error
 	GetHost(int) (*file.Host, error)
 	SaveHost(*file.Host, string) error
+	FindReusableCert(host string, excludeID, clientID int) (*file.Host, error)
 	PersistHosts() error
 	DeleteHostRecord(int) error
 	HostExists(*file.Host) bool
@@ -49,6 +50,7 @@ type Runtime interface {
 	ListClients(offset, limit int, search, sort, order string, clientID int) ([]*file.Client, int)
 	PingClient(int, string) int
 	DisconnectClient(int)
+	ClientConnected(int) bool
 	RequestClientUpdate(int) (int, error)
 	DeleteClientResources(int)
 	GenerateTunnelPort(*file.Tunnel) int
@@ -236,11 +238,11 @@ func (defaultRepository) GetHost(id int) (*file.Host, error) {
 }
 
 func (defaultRepository) SaveHost(host *file.Host, oldHost string) error {
-	if oldHost != "" && oldHost != host.Host {
-		file.HostIndex.Remove(oldHost, host.Id)
-		file.HostIndex.Add(host.Host, host.Id)
-	}
-	return file.GetDb().JsonDb.StoreHostToJsonFile()
+	return file.GetDb().SaveHost(host, oldHost)
+}
+
+func (defaultRepository) FindReusableCert(host string, excludeID, clientID int) (*file.Host, error) {
+	return file.GetDb().FindReusableCert(host, excludeID, clientID)
 }
 
 func (defaultRepository) PersistHosts() error {
@@ -297,6 +299,10 @@ func (defaultRuntime) PingClient(id int, remoteAddr string) int {
 
 func (defaultRuntime) DisconnectClient(id int) {
 	server.DelClientConnect(id)
+}
+
+func (defaultRuntime) ClientConnected(id int) bool {
+	return server.Bridge != nil && server.Bridge.Connected(id)
 }
 
 func (defaultRuntime) RequestClientUpdate(id int) (int, error) {

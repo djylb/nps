@@ -65,6 +65,12 @@ type Bridge struct {
 }
 
 func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
+	b := newBridge(runList, disconnectTime)
+	file.SetEntriesChanged(b.kickHealth)
+	return b
+}
+
+func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	return &Bridge{
 		Client:         &sync.Map{},
 		OpenHost:       make(chan *file.Host, 100),
@@ -148,9 +154,12 @@ func (s *Bridge) IsServer() bool {
 // Registry mutations and their history events share a lock so rapid reconnects
 // cannot publish an offline event after a newer connection has arrived.
 func (s *Bridge) recordConnection(id int, online bool) {
-	if c, err := file.GetDb().GetClient(id); err == nil {
+	db := file.GetDb()
+	c, err := db.GetClient(id)
+	if err == nil {
 		c.RecordConnection(online, time.Now())
 	}
+	db.ClientPresence(id, c, online)
 }
 
 func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {

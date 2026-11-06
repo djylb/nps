@@ -275,6 +275,7 @@ func reloadConfig() {
 	logs.SetLevel(cfg.Log.Level)
 	applyNtp(cfg)
 	tool.StartSystemInfo()
+	server.ApplyWebhook(cfg.Webhook)
 	handler, err := routers.Init()
 	if err != nil {
 		logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
