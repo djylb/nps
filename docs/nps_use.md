@@ -37,15 +37,14 @@
   - `web_password`
   - **未来将支持更多参数**
 
-### **Linux/macOS**
+向运行中的 `nps` 进程发送 `SIGUSR1` 信号即可重载：
+
 ```bash
-sudo nps reload
+sudo systemctl kill -s USR1 Nps  # systemd 服务，服务名以实际安装为准
+sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 ```
 
-### **Windows**
-```powershell
-nps.exe reload
-```
+Windows 没有重载信号，修改配置后需要重启服务。
 
 ---
 

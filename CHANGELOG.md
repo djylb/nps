@@ -14,7 +14,7 @@
 - 新增 `login_acl_mode`、`login_acl_rules` 限制登录和注册的来源
 - 重载配置时提示需要重启才生效的变更
 - HTTP/3 关闭时等待 QUIC 连接处理结束
-- 修复 `nps reload` 在 Linux 上发送错误信号；重载时应用日志级别、NTP 和 Web 管理界面设置，其余变更提示需要重启
+- 移除 `nps reload` 命令，改为向 nps 进程发送 `SIGUSR1` 重载（`kill -USR1` 或服务管理器），Windows 需重启；重载时应用日志级别、NTP 和 Web 管理界面设置，其余变更提示需要重启
 - 修复运行时 `SetLevel` 不影响证书等组件日志级别
 - 带 PROXY 头的域名后端连接不再复用，避免后续访问者地址错误
 - HTTP/HTTPS/HTTP3 监听失败时不再退出整个 nps，只记录错误

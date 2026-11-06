@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -40,38 +39,7 @@ func InitDaemon(f string, runPath string, pidPath string) {
 			log.Printf("%s is not running", f)
 		}
 		os.Exit(0)
-	case "reload":
-		reload(f, pidPath)
-		os.Exit(0)
 	}
-}
-
-func reload(f string, pidPath string) {
-	if f == "nps" && !common.IsWindows() && !status(f, pidPath) {
-		log.Println("reload fail")
-		return
-	}
-	pid, err := readPID(filepath.Join(pidPath, f+".pid"))
-	if err != nil {
-		log.Fatalln("reload error,pid file does not exist")
-	}
-	if signalReload(pid) == nil {
-		log.Println("reload success")
-	} else {
-		log.Println("reload fail")
-	}
-}
-
-func readPID(path string) (int, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	if err != nil || pid <= 0 {
-		return 0, fmt.Errorf("invalid pid in %s", path)
-	}
-	return pid, nil
 }
 
 func status(f string, pidPath string) bool {

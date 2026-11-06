@@ -18,7 +18,3 @@ func WatchReload(fn func()) {
 		}
 	}()
 }
-
-func signalReload(pid int) error {
-	return syscall.Kill(pid, syscall.SIGUSR1)
-}

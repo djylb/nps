@@ -196,9 +196,6 @@ func main() {
 
 	if cmd != "" && cmd != "service" {
 		switch cmd {
-		case "reload":
-			daemon.InitDaemon("nps", common.GetRunPath(), common.GetTmpPath())
-			return
 		case "install":
 			// uninstall before
 			_ = service.Control(s, "stop")
