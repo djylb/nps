@@ -633,6 +633,8 @@ func (t *Tunnel) Clone() *Tunnel {
 func (t *Tunnel) Update(other *Tunnel) {
 	t.SetMaxConn(other.MaxConn)
 	t.SetRateLimits(other.UploadLimit, other.DownloadLimit)
+	t.Lock()
+	defer t.Unlock()
 	t.ServerIp = other.ServerIp
 	t.Mode = other.Mode
 	t.Password = other.Password
@@ -649,6 +651,17 @@ func (t *Tunnel) Update(other *Tunnel) {
 	t.ReadOnly = other.ReadOnly
 	t.Target = other.Target
 	t.MultiAccount = other.MultiAccount
+}
+
+// adoptFlow keeps counting on the flow of previous, which active connections
+// add to, with the limits of t.
+func (t *Tunnel) adoptFlow(previous *Tunnel) {
+	if t.Flow == nil || previous.Flow == nil || t.Flow == previous.Flow {
+		return
+	}
+	v := t.Flow.Values()
+	previous.Flow.SetLimits(v.FlowLimit, v.TimeLimit)
+	t.Flow = previous.Flow
 }
 
 // ControlGroup is a tunnel's leaf under its client, shared across accepted edits.
@@ -730,6 +743,8 @@ func (s *Host) HasCert() bool {
 func (s *Host) Update(h *Host) {
 	s.SetMaxConn(h.MaxConn)
 	s.SetRateLimits(h.UploadLimit, h.DownloadLimit)
+	s.Lock()
+	defer s.Unlock()
 	s.HeaderChange = h.HeaderChange
 	s.RespHeaderChange = h.RespHeaderChange
 	s.HostChange = h.HostChange

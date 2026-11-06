@@ -137,3 +137,16 @@ func TestStoreToJsonFileReportsErrorAndReleasesLock(t *testing.T) {
 		t.Fatalf("expected temporary file to be removed, got %v", err)
 	}
 }
+
+func TestCorruptJSONIsKeptAsBad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	content := []byte(`[{"Id":1,`)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadSyncMapFromFile(path, Tunnel{}, func(interface{}) {})
+	got, err := os.ReadFile(path + ".bad")
+	if err != nil || string(got) != string(content) {
+		t.Fatalf("backup = %q, %v", got, err)
+	}
+}

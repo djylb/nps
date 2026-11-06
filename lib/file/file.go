@@ -2,6 +2,7 @@ package file
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -161,7 +162,15 @@ func (s *JsonDb) LoadGlobalFromJsonFile() {
 	loadSyncMapFromFileWithSingleJson(s.GlobalFilePath, func(v string) {
 		post := new(Glob)
 		// "null", as older versions stored empty settings, leaves post nil
-		if json.Unmarshal([]byte(v), &post) != nil || post == nil {
+		if strings.TrimSpace(v) == "" {
+			return
+		}
+		if err := json.Unmarshal([]byte(v), &post); err != nil {
+			logs.Warn("Load json file %s error: %v", s.GlobalFilePath, err)
+			backupUnreadable(s.GlobalFilePath, []byte(v))
+			return
+		}
+		if post == nil {
 			return
 		}
 		post.CompileSourceLists(acl.ScopeGlobal, "the global settings")
@@ -252,10 +261,24 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 
 	if err != nil {
 		logs.Warn("Load json file %s error: %v", filePath, err)
+		backupUnreadable(filePath, b)
 		logs.Info("Load %s as obsolete json file", filePath)
 		// 加载新json报错，则加载旧json
 		loadObsoleteJsonFile(b, t, f)
 	}
+}
+
+// backupUnreadable keeps the content of a file that failed to parse as
+// filePath.bad, as the next save overwrites the file with what could be read.
+func backupUnreadable(filePath string, content []byte) {
+	if len(bytes.TrimSpace(content)) == 0 {
+		return
+	}
+	if err := os.WriteFile(filePath+".bad", content, 0o600); err != nil {
+		logs.Warn("Back up %s error: %v", filePath, err)
+		return
+	}
+	logs.Warn("The content of %s was kept as %s.bad", filePath, filePath)
 }
 
 func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
@@ -474,5 +497,20 @@ func writeFileAtomic(filePath string, write func(w *bufio.Writer) error) (err er
 	if err = file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpFilePath, filePath)
+	if err = os.Rename(tmpFilePath, filePath); err != nil {
+		return err
+	}
+	syncDir(filepath.Dir(filePath))
+	return nil
+}
+
+// syncDir makes a rename in dir durable where the system supports it, which
+// Windows does not; the data itself is already on disk.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = d.Close() }()
+	_ = d.Sync()
 }

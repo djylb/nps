@@ -3,6 +3,8 @@ package file
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -431,4 +433,50 @@ func TestClientFlowTotalsRaceFree(t *testing.T) {
 	if err := json.Unmarshal(b, &back); err != nil || back.InletFlow.Load() != 999 {
 		t.Fatalf("unmarshal inlet = %d, %v", back.InletFlow.Load(), err)
 	}
+}
+
+func TestUpdateRacesWithClone(t *testing.T) {
+	task := &Tunnel{Flow: &Flow{}, Target: &Target{}, MultiAccount: &MultiAccount{}, Client: &Client{Id: 1}}
+	other := &Tunnel{Remark: "x", Target: &Target{}, MultiAccount: &MultiAccount{}}
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 100 {
+			task.Update(other)
+		}
+	})
+	wg.Go(func() {
+		for range 100 {
+			_ = task.Clone()
+		}
+	})
+	wg.Wait()
+}
+
+func TestUpdateTaskKeepsFlowOfActiveConnections(t *testing.T) {
+	useFlowTestDb(t)
+	stored := &Tunnel{Id: 5, Mode: "tcp", Flow: &Flow{}, Target: &Target{}, Client: &Client{Id: 1, Cnf: &Config{}, Flow: &Flow{}}}
+	GetDb().JsonDb.Tasks.Store(stored.Id, stored)
+	active := stored.Flow
+	edited := stored.Clone()
+	edited.Flow.SetFlowLimit(7)
+	if err := GetDb().UpdateTask(edited); err != nil {
+		t.Fatal(err)
+	}
+	if edited.Flow != active {
+		t.Fatal("the edited task counts on another flow than its active connections")
+	}
+	if active.Values().FlowLimit != 7 {
+		t.Fatalf("flow limit = %d", active.Values().FlowLimit)
+	}
+}
+
+func useFlowTestDb(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := Db
+	Db = &DbUtils{JsonDb: NewJsonDb(root)}
+	t.Cleanup(func() { Db = old })
 }

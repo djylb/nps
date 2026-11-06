@@ -199,6 +199,7 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 		if previous, ok := old.(*Tunnel); ok && previous != nil && previous != t {
 			t.RateLimits.adopt(&previous.RateLimits)
 			t.ControlGroup()
+			t.adoptFlow(previous)
 		}
 	}
 	normalizeTask(t)
