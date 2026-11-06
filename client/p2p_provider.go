@@ -9,7 +9,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
@@ -18,20 +17,20 @@ import (
 // new stream of the tunnel, punches, accepts the visitor's QUIC connection
 // and serves its streams like the tunnel's until the connection ends or the
 // client closes.
-func (s *TRPClient) serveP2P(tunnel any, invite p2pproto.Invite) {
+func (s *TRPClient) serveP2P(tunnel any, invite legacy.P2PInvite) {
 	stream, err := s.openTunnelStream(tunnel)
 	if err != nil {
 		logs.Warn("P2P session %s: cannot open a stream to the server: %v", invite.SessionID, err)
 		return
 	}
-	join := p2pproto.Join{SessionID: invite.SessionID, Token: invite.Token, ServerIP: s.server.ip}
+	join := legacy.P2PJoin{SessionID: invite.SessionID, Token: invite.Token, ServerIP: s.server.ip}
 	if DisableP2P {
 		logs.Info("P2P session %s declined: P2P is disabled on this client", invite.SessionID)
 		join.Decline = "P2P is disabled on the provider"
 		c := conn.NewConn(stream)
 		if err := SendType(c, legacy.WorkP2PSession, s.uuid); err == nil {
 			_ = c.SetWriteDeadline(time.Now().Add(p2pControlTimeout))
-			_ = p2pproto.Write(c, join)
+			_ = legacy.WriteP2P(c, join)
 			_ = c.Close()
 		}
 		return

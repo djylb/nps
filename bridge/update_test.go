@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 )
 
@@ -45,9 +44,9 @@ func TestRequestClientUpdate(t *testing.T) {
 	got := make(chan string, 1)
 	go func() {
 		_ = peer.SetReadDeadline(time.Now().Add(5 * time.Second))
-		flag, err := peer.ReadFlag()
+		flag, err := legacy.ReadFlag(peer)
 		if err == nil {
-			_, err = peer.GetShortLenContent()
+			_, err = legacy.ReadFrame(peer)
 		}
 		if err != nil {
 			flag = err.Error()
@@ -58,7 +57,7 @@ func TestRequestClientUpdate(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("RequestClientUpdate = %d, %v; want 1 npc asked", n, err)
 	}
-	if flag := <-got; flag != common.UpdateRequest {
+	if flag := <-got; flag != legacy.UpdateRequest {
 		t.Fatalf("npc read %q, want the update request", flag)
 	}
 }

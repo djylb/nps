@@ -67,7 +67,7 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 	if _, err := c.BufferWrite([]byte(legacy.WorkStatus)); err != nil {
 		log.Fatalf("Failed to write WorkStatus: %v", err)
 	}
-	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
+	if _, err := c.Write([]byte(legacy.KeyDigest(vKey))); err != nil {
 		log.Fatalf("Failed to write auth key: %v", err)
 	}
 	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
@@ -75,19 +75,9 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
 		log.Fatalf("Failed to read status: %v", err)
 	}
-	length, err := c.GetLen()
-	//log.Println(length)
+	parts, err := legacy.ReadStatusList(c)
 	if err != nil {
-		log.Fatalf("Failed to read length: %v", err)
-	}
-	data, err := c.GetShortContent(length)
-	//log.Println(string(data))
-	if err != nil {
-		log.Fatalf("Failed to read content: %v", err)
-	}
-	parts := strings.Split(string(data), common.ConnDataSeq)
-	if len(parts) > 0 && parts[len(parts)-1] == "" {
-		parts = parts[:len(parts)-1]
+		log.Fatalf("Failed to read status list: %v", err)
 	}
 	fmt.Println("===== Active Tunnels/Hosts =====")
 	fmt.Printf("Total active: %d\n", len(parts))
@@ -273,17 +263,17 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 	vkey := cnf.CommonConfig.VKey
 	if isPub {
 		// send global configuration to server and get status of config setting
-		if _, err := c.SendInfo(cnf.CommonConfig.Client, common.FlagNewConf); err != nil {
+		if err := legacy.WriteClient(c, cnf.CommonConfig.Client); err != nil {
 			return "", err
 		}
-		ok, err := c.GetAddStatus()
+		ok, err := legacy.ReadStatus(c)
 		if err != nil {
 			return "", err
 		}
 		if !ok {
 			return "", errors.New("the web_user may have been occupied")
 		}
-		b, err := c.GetShortContent(16)
+		b, err := legacy.ReadExact(c, 16)
 		if err != nil {
 			return "", err
 		}
@@ -292,10 +282,10 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 
 	//send hosts to server
 	for _, v := range cnf.Hosts {
-		if _, err := c.SendInfo(v, common.FlagNewHost); err != nil {
+		if err := legacy.WriteHost(c, v); err != nil {
 			return "", err
 		}
-		ok, err := c.GetAddStatus()
+		ok, err := legacy.ReadStatus(c)
 		if err != nil {
 			return "", err
 		}
@@ -306,7 +296,7 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 
 	//send task to server
 	for _, v := range cnf.Tasks {
-		if _, err := c.SendInfo(v, common.FlagNewTask); err != nil {
+		if err := legacy.WriteTask(c, v); err != nil {
 			return "", err
 		}
 		ok, err := readTaskAddStatus(c, v)
@@ -333,7 +323,7 @@ func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) (bool, error) {
 		n = len(ports)
 	}
 	for i := 0; i < n; i++ {
-		ok, err := c.GetAddStatus()
+		ok, err := legacy.ReadStatus(c)
 		if err != nil || !ok {
 			return false, err
 		}

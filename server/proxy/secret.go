@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -43,7 +44,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	// c wraps src only; it is closed on failure and CopyWaitGroup closes it otherwise.
 	//noinspection GoResourceLeak
 	c := conn.NewConn(tee)
-	lk, err := c.GetLinkInfo()
+	lk, err := legacy.ReadLink(c)
 	if err != nil || lk == nil {
 		rb = tee.Buffered()
 	}
@@ -105,7 +106,7 @@ func (s *SecretServer) HandleSecret(src net.Conn) error {
 	}
 
 	if needAck {
-		if err := conn.WriteACK(c.Conn, link.Option.Timeout); err != nil {
+		if err := legacy.WriteAck(c.Conn, link.Option.Timeout); err != nil {
 			logs.Warn("write ACK failed: %v", err)
 			_ = c.Close()
 			_ = target.Close()

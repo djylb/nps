@@ -5,7 +5,7 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/protocol"
-	"github.com/djylb/nps/lib/p2pproto"
+	"github.com/djylb/nps/bridge/legacy"
 )
 
 // p2pAttemptError expresses the failures nps adds to the hole punching
@@ -14,17 +14,17 @@ import (
 // an offline provider and a busy server transient.
 func p2pAttemptError(err error) error {
 	reason := protocol.Reason("")
-	var refused *p2pproto.RefusedError
+	var refused *legacy.P2PRefusedError
 	switch {
 	case errors.Is(err, errP2PServerIncompatible):
 		reason = protocol.ReasonControlVersionMismatch
 	case errors.As(err, &refused):
 		switch refused.Code {
-		case p2pproto.CodeOffline:
+		case legacy.P2PCodeOffline:
 			reason = protocol.ReasonPeerOffline
-		case p2pproto.CodeBusy:
+		case legacy.P2PCodeBusy:
 			reason = protocol.ReasonServerBusy
-		case p2pproto.CodeUnsupported:
+		case legacy.P2PCodeUnsupported:
 			reason = protocol.ReasonControlVersionMismatch
 		default:
 			reason = protocol.ReasonInvalidArgument

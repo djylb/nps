@@ -39,7 +39,7 @@ func joinRouteNode(t *testing.T, b *Bridge, clientId int, uuid string) *routeNod
 			if err != nil {
 				return
 			}
-			lk, err := conn.NewConn(c).GetLinkInfo()
+			lk, err := legacy.ReadLink(c)
 			if err == nil {
 				n.links <- lk.Host
 			}
@@ -73,10 +73,10 @@ func publish(t *testing.T, b *Bridge, client *file.Client, uuid string, ver int,
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	for _, m := range msgs {
-		if _, err := c.SendInfo(m, flag); err != nil {
+		if _, err := 0, legacy.WriteSignal(c, m, flag); err != nil {
 			t.Fatal(err)
 		}
-		if ok, err := c.GetAddStatus(); !ok || err != nil {
+		if ok, err := legacy.ReadStatus(c); !ok || err != nil {
 			t.Fatalf("publish refused: %v", err)
 		}
 	}
@@ -127,9 +127,9 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 	task := func(target string) *file.Tunnel {
 		return &file.Tunnel{Mode: "tcp", Ports: port, Remark: "r", Target: &file.Target{TargetStr: target}}
 	}
-	publish(t, b, client, "a", legacy.LatestIndex, common.FlagNewTask, task("127.0.0.1:1"))
+	publish(t, b, client, "a", legacy.LatestIndex, legacy.FlagNewTask, task("127.0.0.1:1"))
 	opened := <-b.OpenTask
-	publish(t, b, client, "c", legacy.LatestIndex, common.FlagNewTask, task("127.0.0.1:2"))
+	publish(t, b, client, "c", legacy.LatestIndex, legacy.FlagNewTask, task("127.0.0.1:2"))
 	select {
 	case <-b.OpenTask:
 		t.Fatal("a joining instance restarted the running task")
@@ -192,8 +192,8 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 	host := func(target string) *file.Host {
 		return &file.Host{Host: "npc.example.com", Remark: "r", Target: &file.Target{TargetStr: target}}
 	}
-	publish(t, b, client, "a", legacy.LatestIndex, common.FlagNewHost, host("127.0.0.1:1"))
-	publish(t, b, client, "c", legacy.LatestIndex, common.FlagNewHost, host("127.0.0.1:2"))
+	publish(t, b, client, "a", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:1"))
+	publish(t, b, client, "c", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:2"))
 	entry, ok := client.HasHost(&file.Host{Host: "npc.example.com", Location: "/"})
 	if !ok || entry.Routes.Len() != 2 {
 		t.Fatalf("entry %+v, want one host with two routes", entry)
@@ -226,7 +226,7 @@ func TestLegacyClientHasNoRoutes(t *testing.T) {
 	b, client := routeFixture(t)
 	const ver = 5
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver)))
-	publish(t, b, client, "config-conn", ver, common.FlagNewTask, &file.Tunnel{
+	publish(t, b, client, "config-conn", ver, legacy.FlagNewTask, &file.Tunnel{
 		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "r", Target: &file.Target{TargetStr: "127.0.0.1:1"},
 	})
 	task := <-b.OpenTask

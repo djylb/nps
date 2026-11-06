@@ -4,21 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
-	"encoding/binary"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 	"github.com/xtaci/kcp-go/v5"
 )
 
@@ -111,57 +105,6 @@ func requestTargetAddress(r *http.Request) string {
 	return net.JoinHostPort(strings.TrimSuffix(strings.TrimPrefix(r.Host, "["), "]"), port)
 }
 
-func (s *Conn) GetShortLenContent() (b []byte, err error) {
-	var l int
-	if l, err = s.GetLen(); err != nil {
-		return
-	}
-	if l < 0 || l > 32<<10 {
-		err = errors.New("read length error")
-		return
-	}
-	return s.GetShortContent(l)
-}
-
-func (s *Conn) GetShortContent(l int) (b []byte, err error) {
-	buf := make([]byte, l)
-	return buf, binary.Read(s, binary.LittleEndian, &buf)
-}
-
-func (s *Conn) ReadLen(cLen int, buf []byte) (int, error) {
-	if cLen > len(buf) || cLen <= 0 {
-		return 0, errors.New("invalid length: " + strconv.Itoa(cLen))
-	}
-	n, err := io.ReadFull(s, buf[:cLen])
-	if err != nil || n != cLen {
-		return n, fmt.Errorf("error reading %d bytes: %w", cLen, err)
-	}
-	return cLen, nil
-}
-
-func (s *Conn) GetLen() (int, error) {
-	var l int32
-	err := binary.Read(s, binary.LittleEndian, &l)
-	return int(l), err
-}
-
-func (s *Conn) WriteLenContent(buf []byte) (err error) {
-	var b []byte
-	if b, err = GetLenBytes(buf); err != nil {
-		return
-	}
-	//return binary.Write(s.Conn, binary.LittleEndian, b)
-	_, err = s.BufferWrite(b)
-	return
-}
-
-// ReadFlag read flag
-func (s *Conn) ReadFlag() (string, error) {
-	var buf [4]byte
-	_, err := io.ReadFull(s, buf[:])
-	return string(buf[:]), err
-}
-
 // SetAlive set alive
 func (s *Conn) SetAlive() {
 	switch s.Conn.(type) {
@@ -192,138 +135,6 @@ func (s *Conn) SetReadDeadlineBySecond(t time.Duration) {
 			_ = conn.SetReadDeadline(time.Now().Add(t * time.Second))
 		}
 	}
-}
-
-// GetLinkInfo get link info from conn
-func (s *Conn) GetLinkInfo() (lk *Link, err error) {
-	err = s.getInfo(&lk)
-	return
-}
-
-// SendHealthInfo send info for link
-func (s *Conn) SendHealthInfo(info, status string) (int, error) {
-	var raw bytes.Buffer
-	common.BinaryWrite(&raw, info, status)
-	return s.Write(raw.Bytes())
-}
-
-// GetHealthInfo get health info from conn
-func (s *Conn) GetHealthInfo() (info string, status bool, err error) {
-	//_ = s.SetReadDeadline(time.Now().Add(timeout))
-	//defer s.SetReadDeadline(time.Time{})
-	var l int
-	l, err = s.GetLen()
-	if err != nil {
-		return
-	}
-	buf := common.BufPool.Get()
-	defer common.BufPool.Put(buf)
-	_, err = s.ReadLen(l, buf)
-	if err != nil {
-		return
-	}
-	arr := strings.Split(string(buf[:l]), common.ConnDataSeq)
-	if len(arr) < 2 {
-		return "", false, errors.New("receive health info error")
-	}
-	return arr[0], common.GetBoolByStr(arr[1]), nil
-}
-
-var errEmptyInfo = errors.New("empty info payload")
-
-// GetHostInfo get host info
-func (s *Conn) GetHostInfo() (*file.Host, error) {
-	var h *file.Host
-	if err := s.getInfo(&h); err != nil {
-		return nil, err
-	}
-	if h == nil {
-		return nil, errEmptyInfo
-	}
-	h.Id = int(file.GetDb().JsonDb.GetHostId())
-	h.Flow = new(file.Flow)
-	h.NoStore = true
-	return h, nil
-}
-
-// GetConfigInfo get client config info
-func (s *Conn) GetConfigInfo() (*file.Client, error) {
-	var c *file.Client
-	if err := s.getInfo(&c); err != nil {
-		return nil, err
-	}
-	if c == nil {
-		return nil, errEmptyInfo
-	}
-	c.NoStore = true
-	c.Status = true
-	if c.Flow == nil {
-		c.Flow = new(file.Flow)
-	}
-	c.NoDisplay = false
-	return c, nil
-}
-
-// GetTaskInfo get task info
-func (s *Conn) GetTaskInfo() (*file.Tunnel, error) {
-	var t *file.Tunnel
-	if err := s.getInfo(&t); err != nil {
-		return nil, err
-	}
-	if t == nil {
-		return nil, errEmptyInfo
-	}
-	t.Id = int(file.GetDb().JsonDb.GetTaskId())
-	t.NoStore = true
-	t.Flow = new(file.Flow)
-	return t, nil
-}
-
-// SendInfo send  info
-func (s *Conn) SendInfo(t interface{}, flag string) (int, error) {
-	/*
-		The task info is formed as follows:
-		+----+-----+---------+
-		|type| len | content |
-		+----+---------------+
-		| 4  |  4  |   ...   |
-		+----+---------------+
-	*/
-	raw := bytes.NewBuffer([]byte{})
-	if flag != "" {
-		_ = binary.Write(raw, binary.LittleEndian, []byte(flag))
-	}
-	b, err := json.Marshal(t)
-	if err != nil {
-		return 0, err
-	}
-	lenBytes, err := GetLenBytes(b)
-	if err != nil {
-		return 0, err
-	}
-	_ = binary.Write(raw, binary.LittleEndian, lenBytes)
-	return s.Write(raw.Bytes())
-}
-
-// get task info
-func (s *Conn) getInfo(t interface{}) (err error) {
-	var l int
-	buf := common.BufPool.Get()
-	defer common.BufPool.Put(buf)
-	if l, err = s.GetLen(); err != nil {
-		return
-	}
-	if _, err = s.ReadLen(l, buf); err != nil {
-		return
-	}
-	if err = json.Unmarshal(buf[:l], t); err != nil {
-		// Field type mismatches keep the previous lenient decoding.
-		var typeErr *json.UnmarshalTypeError
-		if errors.As(err, &typeErr) {
-			return nil
-		}
-	}
-	return
 }
 
 func (s *Conn) IsClosed() bool {
@@ -425,40 +236,6 @@ func (s *Conn) Read(b []byte) (n int, err error) {
 	}
 
 	return s.Conn.Read(b)
-}
-
-// WriteClose write sign flag
-func (s *Conn) WriteClose() (int, error) {
-	return s.Write([]byte(common.ResClose))
-}
-
-// WriteMain write main
-func (s *Conn) WriteMain() (int, error) {
-	return s.Write([]byte(common.WorkMain))
-}
-
-// WriteConfig write config
-func (s *Conn) WriteConfig() (int, error) {
-	return s.Write([]byte(common.WorkConfig))
-}
-
-// WriteChan write chan
-func (s *Conn) WriteChan() (int, error) {
-	return s.Write([]byte(common.WorkChan))
-}
-
-// GetAddStatus get task or host result of add
-func (s *Conn) GetAddStatus() (b bool, err error) {
-	err = binary.Read(s, binary.LittleEndian, &b)
-	return
-}
-
-func (s *Conn) WriteAddOk() error {
-	return binary.Write(s, binary.LittleEndian, true)
-}
-
-func (s *Conn) WriteAddFail() error {
-	return binary.Write(s, binary.LittleEndian, false)
 }
 
 func (s *Conn) LocalAddr() net.Addr {

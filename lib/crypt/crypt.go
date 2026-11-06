@@ -4,21 +4,15 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"hash/fnv"
-	"io"
 	"math/big"
-	"strings"
 	"time"
 
+	"github.com/djylb/tunnelwire"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/blake2b"
 )
 
 func AesEncrypt(origData, key []byte) ([]byte, error) {
@@ -41,71 +35,6 @@ func PKCS5Padding(ciphertext []byte, blockSize int) []byte {
 	return append(ciphertext, padtext...)
 }
 
-// EncryptBytes AES-GCM
-func EncryptBytes(data []byte, keyStr string) ([]byte, error) {
-	if keyStr == "" {
-		return data, nil
-	}
-	key := sha256.Sum256([]byte(keyStr))
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return nil, fmt.Errorf("aes.NewCipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("cipher.NewGCM: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("io.ReadFull: %w", err)
-	}
-	ct := gcm.Seal(nil, nonce, data, nil)
-	return append(nonce, ct...), nil
-}
-
-// DecryptBytes AES-GCM
-func DecryptBytes(enc []byte, keyStr string) ([]byte, error) {
-	if keyStr == "" {
-		return enc, nil
-	}
-	key := sha256.Sum256([]byte(keyStr))
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return nil, fmt.Errorf("aes.NewCipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("cipher.NewGCM: %w", err)
-	}
-	ns := gcm.NonceSize()
-	if len(enc) < ns+gcm.Overhead() {
-		return nil, fmt.Errorf("ciphertext too short: %d", len(enc))
-	}
-	nonce, ct := enc[:ns], enc[ns:]
-	pt, err := gcm.Open(nil, nonce, ct, nil)
-	if err != nil {
-		return nil, fmt.Errorf("gcm.Open: %w", err)
-	}
-	return pt, nil
-}
-
-// ComputeHMAC Get HMAC value
-func ComputeHMAC(passwd string, timestamp int64, randomDataPieces ...[]byte) []byte {
-	tsBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(tsBuf, uint64(timestamp))
-	allPieces := append([][]byte{tsBuf}, randomDataPieces...)
-	return GetHMAC(passwd, allPieces...) // 32bit
-}
-
-func GetHMAC(passwd string, data ...[]byte) []byte {
-	key := []byte(passwd)
-	mac := hmac.New(sha256.New, key)
-	for _, data := range data {
-		mac.Write(data)
-	}
-	return mac.Sum(nil) // 32bit
-}
-
 // Md5 Generate 32-bit MD5 strings
 func Md5(s string) string {
 	h := md5.New()
@@ -115,8 +44,7 @@ func Md5(s string) string {
 
 // Blake2b Generate 64-bit BLAKE2b-256 strings
 func Blake2b(s string) string {
-	hash := blake2b.Sum256([]byte(s))
-	return hex.EncodeToString(hash[:])
+	return tunnelwire.KeyDigest(s)
 }
 
 func FNV1a64(parts ...string) string {
@@ -127,11 +55,6 @@ func FNV1a64(parts ...string) string {
 	}
 	sum := h.Sum(nil) // 8 bytes
 	return hex.EncodeToString(sum)
-}
-
-func GenerateUUID(nameParts ...string) uuid.UUID {
-	name := strings.Join(nameParts, "/")
-	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(name))
 }
 
 func GetUUID() uuid.UUID {

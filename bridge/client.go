@@ -134,7 +134,7 @@ func (n *Node) sendSignal(flag string, v any, timeout time.Duration) error {
 	n.sendMu.Lock()
 	defer n.sendMu.Unlock()
 	_ = signal.SetWriteDeadline(time.Now().Add(timeout))
-	_, err := signal.SendInfo(v, flag)
+	err := legacy.WriteSignal(signal, v, flag)
 	_ = signal.SetWriteDeadline(time.Time{})
 	if err != nil {
 		_ = signal.Close()

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -184,7 +185,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 	}()
 
 	lk := conn.NewLink("udp", "", false, false, visitor.LocalAddr().String(), false)
-	if _, err := conn.NewConn(visitor).SendInfo(lk, ""); err != nil {
+	if err := legacy.WriteLink(visitor, lk); err != nil {
 		t.Fatal(err)
 	}
 	if link := <-bridge.links; link.ConnType != "udp" || !link.LocalProxy {
@@ -218,7 +219,7 @@ func TestSecretLinkDestinationDenied(t *testing.T) {
 	s := NewSecretServer(bridge, task, true, true, true)
 	visitor, srv := tcpConnPair(t)
 	go func() {
-		_, _ = conn.NewConn(visitor).SendInfo(conn.NewLink("tcp", "denied.example:80", false, false, "", false), "")
+		_ = legacy.WriteLink(visitor, conn.NewLink("tcp", "denied.example:80", false, false, "", false))
 	}()
 	if err := s.HandleSecret(srv); err == nil {
 		t.Fatal("link to a denied destination was served")

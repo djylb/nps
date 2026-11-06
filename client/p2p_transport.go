@@ -11,9 +11,9 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/quicpath"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/quic-go/quic-go"
 )
 
@@ -115,12 +115,12 @@ func (t *p2pTransport) open(ctx context.Context, link conn.Link, timeout time.Du
 	_ = stream.SetWriteDeadline(time.Now().Add(timeout))
 	// The wrapper only writes to nc, whose stream fail cancels on failure.
 	//noinspection GoResourceLeak
-	if _, err := conn.NewConn(nc).SendInfo(&link, ""); err != nil {
+	if err := legacy.WriteLink(nc, &link); err != nil {
 		return fail(fmt.Errorf("send link: %w", err))
 	}
 	_ = stream.SetWriteDeadline(time.Time{})
 	if link.Option.NeedAck {
-		if err := conn.ReadACK(nc, timeout); err != nil {
+		if err := legacy.ReadAck(nc, timeout); err != nil {
 			return fail(fmt.Errorf("read ack: %w", err))
 		}
 		t.heard()
@@ -169,7 +169,7 @@ func p2pClientTLS(pin []byte) *tls.Config {
 // returns the peer's pin.
 func p2pPeerPin(sess *holepunch.Session) ([]byte, error) {
 	res := sess.Result()
-	if res.TransportMode != p2pproto.TransportMode || len(res.PeerTransportData) == 0 {
+	if res.TransportMode != legacy.P2PTransportMode || len(res.PeerTransportData) == 0 {
 		return nil, fmt.Errorf("%w: mode %q", errP2PTransportMode, res.TransportMode)
 	}
 	return res.PeerTransportData, nil

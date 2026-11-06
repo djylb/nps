@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -55,15 +55,15 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 			go func() {
 				c := conn.NewConn(mc)
 				defer func() { _ = c.Close() }()
-				if flag, err := c.ReadFlag(); err != nil || flag != common.WorkSecret {
+				if flag, err := legacy.ReadFlag(c); err != nil || flag != legacy.WorkSecret {
 					return
 				}
-				_, _ = c.GetShortLenContent() // uuid
-				_, _ = c.GetShortLenContent() // padding
-				if _, err := c.GetShortContent(32); err != nil {
+				_, _ = legacy.ReadFrame(c) // uuid
+				_, _ = legacy.ReadFrame(c) // padding
+				if _, err := legacy.ReadExact(c, 32); err != nil {
 					return
 				}
-				lk, err := c.GetLinkInfo()
+				lk, err := legacy.ReadLink(c)
 				if err != nil {
 					return
 				}
@@ -286,8 +286,8 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 			}
 			go func() {
 				c := conn.NewConn(conn.NewQuicStreamConn(st, remote))
-				if lk, err := c.GetLinkInfo(); err == nil && lk.Option.NeedAck {
-					_ = conn.WriteACK(c, time.Second)
+				if lk, err := legacy.ReadLink(c); err == nil && lk.Option.NeedAck {
+					_ = legacy.WriteAck(c, time.Second)
 				}
 				_ = c.Close()
 			}()
@@ -340,8 +340,8 @@ func TestP2PPeerKeepsPathThatPassesCheck(t *testing.T) {
 			}
 			go func() {
 				c := conn.NewConn(conn.NewQuicStreamConn(st, remote))
-				if lk, err := c.GetLinkInfo(); err == nil && lk.Option.NeedAck {
-					_ = conn.WriteACK(c, time.Second)
+				if lk, err := legacy.ReadLink(c); err == nil && lk.Option.NeedAck {
+					_ = legacy.WriteAck(c, time.Second)
 				}
 				_ = c.Close()
 			}()

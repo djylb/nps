@@ -184,7 +184,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 		return
 	}
 
-	if _, err = conn.NewConn(target).SendInfo(link, ""); err != nil {
+	if err = legacy.WriteLink(target, link); err != nil {
 		logs.Info("new connection error, the target %s refused to connect", link.Host)
 		_ = target.Close()
 		return
@@ -192,7 +192,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 
 	caps := node.Caps()
 	if link.Option.NeedAck && caps.LinkAck {
-		if err := conn.ReadACK(target, link.Option.Timeout); err != nil {
+		if err := legacy.ReadAck(target, link.Option.Timeout); err != nil {
 			_ = target.Close()
 			logs.Trace("ReadACK failed: %v", err)
 			node.CloseIfTunnelCurrent(tunnel)

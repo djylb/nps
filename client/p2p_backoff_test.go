@@ -8,7 +8,7 @@ import (
 
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/protocol"
-	"github.com/djylb/nps/lib/p2pproto"
+	"github.com/djylb/nps/bridge/legacy"
 )
 
 func TestP2PBackoffActions(t *testing.T) {
@@ -18,10 +18,10 @@ func TestP2PBackoffActions(t *testing.T) {
 		want holepunch.Action
 	}{
 		{"old server", fmt.Errorf("%w: eof", errP2PServerIncompatible), holepunch.ActionGiveUp},
-		{"task refused", &p2pproto.RefusedError{Code: p2pproto.CodeRefused}, holepunch.ActionGiveUp},
-		{"old provider", &p2pproto.RefusedError{Code: p2pproto.CodeUnsupported}, holepunch.ActionGiveUp},
-		{"provider offline", &p2pproto.RefusedError{Code: p2pproto.CodeOffline}, holepunch.ActionRetry},
-		{"server busy", &p2pproto.RefusedError{Code: p2pproto.CodeBusy}, holepunch.ActionRetry},
+		{"task refused", &legacy.P2PRefusedError{Code: legacy.P2PCodeRefused}, holepunch.ActionGiveUp},
+		{"old provider", &legacy.P2PRefusedError{Code: legacy.P2PCodeUnsupported}, holepunch.ActionGiveUp},
+		{"provider offline", &legacy.P2PRefusedError{Code: legacy.P2PCodeOffline}, holepunch.ActionRetry},
+		{"server busy", &legacy.P2PRefusedError{Code: legacy.P2PCodeBusy}, holepunch.ActionRetry},
 		{"bridge i/o", errors.New("connection reset"), holepunch.ActionRetry},
 		{"path lost", errP2PPathLost, holepunch.ActionRetry},
 		{"hard nat", &holepunch.Error{Reason: protocol.ReasonHardSymmetricRandom}, holepunch.ActionBackground},
@@ -37,7 +37,7 @@ func TestP2PBackoffActions(t *testing.T) {
 
 func TestP2PBackoffCountsSameAction(t *testing.T) {
 	var b p2pBackoff
-	offline := &p2pproto.RefusedError{Code: p2pproto.CodeOffline}
+	offline := &legacy.P2PRefusedError{Code: legacy.P2PCodeOffline}
 	for range 5 {
 		b.failed(offline)
 	}

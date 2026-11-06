@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -19,7 +20,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	//firstSuccess := false
 
 	for {
-		info, status, err := c.GetHealthInfo()
+		info, status, err := legacy.ReadHealth(c)
 		if err != nil {
 			//logs.Trace("GetHealthInfo error, id=%d, retry=%d, err=%v", id, retry, err)
 			if netx.IsTimeout(err) && retry < maxRetry {

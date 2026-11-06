@@ -13,7 +13,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/p2pproto"
 )
 
 // p2pStableAfter is how long a direct path must have lived for its loss to
@@ -215,7 +214,7 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	// openP2PControl owns the stream and closes it on failure.
 	//noinspection GoResourceLeak
 	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), legacy.WorkP2P, mgr.getUUID(), server.fingerprint,
-		p2pproto.Request{Password: crypt.Md5(p.password), Background: background, ServerIP: server.ip})
+		legacy.P2PRequest{Password: crypt.Md5(p.password), Background: background, ServerIP: server.ip})
 	if err != nil {
 		return nil, err
 	}

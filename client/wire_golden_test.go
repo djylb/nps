@@ -9,6 +9,8 @@ package client
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
@@ -22,16 +24,16 @@ import (
 	"testing/cryptotest"
 	"time"
 
+	"encoding/binary"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/tunnelwire"
+	"io"
 )
 
 const (
@@ -177,7 +179,7 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 		t.Fatalf("index %d: %v", index, err)
 	}
 	node := goldenNode
-	if err := SendType(c, common.WorkRegister, node); err != nil {
+	if err := SendType(c, legacy.WorkRegister, node); err != nil {
 		t.Fatalf("index %d: %v", index, err)
 	}
 	hour := []byte{1, 0, 0, 0}
@@ -195,8 +197,8 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 		Timestamp: goldenTimestamp, Seed: seed, ClientHex: in, ServerHex: out, UUID: uuid,
 		Work: map[string]string{},
 	}
-	for _, flag := range []string{common.WorkMain, common.WorkChan, common.WorkConfig, common.WorkVisitor,
-		common.WorkSecret, common.WorkFile, common.WorkRegister, common.WorkP2P, common.WorkP2PSession} {
+	for _, flag := range []string{legacy.WorkMain, legacy.WorkChan, legacy.WorkConfig, legacy.WorkVisitor,
+		legacy.WorkSecret, legacy.WorkFile, legacy.WorkRegister, legacy.WorkP2P, legacy.WorkP2PSession} {
 		a, z := net.Pipe()
 		rw := &recordConn{Conn: a, remote: a.RemoteAddr()}
 		done := make(chan struct{})
@@ -364,6 +366,21 @@ type infoVector struct {
 	Decoded string // what the server makes of it, as JSON
 }
 
+// send writes v as a client does.
+func send(w io.Writer, v any, flag string) error {
+	switch m := v.(type) {
+	case *file.Tunnel:
+		return legacy.WriteTask(w, m)
+	case *file.Host:
+		return legacy.WriteHost(w, m)
+	case *file.Client:
+		return legacy.WriteClient(w, m)
+	case *conn.Link:
+		return legacy.WriteLink(w, m)
+	}
+	return legacy.WriteSignal(w, v, flag)
+}
+
 // frameOf returns what a client writes for v.
 func frameOf(t *testing.T, v any, flag string) []byte {
 	t.Helper()
@@ -377,19 +394,19 @@ func frameOf(t *testing.T, v any, flag string) []byte {
 		n, _ := z.Read(buf)
 		out.Write(buf[:n])
 	}()
-	if _, err := conn.NewConn(a).SendInfo(v, flag); err != nil {
+	if err := send(a, v, flag); err != nil {
 		t.Fatal(err)
 	}
 	<-done
 	return out.Bytes()
 }
 
-func decodeFrame[T any](t *testing.T, frame []byte, read func(*conn.Conn) (*T, error), reset func(*T)) string {
+func decodeFrame[T any](t *testing.T, frame []byte, read func(io.Reader) (*T, error), reset func(*T)) string {
 	t.Helper()
 	a, z := net.Pipe()
 	defer func() { _ = a.Close(); _ = z.Close() }()
 	go func() { _, _ = a.Write(frame) }()
-	v, err := read(conn.NewConn(z))
+	v, err := read(z)
 	if err != nil {
 		return "error: " + err.Error()
 	}
@@ -402,20 +419,19 @@ func decodeFrame[T any](t *testing.T, frame []byte, read func(*conn.Conn) (*T, e
 }
 
 func decodeTask(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, (*conn.Conn).GetTaskInfo, func(v *file.Tunnel) { v.Id = 0 })
+	return decodeFrame(t, frame, legacy.ReadTask, func(v *file.Tunnel) { v.Id = 0 })
 }
 
 func decodeHost(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, (*conn.Conn).GetHostInfo, func(v *file.Host) { v.Id = 0 })
+	return decodeFrame(t, frame, legacy.ReadHost, func(v *file.Host) { v.Id = 0 })
 }
 
 func decodeClient(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, (*conn.Conn).GetConfigInfo, func(*file.Client) {})
+	return decodeFrame(t, frame, legacy.ReadClient, func(*file.Client) {})
 }
 
 func rawFrame(s string) []byte {
-	b, _ := conn.GetLenBytes([]byte(s))
-	return b
+	return tunnelwire.AppendFrame(nil, []byte(s))
 }
 
 func TestWireGoldenInfo(t *testing.T) {
@@ -429,18 +445,18 @@ func TestWireGoldenInfo(t *testing.T) {
 		frame := frameOf(t, v, flag)
 		out = append(out, infoVector{Name: name, Flag: flag, Wire: hex.EncodeToString(frame), Decoded: decode(t, frame[len(flag):])})
 	}
-	add("client/rich", common.FlagNewConf, richClient(), decodeClient)
-	add("client/config", common.FlagNewConf, cnf.CommonConfig.Client, decodeClient)
-	add("client/zero", common.FlagNewConf, &file.Client{}, decodeClient)
-	add("host/rich", common.FlagNewHost, richHost(), decodeHost)
-	add("host/zero", common.FlagNewHost, &file.Host{}, decodeHost)
+	add("client/rich", legacy.FlagNewConf, richClient(), decodeClient)
+	add("client/config", legacy.FlagNewConf, cnf.CommonConfig.Client, decodeClient)
+	add("client/zero", legacy.FlagNewConf, &file.Client{}, decodeClient)
+	add("host/rich", legacy.FlagNewHost, richHost(), decodeHost)
+	add("host/zero", legacy.FlagNewHost, &file.Host{}, decodeHost)
 	for i, h := range cnf.Hosts {
-		add("host/config"+strconv.Itoa(i), common.FlagNewHost, h, decodeHost)
+		add("host/config"+strconv.Itoa(i), legacy.FlagNewHost, h, decodeHost)
 	}
-	add("task/rich", common.FlagNewTask, richTask(), decodeTask)
-	add("task/zero", common.FlagNewTask, &file.Tunnel{}, decodeTask)
+	add("task/rich", legacy.FlagNewTask, richTask(), decodeTask)
+	add("task/zero", legacy.FlagNewTask, &file.Tunnel{}, decodeTask)
 	for i, task := range cnf.Tasks {
-		add("task/config"+strconv.Itoa(i), common.FlagNewTask, task, decodeTask)
+		add("task/config"+strconv.Itoa(i), legacy.FlagNewTask, task, decodeTask)
 	}
 	// What other versions send: fields unknown here, fields of the wrong type,
 	// and no fields.
@@ -481,15 +497,15 @@ func TestWireGoldenFrames(t *testing.T) {
 	add("link/rich", frameOf(t, rich, ""))
 	add("link/new", frameOf(t, conn.NewLink("udp5", "", false, false, "[2001:db8::1]:5", false), ""))
 	add("link/zero", frameOf(t, &conn.Link{}, ""))
-	add("signal/p2p-invite", frameOf(t, p2pproto.Invite{SessionID: "s", Token: "t"}, common.P2PPunchStart))
-	add("signal/update", frameOf(t, struct{}{}, common.UpdateRequest))
-	add("p2p/request", rawFrame(mustJSON(p2pproto.Request{Password: "p", Background: true, ServerIP: "192.0.2.1"})))
-	add("p2p/join", rawFrame(mustJSON(p2pproto.Join{SessionID: "s", Token: "t", ServerIP: "192.0.2.1", Decline: "d"})))
-	add("p2p/reply", rawFrame(mustJSON(p2pproto.Reply{Code: p2pproto.CodeBusy, Message: "m", SessionID: "s"})))
-	add("p2p/empty", rawFrame(mustJSON(p2pproto.Reply{})))
-	add("const/ack", []byte(common.ConnAck))
-	add("const/close", []byte(common.ResClose))
-	add("const/verify", []byte(common.VerifyErr+common.VerifySuccess))
+	add("signal/p2p-invite", frameOf(t, legacy.P2PInvite{SessionID: "s", Token: "t"}, legacy.P2PPunchStart))
+	add("signal/update", frameOf(t, struct{}{}, legacy.UpdateRequest))
+	add("p2p/request", rawFrame(mustJSON(legacy.P2PRequest{Password: "p", Background: true, ServerIP: "192.0.2.1"})))
+	add("p2p/join", rawFrame(mustJSON(legacy.P2PJoin{SessionID: "s", Token: "t", ServerIP: "192.0.2.1", Decline: "d"})))
+	add("p2p/reply", rawFrame(mustJSON(legacy.P2PReply{Code: legacy.P2PCodeBusy, Message: "m", SessionID: "s"})))
+	add("p2p/empty", rawFrame(mustJSON(legacy.P2PReply{})))
+	add("const/ack", []byte(legacy.Ack))
+	add("const/close", []byte(legacy.ResClose))
+	add("const/verify", []byte(tunnelwire.VerifyFailed+tunnelwire.VerifySuccess))
 	a, z := net.Pipe()
 	var hb bytes.Buffer
 	done := make(chan struct{})
@@ -499,7 +515,7 @@ func TestWireGoldenFrames(t *testing.T) {
 		n, _ := z.Read(buf)
 		hb.Write(buf[:n])
 	}()
-	if _, err := conn.NewConn(a).SendHealthInfo("127.0.0.1:1", "1"); err != nil {
+	if err := legacy.WriteHealth(a, "127.0.0.1:1", "1"); err != nil {
 		t.Fatal(err)
 	}
 	<-done
@@ -508,10 +524,18 @@ func TestWireGoldenFrames(t *testing.T) {
 	add("health/up", hb.Bytes())
 	add("key/blake2b", []byte(crypt.Blake2b(goldenKey)))
 	add("key/md5", []byte(crypt.Md5(goldenKey)))
-	add("key/file", []byte(crypt.GenerateUUID("vk", "file", "0.0.0.0", "9005", "/srv", "/web/", "true", "").String()))
-	add("key/node", []byte(crypt.GenerateUUID("192.0.2.2:40000").String()))
-	add("auth/hmac", crypt.ComputeHMAC(goldenKey, goldenTimestamp, []byte("a"), []byte("b")))
+	add("key/file", []byte(legacy.FileKey("vk", &file.Tunnel{Mode: "file", ServerIp: "0.0.0.0", Port: 9005, LocalPath: "/srv", StripPre: "/web/", ReadOnly: true, MultiAccount: new(file.MultiAccount)})))
+	add("key/node", []byte(tunnelwire.NameUUID("192.0.2.2:40000")))
+	add("auth/hmac", goldenMAC())
 	checkGolden(t, "frames.json", out)
+}
+
+// goldenMAC is the handshake MAC of the vectors by the standard library.
+func goldenMAC() []byte {
+	mac := hmac.New(sha256.New, []byte(goldenKey))
+	mac.Write(binary.BigEndian.AppendUint64(nil, uint64(goldenTimestamp)))
+	mac.Write([]byte("ab"))
+	return mac.Sum(nil)
 }
 
 func mustJSON(v any) string {

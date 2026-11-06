@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -107,7 +108,7 @@ func (hc *HealthChecker) send(addr, status string) {
 	if hc.serverConn == nil {
 		return
 	}
-	if _, err := hc.serverConn.SendHealthInfo(addr, status); err != nil {
+	if err := legacy.WriteHealth(hc.serverConn, addr, status); err != nil {
 		logs.Trace("send health info of %s: %v", addr, err)
 	}
 }

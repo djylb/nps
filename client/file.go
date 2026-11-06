@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"golang.org/x/net/webdav"
@@ -66,7 +66,7 @@ func (fsm *FileServerManager) StartFileServer(t *file.Tunnel, vkey string) {
 		ports = append(ports, 0)
 	}
 	t.Port = ports[0]
-	key := crypt.GenerateUUID(vkey, t.Mode, t.ServerIp, strconv.Itoa(t.Port), t.LocalPath, t.StripPre, strconv.FormatBool(t.ReadOnly), t.MultiAccount.Content)
+	key := legacy.FileKey(vkey, t)
 	registered := false
 	defer func() {
 		if !registered {
@@ -119,7 +119,7 @@ func (fsm *FileServerManager) StartFileServer(t *file.Tunnel, vkey string) {
 		logs.Warn("file server manager already closed, skip StartFileServer")
 		return
 	}
-	fsm.servers[key.String()] = &fileServer{
+	fsm.servers[key] = &fileServer{
 		srv:      srv,
 		listener: vl,
 	}

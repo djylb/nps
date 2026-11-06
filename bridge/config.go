@@ -1,16 +1,12 @@
 package bridge
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/tool"
@@ -21,21 +17,21 @@ import (
 // statuses of that task, so nothing more is written for its remaining ports.
 // It returns false if the client is gone.
 func writeAddFail(c *conn.Conn) bool {
-	return c.WriteAddFail() == nil
+	return legacy.WriteStatus(c, false) == nil
 }
 
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, ver int, vs, uuid string) {
 	var fail bool
 loop:
 	for {
-		flag, err := c.ReadFlag()
+		flag, err := legacy.ReadFlag(c)
 		if err != nil {
 			break
 		}
 
 		switch flag {
-		case common.WorkStatus:
-			b, err := c.GetShortContent(64)
+		case legacy.WorkStatus:
+			b, err := legacy.ReadExact(c, 64)
 			if err != nil {
 				break loop
 			}
@@ -45,12 +41,12 @@ loop:
 				break loop
 			}
 
-			var strBuilder strings.Builder
+			var remarks []string
 			if client.IsConnect && !isPub {
 				file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
 					v := value.(*file.Host)
 					if v.Client.Id == id {
-						strBuilder.WriteString(v.Remark + common.ConnDataSeq)
+						remarks = append(remarks, v.Remark)
 					}
 					return true
 				})
@@ -58,21 +54,19 @@ loop:
 				file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 					v := value.(*file.Tunnel)
 					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
-						strBuilder.WriteString(v.Remark + common.ConnDataSeq)
+						remarks = append(remarks, v.Remark)
 					}
 					return true
 				})
 			}
-			str := strBuilder.String()
-			_ = binary.Write(c, binary.LittleEndian, int32(len([]byte(str))))
-			_ = binary.Write(c, binary.LittleEndian, []byte(str))
+			_ = legacy.WriteStatusList(c, remarks)
 			break loop
 
-		case common.FlagNewConf:
-			client, err = c.GetConfigInfo()
+		case legacy.FlagNewConf:
+			client, err = legacy.ReadClient(c)
 			if err != nil {
 				fail = true
-				_ = c.WriteAddFail()
+				_ = legacy.WriteStatus(c, false)
 				break loop
 			}
 			// The server assigns the client id and verify key.
@@ -81,21 +75,21 @@ loop:
 
 			if err = file.GetDb().NewClient(client); err != nil {
 				fail = true
-				_ = c.WriteAddFail()
+				_ = legacy.WriteStatus(c, false)
 				break loop
 			}
 
-			_ = c.WriteAddOk()
+			_ = legacy.WriteStatus(c, true)
 			_, _ = c.Write([]byte(client.VerifyKey))
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
 			s.storeClient(client.Id, NewClient(client.Id, NewNode(uuid, vs, ver)))
 
-		case common.FlagNewHost:
-			h, err := c.GetHostInfo()
+		case legacy.FlagNewHost:
+			h, err := legacy.ReadHost(c)
 			if err != nil || h.Target == nil {
 				fail = true
-				_ = c.WriteAddFail()
+				_ = legacy.WriteStatus(c, false)
 				break loop
 			}
 
@@ -124,16 +118,16 @@ loop:
 				}
 				continue
 			}
-			if c.WriteAddOk() != nil {
+			if legacy.WriteStatus(c, true) != nil {
 				fail = true
 				break loop
 			}
 
-		case common.FlagNewTask:
-			t, err := c.GetTaskInfo()
+		case legacy.FlagNewTask:
+			t, err := legacy.ReadTask(c)
 			if err != nil {
 				fail = true
-				_ = c.WriteAddFail()
+				_ = legacy.WriteStatus(c, false)
 				break loop
 			}
 
@@ -204,16 +198,16 @@ loop:
 						if !ok {
 							logs.Error("Fail to load client %d", client.Id)
 							fail = true
-							_ = c.WriteAddFail()
+							_ = legacy.WriteStatus(c, false)
 							break loop
 						}
 					}
-					key := crypt.GenerateUUID(client.VerifyKey, tl.Mode, tl.ServerIp, strconv.Itoa(tl.Port), tl.LocalPath, tl.StripPre, strconv.FormatBool(tl.ReadOnly), tl.MultiAccount.Content)
-					err = cli.AddFile(key.String(), uuid)
+					key := legacy.FileKey(client.VerifyKey, tl)
+					err = cli.AddFile(key, uuid)
 					if err != nil {
 						logs.Error("Add file failed, error %v", err)
 					}
-					tl.Target.TargetStr = fmt.Sprintf("file://%s", key.String())
+					tl.Target.TargetStr = fmt.Sprintf("file://%s", key)
 				}
 
 				tt, created, err := s.publishTask(tl, client, uuid, legacy.CapsOf(ver, vs))
@@ -236,7 +230,7 @@ loop:
 					}
 					break ports
 				}
-				if c.WriteAddOk() != nil {
+				if legacy.WriteStatus(c, true) != nil {
 					fail = true
 					break loop
 				}

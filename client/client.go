@@ -19,7 +19,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/tunnelwire/mux"
 	"github.com/quic-go/quic-go"
 )
@@ -156,7 +155,7 @@ func (s *TRPClient) handleMain(tunnel any) {
 			return
 		default:
 		}
-		flags, err := s.signal.ReadFlag()
+		flags, err := legacy.ReadFlag(s.signal)
 		if err != nil {
 			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, s.signal.Conn).String())
 			logs.Error("Accept server data error %s, end this service", netx.NetErrorDetails(err, s.signal.Conn))
@@ -164,19 +163,19 @@ func (s *TRPClient) handleMain(tunnel any) {
 		}
 		switch flags {
 		case legacy.P2PPunchStart:
-			raw, err := s.signal.GetShortLenContent()
+			raw, err := legacy.ReadFrame(s.signal)
 			if err != nil {
 				logs.Warn("%v", err)
 				return
 			}
-			var invite p2pproto.Invite
+			var invite legacy.P2PInvite
 			if err := json.Unmarshal(raw, &invite); err != nil {
 				logs.Warn("decode p2p invite failed: %v", err)
 				continue
 			}
 			go s.serveP2P(tunnel, invite)
 		case legacy.UpdateRequest:
-			if _, err := s.signal.GetShortLenContent(); err != nil {
+			if _, err := legacy.ReadFrame(s.signal); err != nil {
 				logs.Warn("%v", err)
 				return
 			}
@@ -266,7 +265,7 @@ func (s *TRPClient) newChan() any {
 func (s *TRPClient) handleChan(src net.Conn) {
 	// The wrapper only reads from src, which every path below closes or hands on.
 	//noinspection GoResourceLeak
-	lk, err := conn.NewConn(src).GetLinkInfo()
+	lk, err := legacy.ReadLink(src)
 	if err != nil || lk == nil {
 		_ = src.Close()
 		logs.Error("get connection info from server error %v", err)
@@ -274,7 +273,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	}
 	//ack
 	if lk.Option.NeedAck {
-		if err := conn.WriteACK(src, lk.Option.Timeout); err != nil {
+		if err := legacy.WriteAck(src, lk.Option.Timeout); err != nil {
 			logs.Warn("write ACK failed: %v", err)
 			_ = src.Close()
 			return

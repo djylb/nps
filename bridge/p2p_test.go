@@ -15,7 +15,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/p2pproto"
 	"github.com/djylb/nps/lib/version"
 )
 
@@ -49,7 +48,7 @@ func useTestDb(t *testing.T) {
 
 // visitorRequest sends req on a WorkP2P stream served by b and returns the
 // reply.
-func visitorRequest(t *testing.T, b *Bridge, vs string, req p2pproto.Request) (p2pproto.Reply, error) {
+func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (legacy.P2PReply, error) {
 	t.Helper()
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
@@ -60,10 +59,10 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req p2pproto.Request) (p
 	}()
 	c := conn.NewConn(client)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
-	var reply p2pproto.Reply
-	err := p2pproto.Write(c, req)
+	var reply legacy.P2PReply
+	err := legacy.WriteP2P(c, req)
 	if err == nil {
-		err = p2pproto.Read(c, &reply)
+		err = legacy.ReadP2P(c, &reply)
 	}
 	_ = client.Close()
 	<-done
@@ -77,11 +76,11 @@ func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	if err := file.GetDb().NewTask(task); err != nil {
 		t.Fatal(err)
 	}
-	reply, err := visitorRequest(t, b, version.VERSION, p2pproto.Request{Password: crypt.Md5("secret")})
+	reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Password: crypt.Md5("secret")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.Code != p2pproto.CodeRefused || !strings.Contains(reply.Message, "disabled") {
+	if reply.Code != legacy.P2PCodeRefused || !strings.Contains(reply.Message, "disabled") {
 		t.Fatalf("reply = %+v, want a refusal for the disabled task", reply)
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {
@@ -91,7 +90,7 @@ func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 
 func TestP2PVisitorWithOldNpcIsClosed(t *testing.T) {
 	b := newTestP2PBridge(t)
-	if _, err := visitorRequest(t, b, "0.34.7", p2pproto.Request{}); err == nil {
+	if _, err := visitorRequest(t, b, "0.34.7", legacy.P2PRequest{}); err == nil {
 		t.Fatal("old npc got a reply")
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {

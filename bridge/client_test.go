@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -170,15 +170,15 @@ func TestAllowsFlag(t *testing.T) {
 		vis = 1 << file.KeyVisitor
 	)
 	want := map[string]int{
-		common.WorkMain:       ctl,
-		common.WorkChan:       ctl | pub,
-		common.WorkFile:       ctl | pub,
-		common.WorkP2PSession: ctl | pub,
-		common.WorkConfig:     ctl | pub,
-		common.WorkRegister:   ctl | pub,
-		common.WorkVisitor:    ctl | pub | vis,
-		common.WorkSecret:     ctl | pub | vis,
-		common.WorkP2P:        ctl | pub | vis,
+		legacy.WorkMain:       ctl,
+		legacy.WorkChan:       ctl | pub,
+		legacy.WorkFile:       ctl | pub,
+		legacy.WorkP2PSession: ctl | pub,
+		legacy.WorkConfig:     ctl | pub,
+		legacy.WorkRegister:   ctl | pub,
+		legacy.WorkVisitor:    ctl | pub | vis,
+		legacy.WorkSecret:     ctl | pub | vis,
+		legacy.WorkP2P:        ctl | pub | vis,
 		"none":                0,
 	}
 	for flag, mask := range want {

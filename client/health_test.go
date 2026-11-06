@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/upstream"
@@ -22,7 +23,7 @@ func readHealth(t *testing.T, c net.Conn) <-chan string {
 		defer close(ch)
 		sc := conn.NewConn(c)
 		for {
-			info, status, err := sc.GetHealthInfo()
+			info, status, err := legacy.ReadHealth(sc)
 			if err != nil {
 				return
 			}

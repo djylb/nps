@@ -187,12 +187,12 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 	}
 	// The wrapper only writes to sc, which the deferred cleanup closes on failure.
 	//noinspection GoResourceLeak
-	if _, err := conn.NewConn(sc).SendInfo(&link, ""); err != nil {
+	if err := legacy.WriteLink(sc, &link); err != nil {
 		logs.Trace("Secret SendInfo failed: %v", err)
 		return nil, err
 	}
 	if link.Option.NeedAck {
-		if err := conn.ReadACK(sc, b.timeout); err != nil {
+		if err := legacy.ReadAck(sc, b.timeout); err != nil {
 			logs.Trace("Secret ReadACK failed: %v", err)
 			return nil, err
 		}

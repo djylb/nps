@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -44,7 +43,7 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 			unsupported++
 			return true
 		}
-		if err := node.sendSignal(common.UpdateRequest, updateRequest{}, updateRequestTimeout); err != nil {
+		if err := node.sendSignal(legacy.UpdateRequest, updateRequest{}, updateRequestTimeout); err != nil {
 			lastErr = err
 			return true
 		}

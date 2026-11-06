@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -20,9 +21,9 @@ func TestReadTaskAddStatusConsumesEveryPort(t *testing.T) {
 		// three statuses for the multi-port task, then two for the secret
 		// task (its port plus the password entry), the last one a failure.
 		for i := 0; i < 4; i++ {
-			_ = server.WriteAddOk()
+			_ = legacy.WriteStatus(server, true)
 		}
-		_ = server.WriteAddFail()
+		_ = legacy.WriteStatus(server, false)
 	}()
 
 	if ok, _ := readTaskAddStatus(client, multi); !ok {

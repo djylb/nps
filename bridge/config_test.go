@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -37,10 +36,10 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	sent := file.NewClient(existing.VerifyKey, true, true)
 	sent.Id = existing.Id
-	if _, err := c.SendInfo(sent, common.FlagNewConf); err != nil {
+	if err := legacy.WriteClient(c, sent); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := c.GetAddStatus(); !ok {
+	if ok, _ := legacy.ReadStatus(c); !ok {
 		t.Fatal("config was not accepted")
 	}
 	buf := make([]byte, 16)
@@ -103,10 +102,10 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 
 	send := func(port int, remark string) bool {
 		task := &file.Tunnel{Mode: "tcp", Ports: strconv.Itoa(port), Remark: remark, Target: &file.Target{TargetStr: "127.0.0.1:80"}}
-		if _, err := c.SendInfo(task, common.FlagNewTask); err != nil {
+		if err := legacy.WriteTask(c, task); err != nil {
 			t.Fatal(err)
 		}
-		ok, _ := c.GetAddStatus()
+		ok, _ := legacy.ReadStatus(c)
 		return ok
 	}
 	if send(takenPort, "conflict") {

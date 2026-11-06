@@ -1,9 +1,7 @@
 package conn
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -42,19 +40,6 @@ func LinkConn(conn net.Conn, cpt, snappy bool, isServer, isLocal bool) io.ReadWr
 	default:
 		return conn
 	}
-}
-
-// GetLenBytes get the assembled amount data(len 4 and content)
-func GetLenBytes(buf []byte) (b []byte, err error) {
-	raw := bytes.NewBuffer([]byte{})
-	if err = binary.Write(raw, binary.LittleEndian, int32(len(buf))); err != nil {
-		return
-	}
-	if err = binary.Write(raw, binary.LittleEndian, buf); err != nil {
-		return
-	}
-	b = raw.Bytes()
-	return
 }
 
 // udp5HeaderRoom is the length of the longest SOCKS5 UDP header for an IP
@@ -173,27 +158,6 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 			return
 		}
 	}
-}
-
-func WriteACK(c net.Conn, timeout time.Duration) error {
-	_ = c.SetWriteDeadline(time.Now().Add(timeout))
-	_, err := c.Write([]byte(common.ConnAck))
-	_ = c.SetWriteDeadline(time.Time{})
-	return err
-}
-
-func ReadACK(c net.Conn, timeout time.Duration) error {
-	_ = c.SetReadDeadline(time.Now().Add(timeout))
-	buf := make([]byte, len(common.ConnAck))
-	_, err := io.ReadFull(c, buf)
-	_ = c.SetReadDeadline(time.Time{})
-	if err != nil {
-		return err
-	}
-	if string(buf) != common.ConnAck {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
 }
 
 // CopyWaitGroup conn1 mux conn

@@ -25,7 +25,6 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/p2pproto"
 )
 
 const (
@@ -186,7 +185,7 @@ func newP2PService(cfg P2PConfig) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}
-	reg, probe, err := startObservers(cfg.BasePort, p2pproto.NewLogger("P2P observers: "))
+	reg, probe, err := startObservers(cfg.BasePort, legacy.NewP2PLogger("P2P observers: "))
 	if err != nil {
 		return nil, err
 	}
@@ -389,20 +388,20 @@ func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelTyp
 		return
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
-	var req p2pproto.Request
-	if err := p2pproto.Read(c, &req); err != nil {
+	var req legacy.P2PRequest
+	if err := legacy.ReadP2P(c, &req); err != nil {
 		logs.Warn("P2P request of client %d from %v unreadable: %v", id, c.RemoteAddr(), err)
 		_ = c.Close()
 		return
 	}
 	svc := s.p2p.Load()
 	if svc == nil {
-		refuseP2P(c, id, p2pproto.CodeRefused, "P2P is disabled on this server (p2p_port is not set)")
+		refuseP2P(c, id, legacy.P2PCodeRefused, "P2P is disabled on this server (p2p_port is not set)")
 		return
 	}
 	if !svc.admit(id, uuid) {
 		logs.Debug("P2P request of client %d from %v dropped: too many requests", id, c.RemoteAddr())
-		_ = p2pproto.Write(c, p2pproto.Reply{Code: p2pproto.CodeBusy, Message: "too many P2P requests"})
+		_ = legacy.WriteP2P(c, legacy.P2PReply{Code: legacy.P2PCodeBusy, Message: "too many P2P requests"})
 		_ = c.Close()
 		return
 	}
@@ -417,7 +416,7 @@ func (s *Bridge) handleP2PVisitor(c *conn.Conn, id, ver int, vs, uuid, tunnelTyp
 // provider's stream follows when it joins, its observers announced at the
 // server address it reports then. It reports whether a session was opened,
 // which releases the request in onResult.
-func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tunnelType string, req p2pproto.Request) bool {
+func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tunnelType string, req legacy.P2PRequest) bool {
 	t, node, code, msg := s.resolveP2PTarget(req.Password)
 	if code != "" {
 		refuseP2P(c, id, code, msg)
@@ -425,12 +424,12 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 	}
 	inviteID, token, inv, drop, err := svc.invite(t.Client.Id)
 	if err != nil {
-		refuseP2P(c, id, p2pproto.CodeBusy, err.Error())
+		refuseP2P(c, id, legacy.P2PCodeBusy, err.Error())
 		return false
 	}
 	defer drop()
-	if err := node.sendSignal(common.P2PPunchStart, p2pproto.Invite{SessionID: inviteID, Token: token}, p2pHandshakeTimeout); err != nil {
-		refuseP2P(c, id, p2pproto.CodeOffline, fmt.Sprintf("client %d unreachable: %v", t.Client.Id, err))
+	if err := node.sendSignal(legacy.P2PPunchStart, legacy.P2PInvite{SessionID: inviteID, Token: token}, p2pHandshakeTimeout); err != nil {
+		refuseP2P(c, id, legacy.P2PCodeOffline, fmt.Sprintf("client %d unreachable: %v", t.Client.Id, err))
 		return false
 	}
 	opts := coord.SessionOptions{
@@ -451,7 +450,7 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 	}
 	cs, err := svc.co.NewSession(opts)
 	if err != nil {
-		refuseP2P(c, id, p2pproto.CodeBusy, "cannot open a session now: "+err.Error())
+		refuseP2P(c, id, legacy.P2PCodeBusy, "cannot open a session now: "+err.Error())
 		return false
 	}
 	logs.Debug("P2P session %s of task %d: client %d with client %d, probing %v", cs.ID(), t.Id, id, t.Client.Id, opts.InitiatorProbe.Observers)
@@ -506,8 +505,8 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string)
 		return
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
-	var join p2pproto.Join
-	if err := p2pproto.Read(c, &join); err != nil {
+	var join legacy.P2PJoin
+	if err := legacy.ReadP2P(c, &join); err != nil {
 		logs.Warn("P2P join of client %d from %v unreadable: %v", id, c.RemoteAddr(), err)
 		_ = c.Close()
 		return
@@ -518,7 +517,7 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id, ver int, vs, tunnelType string)
 		_ = c.Close()
 	}
 	if err := svc.claim(join.SessionID, id, join.Token, j); err != nil {
-		refuseP2P(c, id, p2pproto.CodeRefused, fmt.Sprintf("join of invitation %q: %v", join.SessionID, err))
+		refuseP2P(c, id, legacy.P2PCodeRefused, fmt.Sprintf("join of invitation %q: %v", join.SessionID, err))
 	}
 }
 
@@ -535,17 +534,17 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *file.Tunnel, node *Nod
 	t = file.GetDb().GetTaskByMd5Password(passwordMd5)
 	switch {
 	case t == nil:
-		return nil, nil, p2pproto.CodeRefused, "no task has this password"
+		return nil, nil, legacy.P2PCodeRefused, "no task has this password"
 	case t.Mode != "p2p":
-		return nil, nil, p2pproto.CodeRefused, fmt.Sprintf("task %d is a %s task, not a p2p task", t.Id, t.Mode)
+		return nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is a %s task, not a p2p task", t.Id, t.Mode)
 	case !t.Status:
-		return nil, nil, p2pproto.CodeRefused, fmt.Sprintf("task %d is disabled", t.Id)
+		return nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is disabled", t.Id)
 	case t.Client == nil:
-		return nil, nil, p2pproto.CodeRefused, fmt.Sprintf("task %d has no client", t.Id)
+		return nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d has no client", t.Id)
 	}
 	v, ok := s.Client.Load(t.Client.Id)
 	if !ok {
-		return nil, nil, p2pproto.CodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
+		return nil, nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
 	if route := t.Route(); route.Node != "" {
 		node, _ = v.(*Client).GetNodeByUUID(route.Node)
@@ -553,10 +552,10 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *file.Tunnel, node *Nod
 		node = v.(*Client).GetNode()
 	}
 	if node == nil || node.GetSignal() == nil {
-		return nil, nil, p2pproto.CodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
+		return nil, nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
 	if _, vs := node.versions(); !node.Caps().P2P {
-		return nil, nil, p2pproto.CodeUnsupported, fmt.Sprintf("npc %s of client %d does not speak the P2P protocol of this server, upgrade it to %s or newer",
+		return nil, nil, legacy.P2PCodeUnsupported, fmt.Sprintf("npc %s of client %d does not speak the P2P protocol of this server, upgrade it to %s or newer",
 			vs, t.Client.Id, legacy.P2PMinVersion)
 	}
 	return t, node, "", ""
@@ -565,7 +564,7 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *file.Tunnel, node *Nod
 // refuseP2P answers a P2P request with a refusal and closes the stream.
 func refuseP2P(c *conn.Conn, id int, code, msg string) {
 	logs.Info("P2P request of client %d from %v refused: %s", id, c.RemoteAddr(), msg)
-	_ = p2pproto.Write(c, p2pproto.Reply{Code: code, Message: msg})
+	_ = legacy.WriteP2P(c, legacy.P2PReply{Code: code, Message: msg})
 	_ = c.Close()
 }
 
@@ -578,13 +577,13 @@ func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tl
 	select {
 	case <-cs.Done():
 		logs.Debug("P2P session %s ended before the %s at %v attached", cs.ID(), role, c.RemoteAddr())
-		_ = p2pproto.Write(c, p2pproto.Reply{Code: p2pproto.CodeOffline, Message: "the P2P session has ended"})
+		_ = legacy.WriteP2P(c, legacy.P2PReply{Code: legacy.P2PCodeOffline, Message: "the P2P session has ended"})
 		_ = c.Close()
 		return
 	default:
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
-	if err := p2pproto.Write(c, p2pproto.Reply{SessionID: cs.ID()}); err != nil {
+	if err := legacy.WriteP2P(c, legacy.P2PReply{SessionID: cs.ID()}); err != nil {
 		logs.Warn("P2P session %s: the %s at %v is gone: %v", cs.ID(), role, c.RemoteAddr(), err)
 		_ = c.Close()
 		cs.Abort(protocol.ReasonPeerOffline, "gone_"+string(role))

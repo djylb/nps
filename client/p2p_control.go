@@ -15,7 +15,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/p2pproto"
 )
 
 // p2pControlTimeout bounds sending the request and the TLS handshake of a
@@ -50,18 +49,18 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 	}
 	// After SendType, which clears the read deadline.
 	_ = c.SetDeadline(time.Now().Add(p2pControlTimeout))
-	if err := p2pproto.Write(c, msg); err != nil {
+	if err := legacy.WriteP2P(c, msg); err != nil {
 		_ = c.Close()
 		return nil, "", fmt.Errorf("send request: %w", err)
 	}
 	_ = c.SetReadDeadline(time.Now().Add(p2pReplyTimeout))
-	var reply p2pproto.Reply
-	if err := p2pproto.Read(c, &reply); err != nil {
+	var reply legacy.P2PReply
+	if err := legacy.ReadP2P(c, &reply); err != nil {
 		_ = c.Close()
 		// An answer that is not a reply comes from a server of another
 		// protocol; an ended stream may be a restart or a network change.
 		var syntax *json.SyntaxError
-		if errors.As(err, &syntax) || errors.Is(err, p2pproto.ErrMessageSize) {
+		if errors.As(err, &syntax) || errors.Is(err, legacy.ErrP2PMessageSize) {
 			return nil, "", fmt.Errorf("%w: %v", errP2PServerIncompatible, err)
 		}
 		return nil, "", fmt.Errorf("read reply: %w", err)
@@ -87,10 +86,10 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, logPrefix string) holepunch.Options {
 	opts := holepunch.Options{
 		LocalAddr:        p2pLocalAddr(localIP),
-		TransportMode:    p2pproto.TransportMode,
+		TransportMode:    legacy.P2PTransportMode,
 		TransportData:    p2pLocalPin(),
 		AcceptBackground: background,
-		Logger:           p2pproto.NewLogger(logPrefix),
+		Logger:           legacy.NewP2PLogger(logPrefix),
 	}
 	if mapper != nil {
 		opts.PortMapper = mapper
