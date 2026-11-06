@@ -117,6 +117,8 @@ type SecurityConfig struct {
 	LoginMaxFailTimes int
 	LoginMaxBody      int64
 	LoginMaxSkew      int64
+	LoginACLMode      int // 0 off, 1 whitelist, 2 blacklist
+	LoginACLRules     string
 }
 
 type RuntimeConfig struct {
@@ -350,6 +352,8 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		LoginMaxFailTimes: r.intDefault(10, "login_max_fail_times"),
 		LoginMaxBody:      r.int64Default(1024, "login_max_body"),
 		LoginMaxSkew:      r.int64Default(5*60*1000, "login_max_skew"),
+		LoginACLMode:      r.intDefault(0, "login_acl_mode"),
+		LoginACLRules:     r.stringValue("login_acl_rules"),
 	}
 
 	if cfg.Security.AuthTimeWindow < 0 {

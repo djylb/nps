@@ -2,10 +2,12 @@ package service
 
 import (
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/djylb/guard/failban"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 )
@@ -35,6 +37,8 @@ type LoginBanRecord struct {
 // name and bans those that fail too often.
 type LoginPolicyService interface {
 	Settings() LoginPolicySettings
+	// AllowsIP applies login_acl_mode and login_acl_rules.
+	AllowsIP(ip string) bool
 	IsIPBanned(ip string) bool
 	IsUserBanned(username string) bool
 	RecordIPFailure(ip string)
@@ -60,6 +64,11 @@ type DefaultLoginPolicy struct {
 
 	mu      sync.Mutex
 	current *loginLimiters
+
+	aclMu    sync.Mutex
+	aclMode  int
+	aclRules string
+	acl      *acl.Source
 }
 
 var sharedLoginPolicy = NewDefaultLoginPolicy(servercfg.Current)
@@ -82,6 +91,47 @@ func (s *DefaultLoginPolicy) Settings() LoginPolicySettings {
 		MaxLoginBody: cfg.Security.LoginMaxBody,
 		MaxSkew:      cfg.Security.LoginMaxSkew,
 	}
+}
+
+func (s *DefaultLoginPolicy) AllowsIP(ip string) bool {
+	return ip == "" || acl.AllowsString(ip, s.source(), nil, nil)
+}
+
+// source returns the compiled login list, compiling again after a reload
+// changed its settings.
+func (s *DefaultLoginPolicy) source() *acl.Source {
+	cfg := s.config()
+	mode, rules := cfg.Security.LoginACLMode, cfg.Security.LoginACLRules
+	s.aclMu.Lock()
+	defer s.aclMu.Unlock()
+	if mode != s.aclMode || rules != s.aclRules {
+		s.aclMode, s.aclRules, s.acl = mode, rules, compileLoginACL(mode, rules)
+	}
+	return s.acl
+}
+
+// compileLoginACL maps the login settings onto a source list. Rules are
+// separated by commas or lines. A list without rules restricts nothing, as
+// the other source lists do.
+func compileLoginACL(mode int, rules string) *acl.Source {
+	if strings.TrimSpace(rules) == "" {
+		return nil
+	}
+	var black, white []string
+	list := strings.Split(strings.ReplaceAll(rules, ",", "\n"), "\n")
+	switch mode {
+	case 1:
+		white = list
+	case 2:
+		black = list
+	default:
+		return nil
+	}
+	src, err := acl.CompileSource(acl.ScopeGlobal, acl.DenyFirst, black, white, "login_acl_rules")
+	if err != nil {
+		logs.Warn("login_acl_rules: %v", err)
+	}
+	return src
 }
 
 func (s *DefaultLoginPolicy) IsIPBanned(ip string) bool {

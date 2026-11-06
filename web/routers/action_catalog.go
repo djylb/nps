@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/djylb/nps/lib/logs"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/gin-gonic/gin"
 )
@@ -66,7 +67,7 @@ func registerActionRouteGroup(group *gin.RouterGroup, state *State, specs []weba
 func actionRouteMiddlewares(state *State, spec webapi.ActionSpec) []gin.HandlerFunc {
 	middlewares := make([]gin.HandlerFunc, 0, 3)
 	if spec.Controller == "login" && (spec.Name == "verify" || spec.Name == "register") {
-		middlewares = append(middlewares, loginBodyLimitMiddleware(state))
+		middlewares = append(middlewares, loginACLMiddleware(state), loginBodyLimitMiddleware(state))
 	}
 	if permission := strings.TrimSpace(spec.Permission); permission != "" {
 		middlewares = append(middlewares, permissionMiddleware(state, permission))
@@ -83,6 +84,20 @@ func actionRouteMiddlewares(state *State, spec webapi.ActionSpec) []gin.HandlerF
 		middlewares = append(middlewares, hostOwnershipMiddleware(state))
 	}
 	return middlewares
+}
+
+// loginACLMiddleware applies the login source list to logging in and
+// registering. Sessions already open are not affected.
+func loginACLMiddleware(state *State) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ip := webapi.VisitorIP(newAPIContext(c), state.CurrentConfig())
+		if !state.LoginPolicy().AllowsIP(ip) {
+			logs.Warn("Login from %s refused by login_acl_rules", ip)
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		c.Next()
+	}
 }
 
 func loginBodyLimitMiddleware(state *State) gin.HandlerFunc {

@@ -53,6 +53,8 @@ nps.exe -conf_path=D:\test\nps
 | `login_max_fail_times` | 最大允许登录失败次数（默认 `10`）                    |
 | `login_max_body`       | 登录请求体最大大小（单位：字节，默认 `1024`）             |
 | `login_max_skew`       | 时间戳偏移容忍度（单位：毫秒，默认 `300000`，即 5 分钟）     |
+| `login_acl_mode`       | 登录来源名单模式：`0` 关闭（默认），`1` 白名单，`2` 黑名单。只限制登录和注册，已登录会话不受影响 |
+| `login_acl_rules`      | 登录来源名单规则，语法同全局名单，用逗号或换行分隔；没有规则时不限制 |
 | `totp_secret`          | 两步验证密钥 开启后 `web_password` 失效 使用动态验证码登录 |
 | `allow_x_real_ip`      | 允许通过 X-Real-IP 头获取真实IP                 |
 | `trusted_proxy_ips`    | 受信任的代理服务器 IP 地址（多个用逗号分隔）               |

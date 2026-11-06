@@ -121,3 +121,27 @@ func TestDefaultLoginPolicyKeepsBansAcrossSettings(t *testing.T) {
 		t.Fatal("an invalid address is banned")
 	}
 }
+
+func TestLoginACL(t *testing.T) {
+	cfg := &servercfg.Snapshot{}
+	policy := NewDefaultLoginPolicy(func() *servercfg.Snapshot { return cfg })
+	tests := []struct {
+		mode    int
+		rules   string
+		ip      string
+		allowed bool
+	}{
+		{0, "192.0.2.1", "192.0.2.1", true},
+		{1, "192.0.2.1,198.51.100.0/24", "198.51.100.7", true},
+		{1, "192.0.2.1,198.51.100.0/24", "203.0.113.1", false},
+		{2, "192.0.2.1\n198.51.100.0/24", "192.0.2.1", false},
+		{2, "192.0.2.1\n198.51.100.0/24", "203.0.113.1", true},
+		{1, "", "203.0.113.1", true},
+	}
+	for _, tt := range tests {
+		cfg = &servercfg.Snapshot{Security: servercfg.SecurityConfig{LoginACLMode: tt.mode, LoginACLRules: tt.rules}}
+		if got := policy.AllowsIP(tt.ip); got != tt.allowed {
+			t.Errorf("AllowsIP(%s) mode %d rules %q = %v", tt.ip, tt.mode, tt.rules, got)
+		}
+	}
+}
