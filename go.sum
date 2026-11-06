@@ -42,8 +42,8 @@ github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4 h1:WvCD4rcuN2hOuS9keOcw
 github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4/go.mod h1:8qOo/AF1/Xs8lttgM9zAeDNSPK+vtoMDppEbH6sQabY=
 github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7 h1:RlrcLVrdx5A1s+jglR7oPNMfXkAuQEhoH4Qp+9Wf1Wo=
 github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7/go.mod h1:dmnQT0n+7tiC1U029orhJva9QiH5H7+PNReU93B3tTA=
-github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0 h1:c11sm9wmKzRulpoL3aqTZ+Cow/kmvf8B0VVxUsxMJMM=
-github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0/go.mod h1:jwvG+iLmIl5k7riU04b3EFqDv0HfOJe+OoRxMPjXkcc=
+github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9 h1:7EGzuo5Xyn7QY3zAL+KIn1asUMC3Hq67K1nd7jBpljM=
+github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9/go.mod h1:jwvG+iLmIl5k7riU04b3EFqDv0HfOJe+OoRxMPjXkcc=
 github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f h1:ApndOPGF7m6Byx+F399FGmNCOgLH6DDZgNyr8MXYokw=
 github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f/go.mod h1:btb4BaMuOhpcFZzNgd0ZiXt621fpdKjgi6uClfmtZek=
 github.com/djylb/upstream v0.0.0-20261106113312-bb3198022f11 h1:MM6QH3Qp1P7ixNcOLqNyMCiTE86e6WyBQpypiyOPE14=

@@ -2,7 +2,6 @@ package version
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/djylb/nps/internal/tunnelwire"
 )
@@ -19,9 +18,3 @@ func PrintVersion(core string) {
 // A leading "v" and build metadata are ignored; a pre-release suffix sorts
 // before the release with the same numbers.
 func Compare(a, b string) int { return tunnelwire.CompareVersions(a, b) }
-
-// Major returns the first number of a dotted version, without a leading "v".
-func Major(v string) string {
-	major, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(v), "v"), ".")
-	return major
-}

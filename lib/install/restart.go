@@ -113,6 +113,10 @@ func StartUpdate() {
 		logs.Warn("Check the last update: %v", err)
 		return
 	}
+	state := selfupdate.Updater{Executable: exe, Journal: j}
+	if err := state.RecordOutcome(context.Background(), out); err != nil {
+		logs.Warn("Remember the failed update: %v", err)
+	}
 	switch out.Status {
 	case selfupdate.StatusPending:
 		logs.Info("Running the update to %s; it is kept if this start stays up for %v", out.Version, updateHealthy)

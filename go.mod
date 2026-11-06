@@ -15,7 +15,7 @@ require (
 	github.com/djylb/holepunch/quicpath v0.0.0-20261102215033-b889feff2dec
 	github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4
 	github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7
-	github.com/djylb/selfupdate v0.0.0-20261102201750-356e08b1b6e0
+	github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9
 	github.com/djylb/upstream v0.0.0-20261106113312-bb3198022f11
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1

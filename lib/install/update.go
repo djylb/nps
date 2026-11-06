@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +34,7 @@ var BuildTarget string
 // releaseProduct is the product named in the release manifests.
 const releaseProduct = "nps"
 
-// manifestURLs locates the signed manifest of the latest release, in the
-// order tried. Artifacts are listed relative to the manifest, so each
+// manifestURLs locates the signed manifest, in the order tried. Artifacts are listed relative to the manifest, so each
 // mirror serves them too.
 var manifestURLs = []string{
 	"https://github.com/djylb/nps/releases/latest/download/manifest.json",
@@ -46,8 +46,10 @@ var manifestURLs = []string{
 
 // UpdateOptions selects how Update installs a release.
 type UpdateOptions struct {
-	// Force installs the latest release even when it is not newer than the
-	// running version.
+	// Force installs the latest release again when the running version is
+	// that release, and retries a release that failed before. It lifts no
+	// gate of the manifest without an unlock, and never installs an older
+	// version.
 	Force bool
 	// Pending keeps the replaced files until the new version confirms
 	// itself (see StartUpdate); a start that does not is rolled back. Set
@@ -118,102 +120,111 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 		return nil
 	}
 
-	var c *selfupdate.Candidate
-	for _, url := range manifestURLs {
-		fmt.Println("Trying:", url)
-		u.Source = &selfupdate.HTTPSource{Client: &http.Client{Transport: newHTTPClient()}, URL: url}
-		c, err = u.Check(ctx)
-		switch {
-		case errors.Is(err, selfupdate.ErrUpToDate):
-			fmt.Println("Already up to date, current version is", version.VERSION)
-			return nil, nil
-		case errors.Is(err, selfupdate.ErrPendingRestart):
-			return nil, fmt.Errorf("%w; restart %s to run it", err, bin)
-		case err != nil:
-			fmt.Println("  → failed:", err)
-			continue
+	plan, err := u.Check(ctx)
+	if errors.Is(err, selfupdate.ErrPendingRestart) {
+		return nil, fmt.Errorf("%w; restart %s to run it", err, bin)
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range plan.Warnings {
+		fmt.Println("WARNING:", w)
+	}
+	for _, n := range plan.Route.Notices {
+		fmt.Println("NOTICE:", n.Message, n.URL)
+	}
+	c := plan.Candidate
+	if c == nil {
+		if plan.Route.Status == selfupdate.RouteHeld {
+			return nil, heldError(plan.Route)
 		}
-		fmt.Println("The latest version is", c.Version)
-		if err := checkMajor(version.VERSION, c.Version); err != nil {
-			return nil, err
-		}
-		running := processesRunning(targets)
-		if o.Pending {
-			err = u.Apply(ctx, c)
-		} else {
-			err = u.Install(ctx, c)
-		}
-		if err == nil {
-			for _, t := range targets {
-				fmt.Println("Replaced", t)
+		fmt.Println("Already up to date, current version is", version.VERSION)
+		return nil, nil
+	}
+	fmt.Println("Updating to", c.Version)
+	running := processesRunning(targets)
+	if o.Pending {
+		err = u.Apply(ctx, c)
+	} else {
+		err = u.Install(ctx, c)
+	}
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			if common.IsWindows() {
+				err = fmt.Errorf("%w; run the update as administrator", err)
+			} else {
+				err = fmt.Errorf("%w; run the update as root", err)
 			}
-			fmt.Println("Update completed:", c.Version)
-			return &UpdateResult{Version: c.Version, Replaced: targets, Running: running}, nil
 		}
-		if errors.Is(err, selfupdate.ErrBusy) || errors.Is(err, fs.ErrPermission) || ctx.Err() != nil {
-			break
-		}
-		fmt.Println("  → failed:", err)
+		return nil, err
 	}
-	if errors.Is(err, fs.ErrPermission) {
-		if common.IsWindows() {
-			err = fmt.Errorf("%w; run the update as administrator", err)
-		} else {
-			err = fmt.Errorf("%w; run the update as root", err)
-		}
+	for _, t := range targets {
+		fmt.Println("Replaced", t)
 	}
-	return nil, err
+	fmt.Println("Update completed:", c.Version)
+	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running}, nil
 }
 
-// checkMajor refuses an update that changes the major version, which may not
-// be able to work with the existing peers and data. It applies to forced
-// updates too; such a move is a manual upgrade.
-func checkMajor(current, target string) error {
-	if version.Major(current) == version.Major(target) {
-		return nil
+// heldError explains why newer releases cannot be installed by an update.
+func heldError(r *selfupdate.Route) error {
+	msgs := make([]string, 0, len(r.Blocked)+len(r.Unusable))
+	for _, reason := range append(slices.Clone(r.Blocked), r.Unusable...) {
+		msg := reason.Message
+		if msg == "" {
+			msg = reason.Code
+		}
+		if reason.URL != "" {
+			msg += " (" + reason.URL + ")"
+		}
+		msgs = append(msgs, msg)
 	}
-	return fmt.Errorf("version %s has a different major version than %s and cannot be installed by an update; read the release notes and upgrade manually", target, current)
+	return fmt.Errorf("version %s cannot be installed by an update from %s: %s", r.Latest, r.Current, strings.Join(msgs, "; "))
 }
 
-// latestRelease returns the version of the latest release of bin with an
-// artifact for this build, from the first manifest that verifies. A release
-// of another major version counts as no update.
+// latestRelease returns the release an update of bin would install now, or the
+// running version when there is none.
 func latestRelease(ctx context.Context, bin string) (string, error) {
 	u, err := newUpdater(bin, false)
 	if err != nil {
 		return "", err
 	}
-	var errs []error
-	for _, url := range manifestURLs {
-		u.Source = &selfupdate.HTTPSource{Client: &http.Client{Transport: newHTTPClient()}, URL: url}
-		c, err := u.Check(ctx)
-		switch {
-		case err == nil:
-			if checkMajor(version.VERSION, c.Version) != nil {
-				return version.VERSION, nil
-			}
-			return c.Version, nil
-		case errors.Is(err, selfupdate.ErrUpToDate), errors.Is(err, selfupdate.ErrPendingRestart):
-			return version.VERSION, nil
-		}
-		errs = append(errs, err)
+	plan, err := u.Check(ctx)
+	if errors.Is(err, selfupdate.ErrPendingRestart) {
+		return version.VERSION, nil
 	}
-	return "", errors.Join(errs...)
+	if err != nil {
+		return "", err
+	}
+	if plan.Candidate == nil {
+		return version.VERSION, nil
+	}
+	return plan.Candidate.Version, nil
 }
 
-// newUpdater returns an updater of bin without source, files or journal.
+// newUpdater returns an updater of bin without files or journal. An update
+// always runs on somebody's request, hence the grants; force reinstalls and
+// retries a failed release, but never goes back to an older version.
 func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 	key, err := selfupdate.ParsePublicKey(ReleaseSigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("this build has no valid release signing key, so it cannot verify updates; download the new release instead: %w", err)
 	}
+	client := &http.Client{Transport: newHTTPClient()}
+	sources := make([]selfupdate.Source, 0, len(manifestURLs))
+	for _, url := range manifestURLs {
+		sources = append(sources, &selfupdate.HTTPSource{Client: client, URL: url})
+	}
+	grants := []string{"user", "rollout"}
+	if force {
+		grants = append(grants, "force", "reinstall", "retry-failed")
+	}
 	return &selfupdate.Updater{
-		Trust:          selfupdate.Trust{Keys: []selfupdate.TrustedKey{{Public: key}}},
-		Product:        releaseProduct,
-		Name:           artifactName(bin),
-		Current:        version.VERSION,
-		AllowDowngrade: force,
-		Reinstall:      force,
+		Sources: sources,
+		Trust:   selfupdate.Trust{Keys: []selfupdate.TrustedKey{{Public: key}}},
+		Product: releaseProduct,
+		Name:    artifactName(bin),
+		Current: version.VERSION,
+		Grants:  grants,
 	}, nil
 }
 

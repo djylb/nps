@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "product": "nps",
+  "baseline": [
+    {
+      "id": "major",
+      "effect": "block",
+      "message": "a new major version needs a manual upgrade; read the release notes",
+      "url": "https://github.com/djylb/nps/releases",
+      "when": [{"fact": "edge.crosses", "in": ["major"]}]
+    }
+  ],
+  "rules": [],
+  "releases": []
+}

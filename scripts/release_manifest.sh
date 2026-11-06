@@ -6,20 +6,24 @@
 # Usage: UPDATE_SIGNING_KEY=... scripts/release_manifest.sh VERSION DIST
 #        UPDATE_SIGNING_KEY=... scripts/release_manifest.sh --renew DIST
 #
-# --renew signs DIST/manifest.json again with a new expiry, unchanged
-# otherwise.
+# --renew signs DIST/manifest.json again with a new expiry and the rules of
+# release/update-rules.json, unchanged otherwise.
+#
+# release/update-rules.json is the one source of the upgrade rules. The serial
+# is the signing time, so it grows across releases without looking at the last
+# manifest.
 #
 # UPDATE_SIGNING_KEY is the private key written by "selfupdate keygen". The
 # manifest is checked against ReleaseSigningKey in lib/install/update.go, the
 # key the released programs trust. SELFUPDATE names the selfupdate tool
-# (default: selfupdate on PATH); MANIFEST_EXPIRES its validity (default 90
+# (default: selfupdate on PATH); MANIFEST_EXPIRES its validity (default 45
 # days), after which it has to be signed again.
 set -euo pipefail
 
 version="$1"
 dist="$2"
 tool="${SELFUPDATE:-selfupdate}"
-expires="${MANIFEST_EXPIRES:-2160h}"
+expires="${MANIFEST_EXPIRES:-1080h}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ -z "${UPDATE_SIGNING_KEY:-}" ]; then
@@ -37,16 +41,21 @@ trap 'rm -rf "$work"' EXIT
 printf '%s\n' "$UPDATE_SIGNING_KEY" > "$work/release.key"
 chmod 600 "$work/release.key"
 manifest="$work/manifest.json"
+rules="$root/release/update-rules.json"
+serial=$(date -u +%s)
 
 if [ "$version" = "--renew" ]; then
   "$tool" verify -pub "$pub" -in "$dist/manifest.json" -out "$manifest"
-  "$tool" sign -key "$work/release.key" -expires "$expires" -in "$manifest" -out "$dist/manifest.json"
+  jq --slurpfile r "$rules" '.baseline = $r[0].baseline | .rules = ($r[0].rules // []) | .facts = ($r[0].facts // {})' \
+    "$manifest" > "$manifest.new"
+  mv "$manifest.new" "$manifest"
+  "$tool" sign -serial "$serial" -key "$work/release.key" -expires "$expires" -in "$manifest" -out "$dist/manifest.json"
   "$tool" verify -pub "$pub" -in "$dist/manifest.json" > /dev/null
   echo "Renewed $dist/manifest.json"
   exit 0
 fi
 
-printf '{"product":"nps","releases":[]}\n' > "$manifest"
+cp "$rules" "$manifest"
 
 shopt -s nullglob
 count=0
@@ -88,6 +97,6 @@ if [ "$count" -eq 0 ]; then
   exit 1
 fi
 
-"$tool" sign -key "$work/release.key" -expires "$expires" -in "$manifest" -out "$dist/manifest.json"
+"$tool" sign -serial "$serial" -key "$work/release.key" -expires "$expires" -in "$manifest" -out "$dist/manifest.json"
 "$tool" verify -pub "$pub" -in "$dist/manifest.json" -dist "$dist"
 echo "Signed $dist/manifest.json with $count artifacts"
