@@ -208,3 +208,39 @@ func TestRunStopsOnCancel(t *testing.T) {
 		t.Fatal("Run did not stop")
 	}
 }
+
+// A bare carriage return ends a line for the configuration parser, so it must
+// not hide a key from the checks on fetched payloads.
+func TestFetchedPayloadCannotUseLineEndings(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "accounts")
+	if err := os.WriteFile(secret, []byte("user=pass\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	head := "[common]\nserver_addr=a:1\nvkey=k\n"
+	web := head + "[web]\nmode=tcp\nserver_port=80\ntarget_addr=1.1.1.1:80\n"
+	for name, body := range map[string]string{
+		"multi_account": web + "x=y\rmulti_account=" + secret + "\n",
+		"local_path":    web + "x=y\rlocal_path=/etc\n",
+		"mode file":     head + "[web]\nserver_port=80\rmode=file\n",
+		"pprof":         head + "x=y\rpprof_addr=127.0.0.1:0\n",
+		"host cert":     head + "[h]\nhost=x.test\rcert_file=" + secret + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := resolve(context.Background(), body, false, 0)
+			if err == nil || !strings.Contains(err.Error(), "may not") {
+				t.Fatalf("got %v, %+v", err, got)
+			}
+		})
+	}
+}
+
+// Keys only the local user may set stay allowed in a local payload.
+func TestLocalPayloadKeepsLocalKeys(t *testing.T) {
+	got, err := Resolve(context.Background(), "[common]\nserver_addr=a:1\nvkey=k\ndns_server=1.1.1.1\n[web]\nmode=file\nserver_port=80\nlocal_path=/srv\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := got[0].Config; c.CommonConfig.DnsServer != "1.1.1.1" || c.Tasks[0].LocalPath != "/srv" {
+		t.Fatalf("%+v", c.Tasks[0])
+	}
+}

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 )
@@ -125,7 +127,7 @@ func TestDealCommon_Defaults(t *testing.T) {
 }
 
 func TestDealHost_HeaderAndResponseMapping(t *testing.T) {
-	h := dealHost(`host=example.com
+	h, _ := dealHost(`host=example.com
 target_addr=127.0.0.1:8080,127.0.0.1:8081
 proxy_protocol=2
 auto_cors=true
@@ -153,7 +155,7 @@ response_Cache-Control=no-cache`)
 }
 
 func TestDealTunnel_ParseFlagsAndRules(t *testing.T) {
-	tnl := dealTunnel(`server_port=10080
+	tnl, _ := dealTunnel(`server_port=10080
 server_ip=0.0.0.0
 mode=http
 target_addr=127.0.0.1:80,127.0.0.1:8080
@@ -275,5 +277,35 @@ func TestParseConfig_SectionTypeByKey(t *testing.T) {
 func TestParseConfig_MissingCommon(t *testing.T) {
 	if _, err := parseConfig("[tcp]\r\nmode=tcp\r\n"); err == nil {
 		t.Fatal("expected error for missing [common]")
+	}
+}
+
+func TestUnreadableMultiAccountIsAnError(t *testing.T) {
+	text := "[common]\nserver_addr=a:1\nvkey=k\n[web]\nhost=x.test\nmulti_account=" + t.TempDir() + "\n"
+	if _, err := Parse(text); err == nil {
+		t.Fatal("a directory as multi_account was accepted")
+	}
+}
+
+func TestParseUntrustedReadsNoFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "accounts")
+	if err := os.WriteFile(path, []byte("u=p\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	common := "[common]\nserver_addr=a:1\nvkey=k\n"
+	for _, text := range []string{
+		common + "[t]\nmode=tcp\rmulti_account=" + path + "\n",
+		common + "[h]\nhost=x.test\r\nmulti_account=" + path + "\n",
+		common + "[h]\nhost=x.test\nkey_file=" + path + "\n",
+		common + "[t]\nserver_port=1\rmode=FILE\n",
+		common + "[t]\nmode=tcp\ntarget_addr={{.HOME}}\n",
+	} {
+		if c, err := ParseUntrusted(text); err == nil {
+			t.Errorf("accepted %q: %+v", text, c)
+		}
+	}
+	c, err := ParseUntrusted(common + "[t]\nmode=tcp\nserver_port=1\ntarget_addr=1.1.1.1:1\n")
+	if err != nil || len(c.Tasks) != 1 {
+		t.Fatalf("%v, %+v", err, c)
 	}
 }

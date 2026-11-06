@@ -382,34 +382,12 @@ func scalar(value any) (string, error) {
 	return strings.TrimSpace(text), nil
 }
 
-// remoteRefused are configuration keys that reach the local machine's files or
-// open debug listeners, which only the local user may ask for.
-var remoteRefused = map[string]bool{
-	"multi_account": true, "cert_file": true, "key_file": true,
-	"local_path": true, "strip_pre": true, "pprof_addr": true,
-}
-
-func checkUntrusted(text string) error {
-	if strings.Contains(text, "{{") { // templates can read the environment
-		return errors.New("a fetched payload may not use templates")
-	}
-	for line := range strings.Lines(text) {
-		key, value, _ := strings.Cut(strings.TrimSpace(line), "=")
-		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
-		if remoteRefused[key] || (key == "mode" && value == "file") {
-			return fmt.Errorf("a fetched payload may not set %q", key)
-		}
-	}
-	return nil
-}
-
 func parseText(name, text string, trusted, direct bool, want map[string]int) ([]Profile, error) {
+	parse := config.Parse
 	if !trusted {
-		if err := checkUntrusted(text); err != nil {
-			return nil, err
-		}
+		parse = config.ParseUntrusted
 	}
-	cfg, err := config.Parse(text)
+	cfg, err := parse(text)
 	if err != nil {
 		return nil, err
 	}

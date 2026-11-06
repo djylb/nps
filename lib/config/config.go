@@ -60,6 +60,56 @@ func Parse(content string) (*Config, error) {
 	return parseConfig(content)
 }
 
+// ParseUntrusted parses configuration text from a source other than the local
+// user. Nothing in it reaches the local machine: templates and the keys in
+// localKeys are refused before any section is read, so parsing reads no file
+// and opens no listener.
+func ParseUntrusted(raw string) (*Config, error) {
+	content := common.NormalizeNewlines(raw)
+	if strings.Contains(content, "{{") { // templates can read the environment
+		return nil, errors.New("untrusted configuration may not use templates")
+	}
+	sections, err := parseSections(content)
+	if err != nil {
+		return nil, err
+	}
+	for _, sec := range sections {
+		for _, line := range splitStr(sec.body) {
+			if item, ok := splitKV(line); ok && localKeys[item[0]] {
+				return nil, fmt.Errorf("untrusted configuration may not set %q", item[0])
+			}
+		}
+	}
+	c, err := buildConfig(content, sections)
+	if err != nil {
+		return nil, err
+	}
+	return c, c.checkUntrusted()
+}
+
+// localKeys reach the local machine's files or open debug listeners, which
+// only the local user may ask for.
+var localKeys = map[string]bool{
+	"multi_account": true, "cert_file": true, "key_file": true,
+	"local_path": true, "strip_pre": true, "pprof_addr": true,
+}
+
+// checkUntrusted refuses a parsed configuration that serves or reads local
+// files, whichever key led to it.
+func (c *Config) checkUntrusted() error {
+	for _, t := range c.Tasks {
+		if strings.EqualFold(t.Mode, "file") || t.LocalPath != "" || t.StripPre != "" || t.MultiAccount.Content != "" {
+			return fmt.Errorf("untrusted configuration may not set local files in %q", t.Remark)
+		}
+	}
+	for _, h := range c.Hosts {
+		if h.CertFile != "" || h.KeyFile != "" || h.MultiAccount.Content != "" {
+			return fmt.Errorf("untrusted configuration may not set local files in %q", h.Remark)
+		}
+	}
+	return nil
+}
+
 func parseConfig(raw string) (*Config, error) {
 	content, err := common.ParseStr(common.NormalizeNewlines(raw))
 	if err != nil {
@@ -69,6 +119,10 @@ func parseConfig(raw string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return buildConfig(content, sections)
+}
+
+func buildConfig(content string, sections []section) (*Config, error) {
 	c := &Config{content: content}
 	for _, sec := range sections {
 		c.title = append(c.title, "["+sec.name+"]")
@@ -90,11 +144,17 @@ func parseConfig(raw string) (*Config, error) {
 		case name == "common":
 			c.CommonConfig = dealCommon(sec.body)
 		case keys["host"]:
-			h := dealHost(sec.body)
+			h, err := dealHost(sec.body)
+			if err != nil {
+				return nil, fmt.Errorf("[%s]: %w", sec.name, err)
+			}
 			h.Remark = sec.name
 			c.Hosts = append(c.Hosts, h)
 		default:
-			t := dealTunnel(sec.body)
+			t, err := dealTunnel(sec.body)
+			if err != nil {
+				return nil, fmt.Errorf("[%s]: %w", sec.name, err)
+			}
 			t.Remark = sec.name
 			c.Tasks = append(c.Tasks, t)
 		}
@@ -231,7 +291,7 @@ func dealCommon(s string) *CommonConfig {
 	return c
 }
 
-func dealHost(s string) *file.Host {
+func dealHost(s string) (*file.Host, error) {
 	h := new(file.Host)
 	h.Target = new(file.Target)
 	h.Scheme = "all"
@@ -282,17 +342,8 @@ func dealHost(s string) *file.Host {
 		case "target_is_https":
 			h.TargetIsHttps = common.GetBoolByStr(item[1])
 		case "multi_account":
-			if common.FileExists(item[1]) {
-				if b, err := common.ReadAllFromFile(item[1]); err != nil {
-					panic(err)
-				} else {
-					if content, err := common.ParseStr(string(b)); err != nil {
-						panic(err)
-					} else {
-						h.MultiAccount.Content = content
-						h.MultiAccount.AccountMap = dealMultiUser(content)
-					}
-				}
+			if err := loadMultiAccount(h.MultiAccount, item[1]); err != nil {
+				return nil, err
 			}
 		default:
 			if name, ok := strings.CutPrefix(item[0], "header_"); ok {
@@ -305,7 +356,25 @@ func dealHost(s string) *file.Host {
 			h.RespHeaderChange = respHeaderChange
 		}
 	}
-	return h
+	return h, nil
+}
+
+// loadMultiAccount fills m from the account file at path, if there is one.
+func loadMultiAccount(m *file.MultiAccount, path string) error {
+	if !common.FileExists(path) {
+		return nil
+	}
+	b, err := common.ReadAllFromFile(path)
+	if err != nil {
+		return fmt.Errorf("multi_account: %w", err)
+	}
+	content, err := common.ParseStr(string(b))
+	if err != nil {
+		return fmt.Errorf("multi_account: %w", err)
+	}
+	m.Content = content
+	m.AccountMap = dealMultiUser(content)
+	return nil
 }
 
 func dealHealth(s string) *file.Health {
@@ -333,7 +402,7 @@ func dealHealth(s string) *file.Health {
 	return h
 }
 
-func dealTunnel(s string) *file.Tunnel {
+func dealTunnel(s string) (*file.Tunnel, error) {
 	t := new(file.Tunnel)
 	t.Target = new(file.Target)
 	t.MultiAccount = new(file.MultiAccount)
@@ -380,22 +449,12 @@ func dealTunnel(s string) *file.Tunnel {
 		case "read_only":
 			t.ReadOnly = common.GetBoolByStr(item[1])
 		case "multi_account":
-			if common.FileExists(item[1]) {
-				if b, err := common.ReadAllFromFile(item[1]); err != nil {
-					panic(err)
-				} else {
-					if content, err := common.ParseStr(string(b)); err != nil {
-						panic(err)
-					} else {
-						t.MultiAccount.Content = content
-						t.MultiAccount.AccountMap = dealMultiUser(content)
-					}
-				}
+			if err := loadMultiAccount(t.MultiAccount, item[1]); err != nil {
+				return nil, err
 			}
 		}
 	}
-	return t
-
+	return t, nil
 }
 
 func dealMultiUser(s string) map[string]string {
