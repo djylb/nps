@@ -1,37 +1,56 @@
 <div class="wrapper wrapper-content">
+    <!--全局参数-->
     <div class="row">
         <div class="col-lg-12">
-            <div class="ibox float-e-margins nps-form-shell">
+            <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h3 class="nps-form-title" langtag="word-globalparam"></h3>
-                    <p class="nps-form-subtitle" langtag="info-global-node-subtitle"></p>
+                    <h5 langtag="word-globalparam"></h5>
                 </div>
                 <div class="ibox-content">
-                    <form class="form-horizontal" id="global-settings-form">
-                        <div class="form-group" id="entry_acl_mode">
-                            <label class="control-label font-bold" langtag="word-entryacl"></label>
+                    <form class="form-horizontal">
+                        <p class="help-block m-b-md" langtag="info-globaliplist"></p>
+                        <div class="form-group" id="ip_list_priority">
+                            <label class="control-label font-bold" langtag="word-iplistpriority"></label>
                             <div class="col-sm-12">
-                                <select class="form-control selectpicker" name="entry_acl_mode">
-                                    <option langtag="word-disable" selected value="0"></option>
-                                    <option langtag="word-whitelist" value="1"></option>
-                                    <option langtag="word-blacklist" value="2"></option>
+                                <select class="form-control selectpicker" name="globalIpListPriority">
+                                    <option value="0" {{if ne 1 .globalIpListPriority}}selected{{end}} langtag="word-denyfirst"></option>
+                                    <option value="1" {{if eq 1 .globalIpListPriority}}selected{{end}} langtag="word-allowfirst"></option>
                                 </select>
-                                <span class="help-block m-b-none" langtag="info-global-entryacl"></span>
+                                <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
                             </div>
                         </div>
-                        <div class="form-group" id="entry_acl_rules">
-                            <label class="control-label font-bold" langtag="word-entryaclrules"></label>
+                        <div class="form-group" id="black_ip_list">
+                            <label class="control-label font-bold" langtag="word-globalblackiplist"></label>
                             <div class="col-sm-12">
-                                <textarea class="form-control" langtag="info-suchasentryaclrules" name="entry_acl_rules" placeholder="" rows="10" type="text"></textarea>
-                                <span class="help-block m-b-none" langtag="info-global-entryaclrules"></span>
+                                <textarea class="form-control" langtag="info-suchasaclrules" name="globalBlackIpList" placeholder="" rows="8">{{.globalBlackIpList}}</textarea>
+                                <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
                             </div>
                         </div>
-                        <div class="form-group nps-form-actions">
-                            <div class="col-lg-12">
-                                <button class="btn btn-success"
-                                        data-nps-require-node-action="global/update"
-                                        onclick="window.nps.submitFormAction('global', {method: 'POST', url: window.nps.nodeRoute('global') + '/actions/update'}, $('#global-settings-form').serializeArray())"
-                                        type="button">
+                        <div class="form-group" id="white_ip_list">
+                            <label class="control-label font-bold" langtag="word-globalwhiteiplist"></label>
+                            <div class="col-sm-12">
+                                <textarea class="form-control" langtag="info-suchasaclrules" name="globalWhiteIpList" placeholder="" rows="8">{{.globalWhiteIpList}}</textarea>
+                                <span class="help-block m-b-none" langtag="info-globaliplistrules"></span>
+                            </div>
+                        </div>
+                        <div class="form-group" id="global_max_conn">
+                            <label class="control-label font-bold" langtag="word-globalmaxconn"></label>
+                            <div class="col-sm-12">
+                                <input class="form-control" type="number" min="0" step="1" name="globalMaxConn" value="{{or .globalMaxConn 0}}">
+                                <span class="help-block m-b-none" langtag="info-globalmaxconn"></span>
+                                <span class="help-block m-b-none"><span langtag="word-nowconn"></span>: {{or .globalNowConn 0}}</span>
+                            </div>
+                        </div>
+                        <div class="form-group" id="global_rate_limit">
+                            <label class="control-label font-bold" langtag="word-globalratelimit"></label>
+                            <div class="col-sm-12">
+                                <input class="form-control" type="number" min="0" step="1" name="globalRateLimit" value="{{or .globalRateLimit 0}}">
+                                <span class="help-block m-b-none" langtag="info-globalratelimit"></span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <div class="col-lg-12 col-sm-offset-2">
+                                <button class="btn btn-success" onclick="submitform('global', '{{.web_base_url}}/global/save', $('form').serializeArray())" type="button">
                                     <i class="fa fa-fw fa-lg fa-check-circle"></i> <span langtag="word-save"></span>
                                 </button>
                             </div>
@@ -41,54 +60,30 @@
             </div>
         </div>
     </div>
-</div>
-
-<div class="wrapper wrapper-content" id="node-management-section">
+    <!--Geo 数据-->
     <div class="row">
         <div class="col-lg-12">
-            <div class="ibox float-e-margins nps-list-shell">
+            <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 class="nps-list-title" langtag="title-node-management-integrations"></h5>
-                    <p class="nps-list-subtitle" langtag="info-node-management-integrations"></p>
+                    <h5 langtag="word-geodata"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h4 langtag="title-configured-management-platforms"></h4>
-                    <p class="m-b-sm" langtag="info-node-local-truth"></p>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                            <tr>
-                                <th langtag="word-platformid"></th>
-                                <th langtag="word-masterurl"></th>
-                                <th langtag="word-controlscope"></th>
-                                <th langtag="word-connectmode"></th>
-                                <th langtag="word-serviceuser"></th>
-                                <th langtag="word-reversews"></th>
-                                <th langtag="word-callback"></th>
-                                <th langtag="word-status"></th>
-                                <th langtag="word-option"></th>
-                            </tr>
-                            </thead>
-                            <tbody id="management-platform-rows">
-                            <tr class="js-empty-row">
-                                <td class="text-muted" colspan="9" langtag="info-no-management-platform"></td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <h4 langtag="title-node-api-endpoints"></h4>
-                    <div class="row m-b-md">
-                        <div class="col-sm-6">
-                            <label langtag="word-nodeapibase"></label>
-                            <input class="form-control" id="node-api-base" readonly type="text" value="">
-                        </div>
-                    </div>
-
-                    <h4 langtag="title-advertised-capabilities"></h4>
-                    <div class="row" id="node-capabilities">
-                        <div class="col-sm-12 text-muted" langtag="word-loading"></div>
-                    </div>
+                    <p class="help-block" langtag="info-geodata"></p>
+                    <ul class="list-group clear-list m-t">
+                        <li class="list-group-item fist-item">
+                            <strong langtag="word-geoversion"></strong>
+                            <span class="pull-right">{{if .geo.Version}}{{.geo.Version}}{{else}}<span langtag="word-unknown"></span>{{end}}</span>
+                        </li>
+                        {{range .geo.Files}}
+                        <li class="list-group-item">
+                            <strong>{{.Name}}</strong> <small class="text-muted">{{.Path}}</small>
+                            <span class="pull-right">{{if .Exists}}{{.ModTime}} · {{.Size}} B{{else}}<span class="text-danger" langtag="word-filemissing"></span>{{end}}</span>
+                        </li>
+                        {{end}}
+                    </ul>
+                    <button class="btn btn-primary" onclick="updateGeoData(this)" type="button">
+                        <i class="fa fa-fw fa-lg fa-cloud-download-alt"></i> <span langtag="word-updategeo"></span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -96,282 +91,36 @@
 </div>
 
 <script>
-    (function () {
-        var $form = $('#global-settings-form');
-        var $platformRows = $('#management-platform-rows');
-        var $capabilities = $('#node-capabilities');
-        var $nodeAPIBase = $('#node-api-base');
-
-        function langText(path, fallback) {
-            return window.nps.langText(path, arguments.length > 1 ? fallback : '');
-        }
-
-        function escapeHtml(value) {
-            return $('<div/>').text(value === null || value === undefined ? '' : String(value)).html();
-        }
-
-        function formatTimestamp(value) {
-            return window.nps.formatUnixTimestamp(value) || '';
-        }
-
-        function secondsText(value) {
-            if (value === null || value === undefined || value === '') {
-                return '';
-            }
-            return String(value) + langText('word-second-short');
-        }
-
-        function applyLang(scopeSelector) {
-            if ($.fn.setLang) {
-                $('body').setLang(scopeSelector || '');
-            }
-        }
-
-        function hasCallbackQueuePage() {
-            return window.nps.pageAvailable('global', 'callbackqueue');
-        }
-
-        function queueRoute(action) {
-            if (action === 'replay') {
-                return window.nps.nodeRoute('callback_queue_replay');
-            }
-            if (action === 'clear') {
-                return window.nps.nodeRoute('callback_queue_clear');
-            }
-            return window.nps.nodeRoute('callback_queue');
-        }
-
-        function callbackQueuePageHref(platformID) {
-            return window.nps.pagePath('global', 'callbackqueue', {platform_id: platformID});
-        }
-
-        function setQueueSummary(platformID, queueSize, queueMax, dropped) {
-            $('.js-callback-queue-size[data-platform-id="' + platformID + '"]').text(queueSize);
-            $('.js-callback-queue-max[data-platform-id="' + platformID + '"]').text(queueMax);
-            $('.js-callback-dropped[data-platform-id="' + platformID + '"]').text(dropped);
-        }
-
-        function renderPlatformActions(platform) {
-            if (!hasCallbackQueuePage() || !platform.callback_enabled || !platform.callback_queue_max) {
-                return '<span langtag="word-na"></span>';
-            }
-            return [
-                '<a class="btn btn-default btn-xs" href="', escapeHtml(callbackQueuePageHref(platform.platform_id)), '">',
-                '<i class="fa fa-list-ul"></i> <span langtag="word-viewqueue"></span>',
-                '</a> ',
-                '<button class="btn btn-default btn-xs js-callback-queue-replay" data-platform-id="', escapeHtml(platform.platform_id), '" type="button">',
-                '<i class="fa fa-repeat"></i> <span langtag="word-replay"></span>',
-                '</button> ',
-                '<button class="btn btn-danger btn-xs js-callback-queue-clear" data-platform-id="', escapeHtml(platform.platform_id), '" type="button">',
-                '<i class="fa fa-trash"></i> <span langtag="word-clear"></span>',
-                '</button>'
-            ].join('');
-        }
-
-        function renderReverseStatus(platform) {
-            var statusTag = 'word-management-status-direct-only';
-            if (!platform.enabled) {
-                statusTag = 'word-disabled';
-            } else if (platform.reverse_enabled) {
-                statusTag = platform.reverse_connected
-                    ? 'word-management-status-reverse-connected'
-                    : 'word-management-status-reverse-disconnected';
-            }
-            var parts = ['<span langtag="' + statusTag + '"></span>'];
-            if (platform.last_reverse_connected_at) {
-                parts.push('<br><small><span langtag="word-connected"></span>: ' + escapeHtml(formatTimestamp(platform.last_reverse_connected_at)) + '</small>');
-            }
-            if (platform.last_reverse_pong_at) {
-                parts.push('<br><small><span langtag="word-lastpong"></span>: ' + escapeHtml(formatTimestamp(platform.last_reverse_pong_at)) + '</small>');
-            }
-            if (platform.last_reverse_error) {
-                parts.push('<br><small class="text-danger"><span langtag="word-error"></span>: ' + escapeHtml(platform.last_reverse_error) + '</small>');
-            }
-            return parts.join('');
-        }
-
-        function renderReverseConfig(platform) {
-            if (!platform.reverse_enabled) {
-                return '<span langtag="word-na"></span>';
-            }
-            var parts = [];
-            if (platform.reverse_ws_url) {
-                parts.push(escapeHtml(platform.reverse_ws_url));
-            } else {
-                parts.push('<span langtag="word-configured"></span>');
-            }
-            if (platform.reverse_heartbeat_seconds) {
-                parts.push('<br><small><span langtag="word-heartbeat"></span>: ' + escapeHtml(secondsText(platform.reverse_heartbeat_seconds)) + '</small>');
-            }
-            return parts.join('');
-        }
-
-        function renderCallbackConfig(platform) {
-            if (!platform.callback_enabled) {
-                return '<span langtag="word-na"></span>';
-            }
-            var parts = [];
-            if (platform.callback_url) {
-                parts.push(escapeHtml(platform.callback_url));
-            } else {
-                parts.push('<span langtag="word-configured"></span>');
-            }
-            if (platform.callback_timeout_seconds) {
-                parts.push('<br><small><span langtag="word-timeout"></span>: ' + escapeHtml(secondsText(platform.callback_timeout_seconds)) + '</small>');
-            }
-            parts.push('<br><small><span langtag="word-retrypolicy"></span>: ' + escapeHtml(platform.callback_retry_max || 0) + ' / ' + escapeHtml(secondsText(platform.callback_retry_backoff_seconds || 0)) + '</small>');
-            if (hasCallbackQueuePage() && platform.callback_queue_max) {
-                parts.push('<br><small><span langtag="word-callbackqueue"></span>: <span class="js-callback-queue-size" data-platform-id="' + escapeHtml(platform.platform_id) + '">' + escapeHtml(platform.callback_queue_size || 0) + '</span> / <span class="js-callback-queue-max" data-platform-id="' + escapeHtml(platform.platform_id) + '">' + escapeHtml(platform.callback_queue_max) + '</span></small>');
-            }
-            if (hasCallbackQueuePage() && platform.callback_dropped) {
-                parts.push('<br><small><span langtag="word-dropped"></span>: <span class="js-callback-dropped" data-platform-id="' + escapeHtml(platform.platform_id) + '">' + escapeHtml(platform.callback_dropped) + '</span></small>');
-            }
-            if (platform.last_callback_status_code) {
-                parts.push('<br><small><span langtag="word-laststatuscode"></span>: ' + escapeHtml(platform.last_callback_status_code) + '</small>');
-            }
-            if (platform.last_callback_queued_at) {
-                parts.push('<br><small><span langtag="word-lastqueued"></span>: ' + escapeHtml(formatTimestamp(platform.last_callback_queued_at)) + '</small>');
-            }
-            if (platform.last_callback_replay_at) {
-                parts.push('<br><small><span langtag="word-lastreplay"></span>: ' + escapeHtml(formatTimestamp(platform.last_callback_replay_at)) + '</small>');
-            }
-            if (platform.last_callback_success_at) {
-                parts.push('<br><small><span langtag="word-lastsuccess"></span>: ' + escapeHtml(formatTimestamp(platform.last_callback_success_at)) + '</small>');
-            }
-            parts.push('<br><small><span langtag="word-deliveries"></span>: ' + escapeHtml(platform.callback_deliveries || 0) + ' / <span langtag="word-failures"></span>: ' + escapeHtml(platform.callback_failures || 0) + '</small>');
-            if (platform.callback_consecutive_failures) {
-                parts.push('<br><small><span langtag="word-consecutivefailures"></span>: ' + escapeHtml(platform.callback_consecutive_failures) + '</small>');
-            }
-            if (platform.last_callback_error) {
-                parts.push('<br><small class="text-danger"><span langtag="word-error"></span>: ' + escapeHtml(platform.last_callback_error) + '</small>');
-            }
-            return parts.join('');
-        }
-
-        function renderManagementPlatforms(platforms) {
-            $platformRows.empty();
-            if (!platforms || !platforms.length) {
-                $platformRows.append('<tr class="js-empty-row"><td class="text-muted" colspan="9">' + escapeHtml(langText('info-no-management-platform')) + '</td></tr>');
-                return;
-            }
-            platforms.forEach(function (platform) {
-                var row = [
-                    '<tr data-platform-id="', escapeHtml(platform.platform_id), '">',
-                    '<td>', escapeHtml(platform.platform_id), '</td>',
-                    '<td>', platform.master_url ? escapeHtml(platform.master_url) : '<span langtag="word-na"></span>', '</td>',
-                    '<td><span langtag="word-controlscope-', escapeHtml(platform.control_scope || 'account'), '"></span></td>',
-                    '<td><span langtag="word-connectmode-', escapeHtml(platform.connect_mode || 'direct'), '"></span></td>',
-                    '<td>', escapeHtml(platform.service_username || ''), '</td>',
-                    '<td>', renderReverseConfig(platform), '</td>',
-                    '<td>', renderCallbackConfig(platform), '</td>',
-                    '<td>', renderReverseStatus(platform), '</td>',
-                    '<td class="nps-inline-actions">', renderPlatformActions(platform), '</td>',
-                    '</tr>'
-                ].join('');
-                $platformRows.append(row);
-            });
-            applyLang('#node-management-section');
-        }
-
-        function renderCapabilities(capabilities) {
-            $capabilities.empty();
-            if (!capabilities || !capabilities.length) {
-                $capabilities.append('<div class="col-sm-12 text-muted">' + escapeHtml(langText('word-na')) + '</div>');
-                return;
-            }
-            capabilities.forEach(function (item) {
-                var col = $('<div class="col-sm-6 col-lg-4"/>');
-                col.append($('<code class="nps-code-block"/>').text(item));
-                $capabilities.append(col);
-            });
-        }
-
-        function loadGlobalConfig() {
-            return window.nps.fetchNodeData(window.nps.nodeRoute('global')).then(function (data) {
-                var item = data && data.item ? data.item : {};
-                window.nps.setFormValue('#global-settings-form', 'entry_acl_mode', item.entry_acl_mode || '0');
-                window.nps.setFormValue('#global-settings-form', 'entry_acl_rules', item.entry_acl_rules || '');
-                toggleGlobalEntryACLRules();
-            });
-        }
-
-        function toggleGlobalEntryACLRules() {
-            var modeVal = $("select[name='entry_acl_mode']").val();
-            var mode = parseInt(modeVal, 10) || 0;
-            $("#entry_acl_rules").css("display", mode === 0 ? "none" : "block");
-        }
-
-        function loadNodeStatus() {
-            return window.nps.fetchNodeData(window.nps.nodeRoute('status')).then(function (data) {
-                data = data || {};
-                $nodeAPIBase.val(data.api_base || '');
-                renderManagementPlatforms($.isArray(data.management_platforms) ? data.management_platforms : []);
-                renderCapabilities($.isArray(data.capabilities) ? data.capabilities : []);
-            });
-        }
-
-        function mutateQueue(action, platformID) {
-            if (!hasCallbackQueuePage()) {
-                return;
-            }
-            var confirmText = action === 'replay'
-                ? langText('info-callback-queue-replay-confirm')
-                : langText('info-callback-queue-clear-confirm');
-            if (!confirm(confirmText)) {
-                return;
-            }
-            $('.js-callback-queue-replay[data-platform-id="' + platformID + '"], .js-callback-queue-clear[data-platform-id="' + platformID + '"]').prop('disabled', true);
-            $.ajax({
-                type: 'POST',
-                url: queueRoute(action),
-                dataType: 'json',
-                data: {platform_id: platformID},
-                success: function (res) {
-                    var ok = !!(res && res.code === 1);
-                    if (!ok) {
-                        showMsg(langText('info-callback-queue-action-failed'), 'error', 3000);
-                        return;
-                    }
-                    var platforms = res && res.data && $.isArray(res.data.platforms) ? res.data.platforms : [];
-                    platforms.forEach(function (item) {
-                        if (item && item.platform_id === platformID) {
-                            setQueueSummary(platformID, item.callback_queue_size || 0, item.callback_queue_max || 0, item.callback_dropped || 0);
-                        }
-                    });
-                    showMsg(
-                        action === 'replay'
-                            ? langText('info-callback-queue-replay-triggered')
-                            : langText('info-callback-queue-cleared'),
-                        'success',
-                        1200
-                    );
-                },
-                error: function () {
-                    showMsg(langText('info-callback-queue-action-failed'), 'error', 3000);
-                },
-                complete: function () {
-                    $('.js-callback-queue-replay[data-platform-id="' + platformID + '"], .js-callback-queue-clear[data-platform-id="' + platformID + '"]').prop('disabled', false);
+    function updateGeoData(btn) {
+        var $btn = $(btn);
+        if ($btn.data('busy')) return;
+        var langobj = languages['content']['confirm']['updategeo'];
+        if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
+        $btn.data('busy', true).addClass('disabled');
+        $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-spinner fa-spin');
+        $.ajax({
+            type: 'POST',
+            url: '{{.web_base_url}}/global/updategeo',
+            success: function (res) {
+                if (res && res.status) {
+                    showMsg(langreply(res.msg), 'success', 1500, function () { document.location.reload(); });
+                    return;
                 }
-            });
+                showMsg(langreply(res && res.msg), 'error', 8000);
+            },
+            error: function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 8000);
+            },
+            complete: function () {
+                $btn.data('busy', false).removeClass('disabled');
+                $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-cloud-download-alt');
+            }
+        });
+    }
+
+    window.addEventListener('resize', () => {
+        for (var key in charts) {
+            charts[key].resize();
         }
-
-        $(document).on('click', '.js-callback-queue-replay', function () {
-            mutateQueue('replay', $(this).data('platform-id'));
-        });
-
-        $(document).on('click', '.js-callback-queue-clear', function () {
-            mutateQueue('clear', $(this).data('platform-id'));
-        });
-
-        $(function () {
-            $("select[name='entry_acl_mode']").on("change", toggleGlobalEntryACLRules);
-            toggleGlobalEntryACLRules();
-            loadGlobalConfig();
-            loadNodeStatus();
-        });
-
-        window.internationalized = function () {
-            loadNodeStatus();
-        };
-    })();
+    });
 </script>

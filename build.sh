@@ -76,13 +76,6 @@ resolve_go_bin() {
   exit 1
 }
 
-ensure_server_geodata() {
-  if [[ ! -x "$ROOT_DIR/scripts/fetch_geodata.sh" ]]; then
-    chmod +x "$ROOT_DIR/scripts/fetch_geodata.sh"
-  fi
-  CONF_DIR="$ROOT_DIR/conf" GEODATA_MODE="${GEODATA_MODE:-always}" "$ROOT_DIR/scripts/fetch_geodata.sh"
-}
-
 copy_assets() {
   local stage_dir="$1"
   shift
@@ -189,15 +182,10 @@ main() {
   fi
 
   if [[ "$mode" == "all" || "$mode" == "server" ]]; then
-    ensure_server_geodata
-    local server_assets=(
-      conf/nps.conf
-      conf/geoip.dat
-      web/views
+    build_group nps server "$SERVER_TARGETS" \
+      conf/nps.conf \
+      web/views \
       web/static
-    )
-    server_assets+=(conf/geosite.dat)
-    build_group nps server "$SERVER_TARGETS" "${server_assets[@]}"
   fi
 
   log "Release archives written to $RELEASE_DIR"

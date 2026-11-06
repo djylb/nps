@@ -1,559 +1,225 @@
 package client
 
 import (
-	"bytes"
-	"context"
-	"encoding/binary"
-	"fmt"
+	"bufio"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
-	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/config"
-	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/socks5"
 )
 
-func TestWaitReconnectDelayReturnsOnContextCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	start := time.Now()
-	if waitReconnectDelay(ctx, 5*time.Second) {
-		t.Fatal("waitReconnectDelay() = true, want false when context is canceled")
-	}
-	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-		t.Fatalf("waitReconnectDelay() took %v, want under %v", elapsed, 100*time.Millisecond)
-	}
-}
-
-func TestWaitReconnectDelayCompletesAfterDelay(t *testing.T) {
-	ctx := context.Background()
-
-	start := time.Now()
-	if !waitReconnectDelay(ctx, 20*time.Millisecond) {
-		t.Fatal("waitReconnectDelay() = false, want true when delay completes")
-	}
-	if elapsed := time.Since(start); elapsed < 15*time.Millisecond {
-		t.Fatalf("waitReconnectDelay() took %v, want at least %v", elapsed, 15*time.Millisecond)
-	}
-}
-
-func TestWaitReconnectDelayHandlesNilContext(t *testing.T) {
-	start := time.Now()
-	var nilCtx context.Context
-	if !waitReconnectDelay(nilCtx, 20*time.Millisecond) {
-		t.Fatal("waitReconnectDelay(nil) = false, want true when delay completes")
-	}
-	if elapsed := time.Since(start); elapsed < 15*time.Millisecond {
-		t.Fatalf("waitReconnectDelay(nil) took %v, want at least %v", elapsed, 15*time.Millisecond)
-	}
-}
-
-func TestReadTaskAddStatusesConsumesExpandedTaskStatuses(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_ = binary.Write(serverConn, binary.LittleEndian, true)
-		_ = binary.Write(serverConn, binary.LittleEndian, false)
-		_ = binary.Write(serverConn, binary.LittleEndian, true)
-	}()
-
-	task := &file.Tunnel{
-		Mode:  "tcp",
-		Ports: "12000,12001",
-		Target: &file.Target{
-			TargetStr: "9000,9001",
-		},
-	}
-	if readTaskAddStatuses(clientConn, task) {
-		t.Fatal("readTaskAddStatuses() = true, want false when any expanded port status fails")
-	}
-	if !clientConn.GetAddStatus() {
-		t.Fatal("next GetAddStatus() = false, want the following request status after expanded task statuses are consumed")
-	}
-	<-done
-}
-
-func TestTaskAddStatusCountFallsBackToSingleStatusForInvalidExpandedTCPTask(t *testing.T) {
-	task := &file.Tunnel{
-		Mode:  "tcp",
-		Ports: "12000,12001",
-		Target: &file.Target{
-			TargetStr: "9000",
-		},
-	}
-	if got := taskAddStatusCount(task); got != 1 {
-		t.Fatalf("taskAddStatusCount() = %d, want 1 for an invalid expanded tcp task", got)
-	}
-}
-
-func TestStartFromConfigRejectsMissingCommonConfig(t *testing.T) {
-	err := StartFromConfig(context.Background(), func() {}, &config.Config{}, "memory")
-	if err == nil {
-		t.Fatal("StartFromConfig() error = nil, want non-nil for missing common section")
-	}
-}
-
-func TestStartFromFileReturnsConfigLoadError(t *testing.T) {
-	err := StartFromFile(context.Background(), func() {}, "D:\\GolandProjects\\nps\\does-not-exist.conf")
-	if err == nil {
-		t.Fatal("StartFromFile() error = nil, want non-nil for missing config file")
-	}
-}
-
-func TestNormalizeClientParentContextUsesBackgroundForNil(t *testing.T) {
-	var nilCtx context.Context
-	ctx := normalizeClientParentContext(nilCtx)
-	if ctx == nil {
-		t.Fatal("normalizeClientParentContext(nil) = nil, want background context")
-	}
-	if err := ctx.Err(); err != nil {
-		t.Fatalf("normalizeClientParentContext(nil).Err() = %v, want nil", err)
-	}
-}
-
-func readSentType(c *conn.Conn, want string) error {
-	got, err := c.ReadFlag()
+// serveOnce accepts one connection on a new listener and runs handle on it.
+func serveOnce(t *testing.T, handle func(net.Conn)) net.Listener {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	if got != want {
-		return fmt.Errorf("ReadFlag() = %q, want %q", got, want)
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close() }()
+		handle(c)
+	}()
+	return ln
+}
+
+// httpProxy answers one CONNECT request, sends tunnel bytes right after its
+// reply, as a proxy may, and then echoes the tunnel.
+func httpProxy(t *testing.T, got chan<- *http.Request) net.Listener {
+	return serveOnce(t, func(c net.Conn) {
+		br := bufio.NewReader(c)
+		req, err := http.ReadRequest(br)
+		if err != nil {
+			return
+		}
+		got <- req
+		_, _ = c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\nhello"))
+		_, _ = io.Copy(c, br)
+	})
+}
+
+// socks5Proxy answers one no-auth SOCKS5 CONNECT request, reports the
+// requested address and then echoes the tunnel.
+func socks5Proxy(t *testing.T, got chan<- netx.Addr) net.Listener {
+	return serveOnce(t, func(c net.Conn) {
+		hdr := make([]byte, 2)
+		if _, err := io.ReadFull(c, hdr); err != nil {
+			return
+		}
+		if _, err := io.ReadFull(c, make([]byte, hdr[1])); err != nil {
+			return
+		}
+		_, _ = c.Write([]byte{5, 0})
+		req := make([]byte, 3)
+		if _, err := io.ReadFull(c, req); err != nil {
+			return
+		}
+		dst, err := socks5.ReadAddr(c)
+		if err != nil {
+			return
+		}
+		got <- dst
+		_, _ = c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0})
+		_, _ = io.Copy(struct{ io.Writer }{c}, c)
+	})
+}
+
+// checkTunnel checks that c carries bytes both ways and, when want is not
+// empty, that it starts with want.
+func checkTunnel(t *testing.T, c net.Conn, want string) {
+	t.Helper()
+	_ = c.SetDeadline(time.Now().Add(2 * time.Second))
+	if want != "" {
+		buf := make([]byte, len(want))
+		if _, err := io.ReadFull(c, buf); err != nil || string(buf) != want {
+			t.Fatalf("tunnel prefix = %q, %v; want %q", buf, err, want)
+		}
 	}
-	if Ver > 3 {
-		if Ver > 5 {
-			if _, err := c.GetShortLenContent(); err != nil {
-				return fmt.Errorf("GetShortLenContent(uuid): %w", err)
+	if _, err := c.Write([]byte("ping")); err != nil {
+		t.Fatalf("tunnel write: %v", err)
+	}
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(c, buf); err != nil || string(buf) != "ping" {
+		t.Fatalf("tunnel echo = %q, %v", buf, err)
+	}
+}
+
+func TestGetProxyConnHttp(t *testing.T) {
+	got := make(chan *http.Request, 1)
+	ln := httpProxy(t, got)
+
+	c, err := GetProxyConn("http://user:pass@"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
+	if err != nil {
+		t.Fatalf("GetProxyConn: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	// The bytes sent with the CONNECT reply belong to the tunnel.
+	checkTunnel(t, c, "hello")
+
+	req := <-got
+	if req.Method != http.MethodConnect || req.Host != "example.com:443" {
+		t.Fatalf("unexpected request %s %s", req.Method, req.Host)
+	}
+	if v := req.Header.Get("Proxy-Authorization"); v != "Basic dXNlcjpwYXNz" {
+		t.Fatalf("Proxy-Authorization = %q", v)
+	}
+	if v := req.Header.Get("Authorization"); v != "" {
+		t.Fatalf("unexpected Authorization header %q", v)
+	}
+}
+
+func TestGetProxyConnWithoutSchemeIsHttp(t *testing.T) {
+	got := make(chan *http.Request, 1)
+	ln := httpProxy(t, got)
+
+	c, err := GetProxyConn(ln.Addr().String(), "example.com:443", 2*time.Second, "")
+	if err != nil {
+		t.Fatalf("GetProxyConn: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	checkTunnel(t, c, "hello")
+	if req := <-got; req.Method != http.MethodConnect || req.Host != "example.com:443" {
+		t.Fatalf("unexpected request %s %s", req.Method, req.Host)
+	}
+}
+
+func TestGetProxyConnSocks5(t *testing.T) {
+	for _, scheme := range []string{"socks5", "socks5h"} {
+		t.Run(scheme, func(t *testing.T) {
+			got := make(chan netx.Addr, 1)
+			ln := socks5Proxy(t, got)
+
+			c, err := GetProxyConn(scheme+"://"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
+			if err != nil {
+				t.Fatalf("GetProxyConn: %v", err)
+			}
+			defer func() { _ = c.Close() }()
+			checkTunnel(t, c, "")
+			// Both schemes leave the name to the proxy.
+			if dst := <-got; dst.String() != "example.com:443" {
+				t.Fatalf("requested %s, want example.com:443", dst)
+			}
+		})
+	}
+}
+
+func TestGetProxyConnEnvironment(t *testing.T) {
+	got := make(chan netx.Addr, 1)
+	ln := socks5Proxy(t, got)
+	target := serveOnce(t, func(c net.Conn) { _, _ = io.Copy(struct{ io.Writer }{c}, c) })
+
+	// Only the upper-case names: Windows treats the lower-case ones as the
+	// same variables, and the upper-case ones take precedence elsewhere.
+	t.Setenv("ALL_PROXY", "socks5://"+ln.Addr().String())
+	t.Setenv("NO_PROXY", "127.0.0.1")
+
+	// example.com goes through ALL_PROXY.
+	c, err := GetProxyConn("", "example.com:443", 2*time.Second, "")
+	if err != nil {
+		t.Fatalf("GetProxyConn via ALL_PROXY: %v", err)
+	}
+	checkTunnel(t, c, "")
+	_ = c.Close()
+	if dst := <-got; dst.String() != "example.com:443" {
+		t.Fatalf("requested %s, want example.com:443", dst)
+	}
+
+	// 127.0.0.1 is in NO_PROXY and is dialed directly.
+	c, err = GetProxyConn("", target.Addr().String(), 2*time.Second, "")
+	if err != nil {
+		t.Fatalf("GetProxyConn bypassing ALL_PROXY: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	checkTunnel(t, c, "")
+	if c.RemoteAddr().String() != target.Addr().String() {
+		t.Fatalf("dialed %s, want %s", c.RemoteAddr(), target.Addr())
+	}
+}
+
+func TestGetProxyConnTimesOutOnSilentProxy(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	accepted := make(chan net.Conn, 8)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- c // hold the connection open without answering
+		}
+	}()
+	defer func() {
+		for {
+			select {
+			case c := <-accepted:
+				_ = c.Close()
+			default:
+				return
 			}
 		}
-		if _, err := c.GetShortLenContent(); err != nil {
-			return fmt.Errorf("GetShortLenContent(padding): %w", err)
-		}
-	}
-	return nil
-}
-
-func TestGetTaskStatusViaConn(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := readSentType(serverConn, common.WORK_CONFIG); err != nil {
-			errCh <- err
-			return
-		}
-		flag, err := serverConn.ReadFlag()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		if flag != common.WORK_STATUS {
-			errCh <- fmt.Errorf("status flag = %q, want %q", flag, common.WORK_STATUS)
-			return
-		}
-		auth := make([]byte, len(crypt.Blake2b("demo-key")))
-		if _, err := io.ReadFull(serverConn, auth); err != nil {
-			errCh <- err
-			return
-		}
-		if !bytes.Equal(auth, []byte(crypt.Blake2b("demo-key"))) {
-			errCh <- fmt.Errorf("status auth key mismatch")
-			return
-		}
-		payload := []byte("alpha" + common.CONN_DATA_SEQ + common.CONN_DATA_SEQ)
-		if err := binary.Write(serverConn, binary.LittleEndian, false); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, int32(len(payload))); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, payload); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
 	}()
 
-	got, err := getTaskStatus(clientConn, "demo-uuid", "demo-key")
-	if err != nil {
-		t.Fatalf("getTaskStatus() error = %v", err)
-	}
-	if want := []string{"alpha", ""}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("getTaskStatus() = %#v, want %#v", got, want)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("server routine error = %v", err)
-	}
-}
-
-func TestGetTaskStatusRejectsNegativePayloadLength(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := readSentType(serverConn, common.WORK_CONFIG); err != nil {
-			errCh <- err
-			return
+	for _, scheme := range []string{"http", "https", "socks5", "socks5h", "socks4a"} {
+		start := time.Now()
+		_, err := GetProxyConn(scheme+"://"+ln.Addr().String(), "example.com:443", 200*time.Millisecond, "")
+		if err == nil {
+			t.Fatalf("%s: expected an error from a silent proxy", scheme)
 		}
-		flag, err := serverConn.ReadFlag()
-		if err != nil {
-			errCh <- err
-			return
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("%s: proxy handshake not bounded by timeout, took %v", scheme, d)
 		}
-		if flag != common.WORK_STATUS {
-			errCh <- fmt.Errorf("status flag = %q, want %q", flag, common.WORK_STATUS)
-			return
-		}
-		auth := make([]byte, len(crypt.Blake2b("demo-key")))
-		if _, err := io.ReadFull(serverConn, auth); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, false); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, int32(-1)); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-
-	if _, err := getTaskStatus(clientConn, "demo-uuid", "demo-key"); err == nil || !strings.Contains(err.Error(), "invalid status payload length") {
-		t.Fatalf("getTaskStatus() error = %v, want invalid status payload length", err)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("server routine error = %v", err)
-	}
-}
-
-func TestGetTaskStatusRejectsOversizedPayloadLength(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := readSentType(serverConn, common.WORK_CONFIG); err != nil {
-			errCh <- err
-			return
-		}
-		flag, err := serverConn.ReadFlag()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		if flag != common.WORK_STATUS {
-			errCh <- fmt.Errorf("status flag = %q, want %q", flag, common.WORK_STATUS)
-			return
-		}
-		auth := make([]byte, len(crypt.Blake2b("demo-key")))
-		if _, err := io.ReadFull(serverConn, auth); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, false); err != nil {
-			errCh <- err
-			return
-		}
-		if err := binary.Write(serverConn, binary.LittleEndian, int32(maxTaskStatusPayloadSize+1)); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-
-	if _, err := getTaskStatus(clientConn, "demo-uuid", "demo-key"); err == nil || !strings.Contains(err.Error(), "invalid status payload length") {
-		t.Fatalf("getTaskStatus() error = %v, want invalid status payload length", err)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("server routine error = %v", err)
-	}
-}
-
-func TestRegisterLocalIpViaConn(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := readSentType(serverConn, common.WORK_REGISTER); err != nil {
-			errCh <- err
-			return
-		}
-		var got int32
-		if err := binary.Read(serverConn, binary.LittleEndian, &got); err != nil {
-			errCh <- err
-			return
-		}
-		if got != 6 {
-			errCh <- fmt.Errorf("registration duration = %d, want 6", got)
-			return
-		}
-		errCh <- nil
-	}()
-
-	if err := registerLocalIp(clientConn, "demo-uuid", 6); err != nil {
-		t.Fatalf("registerLocalIp() error = %v", err)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("server routine error = %v", err)
-	}
-}
-
-func TestFormatTaskStatus(t *testing.T) {
-	got := FormatTaskStatus([]string{"alpha", ""})
-	if !strings.Contains(got, "Total active: 2") {
-		t.Fatalf("FormatTaskStatus() output %q missing total count", got)
-	}
-	if !strings.Contains(got, "1. alpha") || !strings.Contains(got, "2. (no remark)") {
-		t.Fatalf("FormatTaskStatus() output %q missing formatted entries", got)
-	}
-}
-
-func TestBuildClientControlConnPlanDefaultsPathAndPort(t *testing.T) {
-	oldHasFailed := HasFailed
-	HasFailed = false
-	t.Cleanup(func() {
-		HasFailed = oldHasFailed
-	})
-
-	plan, err := buildClientControlConnPlan(context.Background(), "ws", "example.com", "", "", false)
-	if err != nil {
-		t.Fatalf("buildClientControlConnPlan() error = %v", err)
-	}
-	if plan.path != "/ws" {
-		t.Fatalf("plan.path = %q, want /ws", plan.path)
-	}
-	if plan.alpn != "nps" {
-		t.Fatalf("plan.alpn = %q, want nps", plan.alpn)
-	}
-	if plan.server != "example.com:80" {
-		t.Fatalf("plan.server = %q, want example.com:80", plan.server)
-	}
-}
-
-func TestBuildClientControlConnPlanUsesExplicitPathAsALPN(t *testing.T) {
-	oldHasFailed := HasFailed
-	HasFailed = false
-	t.Cleanup(func() {
-		HasFailed = oldHasFailed
-	})
-
-	plan, err := buildClientControlConnPlan(context.Background(), "quic", "bridge.example.com/runtime-main", "", "", false)
-	if err != nil {
-		t.Fatalf("buildClientControlConnPlan() error = %v", err)
-	}
-	if plan.path != "/runtime-main" {
-		t.Fatalf("plan.path = %q, want /runtime-main", plan.path)
-	}
-	if plan.alpn != "runtime-main" {
-		t.Fatalf("plan.alpn = %q, want runtime-main", plan.alpn)
-	}
-	if plan.server != "bridge.example.com:8025" {
-		t.Fatalf("plan.server = %q, want bridge.example.com:8025", plan.server)
-	}
-}
-
-func TestBuildClientControlConnPlanRejectsCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	if _, err := buildClientControlConnPlan(ctx, "tcp", "example.com", "", "", false); err == nil {
-		t.Fatal("buildClientControlConnPlan() error = nil, want canceled context")
-	}
-}
-
-func TestBuildClientControlRuntimeInfoRejectsLongTransportType(t *testing.T) {
-	oldVer := Ver
-	Ver = 3
-	t.Cleanup(func() {
-		Ver = oldVer
-	})
-
-	tp := strings.Repeat("q", 33)
-	if _, err := buildClientControlRuntimeInfo(tp, "demo-key"); err == nil || !strings.Contains(err.Error(), "tp too long") {
-		t.Fatalf("buildClientControlRuntimeInfo() error = %v, want tp too long", err)
-	}
-}
-
-func TestEnsurePortAddsDefaultPortWhenMissing(t *testing.T) {
-	if got := EnsurePort("bridge.example.com", "tls"); got != "bridge.example.com:8025" {
-		t.Fatalf("EnsurePort() = %q, want bridge.example.com:8025", got)
-	}
-}
-
-func TestEnsurePortKeepsExistingPort(t *testing.T) {
-	if got := EnsurePort("bridge.example.com:9443", "tls"); got != "bridge.example.com:9443" {
-		t.Fatalf("EnsurePort() = %q, want bridge.example.com:9443", got)
-	}
-}
-
-func TestLimitClientConnTimeoutUsesContextDeadlineBudget(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
-	defer cancel()
-
-	timeout := limitClientConnTimeout(ctx, 5*time.Second)
-	if timeout <= 0 || timeout > 100*time.Millisecond {
-		t.Fatalf("limitClientConnTimeout() = %v, want small deadline-derived timeout", timeout)
-	}
-}
-
-func TestLimitClientConnTimeoutUsesMinimumForExpiredDeadline(t *testing.T) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer cancel()
-
-	if got := limitClientConnTimeout(ctx, 5*time.Second); got != time.Millisecond {
-		t.Fatalf("limitClientConnTimeout() = %v, want %v", got, time.Millisecond)
-	}
-}
-
-func TestCloseConnOnContextDoneClosesAfterCancel(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	t.Cleanup(func() { _ = serverConn.Close() })
-
-	ctx, cancel := context.WithCancel(context.Background())
-	stop := closeConnOnContextDone(ctx, clientConn)
-	defer stop()
-
-	cancel()
-
-	deadline := time.Now().Add(500 * time.Millisecond)
-	_ = serverConn.SetReadDeadline(deadline)
-	buf := make([]byte, 1)
-	if _, err := serverConn.Read(buf); err == nil {
-		t.Fatal("serverConn.Read() error = nil, want closed connection after context cancel")
-	}
-}
-
-func TestCloseConnOnContextDoneStopIsIdempotentForBackgroundContext(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	t.Cleanup(func() { _ = serverConn.Close() })
-	t.Cleanup(func() { _ = clientConn.Close() })
-
-	stop := closeConnOnContextDone(context.Background(), clientConn)
-	stop()
-	stop()
-}
-
-func TestSendTypeRejectsNilConn(t *testing.T) {
-	if err := SendType(nil, common.WORK_CONFIG, "demo-uuid"); err == nil {
-		t.Fatal("SendType(nil) error = nil, want non-nil")
-	}
-}
-
-func TestSendTypeWritesCurrentProtocolPayload(t *testing.T) {
-	oldVer := Ver
-	Ver = 6
-	t.Cleanup(func() {
-		Ver = oldVer
-	})
-
-	serverSide, clientSide := net.Pipe()
-	t.Cleanup(func() { _ = serverSide.Close() })
-	t.Cleanup(func() { _ = clientSide.Close() })
-
-	serverConn := conn.NewConn(serverSide)
-	clientConn := conn.NewConn(clientSide)
-	errCh := make(chan error, 1)
-
-	go func() {
-		errCh <- readSentType(serverConn, common.WORK_CONFIG)
-	}()
-
-	if err := SendType(clientConn, common.WORK_CONFIG, "demo-uuid"); err != nil {
-		t.Fatalf("SendType() error = %v", err)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("server routine error = %v", err)
-	}
-}
-
-func TestBuildClientHTTPProxyConnectRequestSetsBasicAuth(t *testing.T) {
-	proxyURL := &url.URL{
-		Scheme: "http",
-		Host:   "proxy.example.com:8080",
-		User:   url.UserPassword("demo-user", "demo-pass"),
-	}
-	req := buildClientHTTPProxyConnectRequest(proxyURL, "target.example.com:443")
-
-	if req.Method != http.MethodConnect {
-		t.Fatalf("request method = %q, want CONNECT", req.Method)
-	}
-	if req.Host != "target.example.com:443" {
-		t.Fatalf("request host = %q, want target.example.com:443", req.Host)
-	}
-	if req.Header.Get("Authorization") == "" {
-		t.Fatal("Authorization header should be populated from proxy credentials")
-	}
-}
-
-func TestVerifyClientHTTPProxyResponseRejectsNonOK(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	t.Cleanup(func() { _ = serverConn.Close() })
-	t.Cleanup(func() { _ = clientConn.Close() })
-
-	req := buildClientHTTPProxyConnectRequest(&url.URL{Scheme: "http", Host: "proxy.example.com:8080"}, "target.example.com:443")
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, _ = serverConn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n"))
-	}()
-
-	if err := verifyClientHTTPProxyResponse(clientConn, req); err == nil || !strings.Contains(err.Error(), "proxy CONNECT failed") {
-		t.Fatalf("verifyClientHTTPProxyResponse() error = %v, want proxy CONNECT failed", err)
-	}
-	<-done
-}
-
-func TestResolveClientConfigWebAccessPrefersLegacyImport(t *testing.T) {
-	clientInfo := &file.Client{}
-	clientInfo.SetLegacyWebLoginImport("legacy-user", "legacy-pass", "")
-
-	username, password := resolveClientConfigWebAccess(&config.CommonConfig{Client: clientInfo}, "demo-vkey")
-	if username != "legacy-user" || password != "legacy-pass" {
-		t.Fatalf("resolveClientConfigWebAccess() = (%q, %q), want legacy credentials", username, password)
-	}
-}
-
-func TestResolveClientConfigWebAccessFallsBackToGeneratedKey(t *testing.T) {
-	username, password := resolveClientConfigWebAccess(&config.CommonConfig{}, "demo-vkey")
-	if username != "user" || password != "demo-vkey" {
-		t.Fatalf("resolveClientConfigWebAccess() = (%q, %q), want user/demo-vkey", username, password)
 	}
 }

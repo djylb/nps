@@ -13,13 +13,9 @@ import (
 )
 
 var customDnsAddr string
-var defaultResolver = net.DefaultResolver
 
 func SetCustomDNS(dnsAddr string) {
-	dnsAddr = strings.TrimSpace(dnsAddr)
 	if dnsAddr == "" {
-		customDnsAddr = ""
-		net.DefaultResolver = defaultResolver
 		return
 	}
 	colonCount := strings.Count(dnsAddr, ":")

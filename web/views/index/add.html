@@ -1,208 +1,273 @@
 <div class="row tile">
     <div class="col-md-12 col-md-auto">
-        <div class="ibox float-e-margins nps-form-shell">
-            <div class="ibox-title">
-                <h3 class="nps-form-title" langtag="page-add"></h3>
-                <p class="nps-form-subtitle" langtag="info-tunnel-add-subtitle"></p>
-            </div>
+        <div class="ibox float-e-margins">
+            <h3 class="ibox-title" langtag="page-add"></h3>
             <div class="ibox-content">
-                <form class="form-horizontal">
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-scheme"></label>
-                        <div class="col-sm-12">
-                            <span class="help-block m-b-none font-bold" langtag="word-usecase"></span>:
-                            <span id="usecase">
-                                <span id="casetcp" langtag="info-casetcp"></span>
-                                <span id="caseudp" langtag="info-caseudp"></span>
-                                <span id="casehttpProxy" langtag="info-casehttpproxy"></span>
-                                <span id="casesocks5" langtag="info-casesocks5"></span>
-                                <span id="casemixProxy" langtag="info-casemixproxy"></span>
-                                <span id="casesecret" langtag="info-casesecret"></span>
-                                <span id="casep2p" langtag="info-casep2p"></span>
-                                <span id="casefile" langtag="info-casefile"></span>
-                            </span>
-                            <select class="form-control selectpicker" id="type" name="type">
-                                <option value="tcp" langtag="scheme-tcp"></option>
-                                <option value="udp" langtag="scheme-udp"></option>
-                                <option value="mixProxy" langtag="scheme-mixProxy"></option>
-                                {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
-                                {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
-                                <option value="secret" langtag="scheme-secret"></option>
-                                <option value="p2p" langtag="scheme-p2p"></option>
-                                {{/*<option value="file" langtag="scheme-file"></option>*/}}
-                            </select>
-                        </div>
+                <form class="form-horizontal resource-form">
+                    <div class="resource-form-tools">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, true)">
+                            <i class="fa fa-angle-double-down" aria-hidden="true"></i> <span langtag="word-expandadvanced"></span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="setResourceSectionsExpanded(this.form, false)">
+                            <i class="fa fa-angle-double-up" aria-hidden="true"></i> <span langtag="word-collapseadvanced"></span>
+                        </button>
                     </div>
-                    <div class="form-group" id="client_id">
-                        <label class="control-label font-bold" langtag="word-clientid"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control" name="client_id" data-live-search="true"></select>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-basic"></h4>
+                        <div class="resource-section-body">
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-scheme"></label>
+                                <div class="col-sm-12">
+                                    <span class="help-block m-b-none font-bold" langtag="word-usecase"></span>:
+                                    <span id="usecase">
+                                        <span id="casetcp" langtag="info-casetcp"></span>
+                                        <span id="caseudp" langtag="info-caseudp"></span>
+                                        <span id="casehttpProxy" langtag="info-casehttpproxy"></span>
+                                        <span id="casesocks5" langtag="info-casesocks5"></span>
+                                        <span id="casemixProxy" langtag="info-casemixproxy"></span>
+                                        <span id="casesecret" langtag="info-casesecret"></span>
+                                        <span id="casep2p" langtag="info-casep2p"></span>
+                                        <span id="casefile" langtag="info-casefile"></span>
+                                    </span>
+                                    <select class="form-control selectpicker" id="type" name="type">
+                                        <option value="tcp" langtag="scheme-tcp"></option>
+                                        <option value="udp" langtag="scheme-udp"></option>
+                                        <option value="mixProxy" langtag="scheme-mixProxy"></option>
+                                        {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
+                                        {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
+                                        <option value="secret" langtag="scheme-secret"></option>
+                                        <option value="p2p" langtag="scheme-p2p"></option>
+                                        {{/*<option value="file" langtag="scheme-file"></option>*/}}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="client_id">
+                                <label class="control-label font-bold" langtag="word-clientid"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="client_id" data-live-search="true"></select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="control-label font-bold" langtag="word-remark"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="remark" placeholder="" type="text">
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="control-label font-bold" langtag="word-remark"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="remark" placeholder="" type="text">
+                    </section>
+                    <section class="resource-section">
+                        <h4 class="resource-section-title" langtag="section-connection"></h4>
+                        <div class="resource-section-body">
+                            {{if eq true .allow_multi_ip}}
+                            <div class="form-group" id="server_ip">
+                                <label class="control-label font-bold" langtag="word-serverip"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasip" name="server_ip" placeholder="" type="text" value="0.0.0.0">
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="port">
+                                <label class="control-label font-bold" langtag="word-serverport"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text">
+                                </div>
+                            </div>
+                            <div class="form-group" id="target_type">
+                                <label class="control-label font-bold" langtag="word-targettype"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="target_type">
+                                        <option value="all">ALL</option>
+                                        <option value="tcp">TCP</option>
+                                        <option value="udp">UDP</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="target">
+                                <label class="control-label font-bold" langtag="word-target"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4"></textarea>
+                                    <span class="help-block m-b-none" langtag="info-targettunnel"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="password">
+                                <label class="control-label font-bold" langtag="word-identificationkey"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="word-identificationkey" name="password" placeholder="" type="text">
+                                    <span class="help-block m-b-none" langtag="info-identificationkey"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="mix_proxy">
+                                <label class="control-label font-bold" langtag="scheme-mixproxy"></label>
+                                <div class="col-sm-12">
+                                <input name="enable_http" type="checkbox" value="1" checked>
+                                    <span class="help-block m-b-none" langtag="word-enablehttpproxy"></span>
+                                </div>
+                                <div class="col-sm-12">
+                                <input name="enable_socks5" type="checkbox" value="1" checked>
+                                    <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="local_path">
+                                <label class="control-label font-bold" langtag="word-localpath"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text">
+                                </div>
+                            </div>
+                            <div class="form-group" id="strip_pre">
+                                <label class="control-label font-bold" langtag="word-stripprefix"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text">
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="server_ip" data-nps-require-feature="allow_multi_ip">
-                        <label class="control-label font-bold" langtag="word-serverip"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasip" name="server_ip" placeholder="" type="text" value="0.0.0.0">
+                    </section>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-access"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="auth">
+                                <label class="control-label font-bold" langtag="word-auth"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4"></textarea>
+                                    <span class="help-block m-b-none" langtag="info-targetauth"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="iplistpriority">
+                                <label class="control-label font-bold" langtag="word-iplistpriority"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="iplistpriority">
+                                        <option value="0" langtag="word-denyfirst"></option>
+                                        <option value="1" langtag="word-allowfirst"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-iplistpriority"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="blackiplist">
+                                <label class="control-label font-bold" langtag="word-blackiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="blackiplist" placeholder="" rows="4"></textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="whiteiplist">
+                                <label class="control-label font-bold" langtag="word-whiteiplist"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" langtag="info-suchasaclrules" name="whiteiplist" placeholder="" rows="4"></textarea>
+                                    <span class="help-block m-b-none" langtag="info-iplistrules"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="registered_only">
+                                <label class="control-label font-bold" langtag="word-registeredonly"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="registered_only">
+                                        <option value="0" langtag="word-no"></option>
+                                        <option value="1" langtag="word-yes"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-registeredonly"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="dest_acl_mode">
+                                <label class="control-label font-bold" langtag="word-destacl"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="dest_acl_mode">
+                                        <option langtag="word-disable" value="0"></option>
+                                        <option langtag="word-whitelist" value="1"></option>
+                                        <option langtag="word-blacklist" value="2"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-destacl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="dest_acl_rules">
+                                <label class="control-label font-bold" langtag="word-destaclrules"></label>
+                                <div class="col-sm-12">
+                                    <textarea class="form-control" name="dest_acl_rules" rows="5" placeholder=""></textarea>
+                                    <span class="help-block m-b-none" langtag="info-destaclrules"></span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group" id="port">
-                        <label class="control-label font-bold" langtag="word-serverport"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text">
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-limits"></span></summary>
+                        <div class="resource-section-body">
+                            {{if eq true .allow_connection_num_limit}}
+                            <div class="form-group" id="max_conn">
+                                <label class="control-label font-bold" for="max_conn_input" langtag="word-maxconnections"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="max_conn_input" name="max_conn" type="number" min="0" step="1" value="0">
+                                    <span class="help-block m-b-none" langtag="info-tunnelmaxconn"></span>
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_rate_limit}}
+                            <div class="form-group" id="upload_limit">
+                                <label class="control-label font-bold" for="upload_limit_input" langtag="word-uploadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="upload_limit_input" name="upload_limit" type="number" min="0" step="1" value="0">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                    <span class="help-block m-b-none p2p-rate-hint" langtag="info-p2pratelimit" style="display:none"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="download_limit">
+                                <label class="control-label font-bold" for="download_limit_input" langtag="word-downloadlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="download_limit_input" name="download_limit" type="number" min="0" step="1" value="0">
+                                    <span class="help-block m-b-none" langtag="info-directionalratelimit"></span>
+                                    <span class="help-block m-b-none p2p-rate-hint" langtag="info-p2pratelimit" style="display:none"></span>
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_flow_limit}}
+                            <div class="form-group" id="flow_limit">
+                                <label class="control-label font-bold" langtag="word-flowlimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text">
+                                    <span class="help-block m-b-none" langtag="word-unit"></span>: M
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if eq true .allow_time_limit}}
+                            <div class="form-group" id="time_limit">
+                                <label class="control-label font-bold" langtag="word-timelimit"></label>
+                                <div class="col-sm-12">
+                                    <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="datetime-local">
+                                    <span class="help-block m-b-none" langtag="info-timelimit"></span>
+                                </div>
+                            </div>
+                            {{end}}
                         </div>
-                    </div>
-                    <div class="form-group" id="mix_proxy">
-                        <label class="control-label font-bold" langtag="scheme-mixproxy"></label>
-                        <div class="col-sm-12">
-						    <input name="enable_http" type="checkbox" value="1" checked>
-                            <span class="help-block m-b-none" langtag="word-enablehttpproxy"></span>
+                    </details>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
+                            <div class="form-group" id="local_proxy">
+                                <label class="control-label font-bold" langtag="word-proxytolocal"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="local_proxy">
+                                        <option langtag="word-no" value="0"></option>
+                                        <option langtag="word-yes" value="1"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="proxy_protocol">
+                                <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="proxy_protocol">
+                                        <option langtag="word-disable" value="0"></option>
+                                        <option langtag="word-proxyprotocolv1" value="1"></option>
+                                        <option langtag="word-proxyprotocolv2" value="2"></option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-sm-12">
-						    <input name="enable_socks5" type="checkbox" value="1" checked>
-                            <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="entry_acl_mode">
-                        <label class="control-label font-bold" langtag="word-entryacl"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="entry_acl_mode">
-                                <option langtag="word-disable" value="0"></option>
-                                <option langtag="word-whitelist" value="1"></option>
-                                <option langtag="word-blacklist" value="2"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-entryacl"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="entry_acl_rules">
-                        <label class="control-label font-bold" langtag="word-entryaclrules"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" name="entry_acl_rules" rows="5" placeholder=""></textarea>
-                            <span class="help-block m-b-none" langtag="info-entryaclrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="dest_acl_mode">
-                        <label class="control-label font-bold" langtag="word-destacl"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="dest_acl_mode">
-                                <option langtag="word-disable" value="0"></option>
-                                <option langtag="word-whitelist" value="1"></option>
-                                <option langtag="word-blacklist" value="2"></option>
-                            </select>
-                            <span class="help-block m-b-none" langtag="info-destacl"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="dest_acl_rules">
-                        <label class="control-label font-bold" langtag="word-destaclrules"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" name="dest_acl_rules" rows="5" placeholder=""></textarea>
-                            <span class="help-block m-b-none" langtag="info-destaclrules"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="flow_limit" data-nps-require-feature="allow_flow_limit">
-                        <label class="control-label font-bold" langtag="word-flowlimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="flow_limit" placeholder="" type="text">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: <span langtag="unit-megabyte"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="time_limit" data-nps-require-feature="allow_time_limit">
-                        <label class="control-label font-bold" langtag="word-timelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" id="time_limit_input" langtag="info-unrestricted" name="time_limit" placeholder="" type="datetime-local">
-                            <span class="help-block m-b-none" langtag="info-timelimit"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="rate_limit" data-nps-require-feature="allow_rate_limit">
-                        <label class="control-label font-bold" langtag="word-ratelimit"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="rate_limit" placeholder="" type="text">
-                            <span class="help-block m-b-none" langtag="word-unit"></span>: <span langtag="unit-kilobyte-per-second"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="max_conn" data-nps-require-feature="allow_connection_num_limit">
-                        <label class="control-label font-bold" langtag="word-maxconnections"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-unrestricted" name="max_conn" placeholder="" type="text">
-                        </div>
-                    </div>
-                    <div class="form-group" id="proxy_protocol">
-                        <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="proxy_protocol">
-                                <option langtag="word-disable" value="0"></option>
-                                <option langtag="word-proxyprotocolv1" value="1"></option>
-                                <option langtag="word-proxyprotocolv2" value="2"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="local_proxy" data-nps-require-local-proxy="true">
-                        <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control" name="local_proxy">
-                                <option langtag="word-no" value="0"></option>
-                                <option langtag="word-yes" value="1"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="auth">
-                        <label class="control-label font-bold" langtag="word-auth"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasauth" name="auth" placeholder="" rows="4"></textarea>
-                            <span class="help-block m-b-none" langtag="info-targetauth"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="target_type">
-                        <label class="control-label font-bold" langtag="word-targettype"></label>
-                        <div class="col-sm-12">
-                            <select class="form-control selectpicker" name="target_type">
-                                <option value="all" langtag="word-all"></option>
-                                <option value="tcp" langtag="word-tcp"></option>
-                                <option value="udp" langtag="word-udp"></option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group" id="target">
-                        <label class="control-label font-bold" langtag="word-target"></label>
-                        <div class="col-sm-12">
-                            <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4"></textarea>
-                            <span class="help-block m-b-none" langtag="info-targettunnel"></span>
-                        </div>
-                    </div>
-                    <div class="form-group" id="local_path">
-                        <label class="control-label font-bold" langtag="word-localpath"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text">
-                        </div>
-                    </div>
-                    <div class="form-group" id="strip_pre">
-                        <label class="control-label font-bold" langtag="word-stripprefix"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text">
-                        </div>
-                    </div>
-                    <div class="form-group" id="password">
-                        <label class="control-label font-bold" langtag="word-identificationkey"></label>
-                        <div class="col-sm-12">
-                            <input class="form-control" langtag="word-identificationkey" name="password" placeholder="" type="text">
-                            <span class="help-block m-b-none" langtag="info-identificationkey"></span>
-                        </div>
-                    </div>
+                    </details>
                     <div class="hr-line-dashed"></div>
-                    <div class="form-group nps-form-actions">
-                        <div class="col-lg-12">
-                            <button class="btn btn-secondary" onclick="window.history.back()" type="button">
+                    <div class="form-group">
+                        <div class="col-lg-12 col-sm-offset-2">
+                            <button class="btn btn-secondary" onclick="goback()" type="button">
                                 <i class="fa fa-fw fa-lg fa-window-close"></i> <span langtag="word-cancel"></span>
                             </button>
-                            <button class="btn btn-success"
-                                    data-nps-require-node-action="tunnels/add"
-                                    onclick="submitTunnelAdd()"
-                                    type="button">
+                            <button class="btn btn-success" onclick="submitform('add', '{{.web_base_url}}/index/add', $('form').serializeArray())" type="button">
                                 <i class="fa fa-fw fa-lg fa-check-circle"></i> <span langtag="word-add"></span>
                             </button>
                         </div>
@@ -215,32 +280,27 @@
 
 <script>
     var arr = []
-    arr["all"] = ["auth", "port", "target", "password", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "entry_acl_mode", "entry_acl_rules"]
-    arr["tcp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "entry_acl_mode", "entry_acl_rules"]
-    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "entry_acl_mode", "entry_acl_rules"]
-    arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "entry_acl_mode", "entry_acl_rules", "dest_acl_mode", "dest_acl_rules", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn"]
-    //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit"]
-    arr["secret"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "local_proxy", "entry_acl_mode", "entry_acl_rules"]
-    arr["p2p"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "local_proxy", "entry_acl_mode", "entry_acl_rules"]
-    arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "flow_limit", "time_limit", "rate_limit", "max_conn", "entry_acl_mode", "entry_acl_rules"]
+    arr["all"] = ["auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["tcp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
+    //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
+    arr["secret"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["p2p"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 
     function resetForm() {
-        var mode = $("#type").val();
-        window.nps.applyMappedFormGroups(arr, mode, {
-            caseContainer: "#usecase",
-            casePrefix: "#case",
-            after: function () {
-                toggleEntryAclRules();
-                toggleDestAclRules();
-            }
-        });
-    }
-
-    function toggleEntryAclRules() {
-        var modeVal = $("select[name='entry_acl_mode']").val();
-        var mode = parseInt(modeVal ? modeVal : "0", 10);
-        $("#entry_acl_rules").css("display", mode === 0 ? "none" : "block");
+        $(".form-group[id]").css("display", "none");
+        $("#usecase span").css("display", "none");
+        o = $("#type").val();
+        $('#case' + o).css("display", "inline")
+        $('.p2p-rate-hint').toggle(o === 'p2p');
+        for (var i = 0; i < arr[o].length; i++) {
+            $("#" + arr[o][i]).css("display", "block")
+        }
+        toggleDestAclRules()
+        refreshResourceSections($("form.resource-form"));
     }
 
     function toggleDestAclRules() {
@@ -254,14 +314,10 @@
     }
 
     $(function () {
-        $("#type").val(window.nps.pageParam('type') || 'tcp');
-        getClientList();
+        $("#type").val(('{{.type}}' == '') ? 'tcp' : '{{.type}}');
         resetForm()
         $("#type").on("change", function () {
             resetForm()
-        })
-        $("select[name='entry_acl_mode']").on("change", function () {
-            toggleEntryAclRules()
         })
         $("select[name='dest_acl_mode']").on("change", function () {
             toggleDestAclRules()
@@ -269,42 +325,60 @@
         $("#use_client").on("change", function () {
             resetForm()
         })
-        window.nps.syncConditionalVisibility(document.querySelector('.nps-form-actions'));
-        applyTunnelAddReadOnlyState();
     });
 
-    function canAddTunnelForm() {
-        return window.nps.nodeActionAvailable('tunnels/add');
-    }
-
-    function applyTunnelAddReadOnlyState() {
-        if (!canAddTunnelForm()) {
-            window.nps.applyReadOnlyForm('form.form-horizontal', {
-                message: window.nps.langText('info-readonly-tunnel', '')
-            });
-        }
-    }
-
-    function submitTunnelAdd() {
-        if (!canAddTunnelForm()) {
-            return;
-        }
-        window.nps.submitFormAction('add', window.nps.nodeMutation('tunnel', 'add'), $('form').serializeArray());
-    }
-
     function getClientList() {
-        const clientId = window.nps.pageIntParam('client_id');
-        window.nps.initRemoteSelectPicker("select[name='client_id']", {
-            method: 'GET',
-            url: window.nps.nodeRoute('clients'),
-            selectedValue: clientId,
-            mapItem: function (item, selectedValue) {
-                var displayText = item.remark ? item.id + ' · ' + item.remark : item.id.toString();
-                return {
-                    value: item.id,
-                    text: displayText,
-                    selected: String(item.id) === String(selectedValue)
-                };
+        const clientId = "{{if .t.Client.Id}}{{.t.Client.Id}}{{else}}{{.client_id}}{{end}}"; // 根据优先级选择
+        $("select[name='client_id']").selectpicker({
+            liveSearch: true,
+            source: {
+                data: function (callback, page) {
+                    $.ajax({
+                        method: 'POST',
+                        url: "{{.web_base_url}}/client/list",
+                        dataType: 'json',
+                        data: { order: "asc", offset: 0, limit: 0 },
+                        success: function(response) {
+                            // 转换数据格式（必须包含 `value` 和 `text`）
+                            const results = $.map(response.rows, function(item) {
+                                let displayText = item.Remark ? item.Id + ' · ' + item.Remark : item.Id.toString();
+                                return {
+                                    value: item.Id,     // 选项的 value
+                                    text: displayText,  // 选项的显示文本
+                                    selected: item.Id == clientId // 默认选中
+                                };
+                            });
+                            callback(results); // 返回给 selectpicker
+                        },
+                        error: function() {
+                            callback([]); // 出错时返回空数组
+                        }
+                    });
+                },
+                search: function (callback, page, searchTerm) {
+                    let data = { search: searchTerm, order: "asc", offset: 0, limit: 0 };
+                    $.ajax({
+                        method: 'POST',
+                        url: "{{.web_base_url}}/client/list",
+                        data: data,
+                        dataType: 'json',
+                        success: function(response) {
+                            // 转换数据格式（必须包含 `value` 和 `text`）
+                            const results = $.map(response.rows, function(item) {
+                                let displayText = item.Remark ? item.Id + ' · ' + item.Remark : item.Id.toString();
+                                return {
+                                    value: item.Id,    // 选项的 value
+                                    text: displayText, // 选项的显示文本
+                                    selected: item.Id == clientId // 默认选中
+                                };
+                            });
+                            callback(results); // 返回给 selectpicker
+                        },
+                        error: function() {
+                            callback([]); // 出错时返回空数组
+                        }
+                    });
+                }
             }
         });
     }
@@ -315,6 +389,5 @@
             noneResultsText: languages['content']['bootstrap-select']['noneResultsText'][current]
         };
         getClientList();
-        applyTunnelAddReadOnlyState();
     }
 </script>

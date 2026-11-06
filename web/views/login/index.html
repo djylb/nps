@@ -10,25 +10,20 @@
     <link href="{{.web_base_url}}/static/css/solid.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/style.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-shell.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-forms.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-lists.css?v={{.version}}" rel="stylesheet">
     <!-- Latest compiled and minified JavaScript -->
     <script src="{{.web_base_url}}/static/js/jquery-3.7.1.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap.min.js"></script>
     <script src="{{.web_base_url}}/static/js/jsencrypt.min.js"></script>
     <script src="{{.web_base_url}}/static/js/crypto-js.min.js"></script>
-    <script src="{{.web_base_url}}/static/js/nps-runtime.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-i18n.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-feedback.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-ui.js?v={{.version}}" type="text/javascript"></script>
+    <!-- Latest compiled and minified Locales -->
+    <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
     {{.head_custom_code}}
 </head>
 
 <body class="login-page">
     <nav class="navbar navbar-static-top navbar-right navbar-login">
-        <div class="ml-auto d-flex align-items-center nps-topbar-tools">
-            <button id="theme-toggle" type="button" class="btn btn-outline-secondary" onclick="toggleTheme()">
+        <div class="ml-auto d-flex align-items-center" style="gap: 0.5rem;">
+            <button id="theme-toggle" class="btn btn-outline-secondary" onclick="toggleTheme()">
                 <i class="fa fa-moon"></i>
             </button>
             <span class="btn-group dropdown">
@@ -43,32 +38,39 @@
 
     <div class="login-card">
         <div class="login-header">
-            <img src="{{.web_base_url}}/static/img/nps.svg?v={{.version}}" alt="" langtag="application" langattr="alt" class="nps-brand-mark">
-            <div class="navbar-brand nps-login-brand"><h1 langtag="title-login"></h1></div>
+            <img src="{{.web_base_url}}/static/img/nps.svg?v={{.version}}" alt="Logo" style="width: 32px; height: 32px; margin-right: 20px !important;">
+            <div class="navbar-brand" style="font-weight: lighter; font-size: 2.0rem !important"><h1 langtag="title-login"></h1></div>
         </div>
         <div class="login-body">
             <form class="m-t" onsubmit="return false;">
                 <div class="form-group position-relative">
                     <i class="fas fa-user-circle input-icon"></i>
-                    <input class="form-control" langtag="word-username" langattr="placeholder" name="username" placeholder="" type="text">
+                    <input class="form-control" langtag="word-username" name="username" placeholder="username" required="" type="text">
                 </div>
                 <div class="form-group position-relative">
                     <i class="fas fa-key input-icon"></i>
-                    <input class="form-control" langtag="word-password" langattr="placeholder" name="password" placeholder="" required="" type="password">
+                    <input class="form-control" langtag="word-password" name="password" placeholder="password" required="" type="password">
                 </div>
-                <div class="form-group captcha-group position-relative" data-nps-require-feature="open_captcha">
+                {{if eq true .captcha_open}}
+                <div class="form-group captcha-group position-relative">
                     <div class="flex-fill">
                     <i class="fas fa-shield-alt input-icon"></i>
-                    <input class="form-control" langtag="word-captcha" langattr="placeholder" name="captcha" placeholder="">
+                    <input class="form-control" langtag="word-captcha" name="captcha" placeholder="captcha" required="">
                     </div>
                     <div class="captcha-container">
                     {{.captcha_html}}
                     </div>
                 </div>
-                <button id="loginBtn" class="btn btn-primary block full-width m-b" langtag="word-login" onclick="if (this.form.reportValidity()) login()" type="submit"></button>
-                <p class="text-muted text-center" data-nps-require-feature="allow_user_register">
-                    <small langtag="info-noaccount"></small>
-                    <small><a href="{{.web_base_url}}/login/register" langtag="word-register" data-nps-page-controller="login" data-nps-page-action="register"></a></small>
+                {{end}}
+                <button id="loginBtn" class="btn btn-primary block full-width login-submit" langtag="word-login" onclick="if (this.form.reportValidity()) login()" type="submit"></button>
+                {{if eq true .register_allow}}
+                <p class="text-muted text-center login-hint">
+                    <span langtag="info-noaccount"></span>
+                    <a href="{{.web_base_url}}/login/register" langtag="word-register"></a>
+                </p>
+                {{end}}
+                <p class="login-alt">
+                    <a class="login-alt-link" href="{{.web_base_url}}/ip/register"><i class="fa fa-key" aria-hidden="true"></i><span langtag="word-ipregisterentry"></span></a>
                 </p>
             </form>
     </div>
@@ -81,42 +83,22 @@
     </div>
 
     <script type="text/javascript">
-        var runtimeConfig = Object.assign({}, {{.runtime_config_json}}, {
-            publicKey: `{{.public_key}}`,
-            loginNonce: "{{.login_nonce}}",
-            loginDelay: {{.login_delay}},
-            totpLen: {{.totp_len}},
-            powBits: {{.pow_bits}},
-            powEnable: {{.pow_enable}},
-            lastAttempt: Date.now(),
+        window.nps = {
+            web_base_url : "{{.web_base_url}}",
+            version      : "{{.version}}",
+            publicKey    : `{{.public_key}}`,
+            loginNonce   : "{{.login_nonce}}",
+            loginDelay   : {{.login_delay}},
+            totpLen      : {{.totp_len}},
+            powBits      : {{.pow_bits}},
+            powEnable    : {{if .pow_enable}}true{{else}}false{{end}},
+            lastAttempt  : Date.now(),
             timeOffset: 0
-        });
-        window.nps = window.nps.mergeConfig(runtimeConfig);
-        function syncAuthFormFeatures() {
-            window.nps.syncConditionalVisibility(document);
-            var allowVkey = window.nps.featureEnabled('allow_user_vkey_login');
-            $('input[name="username"]').prop('required', !allowVkey);
-            var captchaEnabled = window.nps.featureEnabled('open_captcha');
-            $('input[name="captcha"]').prop('required', captchaEnabled);
-            if (!captchaEnabled) {
-                $('input[name="captcha"]').val('');
-            }
-        }
-        function refreshCaptchaIfEnabled() {
-            if (!window.nps.featureEnabled('open_captcha')) {
-                return;
-            }
-            var $img = $('.captcha-img');
-            if ($img.length) {
-                $img.trigger('click');
-            }
-            $('input[name="captcha"]').val('');
-        }
-        syncAuthFormFeatures();
+        };
         function syncServerTime() {
             var t0 = Date.now();
             $.ajax({
-                url: window.nps.actionPath('auth', 'gettime'),
+                url: window.nps.web_base_url + "/auth/gettime",
                 dataType: "json",
                 cache: false,
                 timeout: 5000,
@@ -134,9 +116,6 @@
         const loginBtn = document.getElementById('loginBtn');
         const rsaEncryptor = new JSEncrypt();
         rsaEncryptor.setPublicKey(window.nps.publicKey);
-        function loginPowTimeoutMessage() {
-            return window.nps.langText('info-login-pow-timeout', '');
-        }
         function encryptWithRSA(plain) {
             return rsaEncryptor.encrypt(plain);
         }
@@ -159,7 +138,7 @@
                     const w = new Worker(window.nps.web_base_url + '/static/js/pow-worker.js');
                     const timer = setTimeout(() => {
                         w.terminate();
-                        reject(new Error(loginPowTimeoutMessage()));
+                        reject('PoW timeout');
                     }, timeoutMs + 500);
                     w.onmessage = ({ data }) => {
                         if (data.ok) {
@@ -169,7 +148,7 @@
                         } else if (!data.progress) {
                             clearTimeout(timer);
                             w.terminate();
-                            reject(new Error(loginPowTimeoutMessage()));
+                            reject('PoW timeout');
                         }
                     };
                     w.postMessage({ encPwd, bits, timeout: timeoutMs });
@@ -183,7 +162,7 @@
                     nonce = (nonce + 1) >>> 0;
                     if ((nonce & 0xFFF) === 0) await Promise.resolve();
                 }
-                throw new Error(loginPowTimeoutMessage());
+                throw new Error("PoW timeout");
             }
         }
         $(function () {
@@ -191,7 +170,7 @@
         });
         async function login() {
             loginBtn.disabled = true;
-            showMsg(window.nps.langText('reply.processing', ''), 'loading', 60000);
+            showMsg(langreply('Processing'), 'loading', 60000);
             await new Promise(requestAnimationFrame);
             await new Promise(resolve => setTimeout(resolve, 600));
             const data = Object.fromEntries(new FormData(document.querySelector('form')).entries());
@@ -209,8 +188,9 @@
                     data.powx = await calcPowX(encPwd, window.nps.powBits);
                     data.bits = window.nps.powBits;
                 } catch (e) {
-                    showMsg((e && e.message) ? e.message : loginPowTimeoutMessage(), 'error', 4000);
-                    loginBtn.disabled = false;
+                    showMsg(e.toString(), 'error', 4000, function () {
+                        loginBtn.disabled = false;
+                    });
                     return false;
                 }
             }
@@ -222,15 +202,21 @@
             window.nps.lastAttempt = Date.now();
             $.ajax({
                 type: "POST",
-                url : window.nps.actionPath('login', 'verify'),
+                url : window.nps.web_base_url + "/login/verify",
                 data: data,
                 success: function (res) {
                     if (res.status) {
                         showMsg(langreply(res.msg), 'success', 1000, function () {
-                            window.location.href = window.nps.management_shell || (window.nps.web_base_url + "/app");
+                            window.location.href = window.nps.web_base_url + "/index/index";
                         });
                     } else {
-                        refreshCaptchaIfEnabled();
+                        {{if eq true .captcha_open}}
+                        var $img = $('.captcha-img');
+                        if ($img.length) {
+                            $img.trigger('click');
+                        }
+                        $('input[name="captcha"]').val('');
+                        {{end}}
                         showMsg(langreply(res.msg), 'error', 3000, function() {
                             loginBtn.disabled = false;
                             if (res.nonce) {
@@ -247,12 +233,11 @@
                                 window.nps.powBits = res.bits;
                                 window.nps.powEnable = true;
                             }
-                            syncAuthFormFeatures();
                         });
                     }
                 },
                 error: function (xhr, textStatus) {
-                    console.error(textStatus);
+                    console.error("Login request failed:", textStatus);
                     window.location.reload();
                 }
             });

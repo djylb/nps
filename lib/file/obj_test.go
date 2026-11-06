@@ -1,622 +1,434 @@
 package file
 
 import (
+	"encoding/json"
+	"errors"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
-	"time"
 
+	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/rate"
 )
 
-func TestClientNormalizeLifecycleFieldsFromLegacyFlow(t *testing.T) {
-	expireAt := time.Date(2026, time.March, 21, 10, 11, 12, 0, time.UTC)
-	client := &Client{
-		Flow: &Flow{
-			FlowLimit: 2,
-			TimeLimit: expireAt,
-		},
-	}
+func TestSortClientByKey(t *testing.T) {
+	clients := &sync.Map{}
+	clients.Store("a", &Client{Id: 1, Flow: &Flow{ExportFlow: 10, InletFlow: 100}})
+	clients.Store("b", &Client{Id: 2, Flow: &Flow{ExportFlow: 30, InletFlow: 50}})
+	clients.Store("c", &Client{Id: 3, Flow: &Flow{ExportFlow: 20, InletFlow: 80}})
+	clients.Store("d", &Client{Id: 4}) // no flow: zero traffic
+	clients.Store("e", "not a client")
 
-	client.NormalizeLifecycleFields()
-
-	if client.FlowLimit != 2*1024*1024 {
-		t.Fatalf("NormalizeLifecycleFields() FlowLimit = %d, want %d", client.FlowLimit, 2*1024*1024)
+	if got := sortClientByKey(clients, "ExportFlow", "desc"); !reflect.DeepEqual(got, []int{2, 3, 1, 4}) {
+		t.Fatalf("ExportFlow desc = %v, want [2 3 1 4]", got)
 	}
-	if client.ExpireAt != expireAt.Unix() {
-		t.Fatalf("NormalizeLifecycleFields() ExpireAt = %d, want %d", client.ExpireAt, expireAt.Unix())
+	if got := sortClientByKey(clients, "InletFlow", "asc"); !reflect.DeepEqual(got, []int{4, 2, 3, 1}) {
+		t.Fatalf("InletFlow asc = %v, want [4 2 3 1]", got)
 	}
 }
 
-func TestClientSetLifecycleFieldsKeepsLegacyCompatibility(t *testing.T) {
-	expireAt := time.Date(2026, time.March, 22, 11, 12, 13, 0, time.UTC).Unix()
-	client := &Client{Flow: &Flow{}}
+func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
+	validSecret := "JBSWY3DPEHPK3PXP"
+	c := &Client{
+		WebPassword: "plainpass" + common.TOTPSeq + validSecret,
+	}
 
-	client.SetFlowLimitBytes(3 * 1024 * 1024)
-	client.SetExpireAt(expireAt)
+	c.EnsureWebPassword()
 
-	if client.FlowLimit != 3*1024*1024 {
-		t.Fatalf("SetFlowLimitBytes() FlowLimit = %d, want %d", client.FlowLimit, 3*1024*1024)
+	if c.WebPassword != "plainpass" {
+		t.Fatalf("expected password suffix to be removed, got %q", c.WebPassword)
 	}
-	if client.Flow.FlowLimit != 3 {
-		t.Fatalf("SetFlowLimitBytes() legacy Flow.FlowLimit = %d, want 3", client.Flow.FlowLimit)
+	if c.WebTotpSecret != validSecret {
+		t.Fatalf("expected extracted secret %q, got %q", validSecret, c.WebTotpSecret)
 	}
-	if client.ExpireAt != expireAt {
-		t.Fatalf("SetExpireAt() ExpireAt = %d, want %d", client.ExpireAt, expireAt)
+
+	c.WebTotpSecret = "invalid"
+	c.EnsureWebPassword()
+	if c.WebTotpSecret == "invalid" {
+		t.Fatalf("expected invalid secret to be regenerated")
 	}
-	if !client.Flow.TimeLimit.Equal(time.Unix(expireAt, 0)) {
-		t.Fatalf("SetExpireAt() legacy Flow.TimeLimit = %v, want %v", client.Flow.TimeLimit, time.Unix(expireAt, 0))
+	if !crypt.IsValidTOTPSecret(c.WebTotpSecret) {
+		t.Fatalf("expected regenerated secret to be valid, got %q", c.WebTotpSecret)
 	}
 }
 
-func TestTunnelNormalizeLifecycleFieldsFromLegacyFlow(t *testing.T) {
-	expireAt := time.Date(2026, time.March, 23, 12, 13, 14, 0, time.UTC)
-	tunnel := &Tunnel{
-		Flow: &Flow{
-			FlowLimit: 4,
-			TimeLimit: expireAt,
-		},
-	}
-
-	tunnel.NormalizeLifecycleFields()
-
-	if tunnel.FlowLimit != 4*1024*1024 {
-		t.Fatalf("NormalizeLifecycleFields() FlowLimit = %d, want %d", tunnel.FlowLimit, 4*1024*1024)
-	}
-	if tunnel.ExpireAt != expireAt.Unix() {
-		t.Fatalf("NormalizeLifecycleFields() ExpireAt = %d, want %d", tunnel.ExpireAt, expireAt.Unix())
-	}
-}
-
-func TestHostSetLifecycleFieldsKeepsLegacyCompatibility(t *testing.T) {
-	expireAt := time.Date(2026, time.March, 24, 13, 14, 15, 0, time.UTC).Unix()
-	host := &Host{Flow: &Flow{}}
-
-	host.SetFlowLimitBytes(5 * 1024 * 1024)
-	host.SetExpireAt(expireAt)
-
-	if host.FlowLimit != 5*1024*1024 {
-		t.Fatalf("SetFlowLimitBytes() FlowLimit = %d, want %d", host.FlowLimit, 5*1024*1024)
-	}
-	if host.Flow.FlowLimit != 5 {
-		t.Fatalf("SetFlowLimitBytes() legacy Flow.FlowLimit = %d, want 5", host.Flow.FlowLimit)
-	}
-	if host.ExpireAt != expireAt {
-		t.Fatalf("SetExpireAt() ExpireAt = %d, want %d", host.ExpireAt, expireAt)
-	}
-	if !host.Flow.TimeLimit.Equal(time.Unix(expireAt, 0)) {
-		t.Fatalf("SetExpireAt() legacy Flow.TimeLimit = %v, want %v", host.Flow.TimeLimit, time.Unix(expireAt, 0))
-	}
-}
-
-func TestNewTunnelByHostCarriesRuntimeLimitFields(t *testing.T) {
-	hostRate := rate.NewRate(64 * 1024)
-	hostRate.Start()
-	host := &Host{
-		Client:    &Client{Id: 7},
-		Flow:      &Flow{},
-		ExpireAt:  time.Date(2026, time.March, 25, 14, 15, 16, 0, time.UTC).Unix(),
-		FlowLimit: 6 * 1024 * 1024,
-		RateLimit: 64,
-		Rate:      hostRate,
-		MaxConn:   3,
-	}
-
-	tunnel := NewTunnelByHost(host, 443)
-
-	if tunnel.ExpireAt != host.ExpireAt {
-		t.Fatalf("NewTunnelByHost() ExpireAt = %d, want %d", tunnel.ExpireAt, host.ExpireAt)
-	}
-	if tunnel.FlowLimit != host.FlowLimit {
-		t.Fatalf("NewTunnelByHost() FlowLimit = %d, want %d", tunnel.FlowLimit, host.FlowLimit)
-	}
-	if tunnel.RateLimit != host.RateLimit {
-		t.Fatalf("NewTunnelByHost() RateLimit = %d, want %d", tunnel.RateLimit, host.RateLimit)
-	}
-	if tunnel.Rate != hostRate {
-		t.Fatalf("NewTunnelByHost() Rate = %#v, want host rate pointer", tunnel.Rate)
-	}
-	if tunnel.MaxConn != host.MaxConn {
-		t.Fatalf("NewTunnelByHost() MaxConn = %d, want %d", tunnel.MaxConn, host.MaxConn)
-	}
-}
-
-func TestNewTunnelByHostSharesRuntimeTrafficWithHost(t *testing.T) {
-	host := &Host{
-		Client: &Client{Id: 8},
-		Flow:   &Flow{},
-	}
-
-	tunnel := NewTunnelByHost(host, 443)
-
-	if tunnel.ServiceTraffic == nil || tunnel.ServiceMeter == nil {
-		t.Fatalf("NewTunnelByHost() runtime traffic = %#v / %#v, want initialized host-backed runtime traffic", tunnel.ServiceTraffic, tunnel.ServiceMeter)
-	}
-	if tunnel.ServiceTraffic != host.ServiceTraffic {
-		t.Fatal("NewTunnelByHost() should share host ServiceTraffic pointer")
-	}
-	if tunnel.ServiceMeter != host.ServiceMeter {
-		t.Fatal("NewTunnelByHost() should share host ServiceMeter pointer")
-	}
-
-	if err := tunnel.ObserveServiceTraffic(3, 4); err != nil {
-		t.Fatalf("tunnel.ObserveServiceTraffic() error = %v", err)
-	}
-	in, out, total := host.ServiceTrafficTotals()
-	if in != 3 || out != 4 || total != 7 {
-		t.Fatalf("host.ServiceTrafficTotals() = %d/%d/%d, want 3/4/7", in, out, total)
-	}
-}
-
-func TestObserveTrafficFlowLimitsStillTripAtCurrentAccumulatedTotal(t *testing.T) {
-	user := &User{FlowLimit: 3, TotalFlow: &Flow{}}
-	InitializeUserRuntime(user)
-	if err := user.ObserveTotalTraffic(1, 1); err != nil {
-		t.Fatalf("user.ObserveTotalTraffic(first) error = %v", err)
-	}
-	if err := user.ObserveTotalTraffic(1, 0); err == nil {
-		t.Fatal("user.ObserveTotalTraffic(second) should fail once total reaches flow limit")
-	}
-
-	client := &Client{FlowLimit: 3, Flow: &Flow{}, Cnf: &Config{}}
-	InitializeClientRuntime(client)
-	if err := client.ObserveBridgeTraffic(1, 1); err != nil {
-		t.Fatalf("client.ObserveBridgeTraffic(first) error = %v", err)
-	}
-	if err := client.ObserveServiceTraffic(1, 0); err == nil {
-		t.Fatal("client.ObserveServiceTraffic(second) should fail once total reaches flow limit")
-	}
-
-	tunnel := &Tunnel{FlowLimit: 3, Flow: &Flow{}, Target: &Target{TargetStr: "example.com:80"}}
-	InitializeTunnelRuntime(tunnel)
-	if err := tunnel.ObserveServiceTraffic(1, 1); err != nil {
-		t.Fatalf("tunnel.ObserveServiceTraffic(first) error = %v", err)
-	}
-	if err := tunnel.ObserveServiceTraffic(1, 0); err == nil {
-		t.Fatal("tunnel.ObserveServiceTraffic(second) should fail once total reaches flow limit")
-	}
-
-	host := &Host{FlowLimit: 3, Flow: &Flow{}, Target: &Target{}}
-	InitializeHostRuntime(host)
-	if err := host.ObserveServiceTraffic(1, 1); err != nil {
-		t.Fatalf("host.ObserveServiceTraffic(first) error = %v", err)
-	}
-	if err := host.ObserveServiceTraffic(1, 0); err == nil {
-		t.Fatal("host.ObserveServiceTraffic(second) should fail once total reaches flow limit")
-	}
-}
-
-func TestClientHasTunnelMatchesFileTaskWithoutPortOrPassword(t *testing.T) {
-	resetMigrationTestDB(t)
-
-	db := GetDb()
-	client := &Client{
-		Id:        21,
-		VerifyKey: "vk-file-client",
-		Flow:      &Flow{},
-		Cnf:       &Config{},
-		Status:    true,
-	}
-	if err := db.NewClient(client); err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
-
-	existing := &Tunnel{
-		Id:        41,
-		Mode:      "file",
-		Client:    client,
-		Flow:      &Flow{},
-		Target:    &Target{TargetStr: "file://existing"},
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		ReadOnly:  true,
-		MultiAccount: &MultiAccount{
-			Content: "guest=demo",
-		},
-	}
-	if err := db.NewTask(existing); err != nil {
-		t.Fatalf("NewTask(existing) error = %v", err)
-	}
-
-	candidate := &Tunnel{
-		Mode:      "file",
-		Client:    client,
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		ReadOnly:  true,
-		MultiAccount: &MultiAccount{
-			Content: "guest=demo",
-		},
-	}
-
-	got, ok := client.HasTunnel(candidate)
-	if !ok || got != existing {
-		t.Fatalf("HasTunnel(file candidate) = %#v, %v, want existing task %#v, true", got, ok, existing)
-	}
-
-	changedPath := &Tunnel{
-		Mode:      "file",
-		Client:    client,
-		LocalPath: "/srv/other",
-		StripPre:  "/files",
-		ReadOnly:  true,
-		MultiAccount: &MultiAccount{
-			Content: "guest=demo",
-		},
-	}
-	if got, ok := client.HasTunnel(changedPath); ok || got != nil {
-		t.Fatalf("HasTunnel(changedPath) = %#v, %v, want nil, false", got, ok)
-	}
-}
-
-func TestClientHasTunnelDistinguishesFileTaskAuthVariants(t *testing.T) {
-	resetMigrationTestDB(t)
-
-	db := GetDb()
-	client := &Client{
-		Id:        22,
-		VerifyKey: "vk-file-auth-client",
-		Flow:      &Flow{},
-		Cnf:       &Config{U: "demo", P: "secret"},
-		Status:    true,
-	}
-	if err := db.NewClient(client); err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
-
-	existing := &Tunnel{
-		Id:        42,
-		Mode:      "file",
-		Client:    client,
-		Flow:      &Flow{},
-		Target:    &Target{TargetStr: "file://existing"},
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "ops=token-a",
-		},
-	}
-	if err := db.NewTask(existing); err != nil {
-		t.Fatalf("NewTask(existing) error = %v", err)
-	}
-
-	changedUserAuth := &Tunnel{
-		Mode:      "file",
-		Client:    client,
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "ops=token-b",
-		},
-	}
-	if got, ok := client.HasTunnel(changedUserAuth); ok || got != nil {
-		t.Fatalf("HasTunnel(changedUserAuth) = %#v, %v, want nil, false", got, ok)
-	}
-
-	changedClientAuth := &Tunnel{
-		Mode:      "file",
-		Client:    &Client{Cnf: &Config{U: "demo", P: "different"}},
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "ops=token-a",
-		},
-	}
-	if got, ok := client.HasTunnel(changedClientAuth); ok || got != nil {
-		t.Fatalf("HasTunnel(changedClientAuth) = %#v, %v, want nil, false", got, ok)
-	}
-}
-
-func TestFileTunnelRuntimeKeyIncludesAuthInputs(t *testing.T) {
-	baseClient := &Client{
-		VerifyKey: "vk-file-key",
-		Cnf:       &Config{U: "demo", P: "secret"},
-	}
-	base := &Tunnel{
-		Mode:      "file",
-		Client:    baseClient,
-		ServerIp:  "127.0.0.1",
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "ops=token-a",
-		},
-	}
-	same := &Tunnel{
-		Mode:      "file",
-		Client:    &Client{Cnf: &Config{U: "demo", P: "secret"}},
-		ServerIp:  "127.0.0.1",
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			AccountMap: map[string]string{"ops": "token-a"},
-		},
-	}
-	changed := &Tunnel{
-		Mode:      "file",
-		Client:    &Client{Cnf: &Config{U: "demo", P: "secret"}},
-		ServerIp:  "127.0.0.1",
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "ops=token-b",
-		},
-	}
-
-	baseKey := FileTunnelRuntimeKey(baseClient.VerifyKey, base)
-	if sameKey := FileTunnelRuntimeKey(baseClient.VerifyKey, same); sameKey != baseKey {
-		t.Fatalf("FileTunnelRuntimeKey(same) = %q, want %q", sameKey, baseKey)
-	}
-	if changedKey := FileTunnelRuntimeKey(baseClient.VerifyKey, changed); changedKey == baseKey {
-		t.Fatalf("FileTunnelRuntimeKey(changed) = %q, want auth-sensitive difference from %q", changedKey, baseKey)
-	}
-}
-
-func TestGetAccountMapParsesContentFallback(t *testing.T) {
-	accounts := GetAccountMap(&MultiAccount{
-		Content: "ops=token\n guest = demo \n#ignored\nreadonly\n",
+func TestTunnelCompileDestACL(t *testing.T) {
+	t.Run("invalid mode falls back to off", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: 99, DestAclRules: "example.com"}
+		tn.CompileDestACL()
+		if tn.DestAclMode != AclOff || tn.destAcl != nil {
+			t.Fatalf("mode %d, compiled %v; want off and nothing compiled", tn.DestAclMode, tn.destAcl)
+		}
+		if !tn.AllowsDestination("any.com:80") {
+			t.Fatal("off mode denied a destination")
+		}
 	})
 
-	if len(accounts) != 3 {
-		t.Fatalf("GetAccountMap() size = %d, want 3", len(accounts))
-	}
-	if accounts["ops"] != "token" {
-		t.Fatalf("GetAccountMap()[ops] = %q, want %q", accounts["ops"], "token")
-	}
-	if accounts["guest"] != "demo" {
-		t.Fatalf("GetAccountMap()[guest] = %q, want %q", accounts["guest"], "demo")
-	}
-	if accounts["readonly"] != "" {
-		t.Fatalf("GetAccountMap()[readonly] = %q, want empty password", accounts["readonly"])
-	}
-}
-
-func TestGetAccountMapPrefersNormalizedContentOverLegacyMap(t *testing.T) {
-	accounts := GetAccountMap(&MultiAccount{
-		Content:    "#ignored\nops=token\nreadonly\n",
-		AccountMap: map[string]string{"#ignored": "", "ops": "token", "readonly": ""},
+	t.Run("whitelist with empty rules denies all", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "  \r\n\t "}
+		tn.CompileDestACL()
+		if tn.AllowsDestination("example.com:443") {
+			t.Fatal("empty whitelist allowed a destination")
+		}
 	})
 
-	if len(accounts) != 2 {
-		t.Fatalf("GetAccountMap() size = %d, want 2", len(accounts))
+	t.Run("blacklist with empty rules allows all", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclBlacklist}
+		tn.CompileDestACL()
+		if !tn.AllowsDestination("example.com:443") {
+			t.Fatal("empty blacklist denied a destination")
+		}
+	})
+}
+
+func TestTunnelAllowsDestination(t *testing.T) {
+	t.Run("nil tunnel allows all", func(t *testing.T) {
+		var tn *Tunnel
+		if !tn.AllowsDestination("example.com:443") {
+			t.Fatalf("expected nil tunnel to allow destination")
+		}
+	})
+
+	t.Run("full: matches exactly, a bare host name is a keyword", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "full:example.com\nads"}
+		tn.CompileDestACL()
+		for addr, want := range map[string]bool{"example.com:443": true, "Example.COM": true, "www.example.com:443": false, "ads.example.net:443": true} {
+			if got := tn.AllowsDestination(addr); got != want {
+				t.Errorf("AllowsDestination(%q) = %v, want %v", addr, got, want)
+			}
+		}
+	})
+
+	t.Run("wildcards", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclBlacklist, DestAclRules: "*.sub.com\n*root.com\n10.0.0.0/8\n1.2.3.4"}
+		tn.CompileDestACL()
+		for addr, want := range map[string]bool{
+			"a.sub.com:80": false, "sub.com:80": true,
+			"root.com:80": false, "a.root.com:80": false, "xroot.com:80": true,
+			"10.1.2.3:80": false, "1.2.3.4:443": false, "8.8.8.8:53": true,
+		} {
+			if got := tn.AllowsDestination(addr); got != want {
+				t.Errorf("AllowsDestination(%q) = %v, want %v", addr, got, want)
+			}
+		}
+	})
+
+	t.Run("on demand compile path works", func(t *testing.T) {
+		tn := &Tunnel{DestAclMode: AclWhitelist, DestAclRules: "allow.me"}
+		if !tn.AllowsDestination("allow.me:8080") {
+			t.Fatalf("expected destination to be allowed after on-demand compile")
+		}
+		if tn.destAcl == nil {
+			t.Fatalf("expected on-demand compile to populate the compiled list")
+		}
+	})
+}
+
+// pickTarget returns the address Dial tries first.
+func pickTarget(target *Target) (string, error) {
+	var picked string
+	err := target.Dial(func(addr string) (bool, error) {
+		picked = addr
+		return false, nil
+	})
+	return picked, err
+}
+
+func TestTargetDialRetriesAndEjects(t *testing.T) {
+	target := &Target{TargetStr: "a:1\nb:2\nc:3"}
+	errDown := errors.New("refused")
+	var tried []string
+	err := target.Dial(func(addr string) (bool, error) {
+		tried = append(tried, addr)
+		return true, errDown
+	})
+	if err != errDown || len(tried) != 3 {
+		t.Fatalf("Dial = %v after %v, want every target tried once", err, tried)
 	}
-	if _, ok := accounts["#ignored"]; ok {
-		t.Fatal("GetAccountMap() should ignore legacy comment entries from stale AccountMap")
+
+	// a failure on the way to the target is not retried
+	tried = nil
+	if err := target.Dial(func(addr string) (bool, error) {
+		tried = append(tried, addr)
+		return false, errDown
+	}); err != errDown || len(tried) != 1 {
+		t.Fatalf("Dial = %v after %v, want one attempt", err, tried)
 	}
-	if accounts["ops"] != "token" || accounts["readonly"] != "" {
-		t.Fatalf("GetAccountMap() = %#v, want normalized content-derived map", accounts)
+
+	// a:1 keeps failing and is ejected; the others take its connections
+	for i := 0; i < 2*targetOutlier.ConsecutiveFailures; i++ {
+		_ = target.Dial(func(addr string) (bool, error) {
+			if addr == "a:1" {
+				return true, errDown
+			}
+			return true, nil
+		})
+	}
+	for i := 0; i < 6; i++ {
+		if addr, _ := pickTarget(target); addr == "a:1" {
+			t.Fatalf("ejected target picked")
+		}
+	}
+	// the client's checks clear the ejection once it reports a:1 healthy again
+	target.SetHealthy("a:1", false)
+	target.SetHealthy("a:1", true)
+	seen := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		addr, _ := pickTarget(target)
+		seen[addr] = true
+	}
+	if !seen["a:1"] {
+		t.Fatalf("target not restored: %v", seen)
+	}
+
+	empty := &Target{}
+	if _, err := pickTarget(empty); err != ErrNoTarget {
+		t.Fatalf("empty target list: %v", err)
 	}
 }
 
-func TestTargetGetRandomTargetRefreshesChangedTargetStr(t *testing.T) {
-	target := &Target{TargetStr: "alpha:80\nbeta:81"}
-
-	first, err := target.GetRandomTarget()
-	if err != nil {
-		t.Fatalf("GetRandomTarget(initial) error = %v", err)
-	}
-	if first != "alpha:80" {
-		t.Fatalf("GetRandomTarget(initial) = %q, want %q", first, "alpha:80")
-	}
-
-	target.TargetStr = "gamma:82\ndelta:83"
-
-	second, err := target.GetRandomTarget()
-	if err != nil {
-		t.Fatalf("GetRandomTarget(updated) error = %v", err)
-	}
-	if second != "gamma:82" {
-		t.Fatalf("GetRandomTarget(updated) = %q, want %q", second, "gamma:82")
-	}
-}
-
-func TestTargetGetRouteTargetSeedsInitialOffset(t *testing.T) {
-	target := &Target{TargetStr: "alpha:80\nbeta:81"}
-
-	first, err := target.GetRouteTarget("node-b")
-	if err != nil {
-		t.Fatalf("GetRouteTarget(first) error = %v", err)
-	}
-	if first != "beta:81" {
-		t.Fatalf("GetRouteTarget(first) = %q, want %q", first, "beta:81")
-	}
-
-	second, err := target.GetRouteTarget("node-b")
-	if err != nil {
-		t.Fatalf("GetRouteTarget(second) error = %v", err)
-	}
-	if second != "alpha:80" {
-		t.Fatalf("GetRouteTarget(second) = %q, want %q", second, "alpha:80")
-	}
-}
-
-func TestFileTunnelRuntimeKeyNormalizesContentOnlyAuthComments(t *testing.T) {
-	client := &Client{
-		VerifyKey: "vk-file-comments",
-		Cnf:       &Config{U: "demo", P: "secret"},
-	}
-	contentOnly := &Tunnel{
-		Mode:      "file",
-		Client:    client,
-		ServerIp:  "127.0.0.1",
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			Content: "# comment\nops = token-a\n",
-		},
-	}
-	normalized := &Tunnel{
-		Mode:      "file",
-		Client:    &Client{Cnf: &Config{U: "demo", P: "secret"}},
-		ServerIp:  "127.0.0.1",
-		LocalPath: "/srv/data",
-		StripPre:  "/files",
-		UserAuth: &MultiAccount{
-			AccountMap: map[string]string{"ops": "token-a"},
-		},
-	}
-
-	contentKey := FileTunnelRuntimeKey(client.VerifyKey, contentOnly)
-	normalizedKey := FileTunnelRuntimeKey(client.VerifyKey, normalized)
-	if contentKey != normalizedKey {
-		t.Fatalf("FileTunnelRuntimeKey(contentOnly) = %q, want normalized key %q", contentKey, normalizedKey)
-	}
-}
-
-func TestUserGetConnHonorsLimitAndRelease(t *testing.T) {
-	user := &User{MaxConnections: 1}
-	if !user.GetConn() {
-		t.Fatal("first GetConn() should succeed")
-	}
-	if user.GetConn() {
-		t.Fatal("second GetConn() should fail at limit")
-	}
-	user.CutConn()
-	if !user.GetConn() {
-		t.Fatal("GetConn() should succeed again after CutConn()")
-	}
-}
-
-func TestPromoteLegacyBlacklistPolicy(t *testing.T) {
-	mode, rules := promoteLegacyBlacklistPolicy(AclOff, "", []string{"127.0.0.1", "10.0.0.0/8"})
-	if mode != AclBlacklist {
-		t.Fatalf("mode = %d, want %d", mode, AclBlacklist)
-	}
-	if rules != "127.0.0.1\n10.0.0.0/8" {
-		t.Fatalf("rules = %q, want legacy blacklist rules", rules)
-	}
-
-	client := &Client{}
-	client.SetLegacyBlackIPImport([]string{"127.0.0.1", "10.0.0.0/8"})
-	client.CompileSourcePolicy()
-	if client.EntryAclMode != AclBlacklist || client.EntryAclRules != "127.0.0.1\n10.0.0.0/8" {
-		t.Fatalf("CompileSourcePolicy() = (%d, %q), want promoted blacklist", client.EntryAclMode, client.EntryAclRules)
-	}
-	if client.AllowsSourceAddr("127.0.0.1:80") {
-		t.Fatal("promoted legacy blacklist entry should deny matching source")
-	}
-	if !client.AllowsSourceAddr("8.8.8.8:53") {
-		t.Fatal("promoted legacy blacklist should allow non-matching source")
-	}
-}
-
-func TestExplicitEntryACLsApplyToUserTunnelAndHost(t *testing.T) {
-	user := &User{EntryAclMode: AclWhitelist, EntryAclRules: "192.168.0.0/16"}
-	InitializeUserRuntime(user)
-	if !user.AllowsSourceAddr("192.168.1.10:443") {
-		t.Fatal("user whitelist should allow matching source")
-	}
-	if user.AllowsSourceAddr("10.0.0.1:443") {
-		t.Fatal("user whitelist should deny non-matching source")
-	}
-
-	tunnel := &Tunnel{EntryAclMode: AclBlacklist, EntryAclRules: "10.0.0.0/8"}
-	tunnel.CompileEntryACL()
-	if tunnel.AllowsSourceAddr("10.1.2.3:9000") {
-		t.Fatal("tunnel blacklist should deny private source")
-	}
-	if !tunnel.AllowsSourceAddr("8.8.8.8:9000") {
-		t.Fatal("tunnel blacklist should allow public source")
-	}
-
-	host := &Host{EntryAclMode: AclWhitelist, EntryAclRules: "::1/128"}
-	host.CompileEntryACL()
-	if !host.AllowsSourceAddr("[::1]:443") {
-		t.Fatal("host whitelist should allow matching IPv6 source")
-	}
-	if host.AllowsSourceAddr("[2001:db8::1]:443") {
-		t.Fatal("host whitelist should deny non-matching IPv6 source")
-	}
-}
-
-func TestUserAndTunnelDestinationACLsApply(t *testing.T) {
-	user := &User{
-		DestAclMode:  AclWhitelist,
-		DestAclRules: "full:db.internal.example\n10.0.0.0/8",
-	}
-	InitializeUserRuntime(user)
-	if !user.AllowsDestination("db.internal.example:443") {
-		t.Fatal("user destination whitelist should allow matching host")
-	}
-	if !user.AllowsDestination("10.1.2.3:443") {
-		t.Fatal("user destination whitelist should allow matching IP")
-	}
-	if user.AllowsDestination("api.public.example:443") {
-		t.Fatal("user destination whitelist should deny unmatched host")
-	}
-	if user.AllowsDestinationIP("db.internal.example:443") {
-		t.Fatal("ip-only destination policy should ignore user domain rules")
-	}
-	if !user.AllowsDestinationIP("10.1.2.3:443") {
-		t.Fatal("ip-only destination policy should still allow matching IP")
-	}
-
-	tunnel := &Tunnel{
-		DestAclMode:  AclBlacklist,
-		DestAclRules: "full:blocked.internal.example",
-	}
-	tunnel.CompileDestACL()
-	if tunnel.AllowsDestination("blocked.internal.example:443") {
-		t.Fatal("tunnel destination blacklist should deny matching host")
-	}
-	if !tunnel.AllowsDestination("db.internal.example:443") {
-		t.Fatal("tunnel destination blacklist should allow unmatched host")
-	}
-	if !tunnel.AllowsDestinationIP("db.internal.example:443") {
-		t.Fatal("ip-only destination blacklist should ignore non-IP tokens")
-	}
-}
-
-func TestConcurrentRuntimeTrafficInitialization(t *testing.T) {
-	user := &User{TotalFlow: &Flow{InletFlow: 1, ExportFlow: 2}}
-	client := &Client{Flow: &Flow{InletFlow: 3, ExportFlow: 4}}
-	tunnel := &Tunnel{Flow: &Flow{InletFlow: 5, ExportFlow: 6}}
-	host := &Host{Flow: &Flow{InletFlow: 7, ExportFlow: 8}}
-
+func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
+	target := &Target{TargetStr: "a:1\r\nb:2\n\nc：3"}
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
-		wg.Add(1)
+		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 200; j++ {
-				if err := user.ObserveTotalTraffic(1, 1); err != nil {
-					t.Errorf("ObserveTotalTraffic() error = %v", err)
-					return
-				}
-				if err := client.ObserveBridgeTraffic(1, 0); err != nil {
-					t.Errorf("ObserveBridgeTraffic() error = %v", err)
-					return
-				}
-				if err := client.ObserveServiceTraffic(0, 1); err != nil {
-					t.Errorf("ObserveServiceTraffic(client) error = %v", err)
-					return
-				}
-				if err := tunnel.ObserveServiceTraffic(1, 1); err != nil {
-					t.Errorf("ObserveServiceTraffic(tunnel) error = %v", err)
-					return
-				}
-				if err := host.ObserveServiceTraffic(1, 1); err != nil {
-					t.Errorf("ObserveServiceTraffic(host) error = %v", err)
-					return
-				}
-				_, _, _ = user.TotalTrafficTotals()
-				_, _, _ = client.TotalTrafficTotals()
-				_, _, _ = tunnel.ServiceTrafficTotals()
-				_, _, _ = host.ServiceTrafficTotals()
+				_, _ = pickTarget(target)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				target.SetHealthy("b:2", false)
+				target.SetHealthy("b:2", true)
 			}
 		}()
 	}
 	wg.Wait()
 
-	if user.TotalTraffic == nil || user.TotalMeter == nil {
-		t.Fatalf("user runtime traffic = %#v / %#v, want initialized", user.TotalTraffic, user.TotalMeter)
+	pick := func(n int) map[string]int {
+		seen := map[string]int{}
+		for i := 0; i < n; i++ {
+			addr, err := pickTarget(target)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			seen[addr]++
+		}
+		return seen
 	}
-	if client.BridgeTraffic == nil || client.ServiceTraffic == nil || client.BridgeMeter == nil || client.ServiceMeter == nil || client.TotalMeter == nil {
-		t.Fatalf("client runtime traffic not fully initialized: %+v", client)
+	if seen := pick(3); len(seen) != 3 || seen["a:1"] != 1 || seen["b:2"] != 1 || seen["c:3"] != 1 {
+		t.Fatalf("unexpected rotation: %v", seen)
 	}
-	if tunnel.ServiceTraffic == nil || tunnel.ServiceMeter == nil {
-		t.Fatalf("tunnel runtime traffic = %#v / %#v, want initialized", tunnel.ServiceTraffic, tunnel.ServiceMeter)
+	if target.SetHealthy("d:4", true) {
+		t.Fatalf("an unconfigured target must not be added")
 	}
-	if host.ServiceTraffic == nil || host.ServiceMeter == nil {
-		t.Fatalf("host runtime traffic = %#v / %#v, want initialized", host.ServiceTraffic, host.ServiceMeter)
+	if !target.SetHealthy("a:1", false) {
+		t.Fatalf("a configured target must be found")
+	}
+	if seen := pick(4); seen["a:1"] != 0 || seen["b:2"] != 2 || seen["c:3"] != 2 {
+		t.Fatalf("unexpected rotation without a:1: %v", seen)
+	}
+	target.SetHealthy("b:2", false)
+	target.SetHealthy("c:3", false)
+	if _, err := pickTarget(target); err == nil {
+		t.Fatalf("expected an error with every target down")
+	}
+
+	// a changed list keeps the health of the addresses it keeps, and an
+	// address listed twice gets twice the share
+	target.TargetStr = "c:3\nd:4\nd:4"
+	if seen := pick(4); seen["c:3"] != 0 || seen["d:4"] != 4 {
+		t.Fatalf("unexpected rotation after change: %v", seen)
+	}
+	target.SetHealthy("c:3", true)
+	if seen := pick(3); seen["c:3"] != 1 || seen["d:4"] != 2 {
+		t.Fatalf("unexpected weighted rotation: %v", seen)
+	}
+}
+
+func TestClientGetConnHonoursMaxConn(t *testing.T) {
+	c := &Client{MaxConn: 5}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	got := 0
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if c.GetConn() {
+				mu.Lock()
+				got++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if got != 5 || c.CurrentConnections() != 5 {
+		t.Fatalf("granted %d, NowConn %d, want 5", got, c.CurrentConnections())
+	}
+	for i := 0; i < 5; i++ {
+		c.CutConn()
+	}
+	if c.CurrentConnections() != 0 {
+		t.Fatalf("NowConn = %d after over-release, want 0", c.CurrentConnections())
+	}
+	if !c.GetConn() || c.CurrentConnections() != 1 {
+		t.Fatal("released slot not reusable")
+	}
+	c.CutConn()
+}
+
+func TestConfigTaskPorts(t *testing.T) {
+	cases := []struct {
+		name  string
+		task  *Tunnel
+		ports []int
+		ok    bool
+	}{
+		{"single tcp", &Tunnel{Mode: "tcp", Ports: "8000", Target: &Target{TargetStr: "127.0.0.1:80"}}, []int{8000}, true},
+		{"multi tcp", &Tunnel{Mode: "tcp", Ports: "8000-8002", Target: &Target{TargetStr: "80,81,82"}}, []int{8000, 8001, 8002}, true},
+		{"multi tcp mismatch", &Tunnel{Mode: "tcp", Ports: "8000-8002", Target: &Target{TargetStr: "80,81"}}, nil, false},
+		{"multi httpProxy", &Tunnel{Mode: "httpProxy", Ports: "8000,8001", Target: &Target{}}, []int{8000, 8001}, true},
+		{"secret", &Tunnel{Mode: "secret", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{0}, true},
+		{"secret with port", &Tunnel{Mode: "secret", Ports: "9000", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{9000, 0}, true},
+		{"file", &Tunnel{Mode: "file", Target: &Target{}}, []int{0}, true},
+		{"no port", &Tunnel{Mode: "tcp", Target: &Target{TargetStr: "80"}}, nil, false},
+		{"no target", &Tunnel{Mode: "tcp", Ports: "8000"}, nil, false},
+	}
+	for _, tc := range cases {
+		ports, _, ok := ConfigTaskPorts(tc.task)
+		if ok != tc.ok || !reflect.DeepEqual(ports, tc.ports) {
+			t.Errorf("%s: got %v %v, want %v %v", tc.name, ports, ok, tc.ports, tc.ok)
+		}
+	}
+}
+
+// TestClientJSONGolden pins the JSON form of a Client, as stored in
+// clients.json and returned by the web API.
+func TestClientJSONGolden(t *testing.T) {
+	c := &Client{
+		Cnf:        &Config{U: "u", P: "p", Compress: true},
+		Id:         7,
+		VerifyKey:  "vkey",
+		Status:     true,
+		RateLimit:  256,
+		Flow:       &Flow{ExportFlow: 1, InletFlow: 2, FlowLimit: 3},
+		Rate:       rate.NewRate(256 * 1024),
+		MaxConn:    10,
+		CreateTime: "2026-01-02 03:04:05",
+	}
+	const golden = `{"Cnf":{"U":"u","P":"p","Compress":true,"Crypt":false},"Id":7,"VerifyKey":"vkey","Mode":"","Addr":"","LocalAddr":"","Remark":"","Status":true,"IsConnect":false,"RateLimit":256,"Flow":{"ExportFlow":1,"InletFlow":2,"FlowLimit":3,"TimeLimit":"0001-01-01T00:00:00Z"},"ExportFlow":0,"InletFlow":0,"Rate":{"NowRate":0,"Limit":262144},"NoStore":false,"NoDisplay":false,"MaxConn":10,"NowConn":0,"WebUserName":"","WebPassword":"","WebTotpSecret":"","ConfigConnAllow":false,"MaxTunnelNum":0,"Version":"","IpListPriority":0,"BlackIpList":null,"WhiteIpList":null,"RegisteredOnly":false,"CreateTime":"2026-01-02 03:04:05","LastOnlineTime":"","RegisterKey":"","RegisterMaxHours":0}`
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(b) != golden {
+		t.Fatalf("Client JSON changed:\n got %s\nwant %s", b, golden)
+	}
+
+	c.Rate = nil
+	b, err = json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `,"Rate":null,`) {
+		t.Fatalf("nil Rate JSON: %s", b)
+	}
+
+	// Decoding ignores the stored rate: it yields an unlimited Rate.
+	var back Client
+	if err := json.Unmarshal([]byte(golden), &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if back.Rate == nil || back.Rate.Limit() != 0 || back.Rate.Now() != 0 {
+		t.Fatalf("decoded Rate = %+v, want an unlimited Rate", back.Rate)
+	}
+	back.Rate.Start()
+	if back.Rate.Limit() != 0 {
+		t.Fatalf("decoded Rate limit after Start = %d, want 0", back.Rate.Limit())
+	}
+
+	var none Client
+	if err := json.Unmarshal(b, &none); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if none.Rate != nil {
+		t.Fatalf("decoded null Rate = %+v, want nil", none.Rate)
+	}
+}
+
+func TestFlowLimitActual(t *testing.T) {
+	t.Cleanup(func() { SetFlowLimitActual(false) })
+	client := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
+	client.MarkClient()
+	tunnel := &Flow{FlowLimit: 1, InletFlow: 300 << 10, ExportFlow: 400 << 10}
+	if got := client.Budget().Remaining(); got != 324<<10+1 {
+		t.Fatalf("client Remaining() = %d, want %d", got, 324<<10+1)
+	}
+	if traffic, _ := client.Over(); traffic {
+		t.Fatal("700 KiB of traffic over a 1 MiB client limit on the in/out traffic")
+	}
+	SetFlowLimitActual(true)
+	if traffic, _ := client.Over(); !traffic {
+		t.Fatal("1400 KiB of actual usage not over a 1 MiB client limit on the actual usage")
+	}
+	if traffic, _ := tunnel.Over(); traffic {
+		t.Fatal("a tunnel limit counted the actual usage")
+	}
+	if v := client.Values(); v.Used != 1400<<10 {
+		t.Fatalf("client Used = %d, want %d", v.Used, 1400<<10)
+	}
+	SetFlowLimitActual(false)
+	if traffic, _ := client.Over(); traffic {
+		t.Fatal("the factor change back not followed")
+	}
+}
+
+func TestClientFlowsMarked(t *testing.T) {
+	t.Cleanup(func() { SetFlowLimitActual(false) })
+	SetFlowLimitActual(true)
+	db := &DbUtils{JsonDb: NewJsonDb(t.TempDir())}
+	c := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
+	if err := db.NewClient(c); err != nil && !strings.Contains(err.Error(), "store") {
+		t.Fatal(err)
+	}
+	if traffic, _ := c.Flow.Over(); !traffic {
+		t.Fatal("a new client's flow not marked")
+	}
+	u := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
+	_ = db.UpdateClient(u)
+	if traffic, _ := u.Flow.Over(); !traffic {
+		t.Fatal("an updated client's flow not marked")
+	}
+}
+
+func TestClientFlowTotalsRaceFree(t *testing.T) {
+	c := NewClient("vk", false, false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := int64(0); i < 1000; i++ {
+			c.InletFlow.Store(i)
+			c.ExportFlow.Store(i)
+		}
+	}()
+	for i := 0; i < 100; i++ {
+		if _, err := json.Marshal(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-done
+	b, err := json.Marshal(c)
+	if err != nil || !strings.Contains(string(b), `"ExportFlow":999,"InletFlow":999`) {
+		t.Fatalf("marshal = %s, %v", b, err)
+	}
+	var back Client
+	if err := json.Unmarshal(b, &back); err != nil || back.InletFlow.Load() != 999 {
+		t.Fatalf("unmarshal inlet = %d, %v", back.InletFlow.Load(), err)
 	}
 }

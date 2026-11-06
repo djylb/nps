@@ -12,4 +12,4 @@ FROM alpine
 RUN apk add --no-cache tzdata nano ca-certificates && update-ca-certificates
 COPY --from=builder /go/src/github.com/djylb/nps/npc /
 VOLUME /conf
-ENTRYPOINT ["/npc"]
+ENTRYPOINT ["/npc", "-disable_remote_update"]

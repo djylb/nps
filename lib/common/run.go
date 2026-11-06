@@ -2,15 +2,11 @@ package common
 
 import (
 	"fmt"
-	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/djylb/nps/lib/logs"
 )
 
 var ConfPath string
@@ -23,7 +19,7 @@ func GetRunPath() string {
 	var path string
 	if len(os.Args) == 1 {
 		if !IsWindows() {
-			dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+			dir, _ := filepath.Abs(filepath.Dir(os.Args[0])) //返回
 			return dir + "/"
 		}
 		return "./"
@@ -148,17 +144,4 @@ func GetRunSecs() int64 {
 
 func GetStartTime() int64 {
 	return StartTime.Unix()
-}
-
-func InitPProfByAddr(addr string) {
-	if len(addr) > 0 {
-		runPProf(addr)
-	}
-}
-
-func runPProf(ipPort string) {
-	go func() {
-		_ = http.ListenAndServe(ipPort, nil)
-	}()
-	logs.Info("PProf debug listen on %s", ipPort)
 }

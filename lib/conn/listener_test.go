@@ -2,403 +2,163 @@ package conn
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"testing"
 	"time"
-
-	"github.com/djylb/nps/lib/crypt"
-	"github.com/quic-go/quic-go"
-	"github.com/xtaci/kcp-go/v5"
 )
 
-func withVirtualListenerEnqueueTimeout(t *testing.T, timeout time.Duration) {
-	t.Helper()
-	old := virtualListenerEnqueueTimeout
-	virtualListenerEnqueueTimeout = timeout
-	t.Cleanup(func() {
-		virtualListenerEnqueueTimeout = old
-	})
-}
+func TestDialVirtualReportsAddressesAndCarriesData(t *testing.T) {
+	local := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 8024}
+	l := NewVirtualListener(local)
+	defer func() { _ = l.Close() }()
 
-func TestVirtualListenerDialVirtualReturnsErrorWhenQueueIsFull(t *testing.T) {
-	withVirtualListenerEnqueueTimeout(t, 25*time.Millisecond)
-	listener := newVirtualListenerWithBuffer(LocalTCPAddr, 1)
-	t.Cleanup(func() { _ = listener.Close() })
-
-	left, right := net.Pipe()
-	t.Cleanup(func() { _ = left.Close() })
-	t.Cleanup(func() { _ = right.Close() })
-	listener.ServeVirtual(right)
-
-	conn, err := listener.DialVirtual("127.0.0.1:9100")
-	if !errors.Is(err, ErrVirtualListenerFull) {
-		if conn != nil {
-			_ = conn.Close()
-		}
-		t.Fatalf("DialVirtual() error = %v, want %v", err, ErrVirtualListenerFull)
-	}
-	if conn != nil {
-		_ = conn.Close()
-		t.Fatal("DialVirtual() should not return a connection when the queue is full")
-	}
-}
-
-func TestVirtualListenerDialVirtualWaitsForCapacity(t *testing.T) {
-	withVirtualListenerEnqueueTimeout(t, 200*time.Millisecond)
-	listener := newVirtualListenerWithBuffer(LocalTCPAddr, 1)
-	t.Cleanup(func() { _ = listener.Close() })
-
-	firstClient, firstServer := net.Pipe()
-	t.Cleanup(func() { _ = firstClient.Close() })
-	listener.ServeVirtual(firstServer)
-
-	type dialResult struct {
-		conn net.Conn
-		err  error
-	}
-	resultCh := make(chan dialResult, 1)
-	go func() {
-		conn, err := listener.DialVirtual("127.0.0.1:9102")
-		resultCh <- dialResult{conn: conn, err: err}
-	}()
-
-	select {
-	case result := <-resultCh:
-		if result.conn != nil {
-			_ = result.conn.Close()
-		}
-		t.Fatalf("DialVirtual() returned early while listener queue was still full: err=%v", result.err)
-	case <-time.After(40 * time.Millisecond):
-	}
-
-	firstAccepted, err := listener.Accept()
+	c, err := DialVirtual(context.Background(), l, "192.0.2.7:4321")
 	if err != nil {
-		t.Fatalf("first Accept() error = %v", err)
+		t.Fatalf("DialVirtual() error = %v", err)
 	}
-	_ = firstAccepted.Close()
-
-	var dialed net.Conn
-	select {
-	case result := <-resultCh:
-		if result.err != nil {
-			t.Fatalf("DialVirtual() error = %v", result.err)
-		}
-		dialed = result.conn
-	case <-time.After(2 * time.Second):
-		t.Fatal("DialVirtual() did not succeed after queue capacity became available")
-	}
-	if dialed == nil {
-		t.Fatal("DialVirtual() returned nil conn after queue capacity became available")
-	}
-	defer func() { _ = dialed.Close() }()
-
-	secondAccepted, err := listener.Accept()
-	if err != nil {
-		t.Fatalf("second Accept() error = %v", err)
-	}
-	_ = secondAccepted.Close()
-}
-
-func TestVirtualListenerDialVirtualReturnsClosedErrorForClosedListener(t *testing.T) {
-	listener := newVirtualListenerWithBuffer(LocalTCPAddr, 1)
-	_ = listener.Close()
-
-	conn, err := listener.DialVirtual("127.0.0.1:9101")
-	if !errors.Is(err, net.ErrClosed) {
-		if conn != nil {
-			_ = conn.Close()
-		}
-		t.Fatalf("DialVirtual() error = %v, want %v", err, net.ErrClosed)
-	}
-	if conn != nil {
-		_ = conn.Close()
-		t.Fatal("DialVirtual() should not return a connection after close")
-	}
-}
-
-func TestVirtualListenerAcceptReturnsQueuedConnection(t *testing.T) {
-	listener := newVirtualListenerWithBuffer(LocalTCPAddr, 1)
-	t.Cleanup(func() { _ = listener.Close() })
-
-	left, right := net.Pipe()
-	t.Cleanup(func() { _ = left.Close() })
-	listener.ServeVirtual(right)
-
-	conn, err := listener.Accept()
+	defer func() { _ = c.Close() }()
+	accepted, err := l.Accept()
 	if err != nil {
 		t.Fatalf("Accept() error = %v", err)
 	}
-	if conn == nil {
-		t.Fatal("Accept() returned nil connection")
+	defer func() { _ = accepted.Close() }()
+
+	if got := accepted.RemoteAddr().String(); got != "192.0.2.7:4321" {
+		t.Fatalf("accepted RemoteAddr = %s, want 192.0.2.7:4321", got)
 	}
-	_ = conn.Close()
+	if got := accepted.LocalAddr().String(); got != local.String() {
+		t.Fatalf("accepted LocalAddr = %s, want %s", got, local)
+	}
+	if got := c.RemoteAddr().String(); got != local.String() {
+		t.Fatalf("dialed RemoteAddr = %s, want %s", got, local)
+	}
+
+	go func() { _, _ = c.Write([]byte("ping")) }()
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(accepted, buf); err != nil || string(buf) != "ping" {
+		t.Fatalf("read %q, %v; want ping", buf, err)
+	}
 }
 
-func TestVirtualListenerDialVirtualReturnsErrorForInvalidRemoteAddr(t *testing.T) {
-	listener := newVirtualListenerWithBuffer(LocalTCPAddr, 1)
-	t.Cleanup(func() { _ = listener.Close() })
+func TestNewVirtualListenerDefaultsToLocalAddr(t *testing.T) {
+	l := NewVirtualListener(nil)
+	defer func() { _ = l.Close() }()
+	if l.Addr() != LocalTCPAddr {
+		t.Fatalf("Addr() = %v, want %v", l.Addr(), LocalTCPAddr)
+	}
+}
 
-	conn, err := listener.DialVirtual("not-a-tcp-addr")
-	if err == nil {
-		if conn != nil {
-			_ = conn.Close()
+func TestDialVirtualRejectsBadRemote(t *testing.T) {
+	l := NewVirtualListener(nil)
+	defer func() { _ = l.Close() }()
+	for _, remote := range []string{"", "no-port"} {
+		if c, err := DialVirtual(context.Background(), l, remote); err == nil {
+			_ = c.Close()
+			t.Fatalf("DialVirtual(%q) succeeded, want error", remote)
 		}
-		t.Fatal("DialVirtual() error = nil, want invalid remote addr error")
-	}
-	if conn != nil {
-		_ = conn.Close()
-		t.Fatal("DialVirtual() should not return a connection for invalid remote addr")
 	}
 }
 
-func TestOneConnListenerAcceptThenClose(t *testing.T) {
-	left, right := net.Pipe()
-	t.Cleanup(func() { _ = right.Close() })
+func TestVirtualListenerClose(t *testing.T) {
+	l := NewVirtualListener(nil)
 
-	listener := NewOneConnListener(left)
-
-	conn, err := listener.Accept()
+	queued, err := DialVirtual(context.Background(), l, "127.0.0.1:1000")
 	if err != nil {
-		t.Fatalf("first Accept() error = %v", err)
+		t.Fatalf("DialVirtual() error = %v", err)
 	}
-	if conn != left {
-		t.Fatal("first Accept() should return the original connection")
-	}
-	if listener.Addr() == nil {
-		t.Fatal("Addr() returned nil for one-conn listener")
-	}
+	defer func() { _ = queued.Close() }()
 
-	errCh := make(chan error, 1)
+	acceptErr := make(chan error, 1)
 	go func() {
-		_, err := listener.Accept()
-		errCh <- err
+		// The first Accept takes the queued connection; the second blocks
+		// until Close.
+		c, err := l.Accept()
+		if err == nil {
+			_ = c.Close()
+			_, err = l.Accept()
+		}
+		acceptErr <- err
 	}()
+	// Wait until the queued connection has been taken and closed.
+	_ = queued.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := queued.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("queued conn read error = %v, want EOF", err)
+	}
 
-	if err := listener.Close(); err != nil {
+	if err := l.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if err := <-errCh; !errors.Is(err, io.EOF) {
-		t.Fatalf("second Accept() error = %v, want %v", err, io.EOF)
-	}
-}
-
-func TestOneConnListenerCloseBeforeAcceptReturnsClosedError(t *testing.T) {
-	left, right := net.Pipe()
-	t.Cleanup(func() { _ = right.Close() })
-
-	listener := NewOneConnListener(left)
-	if err := listener.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-
-	conn, err := listener.Accept()
-	if !errors.Is(err, net.ErrClosed) {
-		if conn != nil {
-			_ = conn.Close()
-		}
-		t.Fatalf("Accept() error = %v, want %v", err, net.ErrClosed)
-	}
-	if conn != nil {
-		_ = conn.Close()
-		t.Fatal("Accept() should not return a conn after Close()")
-	}
-}
-
-func TestOneConnListenerHandlesNilConn(t *testing.T) {
-	listener := NewOneConnListener(nil)
-
-	if got := listener.Addr(); got != nil {
-		t.Fatalf("Addr() = %#v, want nil", got)
-	}
-	if err := listener.Close(); err != nil {
-		t.Fatalf("Close() error = %v, want nil", err)
-	}
-
-	conn, err := listener.Accept()
-	if !errors.Is(err, net.ErrClosed) {
-		if conn != nil {
-			_ = conn.Close()
-		}
-		t.Fatalf("Accept() error = %v, want %v", err, net.ErrClosed)
-	}
-	if conn != nil {
-		_ = conn.Close()
-		t.Fatal("Accept() should not return a conn for nil one-conn listener")
-	}
-}
-
-func TestServeQUICListenerAcceptsNewSessionWhileEarlierSessionWaitsForStream(t *testing.T) {
-	crypt.InitTls(tls.Certificate{})
-
-	listener, err := quic.ListenAddr("127.0.0.1:0", crypt.GetCertCfg(), &quic.Config{})
-	if err != nil {
-		t.Fatalf("quic.ListenAddr() error = %v", err)
-	}
-
-	acceptedConnCh := make(chan net.Conn, 1)
-	serveErrCh := make(chan error, 1)
-	go func() {
-		serveErrCh <- serveQUICListener(listener, func(c net.Conn) {
-			acceptedConnCh <- c
-		})
-	}()
-
-	clientTLS := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"h3"},
-	}
-
-	firstSess, err := quic.DialAddr(context.Background(), listener.Addr().String(), clientTLS, &quic.Config{})
-	if err != nil {
-		t.Fatalf("first quic.DialAddr() error = %v", err)
-	}
-	defer func() {
-		_ = firstSess.CloseWithError(0, "test cleanup")
-	}()
-
-	secondSess, err := quic.DialAddr(context.Background(), listener.Addr().String(), clientTLS, &quic.Config{})
-	if err != nil {
-		t.Fatalf("second quic.DialAddr() error = %v", err)
-	}
-	defer func() {
-		_ = secondSess.CloseWithError(0, "test cleanup")
-	}()
-
-	secondStream, err := secondSess.OpenStreamSync(context.Background())
-	if err != nil {
-		t.Fatalf("OpenStreamSync() error = %v", err)
-	}
-	defer func() {
-		_ = secondStream.Close()
-	}()
-	if _, err := secondStream.Write([]byte("init")); err != nil {
-		t.Fatalf("secondStream.Write() error = %v", err)
-	}
-
 	select {
-	case acceptedConn := <-acceptedConnCh:
-		_ = acceptedConn.Close()
-	case <-time.After(2 * time.Second):
-		t.Fatal("second session stream should be processed even if the first session never opens a stream")
-	}
-
-	_ = listener.Close()
-
-	select {
-	case err := <-serveErrCh:
-		if err != nil {
-			t.Fatalf("serveQUICListener() error = %v", err)
+	case err := <-acceptErr:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("Accept() after Close error = %v, want net.ErrClosed", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("serveQUICListener() should exit after listener close")
+		t.Fatal("Accept did not return after Close")
 	}
 
-	select {
-	case <-firstSess.Context().Done():
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("listener close should also close earlier accepted QUIC sessions that never opened a stream")
+	if c, err := DialVirtual(context.Background(), l, "127.0.0.1:1001"); !errors.Is(err, net.ErrClosed) {
+		if c != nil {
+			_ = c.Close()
+		}
+		t.Fatalf("DialVirtual() after Close error = %v, want net.ErrClosed", err)
 	}
-}
 
-type closeErrorListener struct {
-	acceptCalls int
-}
-
-func (l *closeErrorListener) Accept() (net.Conn, error) {
-	l.acceptCalls++
-	return nil, fmt.Errorf("wrapped close: %w", net.ErrClosed)
-}
-
-func (l *closeErrorListener) Close() error { return nil }
-
-func (l *closeErrorListener) Addr() net.Addr { return LocalTCPAddr }
-
-func TestAcceptStopsOnWrappedNetErrClosed(t *testing.T) {
-	listener := &closeErrorListener{}
-
-	Accept(listener, func(net.Conn) {
-		t.Fatal("Accept() callback should not run on closed listener")
-	})
-
-	if listener.acceptCalls != 1 {
-		t.Fatalf("Accept() calls = %d, want 1", listener.acceptCalls)
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	ServeVirtual(l, server)
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := client.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("ServeVirtual on a closed listener left the conn open: read error = %v", err)
 	}
 }
 
-type eofErrorListener struct {
-	acceptCalls int
-}
-
-func (l *eofErrorListener) Accept() (net.Conn, error) {
-	l.acceptCalls++
-	return nil, io.EOF
-}
-
-func (l *eofErrorListener) Close() error { return nil }
-
-func (l *eofErrorListener) Addr() net.Addr { return LocalTCPAddr }
-
-func TestAcceptStopsOnEOF(t *testing.T) {
-	listener := &eofErrorListener{}
-
-	Accept(listener, func(net.Conn) {
-		t.Fatal("Accept() callback should not run on EOF listener")
-	})
-
-	if listener.acceptCalls != 1 {
-		t.Fatalf("Accept() calls = %d, want 1", listener.acceptCalls)
+func TestVirtualListenerCloseClosesQueuedConns(t *testing.T) {
+	l := NewVirtualListener(nil)
+	c, err := DialVirtual(context.Background(), l, "127.0.0.1:1000")
+	if err != nil {
+		t.Fatalf("DialVirtual() error = %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = l.Close()
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("read error = %v, want EOF from the closed server end", err)
 	}
 }
 
-type closeKCPListener struct {
-	acceptCalls int
-}
-
-func (l *closeKCPListener) AcceptKCP() (*kcp.UDPSession, error) {
-	l.acceptCalls++
-	return nil, fmt.Errorf("wrapped close: %w", net.ErrClosed)
-}
-
-func TestServeKCPListenerStopsOnWrappedNetErrClosed(t *testing.T) {
-	listener := &closeKCPListener{}
-
-	if err := serveKCPListener(listener, func(net.Conn) {
-		t.Fatal("serveKCPListener() callback should not run on closed listener")
-	}); err != nil {
-		t.Fatalf("serveKCPListener() error = %v, want nil", err)
+func TestDialVirtualWaitsForQueueSpaceUntilContextDone(t *testing.T) {
+	l := NewVirtualListener(nil)
+	defer func() { _ = l.Close() }()
+	clients := make([]net.Conn, 0, virtualQueue)
+	defer func() {
+		for _, c := range clients {
+			_ = c.Close()
+		}
+	}()
+	for i := 0; i < virtualQueue; i++ {
+		client, server := net.Pipe()
+		clients = append(clients, client)
+		if !l.TryDeliver(server) {
+			t.Fatalf("TryDeliver #%d failed before the queue was full", i)
+		}
+	}
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	ServeVirtual(l, server) // queue full: closed instead of queued
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := client.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("ServeVirtual on a full queue left the conn open: read error = %v", err)
 	}
 
-	if listener.acceptCalls != 1 {
-		t.Fatalf("AcceptKCP() calls = %d, want 1", listener.acceptCalls)
-	}
-}
-
-type retryThenCloseKCPListener struct {
-	acceptCalls int
-}
-
-func (l *retryThenCloseKCPListener) AcceptKCP() (*kcp.UDPSession, error) {
-	l.acceptCalls++
-	if l.acceptCalls == 1 {
-		return nil, errors.New("temporary accept failure")
-	}
-	return nil, fmt.Errorf("closed accept: %w", net.ErrClosed)
-}
-
-func TestServeKCPListenerRetriesTransientErrorThenStopsOnClose(t *testing.T) {
-	listener := &retryThenCloseKCPListener{}
-
-	if err := serveKCPListener(listener, func(net.Conn) {
-		t.Fatal("serveKCPListener() callback should not run without accepted sessions")
-	}); err != nil {
-		t.Fatalf("serveKCPListener() error = %v, want nil", err)
-	}
-
-	if listener.acceptCalls != 2 {
-		t.Fatalf("AcceptKCP() calls = %d, want 2", listener.acceptCalls)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if c, err := DialVirtual(ctx, l, "127.0.0.1:1000"); !errors.Is(err, context.DeadlineExceeded) {
+		if c != nil {
+			_ = c.Close()
+		}
+		t.Fatalf("DialVirtual() on a full queue error = %v, want context.DeadlineExceeded", err)
 	}
 }

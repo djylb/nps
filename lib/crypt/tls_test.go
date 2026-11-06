@@ -1,135 +1,142 @@
 package crypt
 
 import (
-	"bytes"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"io"
 	"net"
+	"slices"
 	"testing"
 	"time"
 )
 
-func TestGetPublicKeyPEMAndRSAPublicKeyPEM(t *testing.T) {
-	oldCert, oldRSAKey, oldTLSCfg := cert, rsaKey, tlsCfg
-	t.Cleanup(func() {
-		cert = oldCert
-		rsaKey = oldRSAKey
-		tlsCfg = oldTLSCfg
-	})
-
-	cert = tls.Certificate{}
-	rsaKey = nil
-	tlsCfg = nil
-
-	if _, err := GetPublicKeyPEM(); err == nil {
-		t.Fatal("GetPublicKeyPEM() error = nil, want non-nil without certificate")
+func TestPinFingerprint(t *testing.T) {
+	sum := sha256.Sum256([]byte("test-cert-der"))
+	if !PinFingerprint(sum[:]).Contains(sum) {
+		t.Fatal("fingerprint of the certificate is not trusted")
 	}
-	if _, err := GetRSAPublicKeyPEM(); err == nil {
-		t.Fatal("GetRSAPublicKeyPEM() error = nil, want non-nil without RSA key")
+	other := sha256.Sum256([]byte("other"))
+	for _, bad := range [][]byte{nil, sum[:len(sum)-1], append(sum[:], 0), other[:]} {
+		if PinFingerprint(bad).Contains(sum) {
+			t.Fatalf("fingerprint %x trusts the certificate", bad)
+		}
 	}
+}
 
+func TestGetCertFingerprintIsLeafSHA256(t *testing.T) {
+	cert, err := newSelfSigned("example.com", "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(cert.Certificate[0])
+	if got := GetCertFingerprint(cert); !slices.Equal(got, sum[:]) {
+		t.Fatalf("fingerprint %x, want %x", got, sum)
+	}
+	if GetCertFingerprint(tls.Certificate{}) != nil {
+		t.Fatal("certificate without chain has a fingerprint")
+	}
+}
+
+func TestInitTlsSelfSignedRSA(t *testing.T) {
 	InitTls(tls.Certificate{})
-
-	publicKeyPEM, err := GetPublicKeyPEM()
+	key, ok := cert.PrivateKey.(*rsa.PrivateKey)
+	if !ok {
+		t.Fatalf("private key is %T, want *rsa.PrivateKey", cert.PrivateKey)
+	}
+	if key.N.BitLen() != 2048 {
+		t.Fatalf("RSA key has %d bits", key.N.BitLen())
+	}
+	if rsaKey != key {
+		t.Fatal("login RSA key is not the certificate's key")
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		t.Fatalf("GetPublicKeyPEM() error = %v", err)
+		t.Fatal(err)
 	}
-	publicKeyBlock, _ := pem.Decode([]byte(publicKeyPEM))
-	if publicKeyBlock == nil {
-		t.Fatal("pem.Decode(publicKeyPEM) = nil")
+	if leaf.Subject.CommonName == "" || len(leaf.Subject.Organization) != 1 {
+		t.Fatalf("subject %v lacks common name or organization", leaf.Subject)
 	}
-	if _, err := x509.ParsePKIXPublicKey(publicKeyBlock.Bytes); err != nil {
-		t.Fatalf("ParsePKIXPublicKey(public key) error = %v", err)
+	if !slices.Equal(leaf.DNSNames, []string{leaf.Subject.CommonName}) {
+		t.Fatalf("DNS names %v, want the common name", leaf.DNSNames)
 	}
-
-	rsaPublicKeyPEM, err := GetRSAPublicKeyPEM()
+	if validFor := leaf.NotAfter.Sub(time.Now()); validFor < 9*365*24*time.Hour {
+		t.Fatalf("certificate is valid for only %v", validFor)
+	}
+	if leaf.KeyUsage&x509.KeyUsageKeyEncipherment == 0 || leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		t.Fatalf("key usage %v", leaf.KeyUsage)
+	}
+	if !slices.Equal(leaf.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
+		t.Fatalf("extended key usage %v", leaf.ExtKeyUsage)
+	}
+	pubPEM, err := GetRSAPublicKeyPEM()
 	if err != nil {
-		t.Fatalf("GetRSAPublicKeyPEM() error = %v", err)
+		t.Fatal(err)
 	}
-	rsaBlock, _ := pem.Decode([]byte(rsaPublicKeyPEM))
-	if rsaBlock == nil {
-		t.Fatal("pem.Decode(rsaPublicKeyPEM) = nil")
+	block, _ := pem.Decode([]byte(pubPEM))
+	if block == nil {
+		t.Fatal("public key is not PEM")
 	}
-	parsed, err := x509.ParsePKIXPublicKey(rsaBlock.Bytes)
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		t.Fatalf("ParsePKIXPublicKey(rsa public key) error = %v", err)
+		t.Fatal(err)
 	}
-	if _, ok := parsed.(*rsa.PublicKey); !ok {
-		t.Fatalf("parsed RSA public key type = %T, want *rsa.PublicKey", parsed)
+	if !key.PublicKey.Equal(pub) {
+		t.Fatal("public key PEM is not the certificate's key")
 	}
 }
 
-func TestReadClientHelloCapturesServerName(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	defer serverConn.Close()
+func TestAddTrustedCertReplacesPin(t *testing.T) {
+	fp1, fp2 := sha256.Sum256([]byte("one")), sha256.Sum256([]byte("two"))
+	AddTrustedCert("vkey-a", fp1[:])
+	AddTrustedCert("vkey-b", fp1[:])
+	AddTrustedCert("vkey-a", fp2[:])
+	if !trusted.Contains(fp1) || !trusted.Contains(fp2) {
+		t.Fatal("pins in use are not trusted")
+	}
+	AddTrustedCert("vkey-b", fp2[:])
+	if trusted.Contains(fp1) {
+		t.Fatal("pin no vkey uses is still trusted")
+	}
+	AddTrustedCert("vkey-a", []byte("short"))
+	AddTrustedCert("vkey-b", nil)
+	if trusted.Contains(fp2) {
+		t.Fatal("replaced pin is still trusted")
+	}
+}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		tlsClient := tls.Client(clientConn, &tls.Config{
-			ServerName:         "example.com",
-			InsecureSkipVerify: true,
+func TestNewPinnedTlsClientConfig(t *testing.T) {
+	serverCert, err := newSelfSigned("example.com", "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := sha256.Sum256([]byte("other"))
+	for _, tc := range []struct {
+		name string
+		fp   []byte
+		ok   bool
+	}{
+		{"pinned", GetCertFingerprint(serverCert), true},
+		{"other", other[:], false},
+		{"empty", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, s := net.Pipe()
+			defer func() { _ = c.Close() }()
+			srv := tls.Server(s, &tls.Config{Certificates: []tls.Certificate{serverCert}})
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				_ = srv.Handshake()
+				_ = srv.Close()
+			}()
+			err := tls.Client(c, NewPinnedTlsClientConfig(tc.fp)).Handshake()
+			_ = c.Close()
+			<-done
+			if (err == nil) != tc.ok {
+				t.Fatalf("handshake error %v, want success %v", err, tc.ok)
+			}
 		})
-		_ = tlsClient.SetDeadline(time.Now().Add(2 * time.Second))
-		_ = tlsClient.Handshake()
-		_ = tlsClient.Close()
-	}()
-
-	hello, raw, err := ReadClientHello(serverConn, nil)
-	if err != nil {
-		t.Fatalf("ReadClientHello() error = %v", err)
 	}
-	if hello == nil {
-		t.Fatal("ReadClientHello() hello = nil")
-	}
-	if hello.ServerName != "example.com" {
-		t.Fatalf("ReadClientHello() ServerName = %q, want example.com", hello.ServerName)
-	}
-	if len(raw) == 0 {
-		t.Fatal("ReadClientHello() raw = empty, want captured client hello bytes")
-	}
-
-	_ = serverConn.Close()
-	<-done
-}
-
-func TestNewSniffConnUsesDefaultMaxSize(t *testing.T) {
-	left, right := net.Pipe()
-	defer func() { _ = left.Close() }()
-	defer func() { _ = right.Close() }()
-
-	conn := NewSniffConn(left, 0)
-	if conn.maxSize != defaultMaxSize {
-		t.Fatalf("NewSniffConn(0) maxSize = %d, want %d", conn.maxSize, defaultMaxSize)
-	}
-}
-
-func TestSniffConnCapsBufferedBytesAtMaxSize(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	defer func() { _ = serverConn.Close() }()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, _ = clientConn.Write([]byte("abcdefgh"))
-		_ = clientConn.Close()
-	}()
-
-	sniff := NewSniffConn(serverConn, 4)
-	buf := make([]byte, 8)
-	n, err := sniff.Read(buf)
-	if err != io.EOF {
-		t.Fatalf("Read() error = %v, want io.EOF", err)
-	}
-	if n != 8 {
-		t.Fatalf("Read() bytes = %d, want 8", n)
-	}
-	if got := sniff.Bytes(); !bytes.Equal(got, []byte("abcd")) {
-		t.Fatalf("Bytes() = %q, want %q", got, []byte("abcd"))
-	}
-
-	<-done
 }

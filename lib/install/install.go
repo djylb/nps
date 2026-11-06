@@ -2,196 +2,46 @@ package install
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
-	"encoding/json"
+	"crypto/x509"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 
-	"github.com/c4milo/unpackit"
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/selfupdate"
 )
 
-var BuildTarget string
+// systemBinDirs are the directories that install places the executable in,
+// in order of preference.
+var systemBinDirs = []string{"/usr/bin", "/usr/local/bin"}
 
-// SysvScript Keep it in sync with the template from service_sysv_linux.go file
-// Use "ps | grep -v grep | grep $(get_pid)" because "ps PID" may not work on OpenWrt
-const SysvScript = `#!/bin/sh
-# For RedHat and cousins:
-# chkconfig: - 99 01
-# description: {{.Description}}
-# processname: {{.Path}}
-### BEGIN INIT INFO
-# Provides:          {{.Path}}
-# Required-Start:
-# Required-Stop:
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: {{.DisplayName}}
-# Description:       {{.Description}}
-### END INIT INFO
-cmd="{{.Path}}{{range .Arguments}} {{.|cmd}}{{end}}"
-name=$(basename $(readlink -f $0))
-pid_file="/var/run/$name.pid"
-stdout_log="/var/log/$name.log"
-stderr_log="/var/log/$name.err"
-[ -e /etc/sysconfig/$name ] && . /etc/sysconfig/$name
-get_pid() {
-    cat "$pid_file"
-}
-is_running() {
-    [ -f "$pid_file" ] && ps | grep -v grep | grep $(get_pid) > /dev/null 2>&1
-}
-case "$1" in
-    start)
-        if is_running; then
-            echo "Already started"
-        else
-            echo "Starting $name"
-            {{if .WorkingDirectory}}cd '{{.WorkingDirectory}}'{{end}}
-            $cmd >> "$stdout_log" 2>> "$stderr_log" &
-            echo $! > "$pid_file"
-            if ! is_running; then
-                echo "Unable to start, see $stdout_log and $stderr_log"
-                exit 1
-            fi
-        fi
-    ;;
-    stop)
-        if is_running; then
-            echo -n "Stopping $name.."
-            kill $(get_pid)
-            for i in $(seq 1 10)
-            do
-                if ! is_running; then
-                    break
-                fi
-                echo -n "."
-                sleep 1
-            done
-            echo
-            if is_running; then
-                echo "Not stopped; may still be shutting down or shutdown may have failed"
-                exit 1
-            else
-                echo "Stopped"
-                if [ -f "$pid_file" ]; then
-                    rm "$pid_file"
-                fi
-            fi
-        else
-            echo "Not running"
-        fi
-    ;;
-    restart)
-        $0 stop
-        if is_running; then
-            echo "Unable to stop, will not attempt to start"
-            exit 1
-        fi
-        $0 start
-    ;;
-    status)
-        if is_running; then
-            echo "Running"
-        else
-            echo "Stopped"
-            exit 1
-        fi
-    ;;
-    *)
-    echo "Usage: $0 {start|stop|restart|status}"
-    exit 1
-    ;;
-esac
-exit 0
-`
-
-const SystemdScript = `[Unit]
-Description={{.Description}}
-ConditionFileIsExecutable={{.Path|cmdEscape}}
-{{range $i, $dep := .Dependencies}}
-{{$dep}} {{end}}
-[Service]
-LimitNOFILE=65536
-StartLimitInterval=5
-StartLimitBurst=10
-ExecStart={{.Path|cmdEscape}}{{range .Arguments}} {{.|cmd}}{{end}}
-{{if .ChRoot}}RootDirectory={{.ChRoot|cmd}}{{end}}
-{{if .WorkingDirectory}}WorkingDirectory={{.WorkingDirectory|cmdEscape}}{{end}}
-{{if .UserName}}User={{.UserName}}{{end}}
-{{if .ReloadSignal}}ExecReload=/bin/kill -{{.ReloadSignal}} "$MAINPID"{{end}}
-{{if .PIDFile}}PIDFile={{.PIDFile|cmd}}{{end}}
-{{if and .LogOutput .HasOutputFileSupport -}}
-StandardOutput=file:/var/log/{{.Name}}.out
-StandardError=file:/var/log/{{.Name}}.err
-{{- end}}
-Restart=always
-RestartSec=120
-[Install]
-WantedBy=multi-user.target
-`
-
-func UpdateNps() error {
-	destPath, err := downloadLatest("server")
-	if err != nil {
-		return err
-	}
-	// Copy the downloaded payload into the install location.
-	if _, err := copyStaticFile(destPath, "nps"); err != nil {
-		return err
-	}
-	fmt.Println("Update completed, please restart")
-	return nil
+// httpClient sends requests with certificate verification against the system
+// roots and retries a request without verification only when the certificate
+// check itself failed, so devices with a broken CA store can still update.
+type httpClient struct {
+	verified   *http.Client
+	unverified *http.Client
 }
 
-func UpdateNpc() error {
-	destPath, err := downloadLatest("client")
-	if err != nil {
-		return err
+func newHTTPClient() *httpClient {
+	return &httpClient{
+		verified:   newTransportClient(false),
+		unverified: newTransportClient(true),
 	}
-	// Copy the downloaded payload into the install location.
-	if _, err := copyStaticFile(destPath, "npc"); err != nil {
-		return err
-	}
-	fmt.Println("Update completed, please restart")
-	return nil
 }
 
-type release struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-		Digest             string `json:"digest"`
-	} `json:"assets"`
-}
-
-func buildDownloadTLSConfig(addr string) *tls.Config {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	cfg := &tls.Config{}
-	if net.ParseIP(host) == nil {
-		cfg.ServerName = host
-	}
-	return cfg
-}
-
-func downloadLatest(bin string) (string, error) {
+func newTransportClient(insecure bool) *http.Client {
 	const timeout = 5 * time.Second
 	const idleTimeout = 10 * time.Second
 	const keepAliveTime = 30 * time.Second
@@ -207,7 +57,7 @@ func downloadLatest(bin string) (string, error) {
 			if err != nil {
 				return nil, err
 			}
-			return conn.NewTimeoutConn(raw, idleTimeout), nil
+			return netx.NewTimeoutConn(raw, idleTimeout), nil
 		},
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			d := &net.Dialer{
@@ -218,239 +68,223 @@ func downloadLatest(bin string) (string, error) {
 			if err != nil {
 				return nil, err
 			}
-			return conn.NewTimeoutTLSConn(raw, buildDownloadTLSConfig(addr), idleTimeout, timeout)
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				_ = raw.Close()
+				return nil, err
+			}
+			cfg := &tls.Config{ServerName: host, InsecureSkipVerify: insecure}
+			hsCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			tlsConn, err := tlsconn.Client(hsCtx, raw, cfg)
+			if err != nil {
+				return nil, err
+			}
+			return netx.NewTimeoutConn(tlsConn, idleTimeout), nil
 		},
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,
 	}
-	httpClient := &http.Client{
-		Transport: transport,
+	if insecure {
+		// requests through an HTTPS proxy use TLSClientConfig instead of DialTLSContext
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
+	return &http.Client{Transport: transport}
+}
 
-	useCDNLatest := true
-	rl := new(release)
-	var version string
-	// get version
-	data, err := httpClient.Get("https://api.github.com/repos/djylb/nps/releases/latest")
-	if err == nil {
-		defer func() { _ = data.Body.Close() }()
-		b, err := io.ReadAll(data.Body)
-		if err == nil {
-			if err := json.Unmarshal(b, &rl); err == nil {
-				version = rl.TagName
-				if version != "" {
-					useCDNLatest = false
-				}
-				fmt.Println("The latest version is", version)
-			}
-		}
+// do sends req and reports whether the server certificate was verified.
+func (c *httpClient) do(req *http.Request) (*http.Response, bool, error) {
+	// The response is returned to the caller, which closes its body.
+	//noinspection GoResourceLeak
+	resp, err := c.verified.Do(req)
+	if err == nil || !isCertificateError(err) {
+		return resp, err == nil, err
 	}
-	if useCDNLatest {
-		version = "latest"
-		fmt.Println("GitHub API failed; use CDN @latest (skip hash).")
-	}
-
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-
-	var filename string
-	switch {
-	case BuildTarget == "win7":
-		filename = fmt.Sprintf("%s_%s_%s_old.tar.gz", osName, archName, bin)
-	case BuildTarget != "":
-		filename = fmt.Sprintf("%s_%s_%s_%s.tar.gz", osName, archName, BuildTarget, bin)
-	default:
-		filename = fmt.Sprintf("%s_%s_%s.tar.gz", osName, archName, bin)
-	}
-
-	var expectedHash string
-	if !useCDNLatest {
-		for _, a := range rl.Assets {
-			if a.Name != filename {
-				continue
-			}
-			//fmt.Println("Expected Hash:", a.Digest)
-			if strings.HasPrefix(a.Digest, "sha256:") {
-				expectedHash = strings.TrimPrefix(a.Digest, "sha256:")
-			}
-			break
-		}
-		//fmt.Println("Expected SHA256:", expectedHash)
-		if expectedHash == "" {
-			fmt.Println("No SHA256 digest found for", filename, "; skipping hash check")
-		}
-	} else {
-		expectedHash = ""
-	}
-
-	// download latest package
-	var urls []string
-	if useCDNLatest {
-		urls = []string{
-			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://github.com/djylb/nps/releases/latest/download/%s", filename),
-			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@latest/%s", filename),
-		}
-	} else {
-		urls = []string{
-			fmt.Sprintf("https://github.com/djylb/nps/releases/download/%s/%s", version, filename),
-			fmt.Sprintf("https://cdn.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-			fmt.Sprintf("https://fastly.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-			fmt.Sprintf("https://gcore.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-			fmt.Sprintf("https://testingcf.jsdelivr.net/gh/djylb/nps-mirror@%s/%s", version, filename),
-		}
-	}
-
-	var lastErr error
-	for _, url := range urls {
-		fmt.Println("Trying:", url)
-		resp, err := httpClient.Get(url)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("status %d", resp.StatusCode)
-			_ = resp.Body.Close()
-			continue
-		}
-
-		var reader io.Reader = resp.Body
-		var hasher hash.Hash
-		if expectedHash != "" {
-			hasher = sha256.New()
-			reader = io.TeeReader(resp.Body, hasher)
-		}
-
-		destPath, err := os.MkdirTemp(os.TempDir(), "nps-")
-		if err != nil {
-			_ = resp.Body.Close()
-			return "", fmt.Errorf("create temp directory: %w", err)
-		}
-
-		if err := unpackit.Unpack(reader, destPath); err != nil {
-			_ = resp.Body.Close()
-			_ = os.RemoveAll(destPath)
-			fmt.Println("  → failed:", err)
-			lastErr = err
-			continue
-		}
+	if resp != nil {
 		_ = resp.Body.Close()
+	}
+	fmt.Printf("WARNING: certificate verification for %s failed: %v\n", req.URL.Host, err)
+	fmt.Println("WARNING: the system certificate store may be broken or outdated; retrying this download WITHOUT certificate verification")
+	resp, err = c.unverified.Do(req)
+	return resp, false, err
+}
 
-		if expectedHash != "" {
-			sum := hex.EncodeToString(hasher.Sum(nil))
-			if sum != expectedHash {
-				fmt.Printf("  → checksum mismatch: got %s vs %s\n", sum, expectedHash)
-				_ = os.RemoveAll(destPath)
-				lastErr = fmt.Errorf("checksum mismatch")
+func isCertificateError(err error) bool {
+	var verifyErr *tls.CertificateVerificationError
+	var authErr x509.UnknownAuthorityError
+	var invalidErr x509.CertificateInvalidError
+	var hostErr x509.HostnameError
+	return errors.As(err, &verifyErr) || errors.As(err, &authErr) ||
+		errors.As(err, &invalidErr) || errors.As(err, &hostErr)
+}
+
+// copyServerAssets copies the web UI and the reference config from srcDir to
+// destDir. Each item is handled on its own: an item missing from srcDir keeps
+// the copy already in destDir and is an error only when destDir has none.
+func copyServerAssets(srcDir, destDir string) error {
+	items := []struct {
+		src, dest string
+		dir       bool
+	}{
+		{src: "web/views", dest: "web/views", dir: true},
+		{src: "web/static", dest: "web/static", dir: true},
+		{src: "conf/nps.conf", dest: "conf/nps.conf.default"},
+	}
+	for _, it := range items {
+		src := filepath.Join(srcDir, filepath.FromSlash(it.src))
+		dest := filepath.Join(destDir, filepath.FromSlash(it.dest))
+		if ok, err := pathExists(src); err != nil {
+			return err
+		} else if !ok {
+			if exists, _ := pathExists(dest); exists {
+				log.Printf("%s not found in %s, keep %s", it.src, srcDir, dest)
 				continue
 			}
-			//fmt.Printf("  → checksum verified: %s\n", sum)
+			return fmt.Errorf("%s not found in %s", it.src, srcDir)
 		}
-
-		if bin == "server" {
-			destPath = strings.ReplaceAll(destPath, "/web", "")
-			destPath = strings.ReplaceAll(destPath, `\web`, "")
-			destPath = strings.ReplaceAll(destPath, "/views", "")
-			destPath = strings.ReplaceAll(destPath, `\views`, "")
+		var err error
+		if it.dir {
+			err = CopyDir(src, dest)
 		} else {
-			destPath = strings.ReplaceAll(destPath, `\conf`, "")
-			destPath = strings.ReplaceAll(destPath, "/conf", "")
+			_, err = copyFile(src, dest)
 		}
-		return destPath, nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("download failed")
-	}
-	return "", fmt.Errorf("all mirrors failed: %w", lastErr)
-}
-
-func copyStaticFile(srcPath, bin string) (string, error) {
-	path := common.GetInstallPath()
-	if bin == "nps" {
-		if err := CopyDir(filepath.Join(srcPath, "web", "views"), filepath.Join(path, "web", "views")); err != nil {
-			if exists, _ := pathExists(filepath.Join(path, "web", "views")); exists {
-				goto ExecPath
-			}
-			return "", err
-		}
-		chMod(filepath.Join(path, "web", "views"), 0766)
-		if err := CopyDir(filepath.Join(srcPath, "web", "static"), filepath.Join(path, "web", "static")); err != nil {
-			if exists, _ := pathExists(filepath.Join(path, "web", "static")); exists {
-				goto ExecPath
-			}
-			return "", err
-		}
-		chMod(filepath.Join(path, "web", "static"), 0766)
-		if _, err := copyFile(filepath.Join(srcPath, "conf", "nps.conf"), filepath.Join(path, "conf", "nps.conf.default")); err != nil {
-			if exists, _ := pathExists(filepath.Join(path, "conf", "nps.conf")); exists {
-				goto ExecPath
-			}
-			return "", err
-		}
-		chMod(filepath.Join(path, "conf", "nps.conf.default"), 0766)
-	}
-ExecPath:
-	binPath, err := os.Executable()
-	if err != nil {
-		binPath, _ = filepath.Abs(os.Args[0])
-	}
-
-	if !common.IsWindows() {
-		_, _ = copyFile(filepath.Join(srcPath, bin), binPath)
-		chMod(binPath, 0755)
-		if _, err := copyFile(filepath.Join(srcPath, bin), "/usr/bin/"+bin); err != nil {
-			if _, err := copyFile(filepath.Join(srcPath, bin), "/usr/local/bin/"+bin); err != nil {
-				return "", err
-			}
-			_, _ = copyFile(filepath.Join(srcPath, bin), "/usr/local/bin/"+bin+"-update")
-			chMod("/usr/local/bin/"+bin+"-update", 0755)
-			binPath = "/usr/local/bin/" + bin
-		} else {
-			_, _ = copyFile(filepath.Join(srcPath, bin), "/usr/bin/"+bin+"-update")
-			chMod("/usr/bin/"+bin+"-update", 0755)
-			binPath = "/usr/bin/" + bin
-		}
-	} else {
-		_, _ = copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+"-update.exe"))
-		_, _ = copyFile(filepath.Join(srcPath, bin+".exe"), filepath.Join(common.GetAppPath(), bin+".exe"))
-	}
-	chMod(binPath, 0755)
-	return binPath, nil
-}
-
-func NPC() error {
-	path := common.GetInstallPath()
-	if !common.FileExists(path) {
-		err := os.MkdirAll(path, 0755)
 		if err != nil {
 			return err
 		}
+		chMod(dest, 0766)
 	}
-	_, err := copyStaticFile(common.GetAppPath(), "npc")
-	return err
+	return nil
 }
 
+// installExecutable copies the executable found in srcDir to its install
+// location and returns that path. Windows keeps the executable where it is.
+// Helper copies named <bin>-update left by older installs are removed.
+func installExecutable(srcDir, bin string) (string, error) {
+	if common.IsWindows() {
+		exe, err := currentExecutable()
+		if err != nil {
+			return "", err
+		}
+		_ = os.Remove(filepath.Join(filepath.Dir(exe), bin+"-update.exe"))
+		return exe, nil
+	}
+	for _, dir := range systemBinDirs {
+		_ = os.Remove(filepath.Join(dir, bin+"-update"))
+	}
+	src := filepath.Join(srcDir, bin)
+	var errs []error
+	for _, dir := range systemBinDirs {
+		dest := filepath.Join(dir, bin)
+		target := dest
+		if p, err := filepath.EvalSymlinks(dest); err == nil {
+			target = p
+		}
+		err := os.MkdirAll(dir, 0o755)
+		if err == nil {
+			err = installFile(src, target)
+		}
+		if err == nil {
+			return dest, nil
+		}
+		errs = append(errs, fmt.Errorf("install %s: %w", dest, err))
+	}
+	return "", errors.Join(errs...)
+}
+
+// installFile replaces target with a copy of the executable src through the
+// update journal of target, so that a running target is never truncated and
+// an interrupted install is undone on the next start. Installing a file
+// over itself does nothing.
+func installFile(src, target string) error {
+	if same, _ := sameFile(src, target); same {
+		return nil
+	}
+	ctx := context.Background()
+	staged, err := selfupdate.JournalFor(target).Stage(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = staged.Abort(ctx) }()
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(staged.Paths()[0], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return staged.Replace(ctx, selfupdate.ReplaceOptions{Version: version.VERSION})
+}
+
+func currentExecutable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
+}
+
+func executableName(bin string) string {
+	if common.IsWindows() {
+		return bin + ".exe"
+	}
+	return bin
+}
+
+func containsFile(paths []string, p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	for _, q := range paths {
+		if qi, err := os.Stat(q); err == nil && os.SameFile(fi, qi) {
+			return true
+		}
+	}
+	return false
+}
+
+// NPC installs the npc executable and returns the path the service should run.
+func NPC() (string, error) {
+	if err := os.MkdirAll(common.GetInstallPath(), 0o755); err != nil {
+		return "", err
+	}
+	return installExecutable(common.GetAppPath(), "npc")
+}
+
+// NPS installs the nps executable, web assets and, on a fresh install, the
+// config directory. It returns the path the service should run.
 func NPS() (string, error) {
 	path := common.GetInstallPath()
+	appPath := common.GetAppPath()
 	log.Println("install path:" + path)
-	if common.FileExists(path) {
-		if err := MkidrDirAll(path, "web/static", "web/views"); err != nil {
-			return "", err
-		}
-	} else {
-		if err := MkidrDirAll(path, "conf", "web/static", "web/views"); err != nil {
-			return "", err
-		}
-		// not copy config if the config file is exist
-		if err := CopyDir(filepath.Join(common.GetAppPath(), "conf"), filepath.Join(path, "conf")); err != nil {
+	if exists, err := pathExists(path); err != nil {
+		return "", err
+	} else if !exists {
+		// keep the existing config when reinstalling
+		if err := CopyDir(filepath.Join(appPath, "conf"), filepath.Join(path, "conf")); err != nil {
 			return "", err
 		}
 		chMod(filepath.Join(path, "conf"), 0766)
 	}
-	binPath, err := copyStaticFile(common.GetAppPath(), "nps")
+	if err := copyServerAssets(appPath, path); err != nil {
+		return "", err
+	}
+	if err := SyncGeoData(filepath.Join(appPath, "conf"), filepath.Join(path, "conf", "geoip.dat"), filepath.Join(path, "conf", "geosite.dat")); err != nil {
+		return "", err
+	}
+	binPath, err := installExecutable(appPath, "nps")
 	if err != nil {
 		return "", err
 	}
@@ -459,148 +293,85 @@ func NPS() (string, error) {
 	log.Println("The new configuration file is located in", path, "you can edit them")
 	if !common.IsWindows() {
 		log.Println(`You can start with:
-nps start|stop|restart|uninstall|update or nps-update update
+nps start|stop|restart|uninstall|update
 anywhere!`)
 	} else {
-		log.Println(`You can copy executable files to any directory and start working with:
-nps.exe start|stop|restart|uninstall|update or nps-update.exe update
+		log.Println(`You can start with:
+nps.exe start|stop|restart|uninstall|update
 now!`)
 	}
 	chMod(common.GetLogPath(), 0777)
 	return binPath, nil
 }
 
-func MkidrDirAll(path string, v ...string) error {
-	for _, item := range v {
-		if err := os.MkdirAll(filepath.Join(path, item), 0755); err != nil {
-			return fmt.Errorf("create directory %s: %w", filepath.Join(path, item), err)
-		}
-	}
-	return nil
-}
-
+// CopyDir copies the files under srcPath into destPath, creating directories
+// as needed.
 func CopyDir(srcPath string, destPath string) error {
-	// Validate source and destination before copying any content.
-	if srcInfo, err := os.Stat(srcPath); err != nil {
-		//fmt.Println(err.Error())
-		log.Println("Failed to copy source directory.")
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
 		return err
-	} else {
-		if !srcInfo.IsDir() {
-			return errors.New("srcPath is not a directory")
-		}
 	}
-	if destInfo, err := os.Stat(destPath); err != nil {
-		if os.IsNotExist(err) {
-			if mkErr := os.MkdirAll(destPath, os.ModePerm); mkErr != nil {
-				return mkErr
-			}
-		} else {
-			return err
-		}
-	} else {
+	if !srcInfo.IsDir() {
+		return errors.New("srcPath is not a directory")
+	}
+	if destInfo, err := os.Stat(destPath); err == nil {
 		if !destInfo.IsDir() {
-			return errors.New("destInfo is not the right directory")
+			return errors.New("destPath is not a directory")
 		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	return filepath.Walk(srcPath, func(path string, f os.FileInfo, err error) error {
+	return filepath.WalkDir(srcPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if f == nil {
-			return nil
+		rel, err := filepath.Rel(srcPath, path)
+		if err != nil {
+			return err
 		}
-		if !f.IsDir() {
-			relPath, relErr := filepath.Rel(srcPath, path)
-			if relErr != nil {
-				return relErr
-			}
-			destNewPath := filepath.Join(destPath, relPath)
-			log.Println("copy file: " + path + " -> " + destNewPath)
-			if _, copyErr := copyFile(path, destNewPath); copyErr != nil {
-				return copyErr
-			}
-			if !common.IsWindows() {
-				chMod(destNewPath, 0766)
-			}
+		target := filepath.Join(destPath, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
 		}
+		log.Println("copy file: " + path + " -> " + target)
+		if _, err := copyFile(path, target); err != nil {
+			return err
+		}
+		chMod(target, 0766)
 		return nil
 	})
 }
 
-func copyFile(src, dest string) (w int64, err error) {
-	srcAbs, err := filepath.Abs(src)
+// copyFile copies src to dest, creating the parent directory. Copying a file
+// onto itself is a no-op.
+func copyFile(src, dest string) (int64, error) {
+	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return 0, err
 	}
-	destAbs, err := filepath.Abs(dest)
-	if err != nil {
-		return 0, err
-	}
-	if srcAbs == destAbs {
+	if destInfo, err := os.Stat(dest); err == nil && os.SameFile(srcInfo, destInfo) {
 		return 0, nil
 	}
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return
-	}
-	defer func() { _ = srcFile.Close() }()
-	srcInfo, err := srcFile.Stat()
+	in, err := os.Open(src)
 	if err != nil {
 		return 0, err
 	}
-	if srcInfo.IsDir() {
-		return 0, errors.New("src is a directory")
+	defer func() { _ = in.Close() }()
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return 0, err
 	}
-	// Ensure the destination directory exists before creating the file.
-	dirPath := filepath.Dir(dest)
-	if exists, _ := pathExists(dirPath); !exists {
-		log.Println("mkdir all:", dirPath)
-		if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
-			return 0, err
-		}
-	}
-
-	tmpFile, err := os.CreateTemp(dirPath, filepath.Base(dest)+".tmp-*")
+	out, err := os.Create(dest)
 	if err != nil {
 		return 0, err
 	}
-	tmpPath := tmpFile.Name()
-	cleanupTmp := true
-	defer func() {
-		_ = tmpFile.Close()
-		if cleanupTmp {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-	if !common.IsWindows() {
-		if chmodErr := tmpFile.Chmod(srcInfo.Mode()); chmodErr != nil {
-			return 0, chmodErr
-		}
+	n, err := io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
 	}
-	n, err := io.Copy(tmpFile, srcFile)
-	if err != nil {
-		return n, err
-	}
-	if syncErr := tmpFile.Sync(); syncErr != nil {
-		return n, syncErr
-	}
-	if closeErr := tmpFile.Close(); closeErr != nil {
-		return n, closeErr
-	}
-	if common.IsWindows() {
-		if removeErr := os.Remove(dest); removeErr != nil && !os.IsNotExist(removeErr) {
-			return n, removeErr
-		}
-	}
-	if renameErr := os.Rename(tmpPath, dest); renameErr != nil {
-		return n, renameErr
-	}
-	cleanupTmp = false
-	return n, nil
+	return n, err
 }
 
+// 检测文件夹路径是否存在
 func pathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {

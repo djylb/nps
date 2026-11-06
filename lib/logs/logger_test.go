@@ -5,15 +5,11 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func resetTestLoggerState() {
 	bufferWriter = nil
 	Logger = zerolog.Nop()
-	ZapLogger = zap.NewNop()
-	zap.ReplaceGlobals(ZapLogger)
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 }
 
@@ -112,27 +108,6 @@ func TestSetLevelIgnoresInvalidLevel(t *testing.T) {
 	}
 }
 
-func TestSetLevelUpdatesZapGlobals(t *testing.T) {
-	resetTestLoggerState()
-	t.Cleanup(resetTestLoggerState)
-
-	EnableInMemoryBuffer(256)
-	Init("off", "info", "", 1, 1, 1, false, false)
-	if zap.L().Core().Enabled(zapcore.DebugLevel) {
-		t.Fatal("debug should be disabled at info level")
-	}
-
-	SetLevel("debug")
-	if !zap.L().Core().Enabled(zapcore.DebugLevel) {
-		t.Fatal("debug should be enabled after SetLevel(debug)")
-	}
-
-	SetLevel("error")
-	if zap.L().Core().Enabled(zapcore.WarnLevel) {
-		t.Fatal("warn should be disabled after SetLevel(error)")
-	}
-}
-
 func TestZapAdapterWriteRoutesLevels(t *testing.T) {
 	resetTestLoggerState()
 	t.Cleanup(resetTestLoggerState)
@@ -162,20 +137,5 @@ func TestZapAdapterWriteRoutesLevels(t *testing.T) {
 		if !strings.Contains(logs, msg) {
 			t.Fatalf("expected logs to include %q, got %q", msg, logs)
 		}
-	}
-}
-
-func TestInitOffDisablesZapGlobals(t *testing.T) {
-	resetTestLoggerState()
-	t.Cleanup(resetTestLoggerState)
-
-	Init("stdout", "info", "", 1, 1, 1, false, false)
-	if !zap.L().Core().Enabled(zapcore.InfoLevel) {
-		t.Fatal("expected zap global logger to be enabled after stdout init")
-	}
-
-	Init("off", "off", "", 1, 1, 1, false, false)
-	if zap.L().Core().Enabled(zapcore.InfoLevel) {
-		t.Fatal("expected zap global logger to be disabled after off init")
 	}
 }

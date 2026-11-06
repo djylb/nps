@@ -48,7 +48,7 @@ func TestSetCustomDNSFormatsAddress(t *testing.T) {
 	}
 }
 
-func TestSetCustomDNSEmptyInputResetsToDefault(t *testing.T) {
+func TestSetCustomDNSEmptyInputKeepsPreviousValue(t *testing.T) {
 	oldCustom := customDnsAddr
 	oldResolver := net.DefaultResolver
 	t.Cleanup(func() {
@@ -57,12 +57,10 @@ func TestSetCustomDNSEmptyInputResetsToDefault(t *testing.T) {
 	})
 
 	SetCustomDNS("9.9.9.9")
+	gotBefore := GetCustomDNS()
 	SetCustomDNS("")
-	if gotAfter := GetCustomDNS(); gotAfter != "8.8.8.8:53" {
-		t.Fatalf("empty SetCustomDNS should reset to default: got=%q", gotAfter)
-	}
-	if net.DefaultResolver != oldResolver {
-		t.Fatal("empty SetCustomDNS should restore the default resolver")
+	if gotAfter := GetCustomDNS(); gotAfter != gotBefore {
+		t.Fatalf("empty SetCustomDNS should keep previous value: before=%q after=%q", gotBefore, gotAfter)
 	}
 }
 

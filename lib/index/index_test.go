@@ -3,17 +3,8 @@ package index
 import (
 	"reflect"
 	"sort"
-	"sync/atomic"
 	"testing"
 )
-
-type testIdleCloser struct {
-	closed atomic.Int32
-}
-
-func (c *testIdleCloser) CloseIdleConnections() {
-	c.closed.Add(1)
-}
 
 func sortedInts(values []int) []int {
 	out := append([]int(nil), values...)
@@ -85,26 +76,6 @@ func TestAnyIndexes_Clear(t *testing.T) {
 	}
 }
 
-func TestAnyIntIndexClearClosesIdleConnections(t *testing.T) {
-	idx := NewAnyIntIndex()
-	first := &testIdleCloser{}
-	second := &testIdleCloser{}
-	idx.Add(1, first)
-	idx.Add(2, second)
-
-	idx.Clear()
-
-	if first.closed.Load() != 1 || second.closed.Load() != 1 {
-		t.Fatalf("expected idle connections to be closed once, got first=%d second=%d", first.closed.Load(), second.closed.Load())
-	}
-	if _, ok := idx.Get(1); ok {
-		t.Fatal("expected key 1 to be removed after Clear")
-	}
-	if _, ok := idx.Get(2); ok {
-		t.Fatal("expected key 2 to be removed after Clear")
-	}
-}
-
 func TestDomainIndex_LookupAndNormalization(t *testing.T) {
 	di := NewDomainIndex()
 
@@ -146,5 +117,29 @@ func TestDomainIndex_RemoveAndDestroy(t *testing.T) {
 	di.Destroy()
 	if got := di.Lookup("api.example.com"); len(got) != 0 {
 		t.Fatalf("after destroy Lookup(api.example.com) = %v, want empty", got)
+	}
+}
+
+type idleCloserStub struct{ closed int }
+
+func (s *idleCloserStub) CloseIdleConnections() { s.closed++ }
+
+func TestAnyIntIndexRemoveAndClearCloseIdleConnections(t *testing.T) {
+	idx := NewAnyIntIndex()
+	a, b := &idleCloserStub{}, &idleCloserStub{}
+	idx.Add(1, a)
+	idx.Add(2, b)
+
+	idx.Remove(1)
+	idx.Remove(1)
+	if a.closed != 1 {
+		t.Fatalf("Remove closed idle connections %d times, want 1", a.closed)
+	}
+	idx.Clear()
+	if b.closed != 1 {
+		t.Fatalf("Clear closed idle connections %d times, want 1", b.closed)
+	}
+	if _, ok := idx.Get(2); ok {
+		t.Fatal("Clear left an entry behind")
 	}
 }

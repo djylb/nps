@@ -3,39 +3,48 @@ package mux
 import (
 	"io"
 	"net"
-	"time"
+	"sync"
 )
 
-// FlushWriter buffers small writes before flushing them to conn.
-//
-// Deprecated: kept as a low-level helper for compatibility. Most callers should
-// write through Mux or Conn instead.
+// FlushWriter batches small writes to conn. The first write error is sticky:
+// every later Write, Flush and Close returns it, so frames are never silently
+// dropped after the underlying connection has failed.
 type FlushWriter struct {
-	conn         net.Conn
-	buf          []byte
-	maxSize      int
-	err          error
-	writeTimeout time.Duration
+	conn    net.Conn
+	mu      sync.Mutex
+	buf     []byte
+	maxSize int
+	err     error
 }
 
-// NewFlushWriter creates a FlushWriter without per-flush write deadlines.
 func NewFlushWriter(conn net.Conn) *FlushWriter {
-	return NewFlushWriterWithTimeout(conn, 0)
-}
-
-// NewFlushWriterWithTimeout creates a FlushWriter that applies a write deadline
-// around each flush.
-func NewFlushWriterWithTimeout(conn net.Conn, writeTimeout time.Duration) *FlushWriter {
-	buf := make([]byte, 0, poolSizeWindowBuffer)
+	buf := windowBuff.Get()
 	return &FlushWriter{
-		conn:         conn,
-		buf:          buf,
-		maxSize:      cap(buf),
-		writeTimeout: writeTimeout,
+		conn:    conn,
+		buf:     buf[:0],
+		maxSize: cap(buf),
 	}
 }
 
+// writeAll writes p completely to conn and records a failure as sticky.
+func (w *FlushWriter) writeAll(p []byte) error {
+	for len(p) > 0 {
+		n, err := w.conn.Write(p)
+		if err == nil && n <= 0 {
+			err = io.ErrShortWrite
+		}
+		if err != nil {
+			w.err = err
+			return err
+		}
+		p = p[n:]
+	}
+	return nil
+}
+
 func (w *FlushWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.err != nil {
 		return 0, w.err
 	}
@@ -43,75 +52,50 @@ func (w *FlushWriter) Write(p []byte) (n int, err error) {
 	b := len(w.buf)
 	t := n + b
 	if t > w.maxSize && b > 0 {
-		if err := w.flush(); err != nil {
+		err = w.writeAll(w.buf)
+		w.buf = w.buf[:0]
+		if err != nil {
 			return 0, err
 		}
 	}
 	if n > w.maxSize {
-		_, err := w.writeAll(p)
-		return n, err
+		if err = w.writeAll(p); err != nil {
+			return 0, err
+		}
+		return n, nil
 	}
 	w.buf = append(w.buf, p...)
 	return n, nil
 }
 
 func (w *FlushWriter) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.err != nil {
 		return w.err
 	}
-	return w.flush()
-}
-
-func (w *FlushWriter) flush() error {
 	if len(w.buf) == 0 {
 		return nil
 	}
-	_, err := w.writeAll(w.buf)
+	err := w.writeAll(w.buf)
 	w.buf = w.buf[:0]
 	return err
 }
 
 func (w *FlushWriter) Close() error {
-	err := w.err
-	if err == nil && len(w.buf) > 0 {
-		err = w.flush()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.buf == nil {
+		return w.err
 	}
+	var err error
+	if w.err == nil && len(w.buf) > 0 {
+		err = w.writeAll(w.buf)
+	}
+	windowBuff.Put(w.buf)
 	w.buf = nil
+	if w.err == nil {
+		w.err = net.ErrClosed
+	}
 	return err
-}
-
-func (w *FlushWriter) setWriteDeadline(deadline time.Time) error {
-	if w.conn == nil {
-		return net.ErrClosed
-	}
-	return w.conn.SetWriteDeadline(deadline)
-}
-
-func (w *FlushWriter) writeAll(p []byte) (n int, err error) {
-	if w.writeTimeout > 0 {
-		if err := w.setWriteDeadline(time.Now().Add(w.writeTimeout)); err != nil {
-			w.err = err
-			return 0, err
-		}
-		defer func() {
-			if clearErr := w.setWriteDeadline(time.Time{}); err == nil && clearErr != nil {
-				err = clearErr
-				w.err = clearErr
-			}
-		}()
-	}
-	for n < len(p) {
-		var nn int
-		nn, err = w.conn.Write(p[n:])
-		n += nn
-		if err != nil {
-			w.err = err
-			return n, err
-		}
-		if nn == 0 {
-			w.err = io.ErrShortWrite
-			return n, w.err
-		}
-	}
-	return n, nil
 }

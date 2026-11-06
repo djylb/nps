@@ -5,34 +5,28 @@ import (
 	"time"
 )
 
-func TestSetNtpIntervalNormalizesNonPositiveDurations(t *testing.T) {
+func TestSyncTimeFailurePreservesOffset(t *testing.T) {
 	timeMutex.Lock()
-	previous := syncInterval
+	oldOffset, oldServer, oldInterval, oldLast := timeOffset, ntpServer, syncInterval, lastSyncMono
+	timeOffset = 10 * time.Minute
+	ntpServer = "127.0.0.1:invalid-port"
+	syncInterval = 5 * time.Minute
+	lastSyncMono = time.Time{}
 	timeMutex.Unlock()
 	t.Cleanup(func() {
 		timeMutex.Lock()
-		syncInterval = previous
+		timeOffset, ntpServer, syncInterval, lastSyncMono = oldOffset, oldServer, oldInterval, oldLast
 		timeMutex.Unlock()
 	})
 
-	SetNtpInterval(2 * time.Minute)
+	SyncTime()
 	timeMutex.RLock()
-	if syncInterval != 2*time.Minute {
-		t.Fatalf("syncInterval after positive update = %v, want 2m", syncInterval)
-	}
+	offset, last := timeOffset, lastSyncMono
 	timeMutex.RUnlock()
-
-	SetNtpInterval(0)
-	timeMutex.RLock()
-	if syncInterval != defaultNTPInterval {
-		t.Fatalf("syncInterval after zero update = %v, want %v", syncInterval, defaultNTPInterval)
+	if offset != 10*time.Minute {
+		t.Fatalf("failed sync reset offset to %v", offset)
 	}
-	timeMutex.RUnlock()
-
-	SetNtpInterval(-time.Minute)
-	timeMutex.RLock()
-	if syncInterval != defaultNTPInterval {
-		t.Fatalf("syncInterval after negative update = %v, want %v", syncInterval, defaultNTPInterval)
+	if last.IsZero() {
+		t.Fatal("failed sync must still throttle retries")
 	}
-	timeMutex.RUnlock()
 }

@@ -4,17 +4,15 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
-	"errors"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -145,233 +143,14 @@ func TestFileServerManagerStartAndCloseAll(t *testing.T) {
 	}
 
 	fsm.CloseAll()
-	if _, err := listener.DialVirtual("127.0.0.1:12345"); err == nil {
+	if _, err := conn.DialVirtual(context.Background(), listener, "127.0.0.1:12345"); err == nil {
 		t.Fatal("expected listener dial to fail after CloseAll")
 	}
 }
 
-func TestFileServerManagerReplacesExistingServerForSameKey(t *testing.T) {
-	root := t.TempDir()
-	firstPath := filepath.Join(root, "first.txt")
-	if err := os.WriteFile(firstPath, []byte("first"), 0o600); err != nil {
-		t.Fatalf("write first file failed: %v", err)
-	}
-
-	fsm := NewFileServerManager(context.Background())
-	t.Cleanup(fsm.CloseAll)
-
-	tunnel := &file.Tunnel{
-		ServerIp:  "127.0.0.1",
-		Port:      18081,
-		Ports:     "18081",
-		Mode:      "file",
-		LocalPath: root,
-		StripPre:  "/files",
-		ReadOnly:  true,
-	}
-	vkey := "replace-vkey"
-	fsm.StartFileServer(tunnel, vkey)
-
-	listener, ok := waitListener(fsm, 2*time.Second)
-	if !ok {
-		t.Fatal("initial file server listener was not registered")
-	}
-
-	key := file.FileTunnelRuntimeKey(vkey, tunnel)
-
-	updated := &file.Tunnel{
-		ServerIp:     "127.0.0.1",
-		Port:         18081,
-		Ports:        "18081",
-		Mode:         "file",
-		LocalPath:    root,
-		StripPre:     "/files",
-		ReadOnly:     true,
-		MultiAccount: &file.MultiAccount{},
-		UserAuth:     &file.MultiAccount{},
-	}
-	fsm.StartFileServer(updated, vkey)
-
-	var replacement *conn.VirtualListener
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		current, ok := fsm.GetListenerByKey(key)
-		if ok && current != listener {
-			replacement = current
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if replacement == nil {
-		t.Fatal("replacement file server listener was not installed")
-	}
-	if _, err := listener.DialVirtual("127.0.0.1:12345"); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("old listener dial error = %v, want %v", err, net.ErrClosed)
-	}
-
-	resp := doVirtualRequest(t, replacement, "GET /files/first.txt HTTP/1.1\r\nHost: local\r\n\r\n")
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read replacement body failed: %v", err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("replacement GET status mismatch, got=%d", resp.StatusCode)
-	}
-	if strings.TrimSpace(string(body)) != "first" {
-		t.Fatalf("replacement GET body mismatch, got=%q", string(body))
-	}
-}
-
-func TestFileServerManagerUsesContentOnlyAuthFallback(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "auth.txt"), []byte("secure"), 0o600); err != nil {
-		t.Fatalf("write file failed: %v", err)
-	}
-
-	fsm := NewFileServerManager(context.Background())
-	t.Cleanup(fsm.CloseAll)
-
-	tunnel := &file.Tunnel{
-		ServerIp:  "127.0.0.1",
-		Port:      18083,
-		Ports:     "18083",
-		Mode:      "file",
-		LocalPath: root,
-		StripPre:  "/files",
-		UserAuth: &file.MultiAccount{
-			Content: "ops=token\n",
-		},
-	}
-	fsm.StartFileServer(tunnel, "content-auth-vkey")
-
-	listener, ok := waitListener(fsm, 2*time.Second)
-	if !ok {
-		t.Fatal("file server listener was not registered")
-	}
-
-	unauthorized := doVirtualRequest(t, listener, "GET /files/auth.txt HTTP/1.1\r\nHost: local\r\n\r\n")
-	_ = unauthorized.Body.Close()
-	if unauthorized.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthorized status = %d, want %d", unauthorized.StatusCode, http.StatusUnauthorized)
-	}
-
-	authHeader := base64.StdEncoding.EncodeToString([]byte("ops:token"))
-	authorized := doVirtualRequest(t, listener, "GET /files/auth.txt HTTP/1.1\r\nHost: local\r\nAuthorization: Basic "+authHeader+"\r\n\r\n")
-	body, err := io.ReadAll(authorized.Body)
-	if err != nil {
-		t.Fatalf("read authorized body failed: %v", err)
-	}
-	_ = authorized.Body.Close()
-	if authorized.StatusCode != http.StatusOK {
-		t.Fatalf("authorized status = %d, want %d", authorized.StatusCode, http.StatusOK)
-	}
-	if strings.TrimSpace(string(body)) != "secure" {
-		t.Fatalf("authorized body = %q, want %q", string(body), "secure")
-	}
-}
-
-func TestFileServerManagerRemovesEntryWhenServeLoopExits(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "gone.txt"), []byte("gone"), 0o600); err != nil {
-		t.Fatalf("write file failed: %v", err)
-	}
-
-	fsm := NewFileServerManager(context.Background())
-	t.Cleanup(fsm.CloseAll)
-
-	tunnel := &file.Tunnel{
-		ServerIp:  "127.0.0.1",
-		Port:      18082,
-		Ports:     "18082",
-		Mode:      "file",
-		LocalPath: root,
-		StripPre:  "/files",
-		ReadOnly:  true,
-	}
-	vkey := "remove-on-exit"
-	fsm.StartFileServer(tunnel, vkey)
-
-	listener, ok := waitListener(fsm, 2*time.Second)
-	if !ok {
-		t.Fatal("file server listener was not registered")
-	}
-	key := file.FileTunnelRuntimeKey(vkey, tunnel)
-
-	if err := listener.Close(); err != nil {
-		t.Fatalf("listener.Close() error = %v", err)
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, ok := fsm.GetListenerByKey(key); !ok {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("file server entry should be removed after serve loop exit")
-}
-
-func TestNewFileServerManagerDoesNotLeakWatcherForBackgroundContext(t *testing.T) {
-	baseline := runtime.NumGoroutine()
-	managers := make([]*FileServerManager, 0, 32)
-	for i := 0; i < 32; i++ {
-		managers = append(managers, NewFileServerManager(context.Background()))
-	}
-	for _, fsm := range managers {
-		fsm.CloseAll()
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		runtime.GC()
-		time.Sleep(20 * time.Millisecond)
-		if delta := runtime.NumGoroutine() - baseline; delta <= 4 {
-			return
-		}
-	}
-
-	if delta := runtime.NumGoroutine() - baseline; delta > 4 {
-		t.Fatalf("goroutine delta = %d, want <= 4 after closing background-context managers", delta)
-	}
-}
-
-func TestNewFileServerManagerDoesNotLeakWatcherAfterManualCloseWithCancelableParent(t *testing.T) {
-	baseline := runtime.NumGoroutine()
-	managers := make([]*FileServerManager, 0, 32)
-	cancels := make([]context.CancelFunc, 0, 32)
-	for i := 0; i < 32; i++ {
-		parentCtx, cancel := context.WithCancel(context.Background())
-		managers = append(managers, NewFileServerManager(parentCtx))
-		cancels = append(cancels, cancel)
-	}
-	t.Cleanup(func() {
-		for _, cancel := range cancels {
-			cancel()
-		}
-	})
-
-	for _, fsm := range managers {
-		fsm.CloseAll()
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		runtime.GC()
-		time.Sleep(20 * time.Millisecond)
-		if delta := runtime.NumGoroutine() - baseline; delta <= 4 {
-			return
-		}
-	}
-
-	if delta := runtime.NumGoroutine() - baseline; delta > 4 {
-		t.Fatalf("goroutine delta = %d, want <= 4 after manual close with cancelable parents", delta)
-	}
-}
-
-func doVirtualRequest(t *testing.T, listener *conn.VirtualListener, raw string) *http.Response {
+func doVirtualRequest(t *testing.T, listener *netx.ChanListener, raw string) *http.Response {
 	t.Helper()
-	c, err := listener.DialVirtual("127.0.0.1:9000")
+	c, err := conn.DialVirtual(context.Background(), listener, "127.0.0.1:9000")
 	if err != nil {
 		t.Fatalf("dial virtual failed: %v", err)
 	}
@@ -387,7 +166,7 @@ func doVirtualRequest(t *testing.T, listener *conn.VirtualListener, raw string) 
 	return resp
 }
 
-func waitListener(fsm *FileServerManager, timeout time.Duration) (*conn.VirtualListener, bool) {
+func waitListener(fsm *FileServerManager, timeout time.Duration) (*netx.ChanListener, bool) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		fsm.mu.Lock()

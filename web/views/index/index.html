@@ -1,5 +1,5 @@
 <div class="wrapper wrapper-content">
-    <div data-nps-require-not-admin="true">
+    {{if eq false .isAdmin}}
     <div class="row">
         <div class="col-lg-3">
             <div class="ibox float-e-margins">
@@ -7,7 +7,7 @@
                     <h5 langtag="word-tcpports"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="overview-bridge-tcp-tls">0 / 0</h1>
+                    <h1 class="no-margins">{{or .tcp_p "0"}} / {{or .tls_p "0"}}</h1>
                 </div>
             </div>
         </div>
@@ -17,7 +17,7 @@
                     <h5 langtag="word-kcpport"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="overview-bridge-kcp">0</h1>
+                    <h1 class="no-margins">{{or .kcp_p "0"}}</h1>
                 </div>
             </div>
         </div>
@@ -27,7 +27,7 @@
                     <h5 langtag="word-wsports"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="overview-bridge-ws">0 / 0</h1>
+                    <h1 class="no-margins">{{or .ws_p "0"}} / {{or .wss_p "0"}}</h1>
                 </div>
             </div>
         </div>
@@ -37,7 +37,7 @@
                     <h5 langtag="word-wspath"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="overview-bridge-path">/ws</h1>
+                    <h1 class="no-margins">{{or .ws_path "/ws"}}</h1>
                 </div>
             </div>
         </div>
@@ -50,7 +50,7 @@
                     <h5 langtag="word-serverip"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="overview-bridge-ip"></h1>
+                    <h1 class="no-margins">{{.ip}}</h1>
                 </div>
             </div>
         </div>
@@ -60,7 +60,7 @@
                     <h5 langtag="word-serverversion"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-version"></h1>
+                    <h1 class="no-margins">{{.data.version}}</h1>
                 </div>
             </div>
         </div>
@@ -70,24 +70,25 @@
                     <h5 langtag="word-minsupportversion"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-minVersion"></h1>
+                    <h1 class="no-margins">{{.data.minVersion}}</h1>
                 </div>
             </div>
         </div>
         <div class="col-lg-3">
             <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 langtag="word-iprestriction"></h5>
+                    <h5 langtag="word-registeredips"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-ipLimit"></h1>
+                    <h1 class="no-margins">{{.data.registeredIps}}</h1>
                 </div>
             </div>
         </div>
     </div>
-    </div>
+    {{end}}
 
-    <div data-nps-require-admin="true">
+    {{if eq true .isAdmin}}
+    <div id="dashboard-live-controls" style="display:flex;justify-content:flex-end;margin-bottom:8px"></div>
     <div class="row">
         <div class="col-lg-3">
             <div class="ibox float-e-margins">
@@ -95,7 +96,7 @@
                     <h5 langtag="word-totalclients"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-clientCount">0</h1>
+                    <h1 class="no-margins" id="stat-clientCount">{{.data.clientCount}}</h1>
                 </div>
             </div>
         </div>
@@ -106,7 +107,7 @@
                     <h5 langtag="word-onlineclients"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-clientOnlineCount">0</h1>
+                    <h1 class="no-margins" id="stat-clientOnlineCount">{{.data.clientOnlineCount}}</h1>
                     {{/*<div class="stat-percent font-bold text-navy">44% <i class="fa fa-level-up"></i></div>*/}}
                     {{/*<small>新访客</small>*/}}
                 </div>
@@ -118,7 +119,7 @@
                     <h5 langtag="word-tcpconnections"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-tcpCount">0</h1>
+                    <h1 class="no-margins" id="stat-tcpCount">{{.data.tcpCount}}</h1>
                 </div>
             </div>
         </div>
@@ -128,7 +129,7 @@
                     <h5 langtag="word-uptime"></h5>
                 </div>
                 <div class="ibox-content">
-                    <h1 class="no-margins" id="stat-upTime" data-up-secs="0"></h1>
+                    <h1 class="no-margins" id="stat-upTime">{{or .data.upTime ""}}</h1>
                 </div>
             </div>
         </div>
@@ -157,9 +158,7 @@
                                     <strong langtag="word-bridgingmode"></strong>
                                 </div>
                                 <div class="col-sm-8 text-right">
-                                    <strong>
-                                        <span id="config-bridge-summary"></span>
-                                    </strong>
+                                    <strong>{{if index . "tcp_p"}}TCP:{{.tcp_p}} {{end}}{{if index . "kcp_p"}}KCP:{{.kcp_p}} {{end}}{{if index . "tls_p"}}TLS:{{.tls_p}} {{end}}{{if index . "ws_p"}}WS:{{.ws_p}} {{end}}{{if index . "wss_p"}}WSS:{{.wss_p}} {{end}}{{if index . "ws_path"}}Path:{{.ws_path}}{{end}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -169,17 +168,17 @@
                                     <strong langtag="word-httpports"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong id="config-httpPorts">0 / 0</strong>
+                                    <strong>{{or .data.httpProxyPort "0"}} / {{or .data.httpsProxyPort "0"}}</strong>
                                 </div>
                             </div>
                         </li>
                         <li class="list-group-item ">
                             <div class="row">
                                 <div class="col-sm-6">
-                                    <strong langtag="word-iprestriction"></strong>
+                                    <strong langtag="word-registeredips"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong id="config-ipLimit"></strong>
+                                    <strong>{{.data.registeredIps}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -189,7 +188,7 @@
                                     <strong langtag="word-trafficdatapersistence"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong id="config-flowStoreInterval" data-seconds="0"></strong>
+                                    <strong>{{.data.flowStoreInterval}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -199,7 +198,7 @@
                                     <strong langtag="word-loglevel"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong id="config-logLevel"></strong>
+                                    <strong>{{.data.logLevel}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -209,7 +208,7 @@
                                     <strong langtag="word-p2paddr"></strong>
                                 </div>
                                 <div class="col-sm-8 text-right">
-                                    <strong id="config-p2pAddr"></strong>
+                                    <strong>{{.data.p2pAddr}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -219,7 +218,7 @@
                                     <strong langtag="word-serverip"></strong>
                                 </div>
                                 <div class="col-sm-10 text-right">
-                                    <strong id="config-serverIPs"></strong>
+                                    <strong>{{.data.p2pIp}} | {{.data.serverIpv4}} | {{.data.serverIpv6}}</strong>
                                 </div>
                             </div>
                         </li>
@@ -229,7 +228,10 @@
                                     <strong langtag="word-serverversion"></strong>
                                 </div>
                                 <div class="col-sm-6 text-right">
-                                    <strong id="config-versionPair"></strong>
+                                    <strong>{{.data.version}} ({{.data.minVersion}})</strong>
+                                    {{if .allow_server_update}}
+                                    <a class="btn btn-outline btn-info btn-xs ml-2" onclick="updateServer(this)"><i class="fa fa-arrow-circle-up"></i></a>
+                                    {{end}}
                                 </div>
                             </div>
                         </li>
@@ -333,9 +335,10 @@
                 </div>
             </div>
         </div>
-        </div>
+        {{end}}
     </div>
-    <div data-nps-require-feature="system_info_display">
+    {{if eq true .isAdmin}}
+    {{if eq true .system_info_display}}
     <div class="row">
         <div class="col-lg-6">
             <div class="ibox float-e-margins">
@@ -351,7 +354,7 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="load" class="nps-chart"></div>
+                    <div id="load" style="height: 300px"></div>
                 </div>
             </div>
         </div>
@@ -369,7 +372,7 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="cpu" class="nps-chart"></div>
+                    <div id="cpu" style="height: 300px"></div>
                 </div>
             </div>
         </div>
@@ -389,7 +392,7 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="memory" class="nps-chart"></div>
+                    <div id="memory" style="height: 300px"></div>
                 </div>
             </div>
         </div>
@@ -407,7 +410,7 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="connections" class="nps-chart"></div>
+                    <div id="connections" style="height: 300px"></div>
                 </div>
             </div>
         </div>
@@ -428,12 +431,12 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="bandwidth" class="nps-chart"></div>
+                    <div id="bandwidth" style="height: 300px"></div>
                 </div>
             </div>
         </div>
     </div>
-    </div>
+    {{end}}
 
     <div class="row">
         <div class="col-lg-6">
@@ -450,7 +453,7 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="flow" class="nps-chart-tall"></div>
+                    <div id="flow" style="height: 400px;"></div>
                 </div>
             </div>
         </div>
@@ -468,84 +471,90 @@
                     </div>
                 </div>
                 <div class="ibox-content">
-                    <div id="counts" class="nps-chart-tall"></div>
+                    <div id="counts" style="height:400px;"></div>
                 </div>
             </div>
         </div>
 
 
     </div>
-    </div>
+    {{end}}
 </div>
+{{if eq true .isAdmin}}
 <script>
-    function adminDashboardEnabled() {
-        return window.nps.isAdmin();
+    // updateServer asks the server to update itself and, when it restarts as
+    // the new version, reloads the page once the new version answers.
+    function updateServer(btn) {
+        var $btn = $(btn);
+        if ($btn.data('busy')) return;
+        var langobj = languages['content']['confirm']['updateserver'];
+        if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
+        var reset = function () {
+            $btn.data('busy', false).removeClass('disabled');
+            $btn.find('i').attr('class', 'fa fa-arrow-circle-up');
+        };
+        $btn.data('busy', true).addClass('disabled');
+        $btn.find('i').attr('class', 'fa fa-spinner fa-spin');
+        $.ajax({
+            type: 'POST',
+            url: '{{.web_base_url}}/index/updateserver',
+            success: function (res) {
+                if (res && res.status && res.msg === 'server updated, restarting') {
+                    showMsg(langreply(res.msg), 'success', 10000);
+                    waitForNewServer('{{.data.version}}');
+                    return;
+                }
+                showMsg(langreply(res && res.msg), res && res.status ? 'success' : 'error', 5000);
+                reset();
+            },
+            error: function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000);
+                reset();
+            }
+        });
     }
 
-    function systemInfoVisible() {
-        return window.nps.featureEnabled('system_info_display');
+    function waitForNewServer(oldVersion) {
+        var deadline = Date.now() + 120000;
+        var poll = function () {
+            $.ajax({
+                type: 'GET',
+                url: '{{.web_base_url}}/index/stats',
+                timeout: 3000,
+                success: function (res) {
+                    // a new version, or a page asking to log in again
+                    if (!res || res.code !== 1 || !res.data || res.data.version !== oldVersion || Date.now() > deadline) {
+                        document.location.reload();
+                        return;
+                    }
+                    setTimeout(poll, 2000);
+                },
+                error: function () {
+                    if (Date.now() > deadline) {
+                        document.location.reload();
+                        return;
+                    }
+                    setTimeout(poll, 2000);
+                }
+            });
+        };
+        setTimeout(poll, 3000);
     }
 
-    function parseLoadData(raw) {
-        if (!raw) {
-            return {};
-        }
-        if (typeof raw === 'object') {
-            return raw;
-        }
-        try {
-            return JSON.parse(raw);
-        } catch (err) {
-            return {};
-        }
-    }
-
-    function formatUpTime(secs) {
-        if (window.nps.formatCompactDuration) {
-            return window.nps.formatCompactDuration(secs);
-        }
-        const dayUnit = window.nps.langText('word-day-short', '');
-        const hourUnit = window.nps.langText('word-hour-short', '');
-        const minuteUnit = window.nps.langText('word-minute-short', '');
-        const secondUnit = window.nps.langText('word-second-short', '');
-        const d = Math.floor(secs / 86400);
-        secs %= 86400;
-        const h = Math.floor(secs / 3600);
-        secs %= 3600;
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        const parts = [];
-        if (d) parts.push(d + dayUnit);
-        if (h) parts.push(h + hourUnit);
-        if (m) parts.push(m + minuteUnit);
-        parts.push(s + secondUnit);
-        return parts.join(' ');
-    }
-
-    function megabyteUnitText() {
-        return window.nps.langText('unit-megabyte', '');
-    }
-
-    function perSecondUnitText() {
-        return window.nps.langText('unit-per-second', '');
-    }
-
-    function renderOverviewLoad(loadData) {
-        if (window.nps.formatLoadSummary) {
-            $('#overview_load').text(window.nps.formatLoadSummary(loadData));
-            return;
-        }
-        $('#overview_load').text([loadData.load1, loadData.load5, loadData.load15].filter(v => v !== undefined && v !== null && v !== '').join(' / '));
-    }
+    $("#overview_cpu").text("{{.data.cpu}}%")
+    $("#overview_cpu_bar").width("{{.data.cpu}}%")
+    $("#overview_memory").text("{{.data.virtual_mem}}%")
+    $("#overview_memory_bar").width("{{.data.virtual_mem}}%")
+    $.each( JSON.parse({{.data.load}}), function(i, value) { $("#overview_load").append('&emsp;' + value) });
+    $("#overview_tcp").text("{{.data.tcp}}")
+    $("#overview_udp").text("{{.data.udp}}")
+    $("#overview_send").text(changeunit({{.data.io_send}}) + "/s")
+    $("#overview_recv").text(changeunit({{.data.io_recv}}) + "/s")
 
     const chartTextColor = getComputedStyle(document.documentElement)
         .getPropertyValue('--text').trim();
     const chartBgColor   = getComputedStyle(document.documentElement)
         .getPropertyValue('--bg').trim();
-
-    function chartLegendDot(color) {
-        return '<span class="nps-chart-dot" style="background-color:' + color + ';"></span>';
-    }
 
     echarts.registerTheme('nps-theme', {
         textStyle: {
@@ -586,48 +595,340 @@
         }
     });
 
-    function dashboardHistory(stats) {
-        const rows = [];
-        for (let i = 1; i <= 10; i++) {
-            rows.push(stats['sys' + i] || {});
-        }
-        return rows;
-    }
-
-    function dashboardTimes(stats) {
-        return dashboardHistory(stats).map(function (item) { return item.time || ''; });
-    }
-
-    function dashboardValues(stats, key) {
-        return dashboardHistory(stats).map(function (item) {
-            return Number(item[key] || 0);
-        });
-    }
-
-    function updateLangBool(selector, value) {
-        const normalized = String(value === undefined || value === null || value === '' ? 'false' : value);
-        $(selector).attr('langtag', 'word-' + normalized);
-        if ($.fn.setLang) {
-            $('body').setLang(selector);
-        }
-    }
-
-    function initCharts() {
-        window.charts = window.charts || {};
-        if (!adminDashboardEnabled()) {
-            return;
-        }
-        var chartKeys = ['flow', 'counts'];
-        if (systemInfoVisible()) {
-            chartKeys = chartKeys.concat(['load', 'cpu', 'memory', 'connections', 'bandwidth']);
-        }
-        chartKeys.forEach(function (key) {
-            const dom = document.getElementById(key);
-            if (dom && !charts[key]) {
-                charts[key] = echarts.init(dom, 'nps-theme');
+    chartdatas['load'] = {
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (params) {
+                var str = params[0].axisValue + '<br/>';
+                for (i in params){
+                    str += '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:' + params[i].color + ';"></span>' + params[i].seriesName +': '+ params[i].data +'</br>';
+                    }
+                return str;
             }
-        });
-    }
+        },
+        grid: {
+            left: '3%',
+            right: '3%',
+            top: '5%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: ['{{.data.sys1.time}}', '{{.data.sys2.time}}', '{{.data.sys3.time}}', '{{.data.sys4.time}}', '{{.data.sys5.time}}', '{{.data.sys6.time}}', '{{.data.sys7.time}}', '{{.data.sys8.time}}', '{{.data.sys9.time}}', '{{.data.sys10.time}}']
+        },
+        yAxis: {
+            type: 'value'
+        },
+        series: [
+            {
+                name: '',
+                type: 'line',
+                stack: 'load1',
+                smooth: true,
+                data: [{{.data.sys1.load1}}, {{.data.sys2.load1}}, {{.data.sys3.load1}}, {{.data.sys4.load1}}, {{.data.sys5.load1}}, {{.data.sys6.load1}}, {{.data.sys7.load1}}, {{.data.sys8.load1}}, {{.data.sys9.load1}}, {{.data.sys10.load1}}]
+            },
+            {
+                name: '',
+                type: 'line',
+                stack: 'load5',
+                smooth: true,
+                data: [{{.data.sys1.load5}}, {{.data.sys2.load5}}, {{.data.sys3.load5}}, {{.data.sys4.load5}}, {{.data.sys5.load5}}, {{.data.sys6.load5}}, {{.data.sys7.load5}}, {{.data.sys8.load5}}, {{.data.sys9.load5}}, {{.data.sys10.load5}}]
+            },
+            {
+                name: '',
+                type: 'line',
+                stack: 'load15',
+                smooth: true,
+                data: [{{.data.sys1.load15}}, {{.data.sys2.load15}}, {{.data.sys3.load15}}, {{.data.sys4.load15}}, {{.data.sys5.load15}}, {{.data.sys6.load15}}, {{.data.sys7.load15}}, {{.data.sys8.load15}}, {{.data.sys9.load15}}, {{.data.sys10.load15}}]
+            }
+        ]
+    };
+
+    chartdatas['cpu'] = {
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (params) {
+                var str = params[0].axisValue + '<br/>';
+                for (i in params){
+                    str += '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:' + params[i].color + ';"></span>' + params[i].seriesName +': '+ params[i].data +'%</br>';
+                }
+                return str;
+            }
+        },
+        grid: {
+            left: '3%',
+            right: '3%',
+            top: '5%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: ['{{.data.sys1.time}}', '{{.data.sys2.time}}', '{{.data.sys3.time}}', '{{.data.sys4.time}}', '{{.data.sys5.time}}', '{{.data.sys6.time}}', '{{.data.sys7.time}}', '{{.data.sys8.time}}', '{{.data.sys9.time}}', '{{.data.sys10.time}}']
+        },
+        yAxis: {
+            type: 'value',
+            axisLabel: {
+                show: true,
+                interval: 'auto',
+                formatter: '{value} %'
+            }
+        },
+        series: [
+            {
+                name: '',
+                type: 'line',
+                stack: 'cpu',
+                smooth: true,
+                data: [{{.data.sys1.cpu}}, {{.data.sys2.cpu}}, {{.data.sys3.cpu}}, {{.data.sys4.cpu}}, {{.data.sys5.cpu}}, {{.data.sys6.cpu}}, {{.data.sys7.cpu}}, {{.data.sys8.cpu}}, {{.data.sys9.cpu}}, {{.data.sys10.cpu}}]
+            }
+        ]
+    };
+
+    chartdatas['memory'] = {
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (params) {
+                var str = params[0].axisValue + '<br/>';
+                for (i in params){
+                    str += '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:' + params[i].color + ';"></span>' + params[i].seriesName +': '+ params[i].data +'MB</br>';
+                }
+                return str;
+            }
+        },
+        grid: {
+            left: '3%',
+            right: '3%',
+            top: '5%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: ['{{.data.sys1.time}}', '{{.data.sys2.time}}', '{{.data.sys3.time}}', '{{.data.sys4.time}}', '{{.data.sys5.time}}', '{{.data.sys6.time}}', '{{.data.sys7.time}}', '{{.data.sys8.time}}', '{{.data.sys9.time}}', '{{.data.sys10.time}}']
+            },
+        yAxis: {
+            type: 'value',
+            axisLabel: {
+                show: true,
+                interval: 'auto',
+                formatter: '{value} MB'
+            }
+        },
+        series: [
+            {
+                name: '',
+                type: 'line',
+                stack: 'virtual_mem',
+                smooth: true,
+                data: [{{.data.sys1.virtual_mem}}, {{.data.sys2.virtual_mem}}, {{.data.sys3.virtual_mem}}, {{.data.sys4.virtual_mem}}, {{.data.sys5.virtual_mem}}, {{.data.sys6.virtual_mem}}, {{.data.sys7.virtual_mem}}, {{.data.sys8.virtual_mem}}, {{.data.sys9.virtual_mem}}, {{.data.sys10.virtual_mem}}]
+            },
+            {
+                name: '',
+                type: 'line',
+                stack: 'swap_mem',
+                smooth: true,
+                data: [{{.data.sys1.swap_mem}}, {{.data.sys2.swap_mem}}, {{.data.sys3.swap_mem}}, {{.data.sys4.swap_mem}}, {{.data.sys5.swap_mem}}, {{.data.sys6.swap_mem}}, {{.data.sys7.swap_mem}}, {{.data.sys8.swap_mem}}, {{.data.sys9.swap_mem}}, {{.data.sys10.swap_mem}}]
+            }
+        ]
+    };
+
+    chartdatas['connections'] = {
+        tooltip: {
+            trigger: 'axis'
+        },
+        grid: {
+            left: '3%',
+            right: '3%',
+            top: '5%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: ['{{.data.sys1.time}}', '{{.data.sys2.time}}', '{{.data.sys3.time}}', '{{.data.sys4.time}}', '{{.data.sys5.time}}', '{{.data.sys6.time}}', '{{.data.sys7.time}}', '{{.data.sys8.time}}', '{{.data.sys9.time}}', '{{.data.sys10.time}}']
+        },
+        yAxis: {
+            type: 'value'
+        },
+        series: [
+            {
+                name: '',
+                type: 'line',
+                stack: 'tcp',
+                smooth: true,
+                data: [{{.data.sys1.tcp}}, {{.data.sys2.tcp}}, {{.data.sys3.tcp}}, {{.data.sys4.tcp}}, {{.data.sys5.tcp}}, {{.data.sys6.tcp}}, {{.data.sys7.tcp}}, {{.data.sys8.tcp}}, {{.data.sys9.tcp}}, {{.data.sys10.tcp}}]
+            },
+            {
+                name: '',
+                type: 'line',
+                stack: 'udp',
+                smooth: true,
+                data: [{{.data.sys1.udp}}, {{.data.sys2.udp}}, {{.data.sys3.udp}}, {{.data.sys4.udp}}, {{.data.sys5.udp}}, {{.data.sys6.udp}}, {{.data.sys7.udp}}, {{.data.sys8.udp}}, {{.data.sys9.udp}}, {{.data.sys10.udp}}]
+            }
+        ]
+    };
+
+    chartdatas['bandwidth'] = {
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (params) {
+                var str = params[0].axisValue + '<br/>';
+                for (i in params){
+                    str += '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:' + params[i].color + ';"></span>' + params[i].seriesName +': '+ changeunit(params[i].data) +'/s</br>';
+                }
+                return str;
+            }
+        },
+        grid: {
+        left: '3%',
+        right: '3%',
+        top: '5%',
+        bottom: '3%',
+        containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: ['{{.data.sys1.time}}', '{{.data.sys2.time}}', '{{.data.sys3.time}}', '{{.data.sys4.time}}', '{{.data.sys5.time}}', '{{.data.sys6.time}}', '{{.data.sys7.time}}', '{{.data.sys8.time}}', '{{.data.sys9.time}}', '{{.data.sys10.time}}']
+        },
+        yAxis: {
+            type: 'value',
+            axisLabel: {
+                show: true,
+                interval: 'auto',
+                formatter: function (params){
+                    return changeunit (params);
+                }
+            }
+        },
+        series: [
+            {
+                name: '',
+                type: 'line',
+                stack: 'in',
+                smooth: true,
+                data: [{{.data.sys1.io_recv}}, {{.data.sys2.io_recv}}, {{.data.sys3.io_recv}}, {{.data.sys4.io_recv}}, {{.data.sys5.io_recv}}, {{.data.sys6.io_recv}}, {{.data.sys7.io_recv}}, {{.data.sys8.io_recv}}, {{.data.sys9.io_recv}}, {{.data.sys10.io_recv}}]
+            },
+            {
+                name: '',
+                type: 'line',
+                stack: 'out',
+                smooth: true,
+                data: [{{.data.sys1.io_send}}, {{.data.sys2.io_send}}, {{.data.sys3.io_send}}, {{.data.sys4.io_send}}, {{.data.sys5.io_send}}, {{.data.sys6.io_send}}, {{.data.sys7.io_send}}, {{.data.sys8.io_send}}, {{.data.sys9.io_send}}, {{.data.sys10.io_send}}]
+            }
+        ]
+    };
+
+    chartdatas['flow'] = {
+        tooltip: {
+            trigger: 'item',
+            formatter: function (p) {
+                return p.seriesName + '<br>' + p.name + ':' + changeunit(p.data.value);
+            }
+        },
+        legend: {
+            orient: 'vertical',
+            left: 'left',
+            data: ['', '']
+        },
+        series: [
+            {
+                name: '',
+                type: 'pie',
+                radius: '55%',
+                center: ['50%', '60%'],
+                data: [
+                    {
+                        name: '',
+                        value:{{.data.inletFlowCount}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.exportFlowCount}}
+                    }
+                ],
+                itemStyle: {
+                    emphasis: {
+                        shadowBlur: 10,
+                        shadowOffsetX: 0,
+                        shadowColor: 'rgba(0, 0, 0, 0.5)'
+                    }
+                }
+            }
+        ]
+    };
+
+    chartdatas['counts'] = {
+        tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b} : {c} ({d}%)'
+        },
+        legend: {
+            orient: 'vertical',
+            left: 'left',
+            data: ['', '', '', '', '', '', '']
+        },
+        series: [
+            {
+                name: '',
+                type: 'pie',
+                radius: '55%',
+                center: ['50%', '60%'],
+                data: [
+                    {
+                        name: '',
+                        value:{{.data.hostCount}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.tcpC}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.udpCount}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.httpProxyCount}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.socks5Count}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.secretCount}}
+                    },
+                    {
+                        name: '',
+                        value:{{.data.p2pCount}}
+                    }
+                ],
+                itemStyle: {
+                    emphasis: {
+                        shadowBlur: 10,
+                        shadowOffsetX: 0,
+                        shadowColor: 'rgba(0, 0, 0, 0.5)'
+                    }
+                }
+            }
+        ]
+    };
+
+    window.charts = window.charts || {};
+    Object.keys(chartdatas).forEach(key => {
+        const dom = document.getElementById(key);
+        if (dom) {
+            window.charts[key] = echarts.init(dom, 'nps-theme');
+            window.charts[key].setOption(chartdatas[key]);
+        }
+    });
 
     window.addEventListener('resize', () => {
         for (var key in charts) {
@@ -635,15 +936,21 @@
         }
     });
 
-    let currentNodeDisplay = {};
-    let upTimeSeconds = Number($('#stat-upTime').data('up-secs')) || 0;
-    let currentLoadData = {};
-    let flowStoreIntervalSeconds = Number($('#config-flowStoreInterval').data('seconds')) || 0;
+    let upTimeSeconds = 0;
 
-    function refreshDashboardText() {
-        $('#stat-upTime').text(formatUpTime(upTimeSeconds));
-        $('#config-flowStoreInterval').text(formatUpTime(flowStoreIntervalSeconds));
-        renderOverviewLoad(currentLoadData);
+    function formatUpTime(secs) {
+        const d = Math.floor(secs / 86400);
+        secs %= 86400;
+        const h = Math.floor(secs / 3600);
+        secs %= 3600;
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        const parts = [];
+        if (d) parts.push(d + 'd');
+        if (h) parts.push(h + 'h');
+        if (m) parts.push(m + 'm');
+        parts.push(s + 's');
+        return parts.join(' ');
     }
 
     function ensureChart(key) {
@@ -655,252 +962,43 @@
         }
     }
 
-    function setChartOption(key, option) {
-        ensureChart(key);
-        if (!charts[key]) {
-            return;
-        }
-        charts[key].setOption(option, true);
-    }
-
-    function displayTransport(display, name) {
-        return ((display || {}).bridge || {})[String(name || '').toLowerCase()] || {};
-    }
-
-    function displayTransportPort(display, name) {
-        return displayTransport(display, name).port || '0';
-    }
-
-    function applyDashboardDisplay(display) {
-        display = display || {};
-        currentNodeDisplay = display;
-        var bridge = display.bridge || {};
-        var primary = bridge.primary || {};
-        $('#overview-bridge-tcp-tls').text(displayTransportPort(display, 'tcp') + ' / ' + displayTransportPort(display, 'tls'));
-        $('#overview-bridge-kcp').text(displayTransportPort(display, 'kcp'));
-        $('#overview-bridge-ws').text(displayTransportPort(display, 'ws') + ' / ' + displayTransportPort(display, 'wss'));
-        $('#overview-bridge-path').text(bridge.path || '/ws');
-        $('#overview-bridge-ip').text(primary.ip || '');
-
-        var summary = [];
-        [['tcp', 'word-tcp', 'TCP'], ['kcp', 'word-kcp', 'KCP'], ['tls', 'word-tls', 'TLS'], ['ws', 'word-ws', 'WS'], ['wss', 'word-wss', 'WSS']].forEach(function (item) {
-            var port = displayTransportPort(display, item[0]);
-            if (port && port !== '0') {
-                summary.push(window.nps.langText(item[1], '') + ':' + port);
+    function refreshStats(eligible) {
+        return $.ajax({url: '{{.web_base_url}}/index/stats', dataType: 'json', timeout: 10000}).done(function(res) {
+            if (!eligible() || res.code !== 1) return;
+            const d = res.data;
+            $('#stat-clientCount').text(d.clientCount);
+            $('#stat-clientOnlineCount').text(d.clientOnlineCount);
+            $('#stat-tcpCount').text(d.tcpCount);
+            const nowSecs = Math.floor(Date.now() / 1000);
+            let calc = nowSecs - d.startTime;
+            if (!Number.isFinite(calc) || calc < 0) calc = 0;
+            if (Number.isFinite(d.upSecs)) {
+                upTimeSeconds = Math.abs(calc - d.upSecs) > 5 ? d.upSecs : calc;
+            } else {
+                upTimeSeconds = calc;
             }
+            $('#overview_cpu').text(d.cpu + '%');
+            $('#overview_cpu_bar').width(d.cpu + '%');
+            $('#overview_memory').text(d.virtual_mem + '%');
+            $('#overview_memory_bar').width(d.virtual_mem + '%');
+            const loadObj = JSON.parse(d.load);
+            $('#overview_load')
+                .empty()
+                .append([loadObj.load1, loadObj.load5, loadObj.load15]
+                    .map(v => '&emsp;' + v).join(''));
+            $('#overview_tcp').text(d.tcp);
+            $('#overview_udp').text(d.udp);
+            $('#overview_send').text(changeunit(d.io_send) + '/s');
+            $('#overview_recv').text(changeunit(d.io_recv) + '/s');
         });
-        if (bridge.path) {
-            summary.push(window.nps.langText('word-path', '') + ':' + bridge.path);
-        }
-        $('#config-bridge-summary').text(summary.join(' '));
-    }
-
-    function updateDashboardCharts(stats) {
-        if (!adminDashboardEnabled()) {
-            return;
-        }
-        const times = dashboardTimes(stats);
-        if (systemInfoVisible()) {
-        setChartOption('load', {
-            tooltip: {
-                trigger: 'axis',
-                formatter: function (params) {
-                    var str = params[0].axisValue + '<br/>';
-                    for (i in params) {
-                        str += chartLegendDot(params[i].color) + params[i].seriesName + ': ' + params[i].data + '</br>';
-                    }
-                    return str;
-                }
-            },
-            grid: {left: '3%', right: '3%', top: '5%', bottom: '3%', containLabel: true},
-            xAxis: {type: 'category', boundaryGap: false, data: times},
-            yAxis: {type: 'value'},
-            series: [
-                {name: '', type: 'line', stack: 'load1', smooth: true, data: dashboardValues(stats, 'load1')},
-                {name: '', type: 'line', stack: 'load5', smooth: true, data: dashboardValues(stats, 'load5')},
-                {name: '', type: 'line', stack: 'load15', smooth: true, data: dashboardValues(stats, 'load15')}
-            ]
-        });
-        setChartOption('cpu', {
-            tooltip: {
-                trigger: 'axis',
-                formatter: function (params) {
-                    var str = params[0].axisValue + '<br/>';
-                    for (i in params) {
-                        str += chartLegendDot(params[i].color) + params[i].seriesName + ': ' + params[i].data + '%</br>';
-                    }
-                    return str;
-                }
-            },
-            grid: {left: '3%', right: '3%', top: '5%', bottom: '3%', containLabel: true},
-            xAxis: {type: 'category', boundaryGap: false, data: times},
-            yAxis: {type: 'value', axisLabel: {show: true, interval: 'auto', formatter: '{value} %'}},
-            series: [{name: '', type: 'line', stack: 'cpu', smooth: true, data: dashboardValues(stats, 'cpu')}]
-        });
-        setChartOption('memory', {
-            tooltip: {
-                trigger: 'axis',
-                formatter: function (params) {
-                    var str = params[0].axisValue + '<br/>';
-                    for (i in params) {
-                        str += chartLegendDot(params[i].color) + params[i].seriesName + ': ' + params[i].data + megabyteUnitText() + '</br>';
-                    }
-                    return str;
-                }
-            },
-            grid: {left: '3%', right: '3%', top: '5%', bottom: '3%', containLabel: true},
-            xAxis: {type: 'category', boundaryGap: false, data: times},
-            yAxis: {type: 'value', axisLabel: {show: true, interval: 'auto', formatter: function (value) { return value + ' ' + megabyteUnitText(); }}},
-            series: [
-                {name: '', type: 'line', stack: 'virtual_mem', smooth: true, data: dashboardValues(stats, 'virtual_mem')},
-                {name: '', type: 'line', stack: 'swap_mem', smooth: true, data: dashboardValues(stats, 'swap_mem')}
-            ]
-        });
-        setChartOption('connections', {
-            tooltip: {trigger: 'axis'},
-            grid: {left: '3%', right: '3%', top: '5%', bottom: '3%', containLabel: true},
-            xAxis: {type: 'category', boundaryGap: false, data: times},
-            yAxis: {type: 'value'},
-            series: [
-                {name: '', type: 'line', stack: 'tcp', smooth: true, data: dashboardValues(stats, 'tcp')},
-                {name: '', type: 'line', stack: 'udp', smooth: true, data: dashboardValues(stats, 'udp')}
-            ]
-        });
-        setChartOption('bandwidth', {
-            tooltip: {
-                trigger: 'axis',
-                formatter: function (params) {
-                    var str = params[0].axisValue + '<br/>';
-                    for (i in params) {
-                        str += chartLegendDot(params[i].color) + params[i].seriesName + ': ' + changeunit(params[i].data) + perSecondUnitText() + '</br>';
-                    }
-                    return str;
-                }
-            },
-            grid: {left: '3%', right: '3%', top: '5%', bottom: '3%', containLabel: true},
-            xAxis: {type: 'category', boundaryGap: false, data: times},
-            yAxis: {
-                type: 'value',
-                axisLabel: {
-                    show: true,
-                    interval: 'auto',
-                    formatter: function (params) { return changeunit(params); }
-                }
-            },
-            series: [
-                {name: '', type: 'line', stack: 'in', smooth: true, data: dashboardValues(stats, 'io_recv')},
-                {name: '', type: 'line', stack: 'out', smooth: true, data: dashboardValues(stats, 'io_send')}
-            ]
-        });
-        }
-        setChartOption('flow', {
-            tooltip: {
-                trigger: 'item',
-                formatter: function (p) { return p.seriesName + '<br>' + p.name + ':' + changeunit(p.data.value); }
-            },
-            legend: {orient: 'vertical', left: 'left', data: ['', '']},
-            series: [{
-                name: '',
-                type: 'pie',
-                radius: '55%',
-                center: ['50%', '60%'],
-                data: [
-                    {name: '', value: Number(stats.inletFlowCount || 0)},
-                    {name: '', value: Number(stats.exportFlowCount || 0)}
-                ],
-                itemStyle: {emphasis: {shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)'}}
-            }]
-        });
-        setChartOption('counts', {
-            tooltip: {trigger: 'item', formatter: '{a} <br/>{b} : {c} ({d}%)'},
-            legend: {orient: 'vertical', left: 'left', data: ['', '', '', '', '', '', '']},
-            series: [{
-                name: '',
-                type: 'pie',
-                radius: '55%',
-                center: ['50%', '60%'],
-                data: [
-                    {name: '', value: Number(stats.hostCount || 0)},
-                    {name: '', value: Number(stats.tcpC || 0)},
-                    {name: '', value: Number(stats.udpCount || 0)},
-                    {name: '', value: Number(stats.httpProxyCount || 0)},
-                    {name: '', value: Number(stats.socks5Count || 0)},
-                    {name: '', value: Number(stats.secretCount || 0)},
-                    {name: '', value: Number(stats.p2pCount || 0)}
-                ],
-                itemStyle: {emphasis: {shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)'}}
-            }]
-        });
-    }
-
-    function applyDashboardStats(stats) {
-        stats = stats || {};
-        $('#stat-version').text(stats.version || '');
-        $('#stat-minVersion').text(stats.minVersion || '');
-        updateLangBool('#stat-ipLimit', stats.ipLimit);
-        $('#stat-clientCount').text(Number(stats.clientCount || 0));
-        $('#stat-clientOnlineCount').text(Number(stats.clientOnlineCount || 0));
-        $('#stat-tcpCount').text(Number(stats.tcpCount || 0));
-        $('#config-httpPorts').text((stats.httpProxyPort || '0') + ' / ' + (stats.httpsProxyPort || '0'));
-        updateLangBool('#config-ipLimit', stats.ipLimit);
-        flowStoreIntervalSeconds = Number(stats.flowStoreInterval || 0);
-        $('#config-flowStoreInterval').attr('data-seconds', flowStoreIntervalSeconds);
-        $('#config-logLevel').text(stats.logLevel || '');
-        $('#config-p2pAddr').text(stats.p2pAddr || '');
-        $('#config-serverIPs').text([stats.p2pIp, stats.serverIpv4, stats.serverIpv6].filter(Boolean).join(' | '));
-        if (stats.version && stats.minVersion) {
-            $('#config-versionPair').text(stats.version + ' (' + stats.minVersion + ')');
-        } else {
-            $('#config-versionPair').text(stats.version || stats.minVersion || '');
-        }
-        const nowSecs = Math.floor(Date.now() / 1000);
-        let calc = nowSecs - Number(stats.startTime || 0);
-        if (!Number.isFinite(calc) || calc < 0) calc = 0;
-        if (Number.isFinite(Number(stats.upSecs))) {
-            upTimeSeconds = Math.abs(calc - Number(stats.upSecs)) > 5 ? Number(stats.upSecs) : calc;
-        } else {
-            upTimeSeconds = calc;
-        }
-        $('#stat-upTime').attr('data-up-secs', upTimeSeconds);
-        $('#overview_cpu').text(Number(stats.cpu || 0) + '%');
-        $('#overview_cpu_bar').width(Number(stats.cpu || 0) + '%');
-        $('#overview_memory').text(Number(stats.virtual_mem || 0) + '%');
-        $('#overview_memory_bar').width(Number(stats.virtual_mem || 0) + '%');
-        currentLoadData = parseLoadData(stats.load);
-        $('#overview_tcp').text(Number(stats.tcp || 0));
-        $('#overview_udp').text(Number(stats.udp || 0));
-        $('#overview_send').text(changeunit(Number(stats.io_send || 0)) + perSecondUnitText());
-        $('#overview_recv').text(changeunit(Number(stats.io_recv || 0)) + perSecondUnitText());
-        refreshDashboardText();
-        updateDashboardCharts(stats);
-    }
-
-    function refreshStats() {
-        window.nps.fetchNodeData(window.nps.nodeRoute('dashboard')).then(function (data) {
-            applyDashboardStats((data && data.stats) ? data.stats : {});
-        });
-    }
-
-    function refreshDashboardRegistration() {
-        window.nps.fetchNodeDisplay().then(function (display) {
-            applyDashboardDisplay(display || {});
-        });
-    }
-
-    function internationalized() {
-        applyDashboardDisplay(currentNodeDisplay);
-        refreshDashboardText();
     }
 
     $(function() {
-        initCharts();
-        refreshDashboardText();
-        refreshDashboardRegistration();
-        refreshStats();
-        setInterval(refreshStats, 3000);
+        npsAutoRefresh(refreshStats, '#dashboard-live-controls');
         setInterval(function() {
             upTimeSeconds++;
             $('#stat-upTime').text(formatUpTime(upTimeSeconds));
         }, 1000);
     });
 </script>
+{{end}}

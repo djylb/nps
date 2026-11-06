@@ -2,67 +2,11 @@ package rate
 
 import (
 	"encoding/json"
-	"sync/atomic"
+	"io"
+	"net"
 	"testing"
 	"time"
 )
-
-func TestBytesToNsCeil(t *testing.T) {
-	t.Parallel()
-
-	if got := bytesToNsCeil(0, 100); got != 0 {
-		t.Fatalf("bytesToNsCeil(0,100)=%d, want 0", got)
-	}
-	if got := bytesToNsCeil(100, 0); got != 0 {
-		t.Fatalf("bytesToNsCeil(100,0)=%d, want 0", got)
-	}
-	if got := bytesToNsCeil(1, 2); got != 500000000 {
-		t.Fatalf("bytesToNsCeil(1,2)=%d, want 500000000", got)
-	}
-	if got := bytesToNsCeil(3, 2); got != 1500000000 {
-		t.Fatalf("bytesToNsCeil(3,2)=%d, want 1500000000", got)
-	}
-	if got := bytesToNsCeil(maxI64, 1); got != maxI64 {
-		t.Fatalf("bytesToNsCeil(maxI64,1)=%d, want maxI64", got)
-	}
-}
-
-func TestBytesPerSec(t *testing.T) {
-	t.Parallel()
-
-	if got := bytesPerSec(0, 100); got != 0 {
-		t.Fatalf("bytesPerSec(0,100)=%d, want 0", got)
-	}
-	if got := bytesPerSec(100, 0); got != 0 {
-		t.Fatalf("bytesPerSec(100,0)=%d, want 0", got)
-	}
-	if got := bytesPerSec(5, int64(time.Second)); got != 5 {
-		t.Fatalf("bytesPerSec(5,1s)=%d, want 5", got)
-	}
-	if got := bytesPerSec(3, int64(2*time.Second)); got != 1 {
-		t.Fatalf("bytesPerSec(3,2s)=%d, want 1", got)
-	}
-	if got := bytesPerSec(maxI64, 1); got != maxI64 {
-		t.Fatalf("bytesPerSec(maxI64,1)=%d, want maxI64", got)
-	}
-}
-
-func TestClampHelpers(t *testing.T) {
-	t.Parallel()
-
-	if got := clampAdd(1, 2); got != 3 {
-		t.Fatalf("clampAdd(1,2)=%d, want 3", got)
-	}
-	if got := clampAdd(maxI64-1, 10); got != maxI64 {
-		t.Fatalf("clampAdd overflow=%d, want maxI64", got)
-	}
-	if got := clampSub(5, 2); got != 3 {
-		t.Fatalf("clampSub(5,2)=%d, want 3", got)
-	}
-	if got := clampSub(minI64+1, 10); got != minI64 {
-		t.Fatalf("clampSub underflow=%d, want minI64", got)
-	}
-}
 
 func TestRateLifecycleAndJSON(t *testing.T) {
 	r := NewRate(1024)
@@ -74,20 +18,23 @@ func TestRateLifecycleAndJSON(t *testing.T) {
 	}
 
 	r.Stop()
-	r.Get(1024)
+	c := NewRateConn(discardRWC{}, r)
+	if _, err := c.Write(make([]byte, 1024)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
 	if got := r.Now(); got != 0 {
-		t.Fatalf("Now() after Stop/Get=%d, want 0", got)
+		t.Fatalf("Now() after Stop/Write=%d, want 0", got)
 	}
 
 	r.Start()
-	r.SetLimit(2048)
+	r.ResetLimit(2048)
 	if got := r.Limit(); got != 2048 {
-		t.Fatalf("Limit() after SetLimit=%d, want 2048", got)
+		t.Fatalf("Limit() after ResetLimit=%d, want 2048", got)
 	}
 
-	r.ResetLimit(0)
+	r.ResetLimit(-1)
 	if got := r.Limit(); got != 0 {
-		t.Fatalf("Limit() after ResetLimit(0)=%d, want 0", got)
+		t.Fatalf("Limit() after ResetLimit(-1)=%d, want 0", got)
 	}
 
 	b, err := r.MarshalJSON()
@@ -105,12 +52,9 @@ func TestRateLifecycleAndJSON(t *testing.T) {
 
 func TestNilRateSafety(t *testing.T) {
 	var r *Rate
-	r.SetLimit(1)
 	r.ResetLimit(1)
 	r.Start()
 	r.Stop()
-	r.Get(1)
-	r.ReturnBucket(1)
 
 	if got := r.Limit(); got != 0 {
 		t.Fatalf("nil Limit()=%d, want 0", got)
@@ -125,67 +69,88 @@ func TestNilRateSafety(t *testing.T) {
 	if string(b) != "null" {
 		t.Fatalf("nil MarshalJSON=%s, want null", string(b))
 	}
+	SetGlobalTraffic(0, 0)
+	t.Cleanup(ResetGlobalTraffic)
+	c := NewRateConn(discardRWC{}, nil)
+	if _, err := c.Write(make([]byte, 100)); err != nil {
+		t.Fatal(err)
+	}
+	if in, _ := GlobalTraffic(); in != 100 {
+		t.Fatalf("a nil Rate left the global traffic uncounted: in = %d", in)
+	}
 }
 
-func TestRateCloneDetachesRuntimeState(t *testing.T) {
-	original := NewRate(2048)
-	original.Get(64)
+func TestNewRateConnKeepsNetConn(t *testing.T) {
+	a, b := net.Pipe()
+	defer func() { _ = b.Close() }()
+	c := NewRateConn(a, NewRate(0))
+	defer func() { _ = c.Close() }()
+	if _, ok := c.(net.Conn); !ok {
+		t.Fatalf("NewRateConn(net.Conn) = %T, want a net.Conn", c)
+	}
+}
 
-	cloned := original.Clone()
-	if cloned == nil {
-		t.Fatal("Clone() = nil, want detached rate copy")
-	}
-	if cloned == original {
-		t.Fatal("Clone() returned original pointer, want detached copy")
-	}
-	if cloned.Limit() != original.Limit() {
-		t.Fatalf("Clone().Limit() = %d, want %d", cloned.Limit(), original.Limit())
-	}
-	if cloned.stopCh() == original.stopCh() {
-		t.Fatal("Clone() should not reuse the original stop channel")
-	}
+type discardRWC struct{}
 
-	cloned.ResetLimit(0)
-	if got := original.Limit(); got != 2048 {
-		t.Fatalf("original limit after clone mutation = %d, want 2048", got)
-	}
+func (discardRWC) Read([]byte) (int, error)    { return 0, nil }
+func (discardRWC) Write(b []byte) (int, error) { return len(b), nil }
+func (discardRWC) Close() error                { return nil }
 
-	original.Stop()
-	if cloned.stopCh() == nil {
-		t.Fatal("clone stop channel = nil after original Stop(), want independent channel")
-	}
+func TestRateConnCloseWakesWaitingWrite(t *testing.T) {
+	t.Parallel()
+
+	c := NewRateConn(discardRWC{}, NewRate(1))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = c.Write(make([]byte, 1024))
+	}()
+	time.Sleep(50 * time.Millisecond)
+	_ = c.Close()
 	select {
-	case <-cloned.stopCh():
-		t.Fatal("clone stop channel closed when original stopped")
-	default:
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Write still waiting for rate budget after Close")
 	}
 }
 
-func TestMeterCloneDetachesMutableState(t *testing.T) {
-	original := NewMeter()
-	original.Add(3, 4)
+// TestRateConnSharesOneBucket checks that reads and writes on a connection
+// draw from the same limit.
+func TestRateConnSharesOneBucket(t *testing.T) {
+	t.Parallel()
 
-	cloned := original.Clone()
-	if cloned == nil {
-		t.Fatal("Clone() = nil, want detached meter copy")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if cloned == original {
-		t.Fatal("Clone() returned original pointer, want detached copy")
-	}
-	if atomic.LoadInt64(&cloned.inAcc) != atomic.LoadInt64(&original.inAcc) || atomic.LoadInt64(&cloned.outAcc) != atomic.LoadInt64(&original.outAcc) {
-		t.Fatalf("Clone() accumulators = %d/%d, want %d/%d",
-			atomic.LoadInt64(&cloned.inAcc),
-			atomic.LoadInt64(&cloned.outAcc),
-			atomic.LoadInt64(&original.inAcc),
-			atomic.LoadInt64(&original.outAcc),
-		)
+	defer func() { _ = ln.Close() }()
+	go func() {
+		peer, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = peer.Close() }()
+		_, _ = io.Copy(struct{ io.Writer }{peer}, peer)
+	}()
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	cloned.Add(5, 6)
-	if got := atomic.LoadInt64(&original.inAcc); got != 3 {
-		t.Fatalf("original inAcc after clone mutation = %d, want 3", got)
+	const limit = 4000
+	c := NewRateConn(raw, NewRate(limit))
+	defer func() { _ = c.Close() }()
+
+	// The write takes the whole initial burst of two seconds' worth, so
+	// reading back half of it has to wait about a second for the limit.
+	if _, err := c.Write(make([]byte, 2*limit)); err != nil {
+		t.Fatalf("write: %v", err)
 	}
-	if got := atomic.LoadInt64(&original.outAcc); got != 4 {
-		t.Fatalf("original outAcc after clone mutation = %d, want 4", got)
+	start := time.Now()
+	if _, err := io.ReadFull(c, make([]byte, limit/2)); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if d := time.Since(start); d < 200*time.Millisecond {
+		t.Fatalf("reading %d bytes at %d B/s after a write spent the burst took %v; reads are not charged to the write's limit", limit/2, limit, d)
 	}
 }

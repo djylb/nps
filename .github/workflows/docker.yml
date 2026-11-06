@@ -52,10 +52,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.${{ matrix.image }}
-          build-args: |
-            GEODATA_MODE=always
-            GEOIP_URL=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-            GEOSITE_URL=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
           platforms: linux/amd64,linux/arm,linux/arm64,linux/386,linux/ppc64le,linux/s390x
           push: true
           tags: |

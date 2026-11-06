@@ -1,4 +1,4 @@
-.idea/
+.idea
 nps
 npc
 *.exe
@@ -6,25 +6,12 @@ npc
 *.tar.gz
 *.json
 *.tmp
-.history/
-.DS_Store
-Thumbs.db
-Desktop.ini
-coverage_*
-.codex_*
-.tmp-*
-.tmp_*
-.tmp-gocache*/
-.gocache-codex/
-tmp-go-*
-tmp_webservice_*
-bridge_*.log
-client_*.log
-lib_p2p_*.log
-conf/geoip.dat
-conf/geosite.dat
-frontend/node_modules/
-frontend/dist/
-!frontend/**/*.json
-web/static/app/*
-!web/static/app/.gitignore
+
+# geodata fetched at build time
+conf/*.dat
+conf/geodata.version
+conf/*.download
+
+# Persistent instance secrets
+instance.key
+.instance-key-*

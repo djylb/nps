@@ -1,22 +1,24 @@
 package client
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
-	"net/http"
-	"net/url"
+	"net/netip"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/proxydial"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -25,31 +27,16 @@ import (
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
-	"golang.org/x/net/proxy"
+	"github.com/xtaci/kcp-go/v5"
 )
 
 const MaxPad = 64
 
 var Ver = version.GetLatestIndex()
-
 var SkipTLSVerify = false
-
 var DisableP2P = false
-
 var AutoReconnect = true
-
-var P2PMode = common.CONN_QUIC
-
 var LocalIPForward = false
-
-func init() {
-	//rand.Seed(time.Now().UnixNano())
-	crypt.InitTls(tls.Certificate{})
-}
-
-var errAdd = errors.New("the server returned an error, which port or host may have been occupied or not allowed to open")
-
-const maxTaskStatusPayloadSize = 1 << 20
 
 var QuicConfig = &quic.Config{
 	KeepAlivePeriod:    10 * time.Second,
@@ -57,530 +44,231 @@ var QuicConfig = &quic.Config{
 	MaxIncomingStreams: 100000,
 }
 
-type clientControlConnPlan struct {
-	ctx               context.Context
-	tp                string
-	server            string
-	proxyURL          string
-	localIP           string
-	verifyCertificate bool
-	timeout           time.Duration
-	path              string
-	alpn              string
-	host              string
-	sni               string
+func init() {
+	//rand.Seed(time.Now().UnixNano())
+	crypt.InitTls(tls.Certificate{})
 }
 
-type clientControlTransport struct {
-	conn           net.Conn
-	isTLS          bool
-	tlsVerified    bool
-	tlsFingerprint []byte
-}
-
-type clientControlVersionPayload struct {
-	minVersion []byte
-	version    []byte
-}
-
-type clientControlRuntimeAuthPayload struct {
-	timestamp int64
-	info      []byte
-	random    []byte
-	hmac      []byte
-}
-
-type clientConfigSession struct {
-	Conn   *conn.Conn
-	UUID   string
-	VKey   string
-	IsPub  bool
-	Server string
-	Common *config.CommonConfig
-}
-
-func normalizeClientParentContext(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	return context.Background()
-}
-
-func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string) error {
-	cnf, err := config.NewConfig(path)
+func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) {
+	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
 	if err != nil {
-		return fmt.Errorf("config file %s loading error %w", path, err)
+		log.Fatalf("Failed to connect: %v", err)
 	}
-	return StartFromConfig(pCtx, pCancel, cnf, path)
+	//defer c.Close()
+	err = SendType(c, common.WorkConfig, uuid)
+	if err != nil {
+		log.Fatalf("Failed to send type: %v", err)
+	}
+	if _, err := c.BufferWrite([]byte(common.WorkStatus)); err != nil {
+		log.Fatalf("Failed to write WorkStatus: %v", err)
+	}
+	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
+		log.Fatalf("Failed to write auth key: %v", err)
+	}
+	var isPub bool
+	_ = binary.Read(c, binary.LittleEndian, &isPub)
+	length, err := c.GetLen()
+	//log.Println(length)
+	if err != nil {
+		log.Fatalf("Failed to read length: %v", err)
+	}
+	data, err := c.GetShortContent(length)
+	//log.Println(string(data))
+	if err != nil {
+		log.Fatalf("Failed to read content: %v", err)
+	}
+	parts := strings.Split(string(data), common.ConnDataSeq)
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	fmt.Println("===== Active Tunnels/Hosts =====")
+	fmt.Printf("Total active: %d\n", len(parts))
+	for i, name := range parts {
+		display := name
+		if display == "" {
+			display = "(no remark)"
+		}
+		fmt.Printf("  %d. %s\n", i+1, display)
+	}
+	os.Exit(0)
 }
 
-func StartFromConfig(pCtx context.Context, pCancel context.CancelFunc, cnf *config.Config, source string) error {
-	pCtx = normalizeClientParentContext(pCtx)
-	if cnf == nil || cnf.CommonConfig == nil {
-		return fmt.Errorf("config source %s loading error: missing common section", source)
+func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, localIP string, hour int) {
+	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
+	if err != nil {
+		log.Fatalln(err)
 	}
+	//defer c.Close()
+	err = SendType(c, common.WorkRegister, uuid)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
+		log.Fatalln(err)
+	}
+	log.Printf("Successful ip registration for local public network, the validity period is %d hours.", hour)
+	os.Exit(0)
+}
+
+var errAdd = errors.New("the server returned an error, which port or host may have been occupied or not allowed to open")
+
+func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string) {
+	cnf, err := config.NewConfig(path)
+	if err != nil || cnf.CommonConfig == nil {
+		logs.Error("Config file %s loading error %v", path, err)
+		os.Exit(1)
+	}
+	logs.Info("Loading configuration file %s successfully", path)
+
+	common.SetCustomDNS(cnf.CommonConfig.DnsServer)
+
+	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetLatest())
+
+	common.SetNtpServer(cnf.CommonConfig.NtpServer)
+	if cnf.CommonConfig.NtpInterval > 0 {
+		common.SetNtpInterval(time.Duration(cnf.CommonConfig.NtpInterval) * time.Minute)
+	}
+	common.SyncTime()
+
 	var uuid string
 
 	first := true
 	for {
 		select {
 		case <-pCtx.Done():
-			return nil
+			return
 		default:
 		}
 		if !first && (!cnf.CommonConfig.AutoReconnection || !AutoReconnect) {
-			if pCancel != nil {
-				pCancel()
-			}
-			return nil
+			pCancel()
+			os.Exit(1)
+			return
 		}
 		if !first {
 			logs.Info("Reconnecting...")
-			if !waitReconnectDelay(pCtx, 5*time.Second) {
-				return nil
-			}
+			time.Sleep(time.Second * 5)
 		}
 		first = false
 
-		var err error
-		uuid, err = RunConfigOnce(pCtx, pCancel, cnf, source, uuid)
-		if err != nil {
-			if pCtx.Err() != nil {
-				return nil
+		if cnf.CommonConfig.TlsEnable {
+			cnf.CommonConfig.Tp = "tls"
+		}
+
+		if len(cnf.LocalServer) > 0 {
+			p2pm := NewP2PManager(pCtx, pCancel, cnf.CommonConfig)
+			//create local server secret or p2p
+			for _, v := range cnf.LocalServer {
+				vv := v
+				go func(local *config.LocalServer) { _ = p2pm.StartLocalServer(local) }(vv)
 			}
+			return
+		}
+
+		c, cid, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP)
+		if err != nil {
 			logs.Error("Failed to connect: %v", err)
 			continue
 		}
-	}
-}
+		if uuid == "" {
+			uuid = cid
+		}
+		err = SendType(c, common.WorkConfig, uuid)
+		if err != nil {
+			logs.Error("Failed to send type: %v", err)
+			_ = c.Close()
+			continue
+		}
 
-func RunConfigOnce(pCtx context.Context, pCancel context.CancelFunc, cnf *config.Config, source string, uuid string) (string, error) {
-	pCtx = normalizeClientParentContext(pCtx)
-	if cnf == nil || cnf.CommonConfig == nil {
-		return uuid, fmt.Errorf("config source %s loading error: missing common section", source)
-	}
-	prepareClientConfigRuntime(cnf.CommonConfig, source)
-	if len(cnf.LocalServer) > 0 {
-		return runClientLocalServerConfig(pCtx, pCancel, cnf.CommonConfig, cnf.LocalServer, uuid)
-	}
+		var isPub bool
+		_ = binary.Read(c, binary.LittleEndian, &isPub)
 
-	session, err := openClientConfigSession(cnf.CommonConfig, uuid)
-	if err != nil {
-		return uuid, err
-	}
-	defer session.Close()
-	if err := session.publishPublicConfig(); err != nil {
-		return session.UUID, err
-	}
+		// get tmp password
+		var b []byte
+		vkey := cnf.CommonConfig.VKey
+		if isPub {
+			// send global configuration to server and get status of config setting
+			if _, err := c.SendInfo(cnf.CommonConfig.Client, common.FlagNewConf); err != nil {
+				logs.Error("%v", err)
+				_ = c.Close()
+				continue
+			}
+			if !c.GetAddStatus() {
+				logs.Error("the web_user may have been occupied!")
+				_ = c.Close()
+				continue
+			}
 
-	ctx, cancel := context.WithCancel(pCtx)
-	defer cancel()
-	fsm := NewFileServerManager(ctx)
-	publishClientConfigHosts(session.Conn, cnf.Hosts)
-	publishClientConfigTasks(session.Conn, cnf.Tasks, fsm, session.VKey)
-	logClientConfigWebAccess(resolveClientConfigWebAccess(session.Common, session.VKey))
+			if b, err = c.GetShortContent(16); err != nil {
+				logs.Error("%v", err)
+				_ = c.Close()
+				continue
+			}
+			vkey = string(b)
+		}
 
-	NewRPClient(session.Server, session.VKey, session.Common.Tp, session.Common.ProxyUrl, session.Common.LocalIP, session.UUID, cnf, session.Common.DisconnectTime, fsm).Start(ctx)
-	return session.UUID, nil
-}
+		//if err := ioutil.WriteFile(filepath.Join(common.GetTmpPath(), "npc_vkey.txt"), []byte(vkey), 0600); err != nil {
+		//	logs.Debug("Failed to write vkey file: %v", err)
+		//	c.Close()
+		//	continue
+		//}
 
-func prepareClientConfigRuntime(commonCfg *config.CommonConfig, source string) {
-	if commonCfg == nil {
-		return
-	}
-	logs.Info("Loading configuration %s successfully", source)
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetLatest())
+		//send hosts to server
+		for _, v := range cnf.Hosts {
+			if _, err := c.SendInfo(v, common.FlagNewHost); err != nil {
+				logs.Error("%v", err)
+				continue
+			}
+			if !c.GetAddStatus() {
+				logs.Error("%v %s", errAdd, v.Host)
+				continue
+			}
+		}
 
-	common.SetCustomDNS(commonCfg.DnsServer)
-	common.SetNtpServer(commonCfg.NtpServer)
-	if commonCfg.NtpInterval > 0 {
-		common.SetNtpInterval(time.Duration(commonCfg.NtpInterval) * time.Minute)
-	}
-	common.SyncTime()
-	if commonCfg.TlsEnable {
-		commonCfg.Tp = "tls"
-	}
-}
+		ctx, cancel := context.WithCancel(pCtx)
+		fsm := NewFileServerManager(ctx)
 
-func runClientLocalServerConfig(pCtx context.Context, pCancel context.CancelFunc, commonCfg *config.CommonConfig, localServers []*config.LocalServer, uuid string) (string, error) {
-	p2pm := NewP2PManager(pCtx, pCancel, commonCfg)
-	for _, local := range localServers {
-		current := local
-		go func(local *config.LocalServer) { _ = p2pm.StartLocalServer(local) }(current)
-	}
-	<-pCtx.Done()
-	return uuid, pCtx.Err()
-}
-
-func openClientConfigSession(commonCfg *config.CommonConfig, uuid string) (*clientConfigSession, error) {
-	if commonCfg == nil {
-		return nil, fmt.Errorf("missing common config")
-	}
-	c, assignedUUID, err := NewConn(commonCfg.Tp, commonCfg.VKey, commonCfg.Server, commonCfg.ProxyUrl, commonCfg.LocalIP)
-	if err != nil {
-		return nil, err
-	}
-	if uuid == "" {
-		uuid = assignedUUID
-	}
-	if err := SendType(c, common.WORK_CONFIG, uuid); err != nil {
+		//send  task to server
+		for _, v := range cnf.Tasks {
+			if _, err := c.SendInfo(v, common.FlagNewTask); err != nil {
+				logs.Error("%v", err)
+				continue
+			}
+			if !readTaskAddStatus(c, v) {
+				logs.Error("%v %s %s", errAdd, v.Ports, v.Remark)
+				continue
+			}
+			if v.Mode == "file" {
+				//start local file server
+				go fsm.StartFileServer(v, vkey)
+			}
+		}
 		_ = c.Close()
-		return nil, err
-	}
-	session := &clientConfigSession{
-		Conn:   c,
-		UUID:   uuid,
-		VKey:   commonCfg.VKey,
-		Server: commonCfg.Server,
-		Common: commonCfg,
-	}
-	if err := binary.Read(c, binary.LittleEndian, &session.IsPub); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-	return session, nil
-}
-
-func (s *clientConfigSession) Close() error {
-	if s == nil || s.Conn == nil {
-		return nil
-	}
-	return s.Conn.Close()
-}
-
-func (s *clientConfigSession) publishPublicConfig() error {
-	if s == nil || s.Conn == nil || !s.IsPub {
-		return nil
-	}
-	if _, err := s.Conn.SendInfo(s.Common.Client, common.NEW_CONF); err != nil {
-		return err
-	}
-	if !s.Conn.GetAddStatus() {
-		return fmt.Errorf("the web_user may have been occupied")
-	}
-	assignedVKey, err := s.Conn.GetShortContent(16)
-	if err != nil {
-		return err
-	}
-	s.VKey = string(assignedVKey)
-	return nil
-}
-
-func publishClientConfigHosts(c *conn.Conn, hosts []*file.Host) {
-	if c == nil {
-		return
-	}
-	for _, host := range hosts {
-		if _, err := c.SendInfo(host, common.NEW_HOST); err != nil {
-			logs.Error("%v", err)
-			continue
+		if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
+			logs.Info("web access login username:user password:%s", vkey)
+		} else {
+			logs.Info("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUserName, cnf.CommonConfig.Client.WebPassword)
 		}
+
+		NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
+		fsm.CloseAll()
+		cancel()
+	}
+}
+
+// readTaskAddStatus reads the add statuses the server reports for a FlagNewTask:
+// one per port the task expands to, or a single failure. It stops at the first
+// failure, after which the server closes the connection.
+func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) bool {
+	n := 1
+	if ports, _, ok := file.ConfigTaskPorts(t); ok {
+		n = len(ports)
+	}
+	for i := 0; i < n; i++ {
 		if !c.GetAddStatus() {
-			logs.Error("%v %s", errAdd, host.Host)
+			return false
 		}
 	}
-}
-
-func publishClientConfigTasks(c *conn.Conn, tasks []*file.Tunnel, fsm *FileServerManager, vkey string) {
-	if c == nil {
-		return
-	}
-	for _, task := range tasks {
-		if _, err := c.SendInfo(task, common.NEW_TASK); err != nil {
-			logs.Error("%v", err)
-			continue
-		}
-		if !readTaskAddStatuses(c, task) {
-			logs.Error("%v %s %s", errAdd, task.Ports, task.Remark)
-			continue
-		}
-		if task.Mode == "file" && fsm != nil {
-			go fsm.StartFileServer(task, vkey)
-		}
-	}
-}
-
-func resolveClientConfigWebAccess(commonCfg *config.CommonConfig, vkey string) (string, string) {
-	if commonCfg != nil && commonCfg.Client != nil {
-		username, password, _ := commonCfg.Client.LegacyWebLoginImport()
-		if username != "" && password != "" {
-			return username, password
-		}
-	}
-	return "user", vkey
-}
-
-func logClientConfigWebAccess(username string, password string) {
-	logs.Info("web access login username:%s password:%s", username, password)
-}
-
-func waitReconnectDelay(ctx context.Context, delay time.Duration) bool {
-	ctx = normalizeClientParentContext(ctx)
-	if delay <= 0 {
-		return true
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
-func readTaskAddStatuses(c *conn.Conn, task *file.Tunnel) bool {
-	count := taskAddStatusCount(task)
-	success := true
-	for i := 0; i < count; i++ {
-		if !c.GetAddStatus() {
-			success = false
-		}
-	}
-	return success
-}
-
-func taskAddStatusCount(task *file.Tunnel) int {
-	if task == nil {
-		return 1
-	}
-	ports := common.GetPorts(task.Ports)
-	if task.Mode == "secret" || task.Mode == "p2p" {
-		return 1
-	}
-	if task.Mode == "file" && len(ports) == 0 {
-		return 1
-	}
-	if len(ports) == 0 {
-		return 1
-	}
-	if len(ports) > 1 && (task.Mode == "tcp" || task.Mode == "udp") {
-		targetStr := ""
-		if task.Target != nil {
-			targetStr = task.Target.TargetStr
-		}
-		if len(common.GetPorts(targetStr)) != len(ports) {
-			return 1
-		}
-	}
-	return len(ports)
-}
-
-func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) ([]string, error) {
-	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
-	if err != nil {
-		return nil, fmt.Errorf("connect status channel: %w", err)
-	}
-	defer c.Close()
-	return getTaskStatus(c, uuid, vKey)
-}
-
-func getTaskStatus(c *conn.Conn, uuid string, vKey string) ([]string, error) {
-	if err := SendType(c, common.WORK_CONFIG, uuid); err != nil {
-		return nil, fmt.Errorf("send status work type: %w", err)
-	}
-	if _, err := c.BufferWrite([]byte(common.WORK_STATUS)); err != nil {
-		return nil, fmt.Errorf("write status opcode: %w", err)
-	}
-	if _, err := c.Write([]byte(crypt.Blake2b(vKey))); err != nil {
-		return nil, fmt.Errorf("write status auth key: %w", err)
-	}
-	var isPub bool
-	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
-		return nil, fmt.Errorf("read status publish flag: %w", err)
-	}
-	data, err := readTaskStatusPayload(c)
-	if err != nil {
-		return nil, fmt.Errorf("read status payload: %w", err)
-	}
-	parts := strings.Split(string(data), common.CONN_DATA_SEQ)
-	if len(parts) > 0 && parts[len(parts)-1] == "" {
-		parts = parts[:len(parts)-1]
-	}
-	return parts, nil
-}
-
-func readTaskStatusPayload(c *conn.Conn) ([]byte, error) {
-	if c == nil {
-		return nil, fmt.Errorf("nil status conn")
-	}
-	length, err := c.GetLen()
-	if err != nil {
-		return nil, fmt.Errorf("read status payload length: %w", err)
-	}
-	if length < 0 || length > maxTaskStatusPayloadSize {
-		return nil, fmt.Errorf("invalid status payload length %d", length)
-	}
-	return c.GetShortContent(length)
-}
-
-func FormatTaskStatus(parts []string) string {
-	var b strings.Builder
-	b.WriteString("===== Active Tunnels/Hosts =====\n")
-	fmt.Fprintf(&b, "Total active: %d\n", len(parts))
-	for i, name := range parts {
-		display := name
-		if display == "" {
-			display = "(no remark)"
-		}
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, display)
-	}
-	return b.String()
-}
-
-func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, localIP string, hour int) error {
-	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
-	if err != nil {
-		return fmt.Errorf("connect registration channel: %w", err)
-	}
-	defer c.Close()
-	return registerLocalIp(c, uuid, hour)
-}
-
-func registerLocalIp(c *conn.Conn, uuid string, hour int) error {
-	if err := SendType(c, common.WORK_REGISTER, uuid); err != nil {
-		return fmt.Errorf("send register work type: %w", err)
-	}
-	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
-		return fmt.Errorf("write registration duration: %w", err)
-	}
-	return nil
-}
-
-func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (rawConn net.Conn, err error) {
-	return GetProxyConnContext(context.Background(), proxyUrl, server, timeout, localIP)
-}
-
-func GetProxyConnContext(ctx context.Context, proxyUrl, server string, timeout time.Duration, localIP string) (rawConn net.Conn, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	dialer := newClientProxyDialer(timeout, localIP)
-	if proxyUrl == "" {
-		return dialClientEnvironmentProxy(ctx, dialer, server)
-	}
-	u, err := url.Parse(proxyUrl)
-	if err != nil {
-		return nil, err
-	}
-	return dialClientProxyURL(ctx, u, dialer, server, timeout, localIP)
-}
-
-func NewHttpProxyConn(proxyURL *url.URL, remoteAddr string, timeout time.Duration, localIP string) (net.Conn, error) {
-	return NewHttpProxyConnContext(context.Background(), proxyURL, remoteAddr, timeout, localIP)
-}
-
-func NewHttpProxyConnContext(ctx context.Context, proxyURL *url.URL, remoteAddr string, timeout time.Duration, localIP string) (net.Conn, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	proxyConn, err := dialClientHTTPProxy(ctx, proxyURL, timeout, localIP)
-	if err != nil {
-		return nil, err
-	}
-	releaseProxyDeadline := applyClientProxyDeadline(proxyConn, timeout)
-	defer releaseProxyDeadline()
-
-	req := buildClientHTTPProxyConnectRequest(proxyURL, remoteAddr)
-	if err := req.Write(proxyConn); err != nil {
-		_ = proxyConn.Close()
-		return nil, err
-	}
-	if err := verifyClientHTTPProxyResponse(proxyConn, req); err != nil {
-		_ = proxyConn.Close()
-		return nil, err
-	}
-	return proxyConn, nil
-}
-
-func newClientProxyDialer(timeout time.Duration, localIP string) *net.Dialer {
-	return &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
-}
-
-func dialClientEnvironmentProxy(ctx context.Context, dialer *net.Dialer, server string) (net.Conn, error) {
-	proxyDialer := proxy.FromEnvironmentUsing(dialer)
-	if contextDialer, ok := proxyDialer.(proxy.ContextDialer); ok {
-		return contextDialer.DialContext(ctx, "tcp", server)
-	}
-	return proxyDialer.Dial("tcp", server)
-}
-
-func dialClientProxyURL(ctx context.Context, proxyURL *url.URL, dialer *net.Dialer, server string, timeout time.Duration, localIP string) (net.Conn, error) {
-	switch proxyURL.Scheme {
-	case "socks5":
-		return dialClientSOCKS5Proxy(ctx, proxyURL, dialer, server)
-	default:
-		return NewHttpProxyConnContext(ctx, proxyURL, server, timeout, localIP)
-	}
-}
-
-func dialClientSOCKS5Proxy(ctx context.Context, proxyURL *url.URL, dialer *net.Dialer, server string) (net.Conn, error) {
-	proxyDialer, err := proxy.FromURL(proxyURL, dialer)
-	if err != nil {
-		return nil, err
-	}
-	if contextDialer, ok := proxyDialer.(proxy.ContextDialer); ok {
-		return contextDialer.DialContext(ctx, "tcp", server)
-	}
-	return proxyDialer.Dial("tcp", server)
-}
-
-func dialClientHTTPProxy(ctx context.Context, proxyURL *url.URL, timeout time.Duration, localIP string) (net.Conn, error) {
-	if proxyURL == nil {
-		return nil, fmt.Errorf("nil proxy URL")
-	}
-	dialer := newClientProxyDialer(timeout, localIP)
-	return dialer.DialContext(ctx, "tcp", proxyURL.Host)
-}
-
-func applyClientProxyDeadline(proxyConn net.Conn, timeout time.Duration) func() {
-	if proxyConn == nil {
-		return func() {}
-	}
-	_ = proxyConn.SetDeadline(time.Now().Add(timeout))
-	return func() { _ = proxyConn.SetDeadline(time.Time{}) }
-}
-
-func buildClientHTTPProxyConnectRequest(proxyURL *url.URL, remoteAddr string) *http.Request {
-	req := &http.Request{
-		Method: http.MethodConnect,
-		URL:    &url.URL{Opaque: remoteAddr},
-		Host:   remoteAddr,
-		Header: make(http.Header),
-	}
-	if proxyURL != nil && proxyURL.User != nil {
-		username := proxyURL.User.Username()
-		password, _ := proxyURL.User.Password()
-		req.SetBasicAuth(username, password)
-	}
-	return req
-}
-
-func verifyClientHTTPProxyResponse(proxyConn net.Conn, req *http.Request) error {
-	resp, err := http.ReadResponse(bufio.NewReader(proxyConn), req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("proxy CONNECT failed: " + resp.Status)
-	}
-	return nil
-}
-
-func newClientTLSConfig(serverName string, verifyCertificate bool, nextProtos ...string) *tls.Config {
-	cfg := &tls.Config{
-		InsecureSkipVerify: !verifyCertificate,
-		ServerName:         common.RemovePortFromHost(serverName),
-	}
-	if len(nextProtos) > 0 {
-		cfg.NextProtos = append([]string(nil), nextProtos...)
-	}
-	return cfg
-}
-
-func newClientP2PTLSConfig(verifyCertificate bool) *tls.Config {
-	return newClientTLSConfig(crypt.GetFakeDomainName(), verifyCertificate, "h3")
+	return true
 }
 
 func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, verified bool) {
@@ -603,23 +291,8 @@ func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, ve
 	} else {
 		verified = true
 	}
-	sum := sha256.Sum256(leaf.Raw)
+	sum := tlsconn.Fingerprint(leaf.Raw)
 	return sum[:], verified
-}
-
-func VerifyTLS(connection net.Conn, host string) (fingerprint []byte, verified bool) {
-	var tlsConn *tls.Conn
-	if tc, ok := connection.(*conn.TlsConn); ok {
-		tlsConn = tc.Conn
-	} else if std, ok := connection.(*tls.Conn); ok {
-		tlsConn = std
-	} else {
-		return nil, false
-	}
-	if err := tlsConn.Handshake(); err != nil {
-		return nil, false
-	}
-	return VerifyState(tlsConn.ConnectionState(), host)
 }
 
 func EnsurePort(server string, tp string) string {
@@ -635,384 +308,304 @@ func EnsurePort(server string, tp string) string {
 
 // NewConn Create a new connection with the server and verify it
 func NewConn(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, error) {
-	return NewConnWithTLSVerify(tp, vkey, server, proxyUrl, localIP, false)
-}
-
-func NewConnWithTLSVerify(tp string, vkey string, server string, proxyUrl string, localIP string, verifyCertificate bool) (*conn.Conn, string, error) {
-	return NewConnContextWithTLSVerify(context.Background(), tp, vkey, server, proxyUrl, localIP, verifyCertificate)
-}
-
-func NewConnContext(ctx context.Context, tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, error) {
-	return NewConnContextWithTLSVerify(ctx, tp, vkey, server, proxyUrl, localIP, false)
-}
-
-func NewConnContextWithTLSVerify(ctx context.Context, tp string, vkey string, server string, proxyUrl string, localIP string, verifyCertificate bool) (*conn.Conn, string, error) {
-	plan, err := buildClientControlConnPlan(ctx, tp, server, proxyUrl, localIP, verifyCertificate)
-	if err != nil {
-		return nil, "", err
-	}
-	transport, err := openClientControlTransport(plan)
-	if err != nil {
-		return nil, "", err
-	}
-	c, releaseConn, err := prepareClientControlWireConn(plan, transport.conn)
-	if err != nil {
-		_ = transport.conn.Close()
-		return nil, "", err
-	}
-	defer releaseConn()
-
-	versionPayload, err := writeClientControlVersion(c)
-	if err != nil {
-		_ = c.Close()
-		return nil, "", err
-	}
-	uuid, err := authenticateClientControlConn(c, plan, vkey, versionPayload, transport)
-	if err != nil {
-		_ = c.Close()
-		return nil, "", err
-	}
+	c, uuid, _, err := dialServer(tp, vkey, server, proxyUrl, localIP)
 	return c, uuid, err
 }
 
-func buildClientControlConnPlan(ctx context.Context, tp string, server string, proxyURL string, localIP string, verifyCertificate bool) (clientControlConnPlan, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return clientControlConnPlan{}, err
-	}
-	timeout := limitClientConnTimeout(ctx, 10*time.Second)
-	if timeout <= 0 {
-		timeout = time.Millisecond
-	}
-	path := "/ws"
+// serverInfo is what a verified bridge connection tells about the server.
+type serverInfo struct {
+	// fingerprint is the SHA-256 of the bridge certificate, sent encrypted
+	// with the vkey during the handshake; nil before protocol 0.28.0.
+	fingerprint []byte
+	// ip is the server address the connection reached, empty when it went
+	// through a proxy (proxy_url, or a WebSocket bridge that may sit behind
+	// a reverse proxy or CDN).
+	ip string
+}
+
+// dialServer is NewConn returning the server information as well.
+func dialServer(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, serverInfo, error) {
+	var info serverInfo
+	//logs.Debug("NewConn: %s %s %s %s %s", tp, vkey, server, connType, proxyUrl)
+	var err error
+	var connection net.Conn
+	var sess *kcp.UDPSession
+	var path string
+	var isTls = false
+	var tlsVerify = false
+	var tlsFp []byte
+
+	timeout := time.Second * 10
 	alpn := "nps"
 	server, path = common.SplitServerAndPath(server)
-	if path != "" {
-		alpn = strings.TrimSpace(strings.TrimPrefix(path, "/"))
-	} else {
+	if path == "" {
 		path = "/ws"
+	} else {
+		alpn = strings.TrimSpace(strings.TrimPrefix(path, "/"))
 	}
 	addr, host, sni := common.SplitAddrAndHost(server)
 	server = EnsurePort(addr, tp)
+
 	if HasFailed {
-		if fastServer, err := common.GetFastAddr(server, tp); err == nil {
-			server = fastServer
+		if s, e := common.GetFastAddr(server, tp); e == nil {
+			server = s
+			//logs.Debug("Fast Server: %s", server)
 		} else {
-			logs.Debug("Server: %s Path: %s Error: %v", server, path, err)
+			logs.Debug("Server: %s Path: %s Error: %v", server, path, e)
 		}
 	}
-	return clientControlConnPlan{
-		ctx:               ctx,
-		tp:                tp,
-		server:            server,
-		proxyURL:          proxyURL,
-		localIP:           localIP,
-		verifyCertificate: verifyCertificate,
-		timeout:           timeout,
-		path:              path,
-		alpn:              alpn,
-		host:              host,
-		sni:               sni,
-	}, nil
-}
 
-func openClientControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	switch plan.tp {
+	switch tp {
 	case "tcp":
-		return openClientTCPControlTransport(plan)
+		connection, err = GetProxyConn(proxyUrl, server, timeout, localIP)
 	case "tls":
-		return openClientTLSControlTransport(plan)
+		isTls = true
+		conf := &tls.Config{
+			InsecureSkipVerify: true,
+			ServerName:         sni,
+		}
+		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
+		cancel()
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
+		connection = tlsConn
+		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
 	case "ws":
-		return openClientWSControlTransport(plan)
+		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
+		connection, err = conn.DialWS(rawConn, "ws://"+server+path, host, timeout)
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
 	case "wss":
-		return openClientWSSControlTransport(plan)
+		isTls = true
+		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		tlsConn, err := tlsconn.Client(ctx, rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: sni})
+		cancel()
+		if err != nil {
+			return nil, "", serverInfo{}, err
+		}
+		connection, err = conn.DialWS(tlsConn, "wss://"+server+path, host, timeout)
+		if err != nil {
+			_ = tlsConn.Close()
+			return nil, "", serverInfo{}, err
+		}
+		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
 	case "quic":
-		return openClientQUICControlTransport(plan)
+		isTls = true
+		tlsCfg := &tls.Config{
+			InsecureSkipVerify: true,
+			ServerName:         sni,
+			NextProtos:         []string{alpn},
+		}
+		ctx := context.Background()
+		sess, err := conn.DialQuicWithLocalIP(ctx, server, tlsCfg, QuicConfig, localIP)
+		if err != nil {
+			return nil, "", serverInfo{}, fmt.Errorf("quic dial error: %w", err)
+		}
+		state := sess.ConnectionState().TLS
+		tlsFp, tlsVerify = VerifyState(state, sni)
+		stream, err := sess.OpenStreamSync(ctx)
+		if err != nil {
+			_ = sess.CloseWithError(0, "")
+			return nil, "", serverInfo{}, fmt.Errorf("quic open stream error: %w", err)
+		}
+		connection = conn.NewQuicAutoCloseConn(stream, sess)
 	default:
-		return openClientKCPControlTransport(plan)
-	}
-}
-
-func openClientTCPControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	rawConn, err := GetProxyConnContext(plan.ctx, plan.proxyURL, plan.server, plan.timeout, plan.localIP)
-	if err != nil {
-		return clientControlTransport{}, err
-	}
-	return clientControlTransport{conn: rawConn}, nil
-}
-
-func openClientTLSControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	rawConn, err := GetProxyConnContext(plan.ctx, plan.proxyURL, plan.server, plan.timeout, plan.localIP)
-	if err != nil {
-		return clientControlTransport{}, err
-	}
-	conf := newClientTLSConfig(plan.sni, plan.verifyCertificate)
-	tlsConn, err := conn.NewTlsConnContext(plan.ctx, rawConn, plan.timeout, conf)
-	if err != nil {
-		_ = rawConn.Close()
-		return clientControlTransport{}, err
-	}
-	fingerprint, verified := VerifyTLS(tlsConn, plan.sni)
-	return clientControlTransport{
-		conn:           tlsConn,
-		isTLS:          true,
-		tlsVerified:    verified,
-		tlsFingerprint: fingerprint,
-	}, nil
-}
-
-func openClientWSControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	rawConn, err := GetProxyConnContext(plan.ctx, plan.proxyURL, plan.server, plan.timeout, plan.localIP)
-	if err != nil {
-		return clientControlTransport{}, err
-	}
-	urlStr := "ws://" + plan.server + plan.path
-	wsConn, resp, err := conn.DialWSContext(plan.ctx, rawConn, urlStr, plan.host, plan.timeout)
-	if err != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
+		sess, err = conn.DialKCPWithLocalIP(server, localIP)
+		if err == nil {
+			connection = sess
 		}
-		_ = rawConn.Close()
-		return clientControlTransport{}, err
 	}
-	return clientControlTransport{conn: conn.NewWsConn(wsConn)}, nil
-}
 
-func openClientWSSControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	rawConn, err := GetProxyConnContext(plan.ctx, plan.proxyURL, plan.server, plan.timeout, plan.localIP)
-	if err != nil {
-		return clientControlTransport{}, err
+	if connection == nil {
+		return nil, "", serverInfo{}, fmt.Errorf("newConn: unexpected nil connection for tp=%q server=%q", tp, server)
 	}
-	urlStr := "wss://" + plan.server + plan.path
-	wsConn, resp, err := conn.DialWSSContext(plan.ctx, rawConn, urlStr, plan.host, plan.sni, plan.timeout, plan.verifyCertificate)
-	if err != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		_ = rawConn.Close()
-		return clientControlTransport{}, err
-	}
-	transport := clientControlTransport{
-		conn:  conn.NewWsConn(wsConn),
-		isTLS: true,
-	}
-	if underlying := wsConn.NetConn(); underlying != nil {
-		transport.tlsFingerprint, transport.tlsVerified = VerifyTLS(underlying, plan.sni)
-	}
-	return transport, nil
-}
 
-func openClientQUICControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	tlsCfg := newClientTLSConfig(plan.sni, plan.verifyCertificate, plan.alpn)
-	dialCtx, cancelDial := context.WithTimeout(plan.ctx, plan.timeout)
-	defer cancelDial()
-
-	session, err := conn.DialQuicWithLocalIP(dialCtx, plan.server, tlsCfg, QuicConfig, plan.localIP)
 	if err != nil {
-		return clientControlTransport{}, fmt.Errorf("quic dial error: %w", err)
+		_ = connection.Close()
+		return nil, "", serverInfo{}, err
 	}
-	fingerprint, verified := VerifyState(session.ConnectionState().TLS, plan.sni)
-	stream, err := session.OpenStreamSync(dialCtx)
-	if err != nil {
-		_ = session.CloseWithError(0, "")
-		return clientControlTransport{}, fmt.Errorf("quic open stream error: %w", err)
-	}
-	return clientControlTransport{
-		conn:           conn.NewQuicAutoCloseConn(stream, session),
-		isTLS:          true,
-		tlsVerified:    verified,
-		tlsFingerprint: fingerprint,
-	}, nil
-}
 
-func openClientKCPControlTransport(plan clientControlConnPlan) (clientControlTransport, error) {
-	session, err := conn.DialKCPWithLocalIP(plan.server, plan.localIP)
-	if err != nil {
-		return clientControlTransport{}, err
-	}
-	return clientControlTransport{conn: session}, nil
-}
+	//logs.Debug("SetDeadline")
+	_ = connection.SetDeadline(time.Now().Add(timeout))
+	defer func() { _ = connection.SetDeadline(time.Time{}) }()
 
-func prepareClientControlWireConn(plan clientControlConnPlan, rawConn net.Conn) (*conn.Conn, func(), error) {
-	stopCloseOnCancel := closeConnOnContextDone(plan.ctx, rawConn)
-	cleanup := func() {
-		stopCloseOnCancel()
-		_ = rawConn.SetDeadline(time.Time{})
-	}
-	_ = rawConn.SetDeadline(time.Now().Add(plan.timeout))
-	c := conn.NewConn(rawConn)
+	c := conn.NewConn(connection)
 	if c == nil {
-		cleanup()
-		return nil, func() {}, fmt.Errorf("conn.NewConn returned nil (tp=%q server=%q)", plan.tp, plan.server)
+		_ = connection.Close()
+		return nil, "", serverInfo{}, fmt.Errorf("conn.NewConn returned nil (tp=%q server=%q)", tp, server)
 	}
-	return c, cleanup, nil
-}
-
-func writeClientControlVersion(c *conn.Conn) (clientControlVersionPayload, error) {
-	if _, err := c.BufferWrite([]byte(common.CONN_TEST)); err != nil {
-		return clientControlVersionPayload{}, err
+	if _, err := c.BufferWrite([]byte(common.ConnTest)); err != nil {
+		_ = c.Close()
+		return nil, "", serverInfo{}, err
 	}
 	minVerBytes := []byte(version.GetVersion(Ver))
 	if err := c.WriteLenContent(minVerBytes); err != nil {
-		return clientControlVersionPayload{}, err
+		_ = c.Close()
+		return nil, "", serverInfo{}, err
 	}
-	versionBytes := []byte(version.VERSION)
+	vs := []byte(version.VERSION)
 	padLen := rand.Intn(MaxPad)
 	if padLen > 0 {
-		versionBytes = append(versionBytes, make([]byte, padLen)...)
+		vs = append(vs, make([]byte, padLen)...)
 	}
-	if err := c.WriteLenContent(versionBytes); err != nil {
-		return clientControlVersionPayload{}, err
+	if err := c.WriteLenContent(vs); err != nil {
+		_ = c.Close()
+		return nil, "", serverInfo{}, err
 	}
-	return clientControlVersionPayload{
-		minVersion: minVerBytes,
-		version:    versionBytes,
-	}, nil
-}
-
-func authenticateClientControlConn(c *conn.Conn, plan clientControlConnPlan, vkey string, versionPayload clientControlVersionPayload, transport clientControlTransport) (string, error) {
+	var uuid string
 	if Ver == 0 {
-		return "", authenticateLegacyClientControlConn(c, vkey)
-	}
-	return authenticateRuntimeClientControlConn(c, plan.tp, vkey, versionPayload, transport)
-}
-
-func authenticateLegacyClientControlConn(c *conn.Conn, vkey string) error {
-	serverVersion, err := c.GetShortContent(32)
-	if err != nil {
-		logs.Error("%v", err)
-		return err
-	}
-	if crypt.Md5(version.GetVersion(Ver)) != string(serverVersion) {
-		logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
-	}
-	if _, err := c.BufferWrite([]byte(crypt.Md5(vkey))); err != nil {
-		return err
-	}
-	flag, err := c.ReadFlag()
-	if err != nil {
-		return err
-	}
-	if flag == common.VERIFY_EER {
-		return fmt.Errorf("validation key %s incorrect", vkey)
-	}
-	return nil
-}
-
-func authenticateRuntimeClientControlConn(c *conn.Conn, tp string, vkey string, versionPayload clientControlVersionPayload, transport clientControlTransport) (string, error) {
-	authPayload, err := buildClientControlRuntimeAuthPayload(tp, vkey, versionPayload)
-	if err != nil {
-		return "", err
-	}
-	if err := writeClientControlRuntimeAuthPayload(c, vkey, authPayload); err != nil {
-		return "", err
-	}
-	return readClientControlRuntimeAuthResponse(c, vkey, authPayload, transport)
-}
-
-func buildClientControlRuntimeAuthPayload(tp string, vkey string, versionPayload clientControlVersionPayload) (clientControlRuntimeAuthPayload, error) {
-	infoBuf, err := buildClientControlRuntimeInfo(tp, vkey)
-	if err != nil {
-		return clientControlRuntimeAuthPayload{}, err
-	}
-	randBuf, err := common.RandomBytes(1000)
-	if err != nil {
-		return clientControlRuntimeAuthPayload{}, err
-	}
-	timestamp := common.TimeNow().Unix() - int64(rand.Intn(6))
-	return clientControlRuntimeAuthPayload{
-		timestamp: timestamp,
-		info:      infoBuf,
-		random:    randBuf,
-		hmac:      crypt.ComputeHMAC(vkey, timestamp, versionPayload.minVersion, versionPayload.version, infoBuf, randBuf),
-	}, nil
-}
-
-func buildClientControlRuntimeInfo(tp string, vkey string) ([]byte, error) {
-	if Ver < 3 {
-		return crypt.EncryptBytes(common.EncodeIP(common.GetOutboundIP()), vkey)
-	}
-	tpBytes := []byte(tp)
-	if len(tpBytes) > 32 {
-		return nil, fmt.Errorf("tp too long: %d bytes (max %d)", len(tpBytes), 32)
-	}
-	buf := make([]byte, 0, len(common.EncodeIP(common.GetOutboundIP()))+1+len(tpBytes))
-	buf = append(buf, common.EncodeIP(common.GetOutboundIP())...)
-	buf = append(buf, byte(len(tpBytes)))
-	buf = append(buf, tpBytes...)
-	return crypt.EncryptBytes(buf, vkey)
-}
-
-func writeClientControlRuntimeAuthPayload(c *conn.Conn, vkey string, authPayload clientControlRuntimeAuthPayload) error {
-	if _, err := c.BufferWrite(common.TimestampToBytes(authPayload.timestamp)); err != nil {
-		return err
-	}
-	if _, err := c.BufferWrite([]byte(crypt.Blake2b(vkey))); err != nil {
-		return err
-	}
-	if err := c.WriteLenContent(authPayload.info); err != nil {
-		return err
-	}
-	if err := c.WriteLenContent(authPayload.random); err != nil {
-		return err
-	}
-	if _, err := c.BufferWrite(authPayload.hmac); err != nil {
-		return err
-	}
-	return nil
-}
-
-func readClientControlRuntimeAuthResponse(c *conn.Conn, vkey string, authPayload clientControlRuntimeAuthPayload, transport clientControlTransport) (string, error) {
-	serverResponse, err := c.GetShortContent(32)
-	if err != nil {
-		logs.Error("error reading server response: %v", err)
-		return "", fmt.Errorf("validation key %s incorrect", vkey)
-	}
-	expected := crypt.ComputeHMAC(vkey, authPayload.timestamp, authPayload.hmac, []byte(version.GetVersion(Ver)))
-	if !bytes.Equal(serverResponse, expected) {
-		logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
-		return "", fmt.Errorf("the client does not match the server version %s", version.GetVersion(Ver))
-	}
-	if Ver <= 1 {
-		return "", nil
-	}
-	if err := verifyClientControlTransportFingerprint(c, vkey, transport); err != nil {
-		return "", err
-	}
-	if Ver <= 3 {
-		return "", nil
-	}
-	uuid := ""
-	if Ver > 5 {
-		uuidBuf, err := c.GetShortLenContent()
+		// 0.26.0
+		b, err := c.GetShortContent(32)
 		if err != nil {
-			return "", err
+			logs.Error("%v", err)
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
 		}
-		uuid = string(uuidBuf)
+		if crypt.Md5(version.GetVersion(Ver)) != string(b) {
+			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
+			//_ = c.Close()
+			//return nil, err
+		}
+		if _, err := c.BufferWrite([]byte(crypt.Md5(vkey))); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		if s, err := c.ReadFlag(); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		} else if s == common.VerifyErr {
+			_ = c.Close()
+			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
+		}
+	} else {
+		// 0.27.0
+		ts := common.TimeNow().Unix() - int64(rand.Intn(6))
+		if _, err := c.BufferWrite(common.TimestampToBytes(ts)); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		if _, err := c.BufferWrite([]byte(crypt.Blake2b(vkey))); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		var infoBuf []byte
+		if Ver < 3 {
+			// 0.27.0 0.28.0
+			var err error
+			infoBuf, err = crypt.EncryptBytes(common.EncodeIP(common.GetOutboundIP()), vkey)
+			if err != nil {
+				_ = c.Close()
+				return nil, "", serverInfo{}, err
+			}
+		} else {
+			// 0.29.0
+			ipPart := common.EncodeIP(common.GetOutboundIP()) // 17bit
+			tpBytes := []byte(tp)
+			tpLen := len(tpBytes)
+			if tpLen > 32 {
+				_ = c.Close()
+				return nil, "", serverInfo{}, fmt.Errorf("tp too long: %d bytes (max %d)", tpLen, 32)
+			}
+			length := byte(tpLen)
+			// IP(17 bit) + len(1 bit) + tpBytes
+			buf := make([]byte, 0, len(ipPart)+1+len(tpBytes))
+			buf = append(buf, ipPart...)
+			buf = append(buf, length)
+			buf = append(buf, tpBytes...)
+			var err error
+			infoBuf, err = crypt.EncryptBytes(buf, vkey)
+			if err != nil {
+				_ = c.Close()
+				return nil, "", serverInfo{}, err
+			}
+		}
+		if err := c.WriteLenContent(infoBuf); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		randBuf, err := common.RandomBytes(1000)
+		if err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		if err := c.WriteLenContent(randBuf); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		hmacBuf := crypt.ComputeHMAC(vkey, ts, minVerBytes, vs, infoBuf, randBuf)
+		if _, err := c.BufferWrite(hmacBuf); err != nil {
+			_ = c.Close()
+			return nil, "", serverInfo{}, err
+		}
+		b, err := c.GetShortContent(32)
+		if err != nil {
+			logs.Error("error reading server response: %v", err)
+			_ = c.Close()
+			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
+		}
+		if !bytes.Equal(b, crypt.ComputeHMAC(vkey, ts, hmacBuf, []byte(version.GetVersion(Ver)))) {
+			logs.Warn("The client does not match the server version. The current core version of the client is %s", version.GetVersion(Ver))
+			_ = c.Close()
+			return nil, "", serverInfo{}, fmt.Errorf("the client does not match the server version %s", version.GetVersion(Ver))
+		}
+		if Ver > 1 {
+			fpBuf, err := c.GetShortLenContent()
+			if err != nil {
+				_ = c.Close()
+				return nil, "", serverInfo{}, err
+			}
+			fpDec, err := crypt.DecryptBytes(fpBuf, vkey)
+			if err != nil {
+				_ = c.Close()
+				return nil, "", serverInfo{}, err
+			}
+			if !SkipTLSVerify && isTls && !tlsVerify && !bytes.Equal(fpDec, tlsFp) {
+				logs.Warn("Certificate verification failed. To skip verification, please set -skip_verify=true")
+				_ = c.Close()
+				return nil, "", serverInfo{}, errors.New("validation cert incorrect")
+			}
+			crypt.AddTrustedCert(vkey, fpDec)
+			info.fingerprint = fpDec
+			if Ver > 3 {
+				// v0.30.0
+				if Ver > 5 {
+					// v0.32.0
+					uuidBuf, err := c.GetShortLenContent()
+					if err != nil {
+						_ = c.Close()
+						return nil, "", serverInfo{}, err
+					}
+					uuid = string(uuidBuf)
+				}
+				_, err := c.GetShortLenContent()
+				if err != nil {
+					_ = c.Close()
+					return nil, "", serverInfo{}, err
+				}
+			}
+		}
 	}
-	if _, err := c.GetShortLenContent(); err != nil {
-		return "", err
+	if proxyUrl == "" && tp != common.ConnWS && tp != common.ConnWSS {
+		if ap, perr := netip.ParseAddrPort(connection.RemoteAddr().String()); perr == nil {
+			info.ip = ap.Addr().Unmap().String()
+		}
 	}
-	return uuid, nil
-}
-
-func verifyClientControlTransportFingerprint(c *conn.Conn, vkey string, transport clientControlTransport) error {
-	fpBuf, err := c.GetShortLenContent()
-	if err != nil {
-		return err
-	}
-	fpDec, err := crypt.DecryptBytes(fpBuf, vkey)
-	if err != nil {
-		return err
-	}
-	if !SkipTLSVerify && transport.isTLS && !transport.tlsVerified && !bytes.Equal(fpDec, transport.tlsFingerprint) {
-		logs.Warn("Application-level certificate fingerprint verification failed. To skip it, please set -skip_verify=true")
-		return errors.New("validation cert incorrect")
-	}
-	crypt.AddTrustedCert(vkey, fpDec)
-	return nil
+	//_, err = SendType(c, connType, uuid)
+	return c, uuid, info, err
 }
 
 func SendType(c *conn.Conn, connType, uuid string) error {
@@ -1050,41 +643,39 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 	return nil
 }
 
-func limitClientConnTimeout(ctx context.Context, fallback time.Duration) time.Duration {
-	if fallback <= 0 {
-		return fallback
-	}
-	if ctx == nil {
-		return fallback
-	}
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return fallback
-	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 {
-		return time.Millisecond
-	}
-	if remaining < fallback {
-		return remaining
-	}
-	return fallback
-}
-
-func closeConnOnContextDone(ctx context.Context, connection net.Conn) func() {
-	if ctx == nil || connection == nil {
-		return func() {}
-	}
-	doneCtx := ctx.Done()
-	if doneCtx == nil {
-		return func() {}
-	}
-	stop := context.AfterFunc(ctx, func() {
-		_ = connection.Close()
-	})
-	return func() {
-		if stop != nil {
-			_ = stop()
+// GetProxyConn dials server directly, through proxyUrl, or through the proxy
+// configured in ALL_PROXY and NO_PROXY. proxyUrl may use the http, https,
+// socks5, socks5h, socks4 and socks4a schemes, or be a bare host:port, which
+// is taken as an http proxy. The whole dial, including any proxy handshake,
+// is bounded by timeout.
+func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (net.Conn, error) {
+	forward := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
+	var d netx.ContextDialer
+	if proxyUrl == "" {
+		var err error
+		if d, err = proxydial.FromEnvironment(forward, nil); err != nil {
+			return nil, err
+		}
+	} else {
+		u, err := proxydial.ParseURL(proxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		if d, err = proxydial.FromURL(u, forward, nil); err != nil {
+			return nil, err
 		}
 	}
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	return d.DialContext(ctx, "tcp", server)
 }
+
+// get a basic auth string
+//func getBasicAuth(username, password string) string {
+//	auth := username + ":" + password
+//	return base64.StdEncoding.EncodeToString([]byte(auth))
+//}

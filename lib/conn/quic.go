@@ -4,15 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/quic-go/quic-go"
 )
-
-var listenQUICPacketConn = func(localIP string) (net.PacketConn, error) {
-	return net.ListenUDP("udp", common.BuildUDPBindAddr(localIP))
-}
 
 type QuicStreamConn struct {
 	stream *quic.Stream
@@ -24,86 +21,71 @@ func NewQuicStreamConn(stream *quic.Stream, sess *quic.Conn) *QuicStreamConn {
 }
 
 func (q *QuicStreamConn) GetSession() *quic.Conn {
-	if q == nil {
-		return nil
-	}
 	return q.sess
 }
 
 func (q *QuicStreamConn) Read(p []byte) (int, error) {
-	if q == nil || q.stream == nil {
-		return 0, net.ErrClosed
-	}
 	return q.stream.Read(p)
 }
 
 func (q *QuicStreamConn) Write(p []byte) (int, error) {
-	if q == nil || q.stream == nil {
-		return 0, net.ErrClosed
-	}
 	return q.stream.Write(p)
 }
 
 func (q *QuicStreamConn) Close() error {
-	if q == nil || q.stream == nil {
-		return nil
-	}
 	return q.stream.Close()
 }
 
 func (q *QuicStreamConn) LocalAddr() net.Addr {
-	if q == nil || q.sess == nil {
-		return nil
-	}
 	return q.sess.LocalAddr()
 }
 
 func (q *QuicStreamConn) RemoteAddr() net.Addr {
-	if q == nil || q.sess == nil {
-		return nil
-	}
 	return q.sess.RemoteAddr()
 }
 
 func (q *QuicStreamConn) SetDeadline(t time.Time) error {
-	if q == nil || q.stream == nil {
-		return net.ErrClosed
-	}
 	return q.stream.SetDeadline(t)
 }
 
 func (q *QuicStreamConn) SetReadDeadline(t time.Time) error {
-	if q == nil || q.stream == nil {
-		return net.ErrClosed
-	}
 	return q.stream.SetReadDeadline(t)
 }
 
 func (q *QuicStreamConn) SetWriteDeadline(t time.Time) error {
-	if q == nil || q.stream == nil {
-		return net.ErrClosed
-	}
 	return q.stream.SetWriteDeadline(t)
 }
 
-type QuicAutoCloseConn struct{ *QuicStreamConn }
-
-func NewQuicAutoCloseConn(stream *quic.Stream, sess *quic.Conn) *QuicAutoCloseConn {
-	return &QuicAutoCloseConn{NewQuicStreamConn(stream, sess)}
+type QuicAutoCloseConn struct {
+	*QuicStreamConn
+	closeOnce sync.Once
 }
 
+func NewQuicAutoCloseConn(stream *quic.Stream, sess *quic.Conn) *QuicAutoCloseConn {
+	return &QuicAutoCloseConn{QuicStreamConn: NewQuicStreamConn(stream, sess)}
+}
+
+// quicCloseDrain is how long a closed QuicAutoCloseConn keeps its connection
+// so the data and FIN already written can reach the peer.
+const quicCloseDrain = 300 * time.Millisecond
+
+// Close closes the stream and, unless the peer closes the connection first,
+// the connection after quicCloseDrain. Closing the connection right away
+// would discard stream data the peer has not acknowledged yet.
 func (q *QuicAutoCloseConn) Close() error {
-	if q == nil || q.QuicStreamConn == nil {
-		return nil
-	}
-	if q.QuicStreamConn.stream != nil {
-		q.QuicStreamConn.stream.CancelRead(0)
+	q.closeOnce.Do(func() {
 		_ = q.QuicStreamConn.Close()
-	}
-	if q.sess == nil {
-		return nil
-	}
-	return q.sess.CloseWithError(0, "close")
+		go func() {
+			t := time.NewTimer(quicCloseDrain)
+			defer t.Stop()
+			select {
+			case <-q.sess.Context().Done():
+			case <-t.C:
+			}
+			_ = q.sess.CloseWithError(0, "close")
+		}()
+	})
+	return nil
 }
 
 func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config, quicCfg *quic.Config, localIP string) (*quic.Conn, error) {
@@ -115,7 +97,7 @@ func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config,
 	if err != nil {
 		return nil, err
 	}
-	packetConn, err := listenQUICPacketConn(localIP)
+	packetConn, err := net.ListenUDP("udp", bindAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +106,10 @@ func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config,
 		_ = packetConn.Close()
 		return nil, err
 	}
-	go closePacketConnOnDone(sess.Context().Done(), packetConn)
+	// quic.Dial does not take ownership of a caller-supplied PacketConn.
+	go func() {
+		<-sess.Context().Done()
+		_ = packetConn.Close()
+	}()
 	return sess, nil
-}
-
-func closePacketConnOnDone(done <-chan struct{}, packetConn net.PacketConn) {
-	if done == nil || packetConn == nil {
-		return
-	}
-	<-done
-	_ = packetConn.Close()
 }

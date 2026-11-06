@@ -70,25 +70,15 @@ func RegisterFormat(format string, parser parserFunc, extensions ...string) erro
 	if _, exists := parsers[format]; exists {
 		return fmt.Errorf("config format %q already registered", format)
 	}
-	normalizedExtensions := make([]string, 0, len(extensions))
-	pending := make(map[string]struct{}, len(extensions))
+	parsers[format] = parser
 	for _, ext := range extensions {
 		normalized := normalizeExt(ext)
 		if normalized == "" {
 			return fmt.Errorf("config format %q has invalid extension %q", format, ext)
 		}
-		if _, exists := pending[normalized]; exists {
-			return fmt.Errorf("config format %q declares duplicate extension %q", format, normalized)
-		}
 		if owner, exists := extensionFormats[normalized]; exists {
 			return fmt.Errorf("config extension %q already registered by %q", normalized, owner)
 		}
-		pending[normalized] = struct{}{}
-		normalizedExtensions = append(normalizedExtensions, normalized)
-	}
-
-	parsers[format] = parser
-	for _, normalized := range normalizedExtensions {
 		extensionFormats[normalized] = format
 		extensionOrder = append(extensionOrder, normalized)
 	}
@@ -230,8 +220,18 @@ func Load(path string) error {
 	if err != nil {
 		return fmt.Errorf("parse %s config %s: %w", format, path, err)
 	}
-	values = normalizeConfigValues(values)
 	snapshot := buildSnapshot(values)
+	keyPath := snapshot.Web.InstanceKeyFile
+	if keyPath == "" {
+		keyPath = "instance.key"
+	}
+	if !filepath.IsAbs(keyPath) {
+		keyPath = filepath.Join(filepath.Dir(path), keyPath)
+	}
+	snapshot.Web.InstanceKeyFile, err = filepath.Abs(keyPath)
+	if err != nil {
+		return fmt.Errorf("resolve instance key path: %w", err)
+	}
 
 	mu.Lock()
 	appConfig = &store{values: values, snapshot: snapshot}
@@ -307,39 +307,6 @@ func normalizeKey(key string) string {
 	return strings.Join(parts, "_")
 }
 
-func normalizeBaseURL(raw string) string {
-	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
-	if raw == "" || raw == "/" {
-		return ""
-	}
-	segments := make([]string, 0, strings.Count(raw, "/")+1)
-	for _, segment := range strings.Split(raw, "/") {
-		segment = strings.TrimSpace(segment)
-		if segment == "" {
-			continue
-		}
-		segments = append(segments, segment)
-	}
-	if len(segments) == 0 {
-		return ""
-	}
-	return "/" + strings.Join(segments, "/")
-}
-
-func NormalizeBaseURL(raw string) string {
-	return normalizeBaseURL(raw)
-}
-
-func normalizeConfigValues(values map[string]any) map[string]any {
-	if values == nil {
-		return values
-	}
-	if raw, ok := values["web_base_url"]; ok {
-		values["web_base_url"] = normalizeBaseURL(stringifyValue(raw))
-	}
-	return values
-}
-
 func joinKey(parts ...string) string {
 	items := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -396,13 +363,6 @@ func Bool(key string) (bool, error) {
 	return toBool(value)
 }
 
-func DefaultBool(key string, defaultValue bool) bool {
-	if value, err := Bool(key); err == nil {
-		return value
-	}
-	return defaultValue
-}
-
 func Int(key string) (int, error) {
 	value, err := getValue(key)
 	if err != nil {
@@ -411,26 +371,12 @@ func Int(key string) (int, error) {
 	return toInt(value)
 }
 
-func DefaultInt(key string, defaultValue int) int {
-	if value, err := Int(key); err == nil {
-		return value
-	}
-	return defaultValue
-}
-
 func Int64(key string) (int64, error) {
 	value, err := getValue(key)
 	if err != nil {
 		return 0, err
 	}
 	return toInt64(value)
-}
-
-func DefaultInt64(key string, defaultValue int64) int64 {
-	if value, err := Int64(key); err == nil {
-		return value
-	}
-	return defaultValue
 }
 
 func flattenSettings(root map[string]any) map[string]any {

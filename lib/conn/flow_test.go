@@ -1,115 +1,74 @@
 package conn
 
 import (
-	"bytes"
-	"errors"
 	"io"
 	"net"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/djylb/nps/lib/file"
 )
 
-type flowTestReadWriteCloser struct {
-	readBuf  *bytes.Buffer
-	writeBuf bytes.Buffer
-}
-
-func (c *flowTestReadWriteCloser) Read(p []byte) (int, error) {
-	if c == nil || c.readBuf == nil {
-		return 0, io.EOF
+func TestFlowConnStopsAtQuota(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	go func() { _, _ = io.Copy(io.Discard, b) }()
+	task := &file.Flow{FlowLimit: 1, InletFlow: 1<<20 - 100}
+	client := new(file.Flow)
+	c := NewFlowConn(a, task, client)
+	defer c.Close()
+	n, err := c.Write(make([]byte, 1000))
+	if n != 101 || err == nil || !strings.Contains(err.Error(), "Task: flow limit exceeded") {
+		t.Fatalf("Write past the quota = %d, %v; want 101 and the task's flow limit", n, err)
 	}
-	return c.readBuf.Read(p)
-}
-
-func (c *flowTestReadWriteCloser) Write(p []byte) (int, error) {
-	if c == nil {
-		return 0, io.ErrClosedPipe
+	if v := task.Values(); v.InletFlow != 1<<20+1 {
+		t.Fatalf("task inlet = %d, want a byte past the quota", v.InletFlow)
 	}
-	return c.writeBuf.Write(p)
-}
-
-func (c *flowTestReadWriteCloser) Close() error {
-	return nil
-}
-
-func TestFlowConnHandlesNilFlows(t *testing.T) {
-	raw := &flowTestReadWriteCloser{
-		readBuf: bytes.NewBufferString("abc"),
-	}
-	flowConn := NewFlowConn(raw, nil, nil)
-
-	buf := make([]byte, 3)
-	n, err := flowConn.Read(buf)
-	if err != nil && err != io.EOF {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if n != 3 || string(buf[:n]) != "abc" {
-		t.Fatalf("Read() = %d %q, want 3 %q", n, string(buf[:n]), "abc")
-	}
-
-	n, err = flowConn.Write([]byte("xyz"))
-	if err != nil {
-		t.Fatalf("Write() error = %v", err)
-	}
-	if n != 3 {
-		t.Fatalf("Write() n = %d, want 3", n)
-	}
-	if got := raw.writeBuf.String(); got != "xyz" {
-		t.Fatalf("wire bytes = %q, want %q", got, "xyz")
+	if v := client.Values(); v.InletFlow != 101 {
+		t.Fatalf("client inlet = %d, want 101", v.InletFlow)
 	}
 }
 
-func TestFlowConnHelpersHandleNilState(t *testing.T) {
-	var nilLen *LenConn
-	if _, err := nilLen.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("nil LenConn.Write() error = %v, want %v", err, net.ErrClosed)
+func TestFlowConnCountsReadsAsExport(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	go func() { _, _ = b.Write([]byte("hello")) }()
+	task := new(file.Flow)
+	c := NewFlowConn(a, task, nil)
+	defer c.Close()
+	if _, err := io.ReadFull(c, make([]byte, 5)); err != nil {
+		t.Fatal(err)
 	}
+	if v := task.Values(); v.ExportFlow != 5 || v.InletFlow != 0 {
+		t.Fatalf("Values() = %+v, want 5 bytes out", v)
+	}
+	if c.RemoteAddr() == nil {
+		t.Fatal("no remote address")
+	}
+}
 
-	malformedLen := &LenConn{}
-	if _, err := malformedLen.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("malformed LenConn.Write() error = %v, want %v", err, net.ErrClosed)
+func TestFlowConnClosedAtExpiry(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	client := &file.Flow{TimeLimit: time.Now().Add(50 * time.Millisecond)}
+	c := NewFlowConn(a, nil, client)
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Read(make([]byte, 1))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Read on an expired flow succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("an idle connection outlived its time limit")
 	}
-
-	var nilRW *RWConn
-	if _, err := nilRW.Read(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("nil RWConn.Read() error = %v, want %v", err, net.ErrClosed)
-	}
-	if _, err := nilRW.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("nil RWConn.Write() error = %v, want %v", err, net.ErrClosed)
-	}
-	if err := nilRW.Close(); err != nil {
-		t.Fatalf("nil RWConn.Close() error = %v, want nil", err)
-	}
-	if got := nilRW.LocalAddr(); got != nil {
-		t.Fatalf("nil RWConn.LocalAddr() = %v, want nil", got)
-	}
-	if got := nilRW.RemoteAddr(); got != nil {
-		t.Fatalf("nil RWConn.RemoteAddr() = %v, want nil", got)
-	}
-
-	malformedRW := &RWConn{}
-	if _, err := malformedRW.Read(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("malformed RWConn.Read() error = %v, want %v", err, net.ErrClosed)
-	}
-	if _, err := malformedRW.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("malformed RWConn.Write() error = %v, want %v", err, net.ErrClosed)
-	}
-	if err := malformedRW.Close(); err != nil {
-		t.Fatalf("malformed RWConn.Close() error = %v, want nil", err)
-	}
-
-	var nilFlow *FlowConn
-	if _, err := nilFlow.Read(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("nil FlowConn.Read() error = %v, want %v", err, net.ErrClosed)
-	}
-	if _, err := nilFlow.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("nil FlowConn.Write() error = %v, want %v", err, net.ErrClosed)
-	}
-
-	malformedFlow := &FlowConn{}
-	if _, err := malformedFlow.Read(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("malformed FlowConn.Read() error = %v, want %v", err, net.ErrClosed)
-	}
-	if _, err := malformedFlow.Write([]byte("x")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("malformed FlowConn.Write() error = %v, want %v", err, net.ErrClosed)
+	_ = c.Close()
+	c2 := NewFlowConn(b, nil, client)
+	if _, err := c2.Write([]byte("x")); err == nil || !strings.Contains(err.Error(), "Client: time limit exceeded") {
+		t.Fatalf("Write on an expired flow = %v", err)
 	}
 }

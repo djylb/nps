@@ -4,141 +4,30 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
-	"io"
-	"math/big"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/logs"
 )
 
 var (
 	cert       tls.Certificate
 	rsaKey     *rsa.PrivateKey
-	trustedSet sync.Map // key:string -> struct{}
-	vkeyToFp   sync.Map // key:vkey(string) -> fpHex(string)
 	SkipVerify = false
-	tlsCfg     *tls.Config
+
+	trusted   tlsconn.PinSet // bridge certificates of vkeyToPin
+	trustedMu sync.Mutex
+	vkeyToPin = make(map[string][sha256.Size]byte)
 )
-
-const defaultMaxSize = 8192
-
-type SniffConn struct {
-	net.Conn
-	mu           sync.Mutex
-	buf          []byte
-	Rb           []byte
-	maxSize      int
-	limitReached bool
-}
-
-func NewSniffConn(conn net.Conn, maxSize int) *SniffConn {
-	if maxSize <= 0 {
-		maxSize = defaultMaxSize
-	}
-	return &SniffConn{
-		Conn:    conn,
-		buf:     make([]byte, 0, maxSize),
-		maxSize: maxSize,
-	}
-}
-
-func (s *SniffConn) Read(p []byte) (int, error) {
-	s.mu.Lock()
-	if len(s.Rb) > 0 {
-		n := copy(p, s.Rb)
-		s.Rb = s.Rb[n:]
-		s.mu.Unlock()
-		return n, nil
-	}
-	if s.limitReached {
-		s.mu.Unlock()
-		return 0, io.EOF
-	}
-	s.mu.Unlock()
-
-	n, err := s.Conn.Read(p)
-	if n > 0 {
-		s.mu.Lock()
-		if remaining := s.maxSize - len(s.buf); remaining > 0 {
-			if remaining > n {
-				remaining = n
-			}
-			s.buf = append(s.buf, p[:remaining]...)
-		}
-		if len(s.buf) >= s.maxSize {
-			s.limitReached = true
-			s.mu.Unlock()
-			return n, io.EOF
-		}
-		s.mu.Unlock()
-	}
-	return n, err
-}
-
-func (s *SniffConn) Bytes() []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf
-}
-
-type ReadOnlyConn struct {
-	r          *SniffConn
-	remoteAddr net.Addr
-}
-
-func (c *ReadOnlyConn) Read(p []byte) (int, error) { return c.r.Read(p) }
-func (c *ReadOnlyConn) Write(_ []byte) (int, error) {
-	return 0, errors.New("readOnlyConn: write not allowed")
-}
-func (c *ReadOnlyConn) Close() error                       { return nil }
-func (c *ReadOnlyConn) LocalAddr() net.Addr                { return nil }
-func (c *ReadOnlyConn) RemoteAddr() net.Addr               { return c.remoteAddr }
-func (c *ReadOnlyConn) SetDeadline(_ time.Time) error      { return nil }
-func (c *ReadOnlyConn) SetReadDeadline(_ time.Time) error  { return nil }
-func (c *ReadOnlyConn) SetWriteDeadline(_ time.Time) error { return nil }
-
-func ReadClientHello(clientConn net.Conn, prefix []byte) (helloInfo *tls.ClientHelloInfo, rawData []byte, err error) {
-	sconn := NewSniffConn(clientConn, defaultMaxSize)
-	sconn.buf = append(sconn.buf, prefix...)
-	sconn.Rb = prefix
-
-	roc := &ReadOnlyConn{
-		r:          sconn,
-		remoteAddr: clientConn.RemoteAddr(),
-	}
-
-	var helloInfoPtr *tls.ClientHelloInfo
-
-	fakeTLS := tls.Server(roc, &tls.Config{
-		GetConfigForClient: func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
-			tmp := *hi
-			helloInfoPtr = &tmp
-			return nil, nil
-		},
-	})
-	err = fakeTLS.Handshake()
-	if helloInfoPtr == nil {
-		if err == nil {
-			err = errors.New("no clientHello, but handshake returned nil error")
-		}
-		return nil, sconn.Bytes(), err
-	}
-
-	return helloInfoPtr, sconn.Bytes(), nil
-}
 
 func InitTls(customCert tls.Certificate) {
 	if len(customCert.Certificate) > 0 {
@@ -147,17 +36,10 @@ func InitTls(customCert tls.Certificate) {
 	} else {
 		commonName := gofakeit.DomainName()
 		organization := gofakeit.Company()
-		c, k, err := generateKeyPair(commonName, organization)
-		if err == nil {
-			cert, err = tls.X509KeyPair(c, k)
-		}
-		if err != nil {
+		var err error
+		if cert, err = newSelfSigned(commonName, organization); err != nil {
 			logs.Error("Error initializing crypto certs %v", err)
 		}
-	}
-	tlsCfg = &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"h3", "h2", "http/1.1"},
 	}
 	if key, ok := cert.PrivateKey.(*rsa.PrivateKey); ok {
 		rsaKey = key
@@ -179,26 +61,6 @@ func GetFakeDomainName() string {
 
 func GetCert() tls.Certificate {
 	return cert
-}
-
-func GetCertCfg() *tls.Config {
-	return tlsCfg
-}
-
-func GetPublicKeyPEM() (string, error) {
-	if len(cert.Certificate) == 0 {
-		return "", fmt.Errorf("no certificate available")
-	}
-	leaf, err := x509.ParseCertificate(cert.Certificate[0])
-	if err != nil {
-		return "", fmt.Errorf("failed to parse certificate: %w", err)
-	}
-	pubDER, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal public key: %w", err)
-	}
-	pemBlock := &pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}
-	return string(pem.EncodeToMemory(pemBlock)), nil
 }
 
 func GetRSAPublicKeyPEM() (string, error) {
@@ -226,8 +88,11 @@ func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
 	if err == nil {
 		return plain, nil
 	}
-	//nolint:staticcheck // legacy PKCS1v15 compatibility
-	//lint:ignore SA1019 legacy PKCS1v15 compatibility
+	// The web login and register pages encrypt with JSEncrypt, which only
+	// produces PKCS#1 v1.5 ciphertext, so this fallback stays.
+	//nolint:staticcheck // PKCS#1 v1.5 is required by the JSEncrypt login form
+	//lint:ignore SA1019 PKCS#1 v1.5 is required by the JSEncrypt login form
+	//noinspection GoDeprecation
 	plain, legacyErr := rsa.DecryptPKCS1v15(rand.Reader, rsaKey, cipherBytes)
 	if legacyErr != nil {
 		return nil, fmt.Errorf("RSA decrypt error: oaep: %w; pkcs1v15: %v", err, legacyErr)
@@ -261,134 +126,92 @@ func ParseLoginPayload(base64Cipher string) (*LoginPayload, error) {
 	return &lp, nil
 }
 
+// GetCertFingerprint returns the SHA-256 of certificate's leaf, as the
+// bridge sends it to the client during the handshake, or nil if it has none.
 func GetCertFingerprint(certificate tls.Certificate) []byte {
 	if len(certificate.Certificate) == 0 {
 		return nil
 	}
-	sum := sha256.Sum256(certificate.Certificate[0])
+	sum := tlsconn.Fingerprint(certificate.Certificate[0])
 	return sum[:]
 }
 
-func EncodePeerTransportData(certificateDER []byte) string {
-	if len(certificateDER) == 0 {
-		return ""
+// PinFingerprint returns the pin set holding the certificate with
+// fingerprint, its SHA-256 (GetCertFingerprint), or an empty set, which
+// trusts no certificate, if fingerprint is not a SHA-256.
+func PinFingerprint(fingerprint []byte) *tlsconn.PinSet {
+	pins := &tlsconn.PinSet{}
+	if len(fingerprint) == sha256.Size {
+		pins.Add([sha256.Size]byte(fingerprint))
 	}
-	sum := sha256.Sum256(certificateDER)
-	return hex.EncodeToString(sum[:])
+	return pins
 }
 
-func VerifyPeerTransportData(vkey, transportData string, certificateDER []byte) bool {
-	if transportData == "" || len(certificateDER) == 0 {
-		return false
-	}
-	sum := sha256.Sum256(certificateDER)
-	if decoded, err := hex.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-	if decoded, err := base64.RawStdEncoding.DecodeString(transportData); err == nil {
-		if subtle.ConstantTimeCompare(decoded, sum[:]) == 1 {
-			return true
-		}
-	}
-
-	expected := GetHMAC(vkey, certificateDER)
-	if decoded, err := hex.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	if decoded, err := base64.RawStdEncoding.DecodeString(transportData); err == nil {
-		return subtle.ConstantTimeCompare(decoded, expected) == 1
-	}
-	return subtle.ConstantTimeCompare([]byte(transportData), expected) == 1
-}
-
+// AddTrustedCert trusts the bridge certificate with fingerprint fp for the
+// client with vkey, in place of the one trusted for it before.
 func AddTrustedCert(vkey string, fp []byte) {
-	hexFp := hex.EncodeToString(fp)
-	if oldRaw, loaded := vkeyToFp.Load(vkey); loaded {
-		oldFp := oldRaw.(string)
-		if oldFp == hexFp {
+	trustedMu.Lock()
+	defer trustedMu.Unlock()
+	old, had := vkeyToPin[vkey]
+	if len(fp) != sha256.Size {
+		delete(vkeyToPin, vkey)
+	} else {
+		pin := [sha256.Size]byte(fp)
+		if had && old == pin {
 			return
 		}
-		trustedSet.Delete(oldFp)
+		vkeyToPin[vkey] = pin
+		trusted.Add(pin)
 	}
-	vkeyToFp.Store(vkey, hexFp)
-	trustedSet.LoadOrStore(hexFp, struct{}{})
+	if had && !pinInUse(old) {
+		trusted.Remove(old)
+	}
+}
+
+// pinInUse reports whether a vkey still trusts pin. trustedMu is held.
+func pinInUse(pin [sha256.Size]byte) bool {
+	for _, p := range vkeyToPin {
+		if p == pin {
+			return true
+		}
+	}
+	return false
 }
 
 func NewTlsServerConn(conn net.Conn) net.Conn {
-	config := &tls.Config{Certificates: []tls.Certificate{cert}}
-	return tls.Server(conn, config)
+	return tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}})
 }
 
+// NewTlsClientConn returns a TLS client on conn that accepts only bridge
+// certificates trusted by AddTrustedCert, or any if SkipVerify.
 func NewTlsClientConn(conn net.Conn) net.Conn {
 	if SkipVerify {
 		return tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: true,
 		})
 	}
-
-	return tls.Client(conn, &tls.Config{
-		InsecureSkipVerify: true,
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if len(rawCerts) == 0 {
-				return errors.New("no server certificate")
-			}
-			sum := sha256.Sum256(rawCerts[0])
-			fp := hex.EncodeToString(sum[:])
-			if _, ok := trustedSet.Load(fp); ok {
-				return nil
-			}
-			return errors.New("untrusted server certificate")
-		},
-	})
+	return tls.Client(conn, trusted.ClientConfig(nil))
 }
 
-func generateKeyPair(commonName, organization string) (rawCert, rawKey []byte, err error) {
-	// Create private key and self-signed certificate
-	// Adapted from https://golang.org/src/crypto/tls/generate_cert.go
+// NewPinnedTlsClientConfig returns a TLS client configuration that accepts
+// only the server certificate with fingerprint (its SHA-256), as the server
+// sent it, encrypted with the vkey, during the bridge handshake. It ignores
+// SkipVerify: the fingerprint is authenticated by the vkey itself.
+func NewPinnedTlsClientConfig(fingerprint []byte) *tls.Config {
+	return PinFingerprint(fingerprint).ClientConfig(&tls.Config{MinVersion: tls.VersionTLS13})
+}
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+// newSelfSigned returns a ten-year self-signed server certificate with a
+// fresh RSA key, which the web login also uses to decrypt credentials.
+func newSelfSigned(commonName, organization string) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return
+		return tls.Certificate{}, err
 	}
-	validFor := time.Hour * 24 * 365 * 10 // ten years
-	notBefore := time.Now()
-	notAfter := notBefore.Add(validFor)
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return
-	}
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{organization},
-			CommonName:   commonName,
-			Country:      []string{"US"},
-		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return
-	}
-
-	rawCert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	rawKey = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	return
+	return tlsconn.NewSelfSigned(tlsconn.SelfSignedOptions{
+		Hosts:        []string{commonName},
+		Organization: organization,
+		ValidFor:     10 * 365 * 24 * time.Hour,
+		Key:          key,
+	})
 }

@@ -1,38 +1,74 @@
-# NPS 文档
+# NPS
 
-NPS 是一款轻量级内网穿透代理服务器。一个最小链路通常由公网 `NPS`、内网 `NPC` 和一条转发规则组成。
+[![GitHub stars](https://img.shields.io/github/stars/djylb/nps.svg)](https://github.com/djylb/nps)
+[![GitHub forks](https://img.shields.io/github/forks/djylb/nps.svg)](https://github.com/djylb/nps)
+[![Release](https://github.com/djylb/nps/workflows/Release/badge.svg)](https://github.com/djylb/nps/actions)
+[![GitHub All Releases](https://img.shields.io/github/downloads/djylb/nps/total)](https://github.com/djylb/nps/releases)
 
-第一次使用时，建议先让服务端和客户端连通，再选择域名转发、TCP、UDP、代理、私密代理或 P2P 等规则。
+> 在 [GitHub](https://github.com/djylb/nps) 点击右上角 ⭐ Star 以支持我在空闲时间继续开发
 
-## 快速入口
+---
 
-| 你要做什么 | 建议先看 |
-| --- | --- |
-| 完成第一次部署和验证 | [10 分钟快速开始](/getting-started/quick-start.md) |
-| 选择安装方式 | [安装指南](/getting-started/install.md) |
-| 启动服务端 | [启动 NPS 服务端](/getting-started/start-server.md) |
-| 启动客户端 | [启动 NPC 客户端](/getting-started/start-client.md) |
-| 按目标选择规则 | [规则选型总览](/guide/design/tunnel-selection.md) |
-| 查询命令行参数 | [NPC 命令行参数](/reference/npc-cli.md) |
-| 查询服务端配置 | [服务端配置文件](/reference/server-config.md) |
-| 开发管理页面或脚本 | [管理接入入口](/reference/integration/management-api-entrypoints.md) |
+NPS 是一款**轻量级**、**高性能**、**功能强大**的**内网穿透代理服务器**。
 
-## 文档分区
+* **多协议支持**：原生支持 **TCP** 与 **UDP** 流量转发，可承载任意上层协议（SSH、RDP、数据库、游戏联机、内网 DNS、音视频流等）。
+* **域名转发**：内置完整的 HTTP/HTTPS 反向代理能力，可通过自定义域名与证书，将公网请求安全透明地转发到内网 Web 服务，适用于线上灰度发布、微信/小程序调试、Webhook 回调等场景。
+* **代理模式丰富**：内置 **HTTP 代理**、**Socks5 代理**，实现类似 VPN 的访问体验；还提供**私密代理、P2P 连接**，无需将端口暴露在公网环境下。
+* **高效 P2P 直连**：支持 TCP/UDP 端到端映射、透明代理和 Socks5 直连；打洞成功时流量**不走服务器**，打洞失败 TCP 端口 可自动回落到私密代理。
+* **Web 管理界面**：可视化控制台实时展示隧道状态、流量统计与访问日志，支持多用户、多隧道与细粒度访问控制。
+* **多连接协议**：支持通过 TCP、KCP、TLS、QUIC、WS、WSS 协议连接服务器，适应各种不同环境需求。
 
-| 分区 | 放什么 | 入口 |
-| --- | --- | --- |
-| 开始使用 | 首次部署、首次连接、基础概念 | [开始使用](/getting-started/README.md) |
-| 操作指南 | 已经连通后的日常操作步骤 | [操作指南](/guide/README.md) |
-| 选型与规则 | 按业务目标选择转发方式 | [选型与规则](/guide/design/README.md) |
-| 参考资料 | 配置字段、功能边界、FAQ | [参考资料](/reference/README.md) |
-| 接口与集成 | API、平台接入、SDK、Launch 规范 | [接口与集成](/reference/integration/README.md) |
+---
 
-## 最短路径
+## 背景
 
-1. 先看 [10 分钟快速开始](/getting-started/quick-start.md)。
-2. 按你的环境选择 [安装指南](/getting-started/install.md)。
-3. 启动 [NPS 服务端](/getting-started/start-server.md)。
-4. 在 Web 管理界面的“客户端列表”复制快捷命令，启动 [NPC 客户端](/getting-started/start-client.md)。
-5. 连通后再按目标进入 [规则选型总览](/guide/design/tunnel-selection.md)。
+![image](https://cdn.jsdelivr.net/gh/djylb/nps/image/web.png)
 
-如果你已经知道要查的字段或接口，直接进入对应参考页，不必从快速开始重新阅读。
+---
+
+## ✨ 核心功能
+
+### 🕸️ **域名转发** (支持H3)
+
+通过域名访问内网Web服务器，HTTP/HTTPS 反向代理，相当于 Nginx ，可用于：
+
+* 内网 Web 服务上线部署
+* 微信公众号、小程序本地调试
+* Webhook 回调调试
+
+### 🔌 **TCP 隧道**
+
+映射任意 TCP 端口到 NPS 服务器，常用于：
+
+* RDP 远程桌面
+* 连接内网 SSH
+* 远程数据库访问
+
+### 📡 **UDP 隧道**
+
+映射任意 UDP 端口到 NPS 服务器，常用于：
+
+* 访问内网 DNS
+* 内网游戏联机
+* 音视频串流
+
+### 🌍 **HTTP/Socks5 代理**
+
+通过 HTTP/Socks5 代理访问内网资源，相当于 VPN ，常用于：
+
+* 内部服务器远程访问
+* 企业办公系统外网访问
+* 远程内网运维调试
+
+混合代理（HTTP/SOCKS5）支持**黑/白名单**限制访问目标地址。
+
+### 🤫 **私密代理**
+
+端到端的 TCP 端口映射，端口不会暴露于公网，适用于安全性较高的场景，所有流量经 NPS 服务器中转。
+
+### 🌐 **P2P 连接**
+
+支持 TCP/UDP 端到端映射、Socks5 隧道、透明代理。
+
+  * **流量不走中转**：直连时不占用服务器带宽。
+  * **自动回落**：若 P2P 打洞失败，TCP 端口映射将自动切换到“私密代理”中继模式。

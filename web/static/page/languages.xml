@@ -84,18 +84,6 @@
 		<zh-CN>编辑域名</zh-CN>
 		<en-US>Edit Host</en-US>
 	</lang>
-	<lang id="page-userlist">
-		<zh-CN>用户列表</zh-CN>
-		<en-US>User List</en-US>
-	</lang>
-	<lang id="page-useradd">
-		<zh-CN>新增用户</zh-CN>
-		<en-US>Add User</en-US>
-	</lang>
-	<lang id="page-useredit">
-		<zh-CN>编辑用户</zh-CN>
-		<en-US>Edit User</en-US>
-	</lang>
 	<lang id="page-listclientid">
 		<zh-CN>隧道列表 - 客户端 ID: </zh-CN>
 		<en-US>Tunnels List - Client ID: </en-US>
@@ -131,10 +119,6 @@
 	<lang id="page-listfileserver">
 		<zh-CN>文件代理列表</zh-CN>
 		<en-US>File Server List</en-US>
-	</lang>
-	<lang id="page-listtunnel">
-		<zh-CN>隧道列表</zh-CN>
-		<en-US>Tunnel List</en-US>
 	</lang>
 	<lang id="page-add">
 		<zh-CN>新增</zh-CN>
@@ -280,26 +264,6 @@
 		<zh-CN>WSS 端口</zh-CN>
 		<en-US>WSS Port</en-US>
 	</lang>
-	<lang id="word-tcp">
-		<zh-CN>TCP</zh-CN>
-		<en-US>TCP</en-US>
-	</lang>
-	<lang id="word-kcp">
-		<zh-CN>KCP</zh-CN>
-		<en-US>KCP</en-US>
-	</lang>
-	<lang id="word-tls">
-		<zh-CN>TLS</zh-CN>
-		<en-US>TLS</en-US>
-	</lang>
-	<lang id="word-ws">
-		<zh-CN>WS</zh-CN>
-		<en-US>WS</en-US>
-	</lang>
-	<lang id="word-wss">
-		<zh-CN>WSS</zh-CN>
-		<en-US>WSS</en-US>
-	</lang>
 	<lang id="word-tcpports">
 		<zh-CN>TCP / TLS 端口</zh-CN>
 		<en-US>TCP / TLS Port</en-US>
@@ -315,22 +279,6 @@
 	<lang id="word-uptime">
 		<zh-CN>在线时间</zh-CN>
 		<en-US>Uptime</en-US>
-	</lang>
-	<lang id="word-day-short">
-		<zh-CN>天</zh-CN>
-		<en-US>d</en-US>
-	</lang>
-	<lang id="word-hour-short">
-		<zh-CN>时</zh-CN>
-		<en-US>h</en-US>
-	</lang>
-	<lang id="word-minute-short">
-		<zh-CN>分</zh-CN>
-		<en-US>m</en-US>
-	</lang>
-	<lang id="word-second-short">
-		<zh-CN>秒</zh-CN>
-		<en-US>s</en-US>
 	</lang>
 	<lang id="word-compress">
 		<zh-CN>压缩</zh-CN>
@@ -372,18 +320,6 @@
 		<zh-CN>当前连接数</zh-CN>
 		<en-US>Current Connections</en-US>
 	</lang>
-	<lang id="word-runtimeinstances">
-		<zh-CN>运行时实例</zh-CN>
-		<en-US>Runtime Instances</en-US>
-	</lang>
-	<lang id="word-runtimeuuid">
-		<zh-CN>运行时 UUID</zh-CN>
-		<en-US>Runtime UUID</en-US>
-	</lang>
-	<lang id="word-runtimebaseversion">
-		<zh-CN>基础版本</zh-CN>
-		<en-US>Base Version</en-US>
-	</lang>
 	<lang id="word-dashboard">
 		<zh-CN>仪表盘</zh-CN>
 		<en-US>Dashboard</en-US>
@@ -403,10 +339,6 @@
 	<lang id="word-bantype">
 		<zh-CN>类型</zh-CN>
 		<en-US>Type</en-US>
-	</lang>
-	<lang id="word-ip">
-		<zh-CN>IP</zh-CN>
-		<en-US>IP</en-US>
 	</lang>
 	<lang id="word-failtimes">
 		<zh-CN>失败次数</zh-CN>
@@ -562,29 +494,17 @@
 		<zh-CN>入口流量</zh-CN>
 		<en-US>Inlet Flow</en-US>
 	</lang>
-	<lang id="word-totalflow">
-		<zh-CN>总流量</zh-CN>
-		<en-US>Total Flow</en-US>
+	<lang id="word-actualflow">
+		<zh-CN>实际消耗</zh-CN>
+		<en-US>Actual Usage</en-US>
 	</lang>
-	<lang id="word-iprestriction">
-		<zh-CN>IP 限制</zh-CN>
-		<en-US>IP Restriction</en-US>
+	<lang id="word-totalflow">
+		<zh-CN>上下行流量</zh-CN>
+		<en-US>In/Out Flow</en-US>
 	</lang>
 	<lang id="word-load">
 		<zh-CN>负载</zh-CN>
 		<en-US>Load</en-US>
-	</lang>
-	<lang id="word-loadavg1">
-		<zh-CN>负载 1</zh-CN>
-		<en-US>Load AVG 1</en-US>
-	</lang>
-	<lang id="word-loadavg5">
-		<zh-CN>负载 5</zh-CN>
-		<en-US>Load AVG 5</en-US>
-	</lang>
-	<lang id="word-loadavg15">
-		<zh-CN>负载 15</zh-CN>
-		<en-US>Load AVG 15</en-US>
 	</lang>
 	<lang id="word-localpath">
 		<zh-CN>本地路径</zh-CN>
@@ -613,10 +533,6 @@
 	<lang id="word-flowreset">
 		<zh-CN>清空流量统计</zh-CN>
 		<en-US>Reset Traffic Statistics</en-US>
-	</lang>
-	<lang id="word-resettotalflow">
-		<zh-CN>重置累计流量</zh-CN>
-		<en-US>Reset Total Flow</en-US>
 	</lang>
 	<lang id="word-maxconnections">
 		<zh-CN>最大连接数</zh-CN>
@@ -653,34 +569,6 @@
 	<lang id="word-option">
 		<zh-CN>选项</zh-CN>
 		<en-US>Option</en-US>
-	</lang>
-	<lang id="word-name">
-		<zh-CN>名称</zh-CN>
-		<en-US>Name</en-US>
-	</lang>
-	<lang id="word-resource">
-		<zh-CN>资源</zh-CN>
-		<en-US>Resource</en-US>
-	</lang>
-	<lang id="word-action">
-		<zh-CN>动作</zh-CN>
-		<en-US>Action</en-US>
-	</lang>
-	<lang id="word-requestid">
-		<zh-CN>请求 ID</zh-CN>
-		<en-US>Request ID</en-US>
-	</lang>
-	<lang id="word-created">
-		<zh-CN>创建时间</zh-CN>
-		<en-US>Created</en-US>
-	</lang>
-	<lang id="word-attempt">
-		<zh-CN>尝试</zh-CN>
-		<en-US>Attempt</en-US>
-	</lang>
-	<lang id="word-sequence">
-		<zh-CN>序号</zh-CN>
-		<en-US>Sequence</en-US>
 	</lang>
 	<lang id="word-outbandwidth">
 		<zh-CN>流出带宽</zh-CN>
@@ -726,10 +614,6 @@
 		<zh-CN>目标访问控制</zh-CN>
 		<en-US>Destination ACL</en-US>
 	</lang>
-	<lang id="word-entryacl">
-		<zh-CN>入口访问控制</zh-CN>
-		<en-US>Entry ACL</en-US>
-	</lang>
 	<lang id="word-whitelist">
 		<zh-CN>白名单</zh-CN>
 		<en-US>Whitelist</en-US>
@@ -741,10 +625,6 @@
 	<lang id="word-destaclrules">
 		<zh-CN>目标访问控制条目</zh-CN>
 		<en-US>Dest ACL Rules</en-US>
-	</lang>
-	<lang id="word-entryaclrules">
-		<zh-CN>入口访问控制条目</zh-CN>
-		<en-US>Entry ACL Rules</en-US>
 	</lang>
 	<lang id="word-empty">
 		<zh-CN>（空）</zh-CN>
@@ -773,6 +653,70 @@
 	<lang id="word-publicvkey">
 		<zh-CN>公钥</zh-CN>
 		<en-US>Public vkey</en-US>
+	</lang>
+	<lang id="word-globaltraffic">
+		<zh-CN>服务端转发</zh-CN>
+		<en-US>Server Forwarded</en-US>
+	</lang>
+	<lang id="word-forwardin">
+		<zh-CN>流入</zh-CN>
+		<en-US>In</en-US>
+	</lang>
+	<lang id="word-forwardout">
+		<zh-CN>流出</zh-CN>
+		<en-US>Out</en-US>
+	</lang>
+	<lang id="word-currentuploadrate">
+		<zh-CN>当前上行速度</zh-CN>
+		<en-US>Current Upload Speed</en-US>
+	</lang>
+	<lang id="word-currentdownloadrate">
+		<zh-CN>当前下行速度</zh-CN>
+		<en-US>Current Download Speed</en-US>
+	</lang>
+	<lang id="info-uploaddirection">
+		<zh-CN>访问者 → 后端</zh-CN>
+		<en-US>Visitor → Backend</en-US>
+	</lang>
+	<lang id="info-downloaddirection">
+		<zh-CN>后端 → 访问者</zh-CN>
+		<en-US>Backend → Visitor</en-US>
+	</lang>
+	<lang id="word-uploadspeed">
+		<zh-CN>上行网速</zh-CN>
+		<en-US>Upload Speed</en-US>
+	</lang>
+	<lang id="word-downloadspeed">
+		<zh-CN>下行网速</zh-CN>
+		<en-US>Download Speed</en-US>
+	</lang>
+	<lang id="word-uploadlimit">
+		<zh-CN>上行限速</zh-CN>
+		<en-US>Upload Rate Limit</en-US>
+	</lang>
+	<lang id="word-downloadlimit">
+		<zh-CN>下行限速</zh-CN>
+		<en-US>Download Rate Limit</en-US>
+	</lang>
+	<lang id="info-directionalratelimit">
+		<zh-CN>单位 KB/s（1 KB = 1024 B），0 表示不限速。上行：访问者 → 后端；下行：后端 → 访问者。</zh-CN>
+		<en-US>Unit: KB/s (1 KB = 1024 B). 0 means unlimited. Upload: visitor → backend; download: backend → visitor.</en-US>
+	</lang>
+	<lang id="info-p2pratelimit">
+		<zh-CN>P2P 限速仅对中继流量生效，直连流量不经过服务端。</zh-CN>
+		<en-US>P2P rate limits apply only to relayed traffic. Direct connections do not pass through the server.</en-US>
+	</lang>
+	<lang id="word-unlimitedrate">
+		<zh-CN>0（不限速）</zh-CN>
+		<en-US>0 (Unlimited)</en-US>
+	</lang>
+	<lang id="word-globalratelimit">
+		<zh-CN>全局带宽限制 (KB/s)</zh-CN>
+		<en-US>Global Rate Limit (KB/s)</en-US>
+	</lang>
+	<lang id="info-globalratelimit">
+		<zh-CN>所有客户端的转发流量合计不超过此带宽，与各客户端自身的带宽限制同时生效，0 为不限制。客户端列表上方显示服务端的转发流量（流入为访问者发往客户端，流出为客户端返回访问者），“清除流量”会同时清零。</zh-CN>
+		<en-US>All forwarded traffic together stays within this rate, on top of each client's own limit; 0 means unlimited. The client list shows the total traffic forwarded by the server (in: from visitors to clients, out: back to visitors), which "Clear Flow" resets too.</en-US>
 	</lang>
 	<lang id="word-ratelimit">
 		<zh-CN>带宽限制</zh-CN>
@@ -825,18 +769,6 @@
 	<lang id="word-delete">
 		<zh-CN>删除</zh-CN>
 		<en-US>Delete</en-US>
-	</lang>
-	<lang id="word-clear">
-		<zh-CN>清空</zh-CN>
-		<en-US>Clear</en-US>
-	</lang>
-	<lang id="word-replay">
-		<zh-CN>重放</zh-CN>
-		<en-US>Replay</en-US>
-	</lang>
-	<lang id="word-viewqueue">
-		<zh-CN>查看队列</zh-CN>
-		<en-US>View Queue</en-US>
 	</lang>
 	<lang id="word-execute">
 		<zh-CN>执行</zh-CN>
@@ -902,26 +834,6 @@
 		<zh-CN>状态</zh-CN>
 		<en-US>Status</en-US>
 	</lang>
-	<lang id="word-active">
-		<zh-CN>启用</zh-CN>
-		<en-US>Active</en-US>
-	</lang>
-	<lang id="word-disabled">
-		<zh-CN>禁用</zh-CN>
-		<en-US>Disabled</en-US>
-	</lang>
-	<lang id="word-management-status-direct-only">
-		<zh-CN>仅直连</zh-CN>
-		<en-US>Direct Only</en-US>
-	</lang>
-	<lang id="word-management-status-reverse-connected">
-		<zh-CN>反向连接已建立</zh-CN>
-		<en-US>Reverse Connected</en-US>
-	</lang>
-	<lang id="word-management-status-reverse-disconnected">
-		<zh-CN>反向连接未建立</zh-CN>
-		<en-US>Reverse Disconnected</en-US>
-	</lang>
 	<lang id="word-httpproxy">
 		<zh-CN>HTTP 状态</zh-CN>
 		<en-US>HTTP Status</en-US>
@@ -978,14 +890,6 @@
 		<zh-CN>客户端总数</zh-CN>
 		<en-US>Total Clients</en-US>
 	</lang>
-	<lang id="word-maxclients">
-		<zh-CN>最大客户端数</zh-CN>
-		<en-US>Max Clients</en-US>
-	</lang>
-	<lang id="word-maxhosts">
-		<zh-CN>最大域名数</zh-CN>
-		<en-US>Max Hosts</en-US>
-	</lang>
 	<lang id="word-trafficdatapersistence">
 		<zh-CN>流量数据持久化</zh-CN>
 		<en-US>Traffic data persistence</en-US>
@@ -1022,34 +926,6 @@
 		<zh-CN>单位</zh-CN>
 		<en-US>Flow Limit</en-US>
 	</lang>
-	<lang id="unit-byte">
-		<zh-CN>B</zh-CN>
-		<en-US>B</en-US>
-	</lang>
-	<lang id="unit-kilobyte">
-		<zh-CN>KB</zh-CN>
-		<en-US>KB</en-US>
-	</lang>
-	<lang id="unit-megabyte">
-		<zh-CN>MB</zh-CN>
-		<en-US>MB</en-US>
-	</lang>
-	<lang id="unit-gigabyte">
-		<zh-CN>GB</zh-CN>
-		<en-US>GB</en-US>
-	</lang>
-	<lang id="unit-terabyte">
-		<zh-CN>TB</zh-CN>
-		<en-US>TB</en-US>
-	</lang>
-	<lang id="unit-kilobyte-per-second">
-		<zh-CN>KB/秒</zh-CN>
-		<en-US>KB/s</en-US>
-	</lang>
-	<lang id="unit-per-second">
-		<zh-CN>/秒</zh-CN>
-		<en-US>/s</en-US>
-	</lang>
 	<lang id="word-urlroute">
 		<zh-CN>URL 路由</zh-CN>
 		<en-US>URL Router</en-US>
@@ -1069,234 +945,6 @@
 	<lang id="word-user">
 		<zh-CN>用户</zh-CN>
 		<en-US>User</en-US>
-	</lang>
-	<lang id="word-expireat">
-		<zh-CN>到期时间</zh-CN>
-		<en-US>Expire At</en-US>
-	</lang>
-	<lang id="word-permanent">
-		<zh-CN>永久</zh-CN>
-		<en-US>Permanent</en-US>
-	</lang>
-	<lang id="word-unlimited">
-		<zh-CN>不限</zh-CN>
-		<en-US>Unlimited</en-US>
-	</lang>
-	<lang id="word-owneruser">
-		<zh-CN>归属用户</zh-CN>
-		<en-US>Owner User</en-US>
-	</lang>
-	<lang id="word-manageruserids">
-		<zh-CN>管理用户 ID</zh-CN>
-		<en-US>Manager User IDs</en-US>
-	</lang>
-	<lang id="word-source">
-		<zh-CN>来源</zh-CN>
-		<en-US>Source</en-US>
-	</lang>
-	<lang id="word-sourcetype-node-admin">
-		<zh-CN>节点管理员</zh-CN>
-		<en-US>Node Admin</en-US>
-	</lang>
-	<lang id="word-sourcetype-node-user">
-		<zh-CN>节点用户</zh-CN>
-		<en-US>Node User</en-US>
-	</lang>
-	<lang id="word-sourcetype-platform-admin">
-		<zh-CN>平台管理员</zh-CN>
-		<en-US>Platform Admin</en-US>
-	</lang>
-	<lang id="word-sourcetype-platform-user">
-		<zh-CN>平台用户</zh-CN>
-		<en-US>Platform User</en-US>
-	</lang>
-	<lang id="word-platform">
-		<zh-CN>管理平台</zh-CN>
-		<en-US>Platform</en-US>
-	</lang>
-	<lang id="word-actor">
-		<zh-CN>操作者</zh-CN>
-		<en-US>Actor</en-US>
-	</lang>
-	<lang id="word-revision">
-		<zh-CN>修订版本</zh-CN>
-		<en-US>Revision</en-US>
-	</lang>
-	<lang id="word-updated">
-		<zh-CN>更新时间</zh-CN>
-		<en-US>Updated</en-US>
-	</lang>
-	<lang id="word-platformid">
-		<zh-CN>平台 ID</zh-CN>
-		<en-US>Platform ID</en-US>
-	</lang>
-	<lang id="word-callback">
-		<zh-CN>回调</zh-CN>
-		<en-US>Callback</en-US>
-	</lang>
-	<lang id="word-callbackqueue">
-		<zh-CN>回调队列</zh-CN>
-		<en-US>Callback Queue</en-US>
-	</lang>
-	<lang id="word-callbackurl">
-		<zh-CN>回调地址</zh-CN>
-		<en-US>Callback URL</en-US>
-	</lang>
-	<lang id="word-platformfilter">
-		<zh-CN>选择平台</zh-CN>
-		<en-US>Select Platform</en-US>
-	</lang>
-	<lang id="word-queuedcount">
-		<zh-CN>队列数量</zh-CN>
-		<en-US>Queued Count</en-US>
-	</lang>
-	<lang id="word-queuecapacity">
-		<zh-CN>队列容量</zh-CN>
-		<en-US>Queue Capacity</en-US>
-	</lang>
-	<lang id="word-dropped">
-		<zh-CN>丢弃</zh-CN>
-		<en-US>Dropped</en-US>
-	</lang>
-	<lang id="word-lastqueued">
-		<zh-CN>最近入队</zh-CN>
-		<en-US>Last Queued</en-US>
-	</lang>
-	<lang id="word-lastreplay">
-		<zh-CN>最近重放</zh-CN>
-		<en-US>Last Replay</en-US>
-	</lang>
-	<lang id="word-masterurl">
-		<zh-CN>管理平台地址</zh-CN>
-		<en-US>Master URL</en-US>
-	</lang>
-	<lang id="word-controlscope">
-		<zh-CN>控制范围</zh-CN>
-		<en-US>Control Scope</en-US>
-	</lang>
-	<lang id="word-controlscope-full">
-		<zh-CN>完全控制</zh-CN>
-		<en-US>Full Control</en-US>
-	</lang>
-	<lang id="word-controlscope-account">
-		<zh-CN>账户范围</zh-CN>
-		<en-US>Account Scope</en-US>
-	</lang>
-	<lang id="word-connectmode">
-		<zh-CN>连接模式</zh-CN>
-		<en-US>Connect Mode</en-US>
-	</lang>
-	<lang id="word-connectmode-direct">
-		<zh-CN>直连</zh-CN>
-		<en-US>Direct</en-US>
-	</lang>
-	<lang id="word-connectmode-reverse">
-		<zh-CN>反向</zh-CN>
-		<en-US>Reverse</en-US>
-	</lang>
-	<lang id="word-connectmode-dual">
-		<zh-CN>双向</zh-CN>
-		<en-US>Dual</en-US>
-	</lang>
-	<lang id="word-serviceuser">
-		<zh-CN>服务用户</zh-CN>
-		<en-US>Service User</en-US>
-	</lang>
-	<lang id="word-reversews">
-		<zh-CN>反向 WS</zh-CN>
-		<en-US>Reverse WS</en-US>
-	</lang>
-	<lang id="word-heartbeat">
-		<zh-CN>心跳</zh-CN>
-		<en-US>Heartbeat</en-US>
-	</lang>
-	<lang id="word-timeout">
-		<zh-CN>超时</zh-CN>
-		<en-US>Timeout</en-US>
-	</lang>
-	<lang id="word-configured">
-		<zh-CN>已配置</zh-CN>
-		<en-US>Configured</en-US>
-	</lang>
-	<lang id="word-na">
-		<zh-CN>无</zh-CN>
-		<en-US>N/A</en-US>
-	</lang>
-	<lang id="word-connected">
-		<zh-CN>已连接</zh-CN>
-		<en-US>Connected</en-US>
-	</lang>
-	<lang id="word-connectedat">
-		<zh-CN>连接时间</zh-CN>
-		<en-US>Connected At</en-US>
-	</lang>
-	<lang id="word-bridge">
-		<zh-CN>桥接</zh-CN>
-		<en-US>Bridge</en-US>
-	</lang>
-	<lang id="word-service">
-		<zh-CN>服务</zh-CN>
-		<en-US>Service</en-US>
-	</lang>
-	<lang id="word-signal">
-		<zh-CN>信令</zh-CN>
-		<en-US>Signal</en-US>
-	</lang>
-	<lang id="word-lastpong">
-		<zh-CN>最近 Pong</zh-CN>
-		<en-US>Last Pong</en-US>
-	</lang>
-	<lang id="word-lastsuccess">
-		<zh-CN>最近成功</zh-CN>
-		<en-US>Last Success</en-US>
-	</lang>
-	<lang id="word-retrypolicy">
-		<zh-CN>重试策略</zh-CN>
-		<en-US>Retry Policy</en-US>
-	</lang>
-	<lang id="word-laststatuscode">
-		<zh-CN>最近状态码</zh-CN>
-		<en-US>Last Status Code</en-US>
-	</lang>
-	<lang id="word-deliveries">
-		<zh-CN>成功投递</zh-CN>
-		<en-US>Deliveries</en-US>
-	</lang>
-	<lang id="word-failures">
-		<zh-CN>失败次数</zh-CN>
-		<en-US>Failures</en-US>
-	</lang>
-	<lang id="word-consecutivefailures">
-		<zh-CN>连续失败</zh-CN>
-		<en-US>Consecutive Failures</en-US>
-	</lang>
-	<lang id="word-nodeapibase">
-		<zh-CN>节点 API 基地址</zh-CN>
-		<en-US>Node API Base</en-US>
-	</lang>
-	<lang id="word-manageapibase">
-		<zh-CN>管理 API 基地址</zh-CN>
-		<en-US>Manage API Base</en-US>
-	</lang>
-	<lang id="word-capabilities">
-		<zh-CN>能力列表</zh-CN>
-		<en-US>Capabilities</en-US>
-	</lang>
-	<lang id="word-error">
-		<zh-CN>错误</zh-CN>
-		<en-US>Error</en-US>
-	</lang>
-	<lang id="word-bytes">
-		<zh-CN>字节</zh-CN>
-		<en-US>bytes</en-US>
-	</lang>
-	<lang id="word-none">
-		<zh-CN>无</zh-CN>
-		<en-US>None</en-US>
-	</lang>
-	<lang id="word-platformmanaged">
-		<zh-CN>平台直管</zh-CN>
-		<en-US>Platform Managed</en-US>
 	</lang>
 	<lang id="word-verifykey">
 		<zh-CN>唯一验证密钥</zh-CN>
@@ -1390,20 +1038,12 @@
 		<en-US>Colon separated, multiple lines please fill in</en-US>
 	</lang>
 	<lang id="info-destacl">
-		<zh-CN>启用黑/白名单后，SOCKS5 不支持 UDP（将禁用 UDP Associate）。</zh-CN>
-		<en-US>When whitelist/blacklist is enabled, SOCKS5 does not support UDP (UDP Associate will be disabled).</en-US>
-	</lang>
-	<lang id="info-entryacl">
-		<zh-CN>入口访问控制用于限制访问来源；关闭时不做来源限制。</zh-CN>
-		<en-US>Entry ACL limits who can access this resource. Disable it to allow all sources.</en-US>
+		<zh-CN>名单对 HTTP、SOCKS5 TCP 以及 SOCKS5 UDP 的每个数据报生效，被拒绝的 UDP 数据报直接丢弃。</zh-CN>
+		<en-US>The lists apply to HTTP, SOCKS5 TCP and every SOCKS5 UDP datagram; denied datagrams are dropped.</en-US>
 	</lang>
 	<lang id="info-destaclrules">
-		<zh-CN>每行一个：IP、CIDR、域名或通配符域名（如 *.example.com）。</zh-CN>
-		<en-US>One per line: IP, CIDR, hostname, or wildcard domain (e.g. *.example.com).</en-US>
-	</lang>
-	<lang id="info-entryaclrules">
-		<zh-CN>每行一个：IP、CIDR、geoip:国家代码、IPv4 前缀通配（如 10.*），支持 # 注释。</zh-CN>
-		<en-US>One per line: IP, CIDR, geoip:country-code, IPv4 prefix wildcard (for example 10.*). Lines starting with # are comments.</en-US>
+		<zh-CN>每行一条：IP、CIDR、full:example.com（精确匹配）、*.example.com（仅子域名）、*example.com 或 domain:example.com（含自身和子域名）、keyword:（不带前缀的域名也按关键字匹配）、regexp:、geosite:cn、geoip:cn，# 开头为注释。</zh-CN>
+		<en-US>One per line: IP, CIDR, full:example.com (exact match), *.example.com (subdomains only), *example.com or domain:example.com (the domain and its subdomains), keyword: (a host name without prefix is a keyword too), regexp:, geosite:cn, geoip:cn. Lines starting with # are comments.</en-US>
 	</lang>
 	<lang id="info-httpsjustproxy">
 		<zh-CN>按域名（SNI）分流；不在此解密 TLS，数据原样转给后端。提示：后端启用 HTTP/2 时，浏览器可能复用连接，导致偶发串站。</zh-CN>
@@ -1460,290 +1100,6 @@
 	<lang id="info-flowreset">
 		<zh-CN>选中时清空当前流量统计信息</zh-CN>
 		<en-US>Clear current traffic statistics when selected</en-US>
-	</lang>
-	<lang id="info-client-list-subtitle">
-		<zh-CN>统一查看节点客户端的归属、生命周期和委派管理信息。批量操作与节点管理 API 保持一致，并遵循与单项操作相同的权限范围。</zh-CN>
-		<en-US>Track node clients with unified ownership, lifecycle, and delegated-management metadata. Batch actions stay aligned with the node management API and respect the same permission scope as single-item actions.</en-US>
-	</lang>
-	<lang id="info-banlist-subtitle">
-		<zh-CN>使用与其他管理表格一致的批量流程查看被封禁的用户名和 IP。可按选择项精确解封，也可在紧急情况下执行全量清理。</zh-CN>
-		<en-US>Review blocked usernames and IPs with the same bulk workflow used by other management tables. Use selected unban for targeted cleanup, or keep the full clear action for emergency resets.</en-US>
-	</lang>
-	<lang id="info-tunnel-list-subtitle">
-		<zh-CN>使用与管理界面其他部分一致的批量选择和规范节点管理路由来查看和操作隧道。</zh-CN>
-		<en-US>Browse and operate tunnels with the same batch selection and canonical node-manage routing used by the rest of the management UI.</en-US>
-	</lang>
-	<lang id="info-host-list-subtitle">
-		<zh-CN>使用与隧道和客户端一致的批量选择和归属感知流程管理域名转发规则。</zh-CN>
-		<en-US>Manage host forwarding rules with the same selection, batch, and ownership-aware workflow used by tunnels and clients.</en-US>
-	</lang>
-	<lang id="info-tunnel-add-subtitle">
-		<zh-CN>创建隧道时沿用节点管理页统一的归属、配额和生命周期规则。先选择客户端，再配置下方与模式相关的字段。</zh-CN>
-		<en-US>Create a tunnel with the same ownership, quota, and lifecycle rules used across the node management pages. Select a client first, then tune mode-specific fields below.</en-US>
-	</lang>
-	<lang id="info-tunnel-edit-subtitle">
-		<zh-CN>使用与其他页面一致的表单交互编辑隧道路由、配额和协议选项。切换模式时仅保留对应模式相关字段。</zh-CN>
-		<en-US>Edit tunnel routing, quota, and protocol options with the same form behavior used elsewhere. Changing the mode keeps only the fields relevant to that tunnel type visible.</en-US>
-	</lang>
-	<lang id="info-host-add-subtitle">
-		<zh-CN>创建域名规则时沿用节点统一的归属和生命周期模型。TLS 相关选项会随所选协议保持分组和联动。</zh-CN>
-		<en-US>Create a host rule with the same ownership and lifecycle model used by the rest of the node. TLS-related options stay grouped and change consistently with the selected scheme.</en-US>
-	</lang>
-	<lang id="info-host-edit-subtitle">
-		<zh-CN>使用与新增域名相同的分组控件编辑域名路由、TLS 行为和响应改写。只读会话仍可查看完整的生效配置。</zh-CN>
-		<en-US>Edit host routing, TLS behavior, and response rewriting with the same grouped controls used in host creation. Read-only sessions still see the full effective configuration.</en-US>
-	</lang>
-	<lang id="info-readonly-tunnel">
-		<zh-CN>你当前仅有该隧道的查看权限，可编辑字段已锁定，且不能执行更新或克隆。</zh-CN>
-		<en-US>You have view-only access to this tunnel. Editable fields are locked because the current actor cannot update or clone it.</en-US>
-	</lang>
-	<lang id="info-readonly-host">
-		<zh-CN>你当前仅有该域名规则的查看权限，可编辑字段已锁定，且不能执行更新或克隆。</zh-CN>
-		<en-US>You have view-only access to this host rule. Editable fields are locked because the current actor cannot update or clone it.</en-US>
-	</lang>
-	<lang id="info-user-list-subtitle">
-		<zh-CN>使用与其他资源列表一致的批量管理方式维护节点本地用户。这些用户独立于管理平台账户，是节点内归属、配额和生命周期控制的真实来源。</zh-CN>
-		<en-US>Manage node-local users with the same batch-friendly workflow used by other resource lists. These users stay independent from management-platform accounts and remain the authority for local ownership, quotas, and lifecycle enforcement.</en-US>
-	</lang>
-	<lang id="info-user-list-note">
-		<zh-CN>节点本地用户与管理平台用户彼此独立。隐藏的平台服务账户不会显示在此列表中，由节点自动维护。</zh-CN>
-		<en-US>Local node users are independent from management-platform users. Hidden platform service accounts are excluded from this list and are managed automatically by the node.</en-US>
-	</lang>
-	<lang id="info-user-delete-bulk-confirm">
-		<zh-CN>删除这 {count} 个用户，并级联删除其下所有客户端、隧道和域名？</zh-CN>
-		<en-US>Delete these {count} users and cascade-delete all of their clients, tunnels, and hosts?</en-US>
-	</lang>
-	<lang id="info-user-delete-single-confirm">
-		<zh-CN>删除该用户，并级联删除其下所有客户端、隧道和域名？</zh-CN>
-		<en-US>Delete this user and cascade-delete all of its clients, tunnels, and hosts?</en-US>
-	</lang>
-	<lang id="info-user-add-subtitle">
-		<zh-CN>创建节点本地用户账号，用于在当前节点上独立归属多个客户端。这里的用户配额决定本地生命周期与计费边界。</zh-CN>
-		<en-US>Create a node-local user account that can independently own multiple clients on this node. User quotas here define local lifecycle and billing boundaries.</en-US>
-	</lang>
-	<lang id="info-user-edit-subtitle">
-		<zh-CN>调整承载客户端归属、本地配额和生命周期控制的节点本地用户。修改会统一作用到当前节点上该用户归属的所有客户端。</zh-CN>
-		<en-US>Adjust the node-local user profile that anchors client ownership, local quotas, and lifecycle enforcement. Changes apply consistently across all clients owned by this user on the current node.</en-US>
-	</lang>
-	<lang id="info-user-username-placeholder">
-		<zh-CN>租户用户名</zh-CN>
-		<en-US>Tenant username</en-US>
-	</lang>
-	<lang id="info-user-password-placeholder">
-		<zh-CN>初始登录密码</zh-CN>
-		<en-US>Initial login password</en-US>
-	</lang>
-	<lang id="info-user-password-keep-placeholder">
-		<zh-CN>留空则保持当前密码</zh-CN>
-		<en-US>Leave empty to keep current password</en-US>
-	</lang>
-	<lang id="info-user-password-help">
-		<zh-CN>这是一个节点本地用户账号。它可以归属当前节点上的多个客户端，并在没有外部管理平台时独立运行。</zh-CN>
-		<en-US>This is a node-local user account. It can own multiple clients on this node and run independently of any external management platform.</en-US>
-	</lang>
-	<lang id="info-user-totp-placeholder">
-		<zh-CN>可选，输入 Base32 TOTP 密钥</zh-CN>
-		<en-US>Optional. Enter a Base32 TOTP secret</en-US>
-	</lang>
-	<lang id="info-user-totp-keep-placeholder">
-		<zh-CN>留空则保持当前 TOTP 密钥</zh-CN>
-		<en-US>Leave empty to keep current TOTP secret</en-US>
-	</lang>
-	<lang id="info-user-totp-help">
-		<zh-CN>可选。配置后账号可启用 TOTP；如果已配置 TOTP，则密码可以为空。</zh-CN>
-		<en-US>Optional. When configured, the account can use TOTP; once TOTP is enabled, the password may be empty.</en-US>
-	</lang>
-	<lang id="word-clear-password">
-		<zh-CN>清空密码</zh-CN>
-		<en-US>Clear password</en-US>
-	</lang>
-	<lang id="info-user-clear-password-help">
-		<zh-CN>勾选后会显式清空当前密码。</zh-CN>
-		<en-US>When checked, the current password will be cleared explicitly.</en-US>
-	</lang>
-	<lang id="word-clear-totp">
-		<zh-CN>清空 TOTP</zh-CN>
-		<en-US>Clear TOTP</en-US>
-	</lang>
-	<lang id="info-user-clear-totp-help">
-		<zh-CN>勾选后会显式清空当前 TOTP 密钥。</zh-CN>
-		<en-US>When checked, the current TOTP secret will be cleared explicitly.</en-US>
-	</lang>
-	<lang id="info-user-status-help">
-		<zh-CN>禁用后用户将无法登录，其归属客户端也会被生命周期巡检器踢下线。</zh-CN>
-		<en-US>Disabled users are blocked from login and their bound clients will be kicked by the lifecycle monitor.</en-US>
-	</lang>
-	<lang id="info-user-status-edit-help">
-		<zh-CN>状态变更会通过生命周期巡检器同步作用到该用户归属的所有客户端。</zh-CN>
-		<en-US>Changing status takes effect on all bound clients through the lifecycle monitor.</en-US>
-	</lang>
-	<lang id="info-datetime-or-unix-placeholder">
-		<zh-CN>YYYY-MM-DD HH:MM:SS 或 Unix 时间戳</zh-CN>
-		<en-US>YYYY-MM-DD HH:MM:SS or unix timestamp</en-US>
-	</lang>
-	<lang id="info-leave-empty-permanent">
-		<zh-CN>留空表示永久有效。</zh-CN>
-		<en-US>Leave empty for permanent access.</en-US>
-	</lang>
-	<lang id="info-bytes-unlimited-placeholder">
-		<zh-CN>字节数，0 表示不限</zh-CN>
-		<en-US>Bytes, 0 = unlimited</en-US>
-	</lang>
-	<lang id="info-rate-kbs-unlimited-placeholder">
-		<zh-CN>KB/s，0 表示不限</zh-CN>
-		<en-US>KB/s, 0 = unlimited</en-US>
-	</lang>
-	<lang id="info-count-unlimited-placeholder">
-		<zh-CN>0 表示不限</zh-CN>
-		<en-US>0 = unlimited</en-US>
-	</lang>
-	<lang id="info-user-total-flow-current">
-		<zh-CN>当前累计：{in} / {out} 字节</zh-CN>
-		<en-US>Current total: {in} / {out} bytes</en-US>
-	</lang>
-	<lang id="info-user-reset-total-flow-help">
-		<zh-CN>仅清空该用户持久化的计费总流量，客户端运行时流量计数会继续独立累计。</zh-CN>
-		<en-US>This clears the persisted billing total for the user only. Client runtime traffic counters continue independently.</en-US>
-	</lang>
-	<lang id="info-readonly-user-profile">
-		<zh-CN>你当前仅有该用户的查看权限，表单字段已锁定。</zh-CN>
-		<en-US>You have view-only access to this user profile. Editable fields are locked because the current actor cannot update it.</en-US>
-	</lang>
-	<lang id="info-client-add-subtitle">
-		<zh-CN>创建节点客户端，并统一配置归属、生命周期与连接控制。本地用户可以归属多个客户端，未分配归属的客户端则保持为平台直管。</zh-CN>
-		<en-US>Create a node client with consistent ownership, lifecycle, and connection controls. Local users can own multiple clients, while unassigned clients remain platform-managed.</en-US>
-	</lang>
-	<lang id="info-client-edit-subtitle">
-		<zh-CN>在同一表单中更新客户端接入、归属和本地运行控制。归属用户承担生命周期与计费，委派管理用户仅拥有操作权限。</zh-CN>
-		<en-US>Update client access, ownership, and local runtime controls from a single form. Owner users carry lifecycle and billing, while delegated managers only receive operation rights.</en-US>
-	</lang>
-	<lang id="info-client-flow-limit-help">
-		<zh-CN>仅对平台直管客户端生效。已归属用户的客户端会继承其归属用户的生命周期限制。</zh-CN>
-		<en-US>Only applies to platform-managed clients. Bound clients inherit lifecycle from their owner user.</en-US>
-	</lang>
-	<lang id="info-client-expire-help">
-		<zh-CN>留空表示永久有效。已归属用户的客户端会继承其归属用户的生命周期限制。</zh-CN>
-		<en-US>Leave empty for permanent access. Bound clients inherit lifecycle from their owner user.</en-US>
-	</lang>
-	<lang id="info-owner-user-help">
-		<zh-CN>选择归属用户后，客户端会继承其生命周期、计费和权限控制。留空则保持为平台直管客户端。</zh-CN>
-		<en-US>Select a managed user to inherit lifecycle, billing, and permissions. Leave empty to keep this client platform-managed.</en-US>
-	</lang>
-	<lang id="info-owner-user-edit-help">
-		<zh-CN>选择归属用户后，客户端的生命周期、计费和登录控制都会迁移到该用户；清空则恢复为平台直管。</zh-CN>
-		<en-US>Selecting a managed user moves lifecycle, billing, and login to that user. Clearing the selection turns this client back into a platform-managed client.</en-US>
-	</lang>
-	<lang id="info-manager-user-ids-placeholder">
-		<zh-CN>每行一个用户 ID，或使用逗号分隔</zh-CN>
-		<en-US>One user ID per line or comma-separated</en-US>
-	</lang>
-	<lang id="info-manager-user-ids-help">
-		<zh-CN>可选的节点本地委派管理用户。这些用户可以管理客户端，但不会成为计费归属方。</zh-CN>
-		<en-US>Optional node-local delegated managers. These users can operate the client without becoming the billing owner.</en-US>
-	</lang>
-	<lang id="info-owner-user-bound-help">
-		<zh-CN>该客户端的登录与生命周期控制由归属用户继承。</zh-CN>
-		<en-US>This client inherits login and lifecycle controls from its owner user.</en-US>
-	</lang>
-	<lang id="info-readonly-client">
-		<zh-CN>你当前仅有该客户端的查看权限，可编辑字段已锁定。</zh-CN>
-		<en-US>You have view-only access to this client. Editable fields are locked because the current actor cannot update it.</en-US>
-	</lang>
-	<lang id="info-inherited-owner-user">
-		<zh-CN>继承归属用户</zh-CN>
-		<en-US>Inherited from owner user</en-US>
-	</lang>
-	<lang id="info-global-node-subtitle">
-		<zh-CN>编辑节点级默认配置，并查看当前节点如何向管理平台暴露自身能力。即使有外部平台接入，这些配置仍以节点本地状态为准。</zh-CN>
-		<en-US>Edit node-level defaults and review how this node exposes itself to management platforms. These values remain local truth even when external platforms connect through the node API.</en-US>
-	</lang>
-	<lang id="title-node-management-integrations">
-		<zh-CN>节点管理集成</zh-CN>
-		<en-US>Node Management Integrations</en-US>
-	</lang>
-	<lang id="info-node-management-integrations">
-		<zh-CN>查看已配置的管理平台、节点声明的能力，以及它们应使用的节点 API 端点。所有平台都应以节点返回状态为准。</zh-CN>
-		<en-US>Inspect configured management platforms, advertised capabilities, and the node API endpoints they should use. Node responses remain the authoritative state for all connected platforms.</en-US>
-	</lang>
-	<lang id="title-configured-management-platforms">
-		<zh-CN>已配置的管理平台</zh-CN>
-		<en-US>Configured Management Platforms</en-US>
-	</lang>
-	<lang id="info-node-local-truth">
-		<zh-CN>该节点始终保存自己的本地真源数据。外部管理平台通过节点 API 接入，并应以节点返回结果作为最终状态。</zh-CN>
-		<en-US>This node keeps its own local truth. External management platforms connect through the node API and should treat node responses as authoritative state.</en-US>
-	</lang>
-	<lang id="info-no-management-platform">
-		<zh-CN>当前未配置任何管理平台，节点正以本地独立模式运行。</zh-CN>
-		<en-US>No management platform is configured. This node is currently operating in standalone-local mode.</en-US>
-	</lang>
-	<lang id="info-banlist-bulk-unban-confirm">
-		<zh-CN>确认解除这 {count} 条选中封禁记录吗？</zh-CN>
-		<en-US>Unban these {count} selected record(s)?</en-US>
-	</lang>
-	<lang id="title-node-api-endpoints">
-		<zh-CN>节点 API 端点</zh-CN>
-		<en-US>Node API Endpoints</en-US>
-	</lang>
-	<lang id="title-advertised-capabilities">
-		<zh-CN>对外声明的能力</zh-CN>
-		<en-US>Advertised Capabilities</en-US>
-	</lang>
-	<lang id="title-callback-queue-detail">
-		<zh-CN>回调队列详情</zh-CN>
-		<en-US>Callback Queue Details</en-US>
-	</lang>
-	<lang id="title-callback-queue-page">
-		<zh-CN>回调队列管理</zh-CN>
-		<en-US>Callback Queue Management</en-US>
-	</lang>
-	<lang id="info-callback-queue-page">
-		<zh-CN>查看管理平台回调失败队列，必要时手动重放或清空。节点本地队列仅用于补偿 webhook 失败，不替代节点真实状态。</zh-CN>
-		<en-US>Inspect failed management platform callback deliveries and replay or clear them when needed. This local node queue only compensates webhook delivery failures and does not replace node source-of-truth state.</en-US>
-	</lang>
-	<lang id="info-empty-callback-queue">
-		<zh-CN>当前没有待补偿的回调事件。</zh-CN>
-		<en-US>No queued callback events.</en-US>
-	</lang>
-	<lang id="info-client-runtime-instances-empty">
-		<zh-CN>当前没有在线运行时实例。</zh-CN>
-		<en-US>No online runtime instances.</en-US>
-	</lang>
-	<lang id="info-client-runtime-instances-loading">
-		<zh-CN>正在加载运行时实例...</zh-CN>
-		<en-US>Loading runtime instances...</en-US>
-	</lang>
-	<lang id="info-no-callback-platform">
-		<zh-CN>当前没有启用回调的管理平台，因此没有可管理的回调队列。</zh-CN>
-		<en-US>No callback-enabled management platform is configured, so there is no callback queue to manage.</en-US>
-	</lang>
-	<lang id="info-callback-queue-load-failed">
-		<zh-CN>加载回调队列失败。</zh-CN>
-		<en-US>Failed to load callback queue.</en-US>
-	</lang>
-	<lang id="info-callback-queue-replay-confirm">
-		<zh-CN>确认立即重放该平台的回调失败队列吗？</zh-CN>
-		<en-US>Replay queued callback events for this platform now?</en-US>
-	</lang>
-	<lang id="info-callback-queue-clear-confirm">
-		<zh-CN>确认清空该平台的回调失败队列吗？</zh-CN>
-		<en-US>Clear queued callback events for this platform?</en-US>
-	</lang>
-	<lang id="info-callback-queue-action-failed">
-		<zh-CN>回调队列操作失败。</zh-CN>
-		<en-US>Callback queue action failed.</en-US>
-	</lang>
-	<lang id="info-callback-queue-replay-triggered">
-		<zh-CN>已触发回调队列重放。</zh-CN>
-		<en-US>Callback queue replay requested.</en-US>
-	</lang>
-	<lang id="info-callback-queue-cleared">
-		<zh-CN>回调队列已清空。</zh-CN>
-		<en-US>Callback queue cleared.</en-US>
-	</lang>
-	<lang id="info-callback-queue-platform-label">
-		<zh-CN>平台：{platform_id}</zh-CN>
-		<en-US>Platform: {platform_id}</en-US>
 	</lang>
 	<lang id="info-onlyproxy">
 		<zh-CN>仅限Socks5、Web、HTTP转发代理</zh-CN>
@@ -1817,25 +1173,157 @@
 		<zh-CN>307 临时重定向（留空关闭）</zh-CN>
 		<en-US>307 Temporary Redirect (leave blank to disable)</en-US>
 	</lang>
-	<lang id="info-global-entryacl">
-		<zh-CN>全局来源访问控制。按 global &gt; user &gt; client &gt; tunnel/host 顺序叠加，支持白名单和黑名单。</zh-CN>
-		<en-US>Global source access control. It composes in global &gt; user &gt; client &gt; tunnel/host order and supports whitelist or blacklist.</en-US>
+	<lang id="word-whiteiplist">
+		<zh-CN>IP 白名单</zh-CN>
+		<en-US>IP Whitelist</en-US>
 	</lang>
-	<lang id="info-global-entryaclrules">
-		<zh-CN>一行一个规则，支持精确 IP、CIDR、IPv4 前缀通配符和 geoip:xx。关闭时留空即可。</zh-CN>
-		<en-US>One rule per line. Supports exact IPs, CIDR, IPv4 prefix wildcards, and geoip:xx. Leave empty when disabled.</en-US>
+	<lang id="word-globalwhiteiplist">
+		<zh-CN>全局 IP 白名单</zh-CN>
+		<en-US>Global IP Whitelist</en-US>
 	</lang>
-	<lang id="info-suchasentryaclrules">
-		<zh-CN>例如&#10;10.1.50.203&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:private</zh-CN>
-		<en-US>Such as&#10;10.1.50.203&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:private</en-US>
+	<lang id="word-iplistpriority">
+		<zh-CN>名单优先级</zh-CN>
+		<en-US>List Priority</en-US>
 	</lang>
-	<lang id="word-blackip">
-		<zh-CN>IP黑名单</zh-CN>
-		<en-US>IP Black List</en-US>
+	<lang id="word-denyfirst">
+		<zh-CN>黑名单优先</zh-CN>
+		<en-US>Blacklist First</en-US>
+	</lang>
+	<lang id="word-allowfirst">
+		<zh-CN>白名单优先</zh-CN>
+		<en-US>Whitelist First</en-US>
+	</lang>
+	<lang id="word-geodata">
+		<zh-CN>Geo 数据</zh-CN>
+		<en-US>Geodata</en-US>
+	</lang>
+	<lang id="word-geoversion">
+		<zh-CN>数据版本</zh-CN>
+		<en-US>Data Version</en-US>
+	</lang>
+	<lang id="word-updategeo">
+		<zh-CN>更新 Geo 数据</zh-CN>
+		<en-US>Update Geodata</en-US>
+	</lang>
+	<lang id="word-unknown">
+		<zh-CN>未知</zh-CN>
+		<en-US>Unknown</en-US>
+	</lang>
+	<lang id="word-filemissing">
+		<zh-CN>文件不存在</zh-CN>
+		<en-US>File Missing</en-US>
+	</lang>
+	<lang id="info-iplistpriority">
+		<zh-CN>同时配置了黑名单和白名单时生效。黑名单优先：在黑名单中的地址拒绝，其余地址只有在白名单中才放行；白名单优先：在白名单中的地址放行，其余地址只要不在黑名单中就放行。只配置一个名单时两种优先级相同。</zh-CN>
+		<en-US>Applies when both lists are set. Blacklist first: addresses on the blacklist are denied, others are allowed only if they are on the whitelist. Whitelist first: addresses on the whitelist are allowed, others are allowed unless they are on the blacklist. With one list only, both priorities are the same.</en-US>
+	</lang>
+	<lang id="info-iplistrules">
+		<zh-CN>每行一条：IP、CIDR（如 10.0.0.0/8）、IPv4 前缀通配（如 192.168.*）、geoip:cn、geoip:!cn（取反）、geoip:private，# 开头为注释。访问需依次通过全局、客户端、隧道或域名三层名单，上级拒绝的访问下级无法放行。</zh-CN>
+		<en-US>One per line: IP, CIDR (e.g. 10.0.0.0/8), IPv4 prefix wildcard (e.g. 192.168.*), geoip:cn, geoip:!cn (negated), geoip:private. Lines starting with # are comments. Access has to pass the global, client and tunnel or host lists in turn; what a higher level denies, a lower level cannot allow.</en-US>
+	</lang>
+	<lang id="info-globaliplistrules">
+		<zh-CN>每行一条：IP、CIDR、IPv4 前缀通配（如 192.168.*）、geoip:cn、geoip:!cn、geoip:private，也可用 ext-ip:文件名:代码 引用 Geo 数据目录下的其他文件，# 开头为注释。</zh-CN>
+		<en-US>One per line: IP, CIDR, IPv4 prefix wildcard (e.g. 192.168.*), geoip:cn, geoip:!cn, geoip:private, or ext-ip:file:code for another file in the geodata directory. Lines starting with # are comments.</en-US>
+	</lang>
+	<lang id="info-globaliplist">
+		<zh-CN>全局名单相当于 nps 前面的防火墙，作用于所有进入 nps 的连接：客户端连接（bridge）、所有隧道和域名转发、Web 管理界面（P2P 探测端口除外）。被拒绝的地址连管理界面也无法打开，修改前请确认不会把自己挡在外面（误操作时可手动编辑 conf/global.json 恢复）。限制谁能访问哪个内网服务，请在客户端或隧道、域名转发中配置。</zh-CN>
+		<en-US>The global lists are the firewall in front of nps and apply to every connection to it: client connections (bridge), all tunnels and hosts, and this web interface (not the P2P probe port). A denied address cannot open the web interface either, so make sure you do not lock yourself out (edit conf/global.json to recover). To limit who may reach an internal service, configure the client, tunnel or host.</en-US>
+	</lang>
+	<lang id="info-suchasaclrules">
+		<zh-CN>例如&#10;1.2.3.4&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:cn</zh-CN>
+		<en-US>Such as&#10;1.2.3.4&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:cn</en-US>
+	</lang>
+	<lang id="info-geodata">
+		<zh-CN>geoip.dat 用于名单中的 geoip: 规则，geosite.dat 用于目标访问控制中的 geosite: 规则。数据来自 Loyalsoldier/v2ray-rules-dat，更新后立即生效。也可以执行 nps update-geo 命令更新。</zh-CN>
+		<en-US>geoip.dat serves the geoip: rules of the lists, geosite.dat the geosite: rules of destination ACLs. The data comes from Loyalsoldier/v2ray-rules-dat and takes effect right after an update. The nps update-geo command updates it too.</en-US>
+	</lang>
+	<lang id="word-registeredonly">
+		<zh-CN>仅允许已登记的 IP</zh-CN>
+		<en-US>Registered IPs Only</en-US>
+	</lang>
+	<lang id="info-registeredonly">
+		<zh-CN>开启后，访问者除了要通过名单，还必须先登记 IP：在访问者设备上执行 npc register，或用该客户端的登记口令、vkey 在登记页面登记，或登录本管理界面（管理员对所有客户端有效）。登记只保存在内存中，nps 重启后需要重新登记。</zh-CN>
+		<en-US>When on, visitors must also have registered their IP: with npc register on their device, with the client's registration key or vkey on the registration page, or by logging in to this web interface (an administrator's login counts for every client). Registrations are kept in memory and end when nps restarts.</en-US>
+	</lang>
+	<lang id="word-registerkey">
+		<zh-CN>登记口令</zh-CN>
+		<en-US>Registration Key</en-US>
+	</lang>
+	<lang id="info-registerkey">
+		<zh-CN>访问者在登记页面输入登记口令即可为本客户端登记自己的 IP；留空时只能用 vkey 登记。登记口令与 vkey 分开，泄露后重置即可，不影响客户端连接。</zh-CN>
+		<en-US>Visitors enter the registration key on the registration page to register their IP for this client; when empty, only the vkey works. It is separate from the vkey: reset it when it leaks, the client connection is not affected.</en-US>
+	</lang>
+	<lang id="word-registerlink">
+		<zh-CN>登记链接</zh-CN>
+		<en-US>Registration Link</en-US>
+	</lang>
+	<lang id="word-registermaxhours">
+		<zh-CN>登记最长有效期（小时）</zh-CN>
+		<en-US>Max Registration Hours</en-US>
+	</lang>
+	<lang id="info-registermaxhours">
+		<zh-CN>在登记页面登记的最长有效时间，留空或 0 为 2 小时。</zh-CN>
+		<en-US>How long a registration made on the registration page lasts at most; empty or 0 means 2 hours.</en-US>
+	</lang>
+	<lang id="word-generate">
+		<zh-CN>生成</zh-CN>
+		<en-US>Generate</en-US>
+	</lang>
+	<lang id="word-registeredips">
+		<zh-CN>已登记 IP</zh-CN>
+		<en-US>Registered IPs</en-US>
+	</lang>
+	<lang id="title-ipregister">
+		<zh-CN>IP 登记</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="word-yourip">
+		<zh-CN>当前 IP</zh-CN>
+		<en-US>Your IP</en-US>
+	</lang>
+	<lang id="word-registerhours">
+		<zh-CN>有效期</zh-CN>
+		<en-US>Duration</en-US>
+	</lang>
+	<lang id="word-registerlongest">
+		<zh-CN>最长（按上限）</zh-CN>
+		<en-US>Longest allowed</en-US>
+	</lang>
+	<lang id="word-ipregisterentry">
+		<zh-CN>IP 登记</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="word-registerip">
+		<zh-CN>登记</zh-CN>
+		<en-US>Register</en-US>
+	</lang>
+	<lang id="info-ipregister">
+		<zh-CN>输入客户端的登记口令或 vkey，为当前 IP 开通该客户端的访问；输入公钥（public_vkey）则对所有客户端生效。选择的有效期超过上限时按上限登记。</zh-CN>
+		<en-US>Enter the client's registration key or vkey to allow access to that client from your current IP; the public key (public_vkey) allows every client. A duration above the limit is cut to the limit.</en-US>
+	</lang>
+	<lang id="word-blackiplist">
+		<zh-CN>IP 黑名单</zh-CN>
+		<en-US>IP Blacklist</en-US>
+	</lang>
+	<lang id="word-globalblackiplist">
+		<zh-CN>全局 IP 黑名单</zh-CN>
+		<en-US>Global IP Blacklist</en-US>
 	</lang>
 	<lang id="word-createtime">
 		<zh-CN>创建时间</zh-CN>
 		<en-US>Create Time</en-US>
+	</lang>
+	<lang id="word-autorefresh">
+		<zh-CN>自动刷新</zh-CN>
+		<en-US>Refreshing</en-US>
+	</lang>
+	<lang id="word-refreshpaused">
+		<zh-CN>已暂停</zh-CN>
+		<en-US>Paused</en-US>
+	</lang>
+	<lang id="word-connectionhistory">
+		<zh-CN>近期上线/离线</zh-CN>
+		<en-US>Recent connections</en-US>
 	</lang>
 	<lang id="word-lastonlinetime">
 		<zh-CN>上次在线时间</zh-CN>
@@ -1849,130 +1337,55 @@
 		<zh-CN>确定</zh-CN>
 		<en-US>Confirm</en-US>
 	</lang>
-	<lang id="word-qrcode">
-		<zh-CN>二维码</zh-CN>
-		<en-US>QR code</en-US>
-	</lang>
-	<lang id="word-totp">
-		<zh-CN>TOTP</zh-CN>
-		<en-US>TOTP</en-US>
-	</lang>
-	<lang id="word-loading-short">
-		<zh-CN>...</zh-CN>
-		<en-US>...</en-US>
-	</lang>
-	<lang id="word-error-short">
-		<zh-CN>错误</zh-CN>
-		<en-US>ERR</en-US>
-	</lang>
-	<lang id="theme-mode-auto">
-		<zh-CN>主题：跟随系统</zh-CN>
-		<en-US>Theme: Auto</en-US>
-	</lang>
-	<lang id="theme-mode-dark">
-		<zh-CN>主题：深色</zh-CN>
-		<en-US>Theme: Dark</en-US>
-	</lang>
-	<lang id="theme-mode-light">
-		<zh-CN>主题：浅色</zh-CN>
-		<en-US>Theme: Light</en-US>
-	</lang>
-	<lang id="info-unassigned-platform-managed">
-		<zh-CN>未分配（平台直管）</zh-CN>
-		<en-US>Unassigned (platform-managed)</en-US>
-	</lang>
-	<lang id="info-confirm-generic">
-		<zh-CN>你确定要执行该操作吗？</zh-CN>
-		<en-US>Are you sure you want to continue?</en-US>
-	</lang>
-	<lang id="info-selected-count">
-		<zh-CN>已选 {count} 项</zh-CN>
-		<en-US>{count} selected</en-US>
-	</lang>
-	<lang id="info-selected-count-suffix">
-		<zh-CN>（已选 {count} 项）</zh-CN>
-		<en-US> ({count} selected)</en-US>
-	</lang>
-	<lang id="info-selection-required">
-		<zh-CN>请先选择至少一项</zh-CN>
-		<en-US>Select at least one item first</en-US>
-	</lang>
-	<lang id="info-batch-failed">
-		<zh-CN>批量操作失败</zh-CN>
-		<en-US>Batch operation failed</en-US>
-	</lang>
-	<lang id="info-batch-action-start">
-		<zh-CN>批量开启</zh-CN>
-		<en-US>Batch start</en-US>
-	</lang>
-	<lang id="info-batch-action-stop">
-		<zh-CN>批量关闭</zh-CN>
-		<en-US>Batch stop</en-US>
-	</lang>
-	<lang id="info-batch-action-delete">
-		<zh-CN>批量删除</zh-CN>
-		<en-US>Batch delete</en-US>
-	</lang>
-	<lang id="info-batch-action-clear">
-		<zh-CN>批量清空</zh-CN>
-		<en-US>Batch clear</en-US>
-	</lang>
-	<lang id="info-batch-action-generic">
+
+	<lang id="word-batchaction">
 		<zh-CN>批量操作</zh-CN>
 		<en-US>Batch action</en-US>
 	</lang>
-	<lang id="info-batch-summary-success">
-		<zh-CN>{label}完成，共 {success} 项</zh-CN>
-		<en-US>{label} completed for {success} item(s)</en-US>
+
+	<lang id="word-batchexecute">
+		<zh-CN>执行</zh-CN>
+		<en-US>Apply</en-US>
 	</lang>
-	<lang id="info-batch-summary-failed">
-		<zh-CN>{label}完成，成功 {success} 项，失败 {failed} 项</zh-CN>
-		<en-US>{label} completed: {success} succeeded, {failed} failed</en-US>
+
+	<lang id="info-batchselected">
+		<zh-CN>已选 {count} 项（当前页）</zh-CN>
+		<en-US>Selected (current page): {count}</en-US>
 	</lang>
-	<lang id="info-disabled-suffix">
-		<zh-CN>（已停用）</zh-CN>
-		<en-US> (disabled)</en-US>
+
+	<lang id="info-batchconfirm">
+		<zh-CN>确定对选中的 {count} 项执行“{action}”？</zh-CN>
+		<en-US>Apply {action} to {count} selected entries?</en-US>
 	</lang>
-	<lang id="info-host-cert-suggestion-apply">
-		<zh-CN>带入当前表单</zh-CN>
-		<en-US>Apply to form</en-US>
+
+	<lang id="info-batchdeleteclient">
+		<zh-CN>删除客户端会同时删除其隧道和域名转发。</zh-CN>
+		<en-US>Deleting clients also deletes their tunnels and domains.</en-US>
 	</lang>
-	<lang id="info-host-cert-suggestion-applyable">
-		<zh-CN>检测到可复用证书：当前域名可直接复用规则 {source_label} 的证书。留空会自动复用，也可以直接带入当前表单。</zh-CN>
-		<en-US>Reusable certificate detected: this host can reuse the certificate from rule {source_label}. Leaving the cert fields empty will reuse it automatically, or you can apply the file-path certificate to this form.</en-US>
+
+	<lang id="info-batchresult">
+		<zh-CN>成功 {success} 项，失败 {failed} 项</zh-CN>
+		<en-US>Succeeded: {success}; failed: {failed}</en-US>
 	</lang>
-	<lang id="info-host-cert-suggestion-reuse-only">
-		<zh-CN>检测到可复用证书：当前域名可直接复用规则 {source_label} 的证书。留空会自动复用，文本证书不再建议复制到当前表单。</zh-CN>
-		<en-US>Reusable certificate detected: this host can reuse the certificate from rule {source_label}. Leaving the cert fields empty will reuse it automatically; text certificates are no longer copied into this form.</en-US>
+
+	<lang id="info-batchprogress">
+		<zh-CN>正在处理 {done}/{total}</zh-CN>
+		<en-US>Processing: {done}/{total}</en-US>
 	</lang>
-	<lang id="title-sync-cert-to-matching-hosts">
-		<zh-CN>同步证书到匹配域名</zh-CN>
-		<en-US>Sync cert to matching domains</en-US>
-	</lang>
-	<lang id="info-sync-cert-to-matching-hosts">
-		<zh-CN>当前表单配置了手动证书时生效，不区分文本或路径。保存时会忽略转发路径，只按域名是否被该证书覆盖，把其他可编辑 Host 记录同步到这份证书；若目标 Host 当前仍开启自动证书，会保留开启状态，后续是否切回手动证书由用户决定。</zh-CN>
-		<en-US>Applies when the form has a manual certificate, whether PEM text or file path. Saving ignores route paths and records this certificate on other editable hosts when their domains are covered. Hosts that still have Auto SSL enabled keep it enabled; switching back to manual TLS remains a user decision.</en-US>
-	</lang>
-	<lang id="info-request-header-placeholder">
-		<zh-CN>Cache-Control: no-cache</zh-CN>
-		<en-US>Cache-Control: no-cache</en-US>
-	</lang>
-	<lang id="info-response-header-placeholder">
-		<zh-CN>Strict-Transport-Security: max-age=31536000; includeSubDomains; preload</zh-CN>
-		<en-US>Strict-Transport-Security: max-age=31536000; includeSubDomains; preload</en-US>
-	</lang>
-	<lang id="info-pinging">
-		<zh-CN>检测中...</zh-CN>
-		<en-US>Pinging...</en-US>
-	</lang>
-	<lang id="info-ping-ms">
-		<zh-CN>{value} ms</zh-CN>
-		<en-US>{value} ms</en-US>
-	</lang>
-	<lang id="info-login-pow-timeout">
-		<zh-CN>PoW 计算超时，请重试。</zh-CN>
-		<en-US>PoW calculation timed out. Please try again.</en-US>
-	</lang>
+
+    <lang id="info-tunnelmaxconn">
+        <zh-CN>0 表示不限。与客户端总连接数限制同时生效；TCP 按连接、UDP 按会话计数，SOCKS5 UDP 跟随控制连接计数。仅限制经过 nps 转发的连接，不限制 P2P 直连。</zh-CN>
+        <en-US>0 means unlimited. Applies together with the client limit: TCP connections, UDP sessions, and SOCKS5 UDP control connections. Applies to nps forwarding, not direct P2P traffic.</en-US>
+    </lang>
+
+    <lang id="word-globalmaxconn">
+        <zh-CN>全局最大转发连接数</zh-CN>
+        <en-US>Global Forwarding Connection Limit</en-US>
+    </lang>
+    <lang id="info-globalmaxconn">
+        <zh-CN>0 表示不限。与客户端及隧道限制同时生效；TCP、HTTPS 透传按连接、UDP 按会话、HTTP 域名转发按并发请求计数。不包含 npc 控制连接、管理网页和 P2P 直连。降低限制不会主动断开已有转发。</zh-CN>
+        <en-US>0 means unlimited. Applies together with client and tunnel limits. Counts TCP/HTTPS passthrough connections, UDP sessions and concurrent HTTP proxy requests. Excludes npc control connections, the dashboard and direct P2P traffic. Lowering the limit does not disconnect active transfers.</en-US>
+    </lang>
 
 	<confirm>
 		<lang id="turn">
@@ -2002,6 +1415,18 @@
 		<lang id="unbanall">
 			<zh-CN>你确定要清除所有封禁记录吗？</zh-CN>
 			<en-US>Are you sure you want to clear all ban records?</en-US>
+		</lang>
+		<lang id="update">
+			<zh-CN>确定要让该客户端更新到最新版本并重启吗？</zh-CN>
+			<en-US>Are you sure you want this client to update to the latest version and restart?</en-US>
+		</lang>
+		<lang id="updateserver">
+			<zh-CN>确定要将服务端更新到最新版本并重启吗？重启期间所有连接会短暂中断。</zh-CN>
+			<en-US>Are you sure you want to update the server to the latest version and restart it? All connections drop briefly during the restart.</en-US>
+		</lang>
+		<lang id="updategeo">
+			<zh-CN>确定要从网络下载最新的 Geo 数据吗？</zh-CN>
+			<en-US>Are you sure you want to download the latest geodata?</en-US>
 		</lang>
 	</confirm>
 
@@ -2153,6 +1578,74 @@
 		<lang id="allrecordscleared">
 			<zh-CN>所有记录已清除</zh-CN>
 			<en-US>All Records Cleared</en-US>
+		</lang>
+		<lang id="updaterequested">
+			<zh-CN>已发送更新指令，客户端更新完成后会自动重连</zh-CN>
+			<en-US>Update requested; the client reconnects once updated</en-US>
+		</lang>
+		<lang id="updaterequestfailed">
+			<zh-CN>发送更新指令失败</zh-CN>
+			<en-US>Update Request Failed</en-US>
+		</lang>
+		<lang id="clientisoffline">
+			<zh-CN>客户端不在线</zh-CN>
+			<en-US>Client Is Offline</en-US>
+		</lang>
+		<lang id="clientversiondoesnotsupportremoteupdate">
+			<zh-CN>客户端版本过低，不支持远程更新</zh-CN>
+			<en-US>Client version does not support remote update</en-US>
+		</lang>
+		<lang id="clientidnotfound">
+			<zh-CN>找不到客户端</zh-CN>
+			<en-US>Client ID Not Found</en-US>
+		</lang>
+		<lang id="serverupdatedrestarting">
+			<zh-CN>服务端已更新，正在重启，页面会在新版本启动后自动刷新</zh-CN>
+			<en-US>Server updated and restarting; the page reloads once the new version is up</en-US>
+		</lang>
+		<lang id="serverisalreadythelatestversion">
+			<zh-CN>服务端已是最新版本</zh-CN>
+			<en-US>Server Is Already The Latest Version</en-US>
+		</lang>
+		<lang id="serverupdateisalreadyrunning">
+			<zh-CN>服务端正在更新中</zh-CN>
+			<en-US>Server Update Is Already Running</en-US>
+		</lang>
+		<lang id="serverupdateisunavailable">
+			<zh-CN>服务端当前不支持在线更新</zh-CN>
+			<en-US>Server Update Is Unavailable</en-US>
+		</lang>
+		<lang id="geodataupdated">
+			<zh-CN>Geo 数据已更新</zh-CN>
+			<en-US>Geodata Updated</en-US>
+		</lang>
+		<lang id="geodataupdateisalreadyrunning">
+			<zh-CN>Geo 数据正在更新中</zh-CN>
+			<en-US>Geodata Update Is Already Running</en-US>
+		</lang>
+		<lang id="ipregistered">
+			<zh-CN>登记成功</zh-CN>
+			<en-US>Registered</en-US>
+		</lang>
+		<lang id="invalidregistrationkey">
+			<zh-CN>登记口令无效</zh-CN>
+			<en-US>Invalid Registration Key</en-US>
+		</lang>
+		<lang id="toomanyattemptstryagainlater">
+			<zh-CN>尝试过于频繁，请稍后再试</zh-CN>
+			<en-US>Too Many Attempts, Try Again Later</en-US>
+		</lang>
+		<lang id="theverificationcodeiswrong">
+			<zh-CN>验证码错误</zh-CN>
+			<en-US>Wrong Verification Code</en-US>
+		</lang>
+		<lang id="registrationkeyduplicatepleasereset">
+			<zh-CN>登记口令与其他客户端重复或与 vkey 相同，请重新设置</zh-CN>
+			<en-US>The registration key is used by another client or equals the vkey, please change it</en-US>
+		</lang>
+		<lang id="totalx2">
+			<zh-CN>上下行流量 x 2：估算服务器两侧（访问者与客户端）的实际消耗</zh-CN>
+			<en-US>In/Out flow x 2: estimated usage on both sides of the server (visitor and client)</en-US>
 		</lang>
 	</reply>
 
@@ -2365,12 +1858,68 @@
 			<en-US>No results match {0}</en-US>
 		</lang>
 	</bootstrap-select>
-	<lang id="info-request-succeeded">
-		<zh-CN>操作成功</zh-CN>
-		<en-US>Request succeeded</en-US>
+	<lang id="section-basic">
+		<zh-CN>基本信息</zh-CN>
+		<en-US>Basic Information</en-US>
 	</lang>
-	<lang id="info-request-failed">
-		<zh-CN>操作失败</zh-CN>
-		<en-US>Request failed</en-US>
+	<lang id="section-connection">
+		<zh-CN>监听与目标</zh-CN>
+		<en-US>Listener and Target</en-US>
+	</lang>
+	<lang id="section-target">
+		<zh-CN>目标与路径</zh-CN>
+		<en-US>Target and Path</en-US>
+	</lang>
+	<lang id="section-access">
+		<zh-CN>访问控制与认证</zh-CN>
+		<en-US>Access Control and Authentication</en-US>
+	</lang>
+	<lang id="section-limits">
+		<zh-CN>流量与有效期</zh-CN>
+		<en-US>Traffic and Expiry</en-US>
+	</lang>
+	<lang id="section-transport">
+		<zh-CN>转发设置</zh-CN>
+		<en-US>Forwarding</en-US>
+	</lang>
+	<lang id="section-tls">
+		<zh-CN>HTTPS 与证书</zh-CN>
+		<en-US>HTTPS and Certificates</en-US>
+	</lang>
+	<lang id="section-routing">
+		<zh-CN>路由与请求响应</zh-CN>
+		<en-US>Routing, Requests and Responses</en-US>
+	</lang>
+	<lang id="section-destination">
+		<zh-CN>代理目标限制</zh-CN>
+		<en-US>Proxy Destination Rules</en-US>
+	</lang>
+	<lang id="section-commands">
+		<zh-CN>访问命令</zh-CN>
+		<en-US>Access Commands</en-US>
+	</lang>
+	<lang id="section-quotas">
+		<zh-CN>配额与有效期</zh-CN>
+		<en-US>Quotas and Expiry</en-US>
+	</lang>
+	<lang id="section-webaccount">
+		<zh-CN>Web 管理账号</zh-CN>
+		<en-US>Web Account</en-US>
+	</lang>
+	<lang id="section-registration">
+		<zh-CN>IP 登记设置</zh-CN>
+		<en-US>IP Registration</en-US>
+	</lang>
+	<lang id="section-status">
+		<zh-CN>连接信息</zh-CN>
+		<en-US>Connection Information</en-US>
+	</lang>
+	<lang id="word-expandadvanced">
+		<zh-CN>全部展开</zh-CN>
+		<en-US>Expand All</en-US>
+	</lang>
+	<lang id="word-collapseadvanced">
+		<zh-CN>全部收起</zh-CN>
+		<en-US>Collapse All</en-US>
 	</lang>
 </content>

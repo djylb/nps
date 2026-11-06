@@ -3,152 +3,21 @@ package conn
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
+	"github.com/djylb/netx"
+	"github.com/djylb/netx/forwarded"
+	"github.com/djylb/netx/wsconn"
+	"github.com/djylb/netx/wsconn/wshttp"
 	"github.com/djylb/nps/lib/common"
-	"github.com/gorilla/websocket"
 )
 
-const (
-	maxWebsocketMessageSize = 1 << 20
-	websocketMaxHeaderBytes = 32 << 10
-)
-
-type WsConn struct {
-	*websocket.Conn
-	RealIP    string
-	readFrame io.Reader
-	writeMu   sync.Mutex
-}
-
-func NewWsConn(ws *websocket.Conn) *WsConn {
-	return &WsConn{Conn: ws}
-}
-
-func (c *WsConn) Read(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	if c == nil || c.Conn == nil {
-		return 0, net.ErrClosed
-	}
-
-	for {
-		if c.readFrame == nil {
-			mt, r, err := c.NextReader()
-			if err != nil {
-				return 0, err
-			}
-			if mt == websocket.CloseMessage {
-				return 0, io.EOF
-			}
-			c.readFrame = r
-		}
-
-		n, err := c.readFrame.Read(p)
-		switch {
-		case n > 0 && err == io.EOF:
-			c.readFrame = nil
-			return n, nil
-		case n > 0:
-			return n, err
-		case err == io.EOF:
-			c.readFrame = nil
-			continue
-		default:
-			return 0, err
-		}
-	}
-}
-
-func (c *WsConn) Write(p []byte) (int, error) {
-	if c == nil || c.Conn == nil {
-		return 0, net.ErrClosed
-	}
-	if len(p) == 0 {
-		return 0, nil
-	}
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-
-	w, err := c.NextWriter(websocket.BinaryMessage)
-	if err != nil {
-		return 0, err
-	}
-	n, err := writeAllCount(w, p)
-	if err != nil {
-		_ = w.Close()
-		return n, err
-	}
-	if err := w.Close(); err != nil {
-		return n, err
-	}
-	return n, nil
-}
-
-func (c *WsConn) Close() error {
-	if c == nil || c.Conn == nil {
-		return nil
-	}
-	return c.Conn.Close()
-}
-
-func (c *WsConn) LocalAddr() net.Addr {
-	if c == nil || c.Conn == nil {
-		return nil
-	}
-	return c.Conn.NetConn().LocalAddr()
-}
-
-func (c *WsConn) RemoteAddr() net.Addr {
-	if c == nil || c.Conn == nil {
-		return nil
-	}
-	if c.RealIP != "" {
-		if ip := net.ParseIP(c.RealIP); ip != nil {
-			return &net.TCPAddr{
-				IP:   ip,
-				Port: 0,
-			}
-		}
-	}
-	return c.Conn.NetConn().RemoteAddr()
-}
-
-func (c *WsConn) GetRawConn() net.Conn {
-	if c == nil || c.Conn == nil {
-		return nil
-	}
-	return c.Conn.NetConn()
-}
-
-func (c *WsConn) SetDeadline(t time.Time) error {
-	if c == nil || c.Conn == nil {
-		return net.ErrClosed
-	}
-	_ = c.Conn.SetReadDeadline(t)
-	return c.Conn.SetWriteDeadline(t)
-}
-
-func (c *WsConn) SetReadDeadline(t time.Time) error {
-	if c == nil || c.Conn == nil {
-		return net.ErrClosed
-	}
-	return c.Conn.SetReadDeadline(t)
-}
-
-func (c *WsConn) SetWriteDeadline(t time.Time) error {
-	if c == nil || c.Conn == nil {
-		return net.ErrClosed
-	}
-	return c.Conn.SetWriteDeadline(t)
-}
+// wsOptions closes without the closing handshake, so that closing a tunnel
+// never waits on the peer.
+var wsOptions = wsconn.Options{DisableCloseHandshake: true}
 
 type httpListener struct {
 	acceptCh  chan net.Conn
@@ -157,10 +26,23 @@ type httpListener struct {
 	closeOnce sync.Once
 }
 
+// NewWSListener serves WebSocket bridge connections on path over base. The
+// client address is taken from realIpHeader as written by the proxies in
+// trustedIps; see wsResolver.
 func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net.Listener {
-	ch := make(chan net.Conn, 16)
-	hl := &httpListener{acceptCh: ch, closeCh: make(chan struct{}), addr: base.Addr()}
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	return newWSListener(base, base, path, trustedIps, realIpHeader)
+}
+
+// NewWSSListener is NewWSListener over TLS with cert.
+func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string) net.Listener {
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
+	return newWSListener(base, tls.NewListener(base, tlsConfig), path, trustedIps, realIpHeader)
+}
+
+func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string) net.Listener {
+	hl := &httpListener{acceptCh: make(chan net.Conn, 16), closeCh: make(chan struct{}), addr: base.Addr()}
+	resolvers := wsResolvers(trustedIps, realIpHeader)
+	opts := &wsconn.ServerOptions{Options: wsOptions, CheckOrigin: wsconn.AnyOrigin}
 	if path == "" {
 		path = "/"
 	}
@@ -171,19 +53,22 @@ func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net
 			return
 		default:
 		}
-		realIP := GetRealIP(r, realIpHeader)
-		ws, err := upgrader.Upgrade(w, r, nil)
+		ws, err := wshttp.Upgrade(w, r, opts)
 		if err != nil {
 			return
 		}
-		c := NewWsConn(ws)
-		if common.IsTrustedProxy(trustedIps, r.RemoteAddr) {
-			c.RealIP = realIP
+		var c net.Conn = wsconn.NewStreamConn(ws)
+		if addr := resolveClient(resolvers, r); addr != nil {
+			c = netx.NewAddrOverrideConn(c, nil, addr)
 		}
-		_ = hl.enqueue(c)
+		select {
+		case hl.acceptCh <- c:
+		case <-hl.closeCh:
+			_ = c.Close()
+		}
 	})
-	srv := newWebsocketServer(mux, nil)
-	go func() { _ = srv.Serve(base) }()
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: HandshakeTimeout}
+	go func() { _ = srv.Serve(ln) }()
 	go func() {
 		<-hl.closeCh
 		_ = srv.Close()
@@ -191,47 +76,46 @@ func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net
 	return hl
 }
 
-func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string) net.Listener {
-	ch := make(chan net.Conn, 16)
-	hl := &httpListener{acceptCh: ch, closeCh: make(chan struct{}), addr: base.Addr()}
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-	if path == "" {
-		path = "/"
+// wsResolvers returns the resolvers tried in turn for the client address:
+// the header realIpHeader names, or X-Forwarded-For and then X-Real-IP when
+// it is empty. They return nothing without trusted proxies.
+func wsResolvers(trustedIps, realIpHeader string) []*forwarded.Resolver {
+	if trustedIps == "" {
+		return nil
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-hl.closeCh:
-			return
-		default:
+	trusted := common.TrustedProxies(trustedIps)
+	if realIpHeader == "" {
+		return []*forwarded.Resolver{
+			{Trusted: trusted, Header: forwarded.HeaderXForwardedFor},
+			{Trusted: trusted, Header: forwarded.HeaderXRealIP},
 		}
-		realIP := GetRealIP(r, realIpHeader)
-		ws, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
+	}
+	switch name := http.CanonicalHeaderKey(realIpHeader); name {
+	case "X-Forwarded-For":
+		return []*forwarded.Resolver{{Trusted: trusted, Header: forwarded.HeaderXForwardedFor}}
+	case "Forwarded":
+		return []*forwarded.Resolver{{Trusted: trusted, Header: forwarded.HeaderForwarded}}
+	default:
+		return []*forwarded.Resolver{{Trusted: trusted, Header: forwarded.HeaderXRealIP, Name: name}}
+	}
+}
+
+// resolveClient returns the client address that a trusted proxy recorded
+// for r, or nil when r came from the client itself.
+func resolveClient(resolvers []*forwarded.Resolver, r *http.Request) net.Addr {
+	peer, ok := forwarded.ParseNode(r.RemoteAddr)
+	if !ok {
+		return nil
+	}
+	for _, res := range resolvers {
+		if c := res.Resolve(peer, r.Header); c.Hops > 0 {
+			return net.TCPAddrFromAddrPort(c.Addr)
 		}
-		c := NewWsConn(ws)
-		if common.IsTrustedProxy(trustedIps, r.RemoteAddr) {
-			c.RealIP = realIP
-		}
-		_ = hl.enqueue(c)
-	})
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
-	srv := newWebsocketServer(mux, tlsConfig)
-	go func() { _ = srv.Serve(tls.NewListener(base, tlsConfig)) }()
-	go func() {
-		<-hl.closeCh
-		_ = srv.Close()
-	}()
-	return hl
+	}
+	return nil
 }
 
 func (hl *httpListener) Accept() (net.Conn, error) {
-	select {
-	case <-hl.closeCh:
-		return nil, net.ErrClosed
-	default:
-	}
 	select {
 	case c := <-hl.acceptCh:
 		return c, nil
@@ -243,16 +127,6 @@ func (hl *httpListener) Accept() (net.Conn, error) {
 func (hl *httpListener) Close() error {
 	hl.closeOnce.Do(func() {
 		close(hl.closeCh)
-		for {
-			select {
-			case c := <-hl.acceptCh:
-				if c != nil {
-					_ = c.Close()
-				}
-			default:
-				return
-			}
-		}
 	})
 	return nil
 }
@@ -261,110 +135,16 @@ func (hl *httpListener) Addr() net.Addr {
 	return hl.addr
 }
 
-func (hl *httpListener) enqueue(c net.Conn) error {
-	if hl == nil {
-		if c != nil {
-			_ = c.Close()
-		}
-		return net.ErrClosed
-	}
-	return enqueueListenerConn(hl.closeCh, hl.acceptCh, c)
-}
-
-func DialWS(rawConn net.Conn, urlStr, host string, timeout time.Duration) (*websocket.Conn, *http.Response, error) {
-	return DialWSContext(context.Background(), rawConn, urlStr, host, timeout)
-}
-
-func DialWSContext(parent context.Context, rawConn net.Conn, urlStr, host string, timeout time.Duration) (*websocket.Conn, *http.Response, error) {
-	return dialWebsocketContext(parent, rawConn, urlStr, host, timeout, nil)
-}
-
-func DialWSS(rawConn net.Conn, urlStr, host, sni string, timeout time.Duration, verifyCertificate bool) (*websocket.Conn, *http.Response, error) {
-	return DialWSSContext(context.Background(), rawConn, urlStr, host, sni, timeout, verifyCertificate)
-}
-
-func DialWSSContext(parent context.Context, rawConn net.Conn, urlStr, host, sni string, timeout time.Duration, verifyCertificate bool) (*websocket.Conn, *http.Response, error) {
-	tlsConfig := newTLSClientConfig(websocketTLSServerName(urlStr, host, sni), verifyCertificate)
-	return dialWebsocketContext(parent, rawConn, urlStr, host, timeout, tlsConfig)
-}
-
-func dialWebsocketContext(parent context.Context, rawConn net.Conn, urlStr, host string, timeout time.Duration, tlsConfig *tls.Config) (*websocket.Conn, *http.Response, error) {
-	if rawConn == nil {
-		return nil, nil, net.ErrClosed
-	}
-	if parent == nil {
-		parent = context.Background()
-	}
-	timeout = normalizeLinkTimeout(timeout)
-	ctx, cancel := context.WithTimeout(parent, timeout)
+// DialWS runs the WebSocket opening handshake for urlStr over rawConn, which
+// already carries TLS for a wss URL, sending host as the Host field when it
+// is set, and returns the byte stream over the connection's messages. On
+// failure rawConn is closed.
+func DialWS(rawConn net.Conn, urlStr, host string, timeout time.Duration) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	closeOnError := true
-	defer func() {
-		if closeOnError {
-			_ = rawConn.Close()
-		}
-	}()
-	h := http.Header{}
-	if host != "" {
-		h.Set("Host", host)
-	}
-	dialer := websocket.Dialer{
-		HandshakeTimeout: timeout,
-		TLSClientConfig:  tlsConfig,
-		NetDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return rawConn, nil
-		},
-	}
-	wsConn, resp, err := dialer.DialContext(ctx, urlStr, h)
+	ws, _, err := wsconn.Client(ctx, rawConn, urlStr, &wsconn.ClientOptions{Options: wsOptions, Host: host})
 	if err != nil {
-		return nil, resp, err
+		return nil, err
 	}
-	closeOnError = false
-	return wsConn, resp, nil
-}
-
-func newWebsocketServer(handler http.Handler, tlsConfig *tls.Config) *http.Server {
-	timeout := normalizeLinkTimeout(0)
-	return &http.Server{
-		Handler:           handler,
-		TLSConfig:         tlsConfig,
-		ReadHeaderTimeout: timeout,
-		IdleTimeout:       2 * timeout,
-		MaxHeaderBytes:    websocketMaxHeaderBytes,
-	}
-}
-
-func websocketTLSServerName(urlStr, host, sni string) string {
-	for _, candidate := range []string{sni, host, websocketURLHost(urlStr)} {
-		if candidate == "" {
-			continue
-		}
-		return common.RemovePortFromHost(candidate)
-	}
-	return ""
-}
-
-func websocketURLHost(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return ""
-	}
-	if parsed.Host == "" {
-		return ""
-	}
-	host := parsed.Hostname()
-	if host != "" {
-		return host
-	}
-	return parsed.Host
-}
-
-func (c *WsConn) String() string {
-	if c == nil || c.Conn == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("ws(%s->%s)", c.LocalAddr(), c.RemoteAddr())
+	return wsconn.NewStreamConn(ws), nil
 }

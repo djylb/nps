@@ -1,10 +1,9 @@
 <div class="wrapper wrapper-content animated fadeInRight">
     <div class="row">
         <div class="col-lg-12">
-            <div class="ibox float-e-margins nps-list-shell">
+            <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 class="nps-list-title" langtag="word-banlist"></h5>
-                    <p class="nps-list-subtitle" langtag="info-banlist-subtitle"></p>
+                    <h5 langtag="word-banlist"></h5>
                     <div class="ibox-tools">
                         <a class="collapse-link">
                             <i class="fa fa-chevron-up"></i>
@@ -18,37 +17,12 @@
                 <div class="content">
                     <div class="table-responsive">
                         <div id="toolbar">
-                            <div class="nps-toolbar">
-                                <button type="button"
-                                        class="btn btn-warning ban-bulk-action"
-                                        id="ban-bulk-unban"
-                                        data-nps-require-node-action="global/unban"
-                                        onclick="runSelectedBanBatch()"
-                                        disabled>
-                                    <i class="fa fa-fw fa-lg fa-unlock"></i>
-                                    <span langtag="word-unban"></span>
-                                </button>
-                                <button type="button"
-                                        class="btn btn-outline btn-default ban-bulk-action"
-                                        id="ban-bulk-reset"
-                                        data-nps-require-node-action="global/unban"
-                                        onclick="window.nps.clearTableSelections('#table')"
-                                        disabled>
-                                    <i class="fa fa-times"></i>
-                                    <span langtag="word-cancel"></span>
-                                </button>
-                                <span class="text-muted small nps-toolbar-summary"
-                                      id="ban-bulk-selection-summary"
-                                      data-nps-require-node-action="global/unban"></span>
-                                <a class="btn btn-danger"
-                                   data-nps-require-node-action="global/unbanall"
-                                   onclick="unbanAll()">
+                            <div class="d-flex w-100">
+                                <a class="btn btn-danger dim" onclick="unbanAll()">
                                     <i class="fa fa-fw fa-lg fa-eraser"></i>
                                     <span langtag="word-unbanall"></span>
                                 </a>
-                                <a class="btn btn-primary ml-2"
-                                   data-nps-require-node-action="global/banclean"
-                                   onclick="cleanList()">
+                                <a class="btn btn-primary dim ml-2" onclick="cleanList()">
                                     <i class="fa fa-fw fa-lg fa-sync"></i>
                                     <span langtag="word-refresh"></span>
                                 </a>
@@ -66,25 +40,10 @@
 </div>
 
 <script>
-    function banLang(path) {
-        return window.nps.langText(path, '');
-    }
-
-    function banLangFormat(path, replacements) {
-        return window.nps.langFormat(path, replacements, '');
-    }
-
-    function banResponseMessage(res, success) {
-        if (res && res.msg) {
-            return langreply(res.msg);
-        }
-        return banLang(success ? 'info-request-succeeded' : 'info-request-failed');
-    }
-
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
-        method: 'get',
-        url: window.nps.nodeRoute('banlist'),
+        method: 'post',
+        url: window.location,
         search: true,
         contentType: "application/x-www-form-urlencoded",
         striped: true,
@@ -96,14 +55,9 @@
         cookie: true,
         cookieIdTable: 'banlist',
         cookieStorage: 'localStorage',
-        idField: 'key',
-        uniqueId: 'key',
-        maintainMetaData: true,
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         smartDisplay: true,
         responseHandler: function (res) {
-            if (res && res.code === 1 && res.data && Array.isArray(res.data.items)) {
-                return res.data.items;
-            }
             if (res && Array.isArray(res.rows)) {
                 return res.rows;
             }
@@ -117,11 +71,6 @@
         onPostBody: function () { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
 
         columns: [
-            (window.nps.nodeActionAvailable('global/unban') ? {
-                checkbox: true,
-                align: 'center',
-                valign: 'middle'
-            } : null),
             {
                 field: 'key',
                 title: '<span langtag="word-bankey"></span>',
@@ -136,9 +85,9 @@
                 sortable: true,
                 formatter: function (value) {
                     if (value === 'ip') {
-                        return '<span class="badge badge-info">' + escapeHtml(window.nps.langText('word-ip', '')) + '</span>';
+                        return '<span class="badge badge-info">IP</span>';
                     } else {
-                        return '<span class="badge badge-warning">' + escapeHtml(window.nps.langText('word-user', '')) + '</span>';
+                        return '<span class="badge badge-warning" langtag="word-username">User</span>';
                     }
                 }
             },
@@ -169,44 +118,12 @@
                 title: '<span langtag="word-option"></span>',
                 formatter: function (value, row) {
                     var k = (row && row.key != null) ? String(row.key) : '';
-                    if (!window.nps.nodeActionAvailable('global/unban')) {
-                        return '';
-                    }
                     return '<a class="btn btn-danger btn-sm btn-unban" data-key="' + escapeHtml(k) + '">'
                         + '<i class="fa fa-trash"></i> <span langtag="word-delete"></span></a>';
                 }
             }
-        ].filter(Boolean)
+        ]
     });
-
-    function buildSelectedBanBatchItems(keys) {
-        return keys.map(function (key) {
-            return {
-                id: 'unban-' + key,
-                method: 'POST',
-                path: window.nps.nodeRoute('banlist') + '/actions/delete',
-                body: { key: key }
-            };
-        });
-    }
-
-    function runSelectedBanBatch() {
-        return window.nps.runSelectionBatch({
-            table: '#table',
-            idField: 'key',
-            trigger: '.ban-bulk-action',
-            action: 'unban',
-            confirmMessage: function (keys) {
-                return banLangFormat('info-banlist-bulk-unban-confirm', {count: keys.length});
-            },
-            buildItems: function (keys) {
-                return buildSelectedBanBatchItems(keys);
-            },
-            refresh: function () {
-                $('#table').bootstrapTable('refresh');
-            }
-        });
-    }
 
     $('#table').on('click', '.btn-unban', function () {
         var key = $(this).data('key');
@@ -214,18 +131,19 @@
     });
 
     function unbanAll() {
-        var msg = banLang('confirm.unbanall');
+        var langobj = languages['content']['confirm']['unbanall'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to clear all ban records?');
         if (!confirm(msg)) return;
         $.ajax({
             type: "POST",
-            url: window.nps.nodeRoute('banlist') + '/actions/delete_all',
+            url: "{{.web_base_url}}/global/unbanall",
             success: function (res) {
-                if ((res && res.code === 1) || res.status) {
-                    showMsg(banResponseMessage(res, true), 'success', 1000, function () {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function () {
                         $('#table').bootstrapTable('refresh');
                     });
                 } else {
-                    showMsg(banResponseMessage(res, false), 'error', 5000);
+                    showMsg(langreply(res.msg), 'error', 5000);
                 }
             }
         });
@@ -234,44 +152,38 @@
     function cleanList() {
         $.ajax({
             type: "POST",
-            url: window.nps.nodeRoute('banlist') + '/actions/clean',
+            url: "{{.web_base_url}}/global/banclean",
             success: function (res) {
-                if ((res && res.code === 1) || res.status) {
-                    showMsg(banResponseMessage(res, true), 'success', 1000, function () {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function () {
                         $('#table').bootstrapTable('refresh');
                     });
                 } else {
-                    showMsg(banResponseMessage(res, false), 'error', 5000);
+                    showMsg(langreply(res.msg), 'error', 5000);
                 }
             }
         });
     }
 
     function unbanItem(key) {
-        var msg = banLang('confirm.unban');
+        var langobj = languages['content']['confirm']['unban'];
+        var msg = (langobj[languages['current']] || langobj[languages['default']] || 'Are you sure you want to unban this record?');
         if (!confirm(msg)) return;
         $.ajax({
             type: "POST",
-            url: window.nps.nodeRoute('banlist') + '/actions/delete',
+            url: "{{.web_base_url}}/global/unban",
             data: { key: key },
             success: function (res) {
-                if ((res && res.code === 1) || res.status) {
-                    showMsg(banResponseMessage(res, true), 'success', 1000, function () {
+                if (res.status) {
+                    showMsg(langreply(res.msg), 'success', 1000, function () {
                         $('#table').bootstrapTable('refresh');
                     });
                 } else {
-                    showMsg(banResponseMessage(res, false), 'error', 5000);
+                    showMsg(langreply(res.msg), 'error', 5000);
                 }
             }
         });
     }
-
-    window.nps.bindTableSelectionActions({
-        table: '#table',
-        idField: 'key',
-        summary: '#ban-bulk-selection-summary',
-        buttons: '.ban-bulk-action'
-    });
 
     window.addEventListener('resize', () => {
         for (var key in charts) {

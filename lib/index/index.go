@@ -2,10 +2,6 @@ package index
 
 import "sync"
 
-type idleConnectionCloser interface {
-	CloseIdleConnections()
-}
-
 type StringIDIndex struct {
 	mu   sync.RWMutex
 	data map[string]int
@@ -46,7 +42,7 @@ func (idx *StringIDIndex) Remove(key string) {
 
 func (idx *StringIDIndex) Clear() {
 	idx.mu.Lock()
-	clear(idx.data)
+	idx.data = make(map[string]int)
 	idx.mu.Unlock()
 }
 
@@ -90,7 +86,7 @@ func (idx *StringIndex) Remove(key string) {
 
 func (idx *StringIndex) Clear() {
 	idx.mu.Lock()
-	clear(idx.data)
+	idx.data = make(map[string]string)
 	idx.mu.Unlock()
 }
 
@@ -115,7 +111,10 @@ func (idx *AnyStringIndex) Remove(key string) {
 }
 
 func (idx *AnyStringIndex) Clear() {
-	idx.data.Clear()
+	idx.data.Range(func(k, _ interface{}) bool {
+		idx.data.Delete(k)
+		return true
+	})
 }
 
 type AnyIntIndex struct {
@@ -130,58 +129,41 @@ func (idx *AnyIntIndex) Add(key int, value interface{}) {
 	idx.data.Store(key, value)
 }
 
-func (idx *AnyIntIndex) LoadOrStore(key int, value interface{}) (actual interface{}, loaded bool) {
-	return idx.data.LoadOrStore(key, value)
-}
-
-func (idx *AnyIntIndex) CompareAndDelete(key int, expected interface{}) bool {
-	if idx == nil {
-		return false
-	}
-	return idx.data.CompareAndDelete(key, expected)
-}
-
 func (idx *AnyIntIndex) Get(key int) (value interface{}, ok bool) {
 	return idx.data.Load(key)
 }
 
+// LoadOrStore returns the existing value for key if present; otherwise it
+// stores and returns value. loaded reports whether the value was present.
+func (idx *AnyIntIndex) LoadOrStore(key int, value interface{}) (actual interface{}, loaded bool) {
+	return idx.data.LoadOrStore(key, value)
+}
+
+// idleConnCloser is implemented by cached values that hold idle connections,
+// such as *http.Transport.
+type idleConnCloser interface {
+	CloseIdleConnections()
+}
+
+func closeIdleConns(value interface{}) {
+	if c, ok := value.(idleConnCloser); ok {
+		c.CloseIdleConnections()
+	}
+}
+
+// Remove deletes key and closes the idle connections held by its value.
 func (idx *AnyIntIndex) Remove(key int) {
-	if idx == nil {
-		return
-	}
-	if value, ok := idx.data.LoadAndDelete(key); ok {
-		if closer, ok := value.(idleConnectionCloser); ok {
-			closer.CloseIdleConnections()
-		}
+	if v, ok := idx.data.LoadAndDelete(key); ok {
+		closeIdleConns(v)
 	}
 }
 
-func (idx *AnyIntIndex) Range(fn func(int, interface{}) bool) {
-	if idx == nil || fn == nil {
-		return
-	}
-	idx.data.Range(func(key, value interface{}) bool {
-		intKey, ok := key.(int)
-		if !ok {
-			return true
-		}
-		return fn(intKey, value)
-	})
-}
-
+// Clear deletes every key and closes the idle connections held by the values.
 func (idx *AnyIntIndex) Clear() {
-	if idx == nil {
-		return
-	}
-	closers := make([]idleConnectionCloser, 0)
-	idx.data.Range(func(_, value interface{}) bool {
-		if closer, ok := value.(idleConnectionCloser); ok {
-			closers = append(closers, closer)
+	idx.data.Range(func(k, v interface{}) bool {
+		if idx.data.CompareAndDelete(k, v) {
+			closeIdleConns(v)
 		}
 		return true
 	})
-	idx.data.Clear()
-	for _, closer := range closers {
-		closer.CloseIdleConnections()
-	}
 }

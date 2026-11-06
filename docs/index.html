@@ -1,120 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>NPS 文档</title>
+    <title>Document</title>
     <meta content="IE=edge,chrome=1" http-equiv="X-UA-Compatible"/>
-    <meta content="NPS 项目文档，包含开始使用、操作指南、规则选型、参考资料与接口集成。" name="description">
+    <meta content="Description" name="description">
     <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
           name="viewport">
     <link href="//cdn.jsdelivr.net/npm/docsify/lib/themes/vue.css" rel="stylesheet">
-    <style>
-        .sidebar-nav li ul {
-            display: none;
-        }
-
-        .sidebar-nav li.sidebar-open > ul {
-            display: block;
-        }
-
-        .sidebar-nav li.sidebar-branch > a {
-            padding-right: 1.2rem;
-            position: relative;
-        }
-
-        .sidebar-nav li.sidebar-branch > a::after {
-            content: "›";
-            font-size: 1rem;
-            line-height: 1;
-            opacity: .5;
-            position: absolute;
-            right: .15rem;
-            top: .35rem;
-            transition: transform .15s ease;
-        }
-
-        .sidebar-nav li.sidebar-branch.sidebar-open > a::after {
-            transform: rotate(90deg);
-        }
-
-        .sidebar-nav li.sidebar-current > a {
-            color: var(--theme-color, #42b983);
-            font-weight: 600;
-        }
-    </style>
 </head>
 <body>
 <div id="app"></div>
 <script src="//cdn.jsdelivr.net/npm/docsify-edit-on-github/index.js"></script>
 
 <script>
-    function updateSidebarState() {
-        var sidebar = document.querySelector('.sidebar-nav');
-        if (!sidebar) {
-            return;
-        }
-
-        sidebar.querySelectorAll('li').forEach(function (item) {
-            var hasChildList = Array.prototype.some.call(item.children, function (child) {
-                return child.tagName === 'UL';
-            });
-            item.classList.toggle('sidebar-branch', hasChildList);
-            item.classList.remove('sidebar-open', 'sidebar-current');
-        });
-
-        var activeLink = sidebar.querySelector('a.active');
-        if (!activeLink) {
-            return;
-        }
-
-        var currentItem = activeLink.closest('li');
-        if (currentItem) {
-            currentItem.classList.add('sidebar-current');
-            if (currentItem.classList.contains('sidebar-branch')) {
-                currentItem.classList.add('sidebar-open');
-            }
-        }
-
-        var parent = currentItem && currentItem.parentElement;
-        while (parent && parent !== sidebar) {
-            var branch = parent.closest('li.sidebar-branch');
-            if (!branch) {
-                break;
-            }
-            branch.classList.add('sidebar-open');
-            parent = branch.parentElement;
-        }
-    }
-
-    function compactSidebarPlugin(hook) {
-        hook.doneEach(function () {
-            requestAnimationFrame(updateSidebarState);
-        });
-    }
 
     window.$docsify = {
-        name: 'NPS',
-        nameLink: '#/README',
-        repo: 'https://github.com/djylb/nps',
-        homepage: 'README.md',
-        alias: {
-            '/donate': '/community/donate.md',
-        },
+        name: '',
+        repo: '',
         loadSidebar: true,
         coverpage: true,
         loadNavbar: true,
-        auto2top: true,
-        relativePath: true,
-        subMaxLevel: 3,
-        maxLevel: 3,
+        subMaxLevel: 2,
+        maxLevel: 4,
         search: {
             noData: "没有结果",
             paths: 'auto',
-            placeholder: "搜索文档",
-            hideOtherSidebarContent: true,
+            placeholder: "搜索",
+            hideOtherSidebarContent: true, // whether or not to hide other sidebar content
         },
         plugins: [
-            compactSidebarPlugin,
             EditOnGithubPlugin.create("https://github.com/djylb/nps/tree/master/docs/", "", "在 GitHub 上编辑"),
         ]
 

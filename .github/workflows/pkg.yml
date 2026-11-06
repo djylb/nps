@@ -31,8 +31,8 @@ jobs:
 
       - name: Build
         run: |
-          chmod +x build_assets.sh
-          ./build_assets.sh
+          chmod +x build.assets.sh
+          ./build.assets.sh
 
       - name: Get NPS version
         id: version
@@ -58,19 +58,6 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
             -d '{"event_type":"trigger-update"}'
-
-      - name: Trigger Sync to nps-mirror
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-        run: |
-          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
-            -d '{
-              "event_type": "sync_nps_release",
-              "client_payload": {
-                "tag": "v${{ env.NPS_VERSION }}"
-              }
-            }'
 
   build_assets_old:
     runs-on: ubuntu-latest
@@ -105,8 +92,8 @@ jobs:
 
       - name: Build (old)
         run: |
-          chmod +x build_assets_legacy.sh
-          ./build_assets_legacy.sh
+          chmod +x build.assets.old.sh
+          ./build.assets.old.sh
 
       - name: Get NPS version
         id: version
@@ -125,6 +112,64 @@ jobs:
           files: "*.tar.gz"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release_manifest:
+    needs: [ build_assets, build_assets_old ]
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Get NPS version
+        run: |
+          version=$(grep -oP '(?<=const VERSION = ")[^"]*' lib/version/version.go)
+          echo "NPS version: $version"
+          echo "NPS_VERSION=$version" >> $GITHUB_ENV
+
+      - name: Build the selfupdate tool
+        run: go build -o "$RUNNER_TEMP/selfupdate" github.com/djylb/selfupdate/cmd/selfupdate
+
+      - name: Download release archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "v${NPS_VERSION}" --dir dist \
+            --pattern '*_server.tar.gz' --pattern '*_client.tar.gz' \
+            --pattern '*_server_old.tar.gz' --pattern '*_client_old.tar.gz'
+
+      - name: Sign the update manifest
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          SELFUPDATE: ${{ runner.temp }}/selfupdate
+        run: bash scripts/release_manifest.sh "$NPS_VERSION" dist
+
+      - name: Upload the update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "v${NPS_VERSION}" dist/manifest.json --clobber
+
+      - name: Trigger Sync to nps-mirror
+        run: |
+          curl -X POST https://api.github.com/repos/djylb/nps-mirror/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -d '{
+              "event_type": "sync_nps_release",
+              "client_payload": {
+                "tag": "v${{ env.NPS_VERSION }}"
+              }
+            }'
 
   build_android:
     runs-on: ubuntu-latest
@@ -173,8 +218,8 @@ jobs:
           NDK_CACHE_DIR: ${{ env.NDK_CACHE_DIR }}
           NDK: ${{ env.NDK_CACHE_DIR }}/android-ndk-${{ env.NDK_VERSION }}
         run: |
-          chmod +x build_android.sh
-          ./build_android.sh
+          chmod +x build.android.sh
+          ./build.android.sh
           ls -l android_libs_client.tar.gz || true
 
       - name: Get NPS version

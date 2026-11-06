@@ -1,10 +1,32 @@
-﻿<div class="wrapper wrapper-content animated fadeInRight">
+<div class="wrapper wrapper-content animated fadeInRight">
     <div class="row">
         <div class="col-lg-12">
-            <div class="ibox float-e-margins nps-list-shell">
+            <div class="ibox float-e-margins">
                 <div class="ibox-title">
-                    <h5 class="nps-list-title" langtag="page-clientlist"></h5>
-                    <p class="nps-list-subtitle" langtag="info-client-list-subtitle"></p>
+                    <h5 langtag="page-clientlist"></h5>
+                    {{if eq true .isAdmin}}
+                    <div id="global_traffic" class="text-muted small" style="display: none; line-height: 1.15;" role="group" aria-labelledby="global_traffic_label">
+                        <span id="global_traffic_label" class="sr-only" langtag="word-globaltraffic"></span>
+                        <div class="d-flex flex-nowrap align-items-center" style="gap: 20px; font-variant-numeric: tabular-nums;">
+                            <i class="fa fa-server" aria-hidden="true"></i>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-forwardin"></span><strong class="text-right" id="global_traffic_in"></strong>
+                                <span langtag="word-forwardout"></span><strong class="text-right" id="global_traffic_out"></strong>
+                            </div>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-totalflow"></span><strong class="text-right" id="global_traffic_total"></strong>
+                                <span langtag="word-actualflow"></span><strong class="text-right" id="global_traffic_actual"></strong>
+                            </div>
+                            <div class="text-nowrap" style="display: grid; grid-template-columns: max-content max-content; column-gap: 8px;">
+                                <span langtag="word-uploadspeed"></span><strong class="text-right" id="global_traffic_rate_in"></strong>
+                                <span langtag="word-downloadspeed"></span><strong class="text-right" id="global_traffic_rate_out"></strong>
+                            </div>
+                            <div id="global_traffic_limit_box" class="text-nowrap align-self-start">
+                                <span langtag="word-ratelimit"></span> <strong id="global_traffic_limit"></strong>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
                     <div class="ibox-tools">
                         <a class="collapse-link">
                             <i class="fa fa-chevron-up"></i>
@@ -14,78 +36,29 @@
                         </a>
                     </div>
                 </div>
+                {{if eq true .isAdmin}}
                 <div class="content">
                     <div class="table-responsive">
                         <div id="toolbar">
-                            <div class="d-flex w-100 flex-wrap align-items-center">
-                                <a class="btn btn-primary mr-2"
-                                   href="{{.web_base_url}}/client/add"
-                                   data-nps-page-controller="client"
-                                   data-nps-page-action="add"
-                                   data-nps-require-page-controller="client"
-                                   data-nps-require-page-action="add"
-                                   data-nps-require-node-action="clients/add">
+                            <div class="list-toolbar-primary">
+                                <a class="btn btn-primary dim" href="{{.web_base_url}}/client/add">
                                     <i class="fa fa-fw fa-lg fa-plus"></i>
                                     <span langtag="word-add"></span>
                                 </a>
-                                <a class="btn btn-danger mr-2"
-                                   data-nps-require-node-action="clients/clear_all"
-                                   onclick="window.nps.submitFormAction('clear', window.nps.clientActions.clearAll, {'id': 0, 'mode': 'flow'})">
+                                <a class="btn btn-danger dim" onclick="submitform('clear', '{{.web_base_url}}/client/clear', {'id': 0, 'mode': 'flow'})">
                                     <i class="fa fa-fw fa-lg fa-eraser"></i>
                                     <span langtag="word-clearflow"></span>
                                 </a>
-                                <a class="btn btn-warning"
-                                   data-nps-require-node-action="clients/ping"
-                                   onclick="triggerVisibleClientPing(this)">
+                                <a class="btn btn-warning dim" onclick="triggerVisibleClientPing(this)">
                                     <i class="fa fa-fw fa-lg fa-signal"></i>
                                     <span langtag="word-ping"></span>
                                 </a>
-                                <div class="btn-group mr-2 mt-2 mt-md-0"
-                                     data-nps-require-any-node-actions="clients/status,clients/delete,clients/clear">
-                                    <button type="button" class="btn btn-outline btn-primary client-bulk-action" id="client-bulk-start" onclick="runSelectedClientBatch('start')" disabled>
-                                        <i class="fa fa-play"></i>
-                                        <span langtag="word-start"></span>
-                                    </button>
-                                    <button type="button" class="btn btn-outline btn-warning client-bulk-action" id="client-bulk-stop" onclick="runSelectedClientBatch('stop')" disabled>
-                                        <i class="fa fa-pause"></i>
-                                        <span langtag="word-stop"></span>
-                                    </button>
-                                    <button type="button"
-                                            class="btn btn-outline btn-info client-bulk-action"
-                                            id="client-bulk-clear"
-                                            data-nps-require-node-action="clients/clear"
-                                            onclick="runSelectedClientBatch('clear')"
-                                            disabled>
-                                        <i class="fa fa-eraser"></i>
-                                        <span langtag="word-clearflow"></span>
-                                    </button>
-                                    <button type="button"
-                                            class="btn btn-outline btn-danger client-bulk-action"
-                                            id="client-bulk-delete"
-                                            data-nps-require-node-action="clients/delete"
-                                            onclick="runSelectedClientBatch('delete')"
-                                            disabled>
-                                        <i class="fa fa-trash"></i>
-                                        <span langtag="word-delete"></span>
-                                    </button>
-                                </div>
-                                <button type="button"
-                                        class="btn btn-outline btn-default mr-2 mt-2 mt-md-0 client-bulk-action"
-                                        id="client-bulk-reset"
-                                        data-nps-require-any-node-actions="clients/status,clients/delete,clients/clear"
-                                        onclick="window.nps.clearTableSelections('#table')"
-                                        disabled>
-                                    <i class="fa fa-times"></i>
-                                    <span langtag="word-cancel"></span>
-                                </button>
-                                <span class="text-muted small align-self-center mt-2 mt-md-0"
-                                      id="client-bulk-selection-summary"
-                                      data-nps-require-any-node-actions="clients/status,clients/delete,clients/clear"></span>
                             </div>
                         </div>
                         <table class="table-striped table-hover" data-mobile-responsive="true" id="taskList_table"></table>
                     </div>
                 </div>
+                {{end}}
                 <div class="ibox-content">
                     <table id="table"></table>
                 </div>
@@ -97,701 +70,494 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="qrModalLabel" langtag="word-totp"></h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="" langtag="word-close" langattr="aria-label">
+                <h5 class="modal-title" id="qrModalLabel">TOTP</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body text-center">
-                <img id="qrImg" src="" alt="" langtag="word-qrcode" langattr="alt" class="nps-qr-image" />
+                <img id="qrImg" src="" alt="QR" style="max-width: 100%; height: auto;" />
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    var clientPageDisplay = {};
-
-    window.nps.clientActions = {
-        list: window.nps.nodeRoute('clients'),
-        clearAll: window.nps.nodeMutation('client', 'clear'),
-        clear: function (id) { return window.nps.nodeMutation('client', 'clear', id); },
-        changeStatus: function (id) { return window.nps.nodeMutation('client', 'status', id); },
-        del: function (id) { return window.nps.nodeMutation('client', 'delete', id); },
-        ping: function (id) { return window.nps.nodeMutation('client', 'ping', id); },
-        connections: function (id) {
-            return {
-                method: 'GET',
-                url: window.nps.nodeResourcePath('clients', id, 'connections')
-            };
-        }
-    };
-
-    function clientFlow(row) {
-        return ((row.Flow && row.Flow.InletFlow) || 0) + ((row.Flow && row.Flow.ExportFlow) || 0);
-    }
-
-    function clientHasOwnerUser(row) {
-        return clientOwnerUserID(row) > 0;
-    }
-
-    function clientOwnerUserID(row) {
-        return row.OwnerUserID || row.UserId || 0;
-    }
-
-    function clientLifecycleInheritedText() {
-        return clientLang('info-inherited-owner-user');
-    }
-
-    function clientLang(id, fallback) {
-        return window.nps.langText(id, arguments.length > 1 ? fallback : '');
-    }
-
-    function clientFormat(id, replacements, fallback) {
-        return window.nps.langFormat(id, replacements, arguments.length > 2 ? fallback : '');
-    }
-
-    function clientDisplayBridge() {
-        return clientPageDisplay.bridge || {};
-    }
-
-    function clientDisplayTransport(name) {
-        return clientDisplayBridge()[String(name || '').toLowerCase()] || {};
-    }
-
-    function clientBinaryName() {
-        return './npc' + (clientPageDisplay.client_binary_suffix || '');
-    }
-
-    function clientCommandSnippet(labelTag, transportName, row) {
-        var transport = clientDisplayTransport(transportName);
-        if (!transport.enabled || !transport.addr) {
-            return '';
-        }
-        return '<b langtag="' + labelTag + '"></b>: <code onclick="oCopy(this)">' +
-            clientBinaryName() + ' -server="' + transport.addr + '" -vkey="' + row.VerifyKey + '" -type="' + (transport.type || transportName) + '"' +
-            '</code>&emsp;<br/><br/>';
-    }
-
-    function clientOwnerDisplay(row) {
-        return clientHasOwnerUser(row)
-            ? (clientLang('word-user') + ' #' + clientOwnerUserID(row))
-            : clientLang('word-platformmanaged');
-    }
-
-    function clientSourceTypeText(value) {
-        var normalized = String(value || 'node_admin').toLowerCase().replace(/_/g, '-');
-        return clientLang('word-sourcetype-' + normalized) || clientLang('word-na');
-    }
-
-    function clientRateUnitText() {
-        return clientLang('unit-kilobyte-per-second');
-    }
-
-    function clientPerSecondUnitText() {
-        return clientLang('unit-per-second');
-    }
-
-    function formatClientExpireAtValue(value) {
-        if (!value) {
-            return '<span langtag="word-false"></span>';
-        }
-        return new Date(value * 1000).toLocaleString();
-    }
-
-    function formatClientExpireAt(row) {
-        if (clientHasOwnerUser(row)) {
-            return clientLifecycleInheritedText();
-        }
-        return formatClientExpireAtValue(row.ExpireAt);
-    }
-
-    function formatClientFlowLimit(row) {
-        if (clientHasOwnerUser(row)) {
-            return clientLifecycleInheritedText();
-        }
-        if (!row.FlowLimit) {
-            return '<span langtag="word-false"></span>';
-        }
-        return changeunit(row.FlowLimit);
-    }
-
-    function formatClientFlowRemain(row) {
-        if (clientHasOwnerUser(row)) {
-            return clientLifecycleInheritedText();
-        }
-        if (!row.FlowLimit) {
-            return '<span langtag="word-false"></span>';
-        }
-        return changeunit(row.FlowLimit - clientFlow(row));
-    }
-
-    function clientExpireAtIso(row) {
-        if (!row.ExpireAt) {
-            return '0001-01-01T00:00:00Z';
-        }
-        return new Date(row.ExpireAt * 1000).toISOString();
-    }
-
-    function canCreateClient() {
-        return window.nps.pageAvailable('client', 'add') && window.nps.nodeActionAvailable('clients/add');
-    }
-
-    function canManageClientStatus() {
-        return window.nps.nodeActionAvailable('clients/status');
-    }
-
-    function canDeleteClient() {
-        return window.nps.nodeActionAvailable('clients/delete');
-    }
-
-    function canEditClient() {
-        return window.nps.pageAvailable('client', 'edit') && window.nps.nodeActionAvailable('clients/edit');
-    }
-
-    function canClearClient() {
-        return window.nps.nodeActionAvailable('clients/clear');
-    }
-
-    function canClearAllClients() {
-        return window.nps.nodeActionAvailable('clients/clear_all');
-    }
-
-    function canPingClients() {
-        return window.nps.nodeActionAvailable('clients/ping');
-    }
-
-    function canInspectClientConnections() {
-        return window.nps.nodeActionAvailable('clients/connections');
-    }
-
-    function canBulkManageClients() {
-        return window.nps.anyNodeActionAvailable(['clients/status', 'clients/delete', 'clients/clear']);
-    }
-
-    function canViewClientTunnels() {
-        return window.nps.pageAvailable('index', 'all');
-    }
-
-    function canViewClientHosts() {
-        return window.nps.pageAvailable('index', 'hostlist');
-    }
-
-    function canShowClientOwnerMeta() {
-        return window.nps.isAdmin();
-    }
-
-    function clientClearAction(row, mode, content, options) {
-        var settings = options || {};
-        if (!canClearClient()) {
-            return content;
-        }
-        if (settings.skipInherited && clientHasOwnerUser(row)) {
-            return content;
-        }
-        return '<span onclick="window.nps.submitFormAction(\'clear\', window.nps.clientActions.clear(' + row.Id + '), {\'id\':' + row.Id + ', \'mode\': \'' + mode + '\'})">' + content + '</span>';
-    }
-
-    function clientConnectionContainerID(id) {
-        return 'client-runtime-instances-' + id;
-    }
-
-    function clientConnectionText(value) {
-        if (value === null || value === undefined || value === '') {
-            return clientLang('word-none');
-        }
-        return escapeHtml(String(value));
-    }
-
-    function clientConnectionCopyText(value) {
-        if (value === null || value === undefined || value === '') {
-            return clientLang('word-none');
-        }
-        return '<span onclick="oCopy(this)">' + escapeHtml(String(value)) + '</span>';
-    }
-
-    function clientConnectionStatusText(item) {
-        if (!item) {
-            return clientLang('word-offline');
-        }
-        var parts = [];
-        parts.push(item.is_online ? clientLang('word-online') : clientLang('word-offline'));
-        if (item.has_signal) {
-            parts.push(clientLang('word-signal', 'Signal'));
-        }
-        if (item.has_tunnel) {
-            parts.push(clientLang('word-tunnel'));
-        }
-        return parts.join(' / ');
-    }
-
-    function formatClientDirectionalRate(total, inlet, outlet) {
-        return changeunit(total || 0) + clientPerSecondUnitText() +
-            ' (' + changeunit(inlet || 0) + clientPerSecondUnitText() +
-            ' in / ' + changeunit(outlet || 0) + clientPerSecondUnitText() + ' out)';
-    }
-
-    function renderClientRuntimeInstances(items) {
-        if (!items || !items.length) {
-            return '<span class="text-muted">' + escapeHtml(clientLang('info-client-runtime-instances-empty', 'No runtime instances.')) + '</span>';
-        }
-        var html = [];
-        $.each(items, function (_, item) {
-            item = item || {};
-            html.push('<div class="m-b-md">');
-            html.push('<b>' + escapeHtml(clientLang('word-runtimeuuid', 'Runtime UUID')) + '</b>: ' + clientConnectionCopyText(item.uuid) + '&emsp;');
-            html.push('<b langtag="word-version"></b>: ' + clientConnectionText(item.version) + '&emsp;');
-            html.push('<b>' + escapeHtml(clientLang('word-runtimebaseversion', 'Base Version')) + '</b>: ' + clientConnectionText(item.base_ver || '') + '&emsp;');
-            html.push('<b>' + escapeHtml(clientLang('word-connectedat', 'Connected At')) + '</b>: ' + clientConnectionText(item.connected_at_text) + '&emsp;');
-            html.push('<b langtag="word-status"></b>: ' + clientConnectionText(clientConnectionStatusText(item)) + '&emsp;<br/><br/>');
-            html.push('<b langtag="word-address"></b>: ' + clientConnectionCopyText(item.remote_addr) + '&emsp;');
-            html.push('<b langtag="word-localaddress"></b>: ' + clientConnectionCopyText(item.local_addr) + '&emsp;');
-            html.push('<b langtag="word-curconnections"></b>: ' + clientConnectionText(item.now_conn || 0) + '&emsp;<br/><br/>');
-            html.push('<b langtag="word-totalflow"></b>: ' + changeunit(item.total_bytes || 0) + '&emsp;');
-            html.push('<b langtag="word-speed"></b>: ' + formatClientDirectionalRate(item.total_now_rate_total_bps, item.total_now_rate_in_bps, item.total_now_rate_out_bps) + '&emsp;<br/><br/>');
-            html.push('<b>' + escapeHtml(clientLang('word-service', 'Service')) + '</b>: ' + changeunit(item.service_total_bytes || 0) + ' / ' + formatClientDirectionalRate(item.service_now_rate_total_bps, item.service_now_rate_in_bps, item.service_now_rate_out_bps) + '&emsp;');
-            html.push('<b>' + escapeHtml(clientLang('word-bridge', 'Bridge')) + '</b>: ' + changeunit(item.bridge_total_bytes || 0) + ' / ' + formatClientDirectionalRate(item.bridge_now_rate_total_bps, item.bridge_now_rate_in_bps, item.bridge_now_rate_out_bps) + '&emsp;');
-            html.push('</div>');
-        });
-        return html.join('');
-    }
-
-    function loadClientRuntimeInstances(row, $detail) {
-        if (!canInspectClientConnections() || !row || !row.Id) {
-            return;
-        }
-        var containerID = clientConnectionContainerID(row.Id);
-        var $container = $detail.find('#' + containerID);
-        if (!$container.length || $container.data('loading')) {
-            return;
-        }
-        if (Number(row.ConnectionCount || 0) <= 0) {
-            $container.html('<span class="text-muted">' + escapeHtml(clientLang('info-client-runtime-instances-empty', 'No runtime instances.')) + '</span>');
-            return;
-        }
-        var request = window.nps.clientActions.connections(row.Id);
-        $container
-            .data('loading', true)
-            .html('<span class="text-muted">' + escapeHtml(clientLang('info-client-runtime-instances-loading', 'Loading runtime instances...')) + '</span>');
-        $.ajax({
-            url: request.url,
-            type: request.method,
-            dataType: 'json'
-        }).done(function (response) {
-            var rows = window.nps.resourceListResponseHandler(response, function (item) {
-                return item || {};
-            }).rows || [];
-            $container.html(renderClientRuntimeInstances(rows));
-        }).fail(function () {
-            $container.html('<span class="text-danger">' + escapeHtml(clientLang('word-error-short')) + '</span>');
-        }).always(function () {
-            $container.removeData('loading');
-            $('body').setLang('#' + containerID);
-        });
-    }
-
-    function initClientTable() {
+    /*bootstrap table*/
     $('#table').bootstrapTable({
-        toolbar: '#toolbar',
-        method: 'get',
-        url: window.nps.clientActions.list,
-        striped: true,
+        toolbar: "#toolbar",
+        idField: "Id",
+        uniqueId: "Id",
+        clickToSelect: false,
+        method: 'post', // 服务器数据的请求方式 get or post
+        url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
+        contentType: "application/x-www-form-urlencoded",
+        striped: true, // 设置为true会有隔行变色效果
         search: true,
         showHeader: true,
         showColumns: true,
         showRefresh: true,
-        pagination: true,
-        sidePagination: 'server',
+        pagination: true,//分页
+        sidePagination: 'server',//服务器端分页
         pageNumber: 1,
         pageList: [5, 10, 20, 50, 100, 'all'],
         cookie: true,
         cookieIdTable: 'client',
         cookieStorage: 'localStorage',
-        idField: 'Id',
-        uniqueId: 'Id',
-        maintainMetaData: true,
+        // Only the layout is kept across visits; a search or page left over
+        // from another list or client would hide rows without notice.
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
         detailView: true,
-        smartDisplay: true,
-        queryParams: function (params) {
-            return window.nps.resourceListQueryParams(params);
-        },
-        responseHandler: function (response) {
-            return window.nps.resourceListResponseHandler(response, window.nps.adaptNodeClientResource);
-        },
-        onExpandRow: function (index, row, $detail) {
-            $('body').setLang('.detail-view');
-            loadClientRuntimeInstances(row, $detail);
-        },
-        onPostBody: function () {
-            if ($(this)[0].locale !== undefined) {
-                $('body').setLang('#table');
+        smartDisplay: true, // 智能显示 pagination 和 cardview 等
+        onExpandRow: function () {$('body').setLang ('.detail-view');},
+        onPostBody: function (data) { if ($(this)[0].locale != undefined) $('body').setLang('#table'); },
+        onLoadSuccess: function (res) { showGlobalTraffic(res && res.traffic); },
+        detailFormatter: function (index, row, element) {
+            var quotas = '<b langtag="word-maxconnections"></b>: '
+                {{if eq true .isAdmin}}
+                + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'conn_limit\'})">' + row.MaxConn + '</span>'
+                {{else}}
+                + row.MaxConn
+                {{end}}
+                + '&emsp;'
+                + '<b langtag="word-curconnections"></b>: ' + npsLiveValue('NowConn', row.NowConn) + '&emsp;'
+                + '<b langtag="word-flowlimit"></b>: '
+                {{if eq true .isAdmin}}
+                + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + row.Flow.FlowLimit + '</span>'
+                {{else}}
+                + row.Flow.FlowLimit
+                {{end}}
+                + 'MB&emsp;'
+                + '<b langtag="word-timelimit"></b>: '
+                {{if eq true .isAdmin}}
+                + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + row.Flow.TimeLimit + '</span>'
+                {{else}}
+                + row.Flow.TimeLimit
+                {{end}}
+                + '&emsp;'
+                + '<b langtag="word-ratelimit"></b>: '
+                {{if eq true .isAdmin}}
+                + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'rate_limit\'})">' + row.RateLimit + '</span>'
+                {{else}}
+                + row.RateLimit
+                {{end}}
+                + 'KB/s&emsp;'
+                + '<b langtag="word-maxtunnels"></b>: '
+                {{if eq true .isAdmin}}
+                + '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'tunnel_limit\'})">' + row.MaxTunnelNum + '</span>'
+                {{else}}
+                + row.MaxTunnelNum
+                {{end}}
+                + '&emsp;<br/><br/>'
+            var status = '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;'
+                + '<b langtag="word-lastonlinetime"></b>: ' + npsLiveValue('LastOnlineTime', row.LastOnlineTime) + '&emsp;'
+                + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
+                + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
+            status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
+            var account = ''
+            if (row.WebUserName || row.WebPassword) {
+                account += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
+                + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
             }
-        },
-        detailFormatter: function (index, row) {
-            var tmp = '<b langtag="word-maxconnections"></b>: ';
-            tmp += clientClearAction(row, 'conn_limit', row.MaxConn);
-            tmp += '&emsp;';
-            tmp += '<b langtag="word-curconnections"></b>: ' + row.NowConn + '&emsp;';
-            tmp += '<b>' + clientLang('word-runtimeinstances', 'Runtime Instances') + '</b>: ' + (row.ConnectionCount || 0) + '&emsp;';
-            tmp += '<b langtag="word-flowlimit"></b>: ';
-            tmp += clientClearAction(row, 'flow_limit', formatClientFlowLimit(row), {skipInherited: true});
-            tmp += '&emsp;';
-            tmp += '<b langtag="word-timelimit"></b>: ';
-            tmp += clientClearAction(row, 'time_limit', formatClientExpireAt(row), {skipInherited: true});
-            tmp += '&emsp;';
-            tmp += '<b langtag="word-ratelimit"></b>: ';
-            tmp += clientClearAction(row, 'rate_limit', row.RateLimit);
-            tmp += clientRateUnitText() + '&emsp;';
-            tmp += '<b langtag="word-maxtunnels"></b>: ';
-            tmp += clientClearAction(row, 'tunnel_limit', row.MaxTunnelNum);
-            tmp += '&emsp;<br/><br/>';
-            tmp += '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;';
-            tmp += '<b langtag="word-lastonlinetime"></b>: ' + row.LastOnlineTime + '&emsp;';
-            tmp += '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;';
-            tmp += '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>';
-            if (canShowClientOwnerMeta()) {
-                tmp += '<b>' + clientLang('word-owneruser') + '</b>: ' + clientOwnerDisplay(row) + '&emsp;';
-                tmp += '<b>' + clientLang('word-manageruserids') + '</b>: ' + ((row.ManagerUserIDs && row.ManagerUserIDs.length) ? row.ManagerUserIDs.join(', ') : clientLang('word-none')) + '&emsp;';
-                if (row.SourceType) {
-                    tmp += '<b>' + clientLang('word-source') + '</b>: ' + clientSourceTypeText(row.SourceType) + '&emsp;';
-                }
-                if (row.SourcePlatformID) {
-                    tmp += '<b>' + clientLang('word-platform') + '</b>: ' + row.SourcePlatformID + '&emsp;';
-                }
-                tmp += '<br/><br/>';
+            if (row.WebUserName && row.WebTotpSecret) {
+                account += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
             }
+            var access = accessListDetail(row)
             if (row.Cnf.U || row.Cnf.P) {
-                tmp += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;';
-                tmp += '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>';
+                access += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
+                + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
             }
-            tmp += '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;';
-            tmp += '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;';
-            tmp += '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>';
-            if (Number(row.EntryAclMode || 0) !== 0) {
-                var aclModeTag = Number(row.EntryAclMode || 0) === 1 ? 'word-whitelist' : 'word-blacklist';
-                tmp += '<b langtag="word-entryacl"></b>: <span langtag="' + aclModeTag + '"></span>&emsp;';
-                tmp += '<b langtag="word-entryaclrules"></b>: ' + escapeHtml(row.EntryAclRules || '') + '&emsp;<br/><br/>';
-            }
-            tmp += clientCommandSnippet('word-commandclient-tcp', 'tcp', row);
-            tmp += clientCommandSnippet('word-commandclient-kcp', 'kcp', row);
-            tmp += clientCommandSnippet('word-commandclient-tls', 'tls', row);
-            tmp += clientCommandSnippet('word-commandclient-quic', 'quic', row);
-            tmp += clientCommandSnippet('word-commandclient-ws', 'ws', row);
-            tmp += clientCommandSnippet('word-commandclient-wss', 'wss', row);
-            if (canInspectClientConnections()) {
-                tmp += '<div id="' + clientConnectionContainerID(row.Id) + '" class="nps-client-runtime-instances"></div>';
-            }
-            return tmp;
+            var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
+                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
+                + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
+            var commands = ''
+                {{if index . "tcp_p"}}
+                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.tcp_ip}}:{{.tcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tcp\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "kcp_p"}}
+                + '<b langtag="word-commandclient-kcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.kcp_ip}}:{{.kcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"kcp\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "tls_p"}}
+                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.tls_ip}}:{{.tls_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tls\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "quic_p"}}
+                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.quic_addr}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"quic\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "ws_p"}}
+                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ws_ip}}:{{.ws_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"ws\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if index . "wss_p"}}
+                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.wss_ip}}:{{.wss_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"wss\"</code>&emsp;<br/><br/>"
+                {{end}}
+            return '<div class="resource-details">'
+                + resourceDetailSection('section-status', status)
+                + resourceDetailSection('section-commands', commands)
+                + resourceDetailSection('section-quotas', quotas)
+                + resourceDetailSection('section-transport', transport)
+                + resourceDetailSection('section-access', access)
+                + resourceDetailSection('section-webaccount', account)
+                + '</div>'
         },
+        //表格的列
         columns: [
-            (canBulkManageClients() ? {
-                checkbox: true,
-                align: 'center',
-                valign: 'middle'
-            } : null),
+            {{if eq true .isAdmin}}
+            {field: '_selected', checkbox: true, switchable: false, clickToSelect: false,
+                formatter: function (value, row) { return {disabled: row.Id <= 0}; }},
+            {{end}}
+
             {
-                field: 'Id',
-                title: '<span langtag="word-id"></span>',
+                field: 'Id',//域值
+                title: '<span langtag="word-id"></span>',//标题
                 halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>';
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + value + '</span>'
                 }
             },
             {
-                field: 'Remark',
-                title: '<span langtag="word-remark"></span>',
+                field: 'Remark',//域值
+                title: '<span langtag="word-remark"></span>',//标题
                 halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>';
-                }
-            },
-            (canShowClientOwnerMeta() ? {
-                field: 'UserId',
-                title: '<span langtag="word-owneruser"></span>',
-                halign: 'center',
-                visible: true,
-                sortable: false,
-                formatter: function (value, row) {
-                    return clientOwnerDisplay(row);
-                }
-            } : null),
-            {
-                field: 'Version',
-                title: '<span langtag="word-version"></span>',
-                halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>';
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + value + '</span>'
                 }
             },
             {
-                field: 'Mode',
-                title: '<span langtag="word-scheme"></span>',
+                field: 'Version',//域值
+                title: '<span langtag="word-version"></span>',//标题
                 halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + getBridgeMode(value) + '</span>';
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
-                field: 'VerifyKey',
-                title: '<span langtag="word-verifykey"></span>',
+                field: 'Mode',//域值
+                title: '<span langtag="word-scheme"></span>',//标题
                 halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value, row) {
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + getBridgeMode(value) + '</span>'
+                }
+            },
+            {
+                field: 'VerifyKey',//域值
+                title: '<span langtag="word-verifykey"></span>',//标题
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
                     if (!row.NoStore) {
-                        return '<span onclick="oCopy(this)">' + value + '</span>';
+                        return '<span onclick="oCopy(this)">' + value + '</span>'
+                    } else {
+                        return '<span langtag="word-publicvkey"></span>'
                     }
-                    return '<span langtag="word-publicvkey"></span>';
                 }
             },
             {
-                field: 'Addr',
-                title: '<span langtag="word-address"></span>',
+                field: 'Addr',//域值
+                title: '<span langtag="word-address"></span>',//标题
                 halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>';
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + value + '</span>'
                 }
             },
             {
-                field: 'LocalAddr',
-                title: '<span langtag="word-localaddress"></span>',
+                field: 'LocalAddr',//域值
+                title: '<span langtag="word-localaddress"></span>',//标题
                 halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>';
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + value + '</span>'
                 }
             },
             {
-                field: 'InletFlow',
-                title: '<span langtag="word-inletflow"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    return clientClearAction(row, 'flow', changeunit(row.Flow.InletFlow));
-                }
-            },
-            {
-                field: 'ExportFlow',
-                title: '<span langtag="word-exportflow"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    return clientClearAction(row, 'flow', changeunit(row.Flow.ExportFlow));
-                }
-            },
-            {
-                field: 'TotalFlow',
-                title: '<span langtag="word-totalflow"></span>',
-                halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value, row) {
-                    return clientClearAction(row, 'flow', changeunit(clientFlow(row)));
-                }
-            },
-            {
-                field: 'FlowRemain',
-                title: '<span langtag="word-flowremain"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    return clientClearAction(row, 'flow_limit', formatClientFlowRemain(row), {skipInherited: true});
-                }
-            },
-            {
-                field: 'TimeRemain',
-                title: '<span langtag="word-timeremain"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    if (clientHasOwnerUser(row)) {
-                        return clientLifecycleInheritedText();
-                    }
-                    if (!row.ExpireAt) {
-                        return '<span langtag="word-false"></span>';
-                    }
-                    return clientClearAction(row, 'time_limit', getRemainingTime(clientExpireAtIso(row)).formatted, {skipInherited: true});
-                }
-            },
-            {
-                field: 'FlowLimit',
-                title: '<span langtag="word-flowlimit"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    if (clientHasOwnerUser(row)) {
-                        return clientLifecycleInheritedText();
-                    }
-                    if (value === 0) {
-                        return '<span langtag="word-false"></span>';
-                    }
-                    return clientClearAction(row, 'flow_limit', changeunit(value), {skipInherited: true});
-                }
-            },
-            {
-                field: 'ExpireAt',
-                title: '<span langtag="word-timelimit"></span>',
-                halign: 'center',
-                visible: false,
-                sortable: true,
-                formatter: function (value, row) {
-                    if (clientHasOwnerUser(row)) {
-                        return clientLifecycleInheritedText();
-                    }
-                    if (value === 0) {
-                        return '<span langtag="word-false"></span>';
-                    }
-                    return clientClearAction(row, 'time_limit', formatClientExpireAtValue(value), {skipInherited: true});
-                }
-            },
-            {
-                field: 'NowConn',
-                title: '<span langtag="word-nowconn"></span>',
-                halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>';
-                }
-            },
-            {
-                field: 'Rate.NowRate',
+                field: 'Speed',
                 title: '<span langtag="word-speed"></span>',
-                halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value) {
-                    return changeunit(value) + clientPerSecondUnitText();
-                }
-            },
-            {
-                field: 'Status',
-                title: '<span langtag="word-status"></span>',
                 align: 'center',
                 halign: 'center',
                 visible: true,
                 sortable: true,
-                formatter: function (value) {
+                sortName: 'speed',
+                formatter: function (value, row, index) {
+                    return changeunit(typeof value === 'number' ? value : (Number(row.UploadRate) || 0) + (Number(row.DownloadRate) || 0)) + '/s';
+                }
+            },
+            {
+                field: 'UploadRate',
+                title: '<span langtag="word-uploadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'upload_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.UploadRate) || 0) + '/s';
+                }
+            },
+            {
+                field: 'DownloadRate',
+                title: '<span langtag="word-downloadspeed"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: true,
+                sortName: 'download_rate',
+                formatter: function (value, row, index) {
+                    return changeunit(Number(row.DownloadRate) || 0) + '/s';
+                }
+            },
+            {
+                field: 'InletFlow',//域值
+                title: '<span langtag="word-inletflow"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>'
+                    {{else}}
+                    return changeunit(row.Flow.InletFlow)
+                    {{end}}
+                }
+            },
+            {
+                field: 'ExportFlow',//域值
+                title: '<span langtag="word-exportflow"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>'
+                    {{else}}
+                    return changeunit(row.Flow.ExportFlow)
+                    {{end}}
+                }
+            },
+            {
+                field: 'TotalFlow',//域值
+                title: '<span langtag="word-totalflow"></span>',//标题
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                    {{else}}
+                    return changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow)
+                    {{end}}
+                }
+            },
+            {
+                field: 'ActualFlow',//域值
+                title: '<span langtag="word-actualflow"></span>',//标题
+                align: 'center',
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span title="' + langreply('Total x 2') + '">' + changeunit(typeof value === 'number' ? value : actualFlow(row.Flow)) + '</span>'
+                }
+            },
+            {
+                field: 'FlowRemain',//域值
+                title: '<span langtag="word-flowremain"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (row.Flow.FlowLimit === 0) {
+                        return '∞'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(typeof value === 'number' ? value : flowRemain(row.Flow, true)) + '</span>'
+                    {{else}}
+                    return changeunit(typeof value === 'number' ? value : flowRemain(row.Flow, true))
+                    {{end}}
+                }
+            },
+            {
+                field: 'TimeRemain',//域值
+                title: '<span langtag="word-timeremain"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + getRemainingTime(row.Flow.TimeLimit).formatted + '</span>'
+                    {{else}}
+                    return getRemainingTime(row.Flow.TimeLimit).formatted
+                    {{end}}
+                }
+            },
+            {
+                field: 'Flow.FlowLimit',//域值
+                title: '<span langtag="word-flowlimit"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (value === 0) {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow_limit\'})">' + changeunit(value * 1024 * 1024) + '</span>'
+                    {{else}}
+                    return changeunit(value * 1024 * 1024)
+                    {{end}}
+                }
+            },
+            {
+                field: 'Flow.TimeLimit',//域值
+                title: '<span langtag="word-timelimit"></span>',//标题
+                halign: 'center',
+                visible: false,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    if (value === "0001-01-01T00:00:00Z") {
+                        return '<span langtag="word-false"></span>'
+                    }
+                    {{if eq true .isAdmin}}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/client/clear\', {\'id\':' + row.Id + ', \'mode\': \'time_limit\'})">' + value + '</span>'
+                    {{else}}
+                    return value
+                    {{end}}
+                }
+            },
+            {
+                field: 'NowConn',//域值
+                title: '<span langtag="word-nowconn"></span>',//内容
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
+                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                }
+            },
+            {
+                field: 'Status',//域值
+                title: '<span langtag="word-status"></span>',//内容
+                align: 'center',
+                halign: 'center',
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
                     if (value) {
-                        return '<span class="badge badge-primary" langtag="word-open"></span>';
+                        return '<span class="badge badge-primary" langtag="word-open"></span>'
+                    } else {
+                        return '<span class="badge badge-badge" langtag="word-close"></span>'
                     }
-                    return '<span class="badge badge-badge" langtag="word-close"></span>';
                 }
             },
             {
-                field: 'IsConnect',
-                title: '<span langtag="word-connect"></span>',
+                field: 'IsConnect',//域值
+                title: '<span langtag="word-connect"></span>',//内容
                 align: 'center',
                 halign: 'center',
-                visible: true,
-                sortable: true,
-                formatter: function (value, row) {
+                visible: true,//false表示不显示
+                sortable: true,//启用排序
+                formatter: function (value, row, index) {
                     if (value) {
-                        if (canPingClients()) {
-                            return '<span class="badge badge-primary client-online-ping nps-clickable" langtag="word-online" data-id="' + row.Id + '" onclick="pingClient(this,' + row.Id + ')"></span>';
-                        }
-                        return '<span class="badge badge-primary" langtag="word-online"></span>';
+                        return '<span class="badge badge-primary client-online-ping" langtag="word-online" data-id="' + row.Id + '" style="cursor:pointer;" onclick="pingClient(this,' + row.Id + ')"></span>'
+                    } else {
+                        return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
-                    return '<span class="badge badge-badge" langtag="word-offline"></span>';
                 }
             },
             {
-                field: 'option',
-                title: '<span langtag="word-option"></span>',
+                field: 'show',//域值
+                title: '<span langtag="word-show">',//内容
                 align: 'center',
                 halign: 'center',
-                visible: true,
-                formatter: function (value, row) {
-                    var btnGroup = '<div class="btn-group">';
-                    if (canManageClientStatus()) {
-                        if (row.Status) {
-                            btnGroup += '<a onclick="window.nps.submitFormAction(\'stop\', window.nps.clientActions.changeStatus(' + row.Id + '), {\'id\':' + row.Id + ', \'status\': 0})" class="btn btn-outline btn-warning"><i class="fa fa-pause"></i></a>';
-                        } else {
-                            btnGroup += '<a onclick="window.nps.submitFormAction(\'start\', window.nps.clientActions.changeStatus(' + row.Id + '), {\'id\':' + row.Id + ', \'status\': 1})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>';
-                        }
-                    }
-                    if (canDeleteClient()) {
-                        if (!window.nps.allowLocalProxy() || row.Id > 0) {
-                            btnGroup += '<a onclick="window.nps.submitFormAction(\'delete\', window.nps.clientActions.del(' + row.Id + '), {\'id\':' + row.Id + '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>';
-                        }
-                    }
-                    if (canEditClient()) {
-                        btnGroup += '<a href="' + window.nps.pagePath('client', 'edit', {id: row.Id}) + '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a>';
-                    }
-                    btnGroup += '</div>';
-                    return btnGroup;
+                visible: true,//false表示不显示
+                formatter: function (value, row, index) {
+                    return '<div class="btn-group"><a href="{{.web_base_url}}/index/all?client_id=' + row.Id
+                        + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>'
+                        + '<a href="{{.web_base_url}}/index/hostlist?client_id=' + row.Id
+                        + '" class="btn btn-outline btn-success" langtag="word-host"></a></div>'
                 }
             },
             {
-                field: 'show',
-                title: '<span langtag="word-show"></span>',
+                field: 'option',//域值
+                title: '<span langtag="word-option"></span>',//内容
                 align: 'center',
                 halign: 'center',
-                visible: true,
-                formatter: function (value, row) {
-                    var btnGroup = '<div class="btn-group">';
-                    if (canViewClientTunnels()) {
-                        btnGroup += '<a href="' + window.nps.pagePath('index', 'all', {client_id: row.Id})
-                            + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>';
+                visible: true,//false表示不显示
+                formatter: function (value, row, index) {
+                    btn_group = '<div class="btn-group">'
+
+                    {{if eq true .isAdmin}}
+                    if (row.Status) {
+                        btn_group += '<a onclick="submitform(\'stop\', \'{{.web_base_url}}/client/changestatus\', {\'id\':' + row.Id
+                        btn_group += ', \'status\': 0})" class="btn btn-outline btn-warning"><i class="fa fa-pause"></i></a>'
+                    } else {
+                        btn_group += '<a onclick="submitform(\'start\', \'{{.web_base_url}}/client/changestatus\', {\'id\':' + row.Id
+                        btn_group += ', \'status\': 1})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>'
                     }
-                    if (canViewClientHosts()) {
-                        btnGroup += '<a href="' + window.nps.pagePath('index', 'hostlist', {client_id: row.Id})
-                            + '" class="btn btn-outline btn-success" langtag="word-host"></a>';
+                    if (row.Id > 0 && row.IsConnect && compareVersion(row.Version, '{{.client_update_min}}') >= 0 && compareVersion(row.Version, '{{.version}}') < 0) {
+                        btn_group += '<a onclick="submitform(\'update\', \'{{.web_base_url}}/client/update\', {\'id\':' + row.Id
+                        btn_group += '})" class="btn btn-outline btn-info"><i class="fa fa-arrow-circle-up"></i></a>'
                     }
-                    btnGroup += '</div>';
-                    return btnGroup;
+                    if (row.Id > 0) {
+                        btn_group += '<a onclick="submitform(\'delete\', \'{{.web_base_url}}/client/del\', {\'id\':' + row.Id
+                        btn_group += '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>'
+                    }
+                    {{end}}
+
+                    btn_group += '<a href="{{.web_base_url}}/client/edit?id=' + row.Id
+                    btn_group += '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a></div>'
+                    return btn_group
                 }
             }
-        ].filter(Boolean)
+        ]
     });
+    initListLive('client', '{{.web_base_url}}');
+    {{if eq true .isAdmin}}
+    initListBatch('client', '{{.web_base_url}}');
+    {{end}}
 
     function pingClient(el, id) {
         var $el = $(el);
-        if (!canPingClients() || $el.data('pinging')) return;
+        if ($el.data('pinging')) return;
+        var oldText = $el.text();
         $el.data('pinging', true)
-            .attr('title', clientLang('info-pinging'))
-            .text(clientLang('word-loading-short'))
+            .attr('title', 'Pinging...')
+            .text('...')
             .addClass('disabled');
         $.ajax({
-            url: window.nps.clientActions.ping(id).url,
-            type: window.nps.clientActions.ping(id).method,
+            url: '{{.web_base_url}}/client/pingclient',
+            type: 'POST',
             dataType: 'json',
             data: { id: id }
         }).done(function (res) {
             if (res && res.code === 1) {
-                var pingData = res.data && res.data.item ? res.data.item : (res.data || res);
-                var ms = parseInt(pingData.rtt, 10);
-                if (isNaN(ms)) ms = pingData.rtt;
-                $el.text(clientFormat('info-ping-ms', {value: ms}));
+                var ms = parseInt(res.rtt, 10);
+                if (isNaN(ms)) ms = res.rtt;
+                $el.text(ms + ' ms');
             } else {
-                $el.text(clientLang('word-error-short'));
+                $el.text('ERR');
             }
         }).fail(function () {
-            $el.text(clientLang('word-error-short'));
+            $el.text('ERR');
         }).always(function () {
-            $el.data('pinging', false).removeClass('disabled').removeAttr('title');
+            $el.data('pinging', false)
+                .removeClass('disabled')
+                .removeAttr('title');
         });
     }
 
     function triggerVisibleClientPing(btn) {
         var $btn = $(btn);
-        if (!canPingClients() || $btn.data('pinging')) return;
+        if ($btn.data('pinging')) return;
         $btn.data('pinging', true).addClass('disabled');
         $('#table').find('span.client-online-ping[data-id]').each(function () {
             var id = parseInt($(this).attr('data-id'), 10);
@@ -805,91 +571,24 @@
     }
 
     function showQr(el) {
-        document.getElementById('qrImg').src = el.getAttribute('data-url');
+        var url = el.getAttribute('data-url');
+        document.getElementById('qrImg').src = url;
         $('#qrModal').modal('show');
     }
 
-    function buildSelectedClientBatchItems(ids, action) {
-        return ids.map(function (id) {
-            switch (action) {
-                case 'start':
-                case 'stop':
-                    return {
-                        id: action + '-client-' + id,
-                        method: 'POST',
-                        path: window.nps.clientActions.changeStatus(id).url,
-                        body: {id: id, status: action === 'start' ? 1 : 0}
-                    };
-                case 'clear':
-                    return {
-                        id: action + '-client-' + id,
-                        method: 'POST',
-                        path: window.nps.clientActions.clear(id).url,
-                        body: {id: id, mode: 'flow'}
-                    };
-                case 'delete':
-                    var deleteRequest = window.nps.clientActions.del(id);
-                    return {
-                        id: action + '-client-' + id,
-                        method: deleteRequest.method,
-                        path: deleteRequest.url,
-                        body: {id: id}
-                    };
-                default:
-                    return null;
-            }
-        }).filter(Boolean);
-    }
-
-    function filterSelectedClientIDs(ids, action) {
-        if (window.nps.allowLocalProxy() && action === 'delete') {
-            return ids.filter(function (id) {
-                return parseInt(id, 10) > 0;
-            });
-        }
-        return ids;
-    }
-
-    function runSelectedClientBatch(action) {
-        return window.nps.runSelectionBatch({
-            table: '#table',
-            idField: 'Id',
-            trigger: '.client-bulk-action',
-            action: action,
-            confirmAction: action,
-            filterIDs: function (ids) {
-                return filterSelectedClientIDs(ids, action);
-            },
-            buildItems: function (ids) {
-                return buildSelectedClientBatchItems(ids, action);
-            },
-            refresh: function () {
-                $('#table').bootstrapTable('refresh');
-            }
-        });
-    }
-
-    window.nps.bindTableSelectionActions({
-        table: '#table',
-        idField: 'Id',
-        summary: '#client-bulk-selection-summary',
-        buttons: '.client-bulk-action'
-    });
-    window.nps.syncConditionalVisibility(document.getElementById('toolbar'));
-    }
-
-    $(function () {
-        window.nps.fetchNodeDisplay().then(function (display) {
-            clientPageDisplay = display || {};
-            initClientTable();
-        }, function () {
-            initClientTable();
-        });
-    });
-
-    function internationalized() {
-        if ($('#table').length) {
-            $('#table').bootstrapTable('refresh');
-        }
+    // showGlobalTraffic shows the traffic forwarded by the whole server,
+    // which the client list returns to administrators.
+    function showGlobalTraffic(t) {
+        if (t) $('#global_traffic').data('limit', t.limit);
+        if (!t) return;
+        $('#global_traffic_in').text(changeunit(t.in));
+        $('#global_traffic_out').text(changeunit(t.out));
+        $('#global_traffic_total').text(changeunit(t.in + t.out));
+        $('#global_traffic_actual').text(changeunit((t.in + t.out) * 2));
+        $('#global_traffic_rate_in').text(changeunit(t.inBps) + '/s');
+        $('#global_traffic_rate_out').text(changeunit(t.outBps) + '/s');
+        $('#global_traffic_limit').text(t.limit > 0 ? changeunit(t.limit) + '/s' : '');
+        $('#global_traffic_limit_box').toggle(t.limit > 0);
+        $('#global_traffic').show();
     }
 </script>

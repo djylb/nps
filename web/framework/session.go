@@ -1,40 +1,25 @@
 package framework
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )
 
-const (
-	sessionName       = "nps_session"
-	sessionContextKey = "nps.session"
-	requestDataKey    = "nps.request_data"
-	requestParamsKey  = "nps.request_params"
-	requestRawBodyKey = "nps.request_raw_body"
-)
+const sessionName = "nps_session"
 
 type sessionState struct {
 	store   *sessions.CookieStore
 	session *sessions.Session
 	writer  http.ResponseWriter
 	request *http.Request
-}
-
-type SessionEditor interface {
-	Set(string, interface{})
-	Delete(string)
-}
-
-type sessionBatchEditor struct {
-	state *sessionState
 }
 
 var (
@@ -118,119 +103,20 @@ func SetSessionValue(g *gin.Context, key string, value interface{}) error {
 	if err := EnsureSession(g); err != nil {
 		return err
 	}
-	session := sessionStateFromContext(g)
-	if session == nil {
-		return nil
-	}
-	return session.Set(key, value)
-}
-
-func MutateSession(g *gin.Context, fn func(SessionEditor)) error {
-	if err := EnsureSession(g); err != nil {
-		return err
-	}
-	session := sessionStateFromContext(g)
-	if session == nil || fn == nil {
-		return nil
-	}
-	fn(sessionBatchEditor{state: session})
-	return session.save()
+	return sessionStateFromContext(g).Set(key, value)
 }
 
 func DeleteSessionValue(g *gin.Context, key string) error {
 	if err := EnsureSession(g); err != nil {
 		return err
 	}
-	session := sessionStateFromContext(g)
-	if session == nil {
-		return nil
-	}
-	return session.Delete(key)
+	return sessionStateFromContext(g).Delete(key)
 }
 
 func sessionStateFromContext(g *gin.Context) *sessionState {
 	if v, ok := g.Get(sessionContextKey); ok {
 		if session, ok := v.(*sessionState); ok {
 			return session
-		}
-	}
-	return nil
-}
-
-func SetRequestData(g *gin.Context, key string, value interface{}) {
-	data := requestDataFromContext(g)
-	if data == nil {
-		data = make(map[string]interface{})
-		g.Set(requestDataKey, data)
-	}
-	data[key] = value
-	g.Set(key, value)
-}
-
-func SetRequestParam(g *gin.Context, key, value string) {
-	params := requestParamsFromContext(g)
-	if params == nil {
-		params = make(map[string]string)
-		g.Set(requestParamsKey, params)
-	}
-	params[key] = value
-}
-
-func RequestParam(g *gin.Context, key string) (string, bool) {
-	params := requestParamsFromContext(g)
-	if params == nil {
-		return "", false
-	}
-	value, ok := params[key]
-	return value, ok
-}
-
-func SetRequestRawBody(g *gin.Context, body []byte) {
-	if g == nil {
-		return
-	}
-	if body == nil {
-		g.Set(requestRawBodyKey, []byte(nil))
-		return
-	}
-	g.Set(requestRawBodyKey, append([]byte(nil), body...))
-}
-
-// RequestRawBodyView exposes the captured request body without an extra read-side
-// clone. Callers must treat the returned bytes as read-only.
-func RequestRawBodyView(g *gin.Context) []byte {
-	if g == nil {
-		return nil
-	}
-	if v, ok := g.Get(requestRawBodyKey); ok {
-		if body, ok := v.([]byte); ok {
-			return body
-		}
-	}
-	return nil
-}
-
-func RequestRawBody(g *gin.Context) []byte {
-	body := RequestRawBodyView(g)
-	if len(body) == 0 {
-		return body
-	}
-	return append([]byte(nil), body...)
-}
-
-func requestDataFromContext(g *gin.Context) map[string]interface{} {
-	if v, ok := g.Get(requestDataKey); ok {
-		if data, ok := v.(map[string]interface{}); ok {
-			return data
-		}
-	}
-	return nil
-}
-
-func requestParamsFromContext(g *gin.Context) map[string]string {
-	if v, ok := g.Get(requestParamsKey); ok {
-		if params, ok := v.(map[string]string); ok {
-			return params
 		}
 	}
 	return nil
@@ -248,7 +134,7 @@ func (s *sessionState) Set(key string, value interface{}) error {
 		return nil
 	}
 	s.session.Values[key] = value
-	return s.session.Save(s.request, s.writer)
+	return s.save()
 }
 
 func (s *sessionState) Delete(key string) error {
@@ -259,47 +145,50 @@ func (s *sessionState) Delete(key string) error {
 	return s.save()
 }
 
+// save writes the session cookie in place of the one an earlier save of
+// the same response wrote, so that a response carries the final session
+// once however many values a request changes; a header of a cookie per
+// change can outgrow the header buffer of a reverse proxy.
 func (s *sessionState) save() error {
-	if s == nil || s.session == nil {
-		return nil
-	}
-	return s.session.Save(s.request, s.writer)
+	return saveSessionCookie(s.session, s.request, s.writer)
 }
 
-func (e sessionBatchEditor) Set(key string, value interface{}) {
-	if e.state == nil || e.state.session == nil {
-		return
+// saveSessionCookie saves session into the Set-Cookie headers of w,
+// replacing any cookie of the session set there before.
+func saveSessionCookie(session *sessions.Session, r *http.Request, w http.ResponseWriter) error {
+	rec := cookieRecorder{header: http.Header{}}
+	if err := session.Save(r, rec); err != nil {
+		logs.Warn("Save web session: %v", err)
+		return err
 	}
-	e.state.session.Values[key] = value
+	h := w.Header()
+	prefix := session.Name() + "="
+	kept := h.Values("Set-Cookie")[:0:0]
+	for _, c := range h.Values("Set-Cookie") {
+		if !strings.HasPrefix(c, prefix) {
+			kept = append(kept, c)
+		}
+	}
+	h["Set-Cookie"] = append(kept, rec.header.Values("Set-Cookie")...)
+	return nil
 }
 
-func (e sessionBatchEditor) Delete(key string) {
-	if e.state == nil || e.state.session == nil {
-		return
-	}
-	delete(e.state.session.Values, key)
-}
+// cookieRecorder collects the headers a session save sets.
+type cookieRecorder struct{ header http.Header }
+
+func (c cookieRecorder) Header() http.Header         { return c.header }
+func (c cookieRecorder) Write(b []byte) (int, error) { return len(b), nil }
+func (c cookieRecorder) WriteHeader(int)             {}
 
 func buildSessionStore(cfg *servercfg.Snapshot) (*sessions.CookieStore, error) {
-	if cfg == nil {
-		cfg = currentSessionConfigLocked()
-	}
 	authKey, encKey, err := deriveSessionKeys(cfg)
 	if err != nil {
 		return nil, err
 	}
 	store := sessions.NewCookieStore(authKey, encKey)
-	cookiePath := "/"
-	if cfg != nil {
-		basePath := servercfg.NormalizeBaseURL(cfg.Web.BaseURL)
-		if basePath != "" && basePath != "/" {
-			cookiePath = basePath
-		}
-	}
 	store.Options = &sessions.Options{
-		Path:     cookiePath,
+		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg != nil && cfg.Security.SecureMode,
 		SameSite: http.SameSiteLaxMode,
 	}
 	return store, nil
@@ -308,16 +197,7 @@ func buildSessionStore(cfg *servercfg.Snapshot) (*sessions.CookieStore, error) {
 func clearSessionCookie(store *sessions.CookieStore, w http.ResponseWriter, r *http.Request) error {
 	session := newBlankSession(store)
 	session.Options.MaxAge = -1
-	if err := session.Save(r, w); err != nil {
-		return err
-	}
-	if session.Options == nil || session.Options.Path == "/" {
-		return nil
-	}
-	rootSession := newBlankSession(store)
-	rootSession.Options.MaxAge = -1
-	rootSession.Options.Path = "/"
-	return rootSession.Save(r, w)
+	return saveSessionCookie(session, r, w)
 }
 
 func newBlankSession(store *sessions.CookieStore) *sessions.Session {
@@ -331,21 +211,19 @@ func newBlankSession(store *sessions.CookieStore) *sessions.Session {
 }
 
 func deriveSessionKeys(cfg *servercfg.Snapshot) ([]byte, []byte, error) {
-	seed := fmt.Sprintf("%s|%s|%s|%s", cfg.Web.Username, cfg.Web.Password, cfg.Auth.Key, cfg.App.Name)
-	if seed == "|||" {
-		authKey := make([]byte, 32)
-		encKey := make([]byte, 32)
-		if _, err := rand.Read(authKey); err != nil {
-			return nil, nil, err
-		}
-		if _, err := rand.Read(encKey); err != nil {
-			return nil, nil, err
-		}
-		return authKey, encKey, nil
+	if cfg == nil || cfg.Web.InstanceKeyFile == "" {
+		return nil, nil, fmt.Errorf("instance key file is not configured")
 	}
-	authSum := sha256.Sum256([]byte("auth:" + seed))
-	encSum := sha256.Sum256([]byte("enc:" + seed))
-	return authSum[:], encSum[:], nil
+	key, err := instancekey.LoadOrCreate(cfg.Web.InstanceKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	auth, err := key.DeriveKey("nps/session/auth/v1", 32)
+	if err != nil {
+		return nil, nil, err
+	}
+	enc, err := key.DeriveKey("nps/session/encryption/v1", 32)
+	return auth, enc, err
 }
 
 func currentSessionConfig() *servercfg.Snapshot {
@@ -355,5 +233,10 @@ func currentSessionConfig() *servercfg.Snapshot {
 }
 
 func currentSessionConfigLocked() *servercfg.Snapshot {
-	return servercfg.ResolveProvider(sessionConfigProvider)
+	if sessionConfigProvider != nil {
+		if cfg := sessionConfigProvider(); cfg != nil {
+			return cfg
+		}
+	}
+	return servercfg.Current()
 }

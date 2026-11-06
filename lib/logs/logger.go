@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -21,8 +20,6 @@ var (
 	Logger       zerolog.Logger
 	ZapLogger    *zap.Logger
 	bufferWriter *BufferWriter
-	zapLevel     = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-	zapEnabled   atomic.Bool
 )
 
 const defaultBufSize = 64 * 1024 // 64KB
@@ -157,12 +154,9 @@ func Init(
 	}
 	zerolog.SetGlobalLevel(lvl)
 	zerolog.TimeFieldFormat = time.RFC3339
-	applyZapRuntimeLevel(lvl, zapLvl)
 
 	if (strings.EqualFold(logType, "off") || lvl == zerolog.Disabled) && bufferWriter == nil {
 		Logger = zerolog.Nop()
-		ZapLogger = zap.NewNop()
-		zap.ReplaceGlobals(ZapLogger)
 		return
 	}
 
@@ -220,7 +214,7 @@ func Init(
 		EncodeLevel:   zapcore.CapitalLevelEncoder,
 	}
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
-	coreZap := zapcore.NewCore(encoder, writer, dynamicZapLevel{})
+	coreZap := zapcore.NewCore(encoder, writer, zapLvl)
 	ZapLogger = zap.New(coreZap)
 	zap.ReplaceGlobals(ZapLogger)
 }
@@ -232,25 +226,17 @@ func Debug(msg string, v ...interface{})  { Logger.Debug().Msgf(msg, v...) }
 func Info(msg string, v ...interface{})   { Logger.Info().Msgf(msg, v...) }
 func Warn(msg string, v ...interface{})   { Logger.Warn().Msgf(msg, v...) }
 func Error(msg string, v ...interface{})  { Logger.Error().Msgf(msg, v...) }
-func Fatal(msg string, v ...interface{})  { Logger.Fatal().Msgf(msg, v...) }
-func Panic(msg string, v ...interface{})  { Logger.Panic().Msgf(msg, v...) }
 func Println(v ...interface{})            { Logger.Println(v...) }
-func Print(v ...interface{})              { Logger.Print(v...) }
 func Printf(msg string, v ...interface{}) { Logger.Printf(msg, v...) }
 
 // SetLevel updates the global minimum level
 func SetLevel(levelStr string) {
-	lvl, err := zerolog.ParseLevel(strings.ToLower(levelStr))
-	if err != nil {
-		return
+	if lvl, err := zerolog.ParseLevel(strings.ToLower(levelStr)); err == nil {
+		zerolog.SetGlobalLevel(lvl)
 	}
-	zerolog.SetGlobalLevel(lvl)
-	applyZapRuntimeLevel(lvl, zapLevelFromZerolog(lvl))
 }
 
 type zapAdapter struct{}
-
-type dynamicZapLevel struct{}
 
 var (
 	lineEndingBytes  = []byte(zapcore.DefaultLineEnding)
@@ -263,34 +249,6 @@ var (
 	panicLevelBytes  = []byte("PANIC")
 	fatalLevelBytes  = []byte("FATAL")
 )
-
-func applyZapRuntimeLevel(level zerolog.Level, zapLvl zapcore.Level) {
-	if level == zerolog.Disabled {
-		zapEnabled.Store(false)
-		return
-	}
-	zapLevel.SetLevel(zapLvl)
-	zapEnabled.Store(true)
-}
-
-func zapLevelFromZerolog(level zerolog.Level) zapcore.Level {
-	switch level {
-	case zerolog.PanicLevel:
-		return zapcore.PanicLevel
-	case zerolog.FatalLevel:
-		return zapcore.FatalLevel
-	case zerolog.ErrorLevel:
-		return zapcore.ErrorLevel
-	case zerolog.WarnLevel:
-		return zapcore.WarnLevel
-	case zerolog.DebugLevel:
-		return zapcore.DebugLevel
-	case zerolog.TraceLevel:
-		return zapcore.DebugLevel
-	default:
-		return zapcore.InfoLevel
-	}
-}
 
 func (zapAdapter) Write(p []byte) (n int, err error) {
 	line := bytes.TrimSuffix(p, lineEndingBytes)
@@ -322,7 +280,3 @@ func (zapAdapter) Write(p []byte) (n int, err error) {
 }
 
 func (zapAdapter) Sync() error { return nil }
-
-func (dynamicZapLevel) Enabled(level zapcore.Level) bool {
-	return zapEnabled.Load() && zapLevel.Enabled(level)
-}

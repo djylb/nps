@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"math/big"
-	"net"
 	"net/http"
-	"strconv"
+	"net/netip"
 	"strings"
+	"sync/atomic"
+
+	"github.com/djylb/geomatch"
+	"github.com/djylb/netx/forwarded"
 )
 
 func RandomBytes(maxLen int) ([]byte, error) {
@@ -46,70 +49,48 @@ func ValidatePoW(bits int, parts ...string) bool {
 	return true
 }
 
-func IsTrustedProxy(list, ipStr string) bool {
-	if list == "" || ipStr == "" {
-		return false
+// TrustedProxies parses a comma-separated list of trusted proxies: IP
+// addresses, CIDR prefixes, IPv4 patterns whose trailing octets are "*"
+// (such as "192.168.*.*"), or "*" for every address. Entries that are none
+// of these are skipped. The set of the last list parsed is cached, so that
+// callers may pass the configured list on every request.
+func TrustedProxies(list string) *forwarded.PrefixSet {
+	if c := trustedProxyCache.Load(); c != nil && c.list == list {
+		return c.set
 	}
-	ipStr = strings.TrimSpace(ipStr)
-	if h, _, err := net.SplitHostPort(ipStr); err == nil {
-		ipStr = h
-	}
-	if strings.HasPrefix(ipStr, "[") && strings.HasSuffix(ipStr, "]") {
-		ipStr = ipStr[1 : len(ipStr)-1]
-	}
-	if i := strings.LastIndex(ipStr, "%"); i != -1 { // fe80::1%eth0
-		ipStr = ipStr[:i]
-	}
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	ip4 := ip.To4()
+	var prefixes []netip.Prefix
 	for _, raw := range strings.Split(list, ",") {
 		entry := strings.TrimSpace(raw)
-		if entry == "" {
-			continue
-		}
 		if entry == "*" {
-			return true
-		}
-		// CIDR (IPv4/IPv6)
-		if strings.Contains(entry, "/") {
-			if _, cidr, err := net.ParseCIDR(entry); err == nil && cidr.Contains(ip) {
-				return true
-			}
+			prefixes = append(prefixes, netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
 			continue
 		}
-		// if "192.168.*.*"
-		if strings.Contains(entry, "*") {
-			if ip4 == nil {
-				continue
-			}
-			pSegs := strings.Split(entry, ".")
-			if len(pSegs) != 4 {
-				continue
-			}
-			matched := true
-			for i := 0; i < 4; i++ {
-				if pSegs[i] == "*" {
-					continue
-				}
-				n, err := strconv.Atoi(pSegs[i])
-				if err != nil || n < 0 || n > 255 || int(ip4[i]) != n {
-					matched = false
-					break
-				}
-			}
-			if matched {
-				return true
-			}
+		r, err := geomatch.ParseRule(entry)
+		if err != nil || r.Kind != geomatch.RuleIP || r.Last.IsValid() || len(r.Ports) > 0 {
 			continue
 		}
-		if e := net.ParseIP(entry); e != nil && e.Equal(ip) {
-			return true
-		}
+		prefixes = append(prefixes, r.Prefix)
 	}
-	return false
+	set := forwarded.NewPrefixSet(prefixes...)
+	trustedProxyCache.Store(&trustedProxySet{list: list, set: set})
+	return set
+}
+
+type trustedProxySet struct {
+	list string
+	set  *forwarded.PrefixSet
+}
+
+var trustedProxyCache atomic.Pointer[trustedProxySet]
+
+// IsTrustedProxy reports whether addr, an IP address with or without a
+// port, is in the trusted proxy list as TrustedProxies parses it.
+func IsTrustedProxy(list, addr string) bool {
+	if list == "" {
+		return false
+	}
+	ap, ok := forwarded.ParseNode(strings.TrimSpace(addr))
+	return ok && TrustedProxies(list).Contains(ap.Addr())
 }
 
 // CheckAuthWithAccountMap
@@ -145,28 +126,61 @@ func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[
 	return false
 }
 
-// CheckAuth Check if the Request request is validated
+// NeedsAuth reports whether any credential is configured. A username or a
+// password on its own is enough to require authentication.
+func NeedsAuth(user, passwd string, accountMap, authMap map[string]string) bool {
+	return user != "" || passwd != "" || len(accountMap) > 0 || len(authMap) > 0
+}
+
+// CheckAuth validates the Basic credentials of a request to a reverse-proxied
+// host. It reads Authorization and falls back to Proxy-Authorization only when
+// the request carries no Authorization header at all.
 func CheckAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
-	// Bypass authentication only if user, passwd are empty and multiAccount is nil or empty
-	if user == "" && passwd == "" && len(accountMap) == 0 && len(authMap) == 0 {
+	return checkBasicAuthHeader(credentialHeader(r, "Authorization", "Proxy-Authorization"), user, passwd, accountMap, authMap)
+}
+
+// CheckProxyAuth validates the Basic credentials of a forward proxy request. It
+// reads Proxy-Authorization and falls back to Authorization only when the
+// request carries no Proxy-Authorization header at all, so a client's own
+// Authorization for the origin server never overrides its proxy credentials.
+func CheckProxyAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
+	return checkBasicAuthHeader(credentialHeader(r, "Proxy-Authorization", "Authorization"), user, passwd, accountMap, authMap)
+}
+
+// credentialHeader returns the primary header if present, otherwise the fallback.
+func credentialHeader(r *http.Request, primary, fallback string) string {
+	if v := r.Header.Values(primary); len(v) > 0 {
+		return v[0]
+	}
+	return r.Header.Get(fallback)
+}
+
+func checkBasicAuthHeader(header, user, passwd string, accountMap, authMap map[string]string) bool {
+	if !NeedsAuth(user, passwd, accountMap, authMap) {
 		return true
 	}
-	s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-	if len(s) != 2 {
-		s = strings.SplitN(r.Header.Get("Proxy-Authorization"), " ", 2)
-		if len(s) != 2 {
-			return false
+	u, p, ok := ParseBasicAuth(header)
+	if !ok {
+		return false
+	}
+	return CheckAuthWithAccountMap(u, p, user, passwd, accountMap, authMap)
+}
+
+// ParseBasicAuth parses a "Basic <base64(user:pass)>" credential. The scheme is
+// matched case-insensitively and unpadded base64 is accepted.
+func ParseBasicAuth(header string) (user, passwd string, ok bool) {
+	scheme, cred, found := strings.Cut(strings.TrimSpace(header), " ")
+	if !found || !strings.EqualFold(scheme, "Basic") {
+		return "", "", false
+	}
+	cred = strings.TrimSpace(cred)
+	b, err := base64.StdEncoding.DecodeString(cred)
+	if err != nil {
+		if b, err = base64.RawStdEncoding.DecodeString(cred); err != nil {
+			return "", "", false
 		}
 	}
-	b, err := base64.StdEncoding.DecodeString(s[1])
-	if err != nil {
-		return false
-	}
-	pair := strings.SplitN(string(b), ":", 2)
-	if len(pair) != 2 {
-		return false
-	}
-	return CheckAuthWithAccountMap(pair[0], pair[1], user, passwd, accountMap, authMap)
+	return strings.Cut(string(b), ":")
 }
 
 func DealMultiUser(s string) map[string]string {
@@ -174,9 +188,8 @@ func DealMultiUser(s string) map[string]string {
 	if s == "" {
 		return nil
 	}
-	s = strings.ReplaceAll(s, "\r\n", "\n")
 	multiUserMap := make(map[string]string)
-	for _, v := range strings.Split(s, "\n") {
+	for _, v := range SplitLines(s) {
 		if strings.TrimSpace(v) == "" {
 			continue
 		}

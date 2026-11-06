@@ -34,12 +34,11 @@ RELEASE_CLIENT_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS=
 RELEASE_SERVER_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./build.sh server
 endif
 
-.PHONY: help build build-client build-server test test-p2p-baseline fmt release release-client release-server package ci clean
+.PHONY: help build build-client build-server test fmt release release-client release-server package ci clean
 
 help:
 	@echo "make build          Build npc and nps for the current host into $(BIN_DIR)"
 	@echo "make test           Run go test ./..."
-	@echo "make test-p2p-baseline Run the P2P/servercfg no-cache regression baseline"
 	@echo "make fmt            Run go fmt ./..."
 	@echo "make release        Build common release archives into $(DIST_DIR)/release"
 	@echo "make release-client Build client release archives only"
@@ -58,10 +57,6 @@ build-server:
 
 test:
 	$(GO) test ./...
-
-test-p2p-baseline:
-	$(GO) test -count=1 ./lib/p2p ./bridge ./client ./cmd/npc
-	$(GO) test -count=1 ./lib/servercfg
 
 fmt:
 	$(GO) fmt ./...

@@ -1,105 +1,172 @@
 package framework
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/sessions"
 )
 
-func TestBuildSessionStoreUsesSecureMode(t *testing.T) {
-	store, err := buildSessionStore(&servercfg.Snapshot{
-		Security: servercfg.SecurityConfig{SecureMode: true},
-	})
-	if err != nil {
-		t.Fatalf("buildSessionStore() error = %v", err)
+func newSessionTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	cfg := &servercfg.Snapshot{}
+	cfg.Web.InstanceKeyFile = filepath.Join(t.TempDir(), "instance.key")
+	cfg.Web.Username, cfg.Web.Password = "admin", "secret"
+	if err := InitSessionStore(cfg); err != nil {
+		t.Fatal(err)
 	}
-	if store.Options == nil || !store.Options.Secure {
-		t.Fatalf("buildSessionStore() should enable secure cookies when secure_mode is true")
-	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	return c, rec
+}
 
-	store, err = buildSessionStore(&servercfg.Snapshot{
-		Security: servercfg.SecurityConfig{SecureMode: false},
-	})
-	if err != nil {
-		t.Fatalf("buildSessionStore() error = %v", err)
+func sessionCookies(rec *httptest.ResponseRecorder) []string {
+	var out []string
+	for _, c := range rec.Header().Values("Set-Cookie") {
+		if strings.HasPrefix(c, sessionName+"=") {
+			out = append(out, c)
+		}
 	}
-	if store.Options == nil {
-		t.Fatalf("buildSessionStore() returned nil options")
+	return out
+}
+
+func TestSessionSavesOneCookie(t *testing.T) {
+	c, rec := newSessionTestContext(t)
+	c.Header("Set-Cookie", "other=1")
+	for _, key := range []string{"a", "b", "c", "d"} {
+		if err := SetSessionValue(c, key, strings.Repeat(key, 50)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if store.Options.Secure {
-		t.Fatalf("buildSessionStore() should not force secure cookies when secure_mode is false")
+	if err := DeleteSessionValue(c, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionCookies(rec); len(got) != 1 {
+		t.Fatalf("%d session cookies, want 1", len(got))
+	}
+	if got := rec.Header().Values("Set-Cookie"); len(got) != 2 || got[0] != "other=1" {
+		t.Fatalf("other cookies not kept: %q", got)
 	}
 }
 
-func TestBuildSessionStoreScopesCookiePathToCanonicalWebBaseURL(t *testing.T) {
-	store, err := buildSessionStore(&servercfg.Snapshot{
-		Web: servercfg.WebConfig{BaseURL: "/ops/platform/admin"},
-	})
-	if err != nil {
-		t.Fatalf("buildSessionStore() error = %v", err)
+func TestSessionSaveError(t *testing.T) {
+	c, rec := newSessionTestContext(t)
+	if err := SetSessionValue(c, "small", "x"); err != nil {
+		t.Fatal(err)
 	}
-	if store.Options == nil {
-		t.Fatalf("buildSessionStore() returned nil options")
+	// a session over the 4 KiB a cookie may hold cannot be saved
+	if err := SetSessionValue(c, "big", strings.Repeat("x", 8192)); err == nil {
+		t.Fatal("oversized session saved without an error")
 	}
-	if store.Options.Path != "/ops/platform/admin" {
-		t.Fatalf("buildSessionStore() Path = %q, want /ops/platform/admin", store.Options.Path)
-	}
-
-	normalizedStore, err := buildSessionStore(&servercfg.Snapshot{
-		Web: servercfg.WebConfig{BaseURL: "ops/platform/admin/"},
-	})
-	if err != nil {
-		t.Fatalf("buildSessionStore() normalized error = %v", err)
-	}
-	if normalizedStore.Options == nil {
-		t.Fatalf("buildSessionStore() normalized returned nil options")
-	}
-	if normalizedStore.Options.Path != "/ops/platform/admin" {
-		t.Fatalf("buildSessionStore() normalized Path = %q, want /ops/platform/admin", normalizedStore.Options.Path)
-	}
-
-	rootStore, err := buildSessionStore(&servercfg.Snapshot{
-		Web: servercfg.WebConfig{BaseURL: "/"},
-	})
-	if err != nil {
-		t.Fatalf("buildSessionStore() root error = %v", err)
-	}
-	if rootStore.Options == nil {
-		t.Fatalf("buildSessionStore() root returned nil options")
-	}
-	if rootStore.Options.Path != "/" {
-		t.Fatalf("buildSessionStore() root Path = %q, want /", rootStore.Options.Path)
+	if got := sessionCookies(rec); len(got) != 1 {
+		t.Fatalf("%d session cookies after a failed save, want the last good one", len(got))
 	}
 }
 
-func TestClearSessionCookieAlsoExpiresRootCookieWhenScoped(t *testing.T) {
-	store, err := buildSessionStore(&servercfg.Snapshot{
-		Web: servercfg.WebConfig{BaseURL: "/ops/platform/admin"},
-	})
+func TestPersistentSessionKeysIgnoreCredentials(t *testing.T) {
+	cfg := &servercfg.Snapshot{}
+	cfg.Web.InstanceKeyFile = filepath.Join(t.TempDir(), "instance.key")
+	auth, enc, err := deriveSessionKeys(cfg)
 	if err != nil {
-		t.Fatalf("buildSessionStore() error = %v", err)
+		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "https://example.com/ops/platform/admin/api/system/discovery", nil)
-	resp := httptest.NewRecorder()
-	if err := clearSessionCookie(store, resp, req); err != nil {
-		t.Fatalf("clearSessionCookie() error = %v", err)
+	cfg.Web.Username, cfg.Web.Password, cfg.Web.TOTPSecret = "new-admin", "new-password", "new-totp"
+	cfg.Auth.Key, cfg.App.Name = "new-api-key", "another-app"
+	auth2, enc2, err := deriveSessionKeys(cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	cookies := resp.Result().Cookies()
-	if len(cookies) != 2 {
-		t.Fatalf("clearSessionCookie() wrote %d cookies, want 2", len(cookies))
+	if !bytes.Equal(auth, auth2) || !bytes.Equal(enc, enc2) {
+		t.Fatal("credentials changed session keys")
 	}
-	seen := map[string]bool{}
-	for _, cookie := range cookies {
-		if cookie.Name != sessionName {
-			t.Fatalf("cookie name = %q, want %q", cookie.Name, sessionName)
+	if bytes.Equal(auth, enc) {
+		t.Fatal("signing and encryption keys are identical")
+	}
+	first, err := buildSessionStore(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	session := newBlankSession(first)
+	session.Values["auth"] = true
+	if err := session.Save(req, rec); err != nil {
+		t.Fatal(err)
+	}
+	second, err := buildSessionStore(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("GET", "/", nil)
+	request.AddCookie(rec.Result().Cookies()[0])
+	restored, err := second.Get(request, sessionName)
+	if err != nil || restored.Values["auth"] != true {
+		t.Fatalf("restart did not preserve session: %v", err)
+	}
+}
+
+func TestRejectOldForgedAndTamperedCookies(t *testing.T) {
+	cfg := &servercfg.Snapshot{}
+	cfg.Web.Username, cfg.Web.Password, cfg.App.Name = "admin", "password", "nps"
+	cfg.Web.InstanceKeyFile = filepath.Join(t.TempDir(), "instance.key")
+	if err := InitSessionStore(cfg); err != nil {
+		t.Fatal(err)
+	}
+	seed := fmt.Sprintf("%s|%s|%s|%s", cfg.Web.Username, cfg.Web.Password, cfg.Auth.Key, cfg.App.Name)
+	oldAuth := sha256.Sum256([]byte("auth:" + seed))
+	oldEnc := sha256.Sum256([]byte("enc:" + seed))
+	oldStore := sessions.NewCookieStore(oldAuth[:], oldEnc[:])
+	other := *cfg
+	other.Web.InstanceKeyFile = filepath.Join(t.TempDir(), "instance.key")
+	forgedStore, err := buildSessionStore(&other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []*sessions.CookieStore{oldStore, forgedStore, sessionStore} {
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		session := newBlankSession(source)
+		session.Values["auth"], session.Values["isAdmin"] = true, true
+		if err := session.Save(req, rec); err != nil {
+			t.Fatal(err)
 		}
-		if cookie.MaxAge != -1 {
-			t.Fatalf("cookie MaxAge = %d, want -1", cookie.MaxAge)
+		cookie := rec.Result().Cookies()[0]
+		if source == sessionStore {
+			cookie.Value = "x" + cookie.Value[1:]
 		}
-		seen[cookie.Path] = true
+		request := httptest.NewRequest("GET", "/", nil)
+		request.AddCookie(cookie)
+		state, err := newSessionState(httptest.NewRecorder(), request, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Get("auth") == true || state.Get("isAdmin") == true {
+			t.Fatal("forged cookie authenticated")
+		}
 	}
-	if !seen["/ops/platform/admin"] || !seen["/"] {
-		t.Fatalf("clearSessionCookie() paths = %#v, want scoped path and root", seen)
+}
+
+func TestSessionStoreFailsOnInvalidInstanceKey(t *testing.T) {
+	cfg := &servercfg.Snapshot{}
+	cfg.Web.InstanceKeyFile = filepath.Join(t.TempDir(), "instance.key")
+	if err := os.WriteFile(cfg.Web.InstanceKeyFile, []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitSessionStore(cfg); err == nil {
+		t.Fatal("initialized session store with broken key")
+	}
+	data, err := os.ReadFile(cfg.Web.InstanceKeyFile)
+	if err != nil || string(data) != "broken" {
+		t.Fatal("broken key was replaced")
 	}
 }

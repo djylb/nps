@@ -9,7 +9,7 @@ An enhanced and actively maintained NAT traversal and reverse proxy system with 
 
 > ⭐️ Give us a star on [GitHub](https://github.com/djylb/nps) if you like it!
 
-- [中文文档](https://github.com/djylb/nps/blob/master/README.zh.md)
+- [中文文档](https://github.com/djylb/nps/blob/master/README_zh.md)
 
 ---
 
@@ -65,29 +65,6 @@ Based on the original [NPS](https://github.com/ehang-io/nps) project, **NPS Enha
 
 ---
 
-## What's New in v0.35.0
-
-- **Node control plane and multi-platform management**
-  Adds the public `/api/*` management surface for external platforms, including snapshots, batch requests, config export/import, and scoped actor access.
-
-- **Direct, reverse, and dual platform connectivity**
-  Supports reverse WebSocket channels, callback delivery, retry queues, replay, signing, and change-window based resynchronization for platform integrations.
-
-- **Management workflow refactor**
-  Reorganizes the management UI and service layer around users, clients, tunnels, hosts, and node-facing operations.
-
-- **Reliability and code quality improvements**
-  Cleans up race conditions, lint findings, persistence edge cases, and test coverage across P2P, mux, proxy, and runtime paths.
-
-Further reading:
-
-- [CHANGELOG](https://github.com/djylb/nps/blob/master/CHANGELOG.md)
-- [Node Management Guide](https://d-jy.net/docs/nps/#/guide/server/node-management)
-- [Management API Reference](https://d-jy.net/docs/nps/#/reference/management-api)
-- [Server Configuration Reference](https://d-jy.net/docs/nps/#/reference/server-config)
-
----
-
 ## Installation and Usage
 
 For more detailed configuration options, please refer to the [Documentation](https://d-jy.net/docs/nps/).
@@ -131,26 +108,24 @@ nps install
 nps start|stop|restart|uninstall
 
 # Update
-nps update && nps restart
+nps update
+nps update-force
 ```
 
 > **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
 
 #### Windows
 
-> If you do not want to choose the architecture, legacy package, or install path manually, use the repository root `install.ps1`.
->
-> Windows 7 / 8 / 8.1 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
+> Windows 7 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
+> Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/install.md#windows7).
 
 ```powershell
-.\install.ps1 nps
 .\nps.exe install
 .\nps.exe start|stop|restart|uninstall
 
 # Update
-.\nps.exe stop
-.\nps-update.exe update
-.\nps.exe start
+.\nps.exe update
+.\nps.exe update-force
 ```
 
 ### Client Installation
@@ -163,26 +138,24 @@ wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.
 npc start|stop|restart|uninstall
 
 # Update
-npc update && npc restart
+npc update
+npc update-force
 ```
 
 > **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
 
 #### Windows
 
-> If you do not want to choose the architecture, legacy package, or install path manually, use the repository root `install.ps1`.
->
-> Windows 7 / 8 / 8.1 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
+> Windows 7 users should use the version ending with old: [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
+> Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/install.md#windows7).
 
 ```powershell
-.\install.ps1 npc
 .\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
 .\npc.exe start|stop|restart|uninstall
 
 # Update
-.\npc.exe stop
-.\npc-update.exe update
-.\npc.exe start
+.\npc.exe update
+.\npc.exe update-force
 ```
 
 > **Tip:** The client supports connecting to multiple servers simultaneously. Example:

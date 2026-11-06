@@ -1,11 +1,16 @@
 package install
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/djylb/nps/lib/common"
 )
 
 func TestPathExists(t *testing.T) {
@@ -51,36 +56,28 @@ func TestCopyFile(t *testing.T) {
 	}
 }
 
-func TestCopyFileSamePathNoop(t *testing.T) {
+func TestCopyFileSameFileNoop(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := filepath.Join(tmpDir, "same.txt")
 	if err := os.WriteFile(p, []byte("same"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-
-	n, err := copyFile(p, p)
-	if err != nil {
-		t.Fatalf("copyFile(same path) error = %v", err)
-	}
-	if n != 0 {
-		t.Fatalf("copyFile(same path) copied = %d, want 0", n)
-	}
-}
-
-func TestCopyFileReturnsErrorWhenDestinationParentInvalid(t *testing.T) {
-	tmpDir := t.TempDir()
-	src := filepath.Join(tmpDir, "src.txt")
-	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile(src) error = %v", err)
+	link := filepath.Join(tmpDir, "link.txt")
+	if err := os.Link(p, link); err != nil {
+		t.Fatalf("Link() error = %v", err)
 	}
 
-	blocker := filepath.Join(tmpDir, "blocker")
-	if err := os.WriteFile(blocker, []byte("not-a-dir"), 0o644); err != nil {
-		t.Fatalf("WriteFile(blocker) error = %v", err)
+	for _, dest := range []string{p, link} {
+		n, err := copyFile(p, dest)
+		if err != nil {
+			t.Fatalf("copyFile(%s) error = %v", dest, err)
+		}
+		if n != 0 {
+			t.Fatalf("copyFile(%s) copied = %d, want 0", dest, n)
+		}
 	}
-
-	if _, err := copyFile(src, filepath.Join(blocker, "dest.txt")); err == nil {
-		t.Fatal("copyFile() error = nil, want invalid parent error")
+	if got, err := os.ReadFile(p); err != nil || string(got) != "same" {
+		t.Fatalf("ReadFile() = (%q, %v), want same", got, err)
 	}
 }
 
@@ -141,197 +138,188 @@ func TestCopyDirValidationErrors(t *testing.T) {
 	}
 }
 
-func TestCopyDirPropagatesNestedCopyError(t *testing.T) {
+func TestParseServiceExecutable(t *testing.T) {
+	if got := parseSystemdExecStart("{ path=/usr/bin/nps ; argv[]=/usr/bin/nps service ; ignore_errors=no }\n"); got != "/usr/bin/nps" {
+		t.Fatalf("parseSystemdExecStart() = %q", got)
+	}
+	if got := parseSysvCmd("#!/bin/sh\ncmd=\"/usr/bin/npc -server=a:1 -debug=false\"\nname=x\n"); got != "/usr/bin/npc" {
+		t.Fatalf("parseSysvCmd() = %q", got)
+	}
+	for out, want := range map[string]string{
+		"        BINARY_PATH_NAME   : \"C:\\Program Files\\nps\\nps.exe\" service\r\n": `C:\Program Files\nps\nps.exe`,
+		"        BINARY_PATH_NAME   : C:\\nps\\npc.exe -debug=false\r\n":               `C:\nps\npc.exe`,
+	} {
+		if got := parseScBinaryPath("[SC] QueryServiceConfig SUCCESS\r\n" + out); got != want {
+			t.Fatalf("parseScBinaryPath() = %q, want %q", got, want)
+		}
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func TestCopyServerAssetsPerItem(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "src")
-	if err := os.MkdirAll(filepath.Join(src, "inner"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(src/inner) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(src, "inner", "a.txt"), []byte("A"), 0o644); err != nil {
-		t.Fatalf("WriteFile(a.txt) error = %v", err)
-	}
-
 	dest := filepath.Join(tmpDir, "dest")
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		t.Fatalf("MkdirAll(dest) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dest, "inner"), []byte("not-a-directory"), 0o644); err != nil {
-		t.Fatalf("WriteFile(dest/inner) error = %v", err)
-	}
-
-	if err := CopyDir(src, dest); err == nil {
-		t.Fatal("CopyDir() error = nil, want nested copy failure")
-	}
-}
-
-func TestBuildDownloadTLSConfig(t *testing.T) {
-	cfg := buildDownloadTLSConfig("github.com:443")
-	if cfg.InsecureSkipVerify {
-		t.Fatal("buildDownloadTLSConfig() should keep certificate verification enabled")
-	}
-	if cfg.ServerName != "github.com" {
-		t.Fatalf("buildDownloadTLSConfig(hostname) ServerName = %q, want github.com", cfg.ServerName)
-	}
-
-	ipCfg := buildDownloadTLSConfig("127.0.0.1:443")
-	if ipCfg.InsecureSkipVerify {
-		t.Fatal("buildDownloadTLSConfig(ip) should keep certificate verification enabled")
-	}
-	if ipCfg.ServerName != "" {
-		t.Fatalf("buildDownloadTLSConfig(ip) ServerName = %q, want empty", ipCfg.ServerName)
-	}
-
-	rawHostCfg := buildDownloadTLSConfig("downloads.example.com")
-	if rawHostCfg.ServerName != "downloads.example.com" {
-		t.Fatalf("buildDownloadTLSConfig(raw hostname) ServerName = %q, want downloads.example.com", rawHostCfg.ServerName)
-	}
-}
-
-func TestMkidrDirAllReturnsErrorForInvalidBase(t *testing.T) {
-	tmpDir := t.TempDir()
-	base := filepath.Join(tmpDir, "base-file")
-	if err := os.WriteFile(base, []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile(base) error = %v", err)
-	}
-
-	if err := MkidrDirAll(base, "child"); err == nil {
-		t.Fatal("MkidrDirAll() error = nil, want invalid base path error")
-	}
-}
-
-func preserveFile(t *testing.T, path string) {
-	t.Helper()
-
-	info, err := os.Stat(path)
-	if err == nil {
-		if info.IsDir() {
-			t.Fatalf("preserveFile(%q): directories are not supported", path)
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			t.Fatalf("ReadFile(%q) error = %v", path, readErr)
-		}
-		mode := info.Mode()
-		t.Cleanup(func() {
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err == nil {
-				_ = os.WriteFile(path, data, mode)
-			}
-		})
-		return
-	}
-	if !os.IsNotExist(err) {
-		t.Fatalf("Stat(%q) error = %v", path, err)
-	}
-	t.Cleanup(func() {
-		_ = os.Remove(path)
-	})
-}
-
-func stageAppFiles(t *testing.T, files map[string]string) string {
-	t.Helper()
-
-	appPath := common.GetAppPath()
-	probe := filepath.Join(appPath, ".codex-install-probe")
-	if err := os.WriteFile(probe, []byte("probe"), 0o644); err != nil {
-		t.Skipf("app path %q is not writable: %v", appPath, err)
-	}
-	_ = os.Remove(probe)
-
-	for rel, content := range files {
-		path := filepath.Join(appPath, filepath.FromSlash(rel))
-		preserveFile(t, path)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) error = %v", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) error = %v", path, err)
-		}
-	}
-	return appPath
-}
-
-func TestNPS_WindowsInstallsStaticFilesIntoConfiguredPath(t *testing.T) {
-	if !common.IsWindows() {
-		t.Skip("this installation flow is Windows-specific in test mode")
-	}
-
-	oldConfPath := common.ConfPath
-	installPath := filepath.Join(t.TempDir(), "install")
-	common.ConfPath = installPath
-	t.Cleanup(func() {
-		common.ConfPath = oldConfPath
-	})
-
-	appPath := stageAppFiles(t, map[string]string{
-		"nps.exe":              "nps-binary",
-		"conf/nps.conf":        "[common]\nserver_addr=127.0.0.1:8024\nvkey=test\n",
-		"web/views/index.html": "<html>view</html>",
-		"web/static/app.js":    "console.log('static');",
-	})
-	preserveFile(t, filepath.Join(appPath, "nps-update.exe"))
-
-	binPath, err := NPS()
-	if err != nil {
-		t.Fatalf("NPS() error = %v", err)
-	}
-	if binPath == "" {
-		t.Fatal("NPS() returned empty binary path")
-	}
-
-	for rel, want := range map[string]string{
-		"conf/nps.conf":         "[common]\nserver_addr=127.0.0.1:8024\nvkey=test\n",
-		"conf/nps.conf.default": "[common]\nserver_addr=127.0.0.1:8024\nvkey=test\n",
-		"web/views/index.html":  "<html>view</html>",
-		"web/static/app.js":     "console.log('static');",
+	for path, content := range map[string]string{
+		"src/web/static/app.js": "js",
+		"src/conf/nps.conf":     "conf",
+		"dest/web/views/a.html": "kept",
+		"dest/conf/nps.conf":    "user",
 	} {
-		got, err := os.ReadFile(filepath.Join(installPath, filepath.FromSlash(rel)))
-		if err != nil {
-			t.Fatalf("ReadFile(%s) error = %v", rel, err)
+		p := filepath.Join(tmpDir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
 		}
-		if string(got) != want {
-			t.Fatalf("%s = %q, want %q", rel, got, want)
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
 		}
 	}
 
-	updateBinary, err := os.ReadFile(filepath.Join(appPath, "nps-update.exe"))
-	if err != nil {
-		t.Fatalf("ReadFile(nps-update.exe) error = %v", err)
+	if err := copyServerAssets(src, dest); err != nil {
+		t.Fatalf("copyServerAssets() error = %v", err)
 	}
-	if string(updateBinary) != "nps-binary" {
-		t.Fatalf("nps-update.exe = %q, want copied nps binary", updateBinary)
+	for path, want := range map[string]string{
+		"web/views/a.html":      "kept",
+		"web/static/app.js":     "js",
+		"conf/nps.conf.default": "conf",
+		"conf/nps.conf":         "user",
+	} {
+		got, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(path)))
+		if err != nil || string(got) != want {
+			t.Fatalf("ReadFile(%s) = (%q, %v), want %q", path, got, err, want)
+		}
+	}
+
+	if err := copyServerAssets(src, filepath.Join(tmpDir, "empty")); err == nil {
+		t.Fatal("copyServerAssets(missing views, no existing copy) error = nil, want error")
 	}
 }
 
-func TestNPC_WindowsCreatesInstallDirectoryAndUpdateBinary(t *testing.T) {
-	if !common.IsWindows() {
-		t.Skip("this installation flow is Windows-specific in test mode")
-	}
-
-	oldConfPath := common.ConfPath
-	installPath := filepath.Join(t.TempDir(), "npc-install")
-	common.ConfPath = installPath
-	t.Cleanup(func() {
-		common.ConfPath = oldConfPath
-	})
-
-	appPath := stageAppFiles(t, map[string]string{
-		"npc.exe": "npc-binary",
-	})
-	preserveFile(t, filepath.Join(appPath, "npc-update.exe"))
-
-	if err := NPC(); err != nil {
-		t.Fatalf("NPC() error = %v", err)
-	}
-
-	if info, err := os.Stat(installPath); err != nil || !info.IsDir() {
-		t.Fatalf("install path = (%v, %v), want created directory", info, err)
-	}
-
-	updateBinary, err := os.ReadFile(filepath.Join(appPath, "npc-update.exe"))
+func assertOnlyFiles(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Fatalf("ReadFile(npc-update.exe) error = %v", err)
+		t.Fatalf("ReadDir() error = %v", err)
 	}
-	if string(updateBinary) != "npc-binary" {
-		t.Fatalf("npc-update.exe = %q, want copied npc binary", updateBinary)
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("files = %v, want %v", got, want)
+	}
+}
+
+func TestReleaseSHA256(t *testing.T) {
+	sum := strings.Repeat("ab", 32)
+	rl := &release{TagName: "v1.0.0"}
+	for _, a := range []struct{ name, digest string }{
+		{"ok.tar.gz", "sha256:" + strings.ToUpper(sum)},
+		{"none.tar.gz", ""},
+		{"short.tar.gz", "sha256:abcd"},
+	} {
+		rl.Assets = append(rl.Assets, releaseAsset{Name: a.name, Digest: a.digest, Size: 7})
+	}
+
+	if got, size, err := rl.asset("ok.tar.gz"); err != nil || got != sum || size != 7 {
+		t.Fatalf("asset(ok) = (%q, %d, %v), want (%q, 7)", got, size, err, sum)
+	}
+	if got, _, err := rl.asset("none.tar.gz"); err != nil || got != "" {
+		t.Fatalf("asset(none) = (%q, %v), want (\"\", nil)", got, err)
+	}
+	for _, name := range []string{"short.tar.gz", "missing.tar.gz"} {
+		if _, _, err := rl.asset(name); err == nil {
+			t.Fatalf("asset(%s) error = nil, want error", name)
+		}
+	}
+}
+
+func TestHTTPClientCertificateFallback(t *testing.T) {
+	payload := []byte("package")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	c := newHTTPClient()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, verified, err := c.do(req)
+	if err != nil {
+		t.Fatalf("do(self-signed) error = %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if verified || string(body) != string(payload) {
+		t.Fatalf("do(self-signed) = (%q, verified=%v), want (%q, false)", body, verified, payload)
+	}
+
+	dest := filepath.Join(t.TempDir(), "geoip.dat")
+	if err := downloadChecked(c, geoSource{url: srv.URL, digest: strings.Repeat("00", 32)}, dest); err == nil {
+		t.Fatal("downloadChecked(wrong digest) error = nil, want error")
+	}
+	sum := sha256.Sum256(payload)
+	if err := downloadChecked(c, geoSource{url: srv.URL, digest: hex.EncodeToString(sum[:])}, dest); err != nil {
+		t.Fatalf("downloadChecked(unverified, digest) error = %v", err)
+	}
+	// Updates go through RoundTrip, which falls back the same way.
+	resp, err = (&http.Client{Transport: c}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("RoundTrip(self-signed) error = %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != string(payload) {
+		t.Fatalf("RoundTrip(self-signed) = %q, want %q", body, payload)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	closedURL := "https://" + ln.Addr().String()
+	_ = ln.Close()
+	req, _ = http.NewRequest(http.MethodGet, closedURL, nil)
+	if _, _, err := c.do(req); err == nil || isCertificateError(err) {
+		t.Fatalf("do(closed port) error = %v, want a non-certificate error", err)
+	}
+}
+
+func TestInstallFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	writeTestFile(t, src, "new")
+	dest := filepath.Join(dir, "npc")
+	writeTestFile(t, dest, "old")
+	if err := installFile(src, dest); err != nil {
+		t.Fatalf("installFile() error = %v", err)
+	}
+	if got, err := os.ReadFile(dest); err != nil || string(got) != "new" {
+		t.Fatalf("ReadFile() = (%q, %v), want new", got, err)
+	}
+	if err := installFile(dest, dest); err != nil {
+		t.Fatalf("installFile(onto itself) error = %v", err)
+	}
+	assertOnlyFiles(t, dir, "npc", "src")
+}
+
+func TestArtifactName(t *testing.T) {
+	orig := BuildTarget
+	t.Cleanup(func() { BuildTarget = orig })
+	BuildTarget = ""
+	if got := artifactName("npc"); got != "npc" {
+		t.Fatalf("artifactName() = %q", got)
+	}
+	BuildTarget = "v7"
+	if got := artifactName("nps"); got != "nps-v7" {
+		t.Fatalf("artifactName(v7) = %q", got)
 	}
 }

@@ -30,15 +30,6 @@ func TestActorPrimaryClientID(t *testing.T) {
 	}
 }
 
-func TestActorSingleClientID(t *testing.T) {
-	if clientID, ok := ActorSingleClientID(UserActor("demo", []int{0, 5})); !ok || clientID != 5 {
-		t.Fatalf("ActorSingleClientID(single) = %d, %v, want 5, true", clientID, ok)
-	}
-	if clientID, ok := ActorSingleClientID(UserActor("demo", []int{5, 8})); ok || clientID != 0 {
-		t.Fatalf("ActorSingleClientID(multi) = %d, %v, want 0, false", clientID, ok)
-	}
-}
-
 func TestActorFromSessionIdentity(t *testing.T) {
 	identity := (&webservice.SessionIdentity{
 		Authenticated: true,
@@ -91,89 +82,17 @@ func TestActorFromSessionIdentityWithFallback(t *testing.T) {
 	}
 }
 
-func TestActorFromSessionIdentityPreservesClientKind(t *testing.T) {
-	identity := (&webservice.SessionIdentity{
-		Authenticated: true,
-		Kind:          "client",
-		SubjectID:     "client:vkey:3",
-		Username:      "vkey-client-3",
-		ClientIDs:     []int{3},
-		Roles:         []string{webservice.RoleClient},
-	}).Normalize()
-
-	actor := ActorFromSessionIdentity(identity)
-	if actor.Kind != "client" {
-		t.Fatalf("Kind = %q, want client", actor.Kind)
+func TestActorVirtualClientAccess(t *testing.T) {
+	admin := AdminActorWithFallback("admin", "admin")
+	if !ActorCanAccessClient(admin, -1) {
+		t.Fatal("admin cannot access virtual client")
 	}
-	if len(actor.ClientIDs) != 1 || actor.ClientIDs[0] != 3 {
-		t.Fatalf("ClientIDs = %v, want [3]", actor.ClientIDs)
+	for _, actor := range []*Actor{nil, AnonymousActor(), UserActor("user", []int{1, -1})} {
+		if ActorCanAccessClient(actor, -1) {
+			t.Fatal("non-admin can access virtual client")
+		}
 	}
-}
-
-func TestNodeClientVisibilityNormalizesActorClientIDsWithoutRepositoryLookup(t *testing.T) {
-	services := webservice.New()
-	services.Backend.Repository = stubVisibilityRepository{
-		Repository: services.Backend.Repository,
-		getManagedClientIDs: func(userID int) ([]int, error) {
-			t.Fatalf("GetManagedClientIDsByUserID(%d) should not be called when actor already carries client ids", userID)
-			return nil, nil
-		},
-	}
-	app := &App{Services: webservice.BindDefaultServices(services, nil)}
-	actor := &Actor{
-		Kind:      "user",
-		ClientIDs: []int{9, 0, 3, 9},
-		Attributes: map[string]string{
-			"user_id": "8",
-		},
-	}
-
-	visibility, ok, err := app.nodeClientVisibility(actor, webservice.NodeAccessScope{})
-	if err != nil {
-		t.Fatalf("nodeClientVisibility() error = %v, want nil", err)
-	}
-	if !ok {
-		t.Fatal("nodeClientVisibility() ok = false, want true")
-	}
-	if visibility.PrimaryClientID != 3 {
-		t.Fatalf("visibility.PrimaryClientID = %d, want 3", visibility.PrimaryClientID)
-	}
-	if len(visibility.ClientIDs) != 2 || visibility.ClientIDs[0] != 3 || visibility.ClientIDs[1] != 9 {
-		t.Fatalf("visibility.ClientIDs = %v, want [3 9]", visibility.ClientIDs)
-	}
-}
-
-func TestNodeClientVisibilityUsesManagedClientLookupForUserActor(t *testing.T) {
-	services := webservice.New()
-	services.Backend.Repository = stubVisibilityRepository{
-		Repository:              services.Backend.Repository,
-		authoritativeManagedIDs: true,
-		getManagedClientIDs: func(userID int) ([]int, error) {
-			if userID != 8 {
-				t.Fatalf("GetManagedClientIDsByUserID(%d), want 8", userID)
-			}
-			return []int{5, 2, 5, 0}, nil
-		},
-	}
-	app := &App{Services: webservice.BindDefaultServices(services, nil)}
-	actor := &Actor{
-		Kind: "user",
-		Attributes: map[string]string{
-			"user_id": "8",
-		},
-	}
-
-	visibility, ok, err := app.nodeClientVisibility(actor, webservice.NodeAccessScope{})
-	if err != nil {
-		t.Fatalf("nodeClientVisibility() error = %v, want nil", err)
-	}
-	if !ok {
-		t.Fatal("nodeClientVisibility() ok = false, want true")
-	}
-	if visibility.PrimaryClientID != 2 {
-		t.Fatalf("visibility.PrimaryClientID = %d, want 2", visibility.PrimaryClientID)
-	}
-	if len(visibility.ClientIDs) != 2 || visibility.ClientIDs[0] != 2 || visibility.ClientIDs[1] != 5 {
-		t.Fatalf("visibility.ClientIDs = %v, want [2 5]", visibility.ClientIDs)
+	if ActorCanAccessClient(admin, 0) {
+		t.Fatal("zero is not a single client")
 	}
 }

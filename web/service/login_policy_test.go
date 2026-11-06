@@ -2,9 +2,7 @@ package service
 
 import (
 	"testing"
-	"time"
 
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -43,13 +41,13 @@ func TestDefaultLoginPolicyBanLifecycle(t *testing.T) {
 		}
 	})
 
-	policy.RecordFailure("127.0.0.1", true)
+	policy.RecordIPFailure("127.0.0.1")
 	if !policy.IsIPBanned("127.0.0.1") {
-		t.Fatal("IsIPBanned() = false, want true after explicit failure")
+		t.Fatal("IsIPBanned() = false, want true after a failure")
 	}
 
 	records := policy.BanList()
-	if len(records) != 1 || records[0].BanType != "ip" || !records[0].IsBanned {
+	if len(records) != 1 || records[0].BanType != "ip" || !records[0].IsBanned || records[0].FailTimes != 1 || records[0].Key != "127.0.0.1" {
 		t.Fatalf("BanList() = %+v, want one banned ip record", records)
 	}
 
@@ -59,146 +57,67 @@ func TestDefaultLoginPolicyBanLifecycle(t *testing.T) {
 	if policy.IsIPBanned("127.0.0.1") {
 		t.Fatal("IsIPBanned() = true after RemoveBan(), want false")
 	}
-}
-
-func TestDefaultLoginPolicyAllowsIPWithStaticACL(t *testing.T) {
-	current := &servercfg.Snapshot{
-		Security: servercfg.SecurityConfig{
-			LoginACLMode:  1,
-			LoginACLRules: "127.0.0.1,10.0.0.0/8",
-		},
-	}
-	policy := NewDefaultLoginPolicy(func() *servercfg.Snapshot {
-		return current
-	})
-
-	if !policy.AllowsIP("127.0.0.1") {
-		t.Fatal("AllowsIP() = false, want true for exact match")
-	}
-	if !policy.AllowsIP("10.1.2.3") {
-		t.Fatal("AllowsIP() = false, want true for cidr match")
-	}
-	if policy.AllowsIP("192.168.1.1") {
-		t.Fatal("AllowsIP() = true, want false for whitelist miss")
-	}
-
-	current = &servercfg.Snapshot{
-		Security: servercfg.SecurityConfig{
-			LoginACLMode:  2,
-			LoginACLRules: "::1/128",
-		},
-	}
-
-	if policy.AllowsIP("::1") {
-		t.Fatal("AllowsIP() = true, want false for blacklist hit")
-	}
-	if !policy.AllowsIP("2001:db8::1") {
-		t.Fatal("AllowsIP() = false, want true for blacklist miss")
+	if len(policy.BanList()) != 0 {
+		t.Fatalf("BanList() = %+v after RemoveBan(), want none", policy.BanList())
 	}
 }
 
-func TestDefaultLoginPolicyRecordFailureReplacesInvalidEntry(t *testing.T) {
-	policy := NewDefaultLoginPolicy(servercfg.Current)
-	policy.records.Store("alice", "bad-record")
-
-	policy.RecordFailure("alice", true)
-
-	current, ok := policy.loadRecord("alice")
-	if !ok || current == nil {
-		t.Fatal("RecordFailure should replace invalid record entry")
-	}
-	current.mu.Lock()
-	failTimes := current.hasLoginFailTimes
-	current.mu.Unlock()
-	if failTimes != 1 {
-		t.Fatalf("failTimes = %d, want 1 after replacement", failTimes)
-	}
-}
-
-func TestDefaultLoginPolicyCleanAndBanListDropInvalidEntries(t *testing.T) {
+func TestDefaultLoginPolicyCountsFailures(t *testing.T) {
 	policy := NewDefaultLoginPolicy(func() *servercfg.Snapshot {
 		return &servercfg.Snapshot{
 			Security: servercfg.SecurityConfig{
-				LoginBanTime:      60,
 				LoginIPBanTime:    60,
 				LoginUserBanTime:  60,
 				LoginMaxFailTimes: 3,
 			},
 		}
 	})
-	valid := &loginFailureRecord{hasLoginFailTimes: 2, lastLoginTime: time.Now()}
-	policy.records.Store("bob", valid)
-	policy.records.Store("bad-user", "bad-record")
-	policy.records.Store(12345, "bad-key")
-
-	policy.Clean(true)
-	records := policy.BanList()
-
-	if _, ok := policy.records.Load("bad-user"); ok {
-		t.Fatal("Clean should remove invalid record value")
+	for i := 0; i < 2; i++ {
+		policy.RecordUserFailure("alice")
+		policy.RecordIPFailure("2001:db8::1")
 	}
-	if _, ok := policy.records.Load(12345); ok {
-		t.Fatal("Clean should remove invalid record key")
+	if policy.IsUserBanned("alice") || policy.IsIPBanned("2001:db8::2") {
+		t.Fatal("banned before login_max_fail_times failures")
 	}
-	if len(records) != 1 || records[0].Key != "bob" {
-		t.Fatalf("BanList() = %+v, want only the valid bob record", records)
+	policy.ClearUserFailures("alice")
+	policy.RecordUserFailure("alice")
+	policy.RecordIPFailure("2001:db8::ffff")
+	if policy.IsUserBanned("alice") {
+		t.Fatal("IsUserBanned() = true, want the failures cleared by a login")
 	}
-}
-
-func TestDefaultGlobalServiceSaveSupportsWhitelist(t *testing.T) {
-	resetBackendTestDB(t)
-
-	service := DefaultGlobalService{Backend: Backend{Repository: defaultRepository{}}}
-	if err := service.Save(SaveGlobalInput{
-		EntryACLMode:  file.AclWhitelist,
-		EntryACLRules: " 10.0.0.0/8 \r\n 192.168.* ",
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
+	// Addresses of one /64 count together.
+	if !policy.IsIPBanned("2001:db8::3") {
+		t.Fatal("IsIPBanned() = false, want the /64 banned")
 	}
-
-	stored := file.GetDb().GetGlobal()
-	if stored == nil {
-		t.Fatal("stored global config should not be nil")
+	var ip, user *LoginBanRecord
+	for _, r := range policy.BanList() {
+		switch r.BanType {
+		case "ip":
+			ip = &r
+		case "username":
+			user = &r
+		}
 	}
-	if stored.EntryAclMode != file.AclWhitelist || stored.EntryAclRules != "10.0.0.0/8\n192.168.*" {
-		t.Fatalf("stored global acl = (%d, %q), want whitelist normalized rules", stored.EntryAclMode, stored.EntryAclRules)
+	if ip == nil || ip.Key != "2001:db8::/64" || !ip.IsBanned || ip.FailTimes != 3 {
+		t.Fatalf("ip record = %+v", ip)
 	}
-	if legacy := stored.LegacyBlackIPImport(); len(legacy) != 0 {
-		t.Fatalf("global legacy blacklist should stay cleared in whitelist mode, got %v", legacy)
+	if user == nil || user.Key != "alice" || user.IsBanned || user.FailTimes != 1 {
+		t.Fatalf("user record = %+v", user)
 	}
-	if !stored.AllowsSourceAddr("10.1.2.3:80") {
-		t.Fatal("whitelist should allow matching source")
-	}
-	if stored.AllowsSourceAddr("8.8.8.8:53") {
-		t.Fatal("whitelist should deny non-matching source")
+	if !policy.RemoveBan("2001:db8::/64") || policy.IsIPBanned("2001:db8::1") {
+		t.Fatal("RemoveBan(prefix) did not lift the ban")
 	}
 }
 
-func TestDefaultGlobalServiceSaveUsesFormalBlacklistInput(t *testing.T) {
-	resetBackendTestDB(t)
-
-	service := DefaultGlobalService{Backend: Backend{Repository: defaultRepository{}}}
-	if err := service.Save(SaveGlobalInput{
-		EntryACLMode:  file.AclBlacklist,
-		EntryACLRules: " 10.0.0.1 \r\n 10.0.0.2 \n",
-	}); err != nil {
-		t.Fatalf("Save() error = %v", err)
+func TestDefaultLoginPolicyKeepsBansAcrossSettings(t *testing.T) {
+	cfg := &servercfg.Snapshot{Security: servercfg.SecurityConfig{LoginBanTime: 60, LoginIPBanTime: 60, LoginMaxFailTimes: 3}}
+	policy := NewDefaultLoginPolicy(func() *servercfg.Snapshot { return cfg })
+	policy.RecordIPFailure("192.0.2.1")
+	cfg = &servercfg.Snapshot{Security: servercfg.SecurityConfig{LoginBanTime: 30, LoginIPBanTime: 60, LoginMaxFailTimes: 5}}
+	if !policy.IsIPBanned("192.0.2.1") {
+		t.Fatal("ban lost when the settings changed")
 	}
-
-	stored := file.GetDb().GetGlobal()
-	if stored == nil {
-		t.Fatal("stored global config should not be nil")
-	}
-	if stored.EntryAclMode != file.AclBlacklist || stored.EntryAclRules != "10.0.0.1\n10.0.0.2" {
-		t.Fatalf("stored global acl = (%d, %q), want blacklist normalized rules", stored.EntryAclMode, stored.EntryAclRules)
-	}
-	if legacy := stored.LegacyBlackIPImport(); len(legacy) != 0 {
-		t.Fatalf("global legacy blacklist should stay cleared in blacklist mode, got %v", legacy)
-	}
-	if stored.AllowsSourceAddr("10.0.0.1:443") {
-		t.Fatal("blacklist should deny matching source")
-	}
-	if !stored.AllowsSourceAddr("8.8.8.8:53") {
-		t.Fatal("blacklist should allow non-matching source")
+	if policy.IsIPBanned("not an address") {
+		t.Fatal("an invalid address is banned")
 	}
 }

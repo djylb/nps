@@ -1,17 +1,13 @@
 package config
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
-	viperini "github.com/go-viper/encoding/ini"
-	"github.com/spf13/viper"
 )
 
 type CommonConfig struct {
@@ -50,189 +46,121 @@ type Config struct {
 	LocalServer  []*LocalServer
 }
 
-func NewConfig(path string) (c *Config, err error) {
-	var b []byte
-	if b, err = common.ReadAllFromFile(path); err != nil {
-		return
-	}
-	return NewConfigFromContent(string(b))
-}
-
-func NewConfigFromContent(raw string) (c *Config, err error) {
-	c = new(Config)
-	if c.content, err = common.ParseStr(raw); err != nil {
-		return nil, err
-	}
-	return parseConfigContent(c)
-}
-
-func parseConfigContent(c *Config) (*Config, error) {
-	if c == nil {
-		return nil, fmt.Errorf("config is nil")
-	}
-	title, err := getAllTitle(c.content)
+// NewConfig loads and parses an npc configuration file.
+func NewConfig(path string) (*Config, error) {
+	b, err := common.ReadAllFromFile(path)
 	if err != nil {
 		return nil, err
 	}
-	c.title = title
-	sections, err := parseConfigSections(c.content)
+	return parseConfig(string(b))
+}
+
+func parseConfig(raw string) (*Config, error) {
+	content, err := common.ParseStr(common.NormalizeNewlines(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
+	}
+	sections, err := parseSections(content)
 	if err != nil {
 		return nil, err
 	}
-	var nowContent string
-	for i := 0; i < len(c.title); i++ {
-		sectionName := normalizeConfigSectionName(getTitleContent(c.title[i]))
-		section := sections[sectionName]
-		nowContent = renderConfigSection(section)
-		if strings.HasPrefix(sectionName, "secret") && !sectionHasKey(section, "mode") {
-			local := delLocalService(nowContent)
+	c := &Config{content: content}
+	for _, sec := range sections {
+		c.title = append(c.title, "["+sec.name+"]")
+		name := strings.ToLower(sec.name)
+		keys := sectionKeys(sec.body)
+		switch {
+		case strings.HasPrefix(name, "secret") && !keys["mode"]:
+			local := delLocalService(sec.body)
 			local.Type = "secret"
 			c.LocalServer = append(c.LocalServer, local)
-			continue
-		}
-		if strings.HasPrefix(sectionName, "p2p") && !sectionHasKey(section, "mode") {
-			local := delLocalService(nowContent)
+		case strings.HasPrefix(name, "p2p") && !keys["mode"]:
+			local := delLocalService(sec.body)
 			if local.Type == "" {
 				local.Type = "p2p"
 			}
 			c.LocalServer = append(c.LocalServer, local)
-			continue
-		}
-		//health set
-		if strings.HasPrefix(sectionName, "health") {
-			c.Healths = append(c.Healths, dealHealth(nowContent))
-			continue
-		}
-		switch sectionName {
-		case "common":
-			c.CommonConfig = dealCommon(nowContent)
+		case strings.HasPrefix(name, "health"):
+			c.Healths = append(c.Healths, dealHealth(sec.body))
+		case name == "common":
+			c.CommonConfig = dealCommon(sec.body)
+		case keys["host"]:
+			h := dealHost(sec.body)
+			h.Remark = sec.name
+			c.Hosts = append(c.Hosts, h)
 		default:
-			if sectionHasKey(section, "host") {
-				h, err := dealHost(nowContent)
-				if err != nil {
-					return nil, err
-				}
-				h.Remark = getTitleContent(c.title[i])
-				c.Hosts = append(c.Hosts, h)
-				continue
-			}
-			t, err := dealTunnel(nowContent)
-			if err != nil {
-				return nil, err
-			}
-			t.Remark = getTitleContent(c.title[i])
+			t := dealTunnel(sec.body)
+			t.Remark = sec.name
 			c.Tasks = append(c.Tasks, t)
 		}
+	}
+	if c.CommonConfig == nil {
+		return nil, errors.New("missing [common] section")
 	}
 	return c, nil
 }
 
-func parseConfigSections(raw string) (map[string]map[string]string, error) {
-	registry := viper.NewCodecRegistry()
-	if err := registry.RegisterCodec("ini", viperini.Codec{KeyDelimiter: "::"}); err != nil {
-		return nil, err
+type section struct {
+	name string
+	body string // trimmed, non-empty, non-comment lines joined by "\n"
+}
+
+var titleRE = regexp.MustCompile(`^\[([^\[\]]+)]$`)
+
+// parseSections splits normalized content into sections line by line.
+// Lines before the first section header are ignored.
+func parseSections(content string) ([]section, error) {
+	var sections []section
+	var body []string
+	seen := make(map[string]bool)
+	flush := func() {
+		if len(sections) > 0 {
+			sections[len(sections)-1].body = strings.Join(body, "\n")
+		}
+		body = body[:0]
 	}
-	cfg := viper.NewWithOptions(
-		viper.KeyDelimiter("::"),
-		viper.WithCodecRegistry(registry),
-	)
-	cfg.SetConfigType("ini")
-	if err := cfg.ReadConfig(bytes.NewBufferString(raw)); err != nil {
-		return nil, err
-	}
-	settings := cfg.AllSettings()
-	sections := make(map[string]map[string]string, len(settings))
-	for sectionName, value := range settings {
-		items, ok := configSectionValues(value)
-		if !ok {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		sections[normalizeConfigSectionName(sectionName)] = items
+		if m := titleRE.FindStringSubmatch(line); m != nil {
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if seen[key] {
+				return nil, fmt.Errorf("item names [%s] are not allowed to be duplicated", name)
+			}
+			seen[key] = true
+			flush()
+			sections = append(sections, section{name: name})
+			continue
+		}
+		body = append(body, line)
 	}
+	flush()
 	return sections, nil
 }
 
-func configSectionValues(value any) (map[string]string, bool) {
-	switch section := value.(type) {
-	case map[string]any:
-		items := make(map[string]string, len(section))
-		for key, item := range section {
-			items[strings.TrimSpace(key)] = fmt.Sprint(item)
-		}
-		return items, true
-	case map[any]any:
-		items := make(map[string]string, len(section))
-		for key, item := range section {
-			items[strings.TrimSpace(fmt.Sprint(key))] = fmt.Sprint(item)
-		}
-		return items, true
-	default:
-		return nil, false
-	}
-}
-
-func normalizeConfigSectionName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
-}
-
-func sectionHasKey(section map[string]string, name string) bool {
-	if len(section) == 0 {
-		return false
-	}
-	name = normalizeConfigKey(name)
-	for key := range section {
-		if normalizeConfigKey(key) == name {
-			return true
+// sectionKeys returns the set of keys present in a section body.
+func sectionKeys(body string) map[string]bool {
+	keys := make(map[string]bool)
+	for _, line := range splitStr(body) {
+		if item, ok := splitKV(line); ok {
+			keys[item[0]] = true
 		}
 	}
-	return false
+	return keys
 }
 
-func renderConfigSection(section map[string]string) string {
-	if len(section) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(section))
-	for key := range section {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	lines := make([]string, 0, len(keys))
-	for _, key := range keys {
-		lines = append(lines, key+"="+section[key])
-	}
-	return strings.Join(lines, "\n")
-}
-
-var bracketRE = regexp.MustCompile(`[\[\]]`)
-
-func getTitleContent(s string) string {
-	return bracketRE.ReplaceAllString(s, "")
-}
-
-var commentLineRE = regexp.MustCompile(`(?m)^[ \t]*#.*(\r?\n|$)`)
-
-func stripCommentLines(s string) string {
-	return commentLineRE.ReplaceAllString(s, "")
-}
-
-func normalizeConfigKey(key string) string {
-	parts := strings.FieldsFunc(strings.TrimSpace(strings.ToLower(key)), func(r rune) bool {
-		return r == '_' || r == '.' || r == '-' || unicode.IsSpace(r)
-	})
-	return strings.Join(parts, "_")
-}
-
-func splitConfigPrefixedField(rawKey, prefix string) (string, bool) {
-	rawKey = strings.TrimSpace(rawKey)
-	lower := strings.ToLower(rawKey)
-	for _, sep := range []string{"_", "-", "."} {
-		marker := prefix + sep
-		if strings.HasPrefix(lower, marker) && len(rawKey) > len(marker) {
-			return strings.TrimSpace(rawKey[len(marker):]), true
-		}
-	}
-	return "", false
+// splitKV splits a "key=value" line at the first '='. Both parts are
+// trimmed; a line without '=' yields an empty value.
+func splitKV(line string) (item [2]string, ok bool) {
+	k, v, _ := strings.Cut(line, "=")
+	item[0], item[1] = strings.TrimSpace(k), strings.TrimSpace(v)
+	return item, item[0] != ""
 }
 
 func dealCommon(s string) *CommonConfig {
@@ -242,206 +170,224 @@ func dealCommon(s string) *CommonConfig {
 	c.Client = file.NewClient("", true, true)
 	c.Client.Cnf = new(file.Config)
 	for _, v := range splitStr(s) {
-		key, value, ok := splitConfigLine(v)
+		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch normalizeConfigKey(key) {
+		switch item[0] {
 		case "server_addr":
-			c.Server = value
+			c.Server = item[1]
 		case "vkey":
-			c.VKey = value
+			c.VKey = item[1]
 		case "conn_type":
-			c.Tp = value
+			c.Tp = item[1]
 		case "auto_reconnection":
-			c.AutoReconnection = common.GetBoolByStr(value)
+			c.AutoReconnection = common.GetBoolByStr(item[1])
 		case "basic_username":
-			c.Client.Cnf.U = value
+			c.Client.Cnf.U = item[1]
 		case "basic_password":
-			c.Client.Cnf.P = value
+			c.Client.Cnf.P = item[1]
 		case "web_password":
-			username, _, totpSecret := c.Client.LegacyWebLoginImport()
-			c.Client.SetLegacyWebLoginImport(username, value, totpSecret)
+			c.Client.WebPassword = item[1]
 		case "web_username":
-			_, password, totpSecret := c.Client.LegacyWebLoginImport()
-			c.Client.SetLegacyWebLoginImport(value, password, totpSecret)
+			c.Client.WebUserName = item[1]
 		case "compress":
-			c.Client.Cnf.Compress = common.GetBoolByStr(value)
+			c.Client.Cnf.Compress = common.GetBoolByStr(item[1])
 		case "crypt":
-			c.Client.Cnf.Crypt = common.GetBoolByStr(value)
+			c.Client.Cnf.Crypt = common.GetBoolByStr(item[1])
 		case "proxy_url":
-			c.ProxyUrl = value
+			c.ProxyUrl = item[1]
 		case "local_ip":
-			c.LocalIP = value
+			c.LocalIP = item[1]
 		case "dns_server":
-			c.DnsServer = value
+			c.DnsServer = item[1]
 		case "ntp_server":
-			c.NtpServer = value
+			c.NtpServer = item[1]
 		case "ntp_interval":
-			c.NtpInterval = common.GetIntNoErrByStr(value)
+			c.NtpInterval = common.GetIntNoErrByStr(item[1])
 		case "rate_limit":
-			c.Client.RateLimit = common.GetIntNoErrByStr(value)
+			c.Client.RateLimit = common.GetIntNoErrByStr(item[1])
 		case "flow_limit":
-			c.Client.Flow.FlowLimit = int64(common.GetIntNoErrByStr(value))
+			c.Client.Flow.FlowLimit = int64(common.GetIntNoErrByStr(item[1]))
 		case "time_limit":
-			c.Client.Flow.TimeLimit = common.GetTimeNoErrByStr(value)
+			c.Client.Flow.TimeLimit = common.GetTimeNoErrByStr(item[1])
 		case "max_conn":
-			c.Client.MaxConn = common.GetIntNoErrByStr(value)
+			c.Client.SetMaxConn(common.GetIntNoErrByStr(item[1]))
 		case "remark":
-			c.Client.Remark = value
+			c.Client.Remark = item[1]
 		case "pprof_addr":
-			common.InitPProfByAddr(value)
+			common.InitPProfByAddr(item[1])
 		case "disconnect_timeout":
-			c.DisconnectTime = common.GetIntNoErrByStr(value)
+			c.DisconnectTime = common.GetIntNoErrByStr(item[1])
 		case "tls_enable":
-			c.TlsEnable = common.GetBoolByStr(value)
+			c.TlsEnable = common.GetBoolByStr(item[1])
 		}
 	}
 	return c
 }
 
-func dealHost(s string) (*file.Host, error) {
+func dealHost(s string) *file.Host {
 	h := new(file.Host)
 	h.Target = new(file.Target)
 	h.Scheme = "all"
 	h.MultiAccount = new(file.MultiAccount)
 	var headerChange, respHeaderChange string
 	for _, v := range splitStr(s) {
-		rawKey, value, ok := splitConfigLine(v)
+		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch normalizeConfigKey(rawKey) {
+		switch item[0] {
 		case "host":
-			h.Host = value
+			h.Host = item[1]
+		case "upload_limit":
+			h.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
+		case "download_limit":
+			h.DownloadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "target_addr":
-			h.Target.TargetStr = strings.ReplaceAll(value, ",", "\n")
+			h.Target.TargetStr = strings.ReplaceAll(item[1], ",", "\n")
 		case "proxy_protocol":
-			h.Target.ProxyProtocol = common.GetIntNoErrByStr(value)
+			h.Target.ProxyProtocol = common.GetIntNoErrByStr(item[1])
 		case "host_change":
-			h.HostChange = value
+			h.HostChange = item[1]
 		case "scheme":
-			h.Scheme = value
+			h.Scheme = item[1]
 		case "location":
-			h.Location = value
+			h.Location = item[1]
 		case "path_rewrite":
-			h.PathRewrite = value
+			h.PathRewrite = item[1]
 		case "cert_file":
-			h.CertFile, _ = common.GetCertContent(value, "CERTIFICATE")
+			h.CertFile, _ = common.GetCertContent(item[1], "CERTIFICATE")
 		case "key_file":
-			h.KeyFile, _ = common.GetCertContent(value, "PRIVATE")
+			h.KeyFile, _ = common.GetCertContent(item[1], "PRIVATE")
 		case "https_just_proxy":
-			h.HttpsJustProxy = common.GetBoolByStr(value)
+			h.HttpsJustProxy = common.GetBoolByStr(item[1])
 		case "auto_ssl":
-			h.AutoSSL = common.GetBoolByStr(value)
+			h.AutoSSL = common.GetBoolByStr(item[1])
 		case "auto_https":
-			h.AutoHttps = common.GetBoolByStr(value)
+			h.AutoHttps = common.GetBoolByStr(item[1])
 		case "auto_cors":
-			h.AutoCORS = common.GetBoolByStr(value)
+			h.AutoCORS = common.GetBoolByStr(item[1])
 		case "compat_mode":
-			h.CompatMode = common.GetBoolByStr(value)
+			h.CompatMode = common.GetBoolByStr(item[1])
 		case "redirect_url":
-			h.RedirectURL = value
+			h.RedirectURL = item[1]
 		case "target_is_https":
-			h.TargetIsHttps = common.GetBoolByStr(value)
-		case "local_proxy":
-			h.Target.LocalProxy = common.GetBoolByStr(value)
+			h.TargetIsHttps = common.GetBoolByStr(item[1])
 		case "multi_account":
-			multiAccount, err := loadMultiAccount(value)
-			if err != nil {
-				return nil, err
+			if common.FileExists(item[1]) {
+				if b, err := common.ReadAllFromFile(item[1]); err != nil {
+					panic(err)
+				} else {
+					if content, err := common.ParseStr(string(b)); err != nil {
+						panic(err)
+					} else {
+						h.MultiAccount.Content = content
+						h.MultiAccount.AccountMap = dealMultiUser(content)
+					}
+				}
 			}
-			h.MultiAccount = multiAccount
 		default:
-			if name, ok := splitConfigPrefixedField(rawKey, "header"); ok {
-				headerChange += name + ":" + value + "\n"
+			if name, ok := strings.CutPrefix(item[0], "header_"); ok {
+				headerChange += name + ":" + item[1] + "\n"
 			}
-			if name, ok := splitConfigPrefixedField(rawKey, "response"); ok {
-				respHeaderChange += name + ":" + value + "\n"
+			if name, ok := strings.CutPrefix(item[0], "response_"); ok {
+				respHeaderChange += name + ":" + item[1] + "\n"
 			}
 			h.HeaderChange = headerChange
 			h.RespHeaderChange = respHeaderChange
 		}
 	}
-	return h, nil
+	return h
 }
 
 func dealHealth(s string) *file.Health {
 	h := &file.Health{}
 	for _, v := range splitStr(s) {
-		key, value, ok := splitConfigLine(v)
+		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch normalizeConfigKey(key) {
+		switch item[0] {
 		case "health_check_timeout":
-			h.HealthCheckTimeout = common.GetIntNoErrByStr(value)
+			h.HealthCheckTimeout = common.GetIntNoErrByStr(item[1])
 		case "health_check_max_failed":
-			h.HealthMaxFail = common.GetIntNoErrByStr(value)
+			h.HealthMaxFail = common.GetIntNoErrByStr(item[1])
 		case "health_check_interval":
-			h.HealthCheckInterval = common.GetIntNoErrByStr(value)
+			h.HealthCheckInterval = common.GetIntNoErrByStr(item[1])
 		case "health_http_url":
-			h.HttpHealthUrl = value
+			h.HttpHealthUrl = item[1]
 		case "health_check_type":
-			h.HealthCheckType = value
+			h.HealthCheckType = item[1]
 		case "health_check_target":
-			h.HealthCheckTarget = value
+			h.HealthCheckTarget = item[1]
 		}
 	}
 	return h
 }
 
-func dealTunnel(s string) (*file.Tunnel, error) {
+func dealTunnel(s string) *file.Tunnel {
 	t := new(file.Tunnel)
 	t.Target = new(file.Target)
 	t.MultiAccount = new(file.MultiAccount)
 	for _, v := range splitStr(s) {
-		key, value, ok := splitConfigLine(v)
+		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch normalizeConfigKey(key) {
+		switch item[0] {
+		case "max_conn":
+			t.SetMaxConn(common.GetIntNoErrByStr(item[1]))
+		case "upload_limit":
+			t.UploadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
+		case "download_limit":
+			t.DownloadLimit = max(common.GetIntNoErrByStr(item[1]), 0)
 		case "server_port":
-			t.Ports = value
+			t.Ports = item[1]
 		case "server_ip":
-			t.ServerIp = value
+			t.ServerIp = item[1]
 		case "mode":
-			t.Mode = value
+			t.Mode = item[1]
 		case "target_addr":
-			t.Target.TargetStr = strings.ReplaceAll(value, ",", "\n")
+			t.Target.TargetStr = strings.ReplaceAll(item[1], ",", "\n")
 		case "proxy_protocol":
-			t.Target.ProxyProtocol = common.GetIntNoErrByStr(value)
+			t.Target.ProxyProtocol = common.GetIntNoErrByStr(item[1])
 		case "target_port":
-			t.Target.TargetStr = value
+			t.Target.TargetStr = item[1]
 		case "target_ip":
-			t.TargetAddr = value
+			t.TargetAddr = item[1]
 		case "password":
-			t.Password = value
+			t.Password = item[1]
 		case "socks5_proxy":
-			t.Socks5Proxy = common.GetBoolByStr(value)
+			t.Socks5Proxy = common.GetBoolByStr(item[1])
 		case "http_proxy":
-			t.HttpProxy = common.GetBoolByStr(value)
+			t.HttpProxy = common.GetBoolByStr(item[1])
 		case "dest_acl_mode":
-			t.DestAclMode = common.GetIntNoErrByStr(value)
+			t.DestAclMode = common.GetIntNoErrByStr(item[1])
 		case "dest_acl_rules":
-			t.DestAclRules = strings.ReplaceAll(value, ",", "\n")
+			t.DestAclRules = strings.ReplaceAll(item[1], ",", "\n")
 		case "local_path":
-			t.LocalPath = value
+			t.LocalPath = item[1]
 		case "strip_pre":
-			t.StripPre = value
+			t.StripPre = item[1]
 		case "read_only":
-			t.ReadOnly = common.GetBoolByStr(value)
-		case "local_proxy":
-			t.Target.LocalProxy = common.GetBoolByStr(value)
+			t.ReadOnly = common.GetBoolByStr(item[1])
 		case "multi_account":
-			multiAccount, err := loadMultiAccount(value)
-			if err != nil {
-				return nil, err
+			if common.FileExists(item[1]) {
+				if b, err := common.ReadAllFromFile(item[1]); err != nil {
+					panic(err)
+				} else {
+					if content, err := common.ParseStr(string(b)); err != nil {
+						panic(err)
+					} else {
+						t.MultiAccount.Content = content
+						t.MultiAccount.AccountMap = dealMultiUser(content)
+					}
+				}
 			}
-			t.MultiAccount = multiAccount
 		}
 	}
-	return t, nil
+	return t
 
 }
 
@@ -468,93 +414,47 @@ func dealMultiUser(s string) map[string]string {
 	return multiUserMap
 }
 
-func loadMultiAccount(path string) (*file.MultiAccount, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return new(file.MultiAccount), nil
-	}
-
-	content, err := common.ReadAllFromFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read multi_account file %q: %w", path, err)
-	}
-	parsed, err := common.ParseStr(string(content))
-	if err != nil {
-		return nil, fmt.Errorf("parse multi_account file %q: %w", path, err)
-	}
-
-	return &file.MultiAccount{
-		Content:    parsed,
-		AccountMap: dealMultiUser(parsed),
-	}, nil
-}
-
 func delLocalService(s string) *LocalServer {
 	l := new(LocalServer)
 	for _, v := range splitStr(s) {
-		key, value, ok := splitConfigLine(v)
+		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch normalizeConfigKey(key) {
+		switch item[0] {
 		case "local_port":
-			l.Port = common.GetIntNoErrByStr(value)
+			l.Port = common.GetIntNoErrByStr(item[1])
 		case "local_type":
-			l.Type = value
+			l.Type = item[1]
 		case "local_ip":
-			l.Ip = value
+			l.Ip = item[1]
 		case "password":
-			l.Password = value
+			l.Password = item[1]
 		case "target_addr":
-			l.Target = value
+			l.Target = item[1]
 		case "target_type":
-			l.TargetType = value
+			l.TargetType = item[1]
 		case "local_proxy":
-			l.LocalProxy = common.GetBoolByStr(value)
+			l.LocalProxy = common.GetBoolByStr(item[1])
 		case "fallback_secret":
-			l.Fallback = common.GetBoolByStr(value)
+			l.Fallback = common.GetBoolByStr(item[1])
 		}
 	}
 	return l
 }
 
-func getAllTitle(content string) (arr []string, err error) {
-	var re *regexp.Regexp
-	re, err = regexp.Compile(`(?m)^\[[^\r\n\[\]]+]$`)
+func getAllTitle(content string) ([]string, error) {
+	sections, err := parseSections(common.NormalizeNewlines(content))
 	if err != nil {
-		return
+		return nil, err
 	}
-	arr = re.FindAllString(content, -1)
-	m := make(map[string]bool)
-	for _, v := range arr {
-		key := normalizeConfigSectionName(getTitleContent(v))
-		if _, ok := m[key]; ok {
-			err = fmt.Errorf("item names %s are not allowed to be duplicated", v)
-			return
-		}
-		m[key] = true
+	arr := make([]string, 0, len(sections))
+	for _, sec := range sections {
+		arr = append(arr, "["+sec.name+"]")
 	}
-	return
+	return arr, nil
 }
 
-func splitConfigLine(line string) (string, string, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return "", "", false
-	}
-	parts := strings.SplitN(line, "=", 2)
-	if len(parts) == 1 {
-		return parts[0], "", true
-	}
-	return parts[0], parts[1], true
-}
-
-func splitStr(s string) (configDataArr []string) {
-	if common.IsWindows() {
-		configDataArr = strings.Split(s, "\r\n")
-	}
-	if len(configDataArr) < 3 {
-		configDataArr = strings.Split(s, "\n")
-	}
-	return
+func splitStr(s string) []string {
+	return strings.Split(common.NormalizeNewlines(s), "\n")
 }

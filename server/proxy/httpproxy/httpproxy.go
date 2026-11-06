@@ -2,17 +2,17 @@ package httpproxy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"html"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/djylb/netx/httprewrite"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
@@ -31,146 +31,56 @@ type HttpProxy struct {
 	HttpsPort             int
 	Http3Port             int
 	HttpProxyCache        *index.AnyIntIndex
+	HttpOnlyPass          string
 	HttpPortStr           string
 	HttpsPortStr          string
 	Http3PortStr          string
-	Http3Bridge           bool
 	TimeLimitErrorContent []byte
 	FlowLimitErrorContent []byte
 	Magic                 *certmagic.Config
 	Acme                  *certmagic.ACMEIssuer
-	configRoot            func() *servercfg.Snapshot
-	dbRoot                func() httpProxyDB
-	closeRuntimeHook      func() error
+	ResponseHeaderTimeout time.Duration
+	AddOrigin             bool
+	Http3Bridge           bool
+	ErrorAlways           bool
+	ForceAutoSsl          bool
 }
 
-type httpProxyDB interface {
-	FindCertByHost(string) (*file.Host, error)
-	FindReusableCertHost(string, int) (*file.Host, error)
-	GetInfoByHost(string, *http.Request) (*file.Host, error)
-}
-
-var currentHTTPProxyConfigRoot = servercfg.Current
-var errHTTPProxyUnavailable = errors.New("http proxy unavailable")
-
-var currentHTTPProxyDBRoot = func() httpProxyDB {
-	return file.GetDb()
-}
-
-var httpProxyGetHTTPListener = connection.GetHttpListener
-var httpProxyGetHTTPSListener = connection.GetHttpsListener
-
-var httpProxyListenHTTP3 = func(ip string, port int) (net.PacketConn, error) {
-	return net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(ip), Port: port})
-}
-
-func (s *HttpProxy) currentConfig() *servercfg.Snapshot {
-	if s == nil {
-		return servercfg.Current()
-	}
-	return servercfg.ResolveProvider(s.configRoot)
-}
-
-func (s *HttpProxy) currentDB() httpProxyDB {
-	if s != nil && s.dbRoot != nil {
-		if db := s.dbRoot(); db != nil {
-			return db
-		}
-	}
-	return file.GetDb()
-}
-
-func (s *HttpProxy) currentNotFoundErrorContent() []byte {
-	cfg := s.currentConfig()
-	content, err := common.ReadAllFromFile(common.ResolvePath(cfg.Proxy.ErrorPage))
-	if err == nil && len(content) > 0 {
-		return content
-	}
-	if content := s.CurrentErrorContent(); len(content) > 0 {
-		return content
-	}
-	return []byte("nps 404")
-}
-
-func (s *HttpProxy) currentTimeLimitErrorContent() []byte {
-	cfg := s.currentConfig()
-	if content := s.loadOptionalErrorPage(cfg.Proxy.ErrorPageTimeLimit); len(content) > 0 {
-		return content
-	}
-	return s.TimeLimitErrorContent
-}
-
-func (s *HttpProxy) currentFlowLimitErrorContent() []byte {
-	cfg := s.currentConfig()
-	if content := s.loadOptionalErrorPage(cfg.Proxy.ErrorPageFlowLimit); len(content) > 0 {
-		return content
-	}
-	return s.FlowLimitErrorContent
-}
-
-func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort, http3Port int, httpProxyCache *index.AnyIntIndex) *HttpProxy {
-	return NewHttpProxyWithRoots(
-		proxy.NewBaseServer(bridge, task),
-		httpPort,
-		httpsPort,
-		http3Port,
-		httpProxyCache,
-		currentHTTPProxyConfigRoot,
-		currentHTTPProxyDBRoot,
-	)
-}
-
-func NewHttpProxyWithRoots(baseServer *proxy.BaseServer, httpPort, httpsPort, http3Port int, httpProxyCache *index.AnyIntIndex, configRoot func() *servercfg.Snapshot, dbRoot func() httpProxyDB) *HttpProxy {
-	if baseServer == nil {
-		baseServer = &proxy.BaseServer{}
-	}
+func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
 	httpProxy := &HttpProxy{
-		BaseServer:     baseServer,
-		HttpPort:       httpPort,
-		HttpsPort:      httpsPort,
-		Http3Port:      http3Port,
-		HttpProxyCache: httpProxyCache,
-		HttpPortStr:    strconv.Itoa(httpPort),
-		HttpsPortStr:   strconv.Itoa(httpsPort),
-		Http3PortStr:   strconv.Itoa(http3Port),
-		configRoot:     configRoot,
-		dbRoot:         dbRoot,
+		BaseServer:            proxy.NewBaseServer(bridge, task, allowLocalProxy),
+		HttpPort:              httpPort,
+		HttpsPort:             httpsPort,
+		Http3Port:             http3Port,
+		HttpProxyCache:        httpProxyCache,
+		HttpOnlyPass:          httpOnlyPass,
+		AddOrigin:             addOrigin,
+		HttpPortStr:           strconv.Itoa(httpPort),
+		HttpsPortStr:          strconv.Itoa(httpsPort),
+		Http3PortStr:          strconv.Itoa(http3Port),
+		Http3Bridge:           false,
+		ForceAutoSsl:          false,
+		ResponseHeaderTimeout: 100,
 	}
 	return httpProxy
 }
 
-func (s *HttpProxy) decideAutoSSLHost(name string) error {
-	h, err := s.currentDB().FindCertByHost(name)
-	if err != nil || h == nil {
-		return fmt.Errorf("unknown host %q", name)
-	}
-	if !h.AutoSSL {
-		return fmt.Errorf("AutoSSL disabled for %q", name)
-	}
-	return nil
-}
-
-type httpProxyRuntimeServer struct {
-	name  string
-	start func() error
-}
-
 func (s *HttpProxy) Start() error {
-	if s == nil || s.BaseServer == nil {
-		return errHTTPProxyUnavailable
-	}
-	cfg := s.currentConfig()
-	content, err := common.ReadAllFromFile(common.ResolvePath(cfg.Proxy.ErrorPage))
+	cfg := servercfg.Current()
+	var err error
+	s.ErrorContent, err = common.ReadAllFromFile(common.ResolvePath(cfg.Proxy.ErrorPage))
 	if err != nil {
-		content = []byte("nps 404")
+		s.ErrorContent = []byte("nps 404")
 	}
-	s.SetErrorContent(content)
 	s.TimeLimitErrorContent = s.loadOptionalErrorPage(cfg.Proxy.ErrorPageTimeLimit)
 	s.FlowLimitErrorContent = s.loadOptionalErrorPage(cfg.Proxy.ErrorPageFlowLimit)
+	s.ErrorAlways = cfg.Proxy.ErrorAlways
 
-	if s.BridgeIsServer() {
+	if s.Bridge.IsServer() {
 		s.Http3Bridge = cfg.Proxy.BridgeHTTP3
 	}
+
+	s.ForceAutoSsl = cfg.Proxy.ForceAutoSSL
 
 	certmagic.Default.Logger = logs.ZapLogger
 	certmagic.DefaultACME.Agreed = true
@@ -198,140 +108,72 @@ func (s *HttpProxy) Start() error {
 	}
 	s.Magic.OnDemand = &certmagic.OnDemandConfig{
 		DecisionFunc: func(ctx context.Context, name string) error {
-			return s.decideAutoSSLHost(name)
+			h, err := file.GetDb().FindCertByHost(name)
+			if err != nil {
+				return fmt.Errorf("unknown host %q", name)
+			}
+			if !h.AutoSSL {
+				return fmt.Errorf("AutoSSL disabled for %q", name)
+			}
+			return nil
 		},
 	}
 	s.Acme = certmagic.NewACMEIssuer(s.Magic, certmagic.DefaultACME)
 
-	if err := s.initHTTPServer(); err != nil {
-		_ = s.Close()
-		return err
-	}
-	if err := s.initHTTPSServer(); err != nil {
-		_ = s.Close()
-		return err
-	}
-	if err := s.initHTTP3Server(); err != nil {
-		_ = s.Close()
-		return err
-	}
-	return s.runRuntimeServers(s.runtimeServers())
-}
+	s.ResponseHeaderTimeout = time.Duration(cfg.Proxy.ResponseTimeout) * time.Second
 
-func (s *HttpProxy) initHTTPServer() error {
-	if s == nil || s.HttpPort <= 0 {
-		return nil
-	}
-	httpListener, err := httpProxyGetHTTPListener()
-	if err != nil {
-		return fmt.Errorf("start http listener: %w", err)
-	}
-	s.HttpServer = NewHttpServer(s, httpListener)
-	logs.Info("HTTP server listening on port %d", s.HttpPort)
-	return nil
-}
-
-func (s *HttpProxy) initHTTPSServer() error {
-	if s == nil || s.HttpsPort <= 0 {
-		return nil
-	}
-	httpsListener, err := httpProxyGetHTTPSListener()
-	if err != nil {
-		return fmt.Errorf("start https listener: %w", err)
-	}
-	if s.HttpServer == nil {
-		s.HttpServer = NewHttpServer(s, nil)
-	}
-	s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
-	logs.Info("HTTPS server listening on port %d", s.HttpsPort)
-	return nil
-}
-
-func (s *HttpProxy) initHTTP3Server() error {
-	if s == nil || s.HttpsServer == nil || s.Http3Port <= 0 {
-		return nil
-	}
-	httpCfg := connection.CurrentHTTPRuntime()
-	http3PacketConn, err := httpProxyListenHTTP3(httpCfg.IP, s.Http3Port)
-	if err != nil {
-		return fmt.Errorf("start http3 listener: %w", err)
-	}
-	logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
-	s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
-	return nil
-}
-
-func (s *HttpProxy) runtimeServers() []httpProxyRuntimeServer {
-	servers := make([]httpProxyRuntimeServer, 0, 3)
-	if s.HttpServer != nil && s.HttpServer.httpListener != nil {
-		servers = append(servers, httpProxyRuntimeServer{
-			name: "http",
-			start: func() error {
-				return s.HttpServer.Start()
-			},
-		})
-	}
-	if s.HttpsServer != nil {
-		servers = append(servers, httpProxyRuntimeServer{
-			name: "https",
-			start: func() error {
-				return s.HttpsServer.Start()
-			},
-		})
-	}
-	if s.Http3Server != nil {
-		servers = append(servers, httpProxyRuntimeServer{
-			name: "http3",
-			start: func() error {
-				return s.Http3Server.Start()
-			},
-		})
-	}
-	return servers
-}
-
-func (s *HttpProxy) runRuntimeServers(servers []httpProxyRuntimeServer) error {
-	if len(servers) == 0 {
-		return nil
-	}
-
-	errCh := make(chan error, len(servers))
-	var wg sync.WaitGroup
-	for _, server := range servers {
-		server := server
-		wg.Add(1)
+	// Start Server
+	if s.HttpPort > 0 {
+		httpListener, err := connection.GetHttpListener()
+		if err != nil {
+			logs.Error("Failed to start HTTP listener: %v", err)
+			os.Exit(0)
+		}
+		s.HttpServer = NewHttpServer(s, httpListener)
+		logs.Info("HTTP server listening on port %d", s.HttpPort)
 		go func() {
-			defer wg.Done()
-			if err := server.start(); err != nil {
-				errCh <- fmt.Errorf("%s runtime stopped: %w", server.name, err)
-				return
+			if err := s.HttpServer.Start(); err != nil {
+				logs.Error("HTTP server stopped: %v", err)
+				os.Exit(0)
 			}
-			errCh <- nil
 		}()
 	}
 
-	result := <-errCh
-	closeErr := s.closeRuntimeServers()
-	wg.Wait()
-	for i := 1; i < len(servers); i++ {
-		if err := <-errCh; result == nil && err != nil {
-			result = err
+	if s.HttpsPort > 0 {
+		httpsListener, err := connection.GetHttpsListener()
+		if err != nil {
+			logs.Error("Failed to start HTTPS listener: %v", err)
+			os.Exit(0)
+		}
+		if s.HttpServer == nil {
+			s.HttpServer = NewHttpServer(s, nil)
+		}
+		s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
+		logs.Info("HTTPS server listening on port %d", s.HttpsPort)
+		go func() {
+			if err := s.HttpsServer.Start(); err != nil {
+				logs.Error("HTTPS server stopped: %v", err)
+				os.Exit(0)
+			}
+		}()
+
+		if s.Http3Port > 0 {
+			http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.HttpIp), Port: s.Http3Port})
+			if err != nil {
+				logs.Error("Failed to start HTTP/3 listener: %v", err)
+				os.Exit(0)
+			}
+			logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
+			s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
+			go func() {
+				if err := s.Http3Server.Start(); err != nil {
+					logs.Error("HTTP/3 server stopped: %v", err)
+					os.Exit(0)
+				}
+			}()
 		}
 	}
-	if result == nil {
-		return closeErr
-	}
-	return result
-}
-
-func (s *HttpProxy) closeRuntimeServers() error {
-	if s != nil && s.closeRuntimeHook != nil {
-		return s.closeRuntimeHook()
-	}
-	if s == nil {
-		return nil
-	}
-	return s.Close()
+	return nil
 }
 
 func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
@@ -349,9 +191,6 @@ func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
 }
 
 func (s *HttpProxy) Close() error {
-	if s == nil {
-		return nil
-	}
 	if s.HttpServer != nil {
 		_ = s.HttpServer.Close()
 	}
@@ -361,269 +200,191 @@ func (s *HttpProxy) Close() error {
 	if s.Http3Server != nil {
 		_ = s.Http3Server.Close()
 	}
-	if s.HttpProxyCache != nil {
-		s.HttpProxyCache.Clear()
-	}
+	s.HttpProxyCache.Clear()
 	return nil
 }
 
+// ChangeHostAndHeader Change headers and host of request
 func (s *HttpProxy) ChangeHostAndHeader(r *http.Request, host string, header string, httpOnly bool) {
-	cfg := s.currentConfig()
-	scheme := "http"
-	ssl := "off"
-	serverPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
-	if r.TLS != nil {
-		scheme = "https"
-		ssl = "on"
-		serverPort = proxyPortString(cfg.Network.HTTPSProxyPort, "443")
+	in := *r
+	if header != "" {
+		in.Header = r.Header.Clone()
 	}
-	origHost := r.Host
-	hostOnly := common.RemovePortFromHost(origHost)
+	s.changeHostAndHeader(r, &in, host, header, httpOnly)
+}
 
+// changeHostAndHeader applies the host and header rules to out, the request
+// sent on. Rule variables read in, the request as the client sent it.
+func (s *HttpProxy) changeHostAndHeader(out, in *http.Request, host string, header string, httpOnly bool) {
+	scheme := "http"
+	if in.TLS != nil {
+		scheme = "https"
+	}
 	if host != "" {
-		r.Host = host
-		if orig := r.Header.Get("Origin"); orig != "" {
-			r.Header.Set("Origin", scheme+"://"+host)
+		out.Host = host
+		if orig := out.Header.Get("Origin"); orig != "" {
+			out.Header.Set("Origin", scheme+"://"+host)
 		}
 	}
 
-	remoteAddr := r.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	proxyAddXFF := clientIP
-	if prior, ok := r.Header["X-Forwarded-For"]; ok {
-		proxyAddXFF = strings.Join(prior, ", ") + ", " + clientIP
-	}
-
-	var addOrigin bool
-	if !httpOnly {
-		addOrigin = cfg.Proxy.AddOriginHeader
-	} else {
-		addOrigin = false
-	}
-
-	if addOrigin {
-		if r.Header.Get("X-Forwarded-Proto") == "" {
-			r.Header.Set("X-Forwarded-Proto", scheme)
+	if !httpOnly && servercfg.Current().Proxy.AddOriginHeader {
+		if out.Header.Get("X-Forwarded-Proto") == "" {
+			out.Header.Set("X-Forwarded-Proto", scheme)
 		}
-		if r.Header.Get("X-Forwarded-Host") == "" && host == "" {
-			r.Header.Set("X-Forwarded-Host", origHost)
+		if out.Header.Get("X-Forwarded-Host") == "" && host == "" {
+			out.Header.Set("X-Forwarded-Host", in.Host)
 		}
-		r.Header.Set("X-Real-IP", clientIP)
+		out.Header.Set("X-Real-IP", common.GetIpByAddr(in.RemoteAddr))
 	}
 
 	if header == "" {
 		return
 	}
-
-	expandVars := func(val string) string {
-		rep := strings.NewReplacer(
-			"${scheme}", scheme,
-			"${ssl}", ssl,
-			"${forwarded_ssl}", ssl,
-
-			"${host}", hostOnly,
-			"${http_host}", origHost,
-
-			"${remote_addr}", remoteAddr,
-			"${remote_ip}", clientIP,
-			"${remote_port}", clientPort,
-			"${proxy_add_x_forwarded_for}", proxyAddXFF,
-
-			"${request_uri}", r.RequestURI,
-			"${uri}", r.URL.Path,
-			"${args}", r.URL.RawQuery,
-			"${query_string}", r.URL.RawQuery,
-			"${scheme_host}", scheme+"://"+origHost,
-
-			"${http_upgrade}", r.Header.Get("Upgrade"),
-			"${http_connection}", r.Header.Get("Connection"),
-
-			"${server_port}", serverPort,
-
-			"${http_range}", r.Header.Get("Range"),
-			"${http_if_range}", r.Header.Get("If-Range"),
-		)
-		return rep.Replace(val)
-	}
-
-	h := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
-	for _, v := range h {
-		hd := strings.SplitN(v, ":", 2)
-		if len(hd) == 2 {
-			key := strings.TrimSpace(hd[0])
-			if key == "" {
-				continue
-			}
-			val := strings.TrimSpace(hd[1])
-			val = html.UnescapeString(val)
-			if val == "${unset}" {
-				if !strings.EqualFold(key, "Host") {
-					r.Header.Del(key)
-				}
-				continue
-			}
-			val = expandVars(val)
-			r.Header.Set(key, val)
-		}
-	}
+	c := httprewrite.Context{Request: in}
+	_ = httprewrite.ApplyRequest(out, parseHeaderRules(header), &c)
 }
 
+// ChangeResponseHeader Change headers of response
 func (s *HttpProxy) ChangeResponseHeader(resp *http.Response, header string) {
-	cfg := s.currentConfig()
-	if header == "" {
+	if header == "" || resp == nil || resp.Request == nil {
 		return
 	}
-
-	if resp == nil || resp.Request == nil {
-		return
-	}
-
-	httpPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
-	httpsPort := proxyPortString(cfg.Network.HTTPSProxyPort, "443")
-	http3Port := proxyPortString(cfg.Network.HTTP3ProxyPort, httpsPort)
-
-	scheme := "http"
-	ssl := "off"
-	serverPort := httpPort
-	if resp.Request.TLS != nil {
-		scheme = "https"
-		ssl = "on"
-		serverPort = httpsPort
-	}
-
-	origHost := resp.Request.Host
-	hostOnly := common.RemovePortFromHost(origHost)
-
-	remoteAddr := resp.Request.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	timeNow := time.Now()
-
-	expandVars := func(val string) string {
-		rep := strings.NewReplacer(
-			// Protocol/SSL
-			"${scheme}", scheme,
-			"${ssl}", ssl,
-
-			// Ports
-			"${server_port}", serverPort,
-			"${server_port_http}", httpPort,
-			"${server_port_https}", httpsPort,
-			"${server_port_http3}", http3Port,
-
-			// Host info
-			"${host}", hostOnly,
-			"${http_host}", origHost,
-
-			// Client info
-			"${remote_addr}", remoteAddr,
-			"${remote_ip}", clientIP,
-			"${remote_port}", clientPort,
-
-			// Request info
-			"${request_method}", resp.Request.Method,
-			"${request_host}", resp.Request.Host,
-			"${request_uri}", resp.Request.RequestURI,
-			"${request_path}", resp.Request.URL.Path,
-			"${uri}", resp.Request.URL.Path,
-			"${query_string}", resp.Request.URL.RawQuery,
-			"${args}", resp.Request.URL.RawQuery,
-			"${origin}", resp.Request.Header.Get("Origin"),
-			"${user_agent}", resp.Request.Header.Get("User-Agent"),
-			"${http_referer}", resp.Request.Header.Get("Referer"),
-			"${scheme_host}", scheme+"://"+origHost,
-
-			// Response info
-			"${status}", resp.Status,
-			"${status_code}", strconv.Itoa(resp.StatusCode),
-			"${content_length}", strconv.FormatInt(resp.ContentLength, 10),
-			"${content_type}", resp.Header.Get("Content-Type"),
-			"${via}", resp.Header.Get("Via"),
-
-			// Time variables
-			"${date}", timeNow.UTC().Format(http.TimeFormat),
-			"${timestamp}", strconv.FormatInt(timeNow.UTC().Unix(), 10),
-			"${timestamp_ms}", strconv.FormatInt(timeNow.UTC().UnixNano()/1e6, 10),
-		)
-		return rep.Replace(val)
-	}
-
-	h := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
-	for _, v := range h {
-		hd := strings.SplitN(v, ":", 2)
-		if len(hd) == 2 {
-			key := strings.TrimSpace(hd[0])
-			if key == "" {
-				continue
-			}
-			val := strings.TrimSpace(hd[1])
-			val = html.UnescapeString(val)
-			if val == "${unset}" {
-				resp.Header.Del(key)
-				continue
-			}
-			val = expandVars(val)
-			resp.Header.Set(key, val)
-		}
-	}
+	c := httprewrite.Context{Request: resp.Request, Response: resp}
+	_ = httprewrite.ApplyHeader(resp.Header, parseHeaderRules(header), &c)
 }
 
+// ChangeRedirectURL Change redirect URL
 func (s *HttpProxy) ChangeRedirectURL(r *http.Request, url string) string {
-	cfg := s.currentConfig()
-	val := strings.TrimSpace(url)
-	val = html.UnescapeString(val)
-
+	val := html.UnescapeString(strings.TrimSpace(url))
 	if !strings.Contains(val, "${") {
 		return val
 	}
+	t, err := httprewrite.Compile(val, ruleVars)
+	if err != nil {
+		logs.Debug("redirect URL %q: %v", val, err)
+		return val
+	}
+	c := httprewrite.Context{Request: r}
+	if expanded, err := t.Expand(&c); err == nil {
+		return expanded
+	}
+	return val
+}
 
-	scheme := "http"
-	ssl := "off"
-	serverPort := proxyPortString(cfg.Network.HTTPProxyPort, "80")
+// parseHeaderRules parses header rules, one "Name: value" per line with
+// HTML entities in values decoded. A line that does not parse, such as one
+// with an unknown variable, is left out.
+func parseHeaderRules(text string) []httprewrite.Rule {
+	var rules []httprewrite.Rule
+	for _, line := range common.SplitLines(text) {
+		rs, err := httprewrite.ParseRules(html.UnescapeString(line), ruleVars)
+		if err != nil {
+			logs.Debug("header rule %q: %v", line, err)
+			continue
+		}
+		rules = append(rules, rs...)
+	}
+	return rules
+}
+
+// ruleVars are the variables of header rules and redirect URLs besides the
+// built-in ones of httprewrite.
+var ruleVars = httprewrite.Vars{
+	// remote_addr keeps the port, as ip:port, unlike the built-in one.
+	"remote_addr": func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Client.Addr.IsValid() {
+			return c.Client.Addr.AppendTo(dst)
+		}
+		if c.Request == nil {
+			return dst
+		}
+		return append(dst, c.Request.RemoteAddr...)
+	},
+	"ssl":           sslVar,
+	"forwarded_ssl": sslVar,
+	"scheme_host": func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Request == nil {
+			return dst
+		}
+		dst = append(dst, requestScheme(c.Request)...)
+		return append(append(dst, "://"...), c.Request.Host...)
+	},
+	"server_port": func(dst []byte, c *httprewrite.Context) []byte {
+		cfg := servercfg.Current()
+		if c.Request != nil && c.Request.TLS != nil {
+			return append(dst, proxyPortString(cfg.Network.HTTPSProxyPort, "443")...)
+		}
+		return append(dst, proxyPortString(cfg.Network.HTTPProxyPort, "80")...)
+	},
+	"server_port_http": func(dst []byte, _ *httprewrite.Context) []byte {
+		return append(dst, proxyPortString(servercfg.Current().Network.HTTPProxyPort, "80")...)
+	},
+	"server_port_https": func(dst []byte, _ *httprewrite.Context) []byte {
+		return append(dst, proxyPortString(servercfg.Current().Network.HTTPSProxyPort, "443")...)
+	},
+	"server_port_http3": func(dst []byte, _ *httprewrite.Context) []byte {
+		cfg := servercfg.Current()
+		return append(dst, proxyPortString(cfg.Network.HTTP3ProxyPort, proxyPortString(cfg.Network.HTTPSProxyPort, "443"))...)
+	},
+	"request_host": requestVar(func(r *http.Request) string { return r.Host }),
+	"request_path": requestVar(func(r *http.Request) string { return r.URL.Path }),
+	"origin":       requestVar(func(r *http.Request) string { return r.Header.Get("Origin") }),
+	"user_agent":   requestVar(func(r *http.Request) string { return r.Header.Get("User-Agent") }),
+	"status":       responseVar(func(r *http.Response) string { return r.Status }),
+	"status_code":  responseVar(func(r *http.Response) string { return strconv.Itoa(r.StatusCode) }),
+	"content_length": responseVar(func(r *http.Response) string {
+		return strconv.FormatInt(r.ContentLength, 10)
+	}),
+	"content_type": responseVar(func(r *http.Response) string { return r.Header.Get("Content-Type") }),
+	"via":          responseVar(func(r *http.Response) string { return r.Header.Get("Via") }),
+	"date": func(dst []byte, c *httprewrite.Context) []byte {
+		return ruleTime(c).UTC().AppendFormat(dst, http.TimeFormat)
+	},
+	"timestamp": func(dst []byte, c *httprewrite.Context) []byte {
+		return strconv.AppendInt(dst, ruleTime(c).Unix(), 10)
+	},
+	"timestamp_ms": func(dst []byte, c *httprewrite.Context) []byte {
+		return strconv.AppendInt(dst, ruleTime(c).UnixMilli(), 10)
+	},
+}
+
+func sslVar(dst []byte, c *httprewrite.Context) []byte {
+	if c.Request != nil && c.Request.TLS != nil {
+		return append(dst, "on"...)
+	}
+	return append(dst, "off"...)
+}
+
+func requestScheme(r *http.Request) string {
 	if r.TLS != nil {
-		scheme = "https"
-		ssl = "on"
-		serverPort = proxyPortString(cfg.Network.HTTPSProxyPort, "443")
+		return "https"
 	}
+	return "http"
+}
 
-	origHost := r.Host
-	hostOnly := common.RemovePortFromHost(origHost)
-
-	remoteAddr := r.RemoteAddr
-	clientIP := common.GetIpByAddr(remoteAddr)
-	clientPort := common.GetPortStrByAddr(remoteAddr)
-
-	proxyAddXFF := clientIP
-	if prior, ok := r.Header["X-Forwarded-For"]; ok {
-		proxyAddXFF = strings.Join(prior, ", ") + ", " + clientIP
+func requestVar(get func(*http.Request) string) httprewrite.Func {
+	return func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Request == nil {
+			return dst
+		}
+		return append(dst, get(c.Request)...)
 	}
+}
 
-	rep := strings.NewReplacer(
-		"${scheme}", scheme,
-		"${ssl}", ssl,
-		"${forwarded_ssl}", ssl,
+func responseVar(get func(*http.Response) string) httprewrite.Func {
+	return func(dst []byte, c *httprewrite.Context) []byte {
+		if c.Response == nil {
+			return dst
+		}
+		return append(dst, get(c.Response)...)
+	}
+}
 
-		"${host}", hostOnly,
-		"${http_host}", origHost,
-
-		"${remote_addr}", remoteAddr,
-		"${remote_ip}", clientIP,
-		"${remote_port}", clientPort,
-		"${proxy_add_x_forwarded_for}", proxyAddXFF,
-
-		"${request_uri}", r.RequestURI,
-		"${uri}", r.URL.Path,
-		"${args}", r.URL.RawQuery,
-		"${query_string}", r.URL.RawQuery,
-		"${scheme_host}", scheme+"://"+origHost,
-
-		"${server_port}", serverPort,
-	)
-
-	return rep.Replace(val)
+func ruleTime(c *httprewrite.Context) time.Time {
+	if c.Time.IsZero() {
+		return time.Now()
+	}
+	return c.Time
 }
 
 func proxyPortString(port int, fallback string) string {

@@ -10,24 +10,19 @@
     <link href="{{.web_base_url}}/static/css/solid.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{.web_base_url}}/static/css/style.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-shell.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-forms.css?v={{.version}}" rel="stylesheet">
-    <link href="{{.web_base_url}}/static/css/nps-lists.css?v={{.version}}" rel="stylesheet">
     <!-- Latest compiled and minified JavaScript -->
     <script src="{{.web_base_url}}/static/js/jquery-3.7.1.min.js"></script>
     <script src="{{.web_base_url}}/static/js/bootstrap.min.js"></script>
     <script src="{{.web_base_url}}/static/js/jsencrypt.min.js"></script>
-    <script src="{{.web_base_url}}/static/js/nps-runtime.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-i18n.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-feedback.js?v={{.version}}" type="text/javascript"></script>
-    <script src="{{.web_base_url}}/static/js/nps-ui.js?v={{.version}}" type="text/javascript"></script>
+    <!-- Latest compiled and minified Locales -->
+    <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
     {{.head_custom_code}}
 </head>
 
 <body class="login-page">
     <nav class="navbar navbar-static-top navbar-right navbar-login">
-        <div class="ml-auto d-flex align-items-center nps-topbar-tools">
-            <button id="theme-toggle" type="button" class="btn btn-outline-secondary" onclick="toggleTheme()">
+        <div class="ml-auto d-flex align-items-center" style="gap: 0.5rem;">
+            <button id="theme-toggle" class="btn btn-outline-secondary" onclick="toggleTheme()">
                 <i class="fa fa-moon"></i>
             </button>
             <span class="btn-group dropdown">
@@ -42,32 +37,34 @@
 
     <div class="login-card">
         <div class="login-header register">
-            <img src="{{.web_base_url}}/static/img/nps.svg?v={{.version}}" alt="" langtag="application" langattr="alt" class="nps-brand-mark">
-            <div class="navbar-brand nps-login-brand"><h1 langtag="title-register"></h1></div>
+            <img src="{{.web_base_url}}/static/img/nps.svg?v={{.version}}" alt="Logo" style="width: 32px; height: 32px; margin-right: 20px !important;">
+            <div class="navbar-brand" style="font-weight: lighter; font-size: 2.0rem !important"><h1 langtag="title-register"></h1></div>
         </div>
         <div class="login-body">
             <form class="m-t" onsubmit="return false;">
                 <div class="form-group position-relative">
                     <i class="fas fa-user-circle input-icon"></i>
-                    <input class="form-control" langtag="word-username" langattr="placeholder" name="username" placeholder="" required="" type="text">
+                    <input class="form-control" langtag="word-username" name="username" placeholder="username" required="" type="text">
                 </div>
                 <div class="form-group position-relative">
                     <i class="fas fa-key input-icon"></i>
-                    <input class="form-control" langtag="word-password" langattr="placeholder" name="password" placeholder="" required="" type="password">
+                    <input class="form-control" langtag="word-password" name="password" placeholder="password" required="" type="password">
                 </div>
-                <div class="form-group captcha-group position-relative" data-nps-require-feature="open_captcha">
+                {{if eq true .captcha_open}}
+                <div class="form-group captcha-group position-relative">
                     <div class="flex-fill">
                     <i class="fas fa-shield-alt input-icon"></i>
-                    <input class="form-control" langtag="word-captcha" langattr="placeholder" name="captcha" placeholder="">
+                    <input class="form-control" langtag="word-captcha" name="captcha" placeholder="captcha" required="">
                     </div>
                     <div class="captcha-container">
                     {{.captcha_html}}
                     </div>
                 </div>
-                <button class="btn btn-primary block full-width m-b" langtag="word-register" onclick="if (this.form.reportValidity()) register()" type="submit"></button>
+                {{end}}
+                <button id="registerBtn" class="btn btn-primary block full-width m-b" langtag="word-register" onclick="if (this.form.reportValidity()) register()" type="submit"></button>
                 <p class="text-muted text-center">
                     <small langtag="info-haveaccount"></small>
-                    <small><a href="{{.web_base_url}}/login/index" langtag="word-login" data-nps-page-controller="login" data-nps-page-action="index"></a></small>
+                    <small><a href="{{.web_base_url}}/login/index" langtag="word-login"></a></small>
                 </p>
             </form>
     </div>
@@ -80,35 +77,17 @@
     </div>
 
     <script type="text/javascript">
-        var runtimeConfig = Object.assign({}, {{.runtime_config_json}}, {
+        window.nps = {
+            web_base_url: "{{.web_base_url}}",
+            version: "{{.version}}",
             publicKey: `{{.public_key}}`,
             loginNonce: "{{.login_nonce}}",
             timeOffset: 0
-        });
-        window.nps = window.nps.mergeConfig(runtimeConfig);
-        function syncRegisterFormFeatures() {
-            window.nps.syncConditionalVisibility(document);
-            var captchaEnabled = window.nps.featureEnabled('open_captcha');
-            $('input[name="captcha"]').prop('required', captchaEnabled);
-            if (!captchaEnabled) {
-                $('input[name="captcha"]').val('');
-            }
-        }
-        function refreshCaptchaIfEnabled() {
-            if (!window.nps.featureEnabled('open_captcha')) {
-                return;
-            }
-            var $img = $('.captcha-img');
-            if ($img.length) {
-                $img.trigger('click');
-            }
-            $('input[name="captcha"]').val('');
-        }
-        syncRegisterFormFeatures();
+        };
         function syncServerTime() {
             var t0 = Date.now();
             $.ajax({
-                url: window.nps.actionPath('auth', 'gettime'),
+                url: window.nps.web_base_url + "/auth/gettime",
                 dataType: "json",
                 cache: false,
                 timeout: 5000,
@@ -132,6 +111,9 @@
             syncServerTime();
         });
         function register() {
+            const registerBtn = document.getElementById('registerBtn');
+            if (registerBtn.disabled) return false;
+            registerBtn.disabled = true;
             const data = {};
             $("form").serializeArray().forEach(item => {
                 data[item.name] = item.value;
@@ -145,16 +127,23 @@
             data.password = encryptWithRSA(payload);
             $.ajax({
                 type: "POST",
-                url: window.nps.actionPath('login', 'register'),
+                url: window.nps.web_base_url + "/login/register",
                 data: data,
                 success: function (res) {
                     if (res.status) {
                         showMsg(langreply(res.msg), 'success', 1000, function () {
-                            window.location.href = window.nps.pagePath('login', 'index');
+                            window.location.href = window.nps.web_base_url + "/login/index";
                         });
                     } else {
-                        refreshCaptchaIfEnabled();
+                        {{if eq true .captcha_open}}
+                        var $img = $('.captcha-img');
+                        if ($img.length) {
+                            $img.trigger('click');
+                        }
+                        $('input[name="captcha"]').val('');
+                        {{end}}
                         showMsg(langreply(res.msg), 'error', 5000, function() {
+                            registerBtn.disabled = false;
                             if (res.nonce) {
                                 window.nps.loginNonce = res.nonce;
                             }
@@ -164,9 +153,13 @@
                             if (res.timestamp) {
                                 window.nps.timeOffset = res.timestamp - Date.now();
                             }
-                            syncRegisterFormFeatures();
                         });
                     }
+                },
+                error: function (xhr, textStatus) {
+                    showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000, function () {
+                        registerBtn.disabled = false;
+                    });
                 }
             });
             return false;

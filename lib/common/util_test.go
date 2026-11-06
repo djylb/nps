@@ -2,18 +2,11 @@ package common
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestValidateAddr(t *testing.T) {
@@ -95,14 +88,9 @@ func TestDomainCheck(t *testing.T) {
 		valid bool
 	}{
 		{name: "plain domain", input: "example.com", valid: true},
-		{name: "plain domain with path", input: "example.com/path", valid: true},
 		{name: "http domain", input: "http://example.com", valid: true},
 		{name: "https domain with path", input: "https://example.com/path", valid: true},
-		{name: "long tld", input: "example.technology", valid: true},
-		{name: "trailing dot", input: "example.com.", valid: true},
 		{name: "invalid ip", input: "127.0.0.1", valid: false},
-		{name: "invalid url port", input: "https://example.com:8443/path", valid: false},
-		{name: "invalid trailing junk", input: "example.com?bad=1", valid: false},
 		{name: "invalid string", input: "not_a_domain", valid: false},
 	}
 
@@ -187,7 +175,7 @@ func TestBuildAddress(t *testing.T) {
 
 func TestGetWriteStr(t *testing.T) {
 	got := GetWriteStr("alpha", "beta")
-	want := []byte("alpha" + CONN_DATA_SEQ + "beta" + CONN_DATA_SEQ)
+	want := []byte("alpha" + ConnDataSeq + "beta" + ConnDataSeq)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("GetWriteStr() = %q, want %q", string(got), string(want))
 	}
@@ -338,14 +326,6 @@ func TestTimeAndStringHelpers(t *testing.T) {
 	}
 }
 
-func TestGetEnvMap_PreservesValueAfterEquals(t *testing.T) {
-	t.Setenv("NPC_LAUNCH", "npc://launch?url=https%3A%2F%2Fexample.com%2Fpayload.json%3Fsig%3Da%3Db")
-
-	if got := GetEnvMap()["NPC_LAUNCH"]; got != "npc://launch?url=https%3A%2F%2Fexample.com%2Fpayload.json%3Fsig%3Da%3Db" {
-		t.Fatalf("GetEnvMap()[NPC_LAUNCH] = %q", got)
-	}
-}
-
 func TestPathAndFileHelpers(t *testing.T) {
 	tmpDir := t.TempDir()
 	f := filepath.Join(tmpDir, "sample.txt")
@@ -369,40 +349,6 @@ func TestPathAndFileHelpers(t *testing.T) {
 	if got := GetPath("conf/a.conf"); !strings.HasSuffix(got, filepath.Join("conf", "a.conf")) {
 		t.Fatalf("GetPath(relative) = %q, want suffix conf/a.conf", got)
 	}
-	if got := GetExtFromPath("archive.tar.gz"); got != "gz" {
-		t.Fatalf("GetExtFromPath(archive.tar.gz) = %q, want gz", got)
-	}
-	if got := GetExtFromPath(".env"); got != "" {
-		t.Fatalf("GetExtFromPath(.env) = %q, want empty", got)
-	}
-}
-
-func generateTestCertificatePair(t *testing.T, notAfter time.Time) (string, string) {
-	t.Helper()
-
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("GenerateKey() error = %v", err)
-	}
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName: "test.example.com",
-		},
-		NotBefore:             notAfter.Add(-time.Hour),
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{"test.example.com"},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
-	if err != nil {
-		t.Fatalf("CreateCertificate() error = %v", err)
-	}
-	cert := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
-	key := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}))
-	return cert, key
 }
 
 func TestCertHelpers(t *testing.T) {
@@ -431,16 +377,6 @@ func TestCertHelpers(t *testing.T) {
 	if got, err := GetCertContent(filepath.Join(tmpDir, "missing.pem"), "CERTIFICATE"); err == nil || got != "" {
 		t.Fatalf("GetCertContent(missing) = (%q, %v), want empty,error", got, err)
 	}
-	if got, err := GetCertContent(keyPath, "CERTIFICATE"); err == nil || got != "" {
-		t.Fatalf("GetCertContent(invalid header) = (%q, %v), want empty,error", got, err)
-	}
-
-	if c, k, ok := LoadCertPair(certPath, keyPath); !ok || c == "" || k == "" {
-		t.Fatal("LoadCertPair(valid files) failed")
-	}
-	if _, _, ok := LoadCertPair(certPath, filepath.Join(tmpDir, "missing.key")); ok {
-		t.Fatal("LoadCertPair(missing key) = ok, want false")
-	}
 
 	if got := GetCertType(""); got != "empty" {
 		t.Fatalf("GetCertType(empty) = %q, want empty", got)
@@ -453,25 +389,6 @@ func TestCertHelpers(t *testing.T) {
 	}
 	if got := GetCertType("non-existent.pem"); got != "invalid" {
 		t.Fatalf("GetCertType(invalid) = %q, want invalid", got)
-	}
-
-	realCert, realKey := generateTestCertificatePair(t, time.Now().Add(2*time.Hour))
-	realCertPath := filepath.Join(tmpDir, "real-cert.pem")
-	realKeyPath := filepath.Join(tmpDir, "real-key.pem")
-	if err := os.WriteFile(realCertPath, []byte(realCert), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(realKeyPath, []byte(realKey), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if expireAt, err := LoadCertExpireAt(realCert, realKey); err != nil || expireAt.Before(time.Now()) {
-		t.Fatalf("LoadCertExpireAt(text) = (%v, %v), want future time,nil", expireAt, err)
-	}
-	if expireAt, err := LoadCertExpireAt(realCertPath, realKeyPath); err != nil || expireAt.Before(time.Now()) {
-		t.Fatalf("LoadCertExpireAt(file) = (%v, %v), want future time,nil", expireAt, err)
-	}
-	if _, err := LoadCertExpireAt(certPath, keyPath); err == nil {
-		t.Fatal("LoadCertExpireAt(invalid pair) error = nil, want error")
 	}
 }
 

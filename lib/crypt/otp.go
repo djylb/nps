@@ -1,112 +1,102 @@
 package crypt
 
 import (
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/base32"
-	"encoding/binary"
 	"fmt"
-	"net/url"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/djylb/guard/otp"
 	"github.com/skip2/go-qrcode"
 )
 
-const TotpLen = 6
+// TotpLen is the length of a TOTP code.
+const TotpLen = otp.DefaultDigits
 
-var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
-var newQRCode = qrcode.New
-
-func totpValue(key []byte, counter int64) int {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(counter))
-	mac := hmac.New(sha1.New, key)
-	mac.Write(buf)
-	hash := mac.Sum(nil)
-	offset := hash[len(hash)-1] & 0x0F
-	val := (int(hash[offset])&0x7F)<<24 |
-		(int(hash[offset+1])&0xFF)<<16 |
-		(int(hash[offset+2])&0xFF)<<8 |
-		(int(hash[offset+3]) & 0xFF)
-	return val % 1000000
+// totpKey returns the TOTP key of a base32 secret. Secrets of 80 bits,
+// as earlier versions generated, are accepted.
+func totpKey(secret string) (*otp.Key, error) {
+	raw, err := otp.DecodeSecret(strings.TrimSpace(secret))
+	if err != nil {
+		return nil, err
+	}
+	key := &otp.Key{Secret: raw, SkewSteps: 1, AllowShortSecret: true}
+	if err := key.Validate(); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
+// GenerateTOTPSecret returns a new random secret in base32.
 func GenerateTOTPSecret() (string, error) {
-	buf := make([]byte, 10)
-	if _, err := rand.Read(buf); err != nil {
+	raw, err := otp.GenerateSecret(otp.DefaultSecretSize)
+	if err != nil {
 		return "", err
 	}
-	return strings.ToUpper(b32.EncodeToString(buf)), nil
+	return otp.EncodeSecret(raw), nil
 }
 
-func ValidateTOTPCode(secret, code string) (bool, error) {
-	secret = strings.ToUpper(strings.TrimSpace(secret))
-	code = strings.TrimSpace(code)
-	key, err := b32.DecodeString(secret)
-	if err != nil {
-		return false, err
-	}
-	pass, err := strconv.Atoi(code)
-	if err != nil {
-		return false, err
-	}
-	now := time.Now().UTC().Unix() / 30
-	for i := -1; i <= 1; i++ {
-		if totpValue(key, now+int64(i)) == pass {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func GetTOTPCode(secret string) (string, int64, error) {
-	secret = strings.ToUpper(strings.TrimSpace(secret))
-	key, err := b32.DecodeString(secret)
-	if err != nil {
-		return "", 0, err
-	}
-	now := time.Now().UTC().Unix()
-	counter := now / 30
-	val := totpValue(key, counter)
-	code := fmt.Sprintf("%06d", val)
-	remaining := 30 - (now % 30)
-	return code, remaining, nil
-}
-
+// IsValidTOTPSecret reports whether secret is a usable base32 secret.
 func IsValidTOTPSecret(secret string) bool {
-	secret = strings.ToUpper(strings.TrimSpace(secret))
-	if _, err := b32.DecodeString(secret); err != nil {
+	_, err := totpKey(secret)
+	return err == nil
+}
+
+// totpSteps holds the next acceptable time step of each secret, so that a
+// code is accepted once only.
+var totpSteps struct {
+	sync.Mutex
+	next map[string]uint64
+}
+
+// VerifyTOTP reports whether code is a current code of secret that was
+// not accepted before.
+func VerifyTOTP(secret, code string) bool {
+	key, err := totpKey(secret)
+	if err != nil {
 		return false
 	}
-	if _, _, err := GetTOTPCode(secret); err != nil {
+	id := otp.EncodeSecret(key.Secret)
+	totpSteps.Lock()
+	defer totpSteps.Unlock()
+	next, err := key.Verify(code, time.Now(), totpSteps.next[id])
+	if err != nil {
 		return false
 	}
+	if totpSteps.next == nil {
+		totpSteps.next = make(map[string]uint64)
+	}
+	totpSteps.next[id] = next
 	return true
 }
 
-func BuildTotpUri(issuer, accountName, secret string) string {
-	if issuer == "" {
-		encodedLabel := url.QueryEscape(accountName)
-		return fmt.Sprintf(
-			"otpauth://totp/%s?secret=%s",
-			encodedLabel,
-			secret,
-		)
+// GetTOTPCode returns the current code of secret and the seconds it stays
+// current.
+func GetTOTPCode(secret string) (string, int64, error) {
+	key, err := totpKey(secret)
+	if err != nil {
+		return "", 0, err
 	}
-	label := fmt.Sprintf("%s:%s", issuer, accountName)
-	encodedLabel := url.QueryEscape(label)
-	encodedIssuer := url.QueryEscape(issuer)
-	return fmt.Sprintf(
-		"otpauth://totp/%s?secret=%s&issuer=%s",
-		encodedLabel,
-		secret,
-		encodedIssuer,
-	)
+	now := time.Now()
+	code, err := key.Code(now)
+	if err != nil {
+		return "", 0, err
+	}
+	period := int64(otp.DefaultPeriod / time.Second)
+	return code, period - now.Unix()%period, nil
 }
 
+// BuildTotpUri returns the otpauth URI of secret for authenticator apps.
+func BuildTotpUri(issuer, accountName, secret string) (string, error) {
+	key, err := totpKey(secret)
+	if err != nil {
+		return "", err
+	}
+	key.Issuer, key.Account = issuer, accountName
+	return key.URI()
+}
+
+// PrintTOTPSecret prints a new secret and its QR code.
 func PrintTOTPSecret() {
 	secret, err := GenerateTOTPSecret()
 	if err != nil {
@@ -114,30 +104,26 @@ func PrintTOTPSecret() {
 		return
 	}
 	fmt.Printf("Your new 2FA secret is: %s\nPlease add this secret to your nps.conf configuration file.\n", secret)
-	totpUrl := BuildTotpUri("", "NPS", secret)
-	qr, err := newQRCode(totpUrl, qrcode.Medium)
+	totpUrl, err := BuildTotpUri("", "NPS", secret)
 	if err != nil {
-		fmt.Printf("Failed to generate 2FA QR code: %v\n", err)
+		fmt.Printf("Failed to build 2FA URI: %v\n", err)
 		return
 	}
-	ascii := qr.ToString(false)
-	fmt.Println(ascii)
+	qr, err := qrcode.New(totpUrl, qrcode.Medium)
+	if err != nil {
+		fmt.Printf("Failed to build 2FA QR code: %v\n", err)
+		return
+	}
+	fmt.Println(qr.ToString(false))
 }
 
+// PrintTOTPCode prints the current code of secret.
 func PrintTOTPCode(secret string) {
 	code, rem, err := GetTOTPCode(secret)
 	if err != nil {
 		fmt.Printf("Failed to generate 2FA code: %v\n", err)
 		return
 	}
-	ok, err := ValidateTOTPCode(secret, code)
-	if err != nil {
-		fmt.Printf("Failed to validate 2FA code: %v\n", err)
-	}
-	if ok {
-		fmt.Printf("Your current 2FA code is: %s\n", code)
-		fmt.Printf("It will expire in %d seconds.\n", rem)
-		return
-	}
-	fmt.Printf("Failed to validate 2FA code.\n")
+	fmt.Printf("Your current 2FA code is: %s\n", code)
+	fmt.Printf("It will expire in %d seconds.\n", rem)
 }
