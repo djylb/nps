@@ -131,3 +131,46 @@ func TestPreferredDNSFallsBackToSystem(t *testing.T) {
 		})
 	}
 }
+
+// A lookup waits for the probe only as long as its context lasts, and other
+// lookups are not held up meanwhile.
+func TestPreferredDNSProbeHonoursContext(t *testing.T) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0") // never answers
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Close() }()
+	d := &preferredDNS{addr: pc.LocalAddr().String(), probeTimeout: 2 * time.Second}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if d.reachable(ctx) {
+		t.Fatal("silent server reachable")
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("waited %v past its context", took)
+	}
+}
+
+// The name of a dns_server is not looked up through itself.
+func TestPreferredDNSDomainDoesNotRecurse(t *testing.T) {
+	oldResolver := net.DefaultResolver
+	t.Cleanup(func() { net.DefaultResolver = oldResolver })
+	d := &preferredDNS{addr: "dns-server.invalid:53", probeTimeout: 2 * time.Second}
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: d.dial}
+	done := make(chan bool, 1)
+	go func() { done <- d.probe() }()
+	select {
+	case up := <-done:
+		if up {
+			t.Fatal("unresolvable server reachable")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("probe did not end")
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.checked.IsZero() {
+		t.Fatal("the probe went through the resolver it feeds")
+	}
+}
