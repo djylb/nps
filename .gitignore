@@ -1,6 +1,6 @@
 .idea
-nps
-npc
+/nps
+/npc
 *.exe
 .vscode/
 *.tar.gz
