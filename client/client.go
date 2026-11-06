@@ -29,8 +29,10 @@ type TRPClient struct {
 	uuid           string
 	mapper         *portmapper.Mapper
 	server         serverInfo // of the tunnel's bridge connection; set before handleMain
-	tunnel         legacy.Carrier
-	signal         *conn.Conn
+	// tunnel and signal are read by the goroutines that close the client while
+	// Start is still setting them up.
+	tunnel         atomic.Pointer[legacy.Carrier]
+	signal         atomic.Pointer[conn.Conn]
 	fsm            *FileServerManager
 	cnf            *config.Config
 	disconnectTime int
@@ -82,7 +84,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 			return
 		}
 		logs.Info("Successful connection with server %s", s.svrAddr)
-		s.signal = c
+		s.signal.Store(c)
 	}
 	//start a channel connection
 	tunnel := s.newChan()
@@ -108,14 +110,14 @@ func (s *TRPClient) Start(ctx context.Context) {
 			_ = stream.Close()
 			return
 		}
-		s.signal = c
+		s.signal.Store(c)
 		logs.Info("Successful connection with server %s", s.svrAddr)
 	}
 	//monitor the connection
 	go s.ping()
 	//start health check if it's open
 	if s.cnf != nil && len(s.cnf.Healths) > 0 {
-		s.healthChecker = NewHealthChecker(s.ctx, s.cnf.Healths, s.signal)
+		s.healthChecker = NewHealthChecker(s.ctx, s.cnf.Healths, s.signal.Load())
 	}
 	NowStatus = 1
 	s.markConnected()
@@ -126,21 +128,22 @@ func (s *TRPClient) Start(ctx context.Context) {
 // handle main connection
 func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 	defer s.Close()
+	signal := s.signal.Load()
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		default:
 		}
-		flags, err := legacy.ReadFlag(s.signal)
+		flags, err := legacy.ReadFlag(signal)
 		if err != nil {
-			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, s.signal.Conn).String())
-			logs.Error("Accept server data error %s, end this service", netx.NetErrorDetails(err, s.signal.Conn))
+			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, signal.Conn).String())
+			logs.Error("Accept server data error %s, end this service", netx.NetErrorDetails(err, signal.Conn))
 			return
 		}
 		switch flags {
 		case legacy.P2PPunchStart:
-			raw, err := legacy.ReadFrame(s.signal)
+			raw, err := legacy.ReadFrame(signal)
 			if err != nil {
 				logs.Warn("%v", err)
 				return
@@ -152,7 +155,7 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 			}
 			go s.serveP2P(tunnel, invite)
 		case legacy.UpdateRequest:
-			if _, err := legacy.ReadFrame(s.signal); err != nil {
+			if _, err := legacy.ReadFrame(signal); err != nil {
 				logs.Warn("%v", err)
 				return
 			}
@@ -191,7 +194,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 		return nil
 	}
 	tun := legacy.NewTunnel(tunnel, s.bridgeConnType, clientCaps(), s.disconnectTime, true)
-	s.tunnel = tun
+	s.tunnel.Store(&tun)
 
 	go func() {
 		defer func() { _ = tunnel.Close() }()
@@ -310,7 +313,15 @@ func (s *TRPClient) ping() {
 }
 
 func (s *TRPClient) isTunnelClosed() bool {
-	return s.tunnel == nil || s.tunnel.Closed()
+	tunnel := s.currentTunnel()
+	return tunnel == nil || tunnel.Closed()
+}
+
+func (s *TRPClient) currentTunnel() legacy.Carrier {
+	if p := s.tunnel.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 func (s *TRPClient) Close() {
@@ -330,8 +341,8 @@ func (s *TRPClient) closing() {
 		s.cancel()
 	}
 	s.closeTunnel()
-	if s.signal != nil {
-		_ = s.signal.Close()
+	if signal := s.signal.Load(); signal != nil {
+		_ = signal.Close()
 	}
 	if s.mapper != nil {
 		_ = s.mapper.Close()
@@ -363,12 +374,12 @@ func (s *TRPClient) snapshotCloseReason() string {
 	if reason := s.getCloseReason(); reason != "" {
 		return reason
 	}
-	if s.tunnel != nil {
-		if reason := s.tunnel.Reason(); reason != "" {
+	if tunnel := s.currentTunnel(); tunnel != nil {
+		if reason := tunnel.Reason(); reason != "" {
 			return reason
 		}
 	}
-	if s.signal != nil && s.signal.IsClosed() {
+	if signal := s.signal.Load(); signal != nil && signal.IsClosed() {
 		return "signal connection closed"
 	}
 	return ""
@@ -377,7 +388,8 @@ func (s *TRPClient) snapshotCloseReason() string {
 func (s *TRPClient) logDisconnectSummary() {
 	started := s.startedNano.Load()
 	reason := s.getCloseReason()
-	if started == 0 && s.signal == nil && s.tunnel == nil && reason == "" {
+	signal := s.signal.Load()
+	if started == 0 && signal == nil && s.currentTunnel() == nil && reason == "" {
 		return
 	}
 	if reason == "" {
@@ -388,7 +400,7 @@ func (s *TRPClient) logDisconnectSummary() {
 		uptime = time.Since(time.Unix(0, started)).Round(time.Millisecond)
 	}
 	tunnelUp := !s.isTunnelClosed()
-	signalUp := s.signal != nil && !s.signal.IsClosed()
+	signalUp := signal != nil && !signal.IsClosed()
 	logs.Warn(
 		"Disconnect summary event=disconnect_summary role=client server=%s bridge=%s uuid=%s uptime=%s tunnel_up=%t signal_up=%t reason=%q",
 		s.svrAddr,
@@ -402,8 +414,7 @@ func (s *TRPClient) logDisconnectSummary() {
 }
 
 func (s *TRPClient) closeTunnel() {
-	if s.tunnel != nil {
-		_ = s.tunnel.Close()
-		s.tunnel = nil
+	if p := s.tunnel.Swap(nil); p != nil {
+		_ = (*p).Close()
 	}
 }
