@@ -1,8 +1,10 @@
 package common
 
 import (
+	"context"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestGetCustomDNSDefaultWhenUnset(t *testing.T) {
@@ -60,5 +62,72 @@ func TestSetCustomDNSEmptyInputKeepsPreviousValue(t *testing.T) {
 	SetCustomDNS("")
 	if gotAfter := GetCustomDNS(); gotAfter != gotBefore {
 		t.Fatalf("empty SetCustomDNS should keep previous value: before=%q after=%q", gotBefore, gotAfter)
+	}
+}
+
+// serveTestDNS answers every query on a new loopback port with the A record ip.
+func serveTestDNS(t *testing.T, ip net.IP) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, from, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			// Header and question only, without the query's EDNS record.
+			end := 12
+			for end < n && buf[end] != 0 {
+				end += int(buf[end]) + 1
+			}
+			end += 5
+			resp := append([]byte{}, buf[:end]...)
+			resp[2], resp[3] = 0x81, 0x80
+			resp[10], resp[11] = 0, 0
+			if resp[end-3] == 1 { // qtype A: one answer
+				resp[7] = 1
+				resp = append(resp, 0xc0, 12, 0, 1, 0, 1, 0, 0, 0, 1, 0, 4)
+				resp = append(resp, ip.To4()...)
+			}
+			_, _ = pc.WriteTo(resp, from)
+		}
+	}()
+	return pc.LocalAddr().String()
+}
+
+func TestPreferredDNSFallsBackToSystem(t *testing.T) {
+	system := serveTestDNS(t, net.IPv4(192, 0, 2, 2))
+	silent, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = silent.Close() }()
+
+	for _, c := range []struct {
+		name, addr, want string
+	}{
+		{"preferred answers", serveTestDNS(t, net.IPv4(192, 0, 2, 1)), "192.0.2.1"},
+		{"preferred silent", silent.LocalAddr().String(), "192.0.2.2"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := &preferredDNS{addr: c.addr, probeTimeout: 200 * time.Millisecond}
+			r := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return d.dial(ctx, network, system)
+			}}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			addrs, err := r.LookupHost(ctx, "npc-test.example.invalid.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(addrs) != 1 || addrs[0] != c.want {
+				t.Fatalf("LookupHost = %v, want %s", addrs, c.want)
+			}
+		})
 	}
 }

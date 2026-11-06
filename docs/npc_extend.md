@@ -107,7 +107,7 @@ proxy_url=socks5://111:222@127.0.0.1:8024
 | `-disable_p2p`        | 禁用 P2P 连接                                                             | `false`   |
 | `-disable_remote_update` | 忽略服务端下发的远程更新指令                                              | `false`   |
 | `-fallback_secret`    | 当 P2P 不可用时回退到 Secret 直连模式                                             | `true`    |
-| `-dns_server`         | 配置 DNS 服务器                                                            | `8.8.8.8` |
+| `-dns_server`         | 优先使用的 DNS 服务器，不可达时回退到系统 DNS                                 | `8.8.8.8` |
 | `-ntp_server`         | 配置 NTP 服务器                                                            | 无         |
 | `-ntp_interval`       | NTP 最小查询间隔（分钟）                                                        | `5`       |
 | `-timezone`           | 配置时区（Asia/Shanghai）                                                   | 无         |
