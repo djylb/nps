@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -33,6 +34,42 @@ func TestServeReturnsListenerError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "HTTP listener") {
 		t.Fatalf("serve() = %v, want an HTTP listener error", err)
 	}
+}
+
+// When HTTPS cannot bind, serve reports it with HTTP already running, and the
+// Close that its caller then runs frees HTTP.
+func TestServeReportsPartialBindAndCloseStopsTheRest(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	free := probe.Addr().(*net.TCPAddr).Port
+	_ = probe.Close()
+	ip, port, tls := connection.HttpIp, connection.HttpPort, connection.HttpsPort
+	defer func() { connection.HttpIp, connection.HttpPort, connection.HttpsPort = ip, port, tls }()
+	connection.HttpIp, connection.HttpPort = "127.0.0.1", free
+	connection.HttpsPort = taken.Addr().(*net.TCPAddr).Port
+
+	s := &HttpProxy{
+		BaseServer:     proxy.NewBaseServer(nil, nil, false),
+		HttpPort:       free,
+		HttpsPort:      connection.HttpsPort,
+		HttpProxyCache: index.NewAnyIntIndex(),
+	}
+	if err := s.serve(); err == nil || !strings.Contains(err.Error(), "HTTPS listener") {
+		t.Fatalf("serve() = %v", err)
+	}
+	_ = s.Close()
+	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(free)))
+	if err != nil {
+		t.Fatalf("HTTP port not freed: %v", err)
+	}
+	_ = l.Close()
 }
 
 func TestStopErrorHidesClosing(t *testing.T) {

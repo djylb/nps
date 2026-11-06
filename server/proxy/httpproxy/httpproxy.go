@@ -127,7 +127,9 @@ func (s *HttpProxy) Start() error {
 }
 
 // serve binds and runs the HTTP, HTTPS and HTTP/3 servers. It returns the
-// first error of any of them, or nil once all were closed.
+// first error of any of them, or nil once all were closed. The three are one
+// service: after an error the others may still run, and the caller stops them
+// with Close, as server.AddTask does before it drops the task.
 func (s *HttpProxy) serve() error {
 	var running sync.WaitGroup
 	errs := make(chan error, 3)
