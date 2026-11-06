@@ -112,6 +112,19 @@ func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, loc
 
 var errAdd = errors.New("the server returned an error, which port or host may have been occupied or not allowed to open")
 
+// WaitReconnect waits for the time before the next connection attempt. It
+// returns false if ctx ended first.
+func WaitReconnect(ctx context.Context) bool {
+	t := time.NewTimer(5 * time.Second)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string) {
 	cnf, err := config.NewConfig(path)
 	if err != nil || cnf.CommonConfig == nil {
@@ -146,7 +159,9 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 		}
 		if !first {
 			logs.Info("Reconnecting...")
-			time.Sleep(time.Second * 5)
+			if !WaitReconnect(pCtx) {
+				return
+			}
 		}
 		first = false
 
@@ -429,13 +444,11 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		}
 	}
 
+	if err != nil {
+		return nil, "", serverInfo{}, err
+	}
 	if connection == nil {
 		return nil, "", serverInfo{}, fmt.Errorf("newConn: unexpected nil connection for tp=%q server=%q", tp, server)
-	}
-
-	if err != nil {
-		_ = connection.Close()
-		return nil, "", serverInfo{}, err
 	}
 
 	//logs.Debug("SetDeadline")

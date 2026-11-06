@@ -447,7 +447,9 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
 						logs.Info("Client closed! It will be reconnected in five seconds")
-						time.Sleep(time.Second * 5)
+						if !client.WaitReconnect(ctx) {
+							return
+						}
 					} else {
 						logs.Info("Client closed!")
 						cancel()

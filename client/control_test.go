@@ -2,9 +2,11 @@ package client
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,5 +223,26 @@ func TestGetProxyConnTimesOutOnSilentProxy(t *testing.T) {
 		if d := time.Since(start); d > 2*time.Second {
 			t.Fatalf("%s: proxy handshake not bounded by timeout, took %v", scheme, d)
 		}
+	}
+}
+
+func TestNewConnReturnsDialError(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+	_, _, err = NewConn("tcp", "key", addr, "", "")
+	if err == nil || strings.Contains(err.Error(), "unexpected nil connection") {
+		t.Fatalf("NewConn error = %v, want the dial error", err)
+	}
+}
+
+func TestWaitReconnectEndsWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if WaitReconnect(ctx) {
+		t.Fatal("WaitReconnect went on after the context ended")
 	}
 }
