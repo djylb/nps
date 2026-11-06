@@ -134,6 +134,9 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 			continue
 		}
 		fmt.Println("The latest version is", c.Version)
+		if err := checkMajor(version.VERSION, c.Version); err != nil {
+			return nil, err
+		}
 		running := processesRunning(targets)
 		if o.Pending {
 			err = u.Apply(ctx, c)
@@ -162,8 +165,19 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	return nil, err
 }
 
+// checkMajor refuses an update that changes the major version, which may not
+// be able to work with the existing peers and data. It applies to forced
+// updates too; such a move is a manual upgrade.
+func checkMajor(current, target string) error {
+	if version.Major(current) == version.Major(target) {
+		return nil
+	}
+	return fmt.Errorf("version %s has a different major version than %s and cannot be installed by an update; read the release notes and upgrade manually", target, current)
+}
+
 // latestRelease returns the version of the latest release of bin with an
-// artifact for this build, from the first manifest that verifies.
+// artifact for this build, from the first manifest that verifies. A release
+// of another major version counts as no update.
 func latestRelease(ctx context.Context, bin string) (string, error) {
 	u, err := newUpdater(bin, false)
 	if err != nil {
@@ -175,6 +189,9 @@ func latestRelease(ctx context.Context, bin string) (string, error) {
 		c, err := u.Check(ctx)
 		switch {
 		case err == nil:
+			if checkMajor(version.VERSION, c.Version) != nil {
+				return version.VERSION, nil
+			}
 			return c.Version, nil
 		case errors.Is(err, selfupdate.ErrUpToDate), errors.Is(err, selfupdate.ErrPendingRestart):
 			return version.VERSION, nil

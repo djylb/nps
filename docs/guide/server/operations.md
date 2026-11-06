@@ -51,7 +51,7 @@ sudo nps update # Linux/macOS
 nps.exe update  # Windows
 ```
 
-已在运行的服务会自动重启，无需先停止；已是最新版本时不替换文件也不重启。发布包中的 Geo 数据比本地新时一并更新。`update-force` 跳过版本比较，见[强制更新](/getting-started/install-release.md)。
+已在运行的服务会自动重启，无需先停止；已是最新版本时不替换文件也不重启。发布包中的 Geo 数据比本地新时一并更新。`update-force` 跳过版本比较，见[强制更新](/getting-started/install-release.md)。`update`、`update-force` 和网页更新都不会跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行。
 
 替换前会验证新版本可运行，并更新系统服务实际运行的程序。
 

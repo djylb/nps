@@ -8,6 +8,7 @@
 ## Stable
 
 ### v0.35.0
+- `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
 - npc 新增 `--launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
 - 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错
 - 新增 `visitor_vkey`：只能访问 secret/P2P 隧道，设置后网页上的访问命令使用此密钥

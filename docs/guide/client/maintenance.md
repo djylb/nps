@@ -10,7 +10,7 @@ npc.exe update   # Windows
 npc update-force # 跳过版本比较，重新安装最新发布版本
 ```
 
-已是最新版本时 `update` 不替换文件也不重启。失败时手动下载[最新版本](https://github.com/djylb/nps/releases/latest)，覆盖原有 `npc` 文件。
+已是最新版本时 `update` 不替换文件也不重启。`update`、`update-force` 和远程更新都不会跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行。失败时手动下载[最新版本](https://github.com/djylb/nps/releases/latest)，覆盖原有 `npc` 文件。
 
 ## 远程更新
 
