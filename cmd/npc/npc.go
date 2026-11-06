@@ -111,7 +111,7 @@ func main() {
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
-	if *protoVer < 2 {
+	if !legacy.CapsOf(*protoVer, version.VERSION).CertFingerprint {
 		crypt.SkipVerify = true
 	}
 

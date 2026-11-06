@@ -1,9 +1,12 @@
 package legacy
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -78,5 +81,69 @@ func TestReadAckUnexpectedValue(t *testing.T) {
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("server write error = %v", err)
+	}
+}
+
+// testdata/real holds what released npc binaries really sent on their first
+// connection to a server, with the key "interopkey": the handshake, and the
+// work request behind it.
+func TestRealClientHandshakes(t *testing.T) {
+	const key = "interopkey"
+	for _, c := range []struct {
+		file      string
+		index     int
+		version   string
+		transport string
+		macCheck  bool
+	}{
+		{"v0.26.56", 0, "0.26.56", "", false},
+		{"v0.27.0", 1, "0.27.0", "", false},
+		{"v0.28.3", 2, "0.28.3", "", false},
+		{"v0.29.38", 3, "0.29.38", "tcp", false},
+		{"v0.30.6", 4, "0.30.6", "tcp", false},
+		{"v0.31.1", 5, "0.31.1", "tcp", false},
+		{"v0.32.10", 6, "0.32.10", "tcp", false},
+		{"v0.33.14", 7, "0.33.14", "tcp", true},
+		{"v0.34.8", 8, "0.34.8", "tcp", true},
+		{"v0.34.10", 8, "0.34.10", "tcp", true},
+	} {
+		t.Run(c.file, func(t *testing.T) {
+			b, err := os.ReadFile(filepath.Join("testdata", "real", c.file+".bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := bytes.NewReader(b)
+			rw := struct {
+				io.Reader
+				io.Writer
+			}{r, io.Discard}
+			lookup := func(digest string) (tunnelwire.Credential, error) {
+				if digest != tunnelwire.KeyDigest(key) && digest != tunnelwire.MD5Hex(key) {
+					return tunnelwire.Credential{}, errors.New("unknown key")
+				}
+				return tunnelwire.Credential{ID: 1, Key: key, Enabled: true}, nil
+			}
+			res, err := tunnelwire.ServerHandshake(rw, tunnelwire.ServerConfig{
+				Secure: c.macCheck, LookupDigest: lookup, LookupMD5: lookup,
+				Fingerprint: func() []byte { return []byte("fingerprint") },
+				NewUUID:     func() string { return "uuid" },
+			})
+			if err != nil {
+				t.Fatalf("handshake: %v", err)
+			}
+			if res.Caps.Index != c.index || res.Caps.ClientVersion != c.version || res.ClientID != 1 || res.Transport != c.transport {
+				t.Fatalf("%+v", res)
+			}
+			flag, uuid, err := ReadWork(r, res.Caps, "192.0.2.1:5")
+			if err != nil {
+				t.Fatalf("work: %v", err)
+			}
+			if flag != WorkMain && flag != WorkChan {
+				t.Fatalf("first work %q", flag)
+			}
+			if uuid == "" {
+				t.Fatal("no node id")
+			}
+		})
 	}
 }
