@@ -309,3 +309,18 @@ func TestParseUntrustedReadsNoFile(t *testing.T) {
 		t.Fatalf("%v, %+v", err, c)
 	}
 }
+
+func TestOldHealthSectionIgnored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "npc.conf")
+	content := "[common]\nserver_addr=1.2.3.4:8024\nvkey=k\n[health_check_test1]\nhealth_check_timeout=1\nhealth_check_target=a:1,b:2\n[health_named]\nmode=tcp\nserver_port=9\ntarget_addr=a:1\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Tasks) != 1 || c.Tasks[0].Remark != "health_named" {
+		t.Fatalf("tasks: %d", len(c.Tasks))
+	}
+}

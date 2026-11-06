@@ -182,7 +182,6 @@ type sectionKind struct {
 var sectionKinds = []sectionKind{
 	{"hosts", namedOr("host")},
 	{"tasks", namedOr("task")},
-	{"healths", func(_ map[string]any, i int) string { return fmt.Sprintf("health_%d", i) }},
 	{"locals", func(m map[string]any, i int) string {
 		if m["local_type"] == "secret" {
 			return fmt.Sprintf("secret_%d", i)
@@ -397,8 +396,8 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 	}
 	c.Tp = strings.ToLower(c.Tp)
 	if want != nil && (len(cfg.Hosts) != want["hosts"] || len(cfg.Tasks) != want["tasks"] ||
-		len(cfg.Healths) != want["healths"] || len(cfg.LocalServer) != want["locals"]) {
-		return nil, errors.New(`a section name changes its kind: "secret", "p2p" and "health" prefixes are reserved`)
+		len(cfg.LocalServer) != want["locals"]) {
+		return nil, errors.New(`a section name changes its kind: "secret" and "p2p" prefixes are reserved`)
 	}
 	for _, l := range cfg.LocalServer {
 		if l.Password == "" {

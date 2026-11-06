@@ -8,6 +8,7 @@ import (
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/logs"
 )
 
 type CommonConfig struct {
@@ -42,7 +43,6 @@ type Config struct {
 	CommonConfig *CommonConfig
 	Hosts        []*file.Host
 	Tasks        []*file.Tunnel
-	Healths      []*file.Health
 	LocalServer  []*LocalServer
 }
 
@@ -139,8 +139,9 @@ func buildConfig(content string, sections []section) (*Config, error) {
 				local.Type = "p2p"
 			}
 			c.LocalServer = append(c.LocalServer, local)
-		case strings.HasPrefix(name, "health"):
-			c.Healths = append(c.Healths, dealHealth(sec.body))
+		case hasHealthKeys(keys):
+			// Health checks are set on the server now.
+			logs.Warn("Ignoring section [%s]: health checks are now enabled per tunnel or host on the server", sec.name)
 		case name == "common":
 			c.CommonConfig = dealCommon(sec.body)
 		case keys["host"]:
@@ -377,29 +378,15 @@ func loadMultiAccount(m *file.MultiAccount, path string) error {
 	return nil
 }
 
-func dealHealth(s string) *file.Health {
-	h := &file.Health{}
-	for _, v := range splitStr(s) {
-		item, ok := splitKV(v)
-		if !ok {
-			continue
-		}
-		switch item[0] {
-		case "health_check_timeout":
-			h.HealthCheckTimeout = common.GetIntNoErrByStr(item[1])
-		case "health_check_max_failed":
-			h.HealthMaxFail = common.GetIntNoErrByStr(item[1])
-		case "health_check_interval":
-			h.HealthCheckInterval = common.GetIntNoErrByStr(item[1])
-		case "health_http_url":
-			h.HttpHealthUrl = item[1]
-		case "health_check_type":
-			h.HealthCheckType = item[1]
-		case "health_check_target":
-			h.HealthCheckTarget = item[1]
+// hasHealthKeys reports whether a section is one of the health check sections
+// of earlier versions.
+func hasHealthKeys(keys map[string]bool) bool {
+	for k := range keys {
+		if strings.HasPrefix(k, "health_") {
+			return true
 		}
 	}
-	return h
+	return false
 }
 
 func dealTunnel(s string) (*file.Tunnel, error) {

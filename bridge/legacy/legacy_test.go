@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"errors"
+	"github.com/djylb/nps/lib/healthcheck"
 	"io"
 	"net"
 	"os"
@@ -145,5 +146,23 @@ func TestRealClientHandshakes(t *testing.T) {
 				t.Fatal("no node id")
 			}
 		})
+	}
+}
+
+func TestHealthSetBodiesFitFrames(t *testing.T) {
+	var targets []string
+	for range 5000 {
+		targets = append(targets, "192.168.100.100:65535")
+	}
+	total, bodies := 0, HealthSetBodies(healthcheck.Group{Name: "t1", Targets: targets})
+	for _, b := range bodies {
+		n := len(b.(healthGroupWire).Targets)
+		if n*24 > healthChunk+24 {
+			t.Fatalf("body of %d targets", n)
+		}
+		total += n
+	}
+	if len(bodies) < 2 || total != len(targets) {
+		t.Fatalf("%d bodies, %d targets", len(bodies), total)
 	}
 }

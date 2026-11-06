@@ -137,6 +137,15 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 	t.Cleanup(func() {
 		rp.Close()
 		<-rpDone
+		// The bridge reads the store until the signal connection has ended.
+		waitFor(t, 10*time.Second, "signal connection ended", func() bool {
+			v, ok := b.Client.Load(provider.Id)
+			if !ok {
+				return true
+			}
+			n, ok := v.(*bridge.Client).GetNodeByUUID(rp.uuid)
+			return !ok || n.GetSignal() == nil
+		})
 	})
 	waitFor(t, 10*time.Second, "provider registration", func() bool {
 		v, ok := b.Client.Load(provider.Id)

@@ -259,6 +259,39 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="form-group" id="health_check">
+                                <label class="control-label font-bold" langtag="word-healthcheck"></label>
+                                <div class="col-sm-12">
+                                    <label><input name="health_check" type="checkbox" value="1"  onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
+                                    <span class="help-block m-b-none" langtag="info-healthcheck"></span>
+                                </div>
+                                <div class="health-check-fields">
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktype"></label>
+                                        <select class="form-control" name="health_check_type" onchange="toggleHealthCheck(this)">
+                                            <option value="tcp" >TCP</option>
+                                            <option value="http" >HTTP</option>
+                                            <option value="https" >HTTPS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-12 health-check-path">
+                                        <label class="control-label" langtag="word-healthcheckpath"></label>
+                                        <input class="form-control" name="health_check_path" type="text" value="/">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckinterval"></label>
+                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="10">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktimeout"></label>
+                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="3">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckmaxfail"></label>
+                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="3">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </details>
                     <div class="hr-line-dashed"></div>
@@ -279,14 +312,22 @@
 </div>
 
 <script>
+    function toggleHealthCheck(el) {
+        var group = $(el).closest("#health_check");
+        group.find(".health-check-fields").toggle(group.find("input[name='health_check']").prop("checked"));
+        group.find(".health-check-path").toggle(group.find("select[name='health_check_type']").val() !== "tcp");
+    }
+    $(function () { toggleHealthCheck($("#health_check input[name='health_check']")[0]); });
+</script>
+<script>
     var arr = []
-    arr["all"] = ["auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["tcp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["tcp"] = ["health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
-    arr["secret"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["secret"] = ["health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
     arr["p2p"] = ["target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
     arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 

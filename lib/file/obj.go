@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -482,6 +483,9 @@ type Tunnel struct {
 	UserAuth     *MultiAccount
 	MultiAccount *MultiAccount
 	Health
+	// HealthConfig is the check the server gives the client; replaced, never
+	// modified, under the entry's lock.
+	HealthConfig *HealthCheck `json:",omitempty"`
 	sync.RWMutex
 }
 
@@ -612,6 +616,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		Target:       t.Target,
 		UserAuth:     t.UserAuth,
 		MultiAccount: t.MultiAccount,
+		HealthConfig: t.HealthConfig,
 	}
 	c.CopySourceLists(&t.SourceLists)
 	flow := t.Flow
@@ -701,6 +706,76 @@ type Health struct {
 	sync.RWMutex
 }
 
+// HealthCheck is what can be set for a health check given by the server.
+type HealthCheck struct {
+	Enabled  bool
+	Type     string // tcp, http or https
+	Path     string // of an http or https check
+	Interval int    // seconds
+	Timeout  int    // seconds
+	MaxFail  int
+}
+
+// Normalized returns c with what is unset or unusable replaced by defaults.
+func (c HealthCheck) Normalized() HealthCheck {
+	c.Type = strings.ToLower(strings.TrimSpace(c.Type))
+	if c.Type != "http" && c.Type != "https" {
+		c.Type = "tcp"
+	}
+	if c.Path = strings.TrimSpace(c.Path); c.Type == "tcp" {
+		c.Path = ""
+	} else if !strings.HasPrefix(c.Path, "/") {
+		c.Path = "/" + c.Path
+	}
+	if c.Interval <= 0 {
+		c.Interval = 10
+	}
+	if c.Timeout <= 0 {
+		c.Timeout = 3
+	}
+	if c.MaxFail <= 0 {
+		c.MaxFail = 3
+	}
+	return c
+}
+
+// HealthCheck returns the settings of the entry's check, with defaults.
+func (t *Tunnel) HealthCheck() HealthCheck {
+	t.RLock()
+	defer t.RUnlock()
+	return t.HealthConfig.orDefault()
+}
+
+// SetHealthCheck sets the entry's check.
+func (t *Tunnel) SetHealthCheck(c HealthCheck) {
+	c = c.Normalized()
+	t.Lock()
+	defer t.Unlock()
+	t.HealthConfig = &c
+}
+
+// HealthCheck returns the settings of the entry's check, with defaults.
+func (s *Host) HealthCheck() HealthCheck {
+	s.RLock()
+	defer s.RUnlock()
+	return s.HealthConfig.orDefault()
+}
+
+// SetHealthCheck sets the entry's check.
+func (s *Host) SetHealthCheck(c HealthCheck) {
+	c = c.Normalized()
+	s.Lock()
+	defer s.Unlock()
+	s.HealthConfig = &c
+}
+
+func (c *HealthCheck) orDefault() HealthCheck {
+	if c == nil {
+		return HealthCheck{}.Normalized()
+	}
+	return *c
+}
+
 type Host struct {
 	RateLimits
 	Id               int
@@ -736,6 +811,8 @@ type Host struct {
 	MultiAccount     *MultiAccount
 	SourceLists
 	Health `json:"-"`
+	// HealthConfig is as in Tunnel.
+	HealthConfig *HealthCheck `json:",omitempty"`
 	sync.RWMutex
 }
 
@@ -879,6 +956,25 @@ func (s *Target) Dial(dial func(addr string) (direct bool, err error)) error {
 		return ErrNoTarget
 	}
 	return err
+}
+
+// Addresses returns the distinct addresses a health check can reach. A target
+// the server dials itself has none: its own dials judge it.
+func (s *Target) Addresses() []string {
+	if s == nil || s.LocalProxy {
+		return nil
+	}
+	s.mu.Lock()
+	targetStr := s.TargetStr
+	s.mu.Unlock()
+	addrs := parseTargets(targetStr)
+	out := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if !strings.Contains(addr, "://") && !slices.Contains(out, addr) {
+			out = append(out, addr)
+		}
+	}
+	return out
 }
 
 // SetHealthy takes addr out of the rotation or puts it back, and reports

@@ -200,7 +200,21 @@ func (s *JsonDb) GetClient(id int) (c *Client, err error) {
 
 var hostLock sync.Mutex
 
+// entriesChanged is called after tunnels or hosts were stored.
+var entriesChanged atomic.Pointer[func()]
+
+// SetEntriesChanged sets what is called after tunnels or hosts were stored,
+// without any lock held. It must return promptly.
+func SetEntriesChanged(f func()) { entriesChanged.Store(&f) }
+
+func notifyEntriesChanged() {
+	if f := entriesChanged.Load(); f != nil {
+		(*f)()
+	}
+}
+
 func (s *JsonDb) StoreHostToJsonFile() error {
+	defer notifyEntriesChanged()
 	hostLock.Lock()
 	defer hostLock.Unlock()
 	return storeSyncMapToFile(&s.Hosts, s.HostFilePath)
@@ -209,6 +223,7 @@ func (s *JsonDb) StoreHostToJsonFile() error {
 var taskLock sync.Mutex
 
 func (s *JsonDb) StoreTasksToJsonFile() error {
+	defer notifyEntriesChanged()
 	taskLock.Lock()
 	defer taskLock.Unlock()
 	return storeSyncMapToFile(&s.Tasks, s.TaskFilePath)

@@ -38,7 +38,7 @@ type TRPClient struct {
 	disconnectTime int
 	ctx            context.Context
 	cancel         context.CancelFunc
-	healthChecker  *HealthChecker
+	healthChecker  atomic.Pointer[HealthChecker] // set after the tunnel starts taking links
 	once           sync.Once
 	startedNano    atomic.Int64
 	reasonMu       sync.RWMutex
@@ -115,10 +115,8 @@ func (s *TRPClient) Start(ctx context.Context) {
 	}
 	//monitor the connection
 	go s.ping()
-	//start health check if it's open
-	if s.cnf != nil && len(s.cnf.Healths) > 0 {
-		s.healthChecker = NewHealthChecker(s.ctx, s.cnf.Healths, s.signal.Load())
-	}
+	// the checks of the groups the server gives
+	s.healthChecker.Store(NewHealthChecker(s.ctx, legacyHealthSink{signal: s.signal.Load()}))
 	NowStatus.Store(1)
 	s.markConnected()
 	//msg connection, eg udp
@@ -160,6 +158,20 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 				return
 			}
 			handleUpdateRequest()
+		case legacy.HealthSet:
+			group, err := legacy.ReadHealthSet(signal)
+			if err != nil {
+				logs.Warn("%v", err)
+				return
+			}
+			s.healthChecker.Load().setGroup(group)
+		case legacy.HealthDel:
+			group, err := legacy.ReadHealthDel(signal)
+			if err != nil {
+				logs.Warn("%v", err)
+				return
+			}
+			s.healthChecker.Load().delGroup(group)
 		default:
 			// The bridge sends nothing else here: an unknown flag means the
 			// stream is out of step, and reconnecting is the only way back.
@@ -283,10 +295,18 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		//noinspection GoResourceLeak
 		targetConn, err = net.DialTimeout(lk.ConnType, lk.Host, lk.Option.Timeout)
 	}
+	hc := s.healthChecker.Load()
 	if err != nil {
 		logs.Warn("connect to %s error %v", lk.Host, err)
+		if hc != nil {
+			hc.dialFailed(lk.Host)
+		}
 		_ = src.Close()
 	} else {
+		// A UDP dial reaches nothing, so it says nothing about the target.
+		if hc != nil && lk.ConnType != "udp" {
+			hc.touch(lk.Host)
+		}
 		logs.Trace("new %s connection with the goal of %s, remote address:%s", lk.ConnType, lk.Host, lk.RemoteAddr)
 		isFramed := lk.ConnType == "udp" && clientCaps().FramedUDP
 		//logs.Debug("%t", isFramed)
@@ -334,15 +354,16 @@ func (s *TRPClient) closing() {
 		s.noteCloseReason(reason)
 	}
 	s.logDisconnectSummary()
-	if s.healthChecker != nil {
-		s.healthChecker.Stop()
-	}
 	if s.cancel != nil {
 		s.cancel()
 	}
 	s.closeTunnel()
 	if signal := s.signal.Load(); signal != nil {
 		_ = signal.Close()
+	}
+	// After the signal connection, whose close ends a report being written.
+	if hc := s.healthChecker.Load(); hc != nil {
+		hc.Stop()
 	}
 	if s.mapper != nil {
 		_ = s.mapper.Close()

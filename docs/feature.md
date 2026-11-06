@@ -459,42 +459,18 @@ Web 管理的隧道和域名不受影响。
 
 ## 健康检查
 
-当客户端以配置文件模式启动时，支持多节点的健康检查。配置示例如下
+隧道（TCP、UDP、Secret）和域名的编辑页可以启用健康检查，并设置检查方式（TCP、HTTP、HTTPS）、间隔、超时和失败阈值。启用后，服务端把检查列表下发给 npc（要求 npc 0.35.0 及以上），npc 只保存在内存中，重连后重新下发。
 
-```ini
-[health_check_test1]
-health_check_timeout=1
-health_check_max_failed=3
-health_check_interval=1
-health_http_url=/
-health_check_type=http
-health_check_target=127.0.0.1:8083,127.0.0.1:8082
+- 只有目标超过 1 个时才会检查。
+- 检查失败的目标不再分配连接，恢复后自动加入。
+- 目标最近有成功的 TCP 连接时不额外探测，空闲时才按间隔探测。
+- 多个隧道或域名的检查相同时合并为一个，没有隧道或域名使用时停止。
+- UDP 没有通用探测，需要选择同一地址上可用的 TCP 或 HTTP 检查。
+- 客户端有多个实例时，Web 管理的条目由其中一个实例检查；配置文件注册的条目由各实例检查自己的目标。
 
-[health_check_test2]
-health_check_timeout=1
-health_check_max_failed=3
-health_check_interval=1
-health_check_type=tcp
-health_check_target=127.0.0.1:8083,127.0.0.1:8082
-```
+配置文件注册的隧道和域名也可以在编辑页启用，但设置只在条目存在期间有效：客户端断开、条目被清理后需要重新启用。
 
-**health关键词必须在开头存在**
-
-第一种是http模式，也就是以get的方式请求目标+url，返回状态码为200表示成功
-
-第二种是tcp模式，也就是以tcp的方式与目标建立连接，能成功建立连接表示成功
-
-如果失败次数超过`health_check_max_failed`，nps则会移除该npc下的所有该目标，如果失败后目标重新上线，nps将自动将目标重新加入。
-
-| 项                       | 含义                |
-|-------------------------|-------------------|
-| health_check_timeout    | 健康检查超时时间          |
-| health_check_max_failed | 健康检查允许失败次数        |
-| health_check_interval   | 健康检查间隔            |
-| health_check_type       | 健康检查类型            |
-| health_check_target     | 健康检查目标，多个以逗号（,）分隔 |
-| health_check_type       | 健康检查类型            |
-| health_http_url         | 健康检查url，仅http模式适用 |
+0.35.0 起 npc 不再支持配置文件中的 `health_*` 配置节，遇到时忽略并告警。服务端继续接受旧版本 npc 按其配置发来的上报。
 
 ## 日志输出
 

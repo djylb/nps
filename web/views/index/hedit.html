@@ -319,33 +319,33 @@
                             <div class="form-group" id="health_check">
                                 <label class="control-label font-bold" langtag="word-healthcheck"></label>
                                 <div class="col-sm-12">
-                                    <label><input name="health_check" type="checkbox" value="1" {{if .h.HealthCheckEnabled}}checked{{end}} onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
+                                    <label><input name="health_check" type="checkbox" value="1" {{if .h.HealthCheck.Enabled}}checked{{end}} onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
                                     <span class="help-block m-b-none" langtag="info-healthcheck"></span>
                                 </div>
                                 <div class="health-check-fields">
                                     <div class="col-sm-12">
                                         <label class="control-label" langtag="word-healthchecktype"></label>
                                         <select class="form-control" name="health_check_type" onchange="toggleHealthCheck(this)">
-                                            <option value="tcp" {{if eq .h.HealthCheckType "tcp"}}selected{{end}}>TCP</option>
-                                            <option value="http" {{if eq .h.HealthCheckType "http"}}selected{{end}}>HTTP</option>
-                                            <option value="https" {{if eq .h.HealthCheckType "https"}}selected{{end}}>HTTPS</option>
+                                            <option value="tcp" {{if eq .h.HealthCheck.Type "tcp"}}selected{{end}}>TCP</option>
+                                            <option value="http" {{if eq .h.HealthCheck.Type "http"}}selected{{end}}>HTTP</option>
+                                            <option value="https" {{if eq .h.HealthCheck.Type "https"}}selected{{end}}>HTTPS</option>
                                         </select>
                                     </div>
                                     <div class="col-sm-12 health-check-path">
                                         <label class="control-label" langtag="word-healthcheckpath"></label>
-                                        <input class="form-control" name="health_check_path" type="text" value="{{if .h.HttpHealthUrl}}{{.h.HttpHealthUrl}}{{else}}/{{end}}">
+                                        <input class="form-control" name="health_check_path" type="text" value="{{if .h.HealthCheck.Path}}{{.h.HealthCheck.Path}}{{else}}/{{end}}">
                                     </div>
                                     <div class="col-sm-12">
                                         <label class="control-label" langtag="word-healthcheckinterval"></label>
-                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="{{if .h.HealthCheckInterval}}{{.h.HealthCheckInterval}}{{else}}10{{end}}">
+                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Interval}}">
                                     </div>
                                     <div class="col-sm-12">
                                         <label class="control-label" langtag="word-healthchecktimeout"></label>
-                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="{{if .h.HealthCheckTimeout}}{{.h.HealthCheckTimeout}}{{else}}3{{end}}">
+                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Timeout}}">
                                     </div>
                                     <div class="col-sm-12">
                                         <label class="control-label" langtag="word-healthcheckmaxfail"></label>
-                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="{{if .h.HealthMaxFail}}{{.h.HealthMaxFail}}{{else}}3{{end}}">
+                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.MaxFail}}">
                                     </div>
                                 </div>
                             </div>

@@ -10,6 +10,7 @@ import (
 
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/tunnelwire"
 	"github.com/djylb/tunnelwire/control"
@@ -318,8 +319,116 @@ func WriteHealth(w io.Writer, addr, status string) error {
 	return err
 }
 
-// ReadHealth reads what WriteHealth wrote.
-func ReadHealth(r io.Reader) (string, bool, error) { return control.ReadHealth(r) }
+// ApplyOwnHealthReport applies a report of a check that a released npc configured
+// itself. It names only an address, so it goes to every entry of the client
+// holding that address. It goes with those clients.
+func ApplyOwnHealthReport(id int, node string, rep healthcheck.Report) {
+	file.GetDb().JsonDb.Tasks.Range(func(key, value any) bool {
+		v := value.(*file.Tunnel)
+		if v.Client.Id == id && v.Mode == "tcp" {
+			v.RLock()
+			fallback := v.Target
+			v.RUnlock()
+			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
+		}
+		return true
+	})
+	file.GetDb().JsonDb.Hosts.Range(func(key, value any) bool {
+		v := value.(*file.Host)
+		if v.Client.Id == id {
+			v.RLock()
+			fallback := v.Target
+			v.RUnlock()
+			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
+		}
+		return true
+	})
+}
+
+// healthGroupWire is the body of HealthSet: targets added to a group. A large
+// group takes several messages.
+type healthGroupWire struct {
+	Group    string   `json:"group"`
+	Type     string   `json:"type"`
+	Path     string   `json:"path,omitempty"`
+	Interval int      `json:"interval"`
+	Timeout  int      `json:"timeout"`
+	Fall     int      `json:"fall"`
+	Targets  []string `json:"targets"`
+}
+
+// healthDelWire is the body of HealthDel.
+type healthDelWire struct {
+	Group string `json:"group"`
+}
+
+// healthChunk bounds the bytes of addresses in one HealthSet message, well below
+// the limit of a frame.
+const healthChunk = 32 << 10
+
+// HealthSetBodies returns the bodies of the HealthSet messages that add g.
+func HealthSetBodies(g healthcheck.Group) []any {
+	m := healthGroupWire{Group: g.Name, Type: g.Type, Path: g.Path, Interval: g.Interval, Timeout: g.Timeout, Fall: g.Fall}
+	var bodies []any
+	rest, size := g.Targets, 0
+	for i := 0; i < len(rest); i++ {
+		size += len(rest[i]) + 3
+		if size > healthChunk && i > 0 {
+			c := m
+			c.Targets = rest[:i]
+			bodies = append(bodies, c)
+			rest, i, size = rest[i:], -1, 0
+		}
+	}
+	m.Targets = rest
+	return append(bodies, m)
+}
+
+// HealthDelBody returns the body of the HealthDel message that removes a group.
+func HealthDelBody(group string) any { return healthDelWire{Group: group} }
+
+// ReadHealthSet reads the body of a HealthSet message.
+func ReadHealthSet(r io.Reader) (healthcheck.Group, error) {
+	var m healthGroupWire
+	err := control.Read(r, &m)
+	return healthcheck.Group{Name: m.Group, Type: m.Type, Path: m.Path, Interval: m.Interval, Timeout: m.Timeout, Fall: m.Fall, Targets: m.Targets}, err
+}
+
+// ReadHealthDel reads the body of a HealthDel message.
+func ReadHealthDel(r io.Reader) (string, error) {
+	var m healthDelWire
+	err := control.Read(r, &m)
+	return m.Group, err
+}
+
+// WriteGroupHealth writes a report of a group: a health report with the group as
+// a third field, which only a server that sent the group receives.
+func WriteGroupHealth(w io.Writer, rep healthcheck.Report) error {
+	status := "0"
+	if rep.Up {
+		status = "1"
+	}
+	sep := tunnelwire.DataSeparator
+	_, err := w.Write(tunnelwire.AppendFrame(nil, []byte(rep.Addr+sep+status+sep+rep.Group+sep)))
+	return err
+}
+
+// ReadHealth reads a health report, with or without a group.
+func ReadHealth(r io.Reader) (healthcheck.Report, error) {
+	b, err := tunnelwire.ReadInfoFrame(r)
+	if err != nil {
+		return healthcheck.Report{}, err
+	}
+	arr := strings.Split(string(b), tunnelwire.DataSeparator)
+	if len(arr) < 2 {
+		return healthcheck.Report{}, errors.New("receive health info error")
+	}
+	rep := healthcheck.Report{Addr: arr[0], Up: arr[1] == "1" || arr[1] == "true"}
+	if len(arr) > 2 {
+		rep.Group = arr[2]
+	}
+	return rep, nil
+}
 
 // FileKey names a client's file server on both sides of a file task.
 func FileKey(key string, t *file.Tunnel) string {

@@ -150,11 +150,10 @@ profiles:
       - {remark: web, host: a.example.com, target_addr: [127.0.0.1:80], headers: {X-From: npc}}
     tasks:
       - {remark: ssh, mode: tcp, server_port: 2222, target_addr: 127.0.0.1:22}
-    healths: []
     locals: []
 ```
 
-各节的键名与[配置文件](example.md)完全相同；INI 内容就是配置文件本身，并按配置文件模式运行。`remark` 不能以 `secret`、`p2p`、`health` 开头。
+各节的键名与[配置文件](example.md)完全相同；INI 内容就是配置文件本身，并按配置文件模式运行。`remark` 不能以 `secret`、`p2p` 开头。
 
 **运行与回退：** 同一输入的多个配置一起运行，任一配置断开时整组重启（5 秒后），并重新读取来源。远程来源获取或解析失败时继续使用内存中最后一份有效内容，并至少隔 30 秒再请求；首次启动没有可用内容时每 30 秒重试。来源返回 `410 Gone` 表示已撤销：停止运行，5 分钟后重试。最后一份有效内容不写入磁盘，npc 重启后需要来源可用。非远程内容无效时直接退出。
 

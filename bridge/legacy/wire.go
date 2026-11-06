@@ -45,6 +45,8 @@ const (
 	ResClose       = tunnelwire.ResClose
 	P2PPunchStart  = tunnelwire.P2PPunchStart
 	UpdateRequest  = tunnelwire.UpdateRequest
+	HealthSet      = tunnelwire.HealthSet
+	HealthDel      = tunnelwire.HealthDel
 	FlagNewTask    = tunnelwire.FlagNewTask
 	FlagNewConf    = tunnelwire.FlagNewConf
 	FlagNewHost    = tunnelwire.FlagNewHost

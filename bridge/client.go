@@ -116,6 +116,9 @@ type Node struct {
 	joinNano  int64
 	// tunnelDeadline is when the node stops waiting for a new tunnel.
 	tunnelDeadline time.Time
+	// healthKick wakes the sender of health groups of the node's signal
+	// connection; nil while there is none.
+	healthKick atomic.Pointer[chan struct{}]
 }
 
 func NewNode(uuid, vs string, bv int) *Node {
@@ -140,6 +143,15 @@ func (n *Node) sendSignal(flag string, v any, timeout time.Duration) error {
 	signal := n.GetSignal()
 	if signal == nil {
 		return errors.New("no signal connection")
+	}
+	return n.sendOn(signal, flag, v, timeout)
+}
+
+// sendOn is sendSignal on one given signal connection, for messages that
+// depend on what was sent on that connection before.
+func (n *Node) sendOn(signal *conn.Conn, flag string, v any, timeout time.Duration) error {
+	if n.GetSignal() != signal {
+		return errors.New("signal connection replaced")
 	}
 	n.sendMu.Lock()
 	defer n.sendMu.Unlock()
