@@ -83,7 +83,7 @@ func wsResolvers(trustedIps, realIpHeader string) []*forwarded.Resolver {
 	if trustedIps == "" {
 		return nil
 	}
-	trusted := auth.TrustedProxies(trustedIps)
+	trusted := auth.ParseTrustedProxies(trustedIps)
 	if realIpHeader == "" {
 		return []*forwarded.Resolver{
 			{Trusted: trusted, Header: forwarded.HeaderXForwardedFor},

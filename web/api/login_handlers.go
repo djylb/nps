@@ -255,17 +255,17 @@ func VisitorIP(c Context, cfg *servercfg.Snapshot) string {
 	if err != nil {
 		return requestRemoteIP(c)
 	}
-	var trusted string
+	var trusted *forwarded.PrefixSet
 	switch httpOnlyPass := cfg.Auth.HTTPOnlyPass; {
 	case httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass:
-		trusted = "*"
+		trusted = auth.AnyAddress
 	case cfg.Auth.AllowXRealIP:
-		trusted = cfg.Auth.TrustedProxyIPs
+		trusted = cfg.Auth.TrustedProxies
 	}
-	if trusted == "" {
+	if trusted == nil {
 		return peer.Addr().Unmap().String()
 	}
-	r := forwarded.Resolver{Trusted: auth.TrustedProxies(trusted), Header: forwarded.HeaderXRealIP}
+	r := forwarded.Resolver{Trusted: trusted, Header: forwarded.HeaderXRealIP}
 	var header map[string][]string
 	if v := c.RequestHeader("X-Real-IP"); v != "" {
 		header = map[string][]string{"X-Real-Ip": {v}}

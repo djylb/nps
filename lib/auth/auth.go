@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
-	"sync/atomic"
 
 	"github.com/djylb/geomatch"
 	"github.com/djylb/netx/forwarded"
@@ -37,21 +36,16 @@ func ValidatePoW(bits int, parts ...string) bool {
 	return true
 }
 
-// TrustedProxies parses a comma-separated list of trusted proxies: IP
+// ParseTrustedProxies parses a comma-separated list of trusted proxies: IP
 // addresses, CIDR prefixes, IPv4 patterns whose trailing octets are "*"
 // (such as "192.168.*.*"), or "*" for every address. Entries that are none
-// of these are skipped. The set of the last list parsed is cached, so that
-// callers may pass the configured list on every request.
-func TrustedProxies(list string) *forwarded.PrefixSet {
-	if c := trustedProxyCache.Load(); c != nil && c.list == list {
-		return c.set
-	}
+// of these are skipped. Parse the list once, where the config is read.
+func ParseTrustedProxies(list string) *forwarded.PrefixSet {
 	var prefixes []netip.Prefix
 	for _, raw := range strings.Split(list, ",") {
 		entry := strings.TrimSpace(raw)
 		if entry == "*" {
-			prefixes = append(prefixes, netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
-			continue
+			return AnyAddress
 		}
 		r, err := geomatch.ParseRule(entry)
 		if err != nil || r.Kind != geomatch.RuleIP || r.Last.IsValid() || len(r.Ports) > 0 {
@@ -59,27 +53,11 @@ func TrustedProxies(list string) *forwarded.PrefixSet {
 		}
 		prefixes = append(prefixes, r.Prefix)
 	}
-	set := forwarded.NewPrefixSet(prefixes...)
-	trustedProxyCache.Store(&trustedProxySet{list: list, set: set})
-	return set
+	return forwarded.NewPrefixSet(prefixes...)
 }
 
-type trustedProxySet struct {
-	list string
-	set  *forwarded.PrefixSet
-}
-
-var trustedProxyCache atomic.Pointer[trustedProxySet]
-
-// IsTrustedProxy reports whether addr, an IP address with or without a
-// port, is in the trusted proxy list as TrustedProxies parses it.
-func IsTrustedProxy(list, addr string) bool {
-	if list == "" {
-		return false
-	}
-	ap, ok := forwarded.ParseNode(strings.TrimSpace(addr))
-	return ok && TrustedProxies(list).Contains(ap.Addr())
-}
+// AnyAddress is the set of every address.
+var AnyAddress = forwarded.NewPrefixSet(netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
 
 // CheckAuthWithAccountMap
 // u current login user

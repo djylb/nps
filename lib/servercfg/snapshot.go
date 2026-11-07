@@ -5,6 +5,9 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/djylb/netx/forwarded"
+	"github.com/djylb/nps/lib/auth"
 )
 
 type Snapshot struct {
@@ -83,6 +86,8 @@ type AuthConfig struct {
 	HTTPOnlyPass    string
 	AllowXRealIP    bool
 	TrustedProxyIPs string
+	// TrustedProxies is TrustedProxyIPs parsed.
+	TrustedProxies *forwarded.PrefixSet
 }
 
 type FeatureConfig struct {
@@ -332,6 +337,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		AllowXRealIP:    r.boolDefault(false, "allow_x_real_ip"),
 		TrustedProxyIPs: r.stringDefault("127.0.0.1", "trusted_proxy_ips"),
 	}
+	cfg.Auth.TrustedProxies = auth.ParseTrustedProxies(cfg.Auth.TrustedProxyIPs)
 
 	cfg.Feature = FeatureConfig{
 		AllowUserLogin:          r.boolDefault(false, "allow_user_login"),

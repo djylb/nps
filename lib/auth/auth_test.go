@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 )
 
@@ -73,17 +74,20 @@ func TestPowHelpers(t *testing.T) {
 	}
 }
 
-func TestTrustedProxyHelpers(t *testing.T) {
-	if !IsTrustedProxy("*", "203.0.113.1:80") {
-		t.Fatal("IsTrustedProxy wildcard = false, want true")
-	}
-	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "10.0.5.9:1234") {
-		t.Fatal("IsTrustedProxy wildcard IPv4 = false, want true")
-	}
-	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "[2001:db8::1]:443") {
-		t.Fatal("IsTrustedProxy exact IPv6 = false, want true")
-	}
-	if IsTrustedProxy("192.168.1.0/24", "bad-ip") {
-		t.Fatal("IsTrustedProxy(invalid ip) = true, want false")
+func TestParseTrustedProxies(t *testing.T) {
+	for _, tc := range []struct {
+		list, addr string
+		want       bool
+	}{
+		{"*", "203.0.113.1", true},
+		{"10.0.*.*,192.168.1.0/24,2001:db8::1", "10.0.5.9", true},
+		{"10.0.*.*,192.168.1.0/24,2001:db8::1", "2001:db8::1", true},
+		{"10.0.*.*,192.168.1.0/24,2001:db8::1", "192.168.2.1", false},
+		{"bad, 127.0.0.1", "127.0.0.1", true},
+		{"", "127.0.0.1", false},
+	} {
+		if got := ParseTrustedProxies(tc.list).Contains(netip.MustParseAddr(tc.addr)); got != tc.want {
+			t.Errorf("ParseTrustedProxies(%q).Contains(%s) = %v, want %v", tc.list, tc.addr, got, tc.want)
+		}
 	}
 }
