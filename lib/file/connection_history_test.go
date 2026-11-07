@@ -2,13 +2,9 @@ package file
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/djylb/nps/lib/servercfg"
 )
 
 func TestConnectionHistoryPairsAndRestart(t *testing.T) {
@@ -63,18 +59,8 @@ func TestConnectionHistoryConcurrentSnapshot(t *testing.T) {
 }
 
 func TestConnectionHistoryConfiguredLimit(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nps.conf")
-	set := func(value string) {
-		t.Helper()
-		if err := os.WriteFile(path, []byte("client_history_limit="+value+"\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := servercfg.Load(path); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Cleanup(func() { set("5") })
-	set("2")
+	t.Cleanup(func() { SetClientHistoryLimit(5) })
+	SetClientHistoryLimit(2)
 	h := new(ConnectionHistory)
 	for i := 0; i < 6; i++ {
 		h.record(true, time.Now())
@@ -83,13 +69,9 @@ func TestConnectionHistoryConfiguredLimit(t *testing.T) {
 	if len(h.events) != 2 {
 		t.Fatal("configured cap ignored")
 	}
-	set("0")
+	SetClientHistoryLimit(0)
 	h.record(true, time.Now())
 	if len(h.events) != 0 {
 		t.Fatal("disabled history retained records")
-	}
-	set("-1")
-	if connectionHistoryLimit() != 5 {
-		t.Fatal("negative limit did not fall back")
 	}
 }

@@ -128,7 +128,7 @@ func main() {
 	// before any access list is compiled
 	acl.SetGeoData(geoIPPath, geoSitePath)
 	acl.SetMaxRules(cfg.App.AclMaxRules)
-	file.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
+	applyRuntime(cfg)
 	if cmd == "update-geo" {
 		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
 		var name string
@@ -276,6 +276,7 @@ func reloadConfig() {
 	}
 	cfg := servercfg.Current()
 	logs.SetLevel(cfg.Log.Level)
+	applyRuntime(cfg)
 	applyNtp(cfg)
 	tool.StartSystemInfo()
 	server.ApplyWebhook(cfg.Webhook)
@@ -288,6 +289,13 @@ func reloadConfig() {
 	if names := servercfg.RestartRequired(old, cfg); len(names) > 0 {
 		logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
 	}
+}
+
+// applyRuntime hands the settings that apply without a restart to the
+// packages that use them.
+func applyRuntime(cfg *servercfg.Snapshot) {
+	file.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
+	file.SetClientHistoryLimit(cfg.Runtime.ClientHistoryLimit)
 }
 
 func applyNtp(cfg *servercfg.Snapshot) {

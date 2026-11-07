@@ -3,9 +3,8 @@ package file
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/djylb/nps/lib/servercfg"
 )
 
 // ConnectionEvent pairs one connection with its confirmed disconnection.
@@ -22,7 +21,16 @@ type ConnectionHistory struct {
 	online bool
 }
 
-func connectionHistoryLimit() int { return servercfg.Current().Runtime.ClientHistoryLimit }
+// historyLimit bounds the connection history kept per client; 0 keeps none.
+var historyLimit atomic.Int64
+
+func init() { historyLimit.Store(5) }
+
+// SetClientHistoryLimit sets how many connections the history of each client
+// keeps; 0 keeps none.
+func SetClientHistoryLimit(n int) { historyLimit.Store(int64(max(n, 0))) }
+
+func connectionHistoryLimit() int { return int(historyLimit.Load()) }
 
 func (h *ConnectionHistory) trimLocked(limit int) {
 	if limit == 0 {
