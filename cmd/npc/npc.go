@@ -32,6 +32,10 @@ import (
 )
 
 // Config
+// The log defaults: a file, except on OpenWrt, where npc logs nothing unless
+// told to (runenv.LogDefaults).
+var defaultLogType, defaultLogMaxSize, defaultLogMaxFiles = runenv.LogDefaults("file", 5, 10)
+
 var (
 	ver            = flag.BoolP("version", "v", false, "Show current version")
 	serverAddr     = flag.StringP("server", "s", "", "Server addr (ip1:port1,ip2:port2)")
@@ -51,12 +55,12 @@ var (
 	disableP2P     = flag.Bool("disable_p2p", false, "Disable P2P connection (true or false)")
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
-	logType        = flag.String("log", "file", "Log output mode (stdout|file|both|off)")
+	logType        = flag.String("log", defaultLogType, "Log output mode (stdout|file|both|off)")
 	logLevel       = flag.String("log_level", "trace", "Log level (trace|debug|info|warn|error|fatal|panic|off)")
 	logPath        = flag.String("log_path", "", "NPC log path (empty to use default, 'off' to disable)")
-	logMaxSize     = flag.Int("log_max_size", 5, "Maximum log file size in MB before rotation (0 to disable)")
+	logMaxSize     = flag.Int("log_max_size", defaultLogMaxSize, "Maximum log file size in MB before rotation (0 to disable)")
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
-	logMaxFiles    = flag.Int("log_max_files", 10, "Maximum number of log files to retain (0 to disable)")
+	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
 	logColor       = flag.Bool("log_color", true, "Enable ANSI color codes in console output (true or false)")
 	debug          = flag.Bool("debug", true, "Enable debug mode")

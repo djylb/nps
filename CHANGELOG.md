@@ -11,6 +11,7 @@
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
 - **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
 - npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法
+- npc 在 OpenWrt 上默认不写日志（`-log=off`），避免占满闪存和内存盘；需要时用 `-log=file` 等参数开启。nps 仍按配置文件
 - npc 的 `-stun_addr`、`-p2p_type`、`-log_daily` 已无作用，忽略并告警
 - nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动
 - nps.conf 仍设 `ip_limit` 时告警，说明改用按客户端、隧道、域名开启的“仅允许已登记的IP”

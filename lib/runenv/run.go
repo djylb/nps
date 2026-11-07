@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -86,6 +87,26 @@ func GetAppPath() string {
 // IsWindows Determine whether the current system is a Windows system?
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
+}
+
+// OnOpenWrt reports whether this is an OpenWrt system. Its devices often
+// have little memory, /var is a RAM disk and /etc is flash, so nps and npc
+// log nothing there unless told to, as the OpenWrt packages do.
+var OnOpenWrt = sync.OnceValue(func() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	_, err := os.Stat("/etc/openwrt_release")
+	return err == nil
+})
+
+// LogDefaults returns the default log mode, file size in MB and number of
+// files: off, 1 and 1 on OpenWrt, else typ, size and files.
+func LogDefaults(typ string, size, files int) (string, int, int) {
+	if OnOpenWrt() {
+		return "off", 1, 1
+	}
+	return typ, size, files
 }
 
 // GetLogPath interface log file path
