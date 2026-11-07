@@ -151,9 +151,7 @@ func goldenDb(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = file.GetDb()
-	old := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = old })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 	cl := model.NewClient(goldenKey, false, false)
 	cl.Id = 1
 	if err := file.GetDb().NewClient(cl); err != nil {

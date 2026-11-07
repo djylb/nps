@@ -68,14 +68,37 @@ func newTestSocks5Task(port int, mode string) *model.Tunnel {
 
 func startTestTunnelModeServer(t *testing.T, task *model.Tunnel, bridge NetBridge) (*TunnelModeServer, chan error) {
 	t.Helper()
-
-	server := NewTunnelModeServer(ProcessMix, bridge, task, false)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- server.Start()
-	}()
-	waitForTCP(t, net.JoinHostPort("127.0.0.1", strconv.Itoa(task.Port)))
-	return server, errCh
+	// The free port that task names may be taken by another test before the
+	// server binds it: try another one then, and leave it in task.Port.
+	for attempt := 1; ; attempt++ {
+		server := NewTunnelModeServer(ProcessMix, bridge, task, false)
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- server.Start()
+		}()
+		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(task.Port))
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			c, err := net.DialTimeout("tcp4", addr, 100*time.Millisecond)
+			if err == nil {
+				_ = c.Close()
+				return server, errCh
+			}
+			select {
+			case startErr := <-errCh:
+				if attempt == 5 {
+					t.Fatalf("server.Start() error = %v", startErr)
+				}
+				task.Port = freeTCPPort(t)
+			case <-time.After(20 * time.Millisecond):
+				if time.Now().After(deadline) {
+					t.Fatalf("server %s did not start listening in time: %v", addr, err)
+				}
+				continue
+			}
+			break
+		}
+	}
 }
 
 func stopTestTunnelModeServer(t *testing.T, server *TunnelModeServer, errCh chan error) {
@@ -248,6 +271,7 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 	task := newTestSocks5Task(port, mode)
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn := dialSocks5NoAuth(t, port)
@@ -443,6 +467,7 @@ func TestTunnelModeServerSocks5UDPAssociateAllowsSinglePendingPortMismatch(t *te
 	task := newTestSocks5Task(port, "mixProxy")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn := dialSocks5ImplicitNoAuth(t, port)
@@ -502,6 +527,7 @@ func TestTunnelModeServerSocks5UDPDisambiguatesSameIPSessionsByRequestedPort(t *
 	task := newTestSocks5Task(port, "mixProxy")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 2)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn1 := dialSocks5ImplicitNoAuth(t, port)
@@ -601,6 +627,7 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 	task := newTestSocks5Task(port, "mixProxy")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 2)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn1 := dialSocks5ImplicitNoAuth(t, port)
@@ -721,6 +748,7 @@ func TestTunnelModeServerSocks5UDPExactAnnouncement(t *testing.T) {
 	task := newTestSocks5Task(port, "mixProxy")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn := dialSocks5ImplicitNoAuth(t, port)
@@ -768,6 +796,7 @@ func TestTunnelModeServerSocks5UDPIdleSessionExpires(t *testing.T) {
 	task := newTestSocks5Task(port, "mixProxy")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn := dialSocks5NoAuth(t, port)
@@ -972,6 +1001,7 @@ func TestTunnelModeServerSocks5UDPRelaysLargeDatagram(t *testing.T) {
 	task := newTestSocks5Task(port, "socks5")
 	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	tcpConn := dialSocks5NoAuth(t, port)

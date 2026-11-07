@@ -20,12 +20,10 @@ func (visibleRateConn) Close() error                { return nil }
 
 func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		old := file.GetDb()
-		file.Db = &file.DbUtils{JsonDb: &file.JsonDb{}}
-		t.Cleanup(func() { file.Db = old })
+		t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: &file.JsonDb{}}))
 		for id := 1; id <= 4; id++ {
 			client := &model.Client{Id: id, Remark: "visible", Rate: rate.NewRate(0), NoDisplay: id == 4}
-			file.Db.JsonDb.Clients.Store(id, client)
+			file.GetDb().JsonDb.Clients.Store(id, client)
 			conn := rate.NewRateConn(visibleRateConn{bytes.NewReader(make([]byte, id*100))}, client.Rate)
 			if _, err := conn.Write(make([]byte, id*200)); err != nil {
 				t.Fatal(err)

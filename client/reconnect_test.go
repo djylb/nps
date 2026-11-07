@@ -145,9 +145,7 @@ func TestReconnectFollowsNameToNewAddress(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldDb := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = oldDb })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 	const vkey = "reconnect-key"
 	if err := file.GetDb().NewClient(model.NewClient(vkey, true, false)); err != nil {
 		t.Fatal(err)

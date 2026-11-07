@@ -42,10 +42,7 @@ type certSelectEnv struct {
 
 func newCertSelectEnv(t *testing.T) *certSelectEnv {
 	t.Helper()
-	_ = file.GetDb()
-	old := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
-	t.Cleanup(func() { file.Db = old })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
 
 	dir := t.TempDir()
 	deflt := newTestCert(t, "default.test")
@@ -68,7 +65,7 @@ func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *t
 	if cert != nil {
 		h.CertFile, h.KeyFile, h.CertType = string(cert.certPEM), string(cert.keyPEM), "text"
 	}
-	file.Db.JsonDb.Hosts.Store(h.Id, h)
+	file.GetDb().JsonDb.Hosts.Store(h.Id, h)
 	file.HostIndex.Add(h.Host, h.Id)
 	e.t.Cleanup(func() { file.HostIndex.Remove(h.Host, h.Id) })
 	return h

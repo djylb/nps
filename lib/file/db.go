@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -24,26 +25,40 @@ type DbUtils struct {
 }
 
 var (
-	Db                *DbUtils
-	once              sync.Once
+	db                atomic.Pointer[DbUtils]
+	loadMu            sync.Mutex
 	HostIndex         = index.NewDomainIndex()
 	Blake2bVkeyIndex  = index.NewStringIDIndex()
 	TaskPasswordIndex = index.NewStringIDIndex()
 )
 
-// GetDb init data from file
+// GetDb returns the store, loading it from the files of the run path on
+// first use.
 func GetDb() *DbUtils {
-	once.Do(func() {
-		jsonDb := NewJsonDb(common.GetRunPath())
-		jsonDb.LoadClientFromJsonFile()
-		jsonDb.LoadTaskFromJsonFile()
-		jsonDb.LoadHostFromJsonFile()
-		jsonDb.LoadGlobalFromJsonFile()
-		Db = &DbUtils{JsonDb: jsonDb}
-	})
-	return Db
+	if d := db.Load(); d != nil {
+		return d
+	}
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	if d := db.Load(); d != nil {
+		return d
+	}
+	jsonDb := NewJsonDb(common.GetRunPath())
+	jsonDb.LoadClientFromJsonFile()
+	jsonDb.LoadTaskFromJsonFile()
+	jsonDb.LoadHostFromJsonFile()
+	jsonDb.LoadGlobalFromJsonFile()
+	d := &DbUtils{JsonDb: jsonDb}
+	db.Store(d)
+	return d
 }
 
+// ReplaceDb makes d the store until the returned function puts back the one
+// before, for tests: t.Cleanup(file.ReplaceDb(d)).
+func ReplaceDb(d *DbUtils) (restore func()) {
+	old := db.Swap(d)
+	return func() { db.Store(old) }
+}
 func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 	if (sortKey == "InletFlow" || sortKey == "ExportFlow") && isSort {
 		return sortClientByKey(m, sortKey, order)

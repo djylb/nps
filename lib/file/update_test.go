@@ -123,7 +123,5 @@ func useFlowTestDb(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	old := Db
-	Db = &DbUtils{JsonDb: NewJsonDb(root)}
-	t.Cleanup(func() { Db = old })
+	t.Cleanup(ReplaceDb(&DbUtils{JsonDb: NewJsonDb(root)}))
 }

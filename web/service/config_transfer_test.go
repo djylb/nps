@@ -26,19 +26,18 @@ import (
 
 func useTempDb(t *testing.T) {
 	t.Helper()
-	file.GetDb() // the once inside must not replace the db set here
-	oldDb, oldHosts, oldKeys, oldPasswords := file.Db, file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex
+	oldHosts, oldKeys, oldPasswords := file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	file.Db.JsonDb.Global = &model.Glob{}
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	file.GetDb().JsonDb.Global = &model.Glob{}
 	file.HostIndex = index.NewDomainIndex()
 	file.Blake2bVkeyIndex = index.NewStringIDIndex()
 	file.TaskPasswordIndex = index.NewStringIDIndex()
 	t.Cleanup(func() {
-		file.Db, file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex = oldDb, oldHosts, oldKeys, oldPasswords
+		file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex = oldHosts, oldKeys, oldPasswords
 	})
 }
 

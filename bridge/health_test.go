@@ -23,9 +23,7 @@ func healthEnv(t *testing.T) (*model.Client, *model.Tunnel) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	old := file.GetDb() // loads it once, so that nothing loads over this test
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = old })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 	client := &model.Client{Id: 5, Cnf: &model.Config{}, Flow: &model.Flow{}}
 	file.GetDb().JsonDb.Clients.Store(client.Id, client)
 	tn := &model.Tunnel{Id: 9, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}}

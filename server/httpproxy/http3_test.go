@@ -27,13 +27,10 @@ func newTestHttp3Server(t *testing.T) *Http3Server {
 }
 
 func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
-	_ = file.GetDb()
-	old := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
-	t.Cleanup(func() { file.Db = old })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
 
 	host := &model.Host{Id: 1, Host: "offload.example", Scheme: "all", AutoSSL: true, Client: &model.Client{Id: 1}}
-	file.Db.JsonDb.Hosts.Store(host.Id, host)
+	file.GetDb().JsonDb.Hosts.Store(host.Id, host)
 	file.HostIndex.Add(host.Host, host.Id)
 	t.Cleanup(func() { file.HostIndex.Remove(host.Host, host.Id) })
 

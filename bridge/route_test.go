@@ -89,7 +89,6 @@ func publish(t *testing.T, b *Bridge, client *model.Client, uuid string, ver int
 
 func routeFixture(t *testing.T) (*Bridge, *model.Client) {
 	t.Helper()
-	_ = file.GetDb()
 	useTestDb(t)
 	client := model.NewClient("route-vkey", false, false)
 	if err := file.GetDb().NewClient(client); err != nil {

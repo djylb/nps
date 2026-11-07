@@ -1155,20 +1155,15 @@ func resetTestDB(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatalf("create temp conf dir: %v", err)
 	}
-	// Run the lazy default initialization first so it cannot replace the
-	// temporary database installed below.
-	_ = file.GetDb()
-	oldDb := file.Db
 	oldHostIndex := file.HostIndex
 	oldVkeyIndex := file.Blake2bVkeyIndex
 	oldTaskPasswordIndex := file.TaskPasswordIndex
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	file.Db.JsonDb.Global = &model.Glob{}
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	file.GetDb().JsonDb.Global = &model.Glob{}
 	file.HostIndex = index.NewDomainIndex()
 	file.Blake2bVkeyIndex = index.NewStringIDIndex()
 	file.TaskPasswordIndex = index.NewStringIDIndex()
 	t.Cleanup(func() {
-		file.Db = oldDb
 		file.HostIndex = oldHostIndex
 		file.Blake2bVkeyIndex = oldVkeyIndex
 		file.TaskPasswordIndex = oldTaskPasswordIndex
@@ -1431,7 +1426,7 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 
 	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"192.0.2.0/24"}, nil, acl.ScopeGlobal, "global")
-	file.Db.JsonDb.Global = g
+	file.GetDb().JsonDb.Global = g
 	for _, path := range []string{"/login/index", "/ip/register", "/static/css/style.css"} {
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
@@ -1541,7 +1536,7 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	}).Normalize())
 
 	save := performFormRequest(handler, http.MethodPost, "/global/save", admin, map[string]string{"globalIpListPriority": "0", "globalRateLimit": "100"})
-	if !strings.Contains(save.Body.String(), `"status":1`) || rate.GlobalLimit() != 100*1024 || file.Db.JsonDb.Global.RateLimit != 100 {
+	if !strings.Contains(save.Body.String(), `"status":1`) || rate.GlobalLimit() != 100*1024 || file.GetDb().JsonDb.Global.RateLimit != 100 {
 		t.Fatalf("POST /global/save = %s, limit %d", save.Body.String(), rate.GlobalLimit())
 	}
 
@@ -1555,7 +1550,7 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	if in, out := rate.GlobalTraffic(); !strings.Contains(cleared.Body.String(), `"status":1`) || in != 0 || out != 0 {
 		t.Fatalf("POST /client/clear = %d %s, traffic %d/%d", cleared.Code, cleared.Body.String(), in, out)
 	}
-	if g := file.Db.JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
+	if g := file.GetDb().JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
 		t.Fatalf("cleared traffic not stored: %d/%d", g.InletFlow, g.ExportFlow)
 	}
 }

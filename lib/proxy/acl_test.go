@@ -19,11 +19,9 @@ import (
 
 func useTestDb(t *testing.T, global *model.Glob) {
 	t.Helper()
-	file.GetDb()
-	old := file.Db
 	db := &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
 	db.JsonDb.Global = global
-	file.Db = db
+	t.Cleanup(file.ReplaceDb(db))
 	oldSource := globalSource.Load()
 	SetGlobalSource(func() *acl.Source {
 		if g := file.GetDb().GetGlobal(); g != nil {
@@ -32,7 +30,6 @@ func useTestDb(t *testing.T, global *model.Glob) {
 		return nil
 	})
 	t.Cleanup(func() {
-		file.Db = old
 		globalSource.Store(oldSource)
 	})
 }

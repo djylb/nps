@@ -43,9 +43,7 @@ func useTestDb(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	old := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = old })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 }
 
 // visitorRequest sends req on a WorkP2P stream served by b and returns the

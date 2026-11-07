@@ -106,9 +106,7 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldDb := file.Db
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = oldDb })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 
 	provider := model.NewClient(p2pTestProviderKey, true, false)
 	visitor := model.NewClient(p2pTestVisitorKey, true, false)

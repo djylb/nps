@@ -109,9 +109,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldDb := file.GetDb() // loads it once, so that nothing loads over this test
-	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(func() { file.Db = oldDb })
+	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 
 	const key = "healthgroupvkey0"
 	client := model.NewClient(key, true, false)

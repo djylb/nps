@@ -17,7 +17,6 @@ import (
 )
 
 func TestNewConfigIgnoresClientIdentity(t *testing.T) {
-	_ = file.GetDb()
 	useTestDb(t)
 	existing := model.NewClient("existing-vkey", false, false)
 	existing.Id = 7
@@ -70,7 +69,6 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 // A port conflict fails that task only: npc reads one failure for it, goes on
 // with its next task and keeps its connection, and the statuses stay aligned.
 func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
-	_ = file.GetDb()
 	useTestDb(t)
 	client := model.NewClient("conflict-vkey", false, false)
 	if err := file.GetDb().NewClient(client); err != nil {
@@ -133,7 +131,6 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 }
 
 func TestJoinNodeReplacesClosedClient(t *testing.T) {
-	_ = file.GetDb()
 	useTestDb(t)
 	b := NewTunnel(&sync.Map{}, 30)
 	closed := NewClient(9, NewNode("old", "", 8))

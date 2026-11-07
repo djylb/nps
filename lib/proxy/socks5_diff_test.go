@@ -69,6 +69,7 @@ func TestSocks5ConnectRelaysThroughTunnel(t *testing.T) {
 			task := newTestSocks5Task(port, "mixProxy")
 			bridge := &echoBridge{links: make(chan *conn.Link, 1)}
 			server, errCh := startTestTunnelModeServer(t, task, bridge)
+			port = task.Port
 			defer stopTestTunnelModeServer(t, server, errCh)
 
 			c := dialSocks5NoAuth(t, port)
@@ -110,6 +111,7 @@ func TestSocks5ConnectDestinationDenied(t *testing.T) {
 	task.CompileDestACL()
 	bridge := &echoBridge{links: make(chan *conn.Link, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	c := dialSocks5NoAuth(t, port)
@@ -245,6 +247,7 @@ func TestSocks5UDPAssociateFailsWithoutTunnel(t *testing.T) {
 	port := freeTCPPort(t)
 	task := newTestSocks5Task(port, "socks5")
 	server, errCh := startTestTunnelModeServer(t, task, failBridge{})
+	port = task.Port
 	defer stopTestTunnelModeServer(t, server, errCh)
 
 	c := dialSocks5NoAuth(t, port)

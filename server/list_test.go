@@ -25,15 +25,14 @@ func loadTestData(t *testing.T, clients, tasks, hosts string) {
 			t.Fatal(err)
 		}
 	}
-	_ = file.GetDb()
-	old, oldBridge := file.Db, Bridge
+	oldBridge := Bridge
 	db := &file.DbUtils{JsonDb: file.NewJsonDb(dir)}
-	file.Db = db
+	t.Cleanup(file.ReplaceDb(db))
 	db.JsonDb.LoadClientFromJsonFile()
 	db.JsonDb.LoadTaskFromJsonFile()
 	db.JsonDb.LoadHostFromJsonFile()
 	Bridge = bridge.NewTunnel(&sync.Map{}, 30)
-	t.Cleanup(func() { file.Db, Bridge = old, oldBridge })
+	t.Cleanup(func() { Bridge = oldBridge })
 }
 
 // Malformed entries, as an edited or damaged file may hold, are skipped or
