@@ -1,11 +1,10 @@
 package proxy
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net"
-	"slices"
 	"time"
 
 	"github.com/djylb/nps/lib/model"
@@ -17,53 +16,31 @@ import (
 	"github.com/djylb/nps/lib/logs"
 )
 
-const (
-	socks5AssociateControlPollInterval = time.Second
-
-	// socks5HandshakeTimeout bounds reading the greeting, credentials and
-	// request, so that a slow or silent client cannot hold the connection.
-	socks5HandshakeTimeout = 10 * time.Second
-)
-
-func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
-	cmd, dst, err := socks5.ReadRequest(c)
-	if err != nil {
-		logs.Warn("invalid socks5 request from %v: %v", c.RemoteAddr(), err)
-		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			rep := socks5.ReplyGeneralFailure
-			if errors.Is(err, socks5.ErrAddrType) {
-				rep = socks5.ReplyAddrTypeNotSupported
-			}
-			_ = socks5.WriteReply(c, rep, netx.Addr{})
-		}
-		_ = c.Close()
-		return
-	}
-	_ = c.SetReadDeadline(time.Time{})
-
-	switch cmd {
-	case socks5.CmdConnect:
-		s.handleSocks5Connect(c, dst)
-	case socks5.CmdUDPAssociate:
-		s.handleSocks5Associate(c, dst)
-	default:
-		_ = socks5.WriteReply(c, socks5.ReplyCommandNotSupported, netx.Addr{})
-		_ = c.Close()
+// newSocks5Server returns the SOCKS5 server of s. Bind sets its UDP socket.
+func newSocks5Server(s *TunnelModeServer) *socks5.Server {
+	return &socks5.Server{
+		Handle:         s.handleSocks5,
+		UDPAddr:        s.socks5UDPAddr,
+		DialPacket:     s.dialSocks5Packet,
+		AllowPacket:    s.allowsSocks5Datagram,
+		UDPQueue:       socks5UDPQueue,
+		UDPIdleTimeout: socks5UDPIdleTimeout,
+		OnError: func(c net.Conn, err error) {
+			logs.Debug("socks5 %v: %v", c.RemoteAddr(), err)
+		},
 	}
 }
 
-func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
-	targetAddr := dst.String()
-	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(targetAddr) {
-		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(targetAddr))
-		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, netx.Addr{})
-		_ = c.Close()
-		return
+// handleSocks5 serves CONNECT through the client tunnel and leaves the other
+// commands to the server.
+func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) (bool, error) {
+	if req.Command != socks5.CmdConnect {
+		return false, nil
 	}
-
-	// clientConn wraps c only, which every path below closes or relays.
+	targetAddr := req.Dst.String()
+	// clientConn wraps req.Conn only, which every path below closes or relays.
 	//noinspection GoResourceLeak
-	clientConn := conn.NewConn(c)
+	clientConn := conn.NewConn(req.Conn)
 	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
@@ -71,109 +48,31 @@ func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
 		if errors.Is(err, errProxyAccessDenied) {
 			rep = socks5.ReplyNotAllowed
 		}
-		_ = socks5.WriteReply(c, rep, netx.Addr{})
-		_ = c.Close()
-		return
+		_ = req.Reply(rep, netx.Addr{})
+		return true, err
 	}
 	if target == nil || link == nil {
-		_ = c.Close()
-		return
+		return true, nil
 	}
-
-	replyAddr := socks5ConnectReplyAddr(s.Task, c)
-	if err := socks5.WriteReply(c, socks5.ReplySucceeded, replyAddr); err != nil {
+	if err := req.Reply(socks5.ReplySucceeded, socks5ConnectReplyAddr(s.Task, req.Conn)); err != nil {
 		_ = target.Close()
-		_ = c.Close()
-		return
+		return true, err
 	}
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
+	return true, nil
 }
 
-func (s *TunnelModeServer) handleSocks5Associate(c net.Conn, dst netx.Addr) {
-	if tcpConn, ok := c.(*net.TCPConn); ok {
-		_ = tcpConn.SetKeepAliveConfig(net.KeepAliveConfig{
-			Enable:   true,
-			Idle:     15 * time.Second,
-			Interval: 15 * time.Second,
-			Count:    3,
-		})
+// socks5Auth returns the authenticators for the task's current accounts:
+// username/password when it has any, else none.
+func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
+	if !socks5NeedsAuth(s.Task) {
+		return nil
 	}
-	defer func() { _ = c.Close() }()
-
-	logs.Trace("ASSOCIATE %s", dst)
-	if s.socks5UDP == nil {
-		logs.Error("socks5 udp listener is unavailable on task %d", s.Task.Id)
-		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, netx.Addr{})
-		return
-	}
-
-	clientIP := common.NormalizeIP(common.ParseIPFromAddr(c.RemoteAddr().String()))
-	session, err := s.socks5UDP.newSession(c, int(dst.Port))
-	if err != nil {
-		logs.Warn("open socks5 udp associate tunnel failed: client=%d task=%d err=%v", s.Task.Client.Id, s.Task.Id, err)
-		_ = socks5.WriteReply(c, socks5.ReplyGeneralFailure, netx.Addr{})
-		return
-	}
-	defer session.Close()
-
-	if err := socks5.WriteReply(c, socks5.ReplySucceeded, socks5UDPReplyAddr(s.Task, c, s.socks5UDP.listener, clientIP)); err != nil {
-		return
-	}
-	session.start()
-
-	s.waitForSocks5AssociateControl(c, session)
-}
-
-func (s *TunnelModeServer) waitForSocks5AssociateControl(c net.Conn, session *socks5UDPSession) {
-	var buf [1]byte
-
-	for {
-		if err := c.SetReadDeadline(time.Now().Add(socks5AssociateControlPollInterval)); err != nil {
-			logs.Debug("set socks5 associate control deadline error: %v", err)
-		}
-		if _, err := c.Read(buf[:]); err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				select {
-				case <-session.Done():
-					session.Wait()
-					return
-				default:
-				}
-				continue
-			}
-			session.Close()
-			session.Wait()
-			return
-		}
-	}
-}
-
-// SocksAuth reads the client's username/password request, checks it against
-// the task's accounts and answers it. It returns socks5.ErrAuthFailed for
-// rejected credentials.
-func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
-	username, password, err := socks5.ReadUserPass(c)
-	if err != nil {
-		return err
-	}
-
-	user, passwd := socks5ClientCredentials(s.Task)
-	valid := common.CheckAuthWithAccountMap(
-		username,
-		password,
-		user,
-		passwd,
-		model.GetAccountMap(s.Task.MultiAccount),
-		model.GetAccountMap(s.Task.UserAuth),
-	)
-	if err := socks5.WriteUserPassStatus(c, valid); err != nil {
-		return err
-	}
-	if !valid {
-		return socks5.ErrAuthFailed
-	}
-	return nil
+	return []socks5.Authenticator{socks5.UserPassAuth{Check: func(_ context.Context, _ net.Conn, username, password string) (bool, error) {
+		user, passwd := socks5ClientCredentials(s.Task)
+		return common.CheckAuthWithAccountMap(username, password, user, passwd,
+			model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)), nil
+	}}}
 }
 
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
@@ -185,8 +84,8 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	}
 	httpEnabled, socksEnabled := effectiveMixProxyFlags(s.Task)
 
-	// cleared once the socks5 request is read; the http path sets its own
-	_ = c.SetReadDeadline(time.Now().Add(socks5HandshakeTimeout))
+	// the socks5 handshake and the http path set their own deadlines
+	_ = c.SetReadDeadline(time.Now().Add(socks5.DefaultHandshakeTimeout))
 	var header [2]byte
 	if _, err := io.ReadFull(c, header[:]); err != nil {
 		logs.Warn("negotiation err %v", err)
@@ -221,49 +120,18 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 		return errors.New("socks5 proxy is disabled")
 	}
 
-	methods, err := socks5.ReadMethods(io.MultiReader(bytes.NewReader(header[:]), c))
+	// The accounts are read per connection, as they may change while the
+	// task runs.
+	hs := &socks5.Server{Auth: s.socks5Auth()}
+	req, err := hs.Handshake(context.Background(), netx.NewPrefixConn(c, header[:]))
 	if err != nil {
-		logs.Warn("read socks5 methods from %v: %v", c.RemoteAddr(), err)
-		_ = c.Close()
-		return err
-	}
-
-	if err := s.negotiateSocks5Method(c, methods); err != nil {
 		logs.Warn("socks5 negotiation with %v failed: %v", c.RemoteAddr(), err)
-		_ = c.Close()
 		return err
 	}
-	s.handleSocks5Request(c)
+	if err := s.socks5.ServeRequest(context.Background(), req); err != nil {
+		logs.Debug("socks5 request from %v: %v", c.RemoteAddr(), err)
+	}
 	return nil
-}
-
-// negotiateSocks5Method selects an authentication method from those the
-// client offers and runs it. With authentication required only
-// username/password is accepted. Otherwise no authentication is selected,
-// also for clients that offer no method or only unknown ones, and a client
-// that offers username/password alone has any credentials accepted.
-func (s *TunnelModeServer) negotiateSocks5Method(c net.Conn, methods []socks5.Method) error {
-	if socks5NeedsAuth(s.Task) {
-		if !slices.Contains(methods, socks5.MethodUserPass) {
-			_ = socks5.WriteMethod(c, socks5.MethodNoAcceptable)
-			return socks5.ErrNoAcceptableMethod
-		}
-		if err := socks5.WriteMethod(c, socks5.MethodUserPass); err != nil {
-			return err
-		}
-		return s.SocksAuth(c)
-	}
-
-	if slices.Contains(methods, socks5.MethodUserPass) && !slices.Contains(methods, socks5.MethodNoAuth) {
-		if err := socks5.WriteMethod(c, socks5.MethodUserPass); err != nil {
-			return err
-		}
-		if _, _, err := socks5.ReadUserPass(c); err != nil {
-			return err
-		}
-		return socks5.WriteUserPassStatus(c, true)
-	}
-	return socks5.WriteMethod(c, socks5.MethodNoAuth)
 }
 
 func effectiveMixProxyFlags(task *model.Tunnel) (httpEnabled, socksEnabled bool) {

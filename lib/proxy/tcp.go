@@ -16,6 +16,7 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
@@ -26,17 +27,19 @@ type TunnelModeServer struct {
 	process           process
 	address           string
 	listener          net.Listener
-	socks5UDP         *socks5UDPRegistry
+	socks5            *socks5.Server
 	activeConnections netx.ConnGroup
 }
 
 // NewTunnelModeServer tcp|host|mixproxy
 func NewTunnelModeServer(process process, bridge NetBridge, task *model.Tunnel, allowLocalProxy bool) *TunnelModeServer {
-	return &TunnelModeServer{
+	s := &TunnelModeServer{
 		BaseServer:        NewBaseServer(bridge, task, allowLocalProxy),
 		process:           process,
 		activeConnections: netx.ConnGroup{},
 	}
+	s.socks5 = newSocks5Server(s)
+	return s
 }
 
 // Bind opens the TCP listener and, for SOCKS5, the UDP associate socket.
@@ -50,10 +53,10 @@ func (s *TunnelModeServer) Bind() error {
 		}
 		s.address = common.BuildAddress(s.Task.ServerIp, strconv.Itoa(s.Task.Port))
 
-		var registry *socks5UDPRegistry
+		var udp net.PacketConn
 		if s.usesSocks5UDP() {
 			var err error
-			if registry, err = newSocks5UDPRegistry(s.Bridge, s.Task, s.AllowLocalProxy, s.address); err != nil {
+			if udp, err = listenSocks5UDP(s.Bridge, s.Task, s.address); err != nil {
 				return err
 			}
 		}
@@ -63,15 +66,12 @@ func (s *TunnelModeServer) Bind() error {
 		}
 		listener, err := listen(s.address)
 		if err != nil {
-			if registry != nil {
-				_ = registry.Close()
+			if udp != nil {
+				_ = udp.Close()
 			}
 			return err
 		}
-		if registry != nil {
-			registry.start()
-		}
-		s.socks5UDP = registry
+		s.socks5.UDPSocket = udp
 		s.listener = listener
 		return nil
 	})
@@ -82,23 +82,17 @@ func (s *TunnelModeServer) Start() error {
 		return err
 	}
 	conn.Accept(s.listener, s.handleConn)
-	if s.socks5UDP != nil {
-		_ = s.socks5UDP.Close()
-	}
+	_ = s.socks5.Close()
 	return nil
 }
 
 func (s *TunnelModeServer) Close() error {
 	var listener net.Listener
-	var registry *socks5UDPRegistry
 	s.MarkClosed(func() {
 		listener = s.listener
-		registry = s.socks5UDP
 	})
 	_ = s.activeConnections.Close()
-	if registry != nil {
-		_ = registry.Close()
-	}
+	_ = s.socks5.Close()
 	if listener == nil {
 		return nil
 	}

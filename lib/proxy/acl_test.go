@@ -9,6 +9,8 @@ import (
 
 	"github.com/djylb/nps/lib/model"
 
+	"github.com/djylb/netx"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -132,19 +134,19 @@ func TestSourceDeniedRegisteredOnly(t *testing.T) {
 func TestSocks5UDPDatagramDestination(t *testing.T) {
 	task := &model.Tunnel{Id: 8, Mode: "mixProxy", DestAclMode: model.AclWhitelist, DestAclRules: "192.0.2.53\nfull:dns.example"}
 	task.CompileDestACL()
-	s := &socks5UDPSession{registry: &socks5UDPRegistry{task: task}}
-	for addr, want := range map[string]bool{
-		"192.0.2.53:53":     true,
-		"dns.example:53":    true,
-		"198.51.100.1:53":   false,
-		"other.example:443": false,
+	s := &TunnelModeServer{BaseServer: &BaseServer{Task: task}}
+	for addr, want := range map[netx.Addr]bool{
+		{IP: netip.MustParseAddr("192.0.2.53"), Port: 53}:   true,
+		{Name: "dns.example", Port: 53}:                     true,
+		{IP: netip.MustParseAddr("198.51.100.1"), Port: 53}: false,
+		{Name: "other.example", Port: 443}:                  false,
 	} {
-		if got := s.allowsDestination(addr); got != want {
+		if got := s.allowsSocks5Datagram(nil, addr); got != want {
 			t.Errorf("datagram to %s allowed = %v, want %v", addr, got, want)
 		}
 	}
 	task.DestAclMode = model.AclOff
-	if !s.allowsDestination("198.51.100.1:53") {
+	if !s.allowsSocks5Datagram(nil, netx.Addr{IP: netip.MustParseAddr("198.51.100.1"), Port: 53}) {
 		t.Fatal("datagram dropped with the destination list off")
 	}
 }

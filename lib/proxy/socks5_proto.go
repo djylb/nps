@@ -14,14 +14,10 @@ func socks5ConnectReplyAddr(task *model.Tunnel, clientConn net.Conn) netx.Addr {
 	return socks5ReplyAddrFromNetAddr(task, addrOf(clientConn), nil, taskPort(task))
 }
 
-func socks5UDPReplyAddr(task *model.Tunnel, tcpConn net.Conn, udpConn net.PacketConn, clientIP net.IP) netx.Addr {
+func socks5UDPReplyAddr(task *model.Tunnel, tcpConn net.Conn, udpLocal net.Addr, clientIP net.IP) netx.Addr {
 	var tcpLocal net.Addr
 	if tcpConn != nil {
 		tcpLocal = tcpConn.LocalAddr()
-	}
-	var udpLocal net.Addr
-	if udpConn != nil {
-		udpLocal = udpConn.LocalAddr()
 	}
 	fallbackPort := 0
 	if task != nil {

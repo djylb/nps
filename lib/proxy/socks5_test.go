@@ -328,76 +328,38 @@ func testTunnelModeServerSocks5UDPUsesFixedPort(t *testing.T, mode string) {
 		t.Fatalf("reply payload = %q, want pong", replyDatagram.data)
 	}
 
+	// Once bound, the association takes its client's source alone: another
+	// port of the same IP address is another client.
 	udpConn2, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
 		t.Fatalf("ListenUDP() second socket error = %v", err)
 	}
 	defer func() { _ = udpConn2.Close() }()
-
-	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
-	var outbound2 bytes.Buffer
-	if err := writeSocks5Datagram(&outbound2, targetAddr2, []byte("ping2")); err != nil {
-		t.Fatalf("build second outbound udp datagram: %v", err)
-	}
-	if _, err := udpConn2.WriteToUDP(outbound2.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
+	if _, err := udpConn2.WriteToUDP(outbound.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
 		t.Fatalf("WriteToUDP() second socket error = %v", err)
 	}
-
-	_ = peerConn.SetReadDeadline(time.Now().Add(time.Second))
-	n, err = peerFramed.Read(frameBuf)
-	if err != nil {
-		t.Fatalf("read rebound framed udp payload: %v", err)
-	}
-	tunneled2, err := readSocks5Datagram(frameBuf[:n])
-	if err != nil {
-		t.Fatalf("parse rebound tunneled udp datagram: %v", err)
-	}
-	if tunneled2.addr.String() != "9.9.9.9:9999" {
-		t.Fatalf("rebound tunneled addr = %s, want 9.9.9.9:9999", tunneled2.addr.String())
-	}
-	if string(tunneled2.data) != "ping2" {
-		t.Fatalf("rebound tunneled payload = %q, want ping2", tunneled2.data)
-	}
-
-	replyAddr2, _ := net.ResolveUDPAddr("udp4", "2.2.2.2:2222")
-	var inbound2 bytes.Buffer
-	if err := writeSocks5Datagram(&inbound2, replyAddr2, []byte("pong2")); err != nil {
-		t.Fatalf("build rebound inbound udp datagram: %v", err)
-	}
-	if _, err := peerFramed.Write(inbound2.Bytes()); err != nil {
-		t.Fatalf("write rebound inbound udp payload: %v", err)
-	}
-
-	_ = udpConn2.SetReadDeadline(time.Now().Add(time.Second))
-	n, _, err = udpConn2.ReadFromUDP(udpBuf)
-	if err != nil {
-		t.Fatalf("ReadFromUDP() rebound socket error = %v", err)
-	}
-	replyDatagram2, err := readSocks5Datagram(udpBuf[:n])
-	if err != nil {
-		t.Fatalf("parse rebound udp reply datagram: %v", err)
-	}
-	if replyDatagram2.addr.String() != "2.2.2.2:2222" {
-		t.Fatalf("rebound reply addr = %s, want 2.2.2.2:2222", replyDatagram2.addr.String())
-	}
-	if string(replyDatagram2.data) != "pong2" {
-		t.Fatalf("rebound reply payload = %q, want pong2", replyDatagram2.data)
-	}
-
-	_ = udpConn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
-	if _, _, err := udpConn.ReadFromUDP(udpBuf); err == nil {
-		t.Fatal("previous UDP source port should not keep receiving after session is rebound")
+	_ = peerConn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+	if _, err := peerFramed.Read(frameBuf); err == nil {
+		t.Fatal("datagram of another source port entered the bound association")
 	}
 
 	_ = tcpConn.Close()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if server.socks5UDP != nil && server.socks5UDP.sessionCount() == 0 {
+	waitTunnelClosed(t, peerConn, "after closing control connection")
+}
+
+// waitTunnelClosed waits until the server closes the association's tunnel.
+func waitTunnelClosed(t *testing.T, peer net.Conn, when string) {
+	t.Helper()
+	_ = peer.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 1)
+	for {
+		if _, err := peer.Read(buf); err != nil {
+			if netx.IsTimeout(err) {
+				t.Fatalf("socks5 udp tunnel was not closed %s", when)
+			}
 			return
 		}
-		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("socks5 udp session was not cleaned up after closing control connection")
 }
 
 func TestTunnelModeServerSocks5ConnectFailureReturnsReply(t *testing.T) {
@@ -751,148 +713,56 @@ func TestTunnelModeServerSocks5UDPPendingSessionDoesNotStealActiveSession(t *tes
 	}
 }
 
-func TestTunnelModeServerSocks5UDPActiveSessionRebindsByRequestedPortHint(t *testing.T) {
+// TestTunnelModeServerSocks5UDPExactAnnouncement checks that a client that
+// announces the control connection's own address gets the datagrams of the
+// announced source alone.
+func TestTunnelModeServerSocks5UDPExactAnnouncement(t *testing.T) {
 	port := freeTCPPort(t)
 	task := newTestSocks5Task(port, "mixProxy")
-	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 2)}
+	bridge := &testUDP5Bridge{peers: make(chan net.Conn, 1)}
 	server, errCh := startTestTunnelModeServer(t, task, bridge)
 	defer stopTestTunnelModeServer(t, server, errCh)
 
-	tcpConn1 := dialSocks5ImplicitNoAuth(t, port)
-	defer func() { _ = tcpConn1.Close() }()
+	tcpConn := dialSocks5ImplicitNoAuth(t, port)
+	defer func() { _ = tcpConn.Close() }()
 
-	udpConn1, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	other, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
-		t.Fatalf("ListenUDP() first socket error = %v", err)
+		t.Fatal(err)
 	}
-	defer func() { _ = udpConn1.Close() }()
-
-	udpConn1b, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer func() { _ = other.Close() }()
+	announced, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
-		t.Fatalf("ListenUDP() rebound socket error = %v", err)
+		t.Fatal(err)
 	}
-	defer func() { _ = udpConn1b.Close() }()
+	defer func() { _ = announced.Close() }()
 
-	udpConn2, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-	if err != nil {
-		t.Fatalf("ListenUDP() second socket error = %v", err)
-	}
-	defer func() { _ = udpConn2.Close() }()
-
-	_, replyPort1 := requestUDPAssociateFromIPv4(t, tcpConn1, net.ParseIP("127.0.0.1"), udpConn1b.LocalAddr().(*net.UDPAddr).Port)
-	if replyPort1 != port {
-		t.Fatalf("udp associate port = %d, want fixed port %d", replyPort1, port)
-	}
-
-	var peerConn1 net.Conn
+	requestUDPAssociateFromIPv4(t, tcpConn, net.ParseIP("127.0.0.1"), announced.LocalAddr().(*net.UDPAddr).Port)
+	var peerConn net.Conn
 	select {
-	case peerConn1 = <-bridge.peers:
+	case peerConn = <-bridge.peers:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for first udp5 tunnel")
+		t.Fatal("timed out waiting for udp5 tunnel")
 	}
-	defer func() { _ = peerConn1.Close() }()
+	defer func() { _ = peerConn.Close() }()
+	peerFramed := netx.NewFramedConn(peerConn, netx.WithFramedDatagrams())
+	to := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}
+	dst := netx.Addr{IP: netip.MustParseAddr("8.8.8.8"), Port: 53}
 
-	peerFramed1 := netx.NewFramedConn(peerConn1, netx.WithFramedDatagrams())
-	frameBuf1 := make([]byte, netx.MaxFramePayload)
-
-	targetAddr1, _ := net.ResolveUDPAddr("udp4", "8.8.8.8:53")
-	var outbound1 bytes.Buffer
-	if err := writeSocks5Datagram(&outbound1, targetAddr1, []byte("bind1")); err != nil {
-		t.Fatalf("build first outbound udp datagram: %v", err)
+	sendDatagram(t, other, to, 0, dst, "other")
+	if got := readTunneled(t, peerFramed, 250*time.Millisecond); got != "" {
+		t.Fatalf("datagram %q of an unannounced source entered the association", got)
 	}
-	if _, err := udpConn1.WriteToUDP(outbound1.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
-		t.Fatalf("WriteToUDP() first socket error = %v", err)
-	}
-	_ = peerConn1.SetReadDeadline(time.Now().Add(time.Second))
-	n1, err := peerFramed1.Read(frameBuf1)
-	if err != nil {
-		t.Fatalf("read first framed udp payload: %v", err)
-	}
-	tunneled1, err := readSocks5Datagram(frameBuf1[:n1])
-	if err != nil {
-		t.Fatalf("parse first tunneled udp datagram: %v", err)
-	}
-	if tunneled1.addr.String() != "8.8.8.8:53" || string(tunneled1.data) != "bind1" {
-		t.Fatalf("unexpected first tunneled payload addr=%s data=%q", tunneled1.addr.String(), tunneled1.data)
-	}
-
-	tcpConn2 := dialSocks5ImplicitNoAuth(t, port)
-	defer func() { _ = tcpConn2.Close() }()
-
-	_, replyPort2 := requestUDPAssociateFromIPv4(t, tcpConn2, net.ParseIP("127.0.0.1"), udpConn2.LocalAddr().(*net.UDPAddr).Port)
-	if replyPort2 != port {
-		t.Fatalf("udp associate port = %d, want fixed port %d", replyPort2, port)
-	}
-
-	var peerConn2 net.Conn
-	select {
-	case peerConn2 = <-bridge.peers:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for second udp5 tunnel")
-	}
-	defer func() { _ = peerConn2.Close() }()
-
-	peerFramed2 := netx.NewFramedConn(peerConn2, netx.WithFramedDatagrams())
-	frameBuf2 := make([]byte, netx.MaxFramePayload)
-
-	targetAddr2, _ := net.ResolveUDPAddr("udp4", "9.9.9.9:9999")
-	var outbound2 bytes.Buffer
-	if err := writeSocks5Datagram(&outbound2, targetAddr2, []byte("bind2")); err != nil {
-		t.Fatalf("build second outbound udp datagram: %v", err)
-	}
-	if _, err := udpConn2.WriteToUDP(outbound2.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
-		t.Fatalf("WriteToUDP() second socket error = %v", err)
-	}
-	_ = peerConn2.SetReadDeadline(time.Now().Add(time.Second))
-	n2, err := peerFramed2.Read(frameBuf2)
-	if err != nil {
-		t.Fatalf("read second framed udp payload: %v", err)
-	}
-	tunneled2, err := readSocks5Datagram(frameBuf2[:n2])
-	if err != nil {
-		t.Fatalf("parse second tunneled udp datagram: %v", err)
-	}
-	if tunneled2.addr.String() != "9.9.9.9:9999" || string(tunneled2.data) != "bind2" {
-		t.Fatalf("unexpected second tunneled payload addr=%s data=%q", tunneled2.addr.String(), tunneled2.data)
-	}
-
-	targetAddrRebind, _ := net.ResolveUDPAddr("udp4", "1.1.1.1:53")
-	var outboundRebind bytes.Buffer
-	if err := writeSocks5Datagram(&outboundRebind, targetAddrRebind, []byte("rebind")); err != nil {
-		t.Fatalf("build rebound outbound udp datagram: %v", err)
-	}
-	if _, err := udpConn1b.WriteToUDP(outboundRebind.Bytes(), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: port}); err != nil {
-		t.Fatalf("WriteToUDP() rebound socket error = %v", err)
-	}
-
-	_ = peerConn2.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
-	if _, err := peerFramed2.Read(frameBuf2); err == nil {
-		t.Fatal("rebound packet should not be routed to second tunnel")
-	}
-
-	_ = peerConn1.SetReadDeadline(time.Now().Add(time.Second))
-	n1, err = peerFramed1.Read(frameBuf1)
-	if err != nil {
-		t.Fatalf("read rebound framed udp payload: %v", err)
-	}
-	tunneledRebind, err := readSocks5Datagram(frameBuf1[:n1])
-	if err != nil {
-		t.Fatalf("parse rebound tunneled udp datagram: %v", err)
-	}
-	if tunneledRebind.addr.String() != "1.1.1.1:53" || string(tunneledRebind.data) != "rebind" {
-		t.Fatalf("unexpected rebound tunneled payload addr=%s data=%q", tunneledRebind.addr.String(), tunneledRebind.data)
+	sendDatagram(t, announced, to, 0, dst, "announced")
+	if got := readTunneled(t, peerFramed, time.Second); got != "announced" {
+		t.Fatalf("tunneled datagram = %q, want announced", got)
 	}
 }
 
 func TestTunnelModeServerSocks5UDPIdleSessionExpires(t *testing.T) {
-	oldIdleTimeout := socks5UDPAssociateIdleTimeout
-	oldSweepInterval := socks5UDPSweepInterval
-	socks5UDPAssociateIdleTimeout = 200 * time.Millisecond
-	socks5UDPSweepInterval = 50 * time.Millisecond
-	defer func() {
-		socks5UDPAssociateIdleTimeout = oldIdleTimeout
-		socks5UDPSweepInterval = oldSweepInterval
-	}()
+	old := socks5UDPIdleTimeout
+	socks5UDPIdleTimeout = 200 * time.Millisecond
+	defer func() { socks5UDPIdleTimeout = old }()
 
 	port := freeTCPPort(t)
 	task := newTestSocks5Task(port, "mixProxy")
@@ -911,18 +781,14 @@ func TestTunnelModeServerSocks5UDPIdleSessionExpires(t *testing.T) {
 	select {
 	case peerConn := <-bridge.peers:
 		defer func() { _ = peerConn.Close() }()
+		waitTunnelClosed(t, peerConn, "when idle")
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for udp5 tunnel")
 	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if server.socks5UDP != nil && server.socks5UDP.sessionCount() == 0 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	_ = tcpConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := tcpConn.Read(make([]byte, 1)); err == nil || netx.IsTimeout(err) {
+		t.Fatalf("control connection of an idle association still open: %v", err)
 	}
-	t.Fatal("idle socks5 udp session was not cleaned up in time")
 }
 
 func TestSocks5UDPReplyAddrWithholdsPrivateAddressFromPublicClient(t *testing.T) {
