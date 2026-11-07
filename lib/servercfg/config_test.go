@@ -149,7 +149,8 @@ func TestReload(t *testing.T) {
 	if err := os.WriteFile(path, []byte("name=after\n"), 0o600); err != nil {
 		t.Fatalf("rewrite config: %v", err)
 	}
-	if err := Reload(); err != nil {
+	if r := Reload(); !r.OK() {
+		err := r.Error
 		t.Fatalf("Reload() error = %v", err)
 	}
 	if got := String("name"); got != "after" {

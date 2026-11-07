@@ -163,18 +163,28 @@ func Path() string {
 
 // Load loads the server config from the provided file.
 func Load(path string) error {
+	cfg, err := read(path)
+	if err != nil {
+		return err
+	}
+	commit(path, cfg)
+	return nil
+}
+
+// read parses the config file at path without making it current.
+func read(path string) (*store, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return fmt.Errorf("config path cannot be empty")
+		return nil, fmt.Errorf("config path cannot be empty")
 	}
 
 	parser, format, err := parserForPath(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	values, err := parser(path)
 	if err != nil {
-		return fmt.Errorf("parse %s config %s: %w", format, path, err)
+		return nil, fmt.Errorf("parse %s config %s: %w", format, path, err)
 	}
 	snapshot := buildSnapshot(values)
 	keyPath := snapshot.Web.InstanceKeyFile
@@ -186,15 +196,18 @@ func Load(path string) error {
 	}
 	snapshot.Web.InstanceKeyFile, err = filepath.Abs(keyPath)
 	if err != nil {
-		return fmt.Errorf("resolve instance key path: %w", err)
+		return nil, fmt.Errorf("resolve instance key path: %w", err)
 	}
+	return &store{values: values, snapshot: snapshot}, nil
+}
 
+// commit makes cfg, read from path, the current config.
+func commit(path string, cfg *store) {
 	mu.Lock()
-	appConfig = &store{values: values, snapshot: snapshot}
+	appConfig = cfg
 	appConfigPath = path
 	mu.Unlock()
-	currentSnapshot.Store(snapshot)
-	return nil
+	currentSnapshot.Store(cfg.snapshot)
 }
 
 // LoadCandidates loads the first readable config file from the provided paths.
@@ -217,15 +230,6 @@ func LoadCandidates(paths ...string) error {
 // LoadDefault loads the server config from the default candidate paths.
 func LoadDefault() error {
 	return LoadCandidates(DefaultPaths()...)
-}
-
-// Reload reloads the currently loaded config file. If no config has been loaded
-// yet, it falls back to the default candidate paths.
-func Reload() error {
-	if path := Path(); path != "" {
-		return Load(path)
-	}
-	return LoadDefault()
 }
 
 func parserForPath(path string) (parserFunc, string, error) {

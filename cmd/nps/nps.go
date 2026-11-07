@@ -21,7 +21,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
@@ -130,7 +129,7 @@ func main() {
 	// before any access list is compiled
 	acl.SetGeoData(geoIPPath, geoSitePath)
 	acl.SetMaxRules(cfg.App.AclMaxRules)
-	applyRuntime(cfg)
+	server.ApplyLimits(cfg)
 	if cmd == "update-geo" {
 		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
 		var name string
@@ -269,42 +268,14 @@ func printUsage(cmd string) {
 	flag.PrintDefaults()
 }
 
+// reloadConfig reloads the config file into the running server.
 func (p *nps) reloadConfig() {
-	old := servercfg.Current()
-	if err := servercfg.Reload(); err != nil {
-		logs.Warn("Config reload failed: %v", err)
+	srv := p.srv.Load()
+	if srv == nil {
+		logs.Warn("Config reload ignored: nps is not running yet")
 		return
 	}
-	cfg := servercfg.Current()
-	logs.SetLevel(cfg.Log.Level)
-	applyRuntime(cfg)
-	applyNtp(cfg)
-	stats.StartSystemInfo()
-	if srv := p.srv.Load(); srv != nil {
-		srv.ApplyWebhook(cfg.Webhook)
-		handler, err := routers.Init(srv.Store(), srv.Identity(), srv)
-		if err != nil {
-			logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
-		} else {
-			srv.SetWebHandler(handler)
-		}
-	}
-	if names := servercfg.RestartRequired(old, cfg); len(names) > 0 {
-		logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
-	}
-}
-
-// applyRuntime hands the settings that apply without a restart to the
-// packages that use them.
-func applyRuntime(cfg *servercfg.Snapshot) {
-	model.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
-	model.SetClientHistoryLimit(cfg.Runtime.ClientHistoryLimit)
-}
-
-func applyNtp(cfg *servercfg.Snapshot) {
-	clock.SetNtpServer(cfg.App.NTPServer)
-	clock.SetNtpInterval(time.Duration(cfg.App.NTPInterval) * time.Minute)
-	go clock.Sync()
+	srv.ReloadConfig()
 }
 
 func newServiceConfig() *service.Config {
@@ -462,6 +433,7 @@ func run() (*server.Server, error) {
 		return nil, err
 	}
 	srv.SetWebHandler(handler)
+	srv.AddConfigApplier(routers.ConfigApplier(db, identity, srv, srv.SetWebHandler))
 	srv.SetIPRegisterHandler(routers.InitIPRegister(db, identity, srv))
 	if srv.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
@@ -469,7 +441,7 @@ func run() (*server.Server, error) {
 	}
 	logs.Info("the config path is: %s", servercfg.Path())
 	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, srv.Bridge().MinClientVersion())
-	applyNtp(cfg)
+	server.ApplyNTP(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err
 	}

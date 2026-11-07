@@ -81,6 +81,7 @@ type Server struct {
 	ipRegHandler http.Handler
 	web          *WebServer
 	webhook      webhookState
+	appliers     configAppliers
 	dash         dashboard
 
 	// scope runs the background work of the server and owns what Close
