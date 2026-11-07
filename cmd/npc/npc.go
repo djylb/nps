@@ -401,7 +401,11 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	if *localIP == "" {
 		*localIP = env["NPC_LOCAL_IP"]
 	}
-	hasCommand := *verifyKey != "" && *serverAddr != ""
+	hasCommand, err := commandLineMode(*serverAddr, *verifyKey)
+	if err != nil {
+		logs.Error("%v", err)
+		os.Exit(1)
+	}
 	if hasCommand {
 		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
@@ -482,4 +486,21 @@ func fail(cancel context.CancelFunc, err error) {
 	logs.Error("npc stopped: %v", err)
 	cancel()
 	os.Exit(1)
+}
+
+// commandLineMode reports whether npc runs from -server and -vkey rather
+// than a config file. Both or neither must be given: with only one, such as
+// after a misspelt flag was ignored, npc stops instead of quietly reading a
+// config file.
+func commandLineMode(server, vkey string) (bool, error) {
+	switch {
+	case server != "" && vkey != "":
+		return true, nil
+	case server == "" && vkey == "":
+		return false, nil
+	case server == "":
+		return false, errors.New("-vkey is set but -server is not; give both, or neither to use a config file")
+	default:
+		return false, errors.New("-server is set but -vkey is not; give both, or neither to use a config file")
+	}
 }
