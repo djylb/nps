@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"runtime/pprof"
 	"strconv"
@@ -14,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/lifecycle"
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/internal/lifecycle"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -66,30 +65,29 @@ type Server struct {
 	webhook      webhookState
 	dash         dashboard
 
-	group      lifecycle.Group // the goroutines Close waits for
-	ctx        context.Context // done once the server stops
-	cancel     context.CancelFunc
-	started    atomic.Bool
-	stopParent func() bool
-	failed     chan error // the first failure after Start
-	closersMu  sync.Mutex
-	closers    []io.Closer // the listeners of the registration page
-	stopOnce   sync.Once
+	// scope runs the background work of the server and owns what Close
+	// stops, closed in reverse order of registration: the web manager and
+	// the registration page, then the tasks, then the bridge, then the
+	// webhook. The first task that fails closes it.
+	scope   *lifecycle.Scope
+	started atomic.Bool
 }
 
 // New returns a server of the entries in db; nothing runs before Start.
 func New(db *file.DbUtils, cfg Config) *Server {
-	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		db:         db,
 		hostCache:  index.NewAnyIntIndex(),
 		transports: cfg.Transports,
-		ctx:        ctx,
-		cancel:     cancel,
-		failed:     make(chan error, 1),
+		// Once the server stops, its work may end with any error.
+		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
 	}
 	s.bridge = bridge.NewTunnel(&s.tasks, cfg.DisconnectTimeout)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
+	// registered first, so closed last
+	_, _ = s.scope.Add(closerFunc(func() { s.ApplyWebhook(servercfg.WebhookConfig{}) }))
+	s.own(s.bridge)
+	_, _ = s.scope.Add(closerFunc(s.closeTasks))
 	return s
 }
 
@@ -110,17 +108,18 @@ func (s *Server) lookupTunnel(id int) (bridge.TunnelDialer, bool) {
 
 // Start opens the bridge listeners, starts the tasks of the store, the web
 // manager and the background work. It returns the first error that keeps
-// nps from starting; Close then releases what was started. Failures after
-// that are reported through Failed. The server stops when ctx is done, and
-// Close waits for that.
+// nps from starting; Close then releases what was started. A failure after
+// that, of the web manager or of a bridge listener, stops the server: Done
+// is closed and Close returns the failure. The server also stops when ctx
+// is done.
 func (s *Server) Start(ctx context.Context) error {
 	if !s.started.CompareAndSwap(false, true) {
 		return errors.New("server already started")
 	}
-	if !s.group.Go(s.stopWhenDone) {
+	stop := context.AfterFunc(ctx, func() { s.scope.Close(context.Cause(ctx)) })
+	if _, err := s.scope.Add(closerFunc(func() { stop() })); err != nil {
 		return ErrClosed
 	}
-	s.stopParent = context.AfterFunc(ctx, s.cancel)
 	cfg := servercfg.Current()
 	proxy.SetGlobalSource(func() *acl.Source {
 		if g := s.db.GetGlobal(); g != nil {
@@ -130,74 +129,62 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 	s.startIPRegister(cfg)
 	startP2P(s.bridge, cfg)
-	if err := s.bridge.StartTunnel(s.transports, s.reportFailure); err != nil {
+	if err := s.bridge.StartTunnel(s.transports); err != nil {
 		return fmt.Errorf("start bridge: %w", err)
 	}
-	s.group.Go(s.dealBridgeTask)
+	b := s.bridge
+	s.goTask("bridge", func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-b.Done():
+			return b.Cause()
+		}
+	})
+	s.goWork("bridge requests", s.dealBridgeTask)
 	s.ApplyWebhook(cfg.Webhook)
-	s.group.Go(s.dealClientFlow)
+	s.goWork("client flow", s.dealClientFlow)
 	if minute := cfg.Runtime.FlowStoreInterval; minute > 0 {
-		s.group.Go(func() { s.flowSession(time.Minute * time.Duration(minute)) })
+		s.goWork("flow store", func(ctx context.Context) { s.flowSession(ctx, time.Minute*time.Duration(minute)) })
 	}
 	s.initDashboardData()
 	s.initFromDb()
 	_ = s.AddTunnel(&model.Tunnel{Port: 0, Mode: "httpHostServer", Status: true})
-	s.web = NewWebServer(s)
-	web := s.web
-	s.group.Go(func() {
-		if err := web.Start(); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.reportFailure(fmt.Errorf("webServer: %w", err))
-		}
-	})
+	web := NewWebServer(s)
+	if !s.own(web) {
+		return ErrClosed
+	}
+	s.web = web
+	s.goTask("web manager", func(context.Context) error { return web.Start() })
 	return nil
 }
 
-// Failed reports the first listener that stops on an error after Start has
-// returned; nps cannot serve as configured after that.
-func (s *Server) Failed() <-chan error { return s.failed }
-
-func (s *Server) reportFailure(err error) {
-	if s.ctx.Err() != nil {
-		return
-	}
-	select {
-	case s.failed <- err:
-	default:
-		logs.Error("%v", err)
-	}
-}
+// Done is closed when the server starts stopping: by Close, by the end of
+// the context given to Start, or by a failure after Start.
+func (s *Server) Done() <-chan struct{} { return s.scope.Done() }
 
 // Close stops the server and returns once every goroutine it started has
 // returned. It first stops accepting management and registration requests,
 // then closes the tasks, then the bridge with its clients, then the webhook.
+// It returns the failure that stopped the server, if one did.
 func (s *Server) Close() error {
-	s.cancel()
-	s.stopOnce.Do(s.stop)
-	s.group.Wait()
-	return nil
+	s.scope.Close(nil)
+	return s.scope.Wait(context.Background())
 }
 
-// stopWhenDone stops the server once its context is done.
-func (s *Server) stopWhenDone() {
-	<-s.ctx.Done()
-	s.stopOnce.Do(s.stop)
+// goTask runs fn until the server stops; an error of fn stops the server.
+// Once the server is stopping it does not run fn.
+func (s *Server) goTask(name string, fn func(ctx context.Context) error) bool {
+	return s.scope.Go(name, fn) == nil
 }
 
-func (s *Server) stop() {
-	s.group.Close()
-	if s.stopParent != nil {
-		s.stopParent()
-	}
-	s.closersMu.Lock()
-	closers := s.closers
-	s.closers = nil
-	s.closersMu.Unlock()
-	for _, c := range closers {
-		_ = c.Close()
-	}
-	if s.web != nil {
-		_ = s.web.Close()
-	}
+// goWork runs fn, which reports no failure, like goTask.
+func (s *Server) goWork(name string, fn func(ctx context.Context)) bool {
+	return s.goTask(name, func(ctx context.Context) error { fn(ctx); return nil })
+}
+
+// closeTasks stops every running task.
+func (s *Server) closeTasks() {
 	s.tasks.Range(func(key, value any) bool {
 		s.tasks.CompareAndDelete(key, value)
 		if svr, ok := value.(proxy.Service); ok {
@@ -205,20 +192,22 @@ func (s *Server) stop() {
 		}
 		return true
 	})
-	_ = s.bridge.Close()
-	s.ApplyWebhook(servercfg.WebhookConfig{})
 }
 
-// addCloser has stop close c, or closes c when the server is stopping.
-func (s *Server) addCloser(c io.Closer) bool {
-	s.closersMu.Lock()
-	defer s.closersMu.Unlock()
-	if s.ctx.Err() != nil {
-		_ = c.Close()
-		return false
-	}
-	s.closers = append(s.closers, c)
-	return true
+// own has Close close c, after what is owned later and before what is owned
+// earlier; its error is not a failure of the server. Once the server is
+// stopping, own closes c and reports false.
+func (s *Server) own(c io.Closer) bool {
+	_, err := s.scope.Add(closerFunc(func() { _ = c.Close() }))
+	return err == nil
+}
+
+// closerFunc is an io.Closer that runs f.
+type closerFunc func()
+
+func (f closerFunc) Close() error {
+	f()
+	return nil
 }
 
 // initFromDb starts the enabled tasks of the store.
@@ -280,13 +269,13 @@ func (s *Server) addKeyClient(vkey string, kind model.KeyKind) {
 const routePruneInterval = 2 * time.Second
 
 // dealBridgeTask handles the requests of the bridge until the server stops.
-func (s *Server) dealBridgeTask() {
+func (s *Server) dealBridgeTask(ctx context.Context) {
 	prune := time.NewTicker(routePruneInterval)
 	defer prune.Stop()
 	b := s.bridge
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-prune.C:
 			b.PruneRoutes(func(id int) { _ = s.DeleteTunnel(id) }, s.delHost)
@@ -336,21 +325,21 @@ func (s *Server) handleSecret(sc *conn.Secret) {
 		return
 	}
 	feature := servercfg.Current().Feature
-	if !s.group.Go(func() {
+	if !s.goWork("secret", func(context.Context) {
 		_ = proxy.NewSecretServer(s.bridge, t, feature.AllowLocalProxy, feature.AllowSecretLink, feature.AllowSecretLocal).HandleSecret(sc.Conn, sc.Wire)
 	}) {
 		_ = sc.Conn.Close()
 	}
 }
 
-func (s *Server) dealClientFlow() {
+func (s *Server) dealClientFlow(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			s.dealClientData()
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -430,8 +419,10 @@ func (s *Server) StopTunnel(id int) error {
 // before AddTunnel returns, so address errors are reported to the caller and
 // a later StopTunnel always finds the running instance.
 func (s *Server) AddTunnel(t *model.Tunnel) error {
-	if s.group.Closed() {
+	select {
+	case <-s.scope.Done():
 		return ErrClosed
+	default:
 	}
 	if t.Mode == "secret" || t.Mode == "p2p" {
 		logs.Info("secret task %s start ", t.Remark)
@@ -461,8 +452,8 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	// The labels name the task in stack dumps and tracebacks of everything
 	// the server starts.
 	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", t.Mode, "client", strconv.Itoa(clientID(t)))
-	if !s.group.Go(func() {
-		pprof.Do(context.Background(), labels, func(context.Context) {
+	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
+		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
 				logs.Error("taskId %d start error %v", t.Id, err)
 				s.tasks.CompareAndDelete(t.Id, svr)
@@ -652,14 +643,14 @@ func (s *Server) dealClientData() {
 }
 
 // flowSession periodically persists flow counters and other runtime state.
-func (s *Server) flowSession(m time.Duration) {
+func (s *Server) flowSession(ctx context.Context, m time.Duration) {
 	ticker := time.NewTicker(m)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			s.storeAll()
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		}
 	}

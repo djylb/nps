@@ -13,6 +13,7 @@ require (
 	github.com/djylb/guard v0.0.0-20261102202301-6a4f1d966e43
 	github.com/djylb/holepunch v0.0.0-20261102213915-36a108640e1d
 	github.com/djylb/holepunch/quicpath v0.0.0-20261102215033-b889feff2dec
+	github.com/djylb/lifecycle v0.0.0-20261107120442-c0d9ef0db7c4
 	github.com/djylb/netx v0.0.0-20261107102209-6050d7bdd3ea
 	github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7
 	github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9

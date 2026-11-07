@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -29,33 +30,30 @@ type Transports struct {
 // StartTunnel opens the listeners of the transports in t and serves them in
 // the background. It returns the error of the first listener that cannot be
 // opened; Close then closes the ones that were. A listener that fails later
-// stops accepting and reports its error to failed, which decides whether nps
-// goes on; nothing is reported once Close has started.
-func (s *Bridge) StartTunnel(t Transports, failed func(error)) error {
-	if s.ctx.Err() != nil {
+// closes the bridge: Done is closed then and Cause tells which listener
+// failed.
+func (s *Bridge) StartTunnel(t Transports) error {
+	select {
+	case <-s.scope.Done():
 		return ErrClosed
-	}
-	report := func(err error) {
-		if s.ctx.Err() == nil {
-			failed(err)
-		}
+	default:
 	}
 	n := connection.Network()
 	var err error
 	// tcp
-	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP, connection.KindBridgeTCP, report); err != nil {
+	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP, connection.KindBridgeTCP); err != nil {
 		return err
 	}
 	// tls
-	if s.VirtualTlsListener, err = s.virtualBridgeListener(t.TLS, connection.KindBridgeTLS, report); err != nil {
+	if s.VirtualTlsListener, err = s.virtualBridgeListener(t.TLS, connection.KindBridgeTLS); err != nil {
 		return err
 	}
 	// ws
-	if s.VirtualWsListener, err = s.virtualBridgeListener(t.WS, connection.KindBridgeWS, report); err != nil {
+	if s.VirtualWsListener, err = s.virtualBridgeListener(t.WS, connection.KindBridgeWS); err != nil {
 		return err
 	}
 	// wss
-	if s.VirtualWssListener, err = s.virtualBridgeListener(t.WSS, connection.KindBridgeWSS, report); err != nil {
+	if s.VirtualWssListener, err = s.virtualBridgeListener(t.WSS, connection.KindBridgeWSS); err != nil {
 		return err
 	}
 
@@ -67,11 +65,10 @@ func (s *Bridge) StartTunnel(t Transports, failed func(error)) error {
 			return fmt.Errorf("kcp bridge listener: %w", err)
 		}
 		s.addCloser(l)
-		s.tasks.Go(func() {
-			err := conn.ServeKCP(l, func(c net.Conn) {
+		_ = s.scope.Go("kcp bridge listener", func(context.Context) error {
+			return conn.ServeKCP(l, func(c net.Conn) {
 				s.serve(conn.NewConn(c), conn.TransportKCP)
 			})
-			report(fmt.Errorf("kcp bridge listener: %w", err))
 		})
 	}
 
@@ -92,15 +89,14 @@ func (s *Bridge) StartTunnel(t Transports, failed func(error)) error {
 			return fmt.Errorf("quic bridge listener: %w", err)
 		}
 		s.addCloser(l)
-		s.tasks.Go(func() {
-			err := conn.ServeQUIC(l, func(c net.Conn) {
+		_ = s.scope.Go("quic bridge listener", func(context.Context) error {
+			return conn.ServeQUIC(l, func(c net.Conn) {
 				s.serve(conn.NewConn(c), conn.TransportQUIC)
 			})
-			report(fmt.Errorf("quic bridge listener: %w", err))
 		})
 	}
 
-	s.tasks.Go(s.ping)
+	_ = s.scope.Go("ping", func(context.Context) error { s.ping(); return nil })
 	s.acceptOn(s.VirtualTcpListener, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportTCP)
 	})
@@ -122,15 +118,18 @@ func (s *Bridge) StartTunnel(t Transports, failed func(error)) error {
 
 // acceptOn serves l in the background until it is closed.
 func (s *Bridge) acceptOn(l net.Listener, handle func(net.Conn)) {
-	s.tasks.Go(func() { _ = conn.Accept(l, handle) })
+	_ = s.scope.Go("accept", func(context.Context) error {
+		_ = conn.Accept(l, handle)
+		return nil
+	})
 }
 
 // virtualBridgeListener returns the in-memory listener of one bridge
 // transport. When the transport is enabled it opens the real listener of
 // kind k, reports its address and feeds it the connections that listener
-// accepts, reporting to failed if that listener stops on an error; bridge://
+// accepts; that listener stopping on an error closes the bridge. bridge://
 // links dial the in-memory listener either way.
-func (s *Bridge) virtualBridgeListener(enabled bool, k connection.Kind, failed func(error)) (*netx.ChanListener, error) {
+func (s *Bridge) virtualBridgeListener(enabled bool, k connection.Kind) (*netx.ChanListener, error) {
 	if !enabled {
 		vl := conn.NewVirtualListener(nil)
 		s.addCloser(vl)
@@ -143,88 +142,58 @@ func (s *Bridge) virtualBridgeListener(enabled bool, k connection.Kind, failed f
 	s.addCloser(ln)
 	vl := conn.NewVirtualListener(ln.Addr())
 	s.addCloser(vl)
-	s.tasks.Go(func() {
-		if err := conn.Accept(ln, func(c net.Conn) { conn.ServeVirtual(vl, c) }); err != nil {
-			failed(fmt.Errorf("%v listener: %w", k, err))
-		}
+	_ = s.scope.Go(fmt.Sprintf("%v listener", k), func(context.Context) error {
+		return conn.Accept(ln, func(c net.Conn) { conn.ServeVirtual(vl, c) })
 	})
 	return vl, nil
 }
 
-func (s *Bridge) addCloser(c io.Closer) {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-	if s.ctx.Err() != nil {
-		_ = c.Close()
-		return
-	}
-	s.closers = append(s.closers, c)
-}
+// addCloser has Close close c, or closes c when the bridge is closed.
+func (s *Bridge) addCloser(c io.Closer) { _, _ = s.scope.Add(c) }
+
+// anyError reports every error as expected: once the bridge closes, the
+// listeners and handlers may end with any error.
+func anyError(error) bool { return true }
 
 // serve handles a connection a bridge listener accepted. Close waits for it
-// and closes the connection if it is still open then.
+// and closes the connection if it is still open then; once the bridge is
+// closed it closes the connection at once.
 func (s *Bridge) serve(c *conn.Conn, transport string) {
-	if !s.tasks.Enter() {
-		_ = c.Close()
-		return
-	}
-	defer s.tasks.Leave()
-	if !s.trackConn(c) {
-		_ = c.Close()
-		return
-	}
-	s.CliProcess(c, transport)
-}
-
-// trackConn has Close close c unless c is closed before.
-func (s *Bridge) trackConn(c *conn.Conn) bool {
-	s.closeMu.Lock()
-	if s.ctx.Err() != nil {
-		s.closeMu.Unlock()
-		return false
-	}
-	s.conns[c] = struct{}{}
-	s.closeMu.Unlock()
-	c.OnClose(func(c *conn.Conn) {
-		s.closeMu.Lock()
-		delete(s.conns, c)
-		s.closeMu.Unlock()
+	s.spawn(c, func() {
+		remove, err := s.conns.Add(c)
+		if err != nil {
+			return // closed by Add
+		}
+		c.OnClose(func(*conn.Conn) { remove() })
+		s.CliProcess(c, transport)
 	})
-	return true
 }
 
 // spawn runs f in a goroutine Close waits for; when the bridge is closing it
 // closes c instead, which f would have served.
 func (s *Bridge) spawn(c *conn.Conn, f func()) {
-	if !s.tasks.Go(f) {
+	if s.conns.Go("conn", func(context.Context) error { f(); return nil }) != nil {
 		_ = c.Close()
 	}
 }
 
-// Close stops the bridge: it closes the listeners, disconnects the clients,
-// closes the connections still being served, stops P2P and returns once
-// every goroutine the bridge started has returned.
+// Done is closed when the bridge starts closing: by Close, or because one of
+// its listeners failed.
+func (s *Bridge) Done() <-chan struct{} { return s.scope.Done() }
+
+// Cause returns why the bridge closed: the failure of a listener, or
+// lifecycle.ErrClosed after Close; nil while it is open.
+func (s *Bridge) Cause() error { return s.scope.Cause() }
+
+// Close stops the bridge: it closes the listeners and the connections still
+// being served, disconnects the clients, stops P2P and returns once every
+// goroutine the bridge started has returned.
 func (s *Bridge) Close() error {
 	s.closeOnce.Do(func() {
-		s.cancel()
-		s.tasks.Close()
-		s.closeMu.Lock()
-		closers := s.closers
-		s.closers = nil
-		conns := make([]*conn.Conn, 0, len(s.conns))
-		for c := range s.conns {
-			conns = append(conns, c)
-		}
-		s.closeMu.Unlock()
-		for _, c := range closers {
-			_ = c.Close()
-		}
+		s.scope.Close(nil)
 		s.closeClients()
-		for _, c := range conns {
-			_ = c.Close()
-		}
 		s.StopP2P()
-		s.tasks.Wait()
+		_ = s.scope.Wait(context.Background())
 		// a handshake that ended while closing may have added a client
 		s.closeClients()
 	})

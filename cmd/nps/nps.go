@@ -201,8 +201,8 @@ func main() {
 		logs.Error("service function disabled %v", err)
 		// run without service
 		srv := prg.mustRun()
-		err := <-srv.Failed()
-		logs.Error("nps stopped: %v", err)
+		<-srv.Done()
+		logs.Error("nps stopped: %v", srv.Close())
 		os.Exit(1)
 	}
 
@@ -399,8 +399,8 @@ func (p *nps) run() error {
 	srv := p.mustRun()
 	select {
 	case <-p.exit:
-	case err := <-srv.Failed():
-		logs.Error("nps stopped: %v", err)
+	case <-srv.Done():
+		logs.Error("nps stopped: %v", srv.Close())
 		os.Exit(1)
 	}
 	logs.Warn("stop...")

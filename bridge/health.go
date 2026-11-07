@@ -265,7 +265,7 @@ func (s *Bridge) ping() {
 		select {
 		case <-ticker.C:
 			s.pingClients()
-		case <-s.ctx.Done():
+		case <-s.scope.Done():
 			return
 		}
 	}

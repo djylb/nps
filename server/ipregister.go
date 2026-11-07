@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -22,12 +23,12 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 		return
 	}
 	hs := &http.Server{Handler: s.ipRegHandler}
-	if !s.addCloser(hs) {
+	if !s.own(hs) {
 		return
 	}
 	virtual := conn.NewVirtualListener(nil)
 	s.bridge.SetIPRegisterListener(virtual)
-	s.group.Go(func() { _ = hs.Serve(virtual) })
+	s.goWork("ip register", func(context.Context) { _ = hs.Serve(virtual) })
 	if cfg.App.IPRegisterPort <= 0 {
 		return
 	}
@@ -52,7 +53,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 		scheme = "https"
 	}
 	logs.Info("IP registration page listening on %s://%s", scheme, addr)
-	if !s.group.Go(func() { _ = hs.Serve(l) }) {
+	if !s.goWork("ip register listener", func(context.Context) { _ = hs.Serve(l) }) {
 		_ = l.Close()
 	}
 }

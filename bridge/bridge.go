@@ -2,15 +2,14 @@ package bridge
 
 import (
 	"context"
-	"io"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/model"
 
+	"github.com/djylb/lifecycle"
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/internal/lifecycle"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -66,12 +65,12 @@ type Bridge struct {
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
 
-	tasks     lifecycle.Group // the goroutines Close waits for
-	ctx       context.Context // done once Close starts
-	cancel    context.CancelFunc
-	closeMu   sync.Mutex
-	closers   []io.Closer             // the listeners Start opened
-	conns     map[*conn.Conn]struct{} // the accepted connections still open
+	// scope runs the listeners and the background work and owns the
+	// listeners; a listener that fails closes it. conns, its child, runs the
+	// handling of the accepted connections and owns those still open; a
+	// panic there is logged and leaves the bridge running.
+	scope     *lifecycle.Scope
+	conns     *lifecycle.Scope
 	closeOnce sync.Once
 }
 
@@ -82,11 +81,11 @@ func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 }
 
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
-	ctx, cancel := context.WithCancel(context.Background())
+	scope := lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(anyError))
+	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { logs.Error("bridge: %v", err) }))
 	return &Bridge{
-		ctx:            ctx,
-		cancel:         cancel,
-		conns:          make(map[*conn.Conn]struct{}),
+		scope:          scope,
+		conns:          conns,
 		Client:         &sync.Map{},
 		OpenHost:       make(chan *model.Host, 100),
 		OpenTask:       make(chan *model.Tunnel, 100),

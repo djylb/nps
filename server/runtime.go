@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"math"
 	stdnet "net"
 	"strconv"
@@ -47,14 +48,14 @@ func (s *Server) startSpeedSampler() {
 		}
 		d.lastSampleTime = time.Now()
 
-		s.group.Go(func() {
+		s.goWork("speed sampler", func(ctx context.Context) {
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 			for {
 				var now time.Time
 				select {
 				case now = <-ticker.C:
-				case <-s.ctx.Done():
+				case <-ctx.Done():
 					return
 				}
 				if io2, _ := net.IOCounters(false); len(io2) > 0 {
