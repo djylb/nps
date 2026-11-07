@@ -1,0 +1,61 @@
+# nps
+
+nps is the server and npc the client of a tunnel: npc connects out to nps,
+and nps forwards visitors through that connection to targets npc reaches.
+
+## Layout
+
+- `cmd/nps`, `cmd/npc`: the commands. Only they decide exit codes; library
+  code returns errors and never calls `os.Exit` or panics in `init`.
+- `server`: the running server, `server.New(...).Start(ctx)` and `Close()`.
+  It owns the bridge, the running tunnels and the web manager; its
+  goroutines and resources run in a `lifecycle.Scope`.
+  - `server/httpproxy`: the host (domain) proxy; `server/connection`:
+    listeners and port sharing; `server/ports`: tunnel ports;
+    `server/stats`: dashboard samples.
+- `bridge`: where npc connects; `bridge/legacy` is the old wire protocol.
+- `client`: npc. `client/launch` builds npc from a launch spec.
+- `web`: `routers` (HTTP), `api` (handlers), `service` (logic, reaches the
+  running server only through the `Runtime` interface), `ui`, `views`,
+  `static`.
+- `lib/model`: clients, tunnels, hosts, targets, flows, limits.
+  `lib/file`: the JSON store of them. Other `lib/*` are small shared
+  packages, one subject each (`netaddr`, `auth`, `conn`, `proxy`, ...).
+- `internal/tunnelwire`: codec of the old protocol, standard library only.
+
+## Rules the tests keep
+
+- `lib/`, `client/`, `cmd/npc/` and `bridge/legacy/` do not import
+  `lib/file` (the store) or `server/...`: npc carries neither
+  (`lib/model/boundary_test.go`).
+- Only `bridge`, `client`, `cmd` and `server/connection/portmux.go` import
+  `bridge/legacy`; only `bridge/legacy` and a few listed files import
+  `internal/tunnelwire` (their `boundary_test.go`).
+- Every package with tests has `main_test.go` with
+  `func TestMain(m *testing.M) { leakcheck.Main(m) }`, which fails the
+  package when tests leave goroutines blocked for good.
+- Tests that need the store use `t.Cleanup(file.ReplaceDb(db))`.
+
+## Adding a tunnel or host setting
+
+1. Add the field to `lib/model` and one row to `TunnelSettings` or
+   `HostSettings` in `lib/model/settings.go` (form parameter, npc.conf key,
+   options). Settings marked `Custom` are applied in `web/service`.
+2. Add it to the add/edit templates in `web/views`, to
+   `web/static/page/languages.xml`, and to `docs/reference/web-api.md` and
+   `docs/reference/npc-config.md`.
+
+`lib/model/settings_test.go` and the bridge config tests fail when a layer is
+missed (all but `languages.xml`).
+
+## Commands
+
+```bash
+go vet ./...
+go test ./... -count=1 -timeout 400s
+go test ./bridge ./server/... ./client ./lib/proxy -race -count=1 -timeout 500s
+GOOS=windows go vet ./...
+```
+
+Build scripts live in `scripts/`; `install.sh` stays at the root, where
+releases are installed from.
