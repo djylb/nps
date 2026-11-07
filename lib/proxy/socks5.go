@@ -100,7 +100,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
-			if err := ProcessHttp(c.SetRb(header[:]), s); err != nil {
+			if err := ProcessHttp(netx.NewPrefixConn(c, header[:]), s); err != nil {
 				logs.Warn("http proxy error: %v", err)
 				_ = c.Close()
 				return err

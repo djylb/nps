@@ -19,12 +19,6 @@ const (
 		"\r\n" +
 		"401 Unauthorized"
 
-	ProxyAuthRequiredBytes = "HTTP/1.1 407 Proxy Authentication Required\r\n" +
-		"Proxy-Authenticate: Basic realm=\"Proxy\"\r\n" +
-		"Content-Length: 0\r\n" +
-		"Connection: close\r\n" +
-		"\r\n"
-
 	ConnectionFailBytes = "HTTP/1.1 404 Not Found\r\n" +
 		"\r\n"
 

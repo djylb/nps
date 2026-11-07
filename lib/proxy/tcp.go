@@ -1,21 +1,15 @@
 package proxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
-	"net/http/httputil"
 	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/httpproxy"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -28,6 +22,7 @@ type TunnelModeServer struct {
 	address           string
 	listener          net.Listener
 	socks5            *socks5.Server
+	httpProxy         *httpproxy.Server
 	activeConnections netx.ConnGroup
 }
 
@@ -39,6 +34,7 @@ func NewTunnelModeServer(process process, bridge NetBridge, task *model.Tunnel, 
 		activeConnections: netx.ConnGroup{},
 	}
 	s.socks5 = newSocks5Server(s)
+	s.httpProxy = newHTTPProxyServer(s)
 	return s
 }
 
@@ -83,6 +79,7 @@ func (s *TunnelModeServer) Start() error {
 	}
 	conn.Accept(s.listener, s.handleConn)
 	_ = s.socks5.Close()
+	_ = s.httpProxy.Close()
 	return nil
 }
 
@@ -93,6 +90,7 @@ func (s *TunnelModeServer) Close() error {
 	})
 	_ = s.activeConnections.Close()
 	_ = s.socks5.Close()
+	_ = s.httpProxy.Close()
 	if listener == nil {
 		return nil
 	}
@@ -172,148 +170,4 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 		return err
 	}
 	return s.DealClient(c, s.Task.Client, "", nil, common.ConnTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
-}
-
-// httpProxyHeaderTimeout bounds how long a client may take to send a request header.
-const httpProxyHeaderTimeout = 10 * time.Second
-
-// ProcessHttp http proxy
-func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
-	if err := c.SetReadDeadline(time.Now().Add(httpProxyHeaderTimeout)); err != nil {
-		_ = c.Close()
-		return err
-	}
-	addr, r, head, rest, err := c.GetHost()
-	if err == nil {
-		err = c.SetReadDeadline(time.Time{})
-	}
-	if err != nil {
-		_ = c.Close()
-		logs.Info("%v", err)
-		return err
-	}
-	if !common.CheckProxyAuth(r, s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)) {
-		_, _ = c.Write([]byte(common.ProxyAuthRequiredBytes))
-		_ = c.Close()
-		return errors.New("407 Proxy Authentication Required")
-	}
-	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff {
-		if !s.Task.AllowsDestination(addr) {
-			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
-			_, _ = c.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"))
-			_ = c.Close()
-			return errors.New("destination denied by dest acl")
-		}
-	}
-	remoteAddr := c.Conn.RemoteAddr().String()
-	logs.Debug("http proxy request, client=%d method=%s, host=%s, url=%s, remote address=%s, target=%s", s.Task.Client.Id, r.Method, r.Host, r.URL.RequestURI(), remoteAddr, addr)
-	if r.Method == http.MethodConnect {
-		_, _ = c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
-		// Bytes the client sent right after the CONNECT header belong to the tunnel.
-		return s.DealClient(c, s.Task.Client, addr, rest, common.ConnTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, s.Task.Target.LocalProxy, s.Task)
-	}
-	var server *http.Server
-
-	transport := &http.Transport{
-		ResponseHeaderTimeout: 100 * time.Second,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff {
-				if !s.Task.AllowsDestination(addr) {
-					logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
-					return nil, errors.New("destination denied by dest acl")
-				}
-			}
-			isLocal := s.AllowLocalProxy && s.Task.Target.LocalProxy || s.Task.Client.Id < 0
-			link := conn.NewLink("tcp", addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, remoteAddr, isLocal)
-			link.Option.Node = s.Task.Route().Node
-			target, err := s.Bridge.Session(s.Task.Client.Id).OpenLink(link, 0)
-			if err != nil {
-				logs.Trace("DialContext: connection to host %s (target %s) failed: %v", r.Host, addr, err)
-				return nil, err
-			}
-			rawConn := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal, s.Task.RateLimiter())
-			return conn.NewFlowConn(rawConn, s.Task.Flow, s.Task.Client.Flow), nil
-		},
-	}
-	defer transport.CloseIdleConnections()
-
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			// The client's forwarding headers pass through, except
-			// X-Forwarded-For, which is neither relayed nor added.
-			KeepClientForwarding(pr)
-			pr.Out.Header.Del("X-Forwarded-For")
-		},
-		Transport: transport,
-		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
-			if err == io.EOF {
-				//logs.Info("ErrorHandler: io.EOF encountered, writing 521")
-				rw.WriteHeader(521)
-				//go server.Close()
-				return
-			}
-			logs.Debug("ErrorHandler: proxy error: method=%s, URL=%s, error=%v", req.Method, req.URL.String(), err)
-			errMsg := err.Error()
-			idx := strings.Index(errMsg, "Task")
-			if idx == -1 {
-				idx = strings.Index(errMsg, "Client")
-			}
-			if idx != -1 {
-				http.Error(rw, errMsg[idx:], http.StatusTooManyRequests)
-			} else {
-				rw.WriteHeader(http.StatusBadGateway)
-			}
-			//go server.Close()
-		},
-	}
-	// Replay the parsed header and everything read after it (body, pipelined
-	// requests). Serve returns once this single connection is closed.
-	listener := netx.NewSingleConnListener(c.SetRb(head, rest))
-	// The idle timer closes the server once no request has arrived for a
-	// while; it is never armed after ProcessHttp has returned.
-	var idleMu sync.Mutex
-	var idleTimer *time.Timer
-	done := false
-	defer func() {
-		_ = listener.Close()
-		idleMu.Lock()
-		done = true
-		if idleTimer != nil {
-			idleTimer.Stop()
-		}
-		idleMu.Unlock()
-	}()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		idleMu.Lock()
-		if idleTimer != nil {
-			idleTimer.Stop()
-		}
-		idleMu.Unlock()
-		defer func() {
-			idleMu.Lock()
-			if !done {
-				idleTimer = time.AfterFunc(30*time.Second, func() {
-					_ = server.Close()
-				})
-			}
-			idleMu.Unlock()
-		}()
-		proxy.ServeHTTP(w, req)
-	})
-	server = &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: httpProxyHeaderTimeout,
-		IdleTimeout:       90 * time.Second,
-	}
-	//httpNum++
-	//logs.Error("HTTP Proxy Number: %d", httpNum)
-	//defer func() {
-	//	httpNum--
-	//	logs.Error("HTTP Proxy Number: %d", httpNum)
-	//}()
-	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
-		return err
-	}
-	//logs.Error("HTTP Proxy Close")
-	return nil
 }

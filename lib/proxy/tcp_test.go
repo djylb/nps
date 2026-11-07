@@ -29,13 +29,13 @@ func newTestHTTPProxyServer(t *testing.T) *TunnelModeServer {
 		Target: &model.Target{},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 16)}
-	return NewTunnelModeServer(ProcessHttp, bridge, task, false)
+	return NewTunnelModeServer(ProcessMix, bridge, task, false)
 }
 
 // TestProcessHttpServesKeepAliveAndReturnsOnClose checks the lifecycle of the
-// forward proxy's per-connection http.Server: it keeps the client connection
-// open across requests and returns as soon as the client goes away, closing
-// its backend connections.
+// forward proxy: it keeps the client connection open across requests,
+// returns as soon as the client goes away, and closing the server closes
+// the kept backend connections.
 func TestProcessHttpServesKeepAliveAndReturnsOnClose(t *testing.T) {
 	var mu sync.Mutex
 	backendStates := map[net.Conn]http.ConnState{}
@@ -89,6 +89,12 @@ func TestProcessHttpServesKeepAliveAndReturnsOnClose(t *testing.T) {
 		t.Fatal("ProcessHttp did not return after the client closed")
 	}
 
+	// The target connection is kept for the client's next connection
+	// until it idles out or the server closes.
+	if n := s.httpProxy.IdleConns(); n != 1 {
+		t.Fatalf("kept target connections = %d, want 1", n)
+	}
+	_ = s.httpProxy.Close()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		mu.Lock()
@@ -104,7 +110,7 @@ func TestProcessHttpServesKeepAliveAndReturnsOnClose(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("backend connections still open after ProcessHttp returned: %d of %d", open, total)
+			t.Fatalf("backend connections still open after Close: %d of %d", open, total)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

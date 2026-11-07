@@ -139,14 +139,6 @@ func CheckAuth(r *http.Request, user, passwd string, accountMap, authMap map[str
 	return checkBasicAuthHeader(credentialHeader(r, "Authorization", "Proxy-Authorization"), user, passwd, accountMap, authMap)
 }
 
-// CheckProxyAuth validates the Basic credentials of a forward proxy request. It
-// reads Proxy-Authorization and falls back to Authorization only when the
-// request carries no Proxy-Authorization header at all, so a client's own
-// Authorization for the origin server never overrides its proxy credentials.
-func CheckProxyAuth(r *http.Request, user, passwd string, accountMap, authMap map[string]string) bool {
-	return checkBasicAuthHeader(credentialHeader(r, "Proxy-Authorization", "Authorization"), user, passwd, accountMap, authMap)
-}
-
 // credentialHeader returns the primary header if present, otherwise the fallback.
 func credentialHeader(r *http.Request, primary, fallback string) string {
 	if v := r.Header.Values(primary); len(v) > 0 {

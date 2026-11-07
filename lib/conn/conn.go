@@ -1,14 +1,10 @@
 package conn
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"errors"
-	"io"
 	"net"
-	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,7 +16,6 @@ var LocalTCPAddr = &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}
 
 type Conn struct {
 	Conn       net.Conn
-	rbs        [][]byte
 	wBuf       *bytes.Buffer
 	mu         sync.Mutex
 	closed     uint32
@@ -33,15 +28,6 @@ func NewConn(conn net.Conn) *Conn {
 	return &Conn{
 		Conn: conn,
 	}
-}
-
-func (s *Conn) SetRb(rbs ...[]byte) *Conn {
-	for _, rb := range rbs {
-		if len(rb) > 0 {
-			s.rbs = append(s.rbs, rb)
-		}
-	}
-	return s
 }
 
 func (s *Conn) OnClose(fn func(*Conn)) *Conn {
@@ -63,46 +49,6 @@ func (s *Conn) OnClose(fn func(*Conn)) *Conn {
 func runCloseHook(fn func(*Conn), c *Conn) {
 	defer func() { _ = recover() }()
 	fn(c)
-}
-
-// GetHost reads one HTTP proxy request header from the connection and resolves
-// the target address. head holds the raw header bytes and rest holds everything
-// read past the header (request body, pipelined requests or early tunnel data)
-// followed by any data still queued on the connection, so nothing stays queued
-// on return. On error head holds every byte consumed so far.
-func (s *Conn) GetHost() (address string, r *http.Request, head, rest []byte, err error) {
-	var raw bytes.Buffer
-	br := bufio.NewReader(io.TeeReader(io.LimitReader(s, http.DefaultMaxHeaderBytes), &raw))
-	r, err = http.ReadRequest(br)
-	if err != nil {
-		head = raw.Bytes()
-		return
-	}
-	b := raw.Bytes()
-	n := len(b) - br.Buffered()
-	head = b[:n:n]
-	if len(b) > n {
-		rest = b[n:]
-	}
-	for _, rb := range s.rbs {
-		rest = append(rest, rb...)
-	}
-	s.rbs = nil
-	address = requestTargetAddress(r)
-	return
-}
-
-// requestTargetAddress returns host:port for a proxy request, adding the
-// scheme's default port when the request names none.
-func requestTargetAddress(r *http.Request) string {
-	if _, _, err := net.SplitHostPort(r.Host); err == nil {
-		return r.Host
-	}
-	port := "80"
-	if r.Method == http.MethodConnect || strings.EqualFold(r.URL.Scheme, "https") {
-		port = "443"
-	}
-	return net.JoinHostPort(strings.TrimSuffix(strings.TrimPrefix(r.Host, "["), "]"), port)
 }
 
 // SetAlive set alive
@@ -150,8 +96,6 @@ func (s *Conn) Close() error {
 		for _, h := range hooks {
 			runCloseHook(h, s)
 		}
-		// rbs is left alone: a Read running concurrently, as on any conn
-		// closed by another goroutine, may still be looking at it.
 		s.mu.Lock()
 		if s.wBuf != nil {
 			s.wBuf.Reset()
@@ -214,25 +158,6 @@ func (s *Conn) FlushBuf() error {
 func (s *Conn) Read(b []byte) (n int, err error) {
 	if err = s.FlushBuf(); err != nil {
 		return 0, err
-	}
-
-	for len(s.rbs) > 0 {
-		cur := s.rbs[0]
-		if len(cur) == 0 {
-			s.rbs[0] = nil
-			s.rbs = s.rbs[1:]
-			continue
-		}
-		n = copy(b, cur)
-		s.rbs[0] = cur[n:]
-		if len(s.rbs[0]) == 0 {
-			s.rbs[0] = nil
-			s.rbs = s.rbs[1:]
-			if len(s.rbs) == 0 {
-				s.rbs = nil
-			}
-		}
-		return n, nil
 	}
 
 	return s.Conn.Read(b)

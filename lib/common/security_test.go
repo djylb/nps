@@ -15,15 +15,14 @@ func TestCredentialHeaderPrecedence(t *testing.T) {
 		name          string
 		authorization string
 		proxyAuth     string
-		wantProxy     bool
 		wantReverse   bool
 	}{
-		{"both, proxy header valid", basic("origin:secret"), "basic " + base64.StdEncoding.EncodeToString([]byte("user:pass")), true, false},
-		{"both, authorization valid", basic("user:pass"), basic("other:secret"), false, true},
-		{"only authorization", basic("user:pass"), "", true, true},
-		{"only proxy header", "", basic("user:pass"), true, true},
-		{"non-basic scheme", "", "Bearer " + base64.StdEncoding.EncodeToString([]byte("user:pass")), false, false},
-		{"none", "", "", false, false},
+		{"both, proxy header valid", basic("origin:secret"), "basic " + base64.StdEncoding.EncodeToString([]byte("user:pass")), false},
+		{"both, authorization valid", basic("user:pass"), basic("other:secret"), true},
+		{"only authorization", basic("user:pass"), "", true},
+		{"only proxy header", "", basic("user:pass"), true},
+		{"non-basic scheme", "", "Bearer " + base64.StdEncoding.EncodeToString([]byte("user:pass")), false},
+		{"none", "", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -33,9 +32,6 @@ func TestCredentialHeaderPrecedence(t *testing.T) {
 			}
 			if tt.proxyAuth != "" {
 				r.Header.Set("Proxy-Authorization", tt.proxyAuth)
-			}
-			if got := CheckProxyAuth(r, "user", "pass", nil, nil); got != tt.wantProxy {
-				t.Fatalf("CheckProxyAuth() = %v, want %v", got, tt.wantProxy)
 			}
 			if got := CheckAuth(r, "user", "pass", nil, nil); got != tt.wantReverse {
 				t.Fatalf("CheckAuth() = %v, want %v", got, tt.wantReverse)
@@ -49,11 +45,11 @@ func TestUsernameOnlyRequiresAuth(t *testing.T) {
 		t.Fatal("NeedsAuth() = false with a username configured")
 	}
 	r := httptest.NewRequest("GET", "http://example.com/", nil)
-	if CheckProxyAuth(r, "user", "", nil, nil) {
-		t.Fatal("CheckProxyAuth() let an unauthenticated request through")
+	if CheckAuth(r, "user", "", nil, nil) {
+		t.Fatal("CheckAuth() let an unauthenticated request through")
 	}
-	r.Header.Set("Proxy-Authorization", basic("user:"))
-	if !CheckProxyAuth(r, "user", "", nil, nil) {
-		t.Fatal("CheckProxyAuth() rejected the configured username with an empty password")
+	r.Header.Set("Authorization", basic("user:"))
+	if !CheckAuth(r, "user", "", nil, nil) {
+		t.Fatal("CheckAuth() rejected the configured username with an empty password")
 	}
 }
