@@ -23,10 +23,10 @@ import (
 var initCert sync.Once
 
 // newTestP2PBridge returns a bridge with a P2P service on loopback.
-func newTestP2PBridge(t *testing.T) *Bridge {
+func newTestP2PBridge(t *testing.T, db *file.DbUtils) *Bridge {
 	t.Helper()
 	initCert.Do(func() { crypt.InitTls(tls.Certificate{}) })
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
 	err := b.StartP2P(P2PConfig{IP: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
@@ -35,15 +35,14 @@ func newTestP2PBridge(t *testing.T) *Bridge {
 	return b
 }
 
-// useTestDb replaces the database with an empty one in a temporary
-// directory.
-func useTestDb(t *testing.T) {
+// useTestDb returns an empty store in a temporary directory.
+func useTestDb(t *testing.T) *file.DbUtils {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	return file.New(root)
 }
 
 // visitorRequest sends req on a WorkP2P stream served by b and returns the
@@ -70,10 +69,10 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (
 }
 
 func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
-	useTestDb(t)
-	b := newTestP2PBridge(t)
+	db := useTestDb(t)
+	b := newTestP2PBridge(t, db)
 	task := &model.Tunnel{Id: 7, Mode: "p2p", Password: "secret", Status: false, Client: &model.Client{Id: 2}}
-	if err := file.GetDb().NewTask(task); err != nil {
+	if err := db.NewTask(task); err != nil {
 		t.Fatal(err)
 	}
 	reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Password: crypt.Md5("secret")})
@@ -89,7 +88,8 @@ func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 }
 
 func TestP2PVisitorWithOldNpcIsClosed(t *testing.T) {
-	b := newTestP2PBridge(t)
+	db := file.New(t.TempDir())
+	b := newTestP2PBridge(t, db)
 	if _, err := visitorRequest(t, b, "0.34.7", legacy.P2PRequest{}); err == nil {
 		t.Fatal("old npc got a reply")
 	}
@@ -99,7 +99,8 @@ func TestP2PVisitorWithOldNpcIsClosed(t *testing.T) {
 }
 
 func TestP2PJoinClaim(t *testing.T) {
-	b := newTestP2PBridge(t)
+	db := file.New(t.TempDir())
+	b := newTestP2PBridge(t, db)
 	svc := b.p2p.Load()
 	id, token, inv, drop, err := svc.invite(2)
 	if err != nil {

@@ -104,20 +104,20 @@ func startP2PTestEnv(t *testing.T, secure bool) p2pTestEnv {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	db := file.New(root)
 
 	provider := model.NewClient(p2pTestProviderKey, true, false)
 	visitor := model.NewClient(p2pTestVisitorKey, true, false)
 	for _, c := range []*model.Client{provider, visitor} {
-		if err := file.GetDb().NewClient(c); err != nil {
+		if err := db.NewClient(c); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := file.GetDb().NewTask(&model.Tunnel{Id: 1, Mode: "p2p", Password: p2pTestPassword, Status: true, Client: provider, Target: &model.Target{}}); err != nil {
+	if err := db.NewTask(&model.Tunnel{Id: 1, Mode: "p2p", Password: p2pTestPassword, Status: true, Client: provider, Target: &model.Target{}}); err != nil {
 		t.Fatal(err)
 	}
 
-	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure})
+	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure})
 	if err := b.StartP2P(bridge.P2PConfig{IP: "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}

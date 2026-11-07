@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/djylb/nps/lib/clock"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
@@ -303,7 +302,7 @@ func currentPrincipal(c *gin.Context) webservice.Principal {
 // login page included. The visitor address is read as the login reads it.
 func globalFirewallMiddleware(state *State) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if file.GetDb().GlobalDeniedString(webapi.VisitorIP(newAPIContext(c), state.CurrentConfig()), "Web") {
+		if state.App.Services.Repository.GlobalDenied(webapi.VisitorIP(newAPIContext(c), state.CurrentConfig()), "Web") {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/runenv"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
@@ -14,10 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Init returns the handler of the web manager acting on runtime, the running
-// server.
-func Init(runtime webservice.Runtime) (http.Handler, error) {
-	state := NewStateWithApp(webapi.NewWithOptions(nil, webapi.Options{Runtime: runtime}))
+// Init returns the handler of the web manager acting on the store db and on
+// runtime, the running server.
+func Init(db *file.DbUtils, runtime webservice.Runtime) (http.Handler, error) {
+	state := NewState(webapi.NewWithOptions(nil, webapi.Options{Store: db, Runtime: runtime}))
 	cfg := state.CurrentConfig()
 
 	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))

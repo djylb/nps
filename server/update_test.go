@@ -8,7 +8,7 @@ import (
 )
 
 func TestUpdateSelfDisabled(t *testing.T) {
-	s := New(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}, Config{DisableRemoteUpdate: true})
+	s := New(file.New(t.TempDir()), Config{DisableRemoteUpdate: true})
 	t.Cleanup(func() { _ = s.Close() })
 	if s.CanUpdateSelf() {
 		t.Fatal("CanUpdateSelf with remote update disabled")

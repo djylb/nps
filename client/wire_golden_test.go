@@ -144,25 +144,25 @@ func goldenCert(t *testing.T) {
 	t.Cleanup(func() { crypt.InitTls(tls.Certificate{}) })
 }
 
-func goldenDb(t *testing.T) {
+func goldenDb(t *testing.T) *file.DbUtils {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_ = file.GetDb()
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	db := file.New(root)
 	cl := model.NewClient(goldenKey, false, false)
 	cl.Id = 1
-	if err := file.GetDb().NewClient(cl); err != nil {
+	if err := db.NewClient(cl); err != nil {
 		t.Fatal(err)
 	}
+	return db
 }
 
 // recordHandshake runs the client of protocol index against the bridge over a
 // pipe. Each side waits for the other at every step, so crypto/rand is read in
 // a fixed order and the seed fixes every random byte.
-func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
+func recordHandshake(t *testing.T, db *file.DbUtils, index int, seed uint64) handshakeVector {
 	t.Helper()
 	cryptotest.SetGlobalRandom(t, seed)
 	oldVer := Ver
@@ -172,7 +172,7 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 	cs, ss := net.Pipe()
 	defer func() { _ = cs.Close() }()
 	rec := &recordConn{Conn: ss, remote: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 40000}}
-	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
+	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30})
 	go b.CliProcess(conn.NewConn(rec), "tcp")
 
 	c, uuid, _, err := handshakeConn(cs, "tcp", goldenKey, false, false, nil, "")
@@ -226,12 +226,12 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 func TestWireGoldenHandshake(t *testing.T) {
 	fixHandshake(t)
 	goldenCert(t)
-	goldenDb(t)
+	db := goldenDb(t)
 	if version.VERSION != goldenClientVer {
 		t.Skip("the vectors announce client " + goldenClientVer)
 	}
 	for index := range tunnelwire.IndexCount() {
-		v := recordHandshake(t, index, uint64(1000+index))
+		v := recordHandshake(t, db, index, uint64(1000+index))
 		checkGolden(t, fmt.Sprintf("handshake_%d.json", index), v)
 	}
 }

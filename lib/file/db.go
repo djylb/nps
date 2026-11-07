@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
@@ -16,7 +15,6 @@ import (
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
-	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/textutil"
 )
 
@@ -25,56 +23,28 @@ type DbUtils struct {
 	events entryEvents
 }
 
-var (
-	db      atomic.Pointer[DbUtils]
-	loadMu  sync.Mutex
-	loadErr error // set once under loadMu, before db
-)
-
-// GetDb returns the store, loading it from the files of the run path on
-// first use. When that load fails the store starts empty; LoadDb reports
-// the error.
-func GetDb() *DbUtils {
-	d, _ := LoadDb()
-	return d
+// New returns an empty store kept in the conf directory of runPath.
+func New(runPath string) *DbUtils {
+	return &DbUtils{JsonDb: NewJsonDb(runPath)}
 }
 
-// LoadDb loads the store from the files of the run path unless it is loaded
-// already, and returns it with the error of that load.
-func LoadDb() (*DbUtils, error) {
-	if d := db.Load(); d != nil {
-		return d, loadErr
-	}
-	loadMu.Lock()
-	defer loadMu.Unlock()
-	if d := db.Load(); d != nil {
-		return d, loadErr
-	}
-	jsonDb := NewJsonDb(runenv.GetRunPath())
+// Open returns the store kept in the conf directory of runPath, loaded from
+// its files.
+func Open(runPath string) (*DbUtils, error) {
+	d := New(runPath)
 	for _, load := range []func() error{
-		jsonDb.LoadClientFromJsonFile,
-		jsonDb.LoadTaskFromJsonFile,
-		jsonDb.LoadHostFromJsonFile,
-		jsonDb.LoadGlobalFromJsonFile,
+		d.JsonDb.LoadClientFromJsonFile,
+		d.JsonDb.LoadTaskFromJsonFile,
+		d.JsonDb.LoadHostFromJsonFile,
+		d.JsonDb.LoadGlobalFromJsonFile,
 	} {
 		if err := load(); err != nil {
-			loadErr = fmt.Errorf("load database: %w", err)
-			logs.Error("%v", loadErr)
-			jsonDb = NewJsonDb(runenv.GetRunPath())
-			break
+			return nil, fmt.Errorf("load database: %w", err)
 		}
 	}
-	d := &DbUtils{JsonDb: jsonDb}
-	db.Store(d)
-	return d, loadErr
+	return d, nil
 }
 
-// ReplaceDb makes d the store until the returned function puts back the one
-// before, for tests: t.Cleanup(file.ReplaceDb(d)).
-func ReplaceDb(d *DbUtils) (restore func()) {
-	old := db.Swap(d)
-	return func() { db.Store(old) }
-}
 func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 	if (sortKey == "InletFlow" || sortKey == "ExportFlow") && isSort {
 		return sortClientByKey(m, sortKey, order)

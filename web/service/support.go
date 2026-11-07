@@ -93,8 +93,8 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	return result
 }
 
-func changeTunnelStatus(id int, name, action string) error {
-	tunnel, err := DefaultBackend().repo().GetTunnel(id)
+func changeTunnelStatus(repo Repository, id int, name, action string) error {
+	tunnel, err := repo.GetTunnel(id)
 	if err != nil {
 		return err
 	}
@@ -127,11 +127,11 @@ func changeTunnelStatus(id int, name, action string) error {
 		return fmt.Errorf("unknown name: %q", name)
 	}
 
-	return DefaultBackend().repo().SaveTunnel(tunnel)
+	return repo.SaveTunnel(tunnel)
 }
 
-func changeHostStatus(id int, name, action string) error {
-	host, err := DefaultBackend().repo().GetHost(id)
+func changeHostStatus(repo Repository, id int, name, action string) error {
+	host, err := repo.GetHost(id)
 	if err != nil {
 		return err
 	}
@@ -186,46 +186,46 @@ func changeHostStatus(id int, name, action string) error {
 
 	host.CertType = crypt.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
-	return DefaultBackend().repo().SaveHost(host, "")
+	return repo.SaveHost(host, "")
 }
 
-func clearClientStatusByID(id int, name string) error {
+func clearClientStatusByID(repo Repository, id int, name string) error {
 	if id == 0 {
-		DefaultBackend().repo().RangeClients(func(client *model.Client) bool {
-			clearClientStatus(client, name)
+		repo.RangeClients(func(client *model.Client) bool {
+			clearClientStatus(repo, client, name)
 			return true
 		})
 		if strings.TrimSpace(name) == "flow" {
 			// clearing every client's traffic clears the server's total
 			rate.ResetGlobalTraffic()
-			if err := DefaultBackend().repo().PersistGlobal(); err != nil {
+			if err := repo.PersistGlobal(); err != nil {
 				return err
 			}
 		}
-		return DefaultBackend().repo().PersistClients()
+		return repo.PersistClients()
 	}
 
-	client, err := DefaultBackend().repo().GetClient(id)
+	client, err := repo.GetClient(id)
 	if err != nil {
 		return err
 	}
-	clearClientStatus(client, name)
-	return DefaultBackend().repo().SaveClient(client)
+	clearClientStatus(repo, client, name)
+	return repo.SaveClient(client)
 }
 
-func clearClientStatus(client *model.Client, name string) {
+func clearClientStatus(repo Repository, client *model.Client, name string) {
 	switch strings.TrimSpace(name) {
 	case "flow":
 		client.Flow.ResetTraffic()
 		client.ExportFlow.Store(0)
 		client.InletFlow.Store(0)
-		DefaultBackend().repo().RangeHosts(func(host *model.Host) bool {
+		repo.RangeHosts(func(host *model.Host) bool {
 			if host.Client.Id == client.Id {
 				host.Flow.ResetTraffic()
 			}
 			return true
 		})
-		DefaultBackend().repo().RangeTunnels(func(tunnel *model.Tunnel) bool {
+		repo.RangeTunnels(func(tunnel *model.Tunnel) bool {
 			if tunnel.Client.Id == client.Id {
 				tunnel.Flow.ResetTraffic()
 			}

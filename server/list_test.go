@@ -23,8 +23,7 @@ func loadTestData(t *testing.T, clients, tasks, hosts string) *Server {
 			t.Fatal(err)
 		}
 	}
-	db := &file.DbUtils{JsonDb: file.NewJsonDb(dir)}
-	t.Cleanup(file.ReplaceDb(db))
+	db := file.New(dir)
 	db.JsonDb.LoadClientFromJsonFile()
 	db.JsonDb.LoadTaskFromJsonFile()
 	db.JsonDb.LoadHostFromJsonFile()
@@ -40,7 +39,7 @@ func TestLoadMalformedData(t *testing.T) {
 		`[null, {"Id":1,"VerifyKey":"a"}, {"Id":2,"VerifyKey":"b","Flow":null,"Cnf":null}]`,
 		`[null, {"Id":1,"Port":1,"Client":null}, {"Id":2,"Port":2,"Mode":"tcp","Client":{"Id":1},"Flow":null,"Target":null}, {"Id":3,"Mode":"tcp","Client":{"Id":9}}]`,
 		`[null, {"Id":1,"Host":"a.test","Client":null}, {"Id":2,"Host":"b.test","Client":{"Id":2},"Flow":null,"Target":null}]`)
-	db := file.GetDb()
+	db := s.db
 	for _, id := range []int{1, 2} {
 		c, err := db.GetClient(id)
 		if err != nil || c.Flow == nil || c.Cnf == nil {

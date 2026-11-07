@@ -11,19 +11,11 @@ import (
 )
 
 func TestRegistryConnectionHistory(t *testing.T) {
+	db := file.New(t.TempDir())
 	const id = 987654
-	db := file.GetDb()
 	c := &model.Client{Id: id, ConnectionHistory: new(model.ConnectionHistory)}
-	old, existed := db.JsonDb.Clients.Load(id)
 	db.JsonDb.Clients.Store(id, c)
-	defer func() {
-		if existed {
-			db.JsonDb.Clients.Store(id, old)
-		} else {
-			db.JsonDb.Clients.Delete(id)
-		}
-	}()
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
 	first := NewClient(id, NewNode("one", "", 8), Primary)
 	b.loadOrStoreClient(id, first)
 	b.loadOrStoreClient(id, NewClient(id, NewNode("two", "", 8), Primary))

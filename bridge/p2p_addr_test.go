@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/djylb/holepunch/protocol"
+	"github.com/djylb/nps/lib/file"
 )
 
 // testAnnouncer returns an announcer with fixed lookups, detection and
@@ -155,7 +156,8 @@ func TestP2PResolveFailureIsCached(t *testing.T) {
 // candidate of a served family, the first candidate in the first observer
 // group, and no observer of a family without a candidate.
 func TestP2PSpecAt(t *testing.T) {
-	svc := newTestP2PBridge(t).p2p.Load()
+	db := file.New(t.TempDir())
+	svc := newTestP2PBridge(t, db).p2p.Load()
 	ipv6 := len(svc.probe.ProbeSpecAt(netip.IPv6Loopback()).Observers) > 0 // false on a host without IPv6
 	for _, cands := range [][]netip.Addr{
 		addrs("1.1.1.1", "8.8.8.8", "2606:4700::1111"),

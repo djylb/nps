@@ -41,6 +41,7 @@ import (
 )
 
 func TestDirectPageRenderAndPageAPI(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -61,7 +62,7 @@ func TestDirectPageRenderAndPageAPI(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,6 +349,7 @@ func TestAPIInputMiddlewareSupportsJSON(t *testing.T) {
 }
 
 func TestWebBaseURLPrefix(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -368,7 +370,7 @@ func TestWebBaseURLPrefix(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,6 +454,7 @@ func TestWebBaseURLPrefix(t *testing.T) {
 }
 
 func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -471,7 +474,7 @@ func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,6 +496,7 @@ func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
 }
 
 func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -512,7 +516,7 @@ func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,6 +544,7 @@ func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
 }
 
 func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -560,7 +565,7 @@ func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,6 +584,7 @@ func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
 }
 
 func TestCloseUnknownPathWithoutResponseWhenEnabled(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -599,7 +605,7 @@ func TestCloseUnknownPathWithoutResponseWhenEnabled(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	ts := httptest.NewServer(mustInit(t))
+	ts := httptest.NewServer(mustInit(t, db))
 	defer ts.Close()
 
 	addr := strings.TrimPrefix(ts.URL, "http://")
@@ -647,7 +653,7 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 		runenv.ConfPath = oldConfPath
 	}()
 
-	resetTestDB(t)
+	db := resetTestDB(t)
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
 		"web_password=secret",
@@ -663,7 +669,7 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -805,6 +811,7 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 }
 
 func TestAuthPageControllerAliases(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -826,7 +833,7 @@ func TestAuthPageControllerAliases(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,6 +917,7 @@ func TestAuthPageControllerAliases(t *testing.T) {
 }
 
 func TestPageCatalogRespectsFeatureFlags(t *testing.T) {
+	db := resetTestDB(t)
 	repoRoot := testRepoRoot(t)
 	oldConfPath := runenv.ConfPath
 	runenv.ConfPath = repoRoot
@@ -931,7 +939,7 @@ func TestPageCatalogRespectsFeatureFlags(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -970,7 +978,7 @@ func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 		runenv.ConfPath = oldConfPath
 	}()
 
-	resetTestDB(t)
+	db := resetTestDB(t)
 	webservice.SharedLoginPolicy().RemoveAllBans()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
@@ -985,19 +993,19 @@ func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	operatorA := createTestClient(t, 101, "operator", "op-secret")
-	operatorB := createTestClient(t, 102, "operator-b", "op-secret-b")
-	outsider := createTestClient(t, 103, "outsider", "other-secret")
-	createTestTunnel(t, 201, operatorA, 19081)
-	createTestTunnel(t, 202, operatorB, 19082)
-	createTestTunnel(t, 203, outsider, 19083)
-	createTestHost(t, 301, operatorA, "a.example.test")
-	createTestHost(t, 303, operatorB, "c.example.test")
-	createTestHost(t, 302, outsider, "b.example.test")
+	operatorA := createTestClient(t, db, 101, "operator", "op-secret")
+	operatorB := createTestClient(t, db, 102, "operator-b", "op-secret-b")
+	outsider := createTestClient(t, db, 103, "outsider", "other-secret")
+	createTestTunnel(t, db, 201, operatorA, 19081)
+	createTestTunnel(t, db, 202, operatorB, 19082)
+	createTestTunnel(t, db, 203, outsider, 19083)
+	createTestHost(t, db, 301, operatorA, "a.example.test")
+	createTestHost(t, db, 303, operatorB, "c.example.test")
+	createTestHost(t, db, 302, outsider, "b.example.test")
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1148,18 +1156,18 @@ func testRepoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(callerFile), "..", ".."))
 }
 
-func resetTestDB(t *testing.T) string {
+func resetTestDB(t *testing.T) *file.DbUtils {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatalf("create temp conf dir: %v", err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
-	file.GetDb().JsonDb.Global = &model.Glob{}
-	return root
+	db := file.New(root)
+	db.JsonDb.Global = &model.Glob{}
+	return db
 }
 
-func createTestClient(t *testing.T, id int, username, password string) *model.Client {
+func createTestClient(t *testing.T, db *file.DbUtils, id int, username, password string) *model.Client {
 	t.Helper()
 	client := &model.Client{
 		Id:          id,
@@ -1170,13 +1178,13 @@ func createTestClient(t *testing.T, id int, username, password string) *model.Cl
 		WebPassword: password,
 		Flow:        &model.Flow{},
 	}
-	if err := file.GetDb().NewClient(client); err != nil {
+	if err := db.NewClient(client); err != nil {
 		t.Fatalf("NewClient(%d) error = %v", id, err)
 	}
 	return client
 }
 
-func createTestTunnel(t *testing.T, id int, client *model.Client, port int) *model.Tunnel {
+func createTestTunnel(t *testing.T, db *file.DbUtils, id int, client *model.Client, port int) *model.Tunnel {
 	t.Helper()
 	tunnel := &model.Tunnel{
 		Id:         id,
@@ -1189,13 +1197,13 @@ func createTestTunnel(t *testing.T, id int, client *model.Client, port int) *mod
 			TargetStr: "127.0.0.1:80",
 		},
 	}
-	if err := file.GetDb().NewTask(tunnel); err != nil {
+	if err := db.NewTask(tunnel); err != nil {
 		t.Fatalf("NewTask(%d) error = %v", id, err)
 	}
 	return tunnel
 }
 
-func createTestHost(t *testing.T, id int, client *model.Client, host string) *model.Host {
+func createTestHost(t *testing.T, db *file.DbUtils, id int, client *model.Client, host string) *model.Host {
 	t.Helper()
 	record := &model.Host{
 		Id:     id,
@@ -1205,7 +1213,7 @@ func createTestHost(t *testing.T, id int, client *model.Client, host string) *mo
 			TargetStr: "127.0.0.1:80",
 		},
 	}
-	if err := file.GetDb().NewHost(record); err != nil {
+	if err := db.NewHost(record); err != nil {
 		t.Fatalf("NewHost(%d) error = %v", id, err)
 	}
 	return record
@@ -1381,14 +1389,14 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	resetTestDB(t)
+	db := resetTestDB(t)
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
-	client := createTestClient(t, 9, "", "")
+	client := createTestClient(t, db, 9, "", "")
 	client.RegisterKey = "reg-key-9"
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1414,7 +1422,7 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 
 	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"192.0.2.0/24"}, nil, acl.ScopeGlobal, "global")
-	file.GetDb().JsonDb.Global = g
+	db.JsonDb.Global = g
 	for _, path := range []string{"/login/index", "/ip/register", "/static/css/style.css"} {
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
@@ -1446,12 +1454,12 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	resetTestDB(t)
+	db := resetTestDB(t)
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1472,7 +1480,7 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 		t.Fatalf("POST /nps/ip/register with the public key = %s", reg.Body.String())
 	}
 
-	standalone := InitIPRegister(nil)
+	standalone := InitIPRegister(db, nil)
 	for _, path := range []string{"/", "/ip/register"} {
 		resp := httptest.NewRecorder()
 		standalone.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
@@ -1504,11 +1512,11 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	resetTestDB(t)
+	db := resetTestDB(t)
 	t.Cleanup(func() { rate.SetGlobalLimit(0); rate.ResetGlobalTraffic() })
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1524,7 +1532,7 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	}).Normalize())
 
 	save := performFormRequest(handler, http.MethodPost, "/global/save", admin, map[string]string{"globalIpListPriority": "0", "globalRateLimit": "100"})
-	if !strings.Contains(save.Body.String(), `"status":1`) || rate.GlobalLimit() != 100*1024 || file.GetDb().JsonDb.Global.RateLimit != 100 {
+	if !strings.Contains(save.Body.String(), `"status":1`) || rate.GlobalLimit() != 100*1024 || db.JsonDb.Global.RateLimit != 100 {
 		t.Fatalf("POST /global/save = %s, limit %d", save.Body.String(), rate.GlobalLimit())
 	}
 
@@ -1538,7 +1546,7 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	if in, out := rate.GlobalTraffic(); !strings.Contains(cleared.Body.String(), `"status":1`) || in != 0 || out != 0 {
 		t.Fatalf("POST /client/clear = %d %s, traffic %d/%d", cleared.Code, cleared.Body.String(), in, out)
 	}
-	if g := file.GetDb().JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
+	if g := db.JsonDb.Global; g.InletFlow != 0 || g.ExportFlow != 0 {
 		t.Fatalf("cleared traffic not stored: %d/%d", g.InletFlow, g.ExportFlow)
 	}
 }
@@ -1555,10 +1563,10 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	resetTestDB(t)
+	db := resetTestDB(t)
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1615,9 +1623,9 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 	}
 }
 
-func mustInit(t *testing.T) http.Handler {
+func mustInit(t *testing.T, db *file.DbUtils) http.Handler {
 	t.Helper()
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

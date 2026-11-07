@@ -100,13 +100,13 @@ func TestClientFlowsMarked(t *testing.T) {
 }
 
 func TestUpdateTaskKeepsFlowOfActiveConnections(t *testing.T) {
-	useFlowTestDb(t)
+	db := useFlowTestDb(t)
 	stored := &model.Tunnel{Id: 5, Mode: "tcp", Flow: &model.Flow{}, Target: &model.Target{}, Client: &model.Client{Id: 1, Cnf: &model.Config{}, Flow: &model.Flow{}}}
-	GetDb().JsonDb.Tasks.Store(stored.Id, stored)
+	db.JsonDb.Tasks.Store(stored.Id, stored)
 	active := stored.Flow
 	edited := stored.Clone()
 	edited.Flow.SetFlowLimit(7)
-	if err := GetDb().UpdateTask(edited); err != nil {
+	if err := db.UpdateTask(edited); err != nil {
 		t.Fatal(err)
 	}
 	if edited.Flow != active {
@@ -117,11 +117,11 @@ func TestUpdateTaskKeepsFlowOfActiveConnections(t *testing.T) {
 	}
 }
 
-func useFlowTestDb(t *testing.T) {
+func useFlowTestDb(t *testing.T) *DbUtils {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(ReplaceDb(&DbUtils{JsonDb: NewJsonDb(root)}))
+	return New(root)
 }

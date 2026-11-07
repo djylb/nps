@@ -109,11 +109,11 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	db := file.New(root)
 
 	const key = "healthgroupvkey0"
 	client := model.NewClient(key, true, false)
-	if err := file.GetDb().NewClient(client); err != nil {
+	if err := db.NewClient(client); err != nil {
 		t.Fatal(err)
 	}
 	a, b, c := newHealthTarget(t), newHealthTarget(t), newHealthTarget(t)
@@ -133,13 +133,13 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	single := &model.Tunnel{Id: 3, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: list(a)}}
 	single.SetHealthCheck(healthCheck())
 	for _, tn := range []*model.Tunnel{tunnel, bystander, single} {
-		if err := file.GetDb().NewTask(tn); err != nil {
+		if err := db.NewTask(tn); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	br := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
-	file.GetDb().OnEntriesChanged(br.EntriesChanged)
+	br := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30})
+	db.OnEntriesChanged(br.EntriesChanged)
 	bridgeAddr := serveTCP(t, func(cn net.Conn) { br.CliProcess(conn.NewConn(cn), "tcp") })
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -234,7 +234,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	// A new host with the same check shares the running checks.
 	host := &model.Host{Id: 7, Host: "x.test", Client: client, Target: &model.Target{TargetStr: list(a, b)}, Flow: &model.Flow{}}
 	host.SetHealthCheck(healthCheck())
-	if err := file.GetDb().NewHost(host); err != nil {
+	if err := db.NewHost(host); err != nil {
 		t.Fatal(err)
 	}
 	wantKeys("group of the host", "h7", sorted(a.addr, b.addr))
@@ -245,7 +245,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	// An edit sends its group again: t1 moves from b to c and b stays for h7.
 	edited := tunnel.Clone()
 	edited.Target = &model.Target{TargetStr: list(a, c)}
-	if err := file.GetDb().UpdateTask(edited); err != nil {
+	if err := db.UpdateTask(edited); err != nil {
 		t.Fatal(err)
 	}
 	wantKeys("edited group", "t1", sorted(a.addr, c.addr))
@@ -258,7 +258,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	waitFor(t, 10*time.Second, "c back", func() bool { return slices.Equal(rotation(edited.Target), sorted(a.addr, c.addr)) })
 
 	// Removal releases: a host's group goes, the check only it held stops.
-	if err := file.GetDb().DelHost(host.Id); err != nil {
+	if err := db.DelHost(host.Id); err != nil {
 		t.Fatal(err)
 	}
 	wantKeys("host group gone", "h7", nil)
@@ -269,7 +269,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	waitFor(t, 10*time.Second, "c out again", func() bool { return slices.Equal(rotation(edited.Target), []string{a.addr}) })
 	off := model.HealthCheck{Type: "tcp"}
 	edited.SetHealthCheck(off)
-	if err := file.GetDb().UpdateTask(edited); err != nil {
+	if err := db.UpdateTask(edited); err != nil {
 		t.Fatal(err)
 	}
 	wantKeys("group disabled", "t1", nil)
@@ -285,7 +285,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	// A reconnect gets everything again; npc starts empty.
 	c.up()
 	edited.SetHealthCheck(healthCheck())
-	if err := file.GetDb().UpdateTask(edited); err != nil {
+	if err := db.UpdateTask(edited); err != nil {
 		t.Fatal(err)
 	}
 	wantKeys("group enabled", "t1", sorted(a.addr, c.addr))

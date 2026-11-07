@@ -80,12 +80,14 @@ func (stubRepository) PersistHosts() error                  { return nil }
 func (stubRepository) FindReusableCert(string, int, int) (*model.Host, error) {
 	return nil, nil
 }
-func (stubRepository) DeleteHostRecord(int) error     { return nil }
-func (stubRepository) HostExists(*model.Host) bool    { return false }
-func (stubRepository) GetGlobal() *model.Glob         { return nil }
-func (stubRepository) SaveGlobal(*model.Glob) error   { return nil }
-func (stubRepository) ClientOwnsTunnel(int, int) bool { return false }
-func (stubRepository) ClientOwnsHost(int, int) bool   { return false }
+func (stubRepository) DeleteHostRecord(int) error         { return nil }
+func (stubRepository) HostExists(*model.Host) bool        { return false }
+func (stubRepository) GetGlobal() *model.Glob             { return nil }
+func (stubRepository) SaveGlobal(*model.Glob) error       { return nil }
+func (stubRepository) ClientEntryCount(*model.Client) int { return 0 }
+func (stubRepository) GlobalDenied(string, string) bool   { return false }
+func (stubRepository) ClientOwnsTunnel(int, int) bool     { return false }
+func (stubRepository) ClientOwnsHost(int, int) bool       { return false }
 
 type stubRuntime struct {
 	dashboardData func(bool) map[string]interface{}

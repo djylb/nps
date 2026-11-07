@@ -144,12 +144,12 @@ func TestReconnectFollowsNameToNewAddress(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	db := file.New(root)
 	const vkey = "reconnect-key"
-	if err := file.GetDb().NewClient(model.NewClient(vkey, true, false)); err != nil {
+	if err := db.NewClient(model.NewClient(vkey, true, false)); err != nil {
 		t.Fatal(err)
 	}
-	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
+	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30})
 
 	first := listenBridge(t, b, "127.0.0.1:0")
 	port := first.ln.Addr().(*net.TCPAddr).Port

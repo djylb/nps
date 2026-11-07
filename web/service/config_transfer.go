@@ -59,7 +59,7 @@ type DefaultConfigTransferService struct {
 var importLock sync.Mutex
 
 func (s DefaultConfigTransferService) Export() ([]byte, error) {
-	repo := s.Backend.repo()
+	repo := s.Backend.Repository
 	bundle := ConfigBundle{
 		Version: configBundleVersion, ExportedAt: time.Now(),
 		Clients: []*model.Client{}, Tunnels: []*model.Tunnel{}, Hosts: []*model.Host{},
@@ -113,7 +113,7 @@ func (s DefaultConfigTransferService) Import(input ImportConfigInput) (ImportRes
 }
 
 func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved string) error {
-	repo := s.Backend.repo()
+	repo := s.Backend.Repository
 	ids := make(map[int]*model.Client, len(b.Clients))
 	seenKeys := make(map[string]bool)
 	seenLogins := make(map[string]bool)
@@ -192,7 +192,7 @@ func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved s
 					return fmt.Errorf("%s: port %d is used twice", name, t.Port)
 				}
 				ports[key] = true
-				if !s.Backend.runtime().TunnelPortAvailable(t) {
+				if !s.Backend.Runtime.TunnelPortAvailable(t) {
 					return fmt.Errorf("%s: %w", name, ErrPortUnavailable)
 				}
 			}
@@ -252,7 +252,7 @@ func validateSourceLists(l *model.SourceLists) error {
 }
 
 func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result ImportResult, err error) {
-	repo, runtime := s.Backend.repo(), s.Backend.runtime()
+	repo, runtime := s.Backend.Repository, s.Backend.Runtime
 	var undo []func()
 	defer func() {
 		if err != nil {

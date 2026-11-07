@@ -15,7 +15,7 @@ import (
 
 func TestClientClearAllowsAdminVirtualIDOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	state := NewStateWithApp(webapi.New(&servercfg.Snapshot{}))
+	state := NewState(webapi.NewWithOptions(&servercfg.Snapshot{}, webapi.Options{Store: resetTestDB(t)}))
 	var specs []webapi.ActionSpec
 	calls := 0
 	for _, spec := range webapi.ProtectedActionCatalog(state.App) {

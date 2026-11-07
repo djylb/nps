@@ -74,7 +74,7 @@ func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdent
 	var matchedClientIDs []int
 	loginMode := "password"
 	verifyTOTP := totpVerifier()
-	s.repo().RangeClients(func(client *model.Client) bool {
+	s.Backend.Repository.RangeClients(func(client *model.Client) bool {
 		if !client.Status || client.NoDisplay {
 			return true
 		}
@@ -127,14 +127,14 @@ func (s DefaultAuthService) RegisterUser(input RegisterUserInput) (*RegisterUser
 	}
 
 	client := &model.Client{
-		Id:          s.repo().NextClientID(),
+		Id:          s.Backend.Repository.NextClientID(),
 		Status:      true,
 		Cnf:         &model.Config{},
 		WebUserName: username,
 		WebPassword: password,
 		Flow:        &model.Flow{},
 	}
-	if err := s.repo().CreateClient(client); err != nil {
+	if err := s.Backend.Repository.CreateClient(client); err != nil {
 		return nil, err
 	}
 	return &RegisterUserResult{
@@ -340,11 +340,4 @@ func (s DefaultAuthService) config() *servercfg.Snapshot {
 		}
 	}
 	return servercfg.Current()
-}
-
-func (s DefaultAuthService) repo() Repository {
-	if s.Backend.Repository != nil {
-		return s.Backend.Repository
-	}
-	return DefaultBackend().Repository
 }

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
+	webapi "github.com/djylb/nps/web/api"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
 )
@@ -18,9 +18,9 @@ func (virtualManagementRuntime) DisconnectClient(int) {}
 
 func TestVirtualClientManagementHTTP(t *testing.T) {
 	f := newRequestParamFixture(t)
-	virtual := createTestClient(t, -1, "", "")
-	state := NewState(nil)
-	backend := webservice.DefaultBackend()
+	virtual := createTestClient(t, f.db, -1, "", "")
+	state := NewState(webapi.NewWithOptions(nil, webapi.Options{Store: f.db}))
+	backend := webservice.NewBackend(f.db, nil)
 	backend.Runtime = virtualManagementRuntime{backend.Runtime}
 	state.App.Services.Clients = webservice.DefaultClientService{Backend: backend}
 	engine := gin.New()
@@ -57,11 +57,11 @@ func TestVirtualClientManagementHTTP(t *testing.T) {
 				t.Fatalf("virtual %s not blocked: %d %s", action, response.Code, response.Body.String())
 			}
 		}
-		if _, err := file.GetDb().GetClient(-1); err != nil {
+		if _, err := f.db.GetClient(-1); err != nil {
 			t.Fatal("virtual client was deleted")
 		}
 	}
-	if _, err := file.GetDb().GetClientIdByBlake2bVkey(crypt.Blake2b(virtual.VerifyKey)); err == nil {
+	if _, err := f.db.GetClientIdByBlake2bVkey(crypt.Blake2b(virtual.VerifyKey)); err == nil {
 		t.Fatal("virtual edit enabled npc authentication")
 	}
 }

@@ -155,7 +155,7 @@ func (s DefaultAuthorizationService) RequireTunnel(principal Principal, tunnelID
 		return nil
 	}
 	for _, clientID := range normalized.ClientIDs {
-		if s.repo().ClientOwnsTunnel(clientID, tunnelID) {
+		if s.Backend.Repository.ClientOwnsTunnel(clientID, tunnelID) {
 			return nil
 		}
 	}
@@ -171,7 +171,7 @@ func (s DefaultAuthorizationService) RequireHost(principal Principal, hostID int
 		return nil
 	}
 	for _, clientID := range normalized.ClientIDs {
-		if s.repo().ClientOwnsHost(clientID, hostID) {
+		if s.Backend.Repository.ClientOwnsHost(clientID, hostID) {
 			return nil
 		}
 	}
@@ -316,11 +316,4 @@ func (s DefaultAuthorizationService) resolver() PermissionResolver {
 		return s.Resolver
 	}
 	return DefaultPermissionResolver()
-}
-
-func (s DefaultAuthorizationService) repo() Repository {
-	if s.Backend.Repository != nil {
-		return s.Backend.Repository
-	}
-	return DefaultBackend().Repository
 }

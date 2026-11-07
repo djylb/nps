@@ -13,18 +13,17 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestNewConfigIgnoresClientIdentity(t *testing.T) {
-	useTestDb(t)
+	db := useTestDb(t)
 	existing := model.NewClient("existing-vkey", false, false)
 	existing.Id = 7
-	if err := file.GetDb().NewClient(existing); err != nil {
+	if err := db.NewClient(existing); err != nil {
 		t.Fatal(err)
 	}
 
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
 	clientSide, serverSide := net.Pipe()
 	defer func() { _ = clientSide.Close() }()
 	done := make(chan struct{})
@@ -53,14 +52,14 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	if string(buf) == existing.VerifyKey {
 		t.Fatal("server returned the submitted verify key")
 	}
-	stored, err := file.GetDb().GetClient(existing.Id)
+	stored, err := db.GetClient(existing.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stored != existing || stored.VerifyKey != "existing-vkey" || stored.NoStore {
 		t.Fatalf("stored client %d changed: %+v", existing.Id, stored)
 	}
-	id, err := file.GetDb().GetClientIdByBlake2bVkey(crypt.Blake2b(string(buf)))
+	id, err := db.GetClientIdByBlake2bVkey(crypt.Blake2b(string(buf)))
 	if err != nil || id == existing.Id {
 		t.Fatalf("new client id = %d, %v", id, err)
 	}
@@ -69,9 +68,9 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 // A port conflict fails that task only: npc reads one failure for it, goes on
 // with its next task and keeps its connection, and the statuses stay aligned.
 func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
-	useTestDb(t)
+	db := useTestDb(t)
 	client := model.NewClient("conflict-vkey", false, false)
-	if err := file.GetDb().NewClient(client); err != nil {
+	if err := db.NewClient(client); err != nil {
 		t.Fatal(err)
 	}
 	taken, err := net.Listen("tcp", "0.0.0.0:0")
@@ -87,7 +86,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	freePort := free.Addr().(*net.TCPAddr).Port
 	_ = free.Close()
 
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
 	b.OpenTask = make(chan *model.Tunnel, 8)
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("node", "", legacy.LatestIndex), Primary))
 	clientSide, serverSide := net.Pipe()
@@ -121,7 +120,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 		t.Fatal("port conflict removed the client")
 	}
 	var remarks []string
-	file.GetDb().JsonDb.Tasks.Range(func(_, v any) bool {
+	db.JsonDb.Tasks.Range(func(_, v any) bool {
 		remarks = append(remarks, v.(*model.Tunnel).Remark)
 		return true
 	})
@@ -131,8 +130,8 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 }
 
 func TestJoinNodeReplacesClosedClient(t *testing.T) {
-	useTestDb(t)
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	db := useTestDb(t)
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
 	closed := NewClient(9, NewNode("old", "", 8), Primary)
 	_ = closed.Close()
 	b.Client.Store(9, closed)

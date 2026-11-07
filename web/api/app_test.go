@@ -3,6 +3,7 @@ package api
 import (
 	"testing"
 
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -11,7 +12,7 @@ func TestNewWithOptionsUsesOverrides(t *testing.T) {
 	providedCfg := &servercfg.Snapshot{
 		App: servercfg.AppConfig{Name: "cfg-node"},
 	}
-	customServices := webservice.New(nil)
+	customServices := webservice.New(file.New(t.TempDir()), nil)
 	customHooks := NoopHooks{}
 	configured := false
 

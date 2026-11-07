@@ -125,9 +125,9 @@ func (s DefaultClientService) List(input ListClientsInput) ListClientsResult {
 	var count int
 	if input.Visibility.IsAdmin || len(visibleClientSet(input.Visibility)) == 1 {
 		// the running server refreshes what it knows of the clients
-		rows, count = s.runtime().ListClients(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
+		rows, count = s.Backend.Runtime.ListClients(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
 	} else {
-		rows, count = s.repo().ListVisibleClients(input)
+		rows, count = s.Backend.Repository.ListVisibleClients(input)
 	}
 	bridge := BestBridge(s.config(), input.Host)
 	port, _ := strconv.Atoi(bridge.Port)
@@ -142,7 +142,7 @@ func (s DefaultClientService) List(input ListClientsInput) ListClientsResult {
 }
 
 func (s DefaultClientService) Add(input AddClientInput) (int, error) {
-	id := s.repo().NextClientID()
+	id := s.Backend.Repository.NextClientID()
 	client := &model.Client{
 		VerifyKey: input.VKey,
 		Id:        id,
@@ -179,25 +179,25 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 		return 0, err
 	}
 	lists.applyTo(&client.SourceLists, "client "+strconv.Itoa(id))
-	if err := s.repo().CreateClient(client); err != nil {
+	if err := s.Backend.Repository.CreateClient(client); err != nil {
 		return 0, err
 	}
 	return id, nil
 }
 
 func (s DefaultClientService) Ping(id int, remoteAddr string) (int, error) {
-	if _, err := s.repo().GetClient(id); err != nil {
+	if _, err := s.Backend.Repository.GetClient(id); err != nil {
 		return 0, err
 	}
-	return s.runtime().PingClient(id, remoteAddr), nil
+	return s.Backend.Runtime.PingClient(id, remoteAddr), nil
 }
 
 func (s DefaultClientService) Get(id int) (*model.Client, error) {
-	return s.repo().GetClient(id)
+	return s.Backend.Repository.GetClient(id)
 }
 
 func (s DefaultClientService) Edit(input EditClientInput) error {
-	client, err := s.repo().GetClient(input.ID)
+	client, err := s.Backend.Repository.GetClient(input.ID)
 	if err != nil {
 		return err
 	}
@@ -215,19 +215,19 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	}
 
 	if input.WebUserName != "" {
-		if input.WebUserName == input.ReservedAdminUsername || !s.repo().VerifyUserName(input.WebUserName, client.Id) {
+		if input.WebUserName == input.ReservedAdminUsername || !s.Backend.Repository.VerifyUserName(input.WebUserName, client.Id) {
 			return ErrWebUsernameDuplicate
 		}
 	}
 
 	if input.IsAdmin {
-		if !s.repo().VerifyVKey(input.VKey, client.Id) {
+		if !s.Backend.Repository.VerifyVKey(input.VKey, client.Id) {
 			return ErrClientVKeyDuplicate
 		}
 		oldVerifyKey := client.VerifyKey
 		client.VerifyKey = input.VKey
 		if client.Id > 0 {
-			s.repo().ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
+			s.Backend.Repository.ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
 		}
 		client.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
 		client.RateLimit = input.RateLimit
@@ -267,26 +267,26 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.RegisterKey = registerKey
 	client.RegisterMaxHours = max(input.RegisterMaxHours, 0)
 	lists.applyTo(&client.SourceLists, "client "+strconv.Itoa(client.Id))
-	return s.repo().SaveClient(client)
+	return s.Backend.Repository.SaveClient(client)
 }
 
-func (DefaultClientService) Clear(id int, mode string, isAdmin bool) error {
+func (s DefaultClientService) Clear(id int, mode string, isAdmin bool) error {
 	if !isAdmin || strings.TrimSpace(mode) == "" {
 		return ErrClientModifyFailed
 	}
-	return clearClientStatusByID(id, mode)
+	return clearClientStatusByID(s.Backend.Repository, id, mode)
 }
 
 func (s DefaultClientService) ChangeStatus(id int, status bool) error {
-	client, err := s.repo().GetClient(id)
+	client, err := s.Backend.Repository.GetClient(id)
 	if err != nil {
 		return err
 	}
 	client.Status = status
 	if !client.Status {
-		s.runtime().DisconnectClient(client.Id)
+		s.Backend.Runtime.DisconnectClient(client.Id)
 	}
-	return s.repo().SaveClient(client)
+	return s.Backend.Repository.SaveClient(client)
 }
 
 // Kick ends the sessions of client id. Its configuration stays, so an npc
@@ -296,13 +296,13 @@ func (s DefaultClientService) Kick(id int) error {
 	if id <= 0 {
 		return ErrVirtualClientOperation
 	}
-	if _, err := s.repo().GetClient(id); err != nil {
+	if _, err := s.Backend.Repository.GetClient(id); err != nil {
 		return ErrClientNotFound
 	}
-	if !s.runtime().ClientConnected(id) {
+	if !s.Backend.Runtime.ClientConnected(id) {
 		return ErrClientOffline
 	}
-	s.runtime().DisconnectClient(id)
+	s.Backend.Runtime.DisconnectClient(id)
 	return nil
 }
 
@@ -312,21 +312,21 @@ func (s DefaultClientService) RequestUpdate(id int) (int, error) {
 	if id <= 0 {
 		return 0, ErrVirtualClientOperation
 	}
-	if _, err := s.repo().GetClient(id); err != nil {
+	if _, err := s.Backend.Repository.GetClient(id); err != nil {
 		return 0, ErrClientNotFound
 	}
-	return s.runtime().RequestClientUpdate(id)
+	return s.Backend.Runtime.RequestClientUpdate(id)
 }
 
 func (s DefaultClientService) Delete(id int) error {
 	if id <= 0 {
 		return ErrVirtualClientOperation
 	}
-	if err := s.repo().DeleteClient(id); err != nil {
+	if err := s.Backend.Repository.DeleteClient(id); err != nil {
 		return err
 	}
-	s.runtime().DeleteClientResources(id)
-	s.runtime().DisconnectClient(id)
+	s.Backend.Runtime.DeleteClientResources(id)
+	s.Backend.Runtime.DisconnectClient(id)
 	return nil
 }
 
@@ -348,7 +348,7 @@ func (s DefaultClientService) RegisterVisitorIP(key, ip string, hours int) (int,
 		return ipreg.AnyClient, until, nil
 	}
 	var found *model.Client
-	s.repo().RangeClients(func(c *model.Client) bool {
+	s.Backend.Repository.RangeClients(func(c *model.Client) bool {
 		if c.Id > 0 && c.Status && !c.NoDisplay && (keyEqual(c.RegisterKey, key) || keyEqual(c.VerifyKey, key)) {
 			found = c
 			return false
@@ -386,7 +386,7 @@ func (s DefaultClientService) checkRegisterKey(id int, key, vkey string) error {
 		return ErrRegisterKeyDuplicate
 	}
 	var dup bool
-	s.repo().RangeClients(func(c *model.Client) bool {
+	s.Backend.Repository.RangeClients(func(c *model.Client) bool {
 		if c.Id != id && (c.RegisterKey == key || c.VerifyKey == key) {
 			dup = true
 			return false
@@ -453,18 +453,4 @@ func (s DefaultClientService) config() *servercfg.Snapshot {
 		}
 	}
 	return servercfg.Current()
-}
-
-func (s DefaultClientService) repo() Repository {
-	if s.Backend.Repository != nil {
-		return s.Backend.Repository
-	}
-	return DefaultBackend().Repository
-}
-
-func (s DefaultClientService) runtime() Runtime {
-	if s.Backend.Runtime != nil {
-		return s.Backend.Runtime
-	}
-	return DefaultBackend().Runtime
 }

@@ -36,7 +36,9 @@ and nps forwards visitors through that connection to targets npc reaches.
 - Every package with tests has `main_test.go` with
   `func TestMain(m *testing.M) { leakcheck.Main(m) }`, which fails the
   package when tests leave goroutines blocked for good.
-- Tests that need the store use `t.Cleanup(file.ReplaceDb(db))`.
+- The store has no package state: `cmd/nps` opens it (`file.Open`) and
+  passes it to `server.New` and `routers.Init`; tests build their own with
+  `file.New(dir)` (`TestStoreHasNoPackageState`).
 
 ## Adding a tunnel or host setting
 

@@ -1,6 +1,9 @@
 package service
 
-import "github.com/djylb/nps/lib/servercfg"
+import (
+	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/servercfg"
+)
 
 // Services groups the default application services behind replaceable interfaces.
 // Swapping framework or storage backends should not require transport-layer rewrites.
@@ -15,14 +18,16 @@ type Services struct {
 	Index       IndexService
 	Pages       PageService
 	Config      ConfigTransferService
+	// Repository is the store the services act on.
+	Repository Repository
 	// Runtime is the running server, or one that runs nothing.
 	Runtime Runtime
 }
 
-// New returns the services of the store and of runtime, the running server;
-// a nil runtime means none runs.
-func New(runtime Runtime) Services {
-	backend := NewBackend(runtime)
+// New returns the services of the store db and of runtime, the running
+// server; a nil runtime means none runs.
+func New(db *file.DbUtils, runtime Runtime) Services {
+	backend := NewBackend(db, runtime)
 	system := DefaultSystemService{Runtime: backend.Runtime}
 	resolver := DefaultPermissionResolver()
 	loginPolicy := SharedLoginPolicy()
@@ -39,6 +44,7 @@ func New(runtime Runtime) Services {
 		Globals:     globals,
 		Index:       index,
 		Config:      DefaultConfigTransferService{Backend: backend},
+		Repository:  backend.Repository,
 		Runtime:     backend.Runtime,
 		Pages: DefaultPageService{
 			Clients: clients,

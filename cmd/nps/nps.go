@@ -282,7 +282,7 @@ func (p *nps) reloadConfig() {
 	stats.StartSystemInfo()
 	if srv := p.srv.Load(); srv != nil {
 		srv.ApplyWebhook(cfg.Webhook)
-		handler, err := routers.Init(srv)
+		handler, err := routers.Init(srv.Store(), srv)
 		if err != nil {
 			logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
 		} else {
@@ -423,7 +423,7 @@ func (p *nps) mustRun() *server.Server {
 func run() (*server.Server, error) {
 	install.StartUpdate()
 	cfg := servercfg.Current()
-	db, err := file.LoadDb()
+	db, err := file.Open(runenv.GetRunPath())
 	if err != nil {
 		return nil, err
 	}
@@ -447,12 +447,12 @@ func run() (*server.Server, error) {
 			QUIC: cfg.Bridge.ServerQUICEnabled,
 		},
 	})
-	handler, err := routers.Init(srv)
+	handler, err := routers.Init(db, srv)
 	if err != nil {
 		return nil, err
 	}
 	srv.SetWebHandler(handler)
-	srv.SetIPRegisterHandler(routers.InitIPRegister(srv))
+	srv.SetIPRegisterHandler(routers.InitIPRegister(db, srv))
 	if srv.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()

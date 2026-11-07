@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
@@ -47,12 +48,10 @@ type Options struct {
 	Services          *webservice.Services
 	ConfigureServices func(*webservice.Services)
 	ConfigProvider    func() *servercfg.Snapshot
+	// Store is the store the services act on.
+	Store *file.DbUtils
 	// Runtime is the running server the services act on; nil means none.
 	Runtime webservice.Runtime
-}
-
-func New(cfg *servercfg.Snapshot) *App {
-	return NewWithOptions(cfg, Options{})
 }
 
 func NewWithOptions(cfg *servercfg.Snapshot, options Options) *App {
@@ -71,7 +70,7 @@ func NewWithOptions(cfg *servercfg.Snapshot, options Options) *App {
 	if nodeID == "" {
 		nodeID = "nps"
 	}
-	services := webservice.New(options.Runtime)
+	services := webservice.New(options.Store, options.Runtime)
 	if options.Services != nil {
 		services = *options.Services
 	}

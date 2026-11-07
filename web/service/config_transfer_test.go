@@ -22,33 +22,34 @@ import (
 	"github.com/djylb/nps/server"
 )
 
-func useTempDb(t *testing.T) {
+func useTempDb(t *testing.T) *file.DbUtils {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
-	file.GetDb().JsonDb.Global = &model.Glob{}
+	db := file.New(root)
+	db.JsonDb.Global = &model.Glob{}
+	return db
 }
 
-// newTestServer returns a server of the current store that is not started:
-// it runs the tasks without a listener that the services start.
-func newTestServer(t *testing.T) *server.Server {
+// newTestServer returns a server of db that is not started: it runs the
+// tasks without a listener that the services start.
+func newTestServer(t *testing.T, db *file.DbUtils) *server.Server {
 	t.Helper()
-	srv := server.New(file.GetDb(), server.Config{DisconnectTimeout: 30})
+	srv := server.New(db, server.Config{DisconnectTimeout: 30})
 	t.Cleanup(func() { _ = srv.Close() })
 	return srv
 }
 
-func seedConfig(t *testing.T) (DefaultClientService, DefaultIndexService) {
+func seedConfig(t *testing.T, db *file.DbUtils) (DefaultClientService, DefaultIndexService) {
 	t.Helper()
-	return seedConfigOn(t, newTestServer(t))
+	return seedConfigOn(t, db, newTestServer(t, db))
 }
 
-func seedConfigOn(t *testing.T, runtime Runtime) (DefaultClientService, DefaultIndexService) {
+func seedConfigOn(t *testing.T, db *file.DbUtils, runtime Runtime) (DefaultClientService, DefaultIndexService) {
 	t.Helper()
-	backend := NewBackend(runtime)
+	backend := NewBackend(db, runtime)
 	clients := DefaultClientService{ConfigProvider: servercfg.Current, Backend: backend}
 	indexes := DefaultIndexService{Backend: backend}
 	id, err := clients.Add(AddClientInput{VKey: "vkey-a", Remark: "a", WebUserName: "alice"})
@@ -64,8 +65,8 @@ func seedConfigOn(t *testing.T, runtime Runtime) (DefaultClientService, DefaultI
 	return clients, indexes
 }
 
-func storeCounts() (clients, tunnels, hosts int) {
-	db := file.GetDb().JsonDb
+func storeCounts(store *file.DbUtils) (clients, tunnels, hosts int) {
+	db := store.JsonDb
 	db.Clients.Range(func(_, _ any) bool { clients++; return true })
 	db.Tasks.Range(func(_, _ any) bool { tunnels++; return true })
 	db.Hosts.Range(func(_, _ any) bool { hosts++; return true })
@@ -75,9 +76,9 @@ func storeCounts() (clients, tunnels, hosts int) {
 // A file exported here and renamed apart fits; the ids move and the links
 // between the entries follow.
 func TestImportAddsUnderNewIDs(t *testing.T) {
-	useTempDb(t)
-	seedConfig(t)
-	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
+	db := useTempDb(t)
+	seedConfig(t, db)
+	transfer := DefaultConfigTransferService{Backend: NewBackend(db, newTestServer(t, db))}
 	data, err := transfer.Export()
 	if err != nil {
 		t.Fatal(err)
@@ -90,10 +91,9 @@ func TestImportAddsUnderNewIDs(t *testing.T) {
 	if result != (ImportResult{Clients: 1, Tunnels: 1, Hosts: 1}) {
 		t.Fatalf("result %+v", result)
 	}
-	if c, tn, h := storeCounts(); c != 2 || tn != 2 || h != 2 {
+	if c, tn, h := storeCounts(db); c != 2 || tn != 2 || h != 2 {
 		t.Fatalf("store has %d clients, %d tunnels, %d hosts", c, tn, h)
 	}
-	db := file.GetDb()
 	id, err := db.GetClientIdByBlake2bVkey(crypt.Blake2b("vkey-b"))
 	if err != nil || id == 1 {
 		t.Fatalf("imported client id %d: %v", id, err)
@@ -109,9 +109,9 @@ func TestImportAddsUnderNewIDs(t *testing.T) {
 
 // Each conflict leaves the store as it was.
 func TestImportRefusalLeavesNothing(t *testing.T) {
-	useTempDb(t)
-	seedConfig(t)
-	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
+	db := useTempDb(t)
+	seedConfig(t, db)
+	transfer := DefaultConfigTransferService{Backend: NewBackend(db, newTestServer(t, db))}
 	data, err := transfer.Export()
 	if err != nil {
 		t.Fatal(err)
@@ -137,11 +137,10 @@ func TestImportRefusalLeavesNothing(t *testing.T) {
 		if _, err := transfer.Import(ImportConfigInput{Data: []byte(input)}); err == nil {
 			t.Errorf("%s: import accepted", name)
 		}
-		if c, tn, h := storeCounts(); c != 1 || tn != 1 || h != 1 {
+		if c, tn, h := storeCounts(db); c != 1 || tn != 1 || h != 1 {
 			t.Fatalf("%s: store has %d clients, %d tunnels, %d hosts", name, c, tn, h)
 		}
 	}
-	db := file.GetDb()
 	if _, err := db.GetClientIdByBlake2bVkey(crypt.Blake2b("vkey-b")); err == nil {
 		t.Error("the taken back client still has its vkey index entry")
 	}
@@ -152,8 +151,8 @@ func TestImportRefusalLeavesNothing(t *testing.T) {
 
 // A port taken by something else is found before anything is added.
 func TestImportRefusesAPortInUse(t *testing.T) {
-	useTempDb(t)
-	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
+	db := useTempDb(t)
+	transfer := DefaultConfigTransferService{Backend: NewBackend(db, newTestServer(t, db))}
 	l, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
@@ -168,14 +167,14 @@ func TestImportRefusesAPortInUse(t *testing.T) {
 	if _, err := transfer.Import(ImportConfigInput{Data: data}); err == nil {
 		t.Fatal("import accepted")
 	}
-	if c, tn, _ := storeCounts(); c != 0 || tn != 0 {
+	if c, tn, _ := storeCounts(db); c != 0 || tn != 0 {
 		t.Fatalf("store has %d clients, %d tunnels", c, tn)
 	}
 }
 
 func TestSuggestCertUsesTheCertificateChoice(t *testing.T) {
-	useTempDb(t)
-	_, indexes := seedConfig(t)
+	db := useTempDb(t)
+	_, indexes := seedConfig(t, db)
 	got := indexes.SuggestCert("a.example.com", 0, 0)
 	if got == nil || got.CertFile != "CERT" || got.KeyFile != "KEY" {
 		t.Fatalf("suggestion %+v", got)
@@ -191,7 +190,7 @@ func TestSuggestCertUsesTheCertificateChoice(t *testing.T) {
 	}
 	// A wildcard certificate serves names below it. An exact entry without
 	// certificate files does not hide it.
-	client, _ := file.GetDb().GetClient(1)
+	client, _ := db.GetClient(1)
 	if _, err := indexes.AddHost(HostInput{ClientID: client.Id, IsAdmin: true, Host: &model.Host{Host: "*.wild.test", Target: &model.Target{TargetStr: "127.0.0.1:81"}, CertFile: "W", KeyFile: "WK", Scheme: "all"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +204,7 @@ func TestSuggestCertUsesTheCertificateChoice(t *testing.T) {
 
 // Through the real service, store, hub and sender to an HTTP receiver.
 func TestWebhookReceivesServiceChanges(t *testing.T) {
-	useTempDb(t)
+	db := useTempDb(t)
 	var mu sync.Mutex
 	var types []string
 	var report []byte
@@ -227,12 +226,12 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 		types = append(types, kind)
 	}))
 	defer receiver.Close()
-	srv := newTestServer(t)
+	srv := newTestServer(t, db)
 	srv.ApplyWebhook(servercfg.WebhookConfig{URL: receiver.URL, Secret: "topsecret", TimeoutSeconds: 2, QueueSize: 64, ReportInterval: 1})
 	defer srv.ApplyWebhook(servercfg.WebhookConfig{})
 
-	clients, indexes := seedConfigOn(t, srv)
-	tunnel := file.GetDb().GetTaskByMd5Password(crypt.Md5("pw-a"))
+	clients, indexes := seedConfigOn(t, db, srv)
+	tunnel := db.GetTaskByMd5Password(crypt.Md5("pw-a"))
 	for _, step := range []func() error{
 		func() error { return indexes.StopTunnel(tunnel.Id, "") },
 		func() error { return indexes.StartTunnel(tunnel.Id, "") },

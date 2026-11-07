@@ -18,7 +18,7 @@ func TestTunnelMaxConnInputAndLiveCount(t *testing.T) {
 		t.Fatal("reserve")
 	}
 	clone := task.Clone()
-	db := &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
+	db := file.New(t.TempDir())
 	db.JsonDb.Tasks.Store(task.Id, task)
 	if err := db.UpdateTask(clone); err != nil {
 		t.Fatal(err)

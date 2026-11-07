@@ -17,29 +17,29 @@ import (
 )
 
 // healthEnv stores a client with one entry that has checks over two targets.
-func healthEnv(t *testing.T) (*model.Client, *model.Tunnel) {
+func healthEnv(t *testing.T) (*file.DbUtils, *model.Client, *model.Tunnel) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
+	db := file.New(root)
 	client := &model.Client{Id: 5, Cnf: &model.Config{}, Flow: &model.Flow{}}
-	file.GetDb().JsonDb.Clients.Store(client.Id, client)
+	db.JsonDb.Clients.Store(client.Id, client)
 	tn := &model.Tunnel{Id: 9, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}}
 	tn.SetHealthCheck(model.HealthCheck{Enabled: true})
-	if err := file.GetDb().NewTask(tn); err != nil {
+	if err := db.NewTask(tn); err != nil {
 		t.Fatal(err)
 	}
-	return client, tn
+	return db, client, tn
 }
 
 // runSignal serves a signal connection of a node with the given npc version
 // and returns the npc's end.
-func runSignal(t *testing.T, version string) (net.Conn, func()) {
+func runSignal(t *testing.T, db *file.DbUtils, version string) (net.Conn, func()) {
 	t.Helper()
 	npc, srv := net.Pipe()
-	s := NewTunnel(file.GetDb(), nil, Options{DisconnectTime: 30})
+	s := NewTunnel(db, nil, Options{DisconnectTime: 30})
 	node := NewNode("uuid-"+version, version, legacy.LatestIndex)
 	client := NewClient(5, node, Primary)
 	s.Client.Store(5, client)
@@ -63,8 +63,8 @@ func runSignal(t *testing.T, version string) (net.Conn, func()) {
 
 // A released npc takes an unknown message for a broken stream: it must get none.
 func TestHealthGroupsNotSentToOldClient(t *testing.T) {
-	_, tn := healthEnv(t)
-	npc, stop := runSignal(t, "0.34.10")
+	db, _, tn := healthEnv(t)
+	npc, stop := runSignal(t, db, "0.34.10")
 	defer stop()
 
 	_ = npc.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
@@ -100,8 +100,8 @@ func TestHealthGroupsNotSentToOldClient(t *testing.T) {
 }
 
 func TestHealthGroupsSentToNewClient(t *testing.T) {
-	healthEnv(t)
-	npc, stop := runSignal(t, "0.35.0")
+	db, _, _ := healthEnv(t)
+	npc, stop := runSignal(t, db, "0.35.0")
 	defer stop()
 	_ = npc.SetReadDeadline(time.Now().Add(5 * time.Second))
 	flag, err := legacy.ReadFlag(npc)
@@ -127,7 +127,7 @@ func (*fakeOpenTunnel) Reason() string { return "" }
 // An entry published through npc.conf can be enabled on the server: each
 // instance checks its own target, and publishing again keeps the setting.
 func TestHealthGroupOfPublishedEntry(t *testing.T) {
-	client, tn := healthEnv(t)
+	db, client, tn := healthEnv(t)
 	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
 	c := NewClient(client.Id, node, Primary)
 	tn.NoStore = true
@@ -135,12 +135,12 @@ func TestHealthGroupOfPublishedEntry(t *testing.T) {
 	own := &model.Target{TargetStr: "127.0.0.1:3\n127.0.0.1:4"}
 	tn.Routes.Publish(node.UUID, own)
 	tn.Update(&model.Tunnel{Mode: "tcp", Target: own})
-	g, ok := desiredHealthGroups(file.GetDb(), client.Id, node, c)["t9"]
+	g, ok := desiredHealthGroups(db, client.Id, node, c)["t9"]
 	if !ok || g.target != own {
 		t.Fatalf("group %+v, %v", g, ok)
 	}
 	other := NewNode("n2", "0.35.0", legacy.LatestIndex)
-	if _, ok := desiredHealthGroups(file.GetDb(), client.Id, other, c)["t9"]; ok {
+	if _, ok := desiredHealthGroups(db, client.Id, other, c)["t9"]; ok {
 		t.Fatal("a node that does not publish the entry checks it")
 	}
 }
@@ -178,21 +178,21 @@ func TestLateHealthReportDropped(t *testing.T) {
 }
 
 func TestUDPTunnelGetsNoHealthGroup(t *testing.T) {
-	client, tn := healthEnv(t)
+	db, client, tn := healthEnv(t)
 	tn.Mode = "udp"
 	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
-	if got := desiredHealthGroups(file.GetDb(), client.Id, node, NewClient(client.Id, node, Primary)); len(got) != 0 {
+	if got := desiredHealthGroups(db, client.Id, node, NewClient(client.Id, node, Primary)); len(got) != 0 {
 		t.Fatalf("groups %v", got)
 	}
 }
 
 func TestRepublishedTunnelAnnouncesChange(t *testing.T) {
-	client, tn := healthEnv(t)
+	db, client, tn := healthEnv(t)
 	tn.NoStore, tn.Remark, tn.Port = true, "r", 7000
 	tn.Routes = model.NewRouteSet(func(string) bool { return true })
-	s := NewTunnel(file.GetDb(), nil, Options{DisconnectTime: 30})
+	s := NewTunnel(db, nil, Options{DisconnectTime: 30})
 	var calls atomic.Int32
-	file.GetDb().OnEntriesChanged(func() { calls.Add(1) })
+	db.OnEntriesChanged(func() { calls.Add(1) })
 	again := &model.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &model.Target{TargetStr: "a:1"}, Client: client}
 	if _, _, err := s.publishTask(again, client, "n1", legacy.CapsOf(legacy.LatestIndex, "0.35.0")); err != nil {
 		t.Fatal(err)

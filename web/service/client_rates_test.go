@@ -20,10 +20,10 @@ func (visibleRateConn) Close() error                { return nil }
 
 func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
+		db := file.New(t.TempDir())
 		for id := 1; id <= 4; id++ {
 			client := &model.Client{Id: id, Remark: "visible", Rate: rate.NewRate(0), NoDisplay: id == 4}
-			file.GetDb().JsonDb.Clients.Store(id, client)
+			db.JsonDb.Clients.Store(id, client)
 			conn := rate.NewRateConn(visibleRateConn{bytes.NewReader(make([]byte, id*100))}, client.Rate)
 			if _, err := conn.Write(make([]byte, id*200)); err != nil {
 				t.Fatal(err)
@@ -43,7 +43,7 @@ func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 					want = []int{3, 1}
 				}
 				for offset := 0; offset < 2; offset++ {
-					rows, total := (defaultRepository{}).ListVisibleClients(ListClientsInput{Offset: offset, Limit: 1, Sort: field, Order: order, Search: "visible", Visibility: ClientVisibility{PrimaryClientID: 1, ClientIDs: []int{1, 3, 4}}})
+					rows, total := (storeRepository{db: db}).ListVisibleClients(ListClientsInput{Offset: offset, Limit: 1, Sort: field, Order: order, Search: "visible", Visibility: ClientVisibility{PrimaryClientID: 1, ClientIDs: []int{1, 3, 4}}})
 					if total != 2 || len(rows) != 1 || rows[0].Id != want[offset] {
 						t.Fatalf("%s %s page %d: total=%d rows=%+v want=%d", field, order, offset, total, rows, want[offset])
 					}

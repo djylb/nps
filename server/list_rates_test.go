@@ -24,10 +24,10 @@ func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 			`[{"Id":1,"Port":1,"Mode":"tcp","Client":{"Id":1}},{"Id":2,"Port":2,"Mode":"tcp","Client":{"Id":2}},{"Id":3,"Port":3,"Mode":"tcp","Client":{"Id":3}}]`,
 			`[{"Id":1,"Host":"a.test","Client":{"Id":1}},{"Id":2,"Host":"b.test","Client":{"Id":2}},{"Id":3,"Host":"c.test","Client":{"Id":3}}]`)
 		for i, profile := range []struct{ upload, download int }{{300, 10}, {100, 400}, {200, 50}} {
-			c, _ := file.GetDb().GetClient(i + 1)
+			c, _ := s.db.GetClient(i + 1)
 			c.Rate = rate.NewRate(0)
-			tunnel, _ := file.GetDb().GetTask(i + 1)
-			host, _ := file.GetDb().GetHostById(i + 1)
+			tunnel, _ := s.db.GetTask(i + 1)
+			host, _ := s.db.GetHostById(i + 1)
 			conn := rate.NewRateConn(speedTestConn{bytes.NewReader(make([]byte, profile.download))}, c.Rate, tunnel.RateLimiter(), host.RateLimiter())
 			if _, err := conn.Write(make([]byte, profile.upload)); err != nil {
 				t.Fatal(err)
@@ -65,12 +65,12 @@ func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 					if n != 3 || len(clients) != 1 || clients[0].Id != want[offset] {
 						t.Fatalf("clients %s %s offset %d want %d; got %+v", tc.field, order, offset, want[offset], clients)
 					}
-					clients, n = file.GetDb().GetClientList(offset, 1, "", tc.field, order, 0)
+					clients, n = s.db.GetClientList(offset, 1, "", tc.field, order, 0)
 					if n != 3 || len(clients) != 1 || clients[0].Id != want[offset] {
 						t.Fatalf("db clients %s %s offset %d want %d", tc.field, order, offset, want[offset])
 					}
 				}
-				keys := file.GetMapKeys(&file.GetDb().JsonDb.Clients, true, tc.field, order)
+				keys := file.GetMapKeys(&s.db.JsonDb.Clients, true, tc.field, order)
 				if !reflect.DeepEqual(keys, want) {
 					t.Fatalf("visibility sort %s %s: %v want %v", tc.field, order, keys, want)
 				}

@@ -40,6 +40,11 @@ type Repository interface {
 	HostExists(*model.Host) bool
 	GetGlobal() *model.Glob
 	SaveGlobal(*model.Glob) error
+	// ClientEntryCount is the number of tunnels and hosts of client.
+	ClientEntryCount(*model.Client) int
+	// GlobalDenied reports whether the global access lists deny addr, and
+	// logs a denial; what names the listener in the log.
+	GlobalDenied(addr, what string) bool
 	ClientOwnsTunnel(int, int) bool
 	ClientOwnsHost(int, int) bool
 }
@@ -73,59 +78,41 @@ type Backend struct {
 	Runtime    Runtime
 }
 
-// DefaultBackend is the backend of the store without a running server.
-func DefaultBackend() Backend {
-	return NewBackend(nil)
-}
-
-// NewBackend is the backend of the store and of runtime, the running
+// NewBackend is the backend of the store db and of runtime, the running
 // server; a nil runtime means none runs.
-func NewBackend(runtime Runtime) Backend {
+func NewBackend(db *file.DbUtils, runtime Runtime) Backend {
 	if runtime == nil {
-		runtime = offlineRuntime{}
+		runtime = offlineRuntime{db: db}
 	} else {
 		runtime = bridgeErrors{runtime}
 	}
 	return Backend{
-		Repository: defaultRepository{},
+		Repository: storeRepository{db: db},
 		Runtime:    runtime,
 	}
 }
 
-func (b Backend) repo() Repository {
-	if b.Repository != nil {
-		return b.Repository
-	}
-	return DefaultBackend().Repository
-}
+// storeRepository is the Repository of a store.
+type storeRepository struct{ db *file.DbUtils }
 
-func (b Backend) runtime() Runtime {
-	if b.Runtime != nil {
-		return b.Runtime
-	}
-	return DefaultBackend().Runtime
-}
-
-type defaultRepository struct{}
-
-func (defaultRepository) RangeClients(fn func(*model.Client) bool) {
-	file.GetDb().JsonDb.Clients.Range(func(_, value interface{}) bool {
+func (r storeRepository) RangeClients(fn func(*model.Client) bool) {
+	r.db.JsonDb.Clients.Range(func(_, value interface{}) bool {
 		return fn(value.(*model.Client))
 	})
 }
 
-func (defaultRepository) RangeTunnels(fn func(*model.Tunnel) bool) {
-	file.GetDb().RangeTunnels(fn)
+func (r storeRepository) RangeTunnels(fn func(*model.Tunnel) bool) {
+	r.db.RangeTunnels(fn)
 }
 
-func (defaultRepository) RangeHosts(fn func(*model.Host) bool) {
-	file.GetDb().RangeHosts(fn)
+func (r storeRepository) RangeHosts(fn func(*model.Host) bool) {
+	r.db.RangeHosts(fn)
 }
 
-func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
+func (r storeRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
 	visible := visibleClientSet(input.Visibility)
 	if input.Visibility.IsAdmin || len(visible) == 1 {
-		return file.GetDb().GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
+		return r.db.GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
 	}
 	if len(visible) == 0 {
 		return nil, 0
@@ -135,9 +122,9 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Cl
 	var count int
 	originLimit := input.Limit
 	searchID := textutil.GetIntNoErrByStr(input.Search)
-	keys := file.GetMapKeys(&file.GetDb().JsonDb.Clients, true, input.Sort, input.Order)
+	keys := file.GetMapKeys(&r.db.JsonDb.Clients, true, input.Sort, input.Order)
 	for _, key := range keys {
-		value, ok := file.GetDb().JsonDb.Clients.Load(key)
+		value, ok := r.db.JsonDb.Clients.Load(key)
 		if !ok {
 			continue
 		}
@@ -166,121 +153,129 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Cl
 	return list, count
 }
 
-func (defaultRepository) NextClientID() int {
-	return int(file.GetDb().JsonDb.GetClientId())
+func (r storeRepository) NextClientID() int {
+	return int(r.db.JsonDb.GetClientId())
 }
 
-func (defaultRepository) NextTunnelID() int {
-	return file.GetDb().NextTunnelID()
+func (r storeRepository) NextTunnelID() int {
+	return r.db.NextTunnelID()
 }
 
-func (defaultRepository) NextHostID() int {
-	return file.GetDb().NextHostID()
+func (r storeRepository) NextHostID() int {
+	return r.db.NextHostID()
 }
 
-func (defaultRepository) CreateClient(client *model.Client) error {
-	return file.GetDb().NewClient(client)
+func (r storeRepository) CreateClient(client *model.Client) error {
+	return r.db.NewClient(client)
 }
 
-func (defaultRepository) GetClient(id int) (*model.Client, error) {
-	return file.GetDb().GetClient(id)
+func (r storeRepository) GetClient(id int) (*model.Client, error) {
+	return r.db.GetClient(id)
 }
 
-func (defaultRepository) SaveClient(_ *model.Client) error {
-	return file.GetDb().JsonDb.StoreClientsToJsonFile()
+func (r storeRepository) SaveClient(_ *model.Client) error {
+	return r.db.JsonDb.StoreClientsToJsonFile()
 }
 
-func (defaultRepository) PersistClients() error {
-	return file.GetDb().JsonDb.StoreClientsToJsonFile()
+func (r storeRepository) PersistClients() error {
+	return r.db.JsonDb.StoreClientsToJsonFile()
 }
 
-func (defaultRepository) PersistGlobal() error {
-	return file.GetDb().JsonDb.StoreGlobalToJsonFile()
+func (r storeRepository) PersistGlobal() error {
+	return r.db.JsonDb.StoreGlobalToJsonFile()
 }
 
-func (defaultRepository) DeleteClient(id int) error {
-	return file.GetDb().DelClient(id)
+func (r storeRepository) DeleteClient(id int) error {
+	return r.db.DelClient(id)
 }
 
-func (defaultRepository) VerifyUserName(username string, exceptID int) bool {
-	return file.GetDb().VerifyUserName(username, exceptID)
+func (r storeRepository) VerifyUserName(username string, exceptID int) bool {
+	return r.db.VerifyUserName(username, exceptID)
 }
 
-func (defaultRepository) VerifyVKey(vkey string, exceptID int) bool {
-	return file.GetDb().VerifyVkey(vkey, exceptID)
+func (r storeRepository) VerifyVKey(vkey string, exceptID int) bool {
+	return r.db.VerifyVkey(vkey, exceptID)
 }
 
-func (defaultRepository) ReplaceClientVKeyIndex(oldKey, newKey string, clientID int) {
-	file.GetDb().ReplaceClientVKey(oldKey, newKey, clientID)
+func (r storeRepository) ReplaceClientVKeyIndex(oldKey, newKey string, clientID int) {
+	r.db.ReplaceClientVKey(oldKey, newKey, clientID)
 }
 
-func (defaultRepository) CreateTunnel(tunnel *model.Tunnel) error {
-	return file.GetDb().NewTask(tunnel)
+func (r storeRepository) CreateTunnel(tunnel *model.Tunnel) error {
+	return r.db.NewTask(tunnel)
 }
 
-func (defaultRepository) GetTunnel(id int) (*model.Tunnel, error) {
-	return file.GetDb().GetTask(id)
+func (r storeRepository) GetTunnel(id int) (*model.Tunnel, error) {
+	return r.db.GetTask(id)
 }
 
-func (defaultRepository) SaveTunnel(tunnel *model.Tunnel) error {
-	return file.GetDb().UpdateTask(tunnel)
+func (r storeRepository) SaveTunnel(tunnel *model.Tunnel) error {
+	return r.db.UpdateTask(tunnel)
 }
 
-func (defaultRepository) DeleteTunnelRecord(id int) error {
-	return file.GetDb().DelTask(id)
+func (r storeRepository) DeleteTunnelRecord(id int) error {
+	return r.db.DelTask(id)
 }
 
-func (defaultRepository) CreateHost(host *model.Host) error {
-	return file.GetDb().NewHost(host)
+func (r storeRepository) CreateHost(host *model.Host) error {
+	return r.db.NewHost(host)
 }
 
-func (defaultRepository) GetHost(id int) (*model.Host, error) {
-	return file.GetDb().GetHostById(id)
+func (r storeRepository) GetHost(id int) (*model.Host, error) {
+	return r.db.GetHostById(id)
 }
 
-func (defaultRepository) SaveHost(host *model.Host, oldHost string) error {
-	return file.GetDb().SaveHost(host, oldHost)
+func (r storeRepository) SaveHost(host *model.Host, oldHost string) error {
+	return r.db.SaveHost(host, oldHost)
 }
 
-func (defaultRepository) FindReusableCert(host string, excludeID, clientID int) (*model.Host, error) {
-	return file.GetDb().FindReusableCert(host, excludeID, clientID)
+func (r storeRepository) FindReusableCert(host string, excludeID, clientID int) (*model.Host, error) {
+	return r.db.FindReusableCert(host, excludeID, clientID)
 }
 
-func (defaultRepository) PersistHosts() error {
-	return file.GetDb().JsonDb.StoreHostToJsonFile()
+func (r storeRepository) PersistHosts() error {
+	return r.db.JsonDb.StoreHostToJsonFile()
 }
 
-func (defaultRepository) DeleteHostRecord(id int) error {
-	return file.GetDb().DelHost(id)
+func (r storeRepository) DeleteHostRecord(id int) error {
+	return r.db.DelHost(id)
 }
 
-func (defaultRepository) HostExists(host *model.Host) bool {
-	return file.GetDb().IsHostExist(host)
+func (r storeRepository) HostExists(host *model.Host) bool {
+	return r.db.IsHostExist(host)
 }
 
-func (defaultRepository) GetGlobal() *model.Glob {
-	return file.GetDb().GetGlobal()
+func (r storeRepository) GetGlobal() *model.Glob {
+	return r.db.GetGlobal()
 }
 
-func (defaultRepository) SaveGlobal(glob *model.Glob) error {
-	return file.GetDb().SaveGlobal(glob)
+func (r storeRepository) SaveGlobal(glob *model.Glob) error {
+	return r.db.SaveGlobal(glob)
 }
 
-func (defaultRepository) ClientOwnsTunnel(clientID, tunnelID int) bool {
+func (r storeRepository) ClientEntryCount(client *model.Client) int {
+	return r.db.ClientEntryCount(client)
+}
+
+func (r storeRepository) GlobalDenied(addr, what string) bool {
+	return r.db.GlobalDeniedString(addr, what)
+}
+
+func (r storeRepository) ClientOwnsTunnel(clientID, tunnelID int) bool {
 	if clientID <= 0 || tunnelID <= 0 {
 		return false
 	}
-	if v, ok := file.GetDb().JsonDb.Tasks.Load(tunnelID); ok {
+	if v, ok := r.db.JsonDb.Tasks.Load(tunnelID); ok {
 		return v.(*model.Tunnel).Client.Id == clientID
 	}
 	return false
 }
 
-func (defaultRepository) ClientOwnsHost(clientID, hostID int) bool {
+func (r storeRepository) ClientOwnsHost(clientID, hostID int) bool {
 	if clientID <= 0 || hostID <= 0 {
 		return false
 	}
-	if v, ok := file.GetDb().JsonDb.Hosts.Load(hostID); ok {
+	if v, ok := r.db.JsonDb.Hosts.Load(hostID); ok {
 		return v.(*model.Host).Client.Id == clientID
 	}
 	return false
@@ -288,12 +283,12 @@ func (defaultRepository) ClientOwnsHost(clientID, hostID int) bool {
 
 // offlineRuntime is the runtime while no server runs: no client is
 // connected, no task runs and none can be started.
-type offlineRuntime struct{}
+type offlineRuntime struct{ db *file.DbUtils }
 
 func (offlineRuntime) DashboardData(bool) map[string]interface{} { return map[string]interface{}{} }
 
-func (offlineRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
-	return file.GetDb().GetClientList(offset, limit, search, sort, order, clientID)
+func (r offlineRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
+	return r.db.GetClientList(offset, limit, search, sort, order, clientID)
 }
 
 func (offlineRuntime) PingClient(int, string) int { return -1 }
@@ -326,8 +321,8 @@ func (offlineRuntime) StartTunnel(int) error { return ErrServerNotRunning }
 
 func (offlineRuntime) DeleteTunnel(int) error { return ErrServerNotRunning }
 
-func (offlineRuntime) ListHosts(offset, limit, clientID int, search, _, _ string) ([]*model.Host, int) {
-	return file.GetDb().GetHost(offset, limit, clientID, search)
+func (r offlineRuntime) ListHosts(offset, limit, clientID int, search, _, _ string) ([]*model.Host, int) {
+	return r.db.GetHost(offset, limit, clientID, search)
 }
 
 func (offlineRuntime) RemoveHostCache(int) {}

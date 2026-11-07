@@ -84,15 +84,15 @@ func publish(t *testing.T, b *Bridge, client *model.Client, uuid string, ver int
 	<-done
 }
 
-func routeFixture(t *testing.T) (*Bridge, *model.Client) {
+func routeFixture(t *testing.T) (*file.DbUtils, *Bridge, *model.Client) {
 	t.Helper()
-	useTestDb(t)
+	db := useTestDb(t)
 	client := model.NewClient("route-vkey", false, false)
-	if err := file.GetDb().NewClient(client); err != nil {
+	if err := db.NewClient(client); err != nil {
 		t.Fatal(err)
 	}
-	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
-	return b, client
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	return db, b, client
 }
 
 func freePort(t *testing.T) int {
@@ -119,7 +119,7 @@ func openRoute(b *Bridge, clientId int, r model.Route) error {
 }
 
 func TestTaskRoutesAcrossInstances(t *testing.T) {
-	b, client := routeFixture(t)
+	db, b, client := routeFixture(t)
 	a := joinRouteNode(t, b, client.Id, "a")
 	c := joinRouteNode(t, b, client.Id, "c")
 	port := strconv.Itoa(freePort(t))
@@ -134,7 +134,7 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 		t.Fatal("a joining instance restarted the running task")
 	default:
 	}
-	stored, ok := file.GetDb().ClientTunnel(client, opened)
+	stored, ok := db.ClientTunnel(client, opened)
 	if !ok || stored != opened {
 		t.Fatal("the second instance created another entry")
 	}
@@ -181,11 +181,11 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 }
 
 func TestHostRoutesAndStoredEntries(t *testing.T) {
-	b, client := routeFixture(t)
+	db, b, client := routeFixture(t)
 	a := joinRouteNode(t, b, client.Id, "a")
 	c := joinRouteNode(t, b, client.Id, "c")
 	stored := &model.Host{Host: "web.example.com", Location: "/", Client: client, Flow: new(model.Flow), Target: &model.Target{TargetStr: "127.0.0.1:9"}}
-	if err := file.GetDb().NewHost(stored); err != nil {
+	if err := db.NewHost(stored); err != nil {
 		t.Fatal(err)
 	}
 	host := func(target string) *model.Host {
@@ -193,7 +193,7 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 	}
 	publish(t, b, client, "a", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:1"))
 	publish(t, b, client, "c", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:2"))
-	entry, ok := file.GetDb().ClientHost(client, &model.Host{Host: "npc.example.com", Location: "/"})
+	entry, ok := db.ClientHost(client, &model.Host{Host: "npc.example.com", Location: "/"})
 	if !ok || entry.Routes.Len() != 2 {
 		t.Fatalf("entry %+v, want one host with two routes", entry)
 	}
@@ -222,7 +222,7 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 // A client without a stable UUID keeps the previous behaviour: no routes,
 // and the entry stays until the client goes.
 func TestLegacyClientHasNoRoutes(t *testing.T) {
-	b, client := routeFixture(t)
+	_, b, client := routeFixture(t)
 	const ver = 5
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver), Primary))
 	publish(t, b, client, "config-conn", ver, legacy.FlagNewTask, &model.Tunnel{
@@ -250,7 +250,7 @@ func TestLinkNodeStaysOffTheWire(t *testing.T) {
 }
 
 func TestDeadRouteNodeDoesNotCloseTheClient(t *testing.T) {
-	b, client := routeFixture(t)
+	_, b, client := routeFixture(t)
 	joinRouteNode(t, b, client.Id, "a")
 	link := conn.NewLink(conn.LinkTCP, "h", false, false, "", false)
 	link.Option.Node = "gone"
@@ -264,7 +264,7 @@ func TestDeadRouteNodeDoesNotCloseTheClient(t *testing.T) {
 
 // A close signal handled after the client came back leaves its entries alone.
 func TestCloseSignalSparesAReturningClient(t *testing.T) {
-	b, client := routeFixture(t)
+	_, b, client := routeFixture(t)
 	const ver = legacy.LatestIndex
 	cleanups := 0
 	cleanup := func() { cleanups++ }
@@ -321,12 +321,12 @@ func ageNode(t *testing.T, b *Bridge, clientId int, uuid string) (*Client, *Node
 // npc connects its tunnel only after the config exchange, and a dial may take
 // seconds per server address: what it published must wait for it.
 func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
-	b, client := routeFixture(t)
+	db, b, client := routeFixture(t)
 	publish(t, b, client, "slow", legacy.LatestIndex, legacy.FlagNewHost, &model.Host{
 		Host: "slow.test", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
 	hostOf := func() *model.Host {
-		h, err := file.GetDb().GetHostById(hostIdByName(t, "slow.test"))
+		h, err := db.GetHostById(hostIdByName(t, db, "slow.test"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -361,7 +361,7 @@ func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
 
 // A node that never connects its tunnel leaves when its grace ends.
 func TestPublishedEntryLeavesWithoutTunnel(t *testing.T) {
-	b, client := routeFixture(t)
+	_, b, client := routeFixture(t)
 	publish(t, b, client, "gone", legacy.LatestIndex, legacy.FlagNewHost, &model.Host{
 		Host: "gone.test", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
@@ -377,10 +377,10 @@ func TestPublishedEntryLeavesWithoutTunnel(t *testing.T) {
 	}
 }
 
-func hostIdByName(t *testing.T, name string) int {
+func hostIdByName(t *testing.T, db *file.DbUtils, name string) int {
 	t.Helper()
 	id := 0
-	file.GetDb().JsonDb.Hosts.Range(func(_, value any) bool {
+	db.JsonDb.Hosts.Range(func(_, value any) bool {
 		if h := value.(*model.Host); h.Host == name {
 			id = h.Id
 		}

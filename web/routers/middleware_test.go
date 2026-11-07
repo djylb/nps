@@ -14,11 +14,13 @@ import (
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
+	webapi "github.com/djylb/nps/web/api"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
 )
 
 type requestParamFixture struct {
+	db      *file.DbUtils
 	handler http.Handler
 	cookies []*http.Cookie
 	clientA *model.Client
@@ -33,7 +35,7 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 	runenv.ConfPath = testRepoRoot(t)
 	t.Cleanup(func() { runenv.ConfPath = oldConfPath })
 
-	resetTestDB(t)
+	db := resetTestDB(t)
 	webservice.SharedLoginPolicy().RemoveAllBans()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
@@ -47,18 +49,18 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	f := &requestParamFixture{}
-	f.clientA = createTestClient(t, 101, "operator", "op-secret")
-	f.clientB = createTestClient(t, 102, "operator-b", "op-secret-b")
-	f.clientC = createTestClient(t, 103, "other", "other-secret")
-	createTestTunnel(t, 201, f.clientA, 19081)
-	createTestTunnel(t, 203, f.clientC, 19083)
-	f.hostOfB = createTestHost(t, 301, f.clientB, "b.example.test")
-	createTestHost(t, 302, f.clientC, "c.example.test")
+	f := &requestParamFixture{db: db}
+	f.clientA = createTestClient(t, db, 101, "operator", "op-secret")
+	f.clientB = createTestClient(t, db, 102, "operator-b", "op-secret-b")
+	f.clientC = createTestClient(t, db, 103, "other", "other-secret")
+	createTestTunnel(t, db, 201, f.clientA, 19081)
+	createTestTunnel(t, db, 203, f.clientC, 19083)
+	f.hostOfB = createTestHost(t, db, 301, f.clientB, "b.example.test")
+	createTestHost(t, db, 302, f.clientC, "c.example.test")
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(nil)
+	handler, err := Init(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +146,7 @@ func TestEditHostClientSelection(t *testing.T) {
 		return payload
 	}
 	ownerOf := func() int {
-		host, err := file.GetDb().GetHostById(f.hostOfB.Id)
+		host, err := f.db.GetHostById(f.hostOfB.Id)
 		if err != nil {
 			t.Fatalf("GetHostById() error = %v", err)
 		}
@@ -182,7 +184,7 @@ func TestEditHostClientSelection(t *testing.T) {
 	}
 
 	f.clientB.MaxTunnelNum = 1
-	createTestHost(t, 304, f.clientB, "b2.example.test")
+	createTestHost(t, f.db, 304, f.clientB, "b2.example.test")
 	resp = performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]interface{}{"client_id": f.clientB.Id}))
 	if !strings.Contains(resp.Body.String(), "\"status\":0") {
 		t.Fatalf("edit to client at limit should fail, status=%d body=%s", resp.Code, resp.Body.String())
@@ -203,10 +205,10 @@ func TestEditResourceVirtualClientSelection(t *testing.T) {
 	for _, resource := range []string{"tunnel", "host"} {
 		t.Run(resource, func(t *testing.T) {
 			f := newRequestParamFixture(t)
-			createTestClient(t, -1, "", "")
-			createTestClient(t, -2, "", "")
-			state := NewState(nil)
-			backend := webservice.DefaultBackend()
+			createTestClient(t, f.db, -1, "", "")
+			createTestClient(t, f.db, -2, "", "")
+			state := NewState(webapi.NewWithOptions(nil, webapi.Options{Store: f.db}))
+			backend := webservice.NewBackend(f.db, nil)
 			backend.Runtime = virtualClientEditRuntime{backend.Runtime}
 			state.App.Services.Index = webservice.DefaultIndexService{Backend: backend}
 			engine := gin.New()
@@ -226,13 +228,13 @@ func TestEditResourceVirtualClientSelection(t *testing.T) {
 			}
 			owner := func() int {
 				if resource == "host" {
-					h, err := file.GetDb().GetHostById(id)
+					h, err := f.db.GetHostById(id)
 					if err != nil {
 						t.Fatal(err)
 					}
 					return h.Client.Id
 				}
-				task, err := file.GetDb().GetTask(id)
+				task, err := f.db.GetTask(id)
 				if err != nil {
 					t.Fatal(err)
 				}

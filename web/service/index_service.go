@@ -9,7 +9,6 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/textutil"
 )
@@ -109,11 +108,11 @@ func (in HostInput) form() *model.Host {
 }
 
 func (s DefaultIndexService) DashboardData(force bool) map[string]interface{} {
-	return s.runtime().DashboardData(force)
+	return s.Backend.Runtime.DashboardData(force)
 }
 
 func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*model.Tunnel, int) {
-	return s.runtime().ListTunnels(input.Offset, input.Limit, input.Type, input.ClientID, input.Search, input.Sort, input.Order)
+	return s.Backend.Runtime.ListTunnels(input.Offset, input.Limit, input.Type, input.ClientID, input.Search, input.Sort, input.Order)
 }
 
 func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error) {
@@ -126,7 +125,7 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	if err != nil {
 		return TunnelMutation{}, err
 	}
-	id := s.repo().NextTunnelID()
+	id := s.Backend.Repository.NextTunnelID()
 	flowLimit, timeLimit := formFlowLimits(form.Flow)
 	tunnel := &model.Tunnel{
 		Port:   form.Port,
@@ -142,20 +141,20 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 		return TunnelMutation{}, err
 	}
 
-	client, err := s.repo().GetClient(input.ClientID)
+	client, err := s.Backend.Repository.GetClient(input.ClientID)
 	if err != nil {
 		return TunnelMutation{}, ErrClientNotFound
 	}
 	tunnel.Client = client
-	if tunnel.Client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(tunnel.Client) >= tunnel.Client.MaxTunnelNum {
+	if tunnel.Client.MaxTunnelNum != 0 && s.Backend.Repository.ClientEntryCount(tunnel.Client) >= tunnel.Client.MaxTunnelNum {
 		return TunnelMutation{}, ErrTunnelLimitExceeded
 	}
 
-	if err := s.repo().CreateTunnel(tunnel); err != nil {
+	if err := s.Backend.Repository.CreateTunnel(tunnel); err != nil {
 		return TunnelMutation{}, err
 	}
-	if err := s.runtime().AddTunnel(tunnel); err != nil {
-		_ = s.repo().DeleteTunnelRecord(tunnel.Id)
+	if err := s.Backend.Runtime.AddTunnel(tunnel); err != nil {
+		_ = s.Backend.Repository.DeleteTunnelRecord(tunnel.Id)
 		return TunnelMutation{}, normalizeRuntimeError(err)
 	}
 
@@ -163,7 +162,7 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 }
 
 func (s DefaultIndexService) GetTunnel(id int) (*model.Tunnel, error) {
-	tunnel, err := s.repo().GetTunnel(id)
+	tunnel, err := s.Backend.Repository.GetTunnel(id)
 	if err != nil {
 		return nil, ErrTunnelNotFound
 	}
@@ -180,7 +179,7 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	if err != nil {
 		return TunnelMutation{}, err
 	}
-	stored, err := s.repo().GetTunnel(input.ID)
+	stored, err := s.Backend.Repository.GetTunnel(input.ID)
 	if err != nil {
 		return TunnelMutation{}, ErrTunnelNotFound
 	}
@@ -223,16 +222,16 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Flow.SetLimits(formFlowLimits(form.Flow))
 
-	if err := s.repo().SaveTunnel(tunnel); err != nil {
+	if err := s.Backend.Repository.SaveTunnel(tunnel); err != nil {
 		return TunnelMutation{}, err
 	}
 	if input.ResetFlow {
 		tunnel.Flow.ResetTraffic()
 	}
-	if err := s.runtime().StopTunnel(tunnel.Id); err != nil && !isTaskNotRunning(err) {
+	if err := s.Backend.Runtime.StopTunnel(tunnel.Id); err != nil && !isTaskNotRunning(err) {
 		return TunnelMutation{}, err
 	}
-	if err := s.runtime().StartTunnel(tunnel.Id); err != nil {
+	if err := s.Backend.Runtime.StartTunnel(tunnel.Id); err != nil {
 		return TunnelMutation{}, normalizeRuntimeError(err)
 	}
 
@@ -310,14 +309,14 @@ func (s DefaultIndexService) editTargetClient(current *model.Client, clientID in
 		}
 		return current, nil
 	}
-	client, err := s.repo().GetClient(clientID)
+	client, err := s.Backend.Repository.GetClient(clientID)
 	if err != nil {
 		return nil, ErrClientNotFound
 	}
 	if current != nil && current.Id == client.Id {
 		return client, nil
 	}
-	if client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(client) >= client.MaxTunnelNum {
+	if client.MaxTunnelNum != 0 && s.Backend.Repository.ClientEntryCount(client) >= client.MaxTunnelNum {
 		return nil, ErrTunnelLimitExceeded
 	}
 	return client, nil
@@ -325,23 +324,23 @@ func (s DefaultIndexService) editTargetClient(current *model.Client, clientID in
 
 func (s DefaultIndexService) StopTunnel(id int, mode string) error {
 	if mode != "" {
-		return changeTunnelStatus(id, mode, "stop")
+		return changeTunnelStatus(s.Backend.Repository, id, mode, "stop")
 	}
-	if err := s.runtime().StopTunnel(id); err != nil && !isTaskNotRunning(err) {
+	if err := s.Backend.Runtime.StopTunnel(id); err != nil && !isTaskNotRunning(err) {
 		return err
 	}
 	return nil
 }
 
 func (s DefaultIndexService) DeleteTunnel(id int) error {
-	return s.runtime().DeleteTunnel(id)
+	return s.Backend.Runtime.DeleteTunnel(id)
 }
 
 func (s DefaultIndexService) StartTunnel(id int, mode string) error {
 	if mode != "" {
-		return changeTunnelStatus(id, mode, "start")
+		return changeTunnelStatus(s.Backend.Repository, id, mode, "start")
 	}
-	return normalizeRuntimeError(s.runtime().StartTunnel(id))
+	return normalizeRuntimeError(s.Backend.Runtime.StartTunnel(id))
 }
 
 func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
@@ -351,7 +350,7 @@ func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
 			return err
 		}
 		tunnel.SetMaxConn(0)
-		return s.repo().SaveTunnel(tunnel)
+		return s.Backend.Repository.SaveTunnel(tunnel)
 	}
 	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
 		tunnel, err := s.GetTunnel(id)
@@ -363,20 +362,20 @@ func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
 		} else {
 			tunnel.ClearDownloadLimit()
 		}
-		return s.repo().SaveTunnel(tunnel)
+		return s.Backend.Repository.SaveTunnel(tunnel)
 	}
 	if strings.TrimSpace(mode) == "" {
 		return ErrModeRequired
 	}
-	return changeTunnelStatus(id, mode, "clear")
+	return changeTunnelStatus(s.Backend.Repository, id, mode, "clear")
 }
 
 func (s DefaultIndexService) ListHosts(input HostListInput) ([]*model.Host, int) {
-	return s.runtime().ListHosts(input.Offset, input.Limit, input.ClientID, input.Search, input.Sort, input.Order)
+	return s.Backend.Runtime.ListHosts(input.Offset, input.Limit, input.ClientID, input.Search, input.Sort, input.Order)
 }
 
 func (s DefaultIndexService) GetHost(id int) (*model.Host, error) {
-	host, err := s.repo().GetHost(id)
+	host, err := s.Backend.Repository.GetHost(id)
 	if err != nil {
 		return nil, ErrHostNotFound
 	}
@@ -397,7 +396,7 @@ type CertSuggestion struct {
 // name host, among entries with certificate files other than excludeID; with a
 // clientID other than 0, among the entries of that client. Nil means none.
 func (s DefaultIndexService) SuggestCert(host string, excludeID, clientID int) *CertSuggestion {
-	source, err := s.repo().FindReusableCert(strings.TrimSpace(host), excludeID, clientID)
+	source, err := s.Backend.Repository.FindReusableCert(strings.TrimSpace(host), excludeID, clientID)
 	if err != nil || source == nil {
 		return nil
 	}
@@ -411,34 +410,34 @@ func (s DefaultIndexService) SuggestCert(host string, excludeID, clientID int) *
 }
 
 func (s DefaultIndexService) DeleteHost(id int) error {
-	defer s.runtime().RemoveHostCache(id)
-	return s.repo().DeleteHostRecord(id)
+	defer s.Backend.Runtime.RemoveHostCache(id)
+	return s.Backend.Repository.DeleteHostRecord(id)
 }
 
 func (s DefaultIndexService) StartHost(id int, mode string) error {
-	defer s.runtime().RemoveHostCache(id)
+	defer s.Backend.Runtime.RemoveHostCache(id)
 	if mode != "" {
-		return changeHostStatus(id, mode, "start")
+		return changeHostStatus(s.Backend.Repository, id, mode, "start")
 	}
-	host, err := s.repo().GetHost(id)
+	host, err := s.Backend.Repository.GetHost(id)
 	if err != nil {
 		return ErrHostNotFound
 	}
 	host.IsClose = false
-	return s.repo().SaveHost(host, "")
+	return s.Backend.Repository.SaveHost(host, "")
 }
 
 func (s DefaultIndexService) StopHost(id int, mode string) error {
-	defer s.runtime().RemoveHostCache(id)
+	defer s.Backend.Runtime.RemoveHostCache(id)
 	if mode != "" {
-		return changeHostStatus(id, mode, "stop")
+		return changeHostStatus(s.Backend.Repository, id, mode, "stop")
 	}
-	host, err := s.repo().GetHost(id)
+	host, err := s.Backend.Repository.GetHost(id)
 	if err != nil {
 		return ErrHostNotFound
 	}
 	host.IsClose = true
-	return s.repo().SaveHost(host, "")
+	return s.Backend.Repository.SaveHost(host, "")
 }
 
 func (s DefaultIndexService) ClearHost(id int, mode string) error {
@@ -448,7 +447,7 @@ func (s DefaultIndexService) ClearHost(id int, mode string) error {
 			return err
 		}
 		host.SetMaxConn(0)
-		return s.repo().SaveHost(host, "")
+		return s.Backend.Repository.SaveHost(host, "")
 	}
 	if mode = strings.TrimSpace(mode); mode == "upload_limit" || mode == "download_limit" {
 		host, err := s.GetHost(id)
@@ -460,13 +459,13 @@ func (s DefaultIndexService) ClearHost(id int, mode string) error {
 		} else {
 			host.ClearDownloadLimit()
 		}
-		return s.repo().SaveHost(host, "")
+		return s.Backend.Repository.SaveHost(host, "")
 	}
-	defer s.runtime().RemoveHostCache(id)
+	defer s.Backend.Runtime.RemoveHostCache(id)
 	if strings.TrimSpace(mode) == "" {
 		return ErrModeRequired
 	}
-	return changeHostStatus(id, mode, "clear")
+	return changeHostStatus(s.Backend.Repository, id, mode, "clear")
 }
 
 func (s DefaultIndexService) AddHost(input HostInput) (HostMutation, error) {
@@ -475,7 +474,7 @@ func (s DefaultIndexService) AddHost(input HostInput) (HostMutation, error) {
 		return HostMutation{}, err
 	}
 	form := input.form()
-	id := s.repo().NextHostID()
+	id := s.Backend.Repository.NextHostID()
 	flowLimit, timeLimit := formFlowLimits(form.Flow)
 	host := &model.Host{
 		Id:     id,
@@ -485,16 +484,16 @@ func (s DefaultIndexService) AddHost(input HostInput) (HostMutation, error) {
 	applyHostForm(host, form)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
 
-	client, err := s.repo().GetClient(input.ClientID)
+	client, err := s.Backend.Repository.GetClient(input.ClientID)
 	if err != nil {
 		return HostMutation{}, ErrClientNotFound
 	}
 	host.Client = client
-	if host.Client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(host.Client) >= host.Client.MaxTunnelNum {
+	if host.Client.MaxTunnelNum != 0 && s.Backend.Repository.ClientEntryCount(host.Client) >= host.Client.MaxTunnelNum {
 		return HostMutation{}, ErrTunnelLimitExceeded
 	}
 
-	if err := s.repo().CreateHost(host); err != nil {
+	if err := s.Backend.Repository.CreateHost(host); err != nil {
 		if isHostExistsError(err) {
 			return HostMutation{}, ErrHostExists
 		}
@@ -511,9 +510,9 @@ func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 	}
 	form := input.form()
 	// After the edit: a request in between would cache a transport of the old settings.
-	defer s.runtime().RemoveHostCache(input.ID)
+	defer s.Backend.Runtime.RemoveHostCache(input.ID)
 
-	host, err := s.repo().GetHost(input.ID)
+	host, err := s.Backend.Repository.GetHost(input.ID)
 	if err != nil {
 		return HostMutation{}, ErrHostNotFound
 	}
@@ -522,7 +521,7 @@ func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 	scheme := normalizeScheme(form.Scheme)
 	if host.Host != form.Host || host.Location != form.Location || host.Scheme != scheme {
 		tmpHost := &model.Host{Id: host.Id, Host: form.Host, Location: form.Location, Scheme: scheme}
-		if s.repo().HostExists(tmpHost) {
+		if s.Backend.Repository.HostExists(tmpHost) {
 			return HostMutation{}, ErrHostExists
 		}
 	}
@@ -549,7 +548,7 @@ func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 	host.CertType = crypt.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")")
-	if err := s.repo().SaveHost(host, oldHost); err != nil {
+	if err := s.Backend.Repository.SaveHost(host, oldHost); err != nil {
 		return HostMutation{}, err
 	}
 
@@ -606,25 +605,11 @@ func isHostExistsError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "host has exist")
 }
 
-func (s DefaultIndexService) repo() Repository {
-	if s.Backend.Repository != nil {
-		return s.Backend.Repository
-	}
-	return DefaultBackend().Repository
-}
-
-func (s DefaultIndexService) runtime() Runtime {
-	if s.Backend.Runtime != nil {
-		return s.Backend.Runtime
-	}
-	return DefaultBackend().Runtime
-}
-
 func (s DefaultIndexService) resolveTunnelPort(tunnel *model.Tunnel) (int, error) {
 	if tunnel.Port <= 0 {
-		tunnel.Port = s.runtime().GenerateTunnelPort(tunnel)
+		tunnel.Port = s.Backend.Runtime.GenerateTunnelPort(tunnel)
 	}
-	if !s.runtime().TunnelPortAvailable(tunnel) {
+	if !s.Backend.Runtime.TunnelPortAvailable(tunnel) {
 		return 0, ErrPortUnavailable
 	}
 	return tunnel.Port, nil

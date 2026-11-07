@@ -14,7 +14,7 @@ import (
 
 func TestLiveStatusRoutesRequireActor(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	state := NewStateWithApp(webapi.New(&servercfg.Snapshot{}))
+	state := NewState(webapi.NewWithOptions(&servercfg.Snapshot{}, webapi.Options{Store: resetTestDB(t)}))
 	r := gin.New()
 	group := r.Group("")
 	group.Use(func(c *gin.Context) {

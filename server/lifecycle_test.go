@@ -36,8 +36,7 @@ func testServerLifecycle(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	db := &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	t.Cleanup(file.ReplaceDb(db))
+	db := file.New(root)
 	const vkey = "lifecycle-key"
 	c := model.NewClient(vkey, true, false)
 	if err := db.NewClient(c); err != nil {

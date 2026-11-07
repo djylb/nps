@@ -69,9 +69,6 @@ func (a *App) LiveStatus(c Context) {
 	}
 	rows := make([]map[string]interface{}, 0, len(items))
 	rt := a.Services.Runtime
-	if rt == nil {
-		rt = webservice.DefaultBackend().Runtime
-	}
 	admin := a.Services.Authz.RequireAdmin(principal) == nil
 	for _, it := range items {
 		id := it.ID

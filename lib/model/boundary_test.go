@@ -1,9 +1,11 @@
 package model
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -75,4 +77,30 @@ func under(rel string, dirs []string) bool {
 		}
 	}
 	return false
+}
+
+// TestStoreHasNoPackageState keeps every store state in its instance: nps
+// builds the store and passes it on, so that no package variable of lib/file
+// holds entries, indexes or locks shared by all stores.
+func TestStoreHasNoPackageState(t *testing.T) {
+	dir := filepath.Join("..", "file")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range f.Decls {
+			if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.VAR {
+				t.Errorf("lib/file/%s declares a package variable", name)
+			}
+		}
+	}
 }

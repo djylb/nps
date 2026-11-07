@@ -106,6 +106,9 @@ func New(db *file.DbUtils, cfg Config) *Server {
 	return s
 }
 
+// Store returns the store of the entries the server serves.
+func (s *Server) Store() *file.DbUtils { return s.db }
+
 // Bridge returns the bridge of the server.
 func (s *Server) Bridge() *bridge.Bridge { return s.bridge }
 

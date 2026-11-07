@@ -20,7 +20,7 @@ func newTestDb(t *testing.T) *file.DbUtils {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return &file.DbUtils{JsonDb: file.NewJsonDb(root)}
+	return file.New(root)
 }
 
 // newTestHttp3Server returns an HTTP/3 server of the hosts in store.

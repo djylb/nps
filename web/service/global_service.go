@@ -36,11 +36,11 @@ func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
 	g.RateLimit = max(input.RateLimit, 0)
 	g.MaxConn = max(input.MaxConn, 0)
 	lists.applyTo(&g.SourceLists, "the global settings")
-	return s.repo().SaveGlobal(g)
+	return s.Backend.Repository.SaveGlobal(g)
 }
 
 func (s DefaultGlobalService) Get() *model.Glob {
-	return s.repo().GetGlobal()
+	return s.Backend.Repository.GetGlobal()
 }
 
 func (s DefaultGlobalService) BanList() []LoginBanRecord {
@@ -64,11 +64,4 @@ func (s DefaultGlobalService) loginPolicy() LoginPolicyService {
 		return s.LoginPolicy
 	}
 	return SharedLoginPolicy()
-}
-
-func (s DefaultGlobalService) repo() Repository {
-	if s.Backend.Repository != nil {
-		return s.Backend.Repository
-	}
-	return DefaultBackend().Repository
 }

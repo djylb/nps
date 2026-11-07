@@ -13,14 +13,7 @@ type State struct {
 	ConfigProvider func() *servercfg.Snapshot
 }
 
-func NewState(cfg *servercfg.Snapshot) *State {
-	return NewStateWithApp(webapi.New(cfg))
-}
-
-func NewStateWithApp(app *webapi.App) *State {
-	if app == nil {
-		app = webapi.New(nil)
-	}
+func NewState(app *webapi.App) *State {
 	return &State{
 		App:            app,
 		ConfigProvider: app.CurrentConfig,
