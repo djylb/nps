@@ -2,14 +2,11 @@ package conn
 
 import (
 	"bytes"
-	"crypto/tls"
 	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/xtaci/kcp-go/v5"
 )
 
 var LocalTCPAddr = &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}
@@ -51,36 +48,14 @@ func runCloseHook(fn func(*Conn), c *Conn) {
 	fn(c)
 }
 
-// SetAlive set alive
+// SetAlive clears the read deadline.
 func (s *Conn) SetAlive() {
-	switch s.Conn.(type) {
-	case *kcp.UDPSession:
-		_ = s.Conn.(*kcp.UDPSession).SetReadDeadline(time.Time{})
-	case *net.TCPConn:
-		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Time{})
-	case *tls.Conn:
-		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Time{})
-	default:
-		if conn, ok := s.Conn.(interface{ SetReadDeadline(time.Time) error }); ok {
-			_ = conn.SetReadDeadline(time.Time{})
-		}
-	}
+	_ = s.Conn.SetReadDeadline(time.Time{})
 }
 
-// SetReadDeadlineBySecond set read deadline
-func (s *Conn) SetReadDeadlineBySecond(t time.Duration) {
-	switch s.Conn.(type) {
-	case *kcp.UDPSession:
-		_ = s.Conn.(*kcp.UDPSession).SetReadDeadline(time.Now().Add(t * time.Second))
-	case *net.TCPConn:
-		_ = s.Conn.(*net.TCPConn).SetReadDeadline(time.Now().Add(t * time.Second))
-	case *tls.Conn:
-		_ = s.Conn.(*tls.Conn).SetReadDeadline(time.Now().Add(t * time.Second))
-	default:
-		if conn, ok := s.Conn.(interface{ SetReadDeadline(time.Time) error }); ok {
-			_ = conn.SetReadDeadline(time.Now().Add(t * time.Second))
-		}
-	}
+// SetReadTimeout makes reads fail once d has passed from now.
+func (s *Conn) SetReadTimeout(d time.Duration) {
+	_ = s.Conn.SetReadDeadline(time.Now().Add(d))
 }
 
 func (s *Conn) IsClosed() bool {

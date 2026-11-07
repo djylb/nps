@@ -52,7 +52,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		return
 	}
 
-	c.SetReadDeadlineBySecond(bridgeHandshakeReadTimeout)
+	c.SetReadTimeout(bridgeHandshakeReadTimeout)
 	window := servercfg.Current().Security.AuthTimeWindow
 	res, err := legacy.ServerHandshake(c, remote, legacy.ServerAuth{
 		Secure: ServerSecureMode,
@@ -222,7 +222,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		}()
 
 	case legacy.WorkSecret:
-		c.SetReadDeadlineBySecond(bridgeHandshakeReadTimeout)
+		c.SetReadTimeout(bridgeHandshakeReadTimeout)
 		b, err := legacy.ReadExact(c, 32)
 		if err != nil {
 			logs.Error("secret error, failed to match the key successfully")

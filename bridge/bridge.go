@@ -23,7 +23,8 @@ var (
 	ServerSecureMode = false
 )
 
-var bridgeHandshakeReadTimeout time.Duration = 10
+// bridgeHandshakeReadTimeout bounds each read of the client handshake.
+const bridgeHandshakeReadTimeout = 10 * time.Second
 
 // bridgeDispatchTimeout bounds handing work to the server loop, so that a
 // stalled loop cannot pin client connections forever.
