@@ -31,7 +31,7 @@ func TestImportBoundary(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			if name := d.Name(); name == ".git" || name == "testdata" || name == "node_modules" {
+			if name := d.Name(); path != root && strings.HasPrefix(name, ".") || name == "testdata" || name == "node_modules" {
 				return filepath.SkipDir
 			}
 			return nil
