@@ -9,7 +9,7 @@
 
 # geodata fetched at build time
 conf/*.dat
-conf/geodata.version
+conf/*.dat.version
 conf/*.download
 
 # Persistent instance secrets

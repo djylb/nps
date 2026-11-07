@@ -56,7 +56,7 @@ func (a *App) ImportConfig(c Context) {
 }
 
 func (a *App) UpdateGeoData(c Context) {
-	if _, err := a.system().UpdateGeoData(); err != nil {
+	if _, err := a.system().UpdateGeoData(requestString(c, "name")); err != nil {
 		if errors.Is(err, webservice.ErrGeoDataUpdateRunning) {
 			ajax(c, "geodata update is already running", 0)
 			return

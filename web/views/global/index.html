@@ -70,20 +70,18 @@
                 <div class="ibox-content">
                     <p class="help-block" langtag="info-geodata"></p>
                     <ul class="list-group clear-list m-t">
-                        <li class="list-group-item fist-item">
-                            <strong langtag="word-geoversion"></strong>
-                            <span class="pull-right">{{if .geo.Version}}{{.geo.Version}}{{else}}<span langtag="word-unknown"></span>{{end}}</span>
-                        </li>
                         {{range .geo.Files}}
                         <li class="list-group-item">
                             <strong>{{.Name}}</strong> <small class="text-muted">{{.Path}}</small>
-                            <span class="pull-right">{{if .Exists}}{{.ModTime}} · {{.Size}} B{{else}}<span class="text-danger" langtag="word-filemissing"></span>{{end}}</span>
+                            <div class="m-t-xs">
+                                {{if .Exists}}{{if .Version}}{{.Version}} · {{end}}{{.ModTime}} · {{.Size}} B{{else}}<span class="text-danger" langtag="word-filemissing"></span>{{end}}
+                                <button class="btn btn-primary btn-xs m-l-sm" data-name="{{.Name}}" onclick="updateGeoData(this, this.getAttribute('data-name').replace('.dat', ''))" type="button">
+                                    <i class="fa fa-fw fa-cloud-download-alt"></i> <span langtag="word-update"></span>
+                                </button>
+                            </div>
                         </li>
                         {{end}}
                     </ul>
-                    <button class="btn btn-primary" onclick="updateGeoData(this)" type="button">
-                        <i class="fa fa-fw fa-lg fa-cloud-download-alt"></i> <span langtag="word-updategeo"></span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -156,16 +154,17 @@
         reader.readAsText(file);
     }
 
-    function updateGeoData(btn) {
+    function updateGeoData(btn, name) {
         var $btn = $(btn);
         if ($btn.data('busy')) return;
         var langobj = languages['content']['confirm']['updategeo'];
         if (!confirm(langobj[languages['current']] || langobj[languages['default']])) return;
         $btn.data('busy', true).addClass('disabled');
-        $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-spinner fa-spin');
+        $btn.find('i').attr('class', 'fa fa-fw fa-spinner fa-spin');
         $.ajax({
             type: 'POST',
             url: '{{.web_base_url}}/global/updategeo',
+            data: {name: name},
             success: function (res) {
                 if (res && res.status) {
                     showMsg(langreply(res.msg), 'success', 1500, function () { document.location.reload(); });
@@ -178,7 +177,7 @@
             },
             complete: function () {
                 $btn.data('busy', false).removeClass('disabled');
-                $btn.find('i').attr('class', 'fa fa-fw fa-lg fa-cloud-download-alt');
+                $btn.find('i').attr('class', 'fa fa-fw fa-cloud-download-alt');
             }
         });
     }

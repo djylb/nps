@@ -30,7 +30,7 @@ nps uninstall
 | `install` / `uninstall` | 安装、卸载系统服务 |
 | `start` / `stop` / `restart` | 控制系统服务 |
 | `update` / `update-force` | 更新到最新发布版本；后者跳过版本比较 |
-| `update-geo` | 更新 Geo 数据 |
+| `update-geo [geoip\|geosite]` | 更新 Geo 数据 |
 | `service` | 由服务管理器调用 |
 
 其他参数：`-version`、`-gen2fa`（生成 TOTP 密钥）、`-get2fa=<密钥>`（输出当前动态码）、`-disable_remote_update`（禁止从网页更新）。

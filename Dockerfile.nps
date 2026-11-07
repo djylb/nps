@@ -16,7 +16,8 @@ RUN mkdir -p /app && \
     cp ./conf/nps.conf /app/nps.conf.sample && \
     cp ./conf/geoip.dat /app/geoip.dat.sample && \
     cp ./conf/geosite.dat /app/geosite.dat.sample && \
-    cp ./conf/geodata.version /app/geodata.version.sample && \
+    cp ./conf/geoip.dat.version /app/geoip.dat.version.sample && \
+    cp ./conf/geosite.dat.version /app/geosite.dat.version.sample && \
     cp ./entrypoint.nps.sh /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 

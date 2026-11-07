@@ -2,7 +2,9 @@ package acl
 
 import (
 	"errors"
+	"io/fs"
 	"net"
+	"sync/atomic"
 
 	"github.com/djylb/geomatch"
 )
@@ -29,13 +31,15 @@ func NormalizePriority(p int) int {
 // allows every address.
 type Source struct {
 	black, white *geomatch.Live
+	whiteOpen    openCheck
 	priority     geomatch.Priority
 }
 
 // CompileSource compiles the source lists of a level. Rules that cannot be
 // used, for example geoip: rules without geodata, are skipped and named by
-// the error; the returned Source applies the others. owner tags the lists
-// for RefreshGeoData.
+// the error; the returned Source applies the others. A whitelist with a rule
+// whose geodata file is missing restricts nothing until the file
+// is there. owner tags the lists for RefreshGeoData.
 func CompileSource(scope Scope, priority int, black, white []string, owner any) (*Source, error) {
 	if len(black) == 0 && len(white) == 0 {
 		return nil, nil
@@ -68,7 +72,7 @@ func (s *Source) Policy() geomatch.Policy {
 	if s.black != nil {
 		p.Deny = s.black
 	}
-	if s.white != nil {
+	if s.white != nil && !s.whiteOpen.open(s.white) {
 		p.Allow = s.white
 	}
 	return p
@@ -77,13 +81,16 @@ func (s *Source) Policy() geomatch.Policy {
 // Dest is the compiled destination access policy of a tunnel. A nil Dest
 // allows every destination.
 type Dest struct {
-	rules  *geomatch.Live
-	policy geomatch.Policy
+	rules     *geomatch.Live
+	policy    geomatch.Policy
+	allowlist bool
+	opened    openCheck
 }
 
 // CompileDest compiles a destination list in mode AclOff, AclWhitelist or
-// AclBlacklist (0, 1, 2). An empty whitelist allows nothing. owner tags the
-// list for RefreshGeoData.
+// AclBlacklist (0, 1, 2). An empty whitelist allows nothing; one with a rule
+// whose geodata file is missing allows everything until the file
+// is there. owner tags the list for RefreshGeoData.
 func CompileDest(mode int, rules string, owner any) (*Dest, error) {
 	m := geomatch.Mode(mode)
 	if m != geomatch.ModeAllowlist && m != geomatch.ModeDenylist {
@@ -91,7 +98,7 @@ func CompileDest(mode int, rules string, owner any) (*Dest, error) {
 	}
 	l, err := geomatch.NewLive(destCompiler(), geomatch.SplitLines(rules))
 	l.SetTag(owner)
-	return &Dest{rules: l, policy: m.Policy(l)}, ruleError(err)
+	return &Dest{rules: l, policy: m.Policy(l), allowlist: m == geomatch.ModeAllowlist}, ruleError(err)
 }
 
 // Allows reports whether the destination addr, a host or host:port, may be
@@ -100,7 +107,35 @@ func (d *Dest) Allows(addr string) bool {
 	if d == nil {
 		return true
 	}
+	if d.allowlist && d.opened.open(d.rules) {
+		return true
+	}
 	return d.policy.Allows(addr)
+}
+
+// openCheck remembers, for the Matcher a list last had, whether the list
+// lacks a geodata file, so that queries need not look at its errors.
+type openCheck struct {
+	last atomic.Pointer[openState]
+}
+
+type openState struct {
+	m    *geomatch.Matcher
+	open bool
+}
+
+// open reports whether a rule of l was skipped because its geodata file is
+// missing or not configured. Other faults, such as a code the file does not have,
+// leave the list as it is.
+func (c *openCheck) open(l *geomatch.Live) bool {
+	m := l.Matcher()
+	if st := c.last.Load(); st != nil && st.m == m {
+		return st.open
+	}
+	err := l.Err()
+	st := &openState{m: m, open: errors.Is(err, fs.ErrNotExist) || errors.Is(err, geomatch.ErrNoGeoData)}
+	c.last.Store(st)
+	return st.open
 }
 
 // Allows reports whether every level allows addr. Levels are the global,

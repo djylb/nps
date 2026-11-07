@@ -109,8 +109,7 @@ type UpdateResult struct {
 // release: the running one, on Unix the copies install placed in the system
 // bin directories, and the one the system service runs. For nps the web
 // assets and the reference config of the run directory are replaced along
-// with them, and the geodata files when the release has newer ones. All
-// files are replaced as one set, so an interrupted update is undone on the
+// with them. All files are replaced as one set, so an interrupted update is undone on the
 // next start. A nil result with a nil error means the running version is
 // already the latest.
 func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateResult, error) {
@@ -150,9 +149,6 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 		}
 		if version.Compare(v, c.Version) != 0 {
 			return fmt.Errorf("the downloaded %s is version %s, want %s", executableName(bin), v, c.Version)
-		}
-		if bin == "nps" {
-			return syncPackageGeoData(ctx, c, artifact)
 		}
 		return nil
 	}
@@ -268,26 +264,6 @@ func artifactName(bin string) string {
 		return bin + "-" + BuildTarget
 	}
 	return bin
-}
-
-// syncPackageGeoData installs the geodata files of the release archive when
-// they are newer than those in place; see SyncGeoData.
-func syncPackageGeoData(ctx context.Context, c *selfupdate.Candidate, artifact io.ReaderAt) error {
-	tmp, err := os.MkdirTemp("", "nps-geodata-")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	var members []selfupdate.Member
-	for _, name := range []string{"geoip.dat", "geosite.dat", geoVersionFile} {
-		members = append(members, selfupdate.Member{Name: "conf/" + name, Path: filepath.Join(tmp, name)})
-	}
-	a := c.Artifact
-	if err := selfupdate.Extract(ctx, artifact, a.Size, a.Format, members, selfupdate.ExtractOptions{}); err != nil {
-		return fmt.Errorf("geodata of the release: %w", err)
-	}
-	ipPath, sitePath := geoDataPaths(common.GetRunPath())
-	return SyncGeoData(tmp, ipPath, sitePath)
 }
 
 // RoundTrip sends req with certificate verification, and again without it

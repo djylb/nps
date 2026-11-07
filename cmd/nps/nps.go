@@ -106,11 +106,6 @@ func main() {
 		} else {
 			logs.Warn("service function disabled %v", err)
 		}
-		// The config only tells where the geodata files are kept.
-		if servercfg.LoadDefault() == nil {
-			cfg := servercfg.Current()
-			install.SetGeoDataPaths(common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath))
-		}
 		res, err := install.Update(context.Background(), "nps", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
 		if err == nil && res != nil {
 			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
@@ -134,10 +129,18 @@ func main() {
 	acl.SetGeoData(geoIPPath, geoSitePath)
 	acl.SetMaxRules(cfg.App.AclMaxRules)
 	file.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
-	install.SetGeoDataPaths(geoIPPath, geoSitePath)
 	if cmd == "update-geo" {
 		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
-		res, err := install.UpdateGeoData(geoIPPath, geoSitePath)
+		var name string
+		if len(args) > 1 {
+			name = args[1]
+		}
+		files, err := install.PickGeoFiles(install.GeoFiles(geoIPPath, geoSitePath), name)
+		if err != nil {
+			logs.Error("update geodata failed: %v", err)
+			os.Exit(1)
+		}
+		res, err := install.UpdateGeoData(files)
 		if err != nil {
 			logs.Error("update geodata failed: %v", err)
 			os.Exit(1)
@@ -261,7 +264,7 @@ func knownCommand(cmd string) bool {
 
 func printUsage(cmd string) {
 	fmt.Fprintf(os.Stderr, "unknown command %q\n\nUsage: %s [flags] [command]\n\nWithout a command nps runs in the foreground.\n\nCommands:\n", cmd, filepath.Base(os.Args[0]))
-	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update the geodata files\n  service       run as a service, used by the service manager\n\nFlags:\n")
+	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update geoip and the geodata files present, or the one named geoip or geosite\n  service       run as a service, used by the service manager\n\nFlags:\n")
 	flag.PrintDefaults()
 }
 

@@ -166,8 +166,8 @@ func TestGeoIPWithoutData(t *testing.T) {
 		t.Fatal("the other rules were not applied")
 	}
 	w, _ := CompileSource(ScopeUser, DenyFirst, nil, []string{"geoip:cn"}, nil)
-	if Allows(addr("1.2.3.4:1"), nil, nil, w) {
-		t.Fatal("a whitelist whose rules all failed allowed an address")
+	if !Allows(addr("1.2.3.4:1"), nil, nil, w) {
+		t.Fatal("a whitelist lacking its geodata file denied an address")
 	}
 }
 
@@ -254,5 +254,36 @@ func TestCompileSourceSplitsStoredLines(t *testing.T) {
 	}
 	if got, _ := NormalizeSource(ScopeUser, []string{"203.0.113.9\n10.9.9.9"}); len(got) != 2 {
 		t.Errorf("NormalizeSource = %q, want two rules", got)
+	}
+}
+
+func TestMissingGeoDataAllows(t *testing.T) {
+	old1, old2 := GeoFiles()
+	defer SetGeoData(old1, old2)
+	for name, set := range map[string]func(){
+		"missing":        func() { SetGeoData(filepath.Join(t.TempDir(), "a.dat"), filepath.Join(t.TempDir(), "b.dat")) },
+		"not configured": func() { SetGeoData("", "") },
+	} {
+		set()
+		white, err := CompileSource(ScopeGlobal, DenyFirst, nil, []string{"geoip:cn", "10.0.0.1"}, nil)
+		if err == nil {
+			t.Fatalf("%s: no rule error", name)
+		}
+		if !AllowsString("1.1.1.1:80", white, nil, nil) {
+			t.Errorf("%s: whitelist denied", name)
+		}
+		black, _ := CompileSource(ScopeGlobal, DenyFirst, []string{"geoip:cn", "1.1.1.1"}, nil, nil)
+		if AllowsString("1.1.1.1:80", black, nil, nil) || !AllowsString("2.2.2.2:80", black, nil, nil) {
+			t.Errorf("%s: blacklist rules beside the geo rule not applied", name)
+		}
+		dest, _ := CompileDest(int(geomatch.ModeAllowlist), "geosite:cn", nil)
+		if !dest.Allows("example.com:80") {
+			t.Errorf("%s: destination whitelist denied", name)
+		}
+	}
+	// Without a dat rule a whitelist still restricts.
+	white, _ := CompileSource(ScopeGlobal, DenyFirst, nil, []string{"10.0.0.1"}, nil)
+	if AllowsString("1.1.1.1:80", white, nil, nil) {
+		t.Error("plain whitelist allowed")
 	}
 }

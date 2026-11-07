@@ -281,9 +281,6 @@ func NPS() (string, error) {
 	if err := copyServerAssets(appPath, path); err != nil {
 		return "", err
 	}
-	if err := SyncGeoData(filepath.Join(appPath, "conf"), filepath.Join(path, "conf", "geoip.dat"), filepath.Join(path, "conf", "geosite.dat")); err != nil {
-		return "", err
-	}
 	binPath, err := installExecutable(appPath, "nps")
 	if err != nil {
 		return "", err

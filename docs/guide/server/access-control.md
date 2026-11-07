@@ -48,15 +48,16 @@ login_acl_rules=127.0.0.1,10.0.0.0/8
 
 ### Geo 数据
 
-`geoip:` 和 `geosite:` 规则使用 [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geoip.dat` 和 `geosite.dat`，发布包和 Docker 镜像都已附带，默认位于 `conf` 目录，路径可通过 `geoip_path`、`geosite_path` 修改。
+`geoip:` 和 `geosite:` 规则使用 [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geoip.dat` 和 `geosite.dat`。Docker 镜像已附带，二进制发布包不附带，需要先下载；默认位于 `conf` 目录，路径可通过 `geoip_path`、`geosite_path` 修改。
 
-更新方式：
+有文件才启用。`geosite.dat` 默认不下载，需要时更新一次即可；删除文件即关闭（已加载的名单可能要重启才释放）。
 
-- 在 Web 管理界面的全局参数页点击“更新 Geo 数据”；
-- 或执行 `nps update-geo`（运行中的 nps 会在一分钟内自动生效）；
-- 执行 `nps update` 更新程序时，如果发布包中的 Geo 数据比本地新，也会一并更新。
+更新方式（两个文件可分别更新）：
 
-缺少 Geo 数据时，使用 `geoip:` 的规则会被跳过并记录日志，其余规则照常生效；白名单中的规则全部无法使用时，该白名单会拒绝所有访问，不会因为缺少数据而放行。
+- 在 Web 管理界面的全局参数页点击对应文件的更新按钮；
+- 或执行 `nps update-geo geoip`、`nps update-geo geosite`，不带参数时更新 geoip 和已存在的其他文件（运行中的 nps 会在一分钟内自动生效）。
+
+文件缺失时，相关规则不生效并记录日志，其余规则照常生效：含这类规则的白名单不作限制，全部放行；黑名单中的这些规则不拦截。注意这是默认放行，依赖 Geo 规则做访问控制时请确认文件已下载。
 
 ## 仅允许已登记的 IP
 

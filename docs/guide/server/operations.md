@@ -58,7 +58,8 @@ nps.exe update  # Windows
 **单独更新 Geo 数据**，运行中的 nps 一分钟内生效：
 
 ```bash
-sudo nps update-geo
+sudo nps update-geo          # geoip，以及已存在的其他文件
+sudo nps update-geo geosite  # 指定文件，没有时下载
 ```
 
 **在网页上更新**：管理员在仪表盘“服务端版本”卡片点击更新按钮（仅在有新版本时显示），服务端更新后自动重启，页面随后刷新。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Downloads geoip.dat and geosite.dat of the latest Loyalsoldier/v2ray-rules-dat
 # release into CONF_DIR, checks them against the SHA-256 sums published with
-# the release and records the release in geodata.version.
+# the release and records the release of each in <file>.version.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,8 +52,8 @@ main() {
       exit 1
     fi
     mv "$tmp" "$CONF_DIR/$name"
+    printf '%s\n' "$tag" > "$CONF_DIR/$name.version"
   done
-  printf '%s\n' "$tag" > "$CONF_DIR/geodata.version"
 }
 
 main "$@"

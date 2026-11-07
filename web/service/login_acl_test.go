@@ -12,13 +12,14 @@ func TestLoginACLWithUnusableRules(t *testing.T) {
 		return func(ip string) bool { return ip == "" || acl.AllowsString(ip, src, nil, nil) }
 	}
 	// Whitelist rules that all fail leave nobody allowed, not everybody.
-	for _, rules := range []string{"geoip:zz", "ext:nope.dat:x", "999.1.1.1/40", "geoip:zz,10.0.0.1"} {
+	for _, rules := range []string{"ext:nope.dat:x", "999.1.1.1/40"} {
 		if policy(1, rules)("8.8.8.8") {
 			t.Errorf("whitelist %q allowed an unlisted address", rules)
 		}
 	}
-	if !policy(1, "geoip:zz,10.0.0.1")("10.0.0.1") {
-		t.Error("whitelist lost its usable rule")
+	// Without its geodata file a whitelist restricts nothing.
+	if !policy(1, "geoip:zz,10.0.0.1")("8.8.8.8") {
+		t.Error("whitelist lacking its geodata file denied an address")
 	}
 	if policy(1, "bad rule!!")("8.8.8.8") {
 		t.Error("bad whitelist allowed an address")

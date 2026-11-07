@@ -1261,13 +1261,9 @@
 		<zh-CN>Geo 数据</zh-CN>
 		<en-US>Geodata</en-US>
 	</lang>
-	<lang id="word-geoversion">
-		<zh-CN>数据版本</zh-CN>
-		<en-US>Data Version</en-US>
-	</lang>
-	<lang id="word-updategeo">
-		<zh-CN>更新 Geo 数据</zh-CN>
-		<en-US>Update Geodata</en-US>
+	<lang id="word-update">
+		<zh-CN>更新</zh-CN>
+		<en-US>Update</en-US>
 	</lang>
 	<lang id="word-unknown">
 		<zh-CN>未知</zh-CN>
@@ -1298,8 +1294,8 @@
 		<en-US>Such as&#10;1.2.3.4&#10;10.0.0.0/8&#10;192.168.*&#10;geoip:cn</en-US>
 	</lang>
 	<lang id="info-geodata">
-		<zh-CN>geoip.dat 用于名单中的 geoip: 规则，geosite.dat 用于目标访问控制中的 geosite: 规则。数据来自 Loyalsoldier/v2ray-rules-dat，更新后立即生效。也可以执行 nps update-geo 命令更新。</zh-CN>
-		<en-US>geoip.dat serves the geoip: rules of the lists, geosite.dat the geosite: rules of destination ACLs. The data comes from Loyalsoldier/v2ray-rules-dat and takes effect right after an update. The nps update-geo command updates it too.</en-US>
+		<zh-CN>geoip.dat 用于名单中的 geoip: 规则，geosite.dat 用于目标访问控制中的 geosite: 规则，可分别更新，更新后立即生效；也可以执行 nps update-geo geoip 或 nps update-geo geosite。有文件才启用，geosite 默认不下载，需要时手动更新一次；删除文件即关闭。文件缺失时，相关规则不生效：含这类规则的白名单不作限制，黑名单中的这些规则不拦截。数据来自 Loyalsoldier/v2ray-rules-dat。</zh-CN>
+		<en-US>geoip.dat serves the geoip: rules of the lists, geosite.dat the geosite: rules of destination ACLs. Each updates on its own and takes effect right away; nps update-geo geoip or nps update-geo geosite does the same. A file is in use once it is there: geosite is not downloaded unless you update it once, and deleting a file turns it off. While a file is missing, its rules do nothing: a whitelist with such a rule restricts nothing, and a blacklist does not block by them. The data comes from Loyalsoldier/v2ray-rules-dat.</en-US>
 	</lang>
 	<lang id="word-registeredonly">
 		<zh-CN>仅允许已登记的 IP</zh-CN>

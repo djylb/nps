@@ -57,21 +57,23 @@ type SystemService interface {
 	UpdateServer() (string, error)
 	// GeoDataStatus describes the geodata files of the access lists.
 	GeoDataStatus() GeoDataStatus
-	// UpdateGeoData downloads the latest geodata files and applies them.
-	UpdateGeoData() (GeoDataStatus, error)
+	// UpdateGeoData downloads the latest release of the geodata file called
+	// name, geoip or geosite, or of geoip and the files present when name is
+	// empty, and applies it.
+	UpdateGeoData(name string) (GeoDataStatus, error)
 }
 
 // GeoDataStatus describes the geodata files of the access lists.
 type GeoDataStatus struct {
-	// Version is the release the files come from, "" when unknown.
-	Version string
-	Files   []GeoFileStatus
+	Files []GeoFileStatus
 }
 
 // GeoFileStatus describes one geodata file.
 type GeoFileStatus struct {
-	Name    string
-	Path    string
+	Name string
+	Path string
+	// Version is the release the file comes from, "" when unknown.
+	Version string
 	Exists  bool
 	Size    int64
 	ModTime string
@@ -124,10 +126,9 @@ func (DefaultSystemService) UpdateServer() (string, error) {
 }
 
 func (DefaultSystemService) GeoDataStatus() GeoDataStatus {
-	ipPath, sitePath := acl.GeoFiles()
-	st := GeoDataStatus{Version: install.GeoDataVersion(ipPath)}
-	for _, f := range install.GeoFiles(ipPath, sitePath) {
-		fs := GeoFileStatus{Name: f.Name, Path: f.Path}
+	var st GeoDataStatus
+	for _, f := range geoFiles() {
+		fs := GeoFileStatus{Name: f.Name, Path: f.Path, Version: install.GeoDataVersion(f.Path)}
 		if fi, err := os.Stat(f.Path); err == nil {
 			fs.Exists = true
 			fs.Size = fi.Size()
@@ -141,13 +142,21 @@ func (DefaultSystemService) GeoDataStatus() GeoDataStatus {
 // geoUpdating keeps a single geodata update running.
 var geoUpdating atomic.Bool
 
-func (s DefaultSystemService) UpdateGeoData() (GeoDataStatus, error) {
+// geoFiles returns the geodata files of the access lists.
+func geoFiles() []install.GeoFile {
+	return install.GeoFiles(acl.GeoFiles())
+}
+
+func (s DefaultSystemService) UpdateGeoData(name string) (GeoDataStatus, error) {
 	if !geoUpdating.CompareAndSwap(false, true) {
 		return GeoDataStatus{}, ErrGeoDataUpdateRunning
 	}
 	defer geoUpdating.Store(false)
-	ipPath, sitePath := acl.GeoFiles()
-	res, err := install.UpdateGeoData(ipPath, sitePath)
+	files, err := install.PickGeoFiles(geoFiles(), name)
+	if err != nil {
+		return s.GeoDataStatus(), err
+	}
+	res, err := install.UpdateGeoData(files)
 	if res != nil && len(res.Updated) > 0 {
 		file.RefreshAccessLists()
 	}

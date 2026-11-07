@@ -19,27 +19,6 @@ import (
 // geoRepo publishes the geoip.dat and geosite.dat the access lists use.
 const geoRepo = "Loyalsoldier/v2ray-rules-dat"
 
-// geoVersionFile, next to geoip.dat, records the release the geodata files
-// come from, so that the files of a package replace only older ones.
-const geoVersionFile = "geodata.version"
-
-// geoIPPath and geoSitePath are where nps keeps its geodata files; see
-// SetGeoDataPaths.
-var geoIPPath, geoSitePath string
-
-// SetGeoDataPaths sets where nps keeps its geodata files, for update to
-// refresh them from the release package.
-func SetGeoDataPaths(ipPath, sitePath string) {
-	geoIPPath, geoSitePath = ipPath, sitePath
-}
-
-func geoDataPaths(runPath string) (string, string) {
-	if geoIPPath != "" && geoSitePath != "" {
-		return geoIPPath, geoSitePath
-	}
-	return filepath.Join(runPath, "conf", "geoip.dat"), filepath.Join(runPath, "conf", "geosite.dat")
-}
-
 // GeoFile is one geodata file: its name in the release and its local path.
 type GeoFile struct {
 	Name string
@@ -51,109 +30,114 @@ func GeoFiles(ipPath, sitePath string) []GeoFile {
 	return []GeoFile{{Name: "geoip.dat", Path: ipPath}, {Name: "geosite.dat", Path: sitePath}}
 }
 
+// PickGeoFiles returns the file called name, geoip or geosite. With an empty
+// name it returns geoip and the others that exist: having a file is what
+// turns its rules on, and only geoip is fetched without being asked for.
+func PickGeoFiles(files []GeoFile, name string) ([]GeoFile, error) {
+	var out []GeoFile
+	for _, f := range files {
+		if name != "" {
+			if f.Name == name+".dat" {
+				out = append(out, f)
+			}
+			continue
+		}
+		if _, err := os.Stat(f.Path); err == nil || f.Name == "geoip.dat" {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("unknown geodata file %q, want geoip or geosite", name)
+	}
+	return out, nil
+}
+
 // GeoUpdate is the result of UpdateGeoData.
 type GeoUpdate struct {
-	// Version is the release the files now come from, "" when unknown.
-	Version string
 	// Updated lists the files that were replaced.
 	Updated []string
 }
 
-// GeoDataVersion returns the release the geodata files next to ipPath come
-// from, "" when unknown.
-func GeoDataVersion(ipPath string) string {
-	b, err := os.ReadFile(filepath.Join(filepath.Dir(ipPath), geoVersionFile))
+// geoVersionPath returns the file that records the release the geodata file
+// at path comes from.
+func geoVersionPath(path string) string { return path + ".version" }
+
+// GeoDataVersion returns the release the geodata file at path comes from, ""
+// when unknown.
+func GeoDataVersion(path string) string {
+	b, err := os.ReadFile(geoVersionPath(path))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
 }
 
-func writeGeoDataVersion(ipPath, version string) error {
-	if version == "" {
-		return nil
-	}
-	return os.WriteFile(filepath.Join(filepath.Dir(ipPath), geoVersionFile), []byte(version+"\n"), 0o644)
-}
-
-// UpdateGeoData downloads the latest geoip.dat and geosite.dat to ipPath and
-// sitePath. A file whose content already matches the release is left alone.
-// Each file is checked against its SHA-256 digest, and the files are
-// replaced together and atomically, so that a reader never sees a partial
-// file or a mix of old and new files.
-func UpdateGeoData(ipPath, sitePath string) (*GeoUpdate, error) {
+// UpdateGeoData downloads the latest release of each of files. A file whose
+// content already matches the release is left alone. Each file is checked
+// against its SHA-256 digest and replaced atomically, on its own: one that
+// fails leaves the others updated.
+func UpdateGeoData(files []GeoFile) (*GeoUpdate, error) {
 	c := newHTTPClient()
-	files := GeoFiles(ipPath, sitePath)
 	res := &GeoUpdate{}
 	rl, verified, err := fetchLatestRelease(c, geoRepo)
-	sources := make([][]geoSource, len(files))
 	if err != nil {
 		fmt.Println("Query latest geodata release failed:", err)
 		fmt.Println("Falling back to the CDN mirrors, checked against their published SHA-256 sums")
-		for i, f := range files {
-			if sources[i], err = mirrorSources(c, f.Name); err != nil {
-				return res, fmt.Errorf("update %s: %w", f.Name, err)
-			}
+		rl = nil
+	} else if !verified {
+		fmt.Println("WARNING: the geodata release metadata was fetched without certificate verification")
+	}
+	var errs []error
+	for _, f := range files {
+		if err := updateGeoFile(c, rl, f, res); err != nil {
+			errs = append(errs, fmt.Errorf("update %s: %w", f.Name, err))
+		}
+	}
+	return res, errors.Join(errs...)
+}
+
+// updateGeoFile brings f to the release rl, or to the CDN mirrors when rl is
+// nil.
+func updateGeoFile(c *httpClient, rl *release, f GeoFile, res *GeoUpdate) error {
+	var sources []geoSource
+	if rl == nil {
+		var err error
+		if sources, err = mirrorSources(c, f.Name); err != nil {
+			return err
 		}
 	} else {
-		if !verified {
-			fmt.Println("WARNING: the geodata release metadata was fetched without certificate verification")
-		}
-		for i, f := range files {
-			digest, size, err := rl.asset(f.Name)
-			if err != nil {
-				return res, err
-			}
-			if digest == "" {
-				return res, fmt.Errorf("release %s publishes no SHA-256 digest for %s", rl.TagName, f.Name)
-			}
-			for _, url := range []string{
-				fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", geoRepo, rl.TagName, f.Name),
-				fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s@release/%s", geoRepo, f.Name),
-				fmt.Sprintf("https://fastly.jsdelivr.net/gh/%s@release/%s", geoRepo, f.Name),
-			} {
-				sources[i] = append(sources[i], geoSource{url: url, digest: digest, size: size})
-			}
-		}
-	}
-	var stale []GeoFile
-	var staleSources [][]geoSource
-	for i, f := range files {
-		// The first source tells the content to have; the mirrors may lag
-		// behind it.
-		if _, d, err := selfupdate.DigestFile(f.Path); err == nil && hex.EncodeToString(d.SHA256[:]) == sources[i][0].digest {
-			fmt.Println(f.Name, "is up to date")
-			continue
-		}
-		stale = append(stale, f)
-		staleSources = append(staleSources, sources[i])
-	}
-	if len(stale) > 0 {
-		err := replaceGeoFiles(ipPath, stale, func(i int, staged string) error {
-			if err := downloadGeoFile(c, staleSources[i], staged); err != nil {
-				return fmt.Errorf("update %s: %w", stale[i].Name, err)
-			}
-			return nil
-		})
+		digest, size, err := rl.asset(f.Name)
 		if err != nil {
-			return res, err
+			return err
 		}
-		for _, f := range stale {
-			fmt.Println("Updated", f.Path)
-			res.Updated = append(res.Updated, f.Path)
+		if digest == "" {
+			return fmt.Errorf("release %s publishes no SHA-256 digest", rl.TagName)
 		}
+		for _, url := range []string{
+			fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", geoRepo, rl.TagName, f.Name),
+			fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s@release/%s", geoRepo, f.Name),
+			fmt.Sprintf("https://fastly.jsdelivr.net/gh/%s@release/%s", geoRepo, f.Name),
+		} {
+			sources = append(sources, geoSource{url: url, digest: digest, size: size})
+		}
+	}
+	// The first source tells the content to have; the mirrors may lag
+	// behind it.
+	if _, d, err := selfupdate.DigestFile(f.Path); err == nil && hex.EncodeToString(d.SHA256[:]) == sources[0].digest {
+		fmt.Println(f.Name, "is up to date")
+	} else {
+		if err := replaceGeoFile(f.Path, func(staged string) error { return downloadGeoFile(c, sources, staged) }); err != nil {
+			return err
+		}
+		fmt.Println("Updated", f.Path)
+		res.Updated = append(res.Updated, f.Path)
 	}
 	if rl == nil {
-		// The mirrors do not tell the release; an unknown version lets the
-		// files of the next package replace these.
-		_ = os.Remove(filepath.Join(filepath.Dir(ipPath), geoVersionFile))
-		return res, nil
+		// The mirrors do not tell the release.
+		_ = os.Remove(geoVersionPath(f.Path))
+		return nil
 	}
-	res.Version = rl.TagName
-	if err := writeGeoDataVersion(ipPath, rl.TagName); err != nil {
-		return res, err
-	}
-	return res, nil
+	return os.WriteFile(geoVersionPath(f.Path), []byte(rl.TagName+"\n"), 0o644)
 }
 
 // geoSource is a place to download a geodata file from, with the SHA-256
@@ -186,50 +170,6 @@ func mirrorSources(c *httpClient, name string) ([]geoSource, error) {
 	return out, nil
 }
 
-// SyncGeoData copies the geodata files of an unpacked release in srcConf to
-// ipPath and sitePath when the release has newer ones than those in place,
-// or when a file is missing. Newer files from UpdateGeoData are kept.
-func SyncGeoData(srcConf, ipPath, sitePath string) error {
-	pkgVersion := GeoDataVersion(filepath.Join(srcConf, "geoip.dat"))
-	localVersion := GeoDataVersion(ipPath)
-	newer := pkgVersion != "" && pkgVersion > localVersion
-	var copies []GeoFile
-	var srcs []string
-	for _, f := range GeoFiles(ipPath, sitePath) {
-		src := filepath.Join(srcConf, f.Name)
-		if _, err := os.Stat(src); err != nil {
-			continue
-		}
-		if same, _ := sameFile(src, f.Path); same {
-			continue
-		}
-		if _, err := os.Stat(f.Path); err == nil && !newer {
-			continue
-		}
-		copies = append(copies, f)
-		srcs = append(srcs, src)
-	}
-	if len(copies) == 0 {
-		return nil
-	}
-	err := replaceGeoFiles(ipPath, copies, func(i int, staged string) error {
-		if err := copyFileTo(srcs[i], staged); err != nil {
-			return fmt.Errorf("copy %s: %w", copies[i].Name, err)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	for _, f := range copies {
-		fmt.Println("Updated", f.Path, "from the release package")
-	}
-	if newer {
-		return writeGeoDataVersion(ipPath, pkgVersion)
-	}
-	return nil
-}
-
 func sameFile(a, b string) (bool, error) {
 	ai, err := os.Stat(a)
 	if err != nil {
@@ -242,58 +182,34 @@ func sameFile(a, b string) (bool, error) {
 	return os.SameFile(ai, bi), nil
 }
 
-// replaceGeoFiles writes the new content of each file with write, to a
-// staged file next to it, and then swaps them all in at once, so that a
-// reader sees either the old files or the new ones. The swap is recorded in a
-// journal next to ipPath: an update interrupted by a crash is undone, or its
-// staged files deleted, by the next one.
-func replaceGeoFiles(ipPath string, files []GeoFile, write func(i int, staged string) error) error {
+// replaceGeoFile writes the new content of the file at path with write, to a
+// staged file next to it, and swaps it in, so that a reader sees either the
+// old file or the new one. An update interrupted by a crash is undone, or its
+// staged file deleted, by the next one.
+func replaceGeoFile(path string, write func(staged string) error) error {
 	ctx := context.Background()
-	j := selfupdate.JournalFor(ipPath)
+	j := selfupdate.JournalFor(path)
 	if _, err := j.Recover(ctx); err != nil {
 		return err
 	}
-	targets := make([]string, len(files))
-	for i, f := range files {
-		if err := os.MkdirAll(filepath.Dir(f.Path), 0o755); err != nil {
-			return err
-		}
-		targets[i] = f.Path
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
 	}
-	st, err := j.Stage(ctx, targets...)
+	st, err := j.Stage(ctx, path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = st.Abort(ctx) }()
-	for i, staged := range st.Paths() {
-		if err := write(i, staged); err != nil {
-			return err
-		}
-		// A file that replaces another takes its permissions; a new one is
-		// readable by all, as the package installs it.
-		if err := os.Chmod(staged, 0o644); err != nil {
-			return err
-		}
+	staged := st.Paths()[0]
+	if err := write(staged); err != nil {
+		return err
+	}
+	// A file that replaces another takes its permissions; a new one is
+	// readable by all.
+	if err := os.Chmod(staged, 0o644); err != nil {
+		return err
 	}
 	return st.Replace(ctx, selfupdate.ReplaceOptions{})
-}
-
-// copyFileTo copies the file src to the new file dst.
-func copyFileTo(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, in)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	return err
 }
 
 type release struct {
