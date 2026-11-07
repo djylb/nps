@@ -214,10 +214,7 @@ func TestDefaultIndexServiceAddTunnelUsesInjectedRuntimePortPolicy(t *testing.T)
 		},
 	}
 
-	result, err := service.AddTunnel(AddTunnelInput{
-		ClientID: 1,
-		Mode:     "tcp",
-	})
+	result, err := service.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp"}})
 	if err != nil {
 		t.Fatalf("AddTunnel() error = %v", err)
 	}
@@ -324,7 +321,7 @@ func TestEditHostRemovesCacheAfterEdit(t *testing.T) {
 	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*model.Client, error) { return host.Client, nil }}, host: host}
 	var hostAtRemoval string
 	s := DefaultIndexService{Backend: Backend{Repository: r, Runtime: cacheOrderRuntime{removed: func() { hostAtRemoval = host.Host }}}}
-	if _, err := s.EditHost(EditHostInput{ID: 1, Host: "b.example"}); err != nil {
+	if _, err := s.EditHost(HostInput{ID: 1, Host: &model.Host{Host: "b.example"}}); err != nil {
 		t.Fatal(err)
 	}
 	if hostAtRemoval != "b.example" {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"html"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -56,7 +57,7 @@ func (a *App) GetTunnel(c Context) {
 }
 
 func (a *App) AddTunnel(c Context) {
-	result, err := a.Services.Index.AddTunnel(addTunnelInput(c, a.currentConfig()))
+	result, err := a.Services.Index.AddTunnel(tunnelInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrPortUnavailable):
@@ -88,7 +89,7 @@ func (a *App) GetOneTunnel(c Context) {
 }
 
 func (a *App) EditTunnel(c Context) {
-	result, err := a.Services.Index.EditTunnel(editTunnelInput(c, a.currentConfig()))
+	result, err := a.Services.Index.EditTunnel(tunnelInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrTunnelNotFound):
@@ -246,7 +247,7 @@ func (a *App) ClearHost(c Context) {
 }
 
 func (a *App) AddHost(c Context) {
-	result, err := a.Services.Index.AddHost(addHostInput(c, a.currentConfig()))
+	result, err := a.Services.Index.AddHost(hostInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrClientNotFound):
@@ -269,7 +270,7 @@ func (a *App) AddHost(c Context) {
 }
 
 func (a *App) EditHost(c Context) {
-	result, err := a.Services.Index.EditHost(editHostInput(c, a.currentConfig()))
+	result, err := a.Services.Index.EditHost(hostInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrHostNotFound):
@@ -295,158 +296,48 @@ func (a *App) EditHost(c Context) {
 	ajax(c, "modified success", 1)
 }
 
-func addTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.AddTunnelInput {
+func tunnelInput(c Context, cfg *servercfg.Snapshot) webservice.TunnelInput {
 	isAdmin := sessionBool(c, "isAdmin")
-	return webservice.AddTunnelInput{
-		IsAdmin:        isAdmin,
-		AllowUserLocal: indexAllowLocal(cfg, isAdmin),
-		ClientID:       requestIntValue(c, "client_id"),
-		Port:           requestIntValue(c, "port"),
-		ServerIP:       requestEscapedString(c, "server_ip"),
-		Mode:           requestEscapedString(c, "type"),
-		TargetType:     requestEscapedString(c, "target_type"),
-		Target:         requestEscapedString(c, "target"),
-		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
-		HealthCheck:    requestHealthCheck(c),
-		LocalProxy:     requestBoolValue(c, "local_proxy"),
-		Auth:           requestEscapedString(c, "auth"),
-		Remark:         requestEscapedString(c, "remark"),
-		Password:       requestEscapedString(c, "password"),
-		LocalPath:      requestEscapedString(c, "local_path"),
-		StripPre:       requestEscapedString(c, "strip_pre"),
-		EnableHTTP:     requestBoolValue(c, "enable_http"),
-		EnableSocks5:   requestBoolValue(c, "enable_socks5"),
-		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
-		DestACLRules:   requestString(c, "dest_acl_rules"),
-		Access:         requestAccessLists(c, ""),
-		MaxConn:        requestIntValue(c, "max_conn"),
-		UploadLimit:    requestIntValue(c, "upload_limit"),
-		DownloadLimit:  requestIntValue(c, "download_limit"),
-		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
-		TimeLimit:      requestEscapedString(c, "time_limit"),
-	}
-}
-
-func editTunnelInput(c Context, cfg *servercfg.Snapshot) webservice.EditTunnelInput {
-	isAdmin := sessionBool(c, "isAdmin")
-	return webservice.EditTunnelInput{
+	tunnel := new(model.Tunnel)
+	requestSettings(c, model.TunnelSettings, tunnel)
+	return webservice.TunnelInput{
 		ID:             requestIntValue(c, "id"),
+		ClientID:       requestIntValue(c, "client_id"),
 		IsAdmin:        isAdmin,
 		AllowUserLocal: indexAllowLocal(cfg, isAdmin),
-		ClientID:       requestIntValue(c, "client_id"),
-		Port:           requestIntValue(c, "port"),
-		ServerIP:       requestEscapedString(c, "server_ip"),
-		Mode:           requestEscapedString(c, "type"),
-		TargetType:     requestEscapedString(c, "target_type"),
-		Target:         requestEscapedString(c, "target"),
-		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
-		HealthCheck:    requestHealthCheck(c),
-		LocalProxy:     requestBoolValue(c, "local_proxy"),
-		Auth:           requestEscapedString(c, "auth"),
-		Remark:         requestEscapedString(c, "remark"),
-		Password:       requestEscapedString(c, "password"),
-		LocalPath:      requestEscapedString(c, "local_path"),
-		StripPre:       requestEscapedString(c, "strip_pre"),
-		EnableHTTP:     requestBoolValue(c, "enable_http"),
-		EnableSocks5:   requestBoolValue(c, "enable_socks5"),
-		DestACLMode:    requestIntValue(c, "dest_acl_mode"),
-		DestACLRules:   requestString(c, "dest_acl_rules"),
-		Access:         requestAccessLists(c, ""),
-		MaxConn:        requestIntValue(c, "max_conn"),
-		UploadLimit:    requestIntValue(c, "upload_limit"),
-		DownloadLimit:  requestIntValue(c, "download_limit"),
-		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
-		TimeLimit:      requestEscapedString(c, "time_limit"),
 		ResetFlow:      requestBoolValue(c, "flow_reset"),
-	}
-}
-
-func addHostInput(c Context, cfg *servercfg.Snapshot) webservice.AddHostInput {
-	isAdmin := sessionBool(c, "isAdmin")
-	return webservice.AddHostInput{
-		IsAdmin:        isAdmin,
-		AllowUserLocal: indexAllowLocal(cfg, isAdmin),
-		ClientID:       requestIntValue(c, "client_id"),
 		Access:         requestAccessLists(c, ""),
-		Host:           requestEscapedString(c, "host"),
-		Target:         requestEscapedString(c, "target"),
-		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
-		HealthCheck:    requestHealthCheck(c),
-		LocalProxy:     requestBoolValue(c, "local_proxy"),
-		Auth:           requestEscapedString(c, "auth"),
-		Header:         requestEscapedString(c, "header"),
-		RespHeader:     requestEscapedString(c, "resp_header"),
-		HostChange:     requestEscapedString(c, "hostchange"),
-		Remark:         requestEscapedString(c, "remark"),
-		Location:       requestEscapedString(c, "location"),
-		PathRewrite:    requestEscapedString(c, "path_rewrite"),
-		RedirectURL:    requestEscapedString(c, "redirect_url"),
-		MaxConn:        requestIntValue(c, "max_conn"),
-		UploadLimit:    requestIntValue(c, "upload_limit"),
-		DownloadLimit:  requestIntValue(c, "download_limit"),
-		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
-		TimeLimit:      requestEscapedString(c, "time_limit"),
-		Scheme:         requestEscapedString(c, "scheme"),
-		HTTPSJustProxy: requestBoolValue(c, "https_just_proxy"),
-		TLSOffload:     requestBoolValue(c, "tls_offload"),
-		AutoSSL:        requestBoolValue(c, "auto_ssl"),
-		KeyFile:        requestEscapedString(c, "key_file"),
-		CertFile:       requestEscapedString(c, "cert_file"),
-		AutoHTTPS:      requestBoolValue(c, "auto_https"),
-		AutoCORS:       requestBoolValue(c, "auto_cors"),
-		CompatMode:     requestBoolValue(c, "compat_mode"),
-		TargetIsHTTPS:  requestBoolValue(c, "target_is_https"),
+		Tunnel:         tunnel,
 	}
 }
 
-func editHostInput(c Context, cfg *servercfg.Snapshot) webservice.EditHostInput {
+func hostInput(c Context, cfg *servercfg.Snapshot) webservice.HostInput {
 	isAdmin := sessionBool(c, "isAdmin")
-	return webservice.EditHostInput{
+	host := new(model.Host)
+	requestSettings(c, model.HostSettings, host)
+	return webservice.HostInput{
 		ID:             requestIntValue(c, "id"),
+		ClientID:       requestIntValue(c, "client_id"),
 		IsAdmin:        isAdmin,
 		AllowUserLocal: indexAllowLocal(cfg, isAdmin),
-		ClientID:       requestIntValue(c, "client_id"),
-		Access:         requestAccessLists(c, ""),
-		Host:           requestEscapedString(c, "host"),
-		Target:         requestEscapedString(c, "target"),
-		ProxyProtocol:  requestIntValue(c, "proxy_protocol"),
-		HealthCheck:    requestHealthCheck(c),
-		LocalProxy:     requestBoolValue(c, "local_proxy"),
-		Auth:           requestEscapedString(c, "auth"),
-		Header:         requestEscapedString(c, "header"),
-		RespHeader:     requestEscapedString(c, "resp_header"),
-		HostChange:     requestEscapedString(c, "hostchange"),
-		Remark:         requestEscapedString(c, "remark"),
-		Location:       requestEscapedString(c, "location"),
-		PathRewrite:    requestEscapedString(c, "path_rewrite"),
-		RedirectURL:    requestEscapedString(c, "redirect_url"),
-		MaxConn:        requestIntValue(c, "max_conn"),
-		UploadLimit:    requestIntValue(c, "upload_limit"),
-		DownloadLimit:  requestIntValue(c, "download_limit"),
-		FlowLimit:      int64(requestIntValue(c, "flow_limit")),
-		TimeLimit:      requestEscapedString(c, "time_limit"),
 		ResetFlow:      requestBoolValue(c, "flow_reset"),
-		Scheme:         requestEscapedString(c, "scheme"),
-		HTTPSJustProxy: requestBoolValue(c, "https_just_proxy"),
-		TLSOffload:     requestBoolValue(c, "tls_offload"),
-		AutoSSL:        requestBoolValue(c, "auto_ssl"),
-		KeyFile:        requestEscapedString(c, "key_file"),
-		CertFile:       requestEscapedString(c, "cert_file"),
-		AutoHTTPS:      requestBoolValue(c, "auto_https"),
-		AutoCORS:       requestBoolValue(c, "auto_cors"),
-		CompatMode:     requestBoolValue(c, "compat_mode"),
-		TargetIsHTTPS:  requestBoolValue(c, "target_is_https"),
+		Access:         requestAccessLists(c, ""),
+		Host:           host,
 	}
 }
 
-func requestHealthCheck(c Context) model.HealthCheck {
-	return model.HealthCheck{
-		Enabled:  requestBoolValue(c, "health_check"),
-		Type:     requestString(c, "health_check_type"),
-		Path:     requestString(c, "health_check_path"),
-		Interval: requestIntValue(c, "health_check_interval"),
-		Timeout:  requestIntValue(c, "health_check_timeout"),
-		MaxFail:  requestIntValue(c, "health_check_max_fail"),
+// requestSettings reads the form settings of entry, a *model.Tunnel or
+// *model.Host, from the request.
+func requestSettings(c Context, settings []model.EntrySetting, entry any) {
+	for _, s := range settings {
+		if s.Form == "" {
+			continue
+		}
+		v := requestString(c, s.Form)
+		if !s.FormRaw {
+			v = html.EscapeString(v)
+		}
+		_ = s.Set(entry, v)
 	}
 }
 

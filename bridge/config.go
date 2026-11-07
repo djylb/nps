@@ -213,29 +213,18 @@ loop:
 
 // configPortTask returns the entry of the i-th port of t, a task a client
 // sent, as the server stores it under id.
+// The client's settings are carried over as they are, except for what the
+// server decides: the state of the entry and the settings only the server's
+// users give (access lists, user accounts, health checks).
 func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, targets []int, i int) *model.Tunnel {
-	tl := &model.Tunnel{
-		MaxConn:      t.MaxConn,
-		RateLimits:   model.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
-		Mode:         t.Mode,
-		Port:         ports[i],
-		ServerIp:     t.ServerIp,
-		Client:       client,
-		Password:     t.Password,
-		LocalPath:    t.LocalPath,
-		StripPre:     t.StripPre,
-		ReadOnly:     t.ReadOnly,
-		Socks5Proxy:  t.Socks5Proxy,
-		HttpProxy:    t.HttpProxy,
-		TargetType:   t.TargetType,
-		DestAclMode:  t.DestAclMode,
-		DestAclRules: t.DestAclRules,
-		MultiAccount: t.MultiAccount,
-		Id:           id,
-		Status:       true,
-		Flow:         new(model.Flow),
-		NoStore:      true,
-	}
+	tl := t.Clone()
+	tl.Id, tl.Port, tl.Client, tl.Status, tl.NoStore = id, ports[i], client, true, true
+	tl.Flow = new(model.Flow)
+	tl.RunStatus, tl.NowConn, tl.IsHttp, tl.Routes = false, 0, false, nil
+	tl.Ports, tl.TargetAddr = "", "" // what the ports and targets of the entry were made of
+	tl.CopySourceLists(new(model.SourceLists))
+	tl.UserAuth, tl.HealthConfig = nil, nil
+	tl.Health = model.Health{}
 
 	if len(ports) == 1 {
 		tl.Target = t.Target

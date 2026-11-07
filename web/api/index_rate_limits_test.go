@@ -35,15 +35,13 @@ func TestIndexRateLimitInputsAndFeaturePolicy(t *testing.T) {
 		for _, admin := range []bool{false, true} {
 			cfg := &servercfg.Snapshot{Feature: servercfg.FeatureConfig{AllowRateLimit: enabled}}
 			c := rateInputContext{admin: admin, values: map[string]string{"upload_limit": "123", "download_limit": "-45"}}
-			inputs := []interface{}{addTunnelInput(c, cfg), editTunnelInput(c, cfg), addHostInput(c, cfg), editHostInput(c, cfg)}
-			for _, input := range inputs {
-				v := reflect.ValueOf(input)
-				if v.FieldByName("UploadLimit").Int() != 123 || v.FieldByName("DownloadLimit").Int() != -45 {
-					t.Fatalf("%T: limits not parsed", input)
-				}
-				if v.FieldByName("IsAdmin").Bool() != admin {
-					t.Fatalf("%T: admin changed", input)
-				}
+			ti, hi := tunnelInput(c, cfg), hostInput(c, cfg)
+			// Negative limits are stored as zero.
+			if ti.Tunnel.UploadLimit != 123 || ti.Tunnel.DownloadLimit != 0 || hi.Host.UploadLimit != 123 || hi.Host.DownloadLimit != 0 {
+				t.Fatal("limits not parsed")
+			}
+			if ti.IsAdmin != admin || hi.IsAdmin != admin {
+				t.Fatal("admin changed")
 			}
 		}
 	}

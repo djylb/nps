@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/djylb/nps/internal/fieldtest"
@@ -16,7 +17,7 @@ var updateGolden = flag.Bool("update", false, "rewrite the golden files of the d
 // sentTask is a task as a client could send it, with every field set.
 func sentTask() *model.Tunnel {
 	t := new(model.Tunnel)
-	fieldtest.Fill(t)
+	fieldtest.Fill(t, 0)
 	t.Routes = nil
 	return t
 }
@@ -70,5 +71,35 @@ func TestConfigPortTaskDifferential(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("got %d entries, want %d", len(got), len(want))
+	}
+}
+
+// TestConfigPortTaskCarriesFields makes a field added to the model reach the
+// entries of the tasks clients send unless it is listed here.
+func TestConfigPortTaskCarriesFields(t *testing.T) {
+	serverSet := map[string]bool{
+		"Id": true, "Port": true, "Client": true, "Status": true, "NoStore": true, "Flow": true,
+	}
+	cleared := map[string]bool{
+		"RunStatus": true, "NowConn": true, "IsHttp": true, "Routes": true, "Ports": true, "TargetAddr": true,
+		"IpListPriority": true, "BlackIpList": true, "WhiteIpList": true, "RegisteredOnly": true,
+		"UserAuth": true, "HealthConfig": true, "HealthCheckTimeout": true, "HealthMaxFail": true,
+		"HealthCheckInterval": true, "HttpHealthUrl": true, "HealthCheckType": true, "HealthCheckTarget": true,
+	}
+	client := model.NewClient("vk", false, false)
+	sent := sentTask()
+	tl := configPortTask(sent, client, 42, []int{8000}, []int{80}, 0)
+	src, dst := reflect.ValueOf(sent).Elem(), reflect.ValueOf(tl).Elem()
+	for _, name := range fieldtest.Fields(reflect.TypeFor[model.Tunnel]()) {
+		got := fieldtest.Value(dst, name)
+		switch {
+		case serverSet[name]:
+		case cleared[name]:
+			if !got.IsZero() {
+				t.Errorf("%s = %v, want it cleared", name, got)
+			}
+		case !reflect.DeepEqual(got.Interface(), fieldtest.Value(src, name).Interface()):
+			t.Errorf("%s not carried over", name)
+		}
 	}
 }

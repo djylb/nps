@@ -1,16 +1,20 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/djylb/nps/lib/model"
+)
 
 func TestTunnelConnectionLimitCreateEditClear(t *testing.T) {
 	s, r := newRateLimitService()
-	if _, err := s.AddTunnel(AddTunnelInput{ClientID: 1, Mode: "tcp", Port: 1234, MaxConn: 5}); err != nil {
+	if _, err := s.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp", Port: 1234, MaxConn: 5}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.tunnel.MaxConn != 5 {
 		t.Fatal("create omitted limit")
 	}
-	if _, err := s.EditTunnel(EditTunnelInput{MaxConn: 2}); err != nil {
+	if _, err := s.EditTunnel(TunnelInput{Tunnel: &model.Tunnel{MaxConn: 2}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.tunnel.MaxConn != 2 {

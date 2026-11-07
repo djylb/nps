@@ -50,10 +50,10 @@ func seedConfig(t *testing.T) (DefaultClientService, DefaultIndexService) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := indexes.AddTunnel(AddTunnelInput{ClientID: id, Mode: "secret", Password: "pw-a", Target: "127.0.0.1:80", IsAdmin: true, Remark: "t"}); err != nil {
+	if _, err := indexes.AddTunnel(TunnelInput{ClientID: id, IsAdmin: true, Tunnel: &model.Tunnel{Mode: "secret", Password: "pw-a", Target: &model.Target{TargetStr: "127.0.0.1:80"}, Remark: "t"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := indexes.AddHost(AddHostInput{ClientID: id, Host: "a.example.com", Target: "127.0.0.1:81", IsAdmin: true, CertFile: "CERT", KeyFile: "KEY", Scheme: "all"}); err != nil {
+	if _, err := indexes.AddHost(HostInput{ClientID: id, IsAdmin: true, Host: &model.Host{Host: "a.example.com", Target: &model.Target{TargetStr: "127.0.0.1:81"}, CertFile: "CERT", KeyFile: "KEY", Scheme: "all"}}); err != nil {
 		t.Fatal(err)
 	}
 	return clients, indexes
@@ -187,10 +187,10 @@ func TestSuggestCertUsesTheCertificateChoice(t *testing.T) {
 	// A wildcard certificate serves names below it. An exact entry without
 	// certificate files does not hide it.
 	client, _ := file.GetDb().GetClient(1)
-	if _, err := indexes.AddHost(AddHostInput{ClientID: client.Id, Host: "*.wild.test", Target: "127.0.0.1:81", IsAdmin: true, CertFile: "W", KeyFile: "WK", Scheme: "all"}); err != nil {
+	if _, err := indexes.AddHost(HostInput{ClientID: client.Id, IsAdmin: true, Host: &model.Host{Host: "*.wild.test", Target: &model.Target{TargetStr: "127.0.0.1:81"}, CertFile: "W", KeyFile: "WK", Scheme: "all"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := indexes.AddHost(AddHostInput{ClientID: client.Id, Host: "x.wild.test", Target: "127.0.0.1:81", IsAdmin: true, Scheme: "all"}); err != nil {
+	if _, err := indexes.AddHost(HostInput{ClientID: client.Id, IsAdmin: true, Host: &model.Host{Host: "x.wild.test", Target: &model.Target{TargetStr: "127.0.0.1:81"}, Scheme: "all"}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := indexes.SuggestCert("x.wild.test", 0, 0); got == nil || got.CertFile != "W" {
@@ -237,7 +237,7 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 		func() error { return indexes.StopHost(1, "") },
 		func() error { return indexes.StartHost(1, "") },
 		func() error {
-			_, err := indexes.EditHost(EditHostInput{ID: 1, Host: "c.example.com", Target: "127.0.0.1:82", IsAdmin: true, Scheme: "all"})
+			_, err := indexes.EditHost(HostInput{ID: 1, IsAdmin: true, Host: &model.Host{Host: "c.example.com", Target: &model.Target{TargetStr: "127.0.0.1:82"}, Scheme: "all"}})
 			return err
 		},
 		func() error { return clients.Delete(1) }, // takes its tunnel and host along

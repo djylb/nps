@@ -10,7 +10,7 @@ import (
 
 func TestTunnelMaxConnInputAndLiveCount(t *testing.T) {
 	c := rateInputContext{values: map[string]string{"max_conn": "9"}}
-	if addTunnelInput(c, nil).MaxConn != 9 || editTunnelInput(c, nil).MaxConn != 9 {
+	if tunnelInput(c, nil).Tunnel.MaxConn != 9 {
 		t.Fatal("limit input ignored")
 	}
 	task := &model.Tunnel{MaxConn: 2}

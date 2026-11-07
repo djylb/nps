@@ -4,6 +4,7 @@ import (
 	"html"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/auth"
@@ -17,9 +18,9 @@ type IndexService interface {
 	DashboardData(force bool) map[string]interface{}
 	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
 	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
-	AddTunnel(AddTunnelInput) (TunnelMutation, error)
+	AddTunnel(TunnelInput) (TunnelMutation, error)
 	GetTunnel(id int) (*model.Tunnel, error)
-	EditTunnel(EditTunnelInput) (TunnelMutation, error)
+	EditTunnel(TunnelInput) (TunnelMutation, error)
 	StopTunnel(id int, mode string) error
 	DeleteTunnel(id int) error
 	StartTunnel(id int, mode string) error
@@ -30,8 +31,8 @@ type IndexService interface {
 	StartHost(id int, mode string) error
 	StopHost(id int, mode string) error
 	ClearHost(id int, mode string) error
-	AddHost(AddHostInput) (HostMutation, error)
-	EditHost(EditHostInput) (HostMutation, error)
+	AddHost(HostInput) (HostMutation, error)
+	EditHost(HostInput) (HostMutation, error)
 }
 
 type DefaultIndexService struct {
@@ -68,136 +69,43 @@ type HostMutation struct {
 	ClientID int
 }
 
-type AddTunnelInput struct {
-	ClientID       int
-	Port           int
-	ServerIP       string
-	Mode           string
-	TargetType     string
-	Target         string
-	ProxyProtocol  int
-	HealthCheck    model.HealthCheck
-	Auth           string
-	Remark         string
-	Password       string
-	LocalPath      string
-	StripPre       string
-	DestACLMode    int
-	DestACLRules   string
-	Access         AccessListInput
-	MaxConn        int
-	UploadLimit    int // KB/s; zero means unlimited
-	DownloadLimit  int // KB/s; zero means unlimited
-	FlowLimit      int64
-	TimeLimit      string
-	IsAdmin        bool
-	AllowUserLocal bool
-	LocalProxy     bool
-	EnableHTTP     bool
-	EnableSocks5   bool
-}
-
-type EditTunnelInput struct {
+// TunnelInput is a submitted tunnel. ID and ResetFlow are only read when an
+// existing tunnel is edited.
+type TunnelInput struct {
 	ID             int
 	ClientID       int
-	Port           int
-	ServerIP       string
-	Mode           string
-	TargetType     string
-	Target         string
-	ProxyProtocol  int
-	HealthCheck    model.HealthCheck
-	Auth           string
-	Remark         string
-	Password       string
-	LocalPath      string
-	StripPre       string
-	DestACLMode    int
-	DestACLRules   string
-	Access         AccessListInput
-	MaxConn        int
-	UploadLimit    int // KB/s; zero means unlimited
-	DownloadLimit  int // KB/s; zero means unlimited
-	FlowLimit      int64
-	TimeLimit      string
 	IsAdmin        bool
 	AllowUserLocal bool
-	LocalProxy     bool
-	EnableHTTP     bool
-	EnableSocks5   bool
 	ResetFlow      bool
-}
-
-type AddHostInput struct {
-	ClientID       int
-	Host           string
-	Target         string
-	ProxyProtocol  int
-	HealthCheck    model.HealthCheck
-	Auth           string
-	Header         string
-	RespHeader     string
-	HostChange     string
-	Remark         string
-	Location       string
-	PathRewrite    string
-	RedirectURL    string
 	Access         AccessListInput
-	MaxConn        int
-	UploadLimit    int // KB/s; zero means unlimited
-	DownloadLimit  int // KB/s; zero means unlimited
-	FlowLimit      int64
-	TimeLimit      string
-	Scheme         string
-	KeyFile        string
-	CertFile       string
-	IsAdmin        bool
-	AllowUserLocal bool
-	LocalProxy     bool
-	HTTPSJustProxy bool
-	TLSOffload     bool
-	AutoSSL        bool
-	AutoHTTPS      bool
-	AutoCORS       bool
-	CompatMode     bool
-	TargetIsHTTPS  bool
+	// Tunnel holds the values of model.TunnelSettings as submitted.
+	Tunnel *model.Tunnel
 }
 
-type EditHostInput struct {
+// HostInput is a submitted host, as TunnelInput is a tunnel.
+type HostInput struct {
 	ID             int
 	ClientID       int
-	Host           string
-	Target         string
-	ProxyProtocol  int
-	HealthCheck    model.HealthCheck
-	Auth           string
-	Header         string
-	RespHeader     string
-	HostChange     string
-	Remark         string
-	Location       string
-	PathRewrite    string
-	RedirectURL    string
-	Access         AccessListInput
-	MaxConn        int
-	UploadLimit    int // KB/s; zero means unlimited
-	DownloadLimit  int // KB/s; zero means unlimited
-	FlowLimit      int64
-	TimeLimit      string
-	Scheme         string
-	KeyFile        string
-	CertFile       string
 	IsAdmin        bool
 	AllowUserLocal bool
-	LocalProxy     bool
 	ResetFlow      bool
-	HTTPSJustProxy bool
-	TLSOffload     bool
-	AutoSSL        bool
-	AutoHTTPS      bool
-	AutoCORS       bool
-	CompatMode     bool
-	TargetIsHTTPS  bool
+	Access         AccessListInput
+	// Host holds the values of model.HostSettings as submitted.
+	Host *model.Host
+}
+
+func (in TunnelInput) form() *model.Tunnel {
+	if in.Tunnel == nil {
+		return new(model.Tunnel)
+	}
+	return in.Tunnel
+}
+
+func (in HostInput) form() *model.Host {
+	if in.Host == nil {
+		return new(model.Host)
+	}
+	return in.Host
 }
 
 func (s DefaultIndexService) DashboardData(force bool) map[string]interface{} {
@@ -208,49 +116,26 @@ func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*model.Tunnel
 	return s.runtime().ListTunnels(input.Offset, input.Limit, input.Type, input.ClientID, input.Search, input.Sort, input.Order)
 }
 
-func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, error) {
+func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error) {
 	lists, err := input.Access.validate(acl.ScopeUser)
 	if err != nil {
 		return TunnelMutation{}, err
 	}
-	destRules, err := normalizeDestRules(input.DestACLRules)
+	form := input.form()
+	destRules, err := normalizeDestRules(form.DestAclRules)
 	if err != nil {
 		return TunnelMutation{}, err
 	}
 	id := s.repo().NextTunnelID()
+	flowLimit, timeLimit := formFlowLimits(form.Flow)
 	tunnel := &model.Tunnel{
-		Port:       input.Port,
-		ServerIp:   input.ServerIP,
-		Mode:       input.Mode,
-		TargetType: input.TargetType,
-		Target: &model.Target{
-			TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, ""),
-			ProxyProtocol: input.ProxyProtocol,
-			LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
-		},
-		UserAuth: &model.MultiAccount{
-			Content:    input.Auth,
-			AccountMap: auth.DealMultiUser(input.Auth),
-		},
-		Id:           id,
-		Status:       true,
-		Remark:       input.Remark,
-		Password:     input.Password,
-		LocalPath:    input.LocalPath,
-		StripPre:     input.StripPre,
-		HttpProxy:    input.EnableHTTP,
-		Socks5Proxy:  input.EnableSocks5,
-		DestAclMode:  normalizeACLMode(input.DestACLMode),
-		DestAclRules: destRules,
-		Flow: &model.Flow{
-			FlowLimit: input.FlowLimit,
-			TimeLimit: textutil.GetTimeNoErrByStr(input.TimeLimit),
-		},
+		Port:   form.Port,
+		Mode:   form.Mode,
+		Id:     id,
+		Status: true,
+		Flow:   &model.Flow{FlowLimit: flowLimit, TimeLimit: timeLimit},
 	}
-
-	tunnel.SetHealthCheck(input.HealthCheck)
-	tunnel.SetMaxConn(input.MaxConn)
-	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
+	applyTunnelForm(tunnel, form, input, input.ClientID, "", destRules)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
@@ -285,12 +170,13 @@ func (s DefaultIndexService) GetTunnel(id int) (*model.Tunnel, error) {
 	return tunnel, nil
 }
 
-func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, error) {
+func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, error) {
 	lists, err := input.Access.validate(acl.ScopeUser)
 	if err != nil {
 		return TunnelMutation{}, err
 	}
-	destRules, err := normalizeDestRules(input.DestACLRules)
+	form := input.form()
+	destRules, err := normalizeDestRules(form.DestAclRules)
 	if err != nil {
 		return TunnelMutation{}, err
 	}
@@ -307,15 +193,15 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	}
 	tunnel.Client = client
 
-	desiredMode := input.Mode
+	desiredMode := form.Mode
 	if desiredMode == "" {
 		desiredMode = tunnel.Mode
 	}
 	probe := &model.Tunnel{
-		Port:        input.Port,
+		Port:        form.Port,
 		Mode:        desiredMode,
-		HttpProxy:   input.EnableHTTP,
-		Socks5Proxy: input.EnableSocks5,
+		HttpProxy:   form.HttpProxy,
+		Socks5Proxy: form.Socks5Proxy,
 	}
 	if probe.Port <= 0 {
 		probe.Port = tunnel.Port
@@ -332,28 +218,10 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	}
 
 	tunnel.Port = probe.Port
-	tunnel.ServerIp = input.ServerIP
 	tunnel.Mode = desiredMode
-	tunnel.TargetType = input.TargetType
-	tunnel.Target = &model.Target{
-		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
-		ProxyProtocol: input.ProxyProtocol,
-		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
-	}
-	tunnel.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: auth.DealMultiUser(input.Auth)}
-	tunnel.Password = input.Password
-	tunnel.LocalPath = input.LocalPath
-	tunnel.StripPre = input.StripPre
-	tunnel.HttpProxy = input.EnableHTTP
-	tunnel.Socks5Proxy = input.EnableSocks5
-	tunnel.DestAclMode = normalizeACLMode(input.DestACLMode)
-	tunnel.DestAclRules = destRules
+	applyTunnelForm(tunnel, form, input, client.Id, targetFallback, destRules)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
-	tunnel.Remark = input.Remark
-	tunnel.SetHealthCheck(input.HealthCheck)
-	tunnel.SetMaxConn(input.MaxConn)
-	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
-	tunnel.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
+	tunnel.Flow.SetLimits(formFlowLimits(form.Flow))
 
 	if err := s.repo().SaveTunnel(tunnel); err != nil {
 		return TunnelMutation{}, err
@@ -369,6 +237,67 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	}
 
 	return TunnelMutation{ID: tunnel.Id, ClientID: client.Id, Mode: tunnel.Mode}, nil
+}
+
+// applyTunnelForm sets on tunnel the settings of the submitted form other
+// than its port, mode and flow limits, which adding and editing decide
+// differently. clientID is the owner the tunnel gets, fallback the target
+// kept for a target the user may not set and destRules the checked
+// destination list.
+func applyTunnelForm(tunnel, form *model.Tunnel, input TunnelInput, clientID int, fallback, destRules string) {
+	model.CopyFormSettings(model.TunnelSettings, tunnel, form)
+	tunnel.Target = formTarget(form.Target, input.IsAdmin, input.AllowUserLocal, clientID, fallback)
+	tunnel.UserAuth = formAccounts(form.UserAuth)
+	tunnel.DestAclMode = normalizeACLMode(form.DestAclMode)
+	tunnel.DestAclRules = destRules
+	tunnel.SetHealthCheck(formHealthCheck(form.HealthConfig))
+	tunnel.SetMaxConn(form.MaxConn)
+	tunnel.SetRateLimits(form.UploadLimit, form.DownloadLimit)
+}
+
+// applyHostForm sets on host the settings of the submitted form other than
+// its target and flow limits, which adding and editing set differently.
+func applyHostForm(host, form *model.Host) {
+	model.CopyFormSettings(model.HostSettings, host, form)
+	host.Scheme = normalizeScheme(form.Scheme)
+	host.UserAuth = formAccounts(form.UserAuth)
+	host.SetHealthCheck(formHealthCheck(form.HealthConfig))
+	host.SetMaxConn(form.MaxConn)
+	host.SetRateLimits(form.UploadLimit, form.DownloadLimit)
+}
+
+// formTarget is the target of a submitted entry of the client clientID.
+func formTarget(t *model.Target, isAdmin, allowLocal bool, clientID int, fallback string) *model.Target {
+	if t == nil {
+		t = new(model.Target)
+	}
+	return &model.Target{
+		TargetStr:     sanitizeBridgeTarget(t.TargetStr, isAdmin, fallback),
+		ProxyProtocol: t.ProxyProtocol,
+		LocalProxy:    localProxyEnabled(clientID, t.LocalProxy, allowLocal),
+	}
+}
+
+func formAccounts(a *model.MultiAccount) *model.MultiAccount {
+	var content string
+	if a != nil {
+		content = a.Content
+	}
+	return &model.MultiAccount{Content: content, AccountMap: auth.DealMultiUser(content)}
+}
+
+func formHealthCheck(h *model.HealthCheck) model.HealthCheck {
+	if h == nil {
+		return model.HealthCheck{}
+	}
+	return *h
+}
+
+func formFlowLimits(f *model.Flow) (int64, time.Time) {
+	if f == nil {
+		return 0, time.Time{}
+	}
+	return f.FlowLimit, f.TimeLimit
 }
 
 // editTargetClient returns the client an edited tunnel or host belongs to.
@@ -540,49 +469,20 @@ func (s DefaultIndexService) ClearHost(id int, mode string) error {
 	return changeHostStatus(id, mode, "clear")
 }
 
-func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
+func (s DefaultIndexService) AddHost(input HostInput) (HostMutation, error) {
 	lists, err := input.Access.validate(acl.ScopeUser)
 	if err != nil {
 		return HostMutation{}, err
 	}
+	form := input.form()
 	id := s.repo().NextHostID()
+	flowLimit, timeLimit := formFlowLimits(form.Flow)
 	host := &model.Host{
-		Id:   id,
-		Host: input.Host,
-		Target: &model.Target{
-			TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, ""),
-			ProxyProtocol: input.ProxyProtocol,
-			LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
-		},
-		UserAuth: &model.MultiAccount{
-			Content:    input.Auth,
-			AccountMap: auth.DealMultiUser(input.Auth),
-		},
-		HeaderChange:     input.Header,
-		RespHeaderChange: input.RespHeader,
-		HostChange:       input.HostChange,
-		Remark:           input.Remark,
-		Location:         input.Location,
-		PathRewrite:      input.PathRewrite,
-		RedirectURL:      input.RedirectURL,
-		Flow: &model.Flow{
-			FlowLimit: input.FlowLimit,
-			TimeLimit: textutil.GetTimeNoErrByStr(input.TimeLimit),
-		},
-		Scheme:         normalizeScheme(input.Scheme),
-		HttpsJustProxy: input.HTTPSJustProxy,
-		TlsOffload:     input.TLSOffload,
-		AutoSSL:        input.AutoSSL,
-		KeyFile:        input.KeyFile,
-		CertFile:       input.CertFile,
-		AutoHttps:      input.AutoHTTPS,
-		AutoCORS:       input.AutoCORS,
-		CompatMode:     input.CompatMode,
-		TargetIsHttps:  input.TargetIsHTTPS,
+		Id:     id,
+		Target: formTarget(form.Target, input.IsAdmin, input.AllowUserLocal, input.ClientID, ""),
+		Flow:   &model.Flow{FlowLimit: flowLimit, TimeLimit: timeLimit},
 	}
-	host.SetHealthCheck(input.HealthCheck)
-	host.SetMaxConn(input.MaxConn)
-	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
+	applyHostForm(host, form)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(id)+" ("+host.Host+")")
 
 	client, err := s.repo().GetClient(input.ClientID)
@@ -604,11 +504,12 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 	return HostMutation{ID: host.Id, ClientID: input.ClientID}, nil
 }
 
-func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error) {
+func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 	lists, err := input.Access.validate(acl.ScopeUser)
 	if err != nil {
 		return HostMutation{}, err
 	}
+	form := input.form()
 	// After the edit: a request in between would cache a transport of the old settings.
 	defer s.runtime().RemoveHostCache(input.ID)
 
@@ -618,9 +519,9 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	}
 
 	oldHost := host.Host
-	scheme := normalizeScheme(input.Scheme)
-	if host.Host != input.Host || host.Location != input.Location || host.Scheme != scheme {
-		tmpHost := &model.Host{Id: host.Id, Host: input.Host, Location: input.Location, Scheme: scheme}
+	scheme := normalizeScheme(form.Scheme)
+	if host.Host != form.Host || host.Location != form.Location || host.Scheme != scheme {
+		tmpHost := &model.Host{Id: host.Id, Host: form.Host, Location: form.Location, Scheme: scheme}
 		if s.repo().HostExists(tmpHost) {
 			return HostMutation{}, ErrHostExists
 		}
@@ -635,40 +536,15 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 		targetFallback = host.Target.TargetStr
 	}
 
-	host.Host = input.Host
-	target := &model.Target{
-		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
-		ProxyProtocol: input.ProxyProtocol,
-		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
-	}
+	target := formTarget(form.Target, input.IsAdmin, input.AllowUserLocal, client.Id, targetFallback)
 	host.Lock()
 	host.Client, host.Target = client, target
 	host.Unlock()
-	host.SetHealthCheck(input.HealthCheck)
-	host.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: auth.DealMultiUser(input.Auth)}
-	host.HeaderChange = input.Header
-	host.RespHeaderChange = input.RespHeader
-	host.HostChange = input.HostChange
-	host.Remark = input.Remark
-	host.Location = input.Location
-	host.PathRewrite = input.PathRewrite
-	host.RedirectURL = input.RedirectURL
-	host.Scheme = scheme
-	host.HttpsJustProxy = input.HTTPSJustProxy
-	host.TlsOffload = input.TLSOffload
-	host.AutoSSL = input.AutoSSL
-	host.KeyFile = input.KeyFile
-	host.CertFile = input.CertFile
-	host.SetMaxConn(input.MaxConn)
-	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
-	host.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
+	applyHostForm(host, form)
+	host.Flow.SetLimits(formFlowLimits(form.Flow))
 	if input.ResetFlow {
 		host.Flow.ResetTraffic()
 	}
-	host.AutoHttps = input.AutoHTTPS
-	host.AutoCORS = input.AutoCORS
-	host.CompatMode = input.CompatMode
-	host.TargetIsHttps = input.TargetIsHTTPS
 
 	host.CertType = crypt.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)

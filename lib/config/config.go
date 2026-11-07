@@ -298,71 +298,73 @@ func dealCommon(s string) *CommonConfig {
 }
 
 func dealHost(s string) (*model.Host, error) {
-	h := new(model.Host)
-	h.Target = new(model.Target)
-	h.Scheme = "all"
-	h.MultiAccount = new(model.MultiAccount)
+	h := &model.Host{Target: new(model.Target), MultiAccount: new(model.MultiAccount)}
+	setConfDefaults(model.HostSettings, h)
 	var headerChange, respHeaderChange string
 	for _, v := range textutil.SplitLines(s) {
 		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch item[0] {
-		case "host":
-			h.Host = item[1]
-		case "max_conn":
-			h.SetMaxConn(textutil.GetIntNoErrByStr(item[1]))
-		case "upload_limit":
-			h.UploadLimit = max(textutil.GetIntNoErrByStr(item[1]), 0)
-		case "download_limit":
-			h.DownloadLimit = max(textutil.GetIntNoErrByStr(item[1]), 0)
-		case "target_addr":
-			h.Target.TargetStr = strings.ReplaceAll(item[1], ",", "\n")
-		case "proxy_protocol":
-			h.Target.ProxyProtocol = textutil.GetIntNoErrByStr(item[1])
-		case "host_change":
-			h.HostChange = item[1]
-		case "scheme":
-			h.Scheme = item[1]
-		case "location":
-			h.Location = item[1]
-		case "path_rewrite":
-			h.PathRewrite = item[1]
-		case "cert_file":
-			h.CertFile, _ = crypt.GetCertContent(item[1], "CERTIFICATE")
-		case "key_file":
-			h.KeyFile, _ = crypt.GetCertContent(item[1], "PRIVATE")
-		case "https_just_proxy":
-			h.HttpsJustProxy = parseBool(item)
-		case "auto_ssl":
-			h.AutoSSL = parseBool(item)
-		case "auto_https":
-			h.AutoHttps = parseBool(item)
-		case "auto_cors":
-			h.AutoCORS = parseBool(item)
-		case "compat_mode":
-			h.CompatMode = parseBool(item)
-		case "redirect_url":
-			h.RedirectURL = item[1]
-		case "target_is_https":
-			h.TargetIsHttps = parseBool(item)
-		case "multi_account":
+		if item[0] == "multi_account" {
 			if err := loadMultiAccount(h.MultiAccount, item[1]); err != nil {
 				return nil, err
 			}
-		default:
-			if name, ok := strings.CutPrefix(item[0], "header_"); ok {
-				headerChange += name + ":" + item[1] + "\n"
-			}
-			if name, ok := strings.CutPrefix(item[0], "response_"); ok {
-				respHeaderChange += name + ":" + item[1] + "\n"
-			}
-			h.HeaderChange = headerChange
-			h.RespHeaderChange = respHeaderChange
+			continue
+		}
+		if setConf(hostConf, h, item) {
+			continue
+		}
+		if name, ok := strings.CutPrefix(item[0], "header_"); ok {
+			headerChange += name + ":" + item[1] + "\n"
+		}
+		if name, ok := strings.CutPrefix(item[0], "response_"); ok {
+			respHeaderChange += name + ":" + item[1] + "\n"
 		}
 	}
+	h.HeaderChange, h.RespHeaderChange = headerChange, respHeaderChange
 	return h, nil
+}
+
+// The npc.conf keys of model.TunnelSettings and model.HostSettings.
+var tunnelConf, hostConf = confSettings(model.TunnelSettings), confSettings(model.HostSettings)
+
+func confSettings(settings []model.EntrySetting) map[string]model.EntrySetting {
+	m := make(map[string]model.EntrySetting)
+	for _, s := range settings {
+		if s.Conf != "" {
+			m[s.Conf] = s
+		}
+	}
+	return m
+}
+
+func setConfDefaults(settings []model.EntrySetting, entry any) {
+	for _, s := range settings {
+		if s.Conf != "" && s.ConfDefault != "" {
+			_ = s.Set(entry, s.ConfDefault)
+		}
+	}
+}
+
+// setConf sets the setting item names on entry, reporting whether there is
+// one.
+func setConf(settings map[string]model.EntrySetting, entry any, item [2]string) bool {
+	s, ok := settings[item[0]]
+	if !ok {
+		return false
+	}
+	v := item[1]
+	if s.ConfList {
+		v = strings.ReplaceAll(v, ",", "\n")
+	}
+	if s.ConfPEM != "" {
+		v, _ = crypt.GetCertContent(v, s.ConfPEM)
+	}
+	if s.Set(entry, v) != nil {
+		logs.Warn("config %s = %q is not a boolean, using false", item[0], item[1])
+	}
+	return true
 }
 
 // loadMultiAccount fills m from the account file at path, if there is one.
@@ -395,56 +397,20 @@ func hasHealthKeys(keys map[string]bool) bool {
 }
 
 func dealTunnel(s string) (*model.Tunnel, error) {
-	t := new(model.Tunnel)
-	t.Target = new(model.Target)
-	t.MultiAccount = new(model.MultiAccount)
+	t := &model.Tunnel{Target: new(model.Target), MultiAccount: new(model.MultiAccount)}
+	setConfDefaults(model.TunnelSettings, t)
 	for _, v := range textutil.SplitLines(s) {
 		item, ok := splitKV(v)
 		if !ok {
 			continue
 		}
-		switch item[0] {
-		case "max_conn":
-			t.SetMaxConn(textutil.GetIntNoErrByStr(item[1]))
-		case "upload_limit":
-			t.UploadLimit = max(textutil.GetIntNoErrByStr(item[1]), 0)
-		case "download_limit":
-			t.DownloadLimit = max(textutil.GetIntNoErrByStr(item[1]), 0)
-		case "server_port":
-			t.Ports = item[1]
-		case "server_ip":
-			t.ServerIp = item[1]
-		case "mode":
-			t.Mode = item[1]
-		case "target_addr":
-			t.Target.TargetStr = strings.ReplaceAll(item[1], ",", "\n")
-		case "proxy_protocol":
-			t.Target.ProxyProtocol = textutil.GetIntNoErrByStr(item[1])
-		case "target_port":
-			t.Target.TargetStr = item[1]
-		case "target_ip":
-			t.TargetAddr = item[1]
-		case "password":
-			t.Password = item[1]
-		case "socks5_proxy":
-			t.Socks5Proxy = parseBool(item)
-		case "http_proxy":
-			t.HttpProxy = parseBool(item)
-		case "dest_acl_mode":
-			t.DestAclMode = textutil.GetIntNoErrByStr(item[1])
-		case "dest_acl_rules":
-			t.DestAclRules = strings.ReplaceAll(item[1], ",", "\n")
-		case "local_path":
-			t.LocalPath = item[1]
-		case "strip_pre":
-			t.StripPre = item[1]
-		case "read_only":
-			t.ReadOnly = parseBool(item)
-		case "multi_account":
+		if item[0] == "multi_account" {
 			if err := loadMultiAccount(t.MultiAccount, item[1]); err != nil {
 				return nil, err
 			}
+			continue
 		}
+		setConf(tunnelConf, t, item)
 	}
 	return t, nil
 }

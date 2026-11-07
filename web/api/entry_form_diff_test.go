@@ -295,18 +295,18 @@ func compareGolden(t *testing.T, path string, got map[string]string) {
 
 func submitTunnelForm(svc webservice.IndexService, c Context, cfg *servercfg.Snapshot, edit bool) error {
 	if edit {
-		_, err := svc.EditTunnel(editTunnelInput(c, cfg))
+		_, err := svc.EditTunnel(tunnelInput(c, cfg))
 		return err
 	}
-	_, err := svc.AddTunnel(addTunnelInput(c, cfg))
+	_, err := svc.AddTunnel(tunnelInput(c, cfg))
 	return err
 }
 
 func submitHostForm(svc webservice.IndexService, c Context, cfg *servercfg.Snapshot, edit bool) error {
 	if edit {
-		_, err := svc.EditHost(editHostInput(c, cfg))
+		_, err := svc.EditHost(hostInput(c, cfg))
 		return err
 	}
-	_, err := svc.AddHost(addHostInput(c, cfg))
+	_, err := svc.AddHost(hostInput(c, cfg))
 	return err
 }
