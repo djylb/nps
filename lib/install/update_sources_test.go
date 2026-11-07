@@ -70,3 +70,19 @@ func TestUpdateSourcesLocations(t *testing.T) {
 		t.Fatalf("sources:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// TestUpdateFiles pins the archive members an update installs; they must
+// match the archives of scripts/build_assets.sh.
+func TestUpdateFiles(t *testing.T) {
+	var got []string
+	for _, f := range updateFiles("nps", []string{"a", "b"}) {
+		got = append(got, f.Member)
+	}
+	exe := executableName("nps")
+	if strings.Join(got, ",") != exe+","+exe+",web/views,web/static,conf/nps.conf" {
+		t.Fatalf("members = %v", got)
+	}
+	if files := updateFiles("npc", []string{"a"}); len(files) != 1 || files[0].Member != executableName("npc") || files[0].Target != "a" {
+		t.Fatalf("npc files = %+v", files)
+	}
+}

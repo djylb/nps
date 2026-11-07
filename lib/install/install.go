@@ -2,121 +2,18 @@ package install
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/djylb/netx"
-	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/selfupdate"
 )
-
-// systemBinDirs are the directories that install places the executable in,
-// in order of preference.
-var systemBinDirs = []string{"/usr/bin", "/usr/local/bin"}
-
-// httpClient sends requests with certificate verification against the system
-// roots and retries a request without verification only when the certificate
-// check itself failed, so devices with a broken CA store can still update.
-type httpClient struct {
-	verified   *http.Client
-	unverified *http.Client
-}
-
-func newHTTPClient() *httpClient {
-	return &httpClient{
-		verified:   newTransportClient(false),
-		unverified: newTransportClient(true),
-	}
-}
-
-func newTransportClient(insecure bool) *http.Client {
-	const timeout = 5 * time.Second
-	const idleTimeout = 10 * time.Second
-	const keepAliveTime = 30 * time.Second
-
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			d := &net.Dialer{
-				Timeout:   timeout,
-				KeepAlive: keepAliveTime,
-			}
-			raw, err := d.DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-			return netx.NewTimeoutConn(raw, idleTimeout), nil
-		},
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			d := &net.Dialer{
-				Timeout:   timeout,
-				KeepAlive: keepAliveTime,
-			}
-			raw, err := d.DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				_ = raw.Close()
-				return nil, err
-			}
-			cfg := &tls.Config{ServerName: host, InsecureSkipVerify: insecure}
-			hsCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			tlsConn, err := tlsconn.Client(hsCtx, raw, cfg)
-			if err != nil {
-				return nil, err
-			}
-			return netx.NewTimeoutConn(tlsConn, idleTimeout), nil
-		},
-		TLSHandshakeTimeout:   timeout,
-		ResponseHeaderTimeout: timeout,
-	}
-	if insecure {
-		// requests through an HTTPS proxy use TLSClientConfig instead of DialTLSContext
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-	return &http.Client{Transport: transport}
-}
-
-// do sends req and reports whether the server certificate was verified.
-func (c *httpClient) do(req *http.Request) (*http.Response, bool, error) {
-	// The response is returned to the caller, which closes its body.
-	//noinspection GoResourceLeak
-	resp, err := c.verified.Do(req)
-	if err == nil || !isCertificateError(err) {
-		return resp, err == nil, err
-	}
-	if resp != nil {
-		_ = resp.Body.Close()
-	}
-	fmt.Printf("WARNING: certificate verification for %s failed: %v\n", req.URL.Host, err)
-	fmt.Println("WARNING: the system certificate store may be broken or outdated; retrying this download WITHOUT certificate verification")
-	resp, err = c.unverified.Do(req)
-	return resp, false, err
-}
-
-func isCertificateError(err error) bool {
-	var verifyErr *tls.CertificateVerificationError
-	var authErr x509.UnknownAuthorityError
-	var invalidErr x509.CertificateInvalidError
-	var hostErr x509.HostnameError
-	return errors.As(err, &verifyErr) || errors.As(err, &authErr) ||
-		errors.As(err, &invalidErr) || errors.As(err, &hostErr)
-}
 
 // copyServerAssets copies the web UI and the reference config from srcDir to
 // destDir. Each item is handled on its own: an item missing from srcDir keeps
@@ -154,41 +51,6 @@ func copyServerAssets(srcDir, destDir string) error {
 		chMod(dest, 0766)
 	}
 	return nil
-}
-
-// installExecutable copies the executable found in srcDir to its install
-// location and returns that path. Windows keeps the executable where it is.
-// Helper copies named <bin>-update left by older installs are removed.
-func installExecutable(srcDir, bin string) (string, error) {
-	if runenv.IsWindows() {
-		exe, err := currentExecutable()
-		if err != nil {
-			return "", err
-		}
-		_ = os.Remove(filepath.Join(filepath.Dir(exe), bin+"-update.exe"))
-		return exe, nil
-	}
-	for _, dir := range systemBinDirs {
-		_ = os.Remove(filepath.Join(dir, bin+"-update"))
-	}
-	src := filepath.Join(srcDir, bin)
-	var errs []error
-	for _, dir := range systemBinDirs {
-		dest := filepath.Join(dir, bin)
-		target := dest
-		if p, err := filepath.EvalSymlinks(dest); err == nil {
-			target = p
-		}
-		err := os.MkdirAll(dir, 0o755)
-		if err == nil {
-			err = installFile(src, target)
-		}
-		if err == nil {
-			return dest, nil
-		}
-		errs = append(errs, fmt.Errorf("install %s: %w", dest, err))
-	}
-	return "", errors.Join(errs...)
 }
 
 // installFile replaces target with a copy of the executable src through the
@@ -233,13 +95,6 @@ func currentExecutable() (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(exe)
-}
-
-func executableName(bin string) string {
-	if runenv.IsWindows() {
-		return bin + ".exe"
-	}
-	return bin
 }
 
 func containsFile(paths []string, p string) bool {
@@ -288,15 +143,7 @@ func NPS() (string, error) {
 	log.Println("install ok!")
 	log.Println("Static files and configuration files in the current directory will be useless")
 	log.Println("The new configuration file is located in", path, "you can edit them")
-	if !runenv.IsWindows() {
-		log.Println(`You can start with:
-nps start|stop|restart|uninstall|update
-anywhere!`)
-	} else {
-		log.Println(`You can start with:
-nps.exe start|stop|restart|uninstall|update
-now!`)
-	}
+	log.Println("You can start with:\n" + npsUsage)
 	chMod(runenv.GetLogPath(), 0777)
 	return binPath, nil
 }
@@ -378,10 +225,4 @@ func pathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
-}
-
-func chMod(name string, mode os.FileMode) {
-	if !runenv.IsWindows() {
-		_ = os.Chmod(name, mode)
-	}
 }

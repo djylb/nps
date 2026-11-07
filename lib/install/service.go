@@ -3,33 +3,23 @@ package install
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/runenv"
 	"github.com/kardianos/service"
 )
 
-// ControlService runs a service control action. SysV init systems are driven
-// through the init script directly so BusyBox based systems such as OpenWrt
-// work as well.
+// ControlService runs a service control action, the way the service manager
+// of the platform needs it (see controlService).
 func ControlService(s service.Service, name, action string) error {
-	switch service.Platform() {
-	case "unix-systemv":
-		return exec.Command("/etc/init.d/"+name, action).Run()
-	case "windows-service":
-		if action == "restart" {
-			return restartWithTimeout(s, name, windowsStopTimeout)
-		}
+	if handled, err := controlService(s, name, action); handled {
+		return err
 	}
 	return service.Control(s, action)
 }
 
-// windowsStopTimeout bounds the wait for the Windows service to stop on a
-// restart. The service library waits for the stop without a bound.
-const windowsStopTimeout = 60 * time.Second
-
+// restartWithTimeout restarts s, giving up when it does not stop within
+// timeout.
 func restartWithTimeout(s service.Service, name string, timeout time.Duration) error {
 	stopped := make(chan error, 1)
 	go func() { stopped <- s.Stop() }()
@@ -56,61 +46,55 @@ func RestartAfterUpdate(s service.Service, name string, replaced []string) error
 		fmt.Println("Service", name, "is not running; the new version takes effect on its next start")
 		return nil
 	}
-	if exe := serviceExecutable(name); exe != "" && !containsFile(replaced, exe) {
+	exe := serviceExecutable(name)
+	if exe != "" && !containsFile(replaced, exe) {
 		fmt.Printf("WARNING: service %s runs %s, which this update did not replace; run install again to point the service at the updated executable\n", name, exe)
 		return nil
 	}
-	if runenv.IsWindows() && !service.Interactive() {
-		// The caller is the service process, which the restart ends.
-		exe := serviceExecutable(name)
-		if exe == "" {
-			exe = replaced[0]
-		}
-		if err := restartDetached(exe); err != nil {
-			return fmt.Errorf("executables replaced, but restarting service %s failed: %w", name, err)
-		}
-		fmt.Println("Service", name, "restart requested")
-		return nil
+	if exe == "" {
+		exe = replaced[0]
 	}
-	if err := ControlService(s, name, "restart"); err != nil {
+	requested, err := restartService(s, name, exe)
+	if err != nil {
 		return fmt.Errorf("executables replaced, but restarting service %s failed: %w", name, err)
 	}
-	fmt.Println("Service", name, "restarted")
+	if requested {
+		fmt.Println("Service", name, "restart requested")
+	} else {
+		fmt.Println("Service", name, "restarted")
+	}
 	return nil
 }
 
+// serviceRunning reports whether the service s is running.
 func serviceRunning(s service.Service, name string) bool {
-	if service.Platform() == "unix-systemv" {
-		return exec.Command("/etc/init.d/"+name, "status").Run() == nil
+	if running, known := serviceStatus(name); known {
+		return running
 	}
 	status, err := s.Status()
 	return err == nil && status == service.StatusRunning
 }
 
-// serviceExecutable returns the executable the installed service runs, or ""
-// when the service manager does not tell.
-func serviceExecutable(name string) string {
-	switch service.Platform() {
-	case "linux-systemd":
-		out, err := exec.Command("systemctl", "show", "-p", "ExecStart", "--value", name+".service").Output()
-		if err != nil {
-			return ""
-		}
-		return parseSystemdExecStart(string(out))
-	case "unix-systemv":
-		b, err := os.ReadFile("/etc/init.d/" + name)
-		if err != nil {
-			return ""
-		}
-		return parseSysvCmd(string(b))
-	case "windows-service":
-		out, err := exec.Command("sc", "qc", name).Output()
-		if err != nil {
-			return ""
-		}
-		return parseScBinaryPath(string(out))
+// UninstallService uninstalls s, the system service name. systemd refuses to
+// disable a unit whose file is empty, and procd runs the init script, which
+// an empty or foreign script fails; the files of the service are then deleted
+// directly so that a later install does not find them in place.
+func UninstallService(s service.Service, name string) error {
+	err := service.Control(s, "uninstall")
+	if err == nil {
+		return nil
 	}
-	return ""
+	removed := false
+	for _, p := range serviceFiles(name) {
+		if os.Remove(p) == nil {
+			removed = true
+		}
+	}
+	if !removed {
+		return err
+	}
+	serviceFilesRemoved()
+	return nil
 }
 
 // parseSystemdExecStart extracts the path from `systemctl show -p ExecStart
@@ -160,52 +144,4 @@ func parseScBinaryPath(out string) string {
 		}
 	}
 	return ""
-}
-
-// ConfigureService sets the platform specific settings of c.
-func ConfigureService(c *service.Config) {
-	if service.Platform() != "linux-systemd" {
-		return
-	}
-	c.Dependencies = []string{
-		"Requires=network.target",
-		"Wants=network-online.target",
-		"After=network-online.target syslog.target"}
-	c.Option["LimitNOFILE"] = 65536
-}
-
-// serviceFiles are the files the install of the platform creates, on the
-// platforms whose uninstall deletes them only after running the init system.
-func serviceFiles(name string) []string {
-	switch service.Platform() {
-	case "linux-systemd":
-		return []string{"/etc/systemd/system/" + name + ".service"}
-	case "linux-procd":
-		return []string{"/etc/init.d/" + name, "/etc/rc.d/S50" + name, "/etc/rc.d/K02" + name}
-	}
-	return nil
-}
-
-// UninstallService uninstalls s, the system service name. systemd refuses to
-// disable a unit whose file is empty, and procd runs the init script, which
-// an empty or foreign script fails; the files of the service are then deleted
-// directly so that a later install does not find them in place.
-func UninstallService(s service.Service, name string) error {
-	err := service.Control(s, "uninstall")
-	if err == nil {
-		return nil
-	}
-	removed := false
-	for _, p := range serviceFiles(name) {
-		if os.Remove(p) == nil {
-			removed = true
-		}
-	}
-	if !removed {
-		return err
-	}
-	if service.Platform() == "linux-systemd" {
-		_ = exec.Command("systemctl", "daemon-reload").Run()
-	}
-	return nil
 }

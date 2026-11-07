@@ -109,9 +109,14 @@ type UpdateResult struct {
 // release: the running one, on Unix the copies install placed in the system
 // bin directories, and the one the system service runs. For nps the web
 // assets and the reference config of the run directory are replaced along
-// with them. All files are replaced as one set, so an interrupted update is undone on the
-// next start. A nil result with a nil error means the running version is
-// already the latest.
+// with them. All files are replaced as one set, so an interrupted update is
+// undone on the next start. A nil result with a nil error means the running
+// version is already the latest.
+//
+// Update fetches the signed manifest, picks the release, verifies and replaces
+// the files; selfupdate does each of these, Update only chooses the files and
+// checks that the new executable runs. Restarting is left to the caller:
+// RestartAfterUpdate for the service, or UpdateSelf for the running process.
 func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateResult, error) {
 	targets, err := updateTargets(bin, service)
 	if err != nil {
@@ -129,17 +134,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	}
 	u.Executable = primary
 	u.Journal = selfupdate.JournalFor(primary)
-	for _, t := range targets {
-		u.Files = append(u.Files, selfupdate.File{Member: executableName(bin), Target: t, Mode: 0o755})
-	}
-	if bin == "nps" {
-		run := runenv.GetRunPath()
-		u.Files = append(u.Files,
-			selfupdate.File{Member: "web/views", Target: filepath.Join(run, "web", "views"), Dir: true},
-			selfupdate.File{Member: "web/static", Target: filepath.Join(run, "web", "static"), Dir: true},
-			selfupdate.File{Member: "conf/nps.conf", Target: filepath.Join(run, "conf", "nps.conf.default"), Mode: 0o644},
-		)
-	}
+	u.Files = updateFiles(bin, targets)
 	u.Verify = func(ctx context.Context, c *selfupdate.Candidate, paths []string, artifact io.ReaderAt) error {
 		// Running the new executable proves it starts on this system, for
 		// example that it was built for this CPU variant.
@@ -183,11 +178,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	}
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			if runenv.IsWindows() {
-				err = fmt.Errorf("%w; run the update as administrator", err)
-			} else {
-				err = fmt.Errorf("%w; run the update as root", err)
-			}
+			err = fmt.Errorf("%w; %s", err, permissionHint)
 		}
 		return nil, err
 	}
@@ -196,6 +187,25 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	}
 	fmt.Println("Update completed:", c.Version)
 	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running}, nil
+}
+
+// updateFiles lists the files an update of bin replaces as one set: the
+// executable at each of targets and, for nps, the web assets and the reference
+// config of the run directory.
+func updateFiles(bin string, targets []string) []selfupdate.File {
+	files := make([]selfupdate.File, 0, len(targets)+3)
+	for _, t := range targets {
+		files = append(files, selfupdate.File{Member: executableName(bin), Target: t, Mode: 0o755})
+	}
+	if bin == "nps" {
+		run := runenv.GetRunPath()
+		files = append(files,
+			selfupdate.File{Member: "web/views", Target: filepath.Join(run, "web", "views"), Dir: true},
+			selfupdate.File{Member: "web/static", Target: filepath.Join(run, "web", "static"), Dir: true},
+			selfupdate.File{Member: "conf/nps.conf", Target: filepath.Join(run, "conf", "nps.conf.default"), Mode: 0o644},
+		)
+	}
+	return files
 }
 
 // heldError explains why newer releases cannot be installed by an update.
@@ -268,21 +278,6 @@ func artifactName(bin string) string {
 	return bin
 }
 
-// RoundTrip sends req with certificate verification, and again without it
-// when the certificate check itself failed, so that devices with a broken
-// CA store can still update. Release manifests are signed and artifacts
-// checked against them, so the connection only needs to deliver them.
-func (c *httpClient) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err := c.verified.Transport.RoundTrip(req)
-	if err == nil || !isCertificateError(err) {
-		return resp, err
-	}
-	fmt.Printf("WARNING: certificate verification for %s failed: %v; retrying without it, the signed release manifest still authenticates the download\n", req.URL.Host, err)
-	return c.unverified.Transport.RoundTrip(req)
-}
-
-var _ http.RoundTripper = (*httpClient)(nil)
-
 // processesRunning returns the other processes whose executable is one of
 // paths. It has to run before the executables are replaced: afterwards the
 // processes report the moved or deleted original.
@@ -345,15 +340,9 @@ func executableTargets(bin, service string) ([]string, error) {
 		return nil, err
 	}
 	targets := []string{exe}
-	if !runenv.IsWindows() {
-		for _, dir := range systemBinDirs {
-			p, err := filepath.EvalSymlinks(filepath.Join(dir, bin))
-			if err != nil {
-				continue
-			}
-			if !containsFile(targets, p) {
-				targets = append(targets, p)
-			}
+	for _, p := range installedCopies(bin) {
+		if !containsFile(targets, p) {
+			targets = append(targets, p)
 		}
 	}
 	if p := serviceExecutable(service); p != "" && isExecutableOf(p, bin) && !containsFile(targets, p) {
@@ -368,9 +357,5 @@ func isExecutableOf(p, bin string) bool {
 	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
 		return false
 	}
-	name := filepath.Base(p)
-	if runenv.IsWindows() {
-		return strings.EqualFold(name, executableName(bin))
-	}
-	return name == bin
+	return isExecutableName(filepath.Base(p), bin)
 }

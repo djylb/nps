@@ -3,16 +3,14 @@ package install
 import (
 	"context"
 	"errors"
-	"runtime"
 	"time"
 
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/selfupdate"
-	"github.com/kardianos/service"
 )
 
-// ErrRestartUnsupported is returned by UpdateSelf where the calling process
-// cannot restart itself reliably.
+// ErrRestartUnsupported is returned by UpdateSelf and RestartSelf where the
+// calling process cannot restart itself reliably (see CanRestartSelf).
 var ErrRestartUnsupported = errors.New("a process not run as a Windows service cannot restart itself reliably")
 
 // updateBoots is how many starts of a pending update may end before it
@@ -22,15 +20,6 @@ const updateBoots = 3
 // updateHealthy is how long a pending update has to run before it confirms
 // itself.
 const updateHealthy = 30 * time.Second
-
-// CanRestartSelf reports whether the calling process can restart itself as a
-// new version without its parent noticing. On Unix the process image is
-// replaced in place. A Windows process has to be started anew; that is only
-// reliable for a service, which the service manager restarts, while whatever
-// started any other process would see it exit.
-func CanRestartSelf() bool {
-	return runtime.GOOS != "windows" || !service.Interactive()
-}
 
 // SelfUpdate is an update of the running executable whose restart is
 // still to come.
@@ -66,22 +55,6 @@ func UpdateSelf(bin, name string) (*SelfUpdate, error) {
 		return nil, err
 	}
 	return &SelfUpdate{Version: res.Version, exe: exe}, nil
-}
-
-// RestartSelf makes the calling process continue as exe, the executable an
-// update replaced, and returns only on failure, with one exception: a Windows
-// service hands the restart to the service manager and returns at once, to
-// be stopped by it shortly. On Unix the process image is replaced in place,
-// which keeps its process ID, so a service manager supervising it does not
-// see the restart; this holds in containers as well.
-func RestartSelf(exe string) error {
-	if runtime.GOOS == "windows" {
-		if service.Interactive() {
-			return ErrRestartUnsupported
-		}
-		return restartDetached(exe)
-	}
-	return selfupdate.Relaunch(exe, nil)
 }
 
 // RecoverUpdate finishes or undoes an update of the running executable that

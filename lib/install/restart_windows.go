@@ -7,7 +7,36 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+
+	"github.com/kardianos/service"
 )
+
+// CanRestartSelf reports whether the calling process can restart itself as a
+// new version without its parent noticing. A Windows process has to be started
+// anew; that is only reliable for a service, which the service manager
+// restarts, while whatever started any other process would see it exit.
+func CanRestartSelf() bool { return !service.Interactive() }
+
+// RestartSelf makes the service process continue as exe, the executable an
+// update replaced: it hands the restart to the service manager and returns at
+// once, to be stopped by it shortly. Other processes cannot restart
+// themselves.
+func RestartSelf(exe string) error {
+	if !CanRestartSelf() {
+		return ErrRestartUnsupported
+	}
+	return restartDetached(exe)
+}
+
+// restartService restarts the service name, which runs exe, after an update.
+// It reports whether the restart was only requested, to happen after the call:
+// the service process itself cannot wait for a restart that ends it.
+func restartService(s service.Service, name, exe string) (bool, error) {
+	if !service.Interactive() {
+		return true, restartDetached(exe)
+	}
+	return false, ControlService(s, name, "restart")
+}
 
 const (
 	detachedProcess        = 0x00000008
