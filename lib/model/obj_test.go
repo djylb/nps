@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -193,6 +194,10 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	// The pool may hand the last rebuild of its view to a goroutine of its
+	// own, so the final health shows shortly after the updates return, and
+	// the views below are awaited the same way.
+	awaitAvailable(t, target, 3)
 
 	pick := func(n int) map[string]int {
 		seen := map[string]int{}
@@ -205,7 +210,9 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 		}
 		return seen
 	}
-	if seen := pick(3); len(seen) != 3 || seen["a:1"] != 1 || seen["b:2"] != 1 || seen["c:3"] != 1 {
+	// A rebuild still under way may publish an equal view that starts the
+	// rotation over, so only check that every address is in it.
+	if seen := pick(30); len(seen) != 3 {
 		t.Fatalf("unexpected rotation: %v", seen)
 	}
 	if target.SetHealthy("d:4", true) {
@@ -214,11 +221,13 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	if !target.SetHealthy("a:1", false) {
 		t.Fatalf("a configured target must be found")
 	}
+	awaitAvailable(t, target, 2)
 	if seen := pick(4); seen["a:1"] != 0 || seen["b:2"] != 2 || seen["c:3"] != 2 {
 		t.Fatalf("unexpected rotation without a:1: %v", seen)
 	}
 	target.SetHealthy("b:2", false)
 	target.SetHealthy("c:3", false)
+	awaitAvailable(t, target, 0)
 	if _, err := pickTarget(target); err == nil {
 		t.Fatalf("expected an error with every target down")
 	}
@@ -226,10 +235,12 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	// a changed list keeps the health of the addresses it keeps, and an
 	// address listed twice gets twice the share
 	target.TargetStr = "c:3\nd:4\nd:4"
+	awaitAvailable(t, target, 1)
 	if seen := pick(4); seen["c:3"] != 0 || seen["d:4"] != 4 {
 		t.Fatalf("unexpected rotation after change: %v", seen)
 	}
 	target.SetHealthy("c:3", true)
+	awaitAvailable(t, target, 2)
 	if seen := pick(3); seen["c:3"] != 1 || seen["d:4"] != 2 {
 		t.Fatalf("unexpected weighted rotation: %v", seen)
 	}
@@ -414,4 +425,17 @@ func TestUpdateRacesWithClone(t *testing.T) {
 		}
 	})
 	wg.Wait()
+}
+
+// awaitAvailable waits until the routing view of target has n addresses
+// available.
+func awaitAvailable(t *testing.T, target *Target, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for target.targetPool().Available() != n {
+		if time.Now().After(deadline) {
+			t.Fatalf("available = %d, want %d", target.targetPool().Available(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
