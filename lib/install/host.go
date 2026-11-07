@@ -219,14 +219,21 @@ func pidFileService(pid int) string {
 	return ""
 }
 
-// rcLinks are the start and stop links of the init script of name that the
-// installs of this and older versions created: S50 and K02 by the service
-// library (procd, and System V in /etc/rcN.d), S90 and K02 by older installs
-// on OpenWrt.
+// rcLinkDirs are the directories that hold start and stop links of init
+// scripts: /etc/rc.d on BusyBox based systems such as OpenWrt, /etc/rcN.d on
+// System V.
+var rcLinkDirs = []string{"/etc/rc.d", "/etc/rc0.d", "/etc/rc1.d", "/etc/rc2.d", "/etc/rc3.d", "/etc/rc4.d", "/etc/rc5.d", "/etc/rc6.d"}
+
+// rcLinks returns the start and stop links named for name, whatever their
+// order number, such as S50, S90 or S21; removeRcLinks keeps only those
+// that point to the init script of name.
 func rcLinks(name string) []string {
-	links := []string{"/etc/rc.d/S50" + name, "/etc/rc.d/S90" + name, "/etc/rc.d/K02" + name}
-	for _, n := range []string{"0", "1", "2", "3", "4", "5", "6"} {
-		links = append(links, "/etc/rc"+n+".d/S50"+name, "/etc/rc"+n+".d/K02"+name)
+	var links []string
+	for _, dir := range rcLinkDirs {
+		for _, kind := range []string{"S", "K"} {
+			m, _ := host.glob(dir + "/" + kind + "[0-9][0-9]" + name)
+			links = append(links, m...)
+		}
 	}
 	return links
 }

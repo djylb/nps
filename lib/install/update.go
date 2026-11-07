@@ -174,7 +174,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	fmt.Println("Updating to", c.Version)
 	running := processesRunning(targets)
 	services := servicesToRestart(service, targets, running)
-	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) {
+	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) && !runsVersion(p, c.Version) {
 		fmt.Printf("NOTE: service %s runs %s, which this update leaves alone; run \"%s update\" to update it\n", service, p, p)
 	}
 	if o.Pending {
@@ -415,4 +415,11 @@ func servicesToRestart(defaultService string, targets []string, running []int32)
 		}
 	}
 	return services
+}
+
+// runsVersion reports whether the executable at path is version v; an
+// executable whose version cannot be read is taken as another one.
+func runsVersion(path, v string) bool {
+	got, err := executableVersion(path)
+	return err == nil && version.Compare(got, v) == 0
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,20 +91,51 @@ func namedService(name string) (service.Service, error) {
 	return service.New(nopProgram{}, &service.Config{Name: name})
 }
 
-// LinkServiceStart creates the start and stop links of the System V init
-// script of name in /etc/rc.d, which BusyBox based systems such as OpenWrt
-// read and the service library does not create. The names match those of
-// procd, so that a later install on either removes them.
+// LinkServiceStart sets the start and stop links of the init script of name
+// in /etc/rc.d, which BusyBox based systems such as OpenWrt read: the
+// service library creates none for System V and fixed S50 and K02 ones for
+// procd. The links it leaves are replaced by ones with the START and STOP of
+// the script, so that the script's own enable and enabled see the same
+// links and a later enable adds none.
 func LinkServiceStart(name string) {
-	if host.platform() != "unix-systemv" {
+	if p := host.platform(); p != "unix-systemv" && p != "linux-procd" {
 		return
 	}
 	if fi, err := os.Stat("/etc/rc.d"); err != nil || !fi.IsDir() {
 		return
 	}
 	script := "/etc/init.d/" + name
-	_ = os.Symlink(script, "/etc/rc.d/S50"+name)
-	_ = os.Symlink(script, "/etc/rc.d/K02"+name)
+	b, err := host.readFile(script)
+	if err != nil {
+		return
+	}
+	start, stop := rcOrder(b)
+	removeRcLinks(name)
+	_ = os.Symlink(script, "/etc/rc.d/S"+start+name)
+	_ = os.Symlink(script, "/etc/rc.d/K"+stop+name)
+}
+
+// rcOrder returns the START and STOP order numbers an init script sets, as
+// two digits; 50 and 02 when it sets none.
+func rcOrder(script []byte) (start, stop string) {
+	start, stop = "50", "02"
+	for _, line := range strings.Split(string(script), "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(strings.Trim(v, "\"' "))
+		if err != nil || n < 0 || n > 99 {
+			continue
+		}
+		switch k {
+		case "START":
+			start = fmt.Sprintf("%02d", n)
+		case "STOP":
+			stop = fmt.Sprintf("%02d", n)
+		}
+	}
+	return start, stop
 }
 
 // serviceRunning reports whether the service s is running.

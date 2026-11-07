@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -146,7 +147,16 @@ func (f *fakeHost) install(t *testing.T) {
 			f.removed = append(f.removed, name)
 			return nil
 		},
-		glob: func(string) ([]string, error) { return nil, nil },
+		glob: func(pattern string) ([]string, error) {
+			var out []string
+			for l := range f.links {
+				if ok, _ := path.Match(pattern, l); ok {
+					out = append(out, l)
+				}
+			}
+			slices.Sort(out)
+			return out, nil
+		},
 		output: func(name string, args ...string) ([]byte, error) {
 			var b strings.Builder
 			switch name {
@@ -379,6 +389,9 @@ func TestRemoveRcLinks(t *testing.T) {
 		"/etc/rc.d/S50Npc":  "../init.d/Npc",
 		"/etc/rc.d/K02Npc":  "/etc/init.d/Npc",
 		"/etc/rc2.d/S50Npc": "../init.d/Npc",
+		// Links of the order numbers the init script sets.
+		"/etc/rc.d/S21Npc": "/etc/init.d/Npc",
+		"/etc/rc.d/K89Npc": "/etc/init.d/Npc",
 		// Links of other scripts stay.
 		"/etc/rc.d/S90Npc-a": "/etc/init.d/Npc-a",
 		"/etc/rc3.d/S50Npc":  "/etc/init.d/other",
@@ -392,12 +405,25 @@ func TestRemoveRcLinks(t *testing.T) {
 		t.Fatal("removeRcLinks = false")
 	}
 	slices.Sort(f.removed)
-	want := []string{"/etc/rc.d/K02Npc", "/etc/rc.d/S50Npc", "/etc/rc.d/S90Npc", "/etc/rc2.d/S50Npc"}
+	want := []string{"/etc/rc.d/K02Npc", "/etc/rc.d/K89Npc", "/etc/rc.d/S21Npc", "/etc/rc.d/S50Npc", "/etc/rc.d/S90Npc", "/etc/rc2.d/S50Npc"}
 	if !slices.Equal(f.removed, want) {
 		t.Fatalf("removed %v, want %v", f.removed, want)
 	}
 	f.removed = nil
 	if removeRcLinks("Nps") || len(f.removed) != 0 {
 		t.Fatalf("removeRcLinks(Nps) removed %v", f.removed)
+	}
+}
+
+func TestRcOrder(t *testing.T) {
+	for script, want := range map[string][2]string{
+		"#!/bin/sh /etc/rc.common\nSTART=21\nSTOP=89\n": {"21", "89"},
+		"START=95\nUSE_PROCD=1\n":                       {"95", "02"},
+		"STOP='5'\n":                                    {"50", "05"},
+		"#!/bin/sh\n":                                   {"50", "02"},
+	} {
+		if start, stop := rcOrder([]byte(script)); start != want[0] || stop != want[1] {
+			t.Errorf("rcOrder(%q) = %s, %s, want %s, %s", script, start, stop, want[0], want[1])
+		}
 	}
 }
