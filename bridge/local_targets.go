@@ -1,4 +1,4 @@
-package tool
+package bridge
 
 import (
 	"context"
@@ -10,14 +10,16 @@ import (
 	"github.com/djylb/nps/lib/conn"
 )
 
-type Dialer interface {
+// TunnelDialer is a running tunnel that bridge:// targets of its id reach.
+type TunnelDialer interface {
 	DialVirtual(remote string) (net.Conn, error)
 	ServeVirtual(c net.Conn)
 }
 
-var lookup atomic.Value // holds: func(int) (Dialer, bool)
+var lookup atomic.Value // holds: func(int) (TunnelDialer, bool)
 
-func SetLookup(fn func(int) (Dialer, bool)) {
+// SetTunnelLookup sets how the tunnels of bridge:// targets are found.
+func SetTunnelLookup(fn func(int) (TunnelDialer, bool)) {
 	lookup.Store(fn)
 }
 
@@ -26,7 +28,7 @@ func GetTunnelConn(id int, remote string) (net.Conn, error) {
 	if v == nil {
 		return nil, errors.New("tunnel lookup not set")
 	}
-	fn := v.(func(int) (Dialer, bool))
+	fn := v.(func(int) (TunnelDialer, bool))
 	d, ok := fn(id)
 	if !ok || d == nil {
 		return nil, errors.New("tunnel not found")
@@ -34,6 +36,7 @@ func GetTunnelConn(id int, remote string) (net.Conn, error) {
 	return d.DialVirtual(remote)
 }
 
+// WebServerListener feeds the web manager; see GetWebServerConn.
 var WebServerListener *netx.ChanListener
 
 // IPRegisterListener feeds the registration page; see GetIPRegisterConn.

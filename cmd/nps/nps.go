@@ -26,7 +26,8 @@ import (
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/connection"
-	"github.com/djylb/nps/server/tool"
+	"github.com/djylb/nps/server/ports"
+	"github.com/djylb/nps/server/stats"
 	"github.com/djylb/nps/web/routers"
 	"github.com/gin-gonic/gin"
 	"github.com/kardianos/service"
@@ -279,7 +280,7 @@ func reloadConfig() {
 	logs.SetLevel(cfg.Log.Level)
 	applyRuntime(cfg)
 	applyNtp(cfg)
-	tool.StartSystemInfo()
+	stats.StartSystemInfo()
 	server.ApplyWebhook(cfg.Webhook)
 	handler, err := routers.Init()
 	if err != nil {
@@ -419,8 +420,8 @@ func run() {
 		logs.Info("Using randomly generated certificate.")
 	}
 	crypt.InitTls(cert)
-	tool.InitAllowPort()
-	tool.StartSystemInfo()
+	ports.InitAllowPort()
+	stats.StartSystemInfo()
 	timeout := cfg.Runtime.DisconnectTimeout
 	bridge.ServerKcpEnable = cfg.Bridge.ServerKCPEnabled
 	bridge.ServerQuicEnable = cfg.Bridge.ServerQUICEnabled

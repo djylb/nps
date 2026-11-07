@@ -16,7 +16,6 @@ import (
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
-	"github.com/djylb/nps/server/tool"
 )
 
 type WebServer struct {
@@ -64,14 +63,14 @@ func (s *WebServer) Start() error {
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
 
-	if tool.WebServerListener != nil {
-		_ = tool.WebServerListener.Close()
-		tool.WebServerListener = nil
+	if bridge.WebServerListener != nil {
+		_ = bridge.WebServerListener.Close()
+		bridge.WebServerListener = nil
 	}
 	lAddr := &net.TCPAddr{IP: net.ParseIP(ip), Port: p}
-	tool.WebServerListener = conn.NewVirtualListener(lAddr)
+	bridge.WebServerListener = conn.NewVirtualListener(lAddr)
 	targets := []httpServeTarget{{
-		listener: tool.WebServerListener,
+		listener: bridge.WebServerListener,
 		serve: func(l net.Listener) error {
 			return http.Serve(l, handler)
 		},
@@ -145,9 +144,9 @@ func (s *WebServer) Close() error {
 	if s.tcpListener != nil {
 		_ = s.tcpListener.Close()
 	}
-	if tool.WebServerListener != nil {
-		_ = tool.WebServerListener.Close()
-		tool.WebServerListener = nil
+	if bridge.WebServerListener != nil {
+		_ = bridge.WebServerListener.Close()
+		bridge.WebServerListener = nil
 	}
 	return nil
 }

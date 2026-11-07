@@ -16,7 +16,7 @@ import (
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
-	"github.com/djylb/nps/server/tool"
+	"github.com/djylb/nps/server/stats"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -57,8 +57,8 @@ func startSpeedSampler() {
 					elapsed := now.Sub(lastSampleTime).Seconds()
 
 					// calculate bytes/sec
-					rateSent := float64(tool.CounterDelta(sent, lastBytesSent)) / elapsed
-					rateRecv := float64(tool.CounterDelta(recv, lastBytesRecv)) / elapsed
+					rateSent := float64(stats.CounterDelta(sent, lastBytesSent)) / elapsed
+					rateRecv := float64(stats.CounterDelta(recv, lastBytesRecv)) / elapsed
 
 					ioSendRate.Store(rateSent)
 					ioRecvRate.Store(rateRecv)
@@ -316,7 +316,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 	}
 
 	// chart
-	deciles := tool.ChartDeciles()
+	deciles := stats.ChartDeciles()
 	for i, v := range deciles {
 		data["sys"+strconv.Itoa(i+1)] = v
 	}

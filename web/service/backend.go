@@ -10,7 +10,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/server"
-	"github.com/djylb/nps/server/tool"
+	"github.com/djylb/nps/server/ports"
 )
 
 type Repository interface {
@@ -323,11 +323,11 @@ func (defaultRuntime) DeleteClientResources(id int) {
 }
 
 func (defaultRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
-	return tool.GenerateTunnelPort(tunnel)
+	return ports.GenerateTunnelPort(tunnel)
 }
 
 func (defaultRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
-	return tool.TestTunnelPort(tunnel)
+	return ports.TestTunnelPort(tunnel)
 }
 
 func (defaultRuntime) ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*model.Tunnel, int) {

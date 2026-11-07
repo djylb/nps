@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/server/tool"
 )
 
 // StartIPRegisterServer serves handler, the registration page, to
 // bridge://ipreg targets and, when the configuration sets ip_register_port,
 // on a listener of its own.
 func StartIPRegisterServer(handler http.Handler) {
-	tool.IPRegisterListener = conn.NewVirtualListener(nil)
-	go func() { _ = http.Serve(tool.IPRegisterListener, handler) }()
+	bridge.IPRegisterListener = conn.NewVirtualListener(nil)
+	go func() { _ = http.Serve(bridge.IPRegisterListener, handler) }()
 	cfg := servercfg.Current()
 	if cfg.App.IPRegisterPort <= 0 {
 		return

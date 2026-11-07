@@ -26,7 +26,7 @@ import (
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/httpproxy"
-	"github.com/djylb/nps/server/tool"
+	"github.com/djylb/nps/server/ports"
 )
 
 var (
@@ -39,7 +39,7 @@ const pingTimeout = 15 * time.Second
 
 func init() {
 	RunList = sync.Map{}
-	tool.SetLookup(func(id int) (tool.Dialer, bool) {
+	bridge.SetTunnelLookup(func(id int) (bridge.TunnelDialer, bool) {
 		if v, ok := RunList.Load(id); ok {
 			if svr, ok := v.(*proxy.TunnelModeServer); ok {
 				if !strings.Contains(svr.Task.Target.TargetStr, "tunnel://") {
@@ -300,7 +300,7 @@ func AddTask(t *model.Tunnel) error {
 		RunList.Store(t.Id, nil)
 		return nil
 	}
-	if b := tool.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
+	if b := ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
 		logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
 		return errors.New("the port open error")
 	}

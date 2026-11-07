@@ -13,7 +13,6 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/server/tool"
 )
 
 const clientConnectGraceWindow = 3 * time.Second
@@ -81,7 +80,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				if taskID != 0 && taskID == id {
 					return nil, fmt.Errorf("task %d cannot connect to itself (tunnel://%d)", taskID, id)
 				}
-				return tool.GetTunnelConn(id, link.RemoteAddr)
+				return GetTunnelConn(id, link.RemoteAddr)
 			case "bridge":
 				// bridge://tcp|tls|ws|wss|web|ipreg
 				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
@@ -96,9 +95,9 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				case common.ConnWSS:
 					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
 				case common.ConnWeb:
-					return tool.GetWebServerConn(ctx, link.RemoteAddr)
+					return GetWebServerConn(ctx, link.RemoteAddr)
 				case "ipreg":
-					return tool.GetIPRegisterConn(ctx, link.RemoteAddr)
+					return GetIPRegisterConn(ctx, link.RemoteAddr)
 				default:
 					return nil, fmt.Errorf("invalid bridge target %q in %q", targetStr, raw)
 				}

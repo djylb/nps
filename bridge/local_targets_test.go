@@ -1,4 +1,4 @@
-package tool
+package bridge
 
 import (
 	"context"
@@ -25,14 +25,14 @@ func (s *stubDialer) DialVirtual(remote string) (net.Conn, error) {
 
 func (s *stubDialer) ServeVirtual(_ net.Conn) {}
 
-func setLookupForTest(t *testing.T, fn func(int) (Dialer, bool)) {
+func setLookupForTest(t *testing.T, fn func(int) (TunnelDialer, bool)) {
 	t.Helper()
 	old := lookup.Load()
 	lookup.Store(fn)
 	t.Cleanup(func() {
 		lookup = atomic.Value{}
 		if old != nil {
-			lookup.Store(old.(func(int) (Dialer, bool)))
+			lookup.Store(old.(func(int) (TunnelDialer, bool)))
 		}
 	})
 }
@@ -47,7 +47,7 @@ func TestGetTunnelConnWhenLookupNotSet(t *testing.T) {
 }
 
 func TestGetTunnelConnWhenTunnelNotFound(t *testing.T) {
-	setLookupForTest(t, func(id int) (Dialer, bool) {
+	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
 		return nil, false
 	})
 
@@ -59,7 +59,7 @@ func TestGetTunnelConnWhenTunnelNotFound(t *testing.T) {
 
 func TestGetTunnelConnDelegatesToDialer(t *testing.T) {
 	called := false
-	setLookupForTest(t, func(id int) (Dialer, bool) {
+	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
 		return &stubDialer{dialFn: func(remote string) (net.Conn, error) {
 			called = true
 			if remote != "127.0.0.1:8080" {
@@ -83,7 +83,7 @@ func TestGetTunnelConnDelegatesToDialer(t *testing.T) {
 
 func TestGetTunnelConnPropagatesDialError(t *testing.T) {
 	wantErr := errors.New("dial failed")
-	setLookupForTest(t, func(id int) (Dialer, bool) {
+	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
 		return &stubDialer{dialFn: func(remote string) (net.Conn, error) {
 			return nil, wantErr
 		}}, true
