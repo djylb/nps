@@ -20,13 +20,19 @@ import (
 	"github.com/djylb/nps/lib/version"
 )
 
-var initCert sync.Once
+// testCert is the certificate of the test bridges.
+var testCert = sync.OnceValue(func() tls.Certificate {
+	id, err := crypt.NewIdentity(tls.Certificate{})
+	if err != nil {
+		panic(err)
+	}
+	return id.Cert
+})
 
 // newTestP2PBridge returns a bridge with a P2P service on loopback.
 func newTestP2PBridge(t *testing.T, db *file.DbUtils) *Bridge {
 	t.Helper()
-	initCert.Do(func() { crypt.InitTls(tls.Certificate{}) })
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30, Cert: testCert()})
 	err := b.StartP2P(P2PConfig{IP: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)

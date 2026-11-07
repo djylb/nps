@@ -1,7 +1,6 @@
 package routers
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/runenv"
@@ -58,9 +56,8 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 	f.hostOfB = createTestHost(t, db, 301, f.clientB, "b.example.test")
 	createTestHost(t, db, 302, f.clientC, "c.example.test")
 
-	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init(db, nil)
+	handler, err := Init(db, testIdentity(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

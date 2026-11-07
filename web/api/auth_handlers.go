@@ -139,7 +139,7 @@ func (a *App) bootstrapPayloadWithShellAssets(c Context, shellAssets ui.Manageme
 		},
 		Request: c.Metadata(),
 	}
-	if cert, err := crypt.GetRSAPublicKeyPEM(); err == nil {
+	if cert, err := a.Identity.RSAPublicKeyPEM(); err == nil {
 		payload.PublicKey = cert
 	}
 	return payload
@@ -164,7 +164,7 @@ func (a *App) GetTime(c Context) {
 
 func (a *App) GetCert(c Context) {
 	response := CertResponse{Status: 0}
-	if cert, err := crypt.GetRSAPublicKeyPEM(); err == nil {
+	if cert, err := a.Identity.RSAPublicKeyPEM(); err == nil {
 		response.Status = 1
 		response.Cert = cert
 	}

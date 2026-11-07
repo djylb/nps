@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -38,6 +39,9 @@ type NetBridge interface {
 	// Session returns the way to open links to client clientId.
 	Session(clientId int) conn.ClientSession
 	IsServer() bool
+	// LinkCert is the certificate this side presents on the encrypted links
+	// it opens (conn.LinkConn).
+	LinkCert() *tls.Certificate
 	// GlobalSource returns the global source access lists of the server,
 	// nil if there are none, as on npc.
 	GlobalSource() *acl.Source
@@ -220,7 +224,7 @@ func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Li
 	if task != nil {
 		entry = task
 	}
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, entry, isLocal, isFramed)
+	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, s.Bridge.LinkCert(), proxyProtocol, rb, entry, isLocal, isFramed)
 }
 
 const unauthorizedBytes = "HTTP/1.1 401 Unauthorized\r\n" +

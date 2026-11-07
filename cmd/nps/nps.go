@@ -282,7 +282,7 @@ func (p *nps) reloadConfig() {
 	stats.StartSystemInfo()
 	if srv := p.srv.Load(); srv != nil {
 		srv.ApplyWebhook(cfg.Webhook)
-		handler, err := routers.Init(srv.Store(), srv)
+		handler, err := routers.Init(srv.Store(), srv.Identity(), srv)
 		if err != nil {
 			logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
 		} else {
@@ -427,6 +427,14 @@ func run() (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
+	if err != nil {
+		logs.Info("Using randomly generated certificate.")
+	}
+	identity, err := crypt.NewIdentity(cert)
+	if err != nil {
+		return nil, err
+	}
 	selectMode, err := bridge.ParseSelectMode(cfg.Bridge.SelectMode)
 	if err != nil {
 		logs.Warn("Invalid client select mode %v; fallback to %s(%d)", cfg.Bridge.SelectMode, selectMode, selectMode)
@@ -439,6 +447,7 @@ func run() (*server.Server, error) {
 		SelectMode:          selectMode,
 		DisableRemoteUpdate: *noUpdate,
 		AllowedPorts:        ports.ParseAllowed(cfg.Feature.AllowPorts),
+		Identity:            identity,
 		Transports: bridge.Transports{
 			TCP:  cfg.Bridge.ServerTCPEnabled,
 			TLS:  cfg.Bridge.ServerTLSEnabled,
@@ -448,12 +457,12 @@ func run() (*server.Server, error) {
 			QUIC: cfg.Bridge.ServerQUICEnabled,
 		},
 	})
-	handler, err := routers.Init(db, srv)
+	handler, err := routers.Init(db, identity, srv)
 	if err != nil {
 		return nil, err
 	}
 	srv.SetWebHandler(handler)
-	srv.SetIPRegisterHandler(routers.InitIPRegister(db, srv))
+	srv.SetIPRegisterHandler(routers.InitIPRegister(db, identity, srv))
 	if srv.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
@@ -465,12 +474,6 @@ func run() (*server.Server, error) {
 		return nil, err
 	}
 	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
-	//crypt.InitTls(filepath.Join(runenv.GetRunPath(), "conf", "server.pem"), filepath.Join(runenv.GetRunPath(), "conf", "server.key"))
-	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
-	if err != nil {
-		logs.Info("Using randomly generated certificate.")
-	}
-	crypt.InitTls(cert)
 	stats.StartSystemInfo()
 	go file.WatchAccessLists(context.Background(), time.Minute)
 	if err := srv.Start(context.Background()); err != nil {

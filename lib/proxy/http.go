@@ -146,7 +146,7 @@ func (s *TunnelModeServer) dialHTTPProxy(_ context.Context, req *httpproxy.Reque
 	if err != nil {
 		return nil, err
 	}
-	raw := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, true, isLocal, s.Task.RateLimiter())
+	raw := conn.GetConn(target, link.Crypt, link.Compress, s.Task.Client.Rate, s.Bridge.LinkCert(), isLocal, s.Task.RateLimiter())
 	return conn.NewFlowConn(raw, s.Task.Flow, s.Task.Client.Flow), nil
 }
 

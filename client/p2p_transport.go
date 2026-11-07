@@ -137,7 +137,7 @@ func p2pQUICConfig() *quic.Config {
 // p2pLocalPin is this side's certificate fingerprint, sent to the peer as
 // TransportData.
 func p2pLocalPin() []byte {
-	return crypt.GetCertFingerprint(crypt.GetCert())
+	return crypt.GetCertFingerprint(*localCert())
 }
 
 // p2pServerTLS is the provider's QUIC TLS configuration: the visitor must
@@ -147,7 +147,7 @@ func p2pLocalPin() []byte {
 func p2pServerTLS(pin []byte) *tls.Config {
 	return crypt.PinFingerprint(pin).ServerConfig(&tls.Config{
 		MinVersion:             tls.VersionTLS13,
-		Certificates:           []tls.Certificate{crypt.GetCert()},
+		Certificates:           []tls.Certificate{*localCert()},
 		SessionTicketsDisabled: true,
 		NextProtos:             []string{p2pALPN},
 	})
@@ -159,7 +159,7 @@ func p2pServerTLS(pin []byte) *tls.Config {
 func p2pClientTLS(pin []byte) *tls.Config {
 	return crypt.PinFingerprint(pin).ClientConfig(&tls.Config{
 		MinVersion:   tls.VersionTLS13,
-		Certificates: []tls.Certificate{crypt.GetCert()},
+		Certificates: []tls.Certificate{*localCert()},
 		ServerName:   crypt.GetFakeDomainName(),
 		NextProtos:   []string{p2pALPN},
 	})

@@ -2,14 +2,16 @@ package proxy
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
-	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"net/netip"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/acl"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -32,6 +34,13 @@ func (b *testUDP5Bridge) OpenLink(*conn.Link, int) (net.Conn, error) {
 
 func (b *testUDP5Bridge) IsServer() bool {
 	return false
+}
+
+func (b *testUDP5Bridge) LinkCert() *tls.Certificate {
+	if b.IsServer() {
+		return &tls.Certificate{}
+	}
+	return nil
 }
 
 func (b *testUDP5Bridge) GlobalSource() *acl.Source { return nil }
@@ -70,6 +79,8 @@ func newTestSocks5Task(port int, mode string) *model.Tunnel {
 	}
 	return task
 }
+
+func (failBridge) LinkCert() *tls.Certificate { return nil }
 
 func startTestTunnelModeServer(t *testing.T, task *model.Tunnel, bridge NetBridge) (*TunnelModeServer, chan error) {
 	t.Helper()

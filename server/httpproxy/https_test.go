@@ -88,6 +88,8 @@ type trackingListener struct {
 	conns sync.WaitGroup
 }
 
+func (listlessBridge) LinkCert() *tls.Certificate { return &tls.Certificate{} }
+
 func (l *trackingListener) Accept() (net.Conn, error) {
 	c, err := l.Listener.Accept()
 	if err != nil {

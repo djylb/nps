@@ -16,6 +16,7 @@ import (
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
@@ -57,6 +58,9 @@ type Config struct {
 	// AllowedPorts are the ports tunnels may listen on; the zero value
 	// allows every port.
 	AllowedPorts ports.Allowed
+	// Identity is the certificate of the bridge and the encrypted links, and
+	// the key of the web login.
+	Identity *crypt.Identity
 }
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
@@ -69,6 +73,7 @@ type Server struct {
 	hostCache  *index.AnyIntIndex
 	transports bridge.Transports
 	ports      ports.Allowed
+	identity   *crypt.Identity
 	noUpdate   bool        // remote update is disabled
 	updating   atomic.Bool // an update runs
 
@@ -93,6 +98,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		hostCache:  index.NewAnyIntIndex(),
 		transports: cfg.Transports,
 		ports:      cfg.AllowedPorts,
+		identity:   cfg.Identity,
 		noUpdate:   cfg.DisableRemoteUpdate,
 		// Once the server stops, its work may end with any error.
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
@@ -102,6 +108,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		SecureMode:     cfg.SecureMode,
 		SelectMode:     cfg.SelectMode,
 		AllowedPorts:   cfg.AllowedPorts,
+		Cert:           cfg.Identity.TLSCert(),
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
@@ -114,6 +121,9 @@ func New(db *file.DbUtils, cfg Config) *Server {
 
 // Store returns the store of the entries the server serves.
 func (s *Server) Store() *file.DbUtils { return s.db }
+
+// Identity returns the certificate and login key of the server.
+func (s *Server) Identity() *crypt.Identity { return s.identity }
 
 // Bridge returns the bridge of the server.
 func (s *Server) Bridge() *bridge.Bridge { return s.bridge }

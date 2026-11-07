@@ -115,7 +115,7 @@ func TestCopyWaitGroupFramesUDP(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		CopyWaitGroup(tunnel, udpConn, false, false, nil, nil, false, 0, nil, nil, true, true)
+		CopyWaitGroup(tunnel, udpConn, false, false, nil, nil, nil, 0, nil, nil, true, true)
 	}()
 
 	_ = peer.SetDeadline(time.Now().Add(2 * time.Second))

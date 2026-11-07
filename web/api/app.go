@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
@@ -40,6 +41,8 @@ type App struct {
 	Hooks          Hooks
 	Services       webservice.Services
 	ConfigProvider func() *servercfg.Snapshot
+	// Identity holds the key the login pages encrypt credentials to.
+	Identity *crypt.Identity
 }
 
 type Options struct {
@@ -48,6 +51,8 @@ type Options struct {
 	Services          *webservice.Services
 	ConfigureServices func(*webservice.Services)
 	ConfigProvider    func() *servercfg.Snapshot
+	// Identity holds the key the login pages encrypt credentials to.
+	Identity *crypt.Identity
 	// Store is the store the services act on.
 	Store *file.DbUtils
 	// Runtime is the running server the services act on; nil means none.
@@ -90,6 +95,7 @@ func NewWithOptions(cfg *servercfg.Snapshot, options Options) *App {
 		Hooks:          hooks,
 		Services:       services,
 		ConfigProvider: configProvider,
+		Identity:       options.Identity,
 	}
 }
 

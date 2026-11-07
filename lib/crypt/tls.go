@@ -20,8 +20,6 @@ import (
 )
 
 var (
-	cert       tls.Certificate
-	rsaKey     *rsa.PrivateKey
 	SkipVerify = false
 
 	trusted   tlsconn.PinSet // bridge certificates of vkeyToPin
@@ -29,45 +27,66 @@ var (
 	vkeyToPin = make(map[string][sha256.Size]byte)
 )
 
-func InitTls(customCert tls.Certificate) {
-	if len(customCert.Certificate) > 0 {
-		cert = customCert
+// Identity is the certificate a process presents in TLS, and the RSA key
+// the web login encrypts credentials to.
+type Identity struct {
+	Cert   tls.Certificate
+	rsaKey *rsa.PrivateKey
+}
+
+// NewIdentity returns the identity of custom, or of a fresh self-signed
+// certificate when custom holds none. The RSA key is the certificate's own
+// when it is an RSA key, a fresh one otherwise.
+func NewIdentity(custom tls.Certificate) (*Identity, error) {
+	id := &Identity{Cert: custom}
+	if len(custom.Certificate) > 0 {
 		logs.Info("Custom certificate loaded successfully.")
 	} else {
-		commonName := gofakeit.DomainName()
-		organization := gofakeit.Company()
 		var err error
-		if cert, err = newSelfSigned(commonName, organization); err != nil {
-			logs.Error("Error initializing crypto certs %v", err)
+		if id.Cert, err = newSelfSigned(gofakeit.DomainName(), gofakeit.Company()); err != nil {
+			return nil, fmt.Errorf("create a self-signed certificate: %w", err)
 		}
 	}
-	if key, ok := cert.PrivateKey.(*rsa.PrivateKey); ok {
-		rsaKey = key
+	if key, ok := id.Cert.PrivateKey.(*rsa.PrivateKey); ok {
+		id.rsaKey = key
 		logs.Info("Using RSA private key from TLS certificate.")
 	} else {
 		var err error
-		rsaKey, err = rsa.GenerateKey(rand.Reader, 2048)
-		if err != nil {
-			logs.Error("Failed to generate fallback RSA key: %v", err)
-		} else {
-			logs.Info("Generated fallback RSA private key.")
+		if id.rsaKey, err = rsa.GenerateKey(rand.Reader, 2048); err != nil {
+			return nil, fmt.Errorf("generate a fallback RSA key: %w", err)
 		}
+		logs.Info("Generated fallback RSA private key.")
 	}
+	return id, nil
 }
 
 func GetFakeDomainName() string {
 	return gofakeit.DomainName()
 }
 
-func GetCert() tls.Certificate {
-	return cert
+// TLSCert returns the certificate, none for a nil identity.
+func (id *Identity) TLSCert() tls.Certificate {
+	if id == nil {
+		return tls.Certificate{}
+	}
+	return id.Cert
 }
 
-func GetRSAPublicKeyPEM() (string, error) {
-	if rsaKey == nil {
+// Fingerprint returns the SHA-256 of the certificate's leaf
+// (GetCertFingerprint).
+func (id *Identity) Fingerprint() []byte {
+	if id == nil {
+		return nil
+	}
+	return GetCertFingerprint(id.Cert)
+}
+
+// RSAPublicKeyPEM returns the public RSA key the web login encrypts to.
+func (id *Identity) RSAPublicKeyPEM() (string, error) {
+	if id == nil || id.rsaKey == nil {
 		return "", fmt.Errorf("RSA key not initialized")
 	}
-	pubDER, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+	pubDER, err := x509.MarshalPKIXPublicKey(&id.rsaKey.PublicKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal RSA public key: %w", err)
 	}
@@ -75,8 +94,8 @@ func GetRSAPublicKeyPEM() (string, error) {
 	return string(pem.EncodeToMemory(pemBlock)), nil
 }
 
-func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
-	if rsaKey == nil {
+func (id *Identity) decrypt(base64Cipher string) ([]byte, error) {
+	if id == nil || id.rsaKey == nil {
 		return nil, fmt.Errorf("RSA key not initialized")
 	}
 	// Decode base64
@@ -84,7 +103,7 @@ func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("base64 decode error: %w", err)
 	}
-	plain, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaKey, cipherBytes, nil)
+	plain, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, id.rsaKey, cipherBytes, nil)
 	if err == nil {
 		return plain, nil
 	}
@@ -93,19 +112,11 @@ func DecryptWithPrivateKey(base64Cipher string) ([]byte, error) {
 	//nolint:staticcheck // PKCS#1 v1.5 is required by the JSEncrypt login form
 	//lint:ignore SA1019 PKCS#1 v1.5 is required by the JSEncrypt login form
 	//noinspection GoDeprecation
-	plain, legacyErr := rsa.DecryptPKCS1v15(rand.Reader, rsaKey, cipherBytes)
+	plain, legacyErr := rsa.DecryptPKCS1v15(rand.Reader, id.rsaKey, cipherBytes)
 	if legacyErr != nil {
 		return nil, fmt.Errorf("RSA decrypt error: oaep: %w; pkcs1v15: %v", err, legacyErr)
 	}
 	return plain, nil
-}
-
-func DecryptStringWithPrivateKey(base64Cipher string) (string, error) {
-	plain, err := DecryptWithPrivateKey(base64Cipher)
-	if err != nil {
-		return "", err
-	}
-	return string(plain), nil
 }
 
 type LoginPayload struct {
@@ -114,13 +125,14 @@ type LoginPayload struct {
 	Password  string `json:"p"`
 }
 
-func ParseLoginPayload(base64Cipher string) (*LoginPayload, error) {
-	jsonStr, err := DecryptStringWithPrivateKey(base64Cipher)
+// ParseLoginPayload decrypts the credentials a web login sent.
+func (id *Identity) ParseLoginPayload(base64Cipher string) (*LoginPayload, error) {
+	plain, err := id.decrypt(base64Cipher)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt login payload: %w", err)
 	}
 	var lp LoginPayload
-	if err := json.Unmarshal([]byte(jsonStr), &lp); err != nil {
+	if err := json.Unmarshal(plain, &lp); err != nil {
 		return nil, fmt.Errorf("unmarshal login payload: %w", err)
 	}
 	return &lp, nil
@@ -178,7 +190,8 @@ func pinInUse(pin [sha256.Size]byte) bool {
 	return false
 }
 
-func NewTlsServerConn(conn net.Conn) net.Conn {
+// NewTlsServerConn returns a TLS server on conn that presents cert.
+func NewTlsServerConn(conn net.Conn, cert tls.Certificate) net.Conn {
 	return tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}})
 }
 

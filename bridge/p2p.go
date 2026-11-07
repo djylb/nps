@@ -21,7 +21,6 @@ import (
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 )
@@ -164,7 +163,7 @@ var (
 // StartP2P starts the NAT observers and the coordinator. It must be called
 // before the bridge serves clients; without it P2P requests are refused.
 func (s *Bridge) StartP2P(cfg P2PConfig) error {
-	svc, err := newP2PService(cfg)
+	svc, err := newP2PService(cfg, s.cert)
 	if err != nil {
 		return err
 	}
@@ -179,8 +178,7 @@ func (s *Bridge) StopP2P() {
 	}
 }
 
-func newP2PService(cfg P2PConfig) (*p2pService, error) {
-	cert := crypt.GetCert()
+func newP2PService(cfg P2PConfig, cert tls.Certificate) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/runenv"
 	webapi "github.com/djylb/nps/web/api"
@@ -16,9 +17,9 @@ import (
 )
 
 // Init returns the handler of the web manager acting on the store db and on
-// runtime, the running server.
-func Init(db *file.DbUtils, runtime webservice.Runtime) (http.Handler, error) {
-	state := NewState(webapi.NewWithOptions(nil, webapi.Options{Store: db, Runtime: runtime}))
+// runtime, the running server; the login encrypts credentials to identity.
+func Init(db *file.DbUtils, identity *crypt.Identity, runtime webservice.Runtime) (http.Handler, error) {
+	state := NewState(webapi.NewWithOptions(nil, webapi.Options{Store: db, Identity: identity, Runtime: runtime}))
 	cfg := state.CurrentConfig()
 
 	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))

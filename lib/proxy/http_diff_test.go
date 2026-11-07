@@ -2,8 +2,8 @@ package proxy
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/base64"
-	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/acl"
 
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
@@ -287,6 +289,8 @@ func TestHTTPProxyUpstreamFailures(t *testing.T) {
 		})
 	}
 }
+
+func (*failingBridge) LinkCert() *tls.Certificate { return &tls.Certificate{} }
 
 // upstreamClosedStatus answers a target that closes without a response.
 const upstreamClosedStatus = 502

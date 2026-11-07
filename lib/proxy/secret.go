@@ -131,6 +131,6 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 			visitor = netx.NewFramedConn(c.Conn, netx.WithFramedDatagrams())
 		}
 	}
-	conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, true, proxyProtocol, rb, s.Task, localProxy, false)
+	conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Bridge.LinkCert(), proxyProtocol, rb, s.Task, localProxy, false)
 	return nil
 }

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -205,6 +206,10 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 func (b *P2pBridge) IsServer() bool {
 	return false
 }
+
+// LinkCert is the certificate npc presents on the encrypted links its P2P
+// visitors open.
+func (b *P2pBridge) LinkCert() *tls.Certificate { return localCert() }
 
 // GlobalSource is nil: npc has no global source lists.
 func (b *P2pBridge) GlobalSource() *acl.Source { return nil }

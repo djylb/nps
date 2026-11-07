@@ -2,6 +2,7 @@ package conn
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"time"
@@ -17,18 +18,20 @@ import (
 
 // GetConn returns LinkConn of conn limited and counted by rt and entry, as
 // rate.NewRateConn does.
-func GetConn(conn net.Conn, cpt, snappy bool, rt *rate.Rate, isServer, isLocal bool, entry ...*rate.Directional) io.ReadWriteCloser {
-	return rate.NewRateConn(LinkConn(conn, cpt, snappy, isServer, isLocal), rt, entry...)
+func GetConn(conn net.Conn, cpt, snappy bool, rt *rate.Rate, cert *tls.Certificate, isLocal bool, entry ...*rate.Directional) io.ReadWriteCloser {
+	return rate.NewRateConn(LinkConn(conn, cpt, snappy, cert, isLocal), rt, entry...)
 }
 
 // LinkConn wraps conn, a link to an npc, with its encryption or compression;
-// a local link is used as it is.
-func LinkConn(conn net.Conn, cpt, snappy bool, isServer, isLocal bool) io.ReadWriteCloser {
+// a local link is used as it is. cert is the certificate of the side that
+// opened the link, the TLS server of an encrypted link; it is nil on the
+// side that accepted it.
+func LinkConn(conn net.Conn, cpt, snappy bool, cert *tls.Certificate, isLocal bool) io.ReadWriteCloser {
 	switch {
 	case isLocal:
 		return conn
-	case cpt && isServer:
-		return crypt.NewTlsServerConn(conn)
+	case cpt && cert != nil:
+		return crypt.NewTlsServerConn(conn, *cert)
 	case cpt:
 		return crypt.NewTlsClientConn(conn)
 	case snappy:
@@ -61,15 +64,17 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 	}
 }
 
-// CopyWaitGroup conn1 mux conn
+// CopyWaitGroup relays between conn1, a link to an npc, and conn2. cert is
+// the certificate of the side that opened the link, as for LinkConn; the
+// limits of task apply on that side only.
 func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate,
-	flows []Flow, isServer bool, proxyProtocol int, rb []byte, task Entry, isLocal, isFramed bool) {
+	flows []Flow, cert *tls.Certificate, proxyProtocol int, rb []byte, task Entry, isLocal, isFramed bool) {
 	var limit *rate.Directional
-	if isServer && task != nil {
+	if cert != nil && task != nil {
 		// Client-side relay wrappers stay out of server-side metering.
 		limit = task.RateLimiter()
 	}
-	connHandle := GetConn(conn1, crypt, snappy, rt, isServer, isLocal, limit)
+	connHandle := GetConn(conn1, crypt, snappy, rt, cert, isLocal, limit)
 	if isFramed {
 		// connHandle only wraps conn1, which every path below closes.
 		//noinspection GoResourceLeak

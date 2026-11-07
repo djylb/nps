@@ -2,6 +2,7 @@ package conn
 
 import (
 	"bytes"
+	"crypto/tls"
 	"io"
 	"net"
 	"runtime"
@@ -107,7 +108,7 @@ func TestCopyWaitGroupAccounting(t *testing.T) {
 	const up, down = 100_000, 250_000
 	tk := newRelayTask()
 	runExchange(t, func(mux, outside net.Conn) {
-		CopyWaitGroup(mux, outside, false, false, nil, []Flow{tk.Flow, tk.Client.Flow}, true, 0, nil, tk, true, false)
+		CopyWaitGroup(mux, outside, false, false, nil, []Flow{tk.Flow, tk.Client.Flow}, &tls.Certificate{}, 0, nil, tk, true, false)
 	}, up, down)
 	// Every flow counts the visitor's bytes once as inlet and the
 	// backend's once as export.
@@ -153,7 +154,7 @@ func relayUntilStopped(t *testing.T, tk *model.Tunnel, flows []Flow) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		CopyWaitGroup(muxNear, outside, false, false, nil, flows, true, 0, nil, tk, true, false)
+		CopyWaitGroup(muxNear, outside, false, false, nil, flows, &tls.Certificate{}, 0, nil, tk, true, false)
 	}()
 	select {
 	case <-done:
@@ -199,7 +200,7 @@ func TestCopyWaitGroupDetectsHTTP(t *testing.T) {
 		tk := newRelayTask()
 		tk.IsHttp = !tc.want
 		runExchange(t, func(mux, outside net.Conn) {
-			CopyWaitGroup(mux, outside, false, false, nil, nil, true, 0, nil, tk, true, false)
+			CopyWaitGroup(mux, outside, false, false, nil, nil, &tls.Certificate{}, 0, nil, tk, true, false)
 		}, 0, 0)
 		// No bytes: nothing to detect.
 		if tk.IsHttp != !tc.want {
@@ -210,7 +211,7 @@ func TestCopyWaitGroupDetectsHTTP(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			CopyWaitGroup(muxNear, outside, false, false, nil, nil, true, 0, nil, tk, true, false)
+			CopyWaitGroup(muxNear, outside, false, false, nil, nil, &tls.Certificate{}, 0, nil, tk, true, false)
 		}()
 		if _, err := visitor.Write([]byte(tc.first)); err != nil {
 			t.Fatal(err)
@@ -247,7 +248,7 @@ func TestRelayFramedUDPKeepsDatagrams(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		CopyWaitGroup(tunnel, udpConn, false, false, nil, []Flow{tk.Flow, tk.Client.Flow}, false, 0, nil, tk, true, true)
+		CopyWaitGroup(tunnel, udpConn, false, false, nil, []Flow{tk.Flow, tk.Client.Flow}, nil, 0, nil, tk, true, true)
 	}()
 	_ = peer.SetDeadline(time.Now().Add(2 * time.Second))
 	_ = target.SetDeadline(time.Now().Add(2 * time.Second))
@@ -296,7 +297,7 @@ func TestRelayFramedUDPKeepsDatagrams(t *testing.T) {
 func TestRelayLeavesNoGoroutines(t *testing.T) {
 	// Warm up the listener helpers and pools before counting.
 	runExchange(t, func(mux, outside net.Conn) {
-		CopyWaitGroup(mux, outside, false, false, nil, nil, true, 0, nil, nil, true, false)
+		CopyWaitGroup(mux, outside, false, false, nil, nil, &tls.Certificate{}, 0, nil, nil, true, false)
 	}, 10, 10)
 	before := runtime.NumGoroutine()
 	for i := range 20 {
@@ -304,7 +305,7 @@ func TestRelayLeavesNoGoroutines(t *testing.T) {
 		flows := []Flow{tk.Flow, tk.Client.Flow}
 		if i%2 == 0 {
 			runExchange(t, func(mux, outside net.Conn) {
-				CopyWaitGroup(mux, outside, false, false, nil, flows, true, 0, nil, tk, true, false)
+				CopyWaitGroup(mux, outside, false, false, nil, flows, &tls.Certificate{}, 0, nil, tk, true, false)
 			}, 1000, 2000)
 		} else {
 			runExchange(t, func(mux, outside net.Conn) {

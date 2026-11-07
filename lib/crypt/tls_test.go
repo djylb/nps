@@ -39,8 +39,12 @@ func TestGetCertFingerprintIsLeafSHA256(t *testing.T) {
 	}
 }
 
-func TestInitTlsSelfSignedRSA(t *testing.T) {
-	InitTls(tls.Certificate{})
+func TestNewIdentitySelfSignedRSA(t *testing.T) {
+	id, err := NewIdentity(tls.Certificate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := id.Cert
 	key, ok := cert.PrivateKey.(*rsa.PrivateKey)
 	if !ok {
 		t.Fatalf("private key is %T, want *rsa.PrivateKey", cert.PrivateKey)
@@ -48,7 +52,7 @@ func TestInitTlsSelfSignedRSA(t *testing.T) {
 	if key.N.BitLen() != 2048 {
 		t.Fatalf("RSA key has %d bits", key.N.BitLen())
 	}
-	if rsaKey != key {
+	if id.rsaKey != key {
 		t.Fatal("login RSA key is not the certificate's key")
 	}
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
@@ -70,7 +74,7 @@ func TestInitTlsSelfSignedRSA(t *testing.T) {
 	if !slices.Equal(leaf.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
 		t.Fatalf("extended key usage %v", leaf.ExtKeyUsage)
 	}
-	pubPEM, err := GetRSAPublicKeyPEM()
+	pubPEM, err := id.RSAPublicKeyPEM()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,6 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/connection"
 	"github.com/quic-go/quic-go"
@@ -81,7 +80,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 			MaxIncomingStreams: n.QUICMaxIncomingStreams,
 		}
 		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{crypt.GetCert()},
+			Certificates: []tls.Certificate{s.cert},
 			NextProtos:   n.QUICALPNList,
 		}
 		l, err := conn.ListenQUIC(net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort)), tlsCfg, quicConfig)
@@ -101,14 +100,14 @@ func (s *Bridge) StartTunnel(t Transports) error {
 		s.serve(conn.NewConn(c), conn.TransportTCP)
 	})
 	s.acceptOn(s.VirtualTlsListener, func(c net.Conn) {
-		s.serve(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{crypt.GetCert()}})), conn.TransportTLS)
+		s.serve(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{s.cert}})), conn.TransportTLS)
 	})
 	wsLn := conn.NewWSListener(s.VirtualWsListener, n.BridgePath, n.BridgeTrustedIPs, n.BridgeRealIPHeader)
 	s.addCloser(wsLn)
 	s.acceptOn(wsLn, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportWS)
 	})
-	wssLn := conn.NewWSSListener(s.VirtualWssListener, n.BridgePath, crypt.GetCert(), n.BridgeTrustedIPs, n.BridgeRealIPHeader)
+	wssLn := conn.NewWSSListener(s.VirtualWssListener, n.BridgePath, s.cert, n.BridgeTrustedIPs, n.BridgeRealIPHeader)
 	s.addCloser(wssLn)
 	s.acceptOn(wssLn, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportWSS)

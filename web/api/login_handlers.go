@@ -74,14 +74,14 @@ func (a *App) LoginVerify(c Context) {
 		}
 	}
 
-	payload, err := crypt.ParseLoginPayload(rawPassword)
+	payload, err := a.Identity.ParseLoginPayload(rawPassword)
 	if err != nil {
 		logs.Warn("Decrypt error for user %s from %s: %v", username, ip, err)
 		loginPolicy.RecordIPFailure(ip)
 		if !captchaVerified {
 			loginPolicy.RecordUserFailure(username)
 		}
-		cert, _ := crypt.GetRSAPublicKeyPEM()
+		cert, _ := a.Identity.RSAPublicKeyPEM()
 		ajaxWithNonceCert(c, "decrypt error", 0, nonce, cert)
 		return
 	}
@@ -153,9 +153,9 @@ func (a *App) RegisterUser(c Context) {
 		return
 	}
 
-	payload, err := crypt.ParseLoginPayload(password)
+	payload, err := a.Identity.ParseLoginPayload(password)
 	if err != nil {
-		cert, _ := crypt.GetRSAPublicKeyPEM()
+		cert, _ := a.Identity.RSAPublicKeyPEM()
 		ajaxWithNonceCert(c, "decrypt error", 0, nonce, cert)
 		return
 	}

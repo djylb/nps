@@ -1,13 +1,15 @@
 package proxy
 
 import (
-	"github.com/djylb/nps/lib/acl"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/netip"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/acl"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -56,6 +58,13 @@ func waitFlow(t *testing.T, f *model.Flow, name string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s flow not counted: %+v", name, f.Values())
+}
+
+func (b *echoBridge) LinkCert() *tls.Certificate {
+	if b.server {
+		return &tls.Certificate{}
+	}
+	return nil
 }
 
 func TestSocks5ConnectRelaysThroughTunnel(t *testing.T) {

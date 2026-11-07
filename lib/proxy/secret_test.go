@@ -3,12 +3,14 @@ package proxy
 import (
 	"bufio"
 	"bytes"
-	"github.com/djylb/nps/lib/acl"
+	"crypto/tls"
 	"io"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/acl"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -62,6 +64,8 @@ func tcpConnPair(t *testing.T) (net.Conn, net.Conn) {
 	t.Cleanup(func() { _ = dialer.Close(); _ = server.Close() })
 	return dialer, server
 }
+
+func (*localDialBridge) LinkCert() *tls.Certificate { return &tls.Certificate{} }
 
 func TestSecretLocalProxySendsProxyHeaderAndPreReadToBackend(t *testing.T) {
 	backend, err := net.Listen("tcp", "127.0.0.1:0")

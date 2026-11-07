@@ -2,10 +2,12 @@ package bridge
 
 import (
 	"context"
+	"crypto/tls"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/ports"
 
@@ -26,6 +28,9 @@ type Options struct {
 	// SelectMode is how a client with several nodes picks the node of a
 	// new link.
 	SelectMode SelectMode
+	// Cert is the certificate of the TLS, WSS and P2P listeners and of the
+	// encrypted links; npc pins it by the fingerprint the handshake sends.
+	Cert tls.Certificate
 	// AllowedPorts are the ports the tunnels npc publishes may listen on;
 	// the zero value allows every port.
 	AllowedPorts ports.Allowed
@@ -73,6 +78,8 @@ type Bridge struct {
 	secureMode         bool
 	selectMode         SelectMode
 	ports              ports.Allowed
+	cert               tls.Certificate
+	fingerprint        []byte                     // of cert
 	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
@@ -99,6 +106,8 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.secureMode = opts.SecureMode
 	b.selectMode = opts.SelectMode
 	b.ports = opts.AllowedPorts
+	b.cert = opts.Cert
+	b.fingerprint = crypt.GetCertFingerprint(opts.Cert)
 	return b
 }
 
@@ -200,6 +209,9 @@ func (s *Bridge) cancelClose(id int) {
 func (s *Bridge) IsServer() bool {
 	return true
 }
+
+// LinkCert is the certificate nps presents on the encrypted links.
+func (s *Bridge) LinkCert() *tls.Certificate { return &s.cert }
 
 // Registry mutations and their history events share a lock so rapid reconnects
 // cannot publish an offline event after a newer connection has arrived.

@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/djylb/netx"
@@ -50,10 +51,17 @@ var QuicConfig = &quic.Config{
 	MaxIncomingStreams: 100000,
 }
 
-func init() {
-	//rand.Seed(time.Now().UnixNano())
-	crypt.InitTls(tls.Certificate{})
-}
+// localCert is the self-signed certificate npc presents on its P2P
+// transports and on the encrypted links its P2P visitors open, made once per
+// process on first use; peers pin it per session.
+var localCert = sync.OnceValue(func() *tls.Certificate {
+	id, err := crypt.NewIdentity(tls.Certificate{})
+	if err != nil {
+		logs.Error("Error initializing crypto certs %v", err)
+		return &tls.Certificate{}
+	}
+	return &id.Cert
+})
 
 // GetTaskStatus prints the tunnels and hosts the server runs for vKey.
 func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) error {

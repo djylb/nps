@@ -266,7 +266,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 			_ = src.Close()
 			return
 		}
-		rwc := conn.GetConn(src, lk.Crypt, lk.Compress, nil, false, false)
+		rwc := conn.GetConn(src, lk.Crypt, lk.Compress, nil, nil, false)
 		// The virtual listener owns c from here on.
 		//noinspection GoResourceLeak
 		c := netx.WrapConn(rwc, src, netx.WithWrapParentClose())
@@ -310,7 +310,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		logs.Trace("new %s connection with the goal of %s, remote address:%s", lk.ConnType, lk.Host, lk.RemoteAddr)
 		isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
 		//logs.Debug("%t", isFramed)
-		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, false, 0, nil, nil, false, isFramed)
+		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, nil, 0, nil, nil, false, isFramed)
 	}
 }
 

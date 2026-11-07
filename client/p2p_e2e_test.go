@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/holepunch"
@@ -117,7 +119,11 @@ func startP2PTestEnv(t *testing.T, secure bool) p2pTestEnv {
 		t.Fatal(err)
 	}
 
-	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure})
+	id, err := crypt.NewIdentity(tls.Certificate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure, Cert: id.Cert})
 	if err := b.StartP2P(bridge.P2PConfig{IP: "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}

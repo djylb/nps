@@ -106,13 +106,13 @@ func (a *App) buildLoginPage(c Context, spec PageSpec) (*ui.Page, error) {
 		data["pow_enable"] = cfg.Security.ForcePoW
 		data["login_delay"] = a.loginPolicy().Settings().LoginDelayMillis()
 		data["register_allow"] = cfg.Feature.AllowUserRegister
-		data["public_key"], _ = crypt.GetRSAPublicKeyPEM()
+		data["public_key"], _ = a.Identity.RSAPublicKeyPEM()
 		return newStandaloneSpecPage(spec, data), nil
 	case "register":
 		nonce := crypt.GetRandomString(16)
 		setSession(c, "login_nonce", nonce)
 		data["login_nonce"] = nonce
-		data["public_key"], _ = crypt.GetRSAPublicKeyPEM()
+		data["public_key"], _ = a.Identity.RSAPublicKeyPEM()
 		return newStandaloneSpecPage(spec, data), nil
 	default:
 		return nil, errPageNotFound

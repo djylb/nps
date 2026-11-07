@@ -75,7 +75,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		},
 		CheckTime:   func(ts int64) error { return authReplays.checkTime(ts, window) },
 		CheckReplay: func(ts int64, mac []byte) error { return authReplays.check(ts, mac, window) },
-		Fingerprint: func() []byte { return crypt.GetCertFingerprint(crypt.GetCert()) },
+		Fingerprint: func() []byte { return s.fingerprint },
 		NewUUID:     NewServerUUID,
 	})
 	if err != nil {
