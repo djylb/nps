@@ -438,7 +438,6 @@ type Tunnel struct {
 	Routes       *RouteSet `json:"-"`
 	UserAuth     *MultiAccount
 	MultiAccount *MultiAccount
-	Health
 	// HealthConfig is the check the server gives the client; replaced, never
 	// modified, under the entry's lock.
 	HealthConfig *HealthCheck `json:",omitempty"`
@@ -583,14 +582,6 @@ func (t *Tunnel) Clone() *Tunnel {
 		c.Flow = &Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit}
 	}
 
-	t.Health.RLock()
-	c.HealthCheckTimeout = t.HealthCheckTimeout
-	c.HealthMaxFail = t.HealthMaxFail
-	c.HealthCheckInterval = t.HealthCheckInterval
-	c.HttpHealthUrl = t.HttpHealthUrl
-	c.HealthCheckType = t.HealthCheckType
-	c.HealthCheckTarget = t.HealthCheckTarget
-	t.Health.RUnlock()
 	return c
 }
 
@@ -660,16 +651,6 @@ func (t *Tunnel) SetMaxConn(limit int) {
 func (t *Tunnel) GetConn() bool             { return t.ControlGroup().Acquire() == nil }
 func (t *Tunnel) CutConn()                  { t.RateLimiter().Group(nil).Release() }
 func (t *Tunnel) CurrentConnections() int32 { return t.RateLimits.connectionCount() }
-
-type Health struct {
-	HealthCheckTimeout  int
-	HealthMaxFail       int
-	HealthCheckInterval int
-	HttpHealthUrl       string
-	HealthCheckType     string
-	HealthCheckTarget   string
-	sync.RWMutex
-}
 
 // HealthCheck is what can be set for a health check given by the server.
 type HealthCheck struct {
@@ -775,7 +756,6 @@ type Host struct {
 	UserAuth         *MultiAccount
 	MultiAccount     *MultiAccount
 	SourceLists
-	Health `json:"-"`
 	// HealthConfig is as in Tunnel.
 	HealthConfig *HealthCheck `json:",omitempty"`
 	sync.RWMutex

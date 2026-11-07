@@ -8,7 +8,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/model"
 )
 
 // healthSendTimeout bounds writing one health group message.
@@ -36,7 +35,8 @@ func (p legacyHealthPeer) DelHealthGroup(name string) error {
 
 // GetHealthFromClient reads the health reports of a signal connection until it
 // ends. While it runs, a node that supports it also gets its health groups; a
-// released npc gets none, and its reports of its own checks have no group.
+// released npc gets none, and its reports of checks it configured itself,
+// which have no group, are ignored.
 func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node *Node) {
 	if id <= 0 {
 		return
@@ -61,7 +61,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 		retry = 0
 		switch {
 		case rep.Group == "":
-			applyOwnHealthReport(s.store, id, node.UUID, rep)
+			logs.Debug("Ignoring health report without group, id=%d, addr=%s", id, rep.Addr)
 		case push != nil:
 			push.apply(rep)
 		}
@@ -75,28 +75,4 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	}
 	client.RemoveOfflineNodes(false)
 	kickClientHealth(client)
-}
-
-// applyOwnHealthReport applies a report of a check that a released npc configured
-// itself. It names only an address, so it goes to every entry of the client
-// holding that address. It goes with those clients.
-func applyOwnHealthReport(store Store, id int, node string, rep healthcheck.Report) {
-	store.RangeTunnels(func(v *model.Tunnel) bool {
-		if v.Client.Id == id && v.Mode == "tcp" {
-			v.RLock()
-			fallback := v.Target
-			v.RUnlock()
-			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
-		}
-		return true
-	})
-	store.RangeHosts(func(v *model.Host) bool {
-		if v.Client.Id == id {
-			v.RLock()
-			fallback := v.Target
-			v.RUnlock()
-			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
-		}
-		return true
-	})
 }

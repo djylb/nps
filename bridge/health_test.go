@@ -75,27 +75,23 @@ func TestHealthGroupsNotSentToOldClient(t *testing.T) {
 	}
 	_ = npc.SetReadDeadline(time.Time{})
 
-	// Its own reports, from npc.conf, still take effect.
-	_ = npc.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if err := legacy.WriteHealth(npc, "127.0.0.1:2", "0"); err != nil {
-		t.Fatal(err)
+	// Reports of checks it configured itself are ignored, and the connection
+	// stays: each write on the pipe returns only once the server read it.
+	for range 2 {
+		_ = npc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := legacy.WriteGroupHealth(npc, healthcheck.Report{Addr: "127.0.0.1:2"}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		only := true
-		for range 4 {
-			_ = tn.Target.Dial(func(addr string) (bool, error) {
-				only = only && addr == "127.0.0.1:1"
-				return false, nil
-			})
-		}
-		if only {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("report of an old npc ignored")
-		}
-		time.Sleep(10 * time.Millisecond)
+	seen := map[string]bool{}
+	for range 4 {
+		_ = tn.Target.Dial(func(addr string) (bool, error) {
+			seen[addr] = true
+			return false, nil
+		})
+	}
+	if !seen["127.0.0.1:2"] {
+		t.Fatal("report of an old npc applied")
 	}
 }
 

@@ -334,8 +334,6 @@ func richTask() *model.Tunnel {
 	t.BlackIpList = []string{"192.0.2.0/24"}
 	t.WhiteIpList = []string{"198.51.100.0/24"}
 	t.RegisteredOnly = true
-	t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval = 1, 2, 3
-	t.HttpHealthUrl, t.HealthCheckType, t.HealthCheckTarget = "/h", "http", "ht"
 	return t
 }
 
@@ -513,7 +511,9 @@ func TestWireGoldenFrames(t *testing.T) {
 		n, _ := z.Read(buf)
 		hb.Write(buf[:n])
 	}()
-	if err := legacy.WriteHealth(a, "127.0.0.1:1", "1"); err != nil {
+	// a report of a check a released npc configured itself
+	sep := tunnelwire.DataSeparator
+	if _, err := a.Write(tunnelwire.AppendFrame(nil, []byte("127.0.0.1:1"+sep+"1"+sep))); err != nil {
 		t.Fatal(err)
 	}
 	<-done

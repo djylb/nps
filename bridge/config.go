@@ -220,7 +220,6 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 	tl.Ports, tl.TargetAddr = "", "" // what the ports and targets of the entry were made of
 	tl.CopySourceLists(new(model.SourceLists))
 	tl.UserAuth, tl.HealthConfig = nil, nil
-	tl.Health = model.Health{}
 
 	if len(ports) == 1 {
 		tl.Target = t.Target

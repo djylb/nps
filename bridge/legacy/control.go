@@ -223,8 +223,6 @@ func taskFromWire(m *control.Task) (*model.Tunnel, error) {
 	t.UploadLimit, t.DownloadLimit = m.UploadLimit, m.DownloadLimit
 	lists := listsFromWire(m.SourceLists)
 	t.IpListPriority, t.BlackIpList, t.WhiteIpList, t.RegisteredOnly = lists.IpListPriority, lists.BlackIpList, lists.WhiteIpList, lists.RegisteredOnly
-	t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval = m.HealthCheckTimeout, m.HealthMaxFail, m.HealthCheckInterval
-	t.HttpHealthUrl, t.HealthCheckType, t.HealthCheckTarget = m.HttpHealthUrl, m.HealthCheckType, m.HealthCheckTarget
 	return t, nil
 }
 
@@ -238,10 +236,6 @@ func taskToWire(t *model.Tunnel) *control.Task {
 		NoStore: t.NoStore, IsHttp: t.IsHttp, HttpProxy: t.HttpProxy, Socks5Proxy: t.Socks5Proxy,
 		LocalPath: t.LocalPath, StripPre: t.StripPre, ReadOnly: t.ReadOnly, Target: targetToWire(t.Target),
 		UserAuth: accountToWire(t.UserAuth), MultiAccount: accountToWire(t.MultiAccount),
-		Health: control.Health{
-			HealthCheckTimeout: t.HealthCheckTimeout, HealthMaxFail: t.HealthMaxFail, HealthCheckInterval: t.HealthCheckInterval,
-			HttpHealthUrl: t.HttpHealthUrl, HealthCheckType: t.HealthCheckType, HealthCheckTarget: t.HealthCheckTarget,
-		},
 	}
 }
 
@@ -312,12 +306,6 @@ func WriteStatus(w io.Writer, ok bool) error { return control.WriteStatus(w, ok)
 // ReadStatus reads what WriteStatus wrote.
 func ReadStatus(r io.Reader) (bool, error) { return control.ReadStatus(r) }
 
-// WriteHealth reports that addr is up ("1") or not ("0").
-func WriteHealth(w io.Writer, addr, status string) error {
-	_, err := w.Write(control.EncodeHealth(addr, status))
-	return err
-}
-
 // healthGroupWire is the body of HealthSet: targets added to a group. A large
 // group takes several messages.
 type healthGroupWire struct {
@@ -386,7 +374,8 @@ func WriteGroupHealth(w io.Writer, rep healthcheck.Report) error {
 	return err
 }
 
-// ReadHealth reads a health report, with or without a group.
+// ReadHealth reads a health report. A released npc reports its own checks
+// without a group.
 func ReadHealth(r io.Reader) (healthcheck.Report, error) {
 	b, err := tunnelwire.ReadInfoFrame(r)
 	if err != nil {

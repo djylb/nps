@@ -134,13 +134,6 @@ func TestTunnelCloneCopiesAllFields(t *testing.T) {
 			continue
 		}
 		got := reflect.ValueOf(c).Elem().Field(i).Interface()
-		if f.Name == "Health" {
-			got = healthFields(c)
-			if !reflect.DeepEqual(got, healthFields(src)) {
-				t.Fatalf("Clone lost health fields")
-			}
-			continue
-		}
 		if f.Name == "Flow" {
 			if c.Flow.ExportFlow != src.Flow.ExportFlow || c.Flow.InletFlow != src.Flow.InletFlow ||
 				c.Flow.FlowLimit != src.Flow.FlowLimit || !c.Flow.TimeLimit.Equal(src.Flow.TimeLimit) {
@@ -152,16 +145,6 @@ func TestTunnelCloneCopiesAllFields(t *testing.T) {
 			t.Fatalf("Clone did not copy field %s", f.Name)
 		}
 	}
-}
-
-type healthSnapshot struct {
-	Timeout, MaxFail, Interval int
-	URL                        string
-	Type, Target               string
-}
-
-func healthFields(t *model.Tunnel) healthSnapshot {
-	return healthSnapshot{t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval, t.HttpHealthUrl, t.HealthCheckType, t.HealthCheckTarget}
 }
 
 // fill sets every exported field of v to a non-zero value.

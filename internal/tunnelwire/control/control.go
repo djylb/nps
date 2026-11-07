@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/djylb/nps/internal/tunnelwire"
@@ -82,7 +81,8 @@ type MultiAccount struct {
 	AccountMap map[string]string
 }
 
-// Health configures a health check.
+// Health is what a released client sends of a health check it configured
+// itself; the server ignores it.
 type Health struct {
 	HealthCheckTimeout  int
 	HealthMaxFail       int
@@ -245,24 +245,6 @@ func WriteStatus(w io.Writer, ok bool) error {
 func ReadStatus(r io.Reader) (ok bool, err error) {
 	err = binary.Read(r, binary.LittleEndian, &ok)
 	return ok, err
-}
-
-// EncodeHealth returns a report that the address is up ("1") or not ("0").
-func EncodeHealth(addr, status string) []byte {
-	return tunnelwire.AppendFrame(nil, []byte(addr+tunnelwire.DataSeparator+status+tunnelwire.DataSeparator))
-}
-
-// ReadHealth reads what EncodeHealth returned.
-func ReadHealth(r io.Reader) (addr string, up bool, err error) {
-	b, err := tunnelwire.ReadInfoFrame(r)
-	if err != nil {
-		return "", false, err
-	}
-	arr := strings.Split(string(b), tunnelwire.DataSeparator)
-	if len(arr) < 2 {
-		return "", false, errors.New("receive health info error")
-	}
-	return arr[0], arr[1] == "1" || arr[1] == "true", nil
 }
 
 // FileKey names a client's file server: the same on both sides of a file task.
