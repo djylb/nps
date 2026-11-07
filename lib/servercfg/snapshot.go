@@ -1,6 +1,8 @@
 package servercfg
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -22,6 +24,10 @@ type Snapshot struct {
 	Bridge   BridgeConfig
 	Proxy    ProxyConfig
 	P2P      P2PConfig
+
+	// reads holds, for each config key, what the reads of the key gave
+	// while the snapshot was built, in order; a reload compares them.
+	reads map[string][]string
 }
 
 type AppConfig struct {
@@ -260,8 +266,21 @@ type P2PConfig struct {
 	TransportTimeoutMs  int
 }
 
+// valueReader reads the config keys of a snapshot. Every key the snapshot
+// is built from is read through it, so that it records the keys nps knows
+// (Keys) and, for each, what its reads gave: a value that depends on other
+// keys, such as one defaulting to another, is recorded under every key it
+// was read with.
 type valueReader struct {
 	values map[string]any
+	reads  map[string][]string
+}
+
+func (r *valueReader) record(result any, keys []string) {
+	text := fmt.Sprint(result)
+	for _, key := range keys {
+		r.reads[key] = append(r.reads[key], text)
+	}
 }
 
 var (
@@ -281,8 +300,8 @@ func Current() *Snapshot {
 }
 
 func buildSnapshot(values map[string]any) *Snapshot {
-	r := valueReader{values: values}
-	cfg := &Snapshot{}
+	r := &valueReader{values: values, reads: map[string][]string{}}
+	cfg := &Snapshot{reads: r.reads}
 
 	cfg.App = AppConfig{
 		Name:               r.stringDefault("nps", "appname"),
@@ -540,11 +559,12 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	return cfg
 }
 
-func (r valueReader) stringValue(keys ...string) string {
+func (r *valueReader) stringValue(keys ...string) string {
 	return r.stringDefault("", keys...)
 }
 
-func (r valueReader) stringDefault(defaultValue string, keys ...string) string {
+func (r *valueReader) stringDefault(defaultValue string, keys ...string) (result string) {
+	defer func() { r.record(result, keys) }()
 	for _, key := range keys {
 		value, err := lookupValue(r.values, key)
 		if err != nil {
@@ -557,7 +577,8 @@ func (r valueReader) stringDefault(defaultValue string, keys ...string) string {
 	return defaultValue
 }
 
-func (r valueReader) boolDefault(defaultValue bool, keys ...string) bool {
+func (r *valueReader) boolDefault(defaultValue bool, keys ...string) (result bool) {
+	defer func() { r.record(result, keys) }()
 	for _, key := range keys {
 		value, err := lookupValue(r.values, key)
 		if err != nil {
@@ -570,7 +591,8 @@ func (r valueReader) boolDefault(defaultValue bool, keys ...string) bool {
 	return defaultValue
 }
 
-func (r valueReader) intDefault(defaultValue int, keys ...string) int {
+func (r *valueReader) intDefault(defaultValue int, keys ...string) (result int) {
+	defer func() { r.record(result, keys) }()
 	for _, key := range keys {
 		value, err := lookupValue(r.values, key)
 		if err != nil {
@@ -583,7 +605,8 @@ func (r valueReader) intDefault(defaultValue int, keys ...string) int {
 	return defaultValue
 }
 
-func (r valueReader) int64Default(defaultValue int64, keys ...string) int64 {
+func (r *valueReader) int64Default(defaultValue int64, keys ...string) (result int64) {
+	defer func() { r.record(result, keys) }()
 	for _, key := range keys {
 		value, err := lookupValue(r.values, key)
 		if err != nil {
@@ -594,6 +617,17 @@ func (r valueReader) int64Default(defaultValue int64, keys ...string) int64 {
 		}
 	}
 	return defaultValue
+}
+
+// Keys returns the config keys nps knows, sorted: those the snapshot is
+// built from, the alternatives of a key included.
+func Keys() []string {
+	keys := make([]string, 0, len(defaultSnapshot.reads))
+	for key := range defaultSnapshot.reads {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func splitAndTrimCSV(value string) []string {

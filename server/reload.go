@@ -63,70 +63,73 @@ func ApplyLimits(cfg *servercfg.Snapshot) {
 func (s *Server) builtinAppliers() []servercfg.Applier {
 	restart := servercfg.RestartRequired
 	return []servercfg.Applier{
-		{Name: "log level", Settings: []string{"Log.Level"}, Apply: func(_, cur *servercfg.Snapshot) error {
+		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			logs.SetLevel(cur.Log.Level)
 			return nil
 		}},
-		{Name: "log output", Settings: []string{"Log.Type", "Log.Path", "Log.MaxFiles", "Log.MaxDays", "Log.MaxSize", "Log.Compress", "Log.Color"}, Apply: restart},
-		{Name: "ntp", Settings: []string{"App.NTPServer", "App.NTPInterval"}, Apply: func(_, cur *servercfg.Snapshot) error {
+		{Name: "log output", Settings: []string{"log", "log_path", "log_max_files", "log_max_days", "log_max_size", "log_compress", "log_color"}, Apply: restart},
+		{Name: "ntp", Settings: []string{"ntp_server", "ntp_interval"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			ApplyNTP(cur)
 			return nil
 		}},
-		{Name: "timezone", Settings: []string{"App.Timezone"}, Apply: restart},
-		{Name: "dns", Settings: []string{"App.DNSServer"}, Apply: restart},
-		{Name: "pprof", Settings: []string{"App.PprofIP", "App.PprofPort"}, Apply: restart},
-		{Name: "access lists", Settings: []string{"App.GeoIPPath", "App.GeoSitePath", "App.AclMaxRules"}, Apply: restart},
-		{Name: "limits", Settings: []string{"Feature.FlowLimitActual", "Runtime.ClientHistoryLimit"}, Apply: func(_, cur *servercfg.Snapshot) error {
+		{Name: "timezone", Settings: []string{"timezone"}, Apply: restart},
+		{Name: "dns", Settings: []string{"dns_server"}, Apply: restart},
+		{Name: "pprof", Settings: []string{"pprof_ip", "pprof_port"}, Apply: restart},
+		{Name: "access lists", Settings: []string{"geoip_path", "geosite_path", "acl_max_rules"}, Apply: restart},
+		{Name: "limits", Settings: []string{"flow_limit_type", "client_history_limit"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			ApplyLimits(cur)
 			return nil
 		}},
-		{Name: "system info", Settings: []string{"Feature.SystemInfoDisplay"}, Apply: func(_, _ *servercfg.Snapshot) error {
+		{Name: "system info", Settings: []string{"system_info_display"}, Apply: func(_, _ *servercfg.Snapshot) error {
 			stats.StartSystemInfo()
 			return nil
 		}},
-		{Name: "webhook", Settings: []string{"Webhook"}, Apply: func(_, cur *servercfg.Snapshot) error {
+		{Name: "webhook", Settings: []string{
+			"webhook_url", "webhook_secret", "webhook_timeout", "webhook_retries",
+			"webhook_queue_size", "webhook_report_interval",
+		}, Apply: func(_, cur *servercfg.Snapshot) error {
 			s.ApplyWebhook(cur.Webhook)
 			return nil
 		}},
 		// read by the tunnels and the bridge where they are used; tunnels
 		// started before keep the local proxy setting they started with
 		{Name: "tunnels", Settings: []string{
-			"Feature.AllowLocalProxy", "Feature.AllowSecretLink", "Feature.AllowSecretLocal",
-			"Proxy.AddOriginHeader", "Security.AuthTimeWindow",
+			"allow_local_proxy", "allow_secret_link", "allow_secret_local",
+			"http_add_origin_header", "auth_time_window",
 		}},
 		{Name: "bridge listeners", Settings: []string{
-			"Network.BridgeIP", "Network.BridgeHost", "Network.BridgePath", "Network.BridgePort",
-			"Network.BridgeTrustedIPs", "Network.BridgeRealIPHeader",
-			"Network.BridgeTCPIP", "Network.BridgeTCPPort", "Network.BridgeKCPIP", "Network.BridgeKCPPort",
-			"Network.BridgeQUICIP", "Network.BridgeQUICPort", "Network.BridgeTLSIP", "Network.BridgeTLSPort",
-			"Network.BridgeWSIP", "Network.BridgeWSPort", "Network.BridgeWSSIP", "Network.BridgeWSSPort",
-			"Bridge.Type", "Bridge.PrimaryType",
-			"Bridge.TCPEnable", "Bridge.KCPEnable", "Bridge.QUICEnable", "Bridge.TLSEnable", "Bridge.WSEnable", "Bridge.WSSEnable",
-			"Bridge.ServerTCPEnabled", "Bridge.ServerKCPEnabled", "Bridge.ServerQUICEnabled",
-			"Bridge.ServerTLSEnabled", "Bridge.ServerWSEnabled", "Bridge.ServerWSSEnabled",
+			"bridge_ip", "bridge_host", "bridge_path", "bridge_port",
+			"bridge_trusted_ips", "bridge_real_ip_header",
+			"bridge_tcp_ip", "bridge_tcp_port", "bridge_kcp_ip", "bridge_kcp_port",
+			"bridge_quic_ip", "bridge_quic_port", "bridge_tls_ip", "bridge_tls_port", "tls_bridge_port",
+			"bridge_ws_ip", "bridge_ws_port", "bridge_wss_ip", "bridge_wss_port",
+			"bridge_type", "tcp_enable", "kcp_enable", "quic_enable", "tls_enable", "ws_enable", "wss_enable",
 		}, Apply: restart},
 		{Name: "quic transport", Settings: []string{
-			"Network.QUICALPN", "Network.QUICALPNList", "Network.QUICKeepAlivePeriod",
-			"Network.QUICMaxIdleTimeout", "Network.QUICMaxIncomingStreams",
+			"quic_alpn", "quic_keep_alive_period", "quic_max_idle_timeout", "quic_max_incoming_streams",
 		}, Apply: restart},
 		{Name: "bridge", Settings: []string{
-			"Bridge.SelectMode", "Bridge.CertFile", "Bridge.KeyFile", "Security.SecureMode",
-			"Feature.AllowPorts", "Runtime.PublicVKey", "Runtime.VisitorVKey",
-			"Runtime.DisconnectTimeout", "Network.MuxPingInterval",
+			"bridge_select_mode", "bridge_cert_file", "bridge_key_file", "secure_mode",
+			"allow_ports", "public_vkey", "visitor_vkey", "disconnect_timeout", "mux_ping_interval",
 		}, Apply: restart},
 		{Name: "host proxy", Settings: []string{
-			"Network.HTTPProxyIP", "Network.HTTPProxyPort", "Network.HTTPSProxyPort", "Network.HTTP3ProxyPort",
-			"Proxy.ResponseTimeout", "Proxy.ErrorPage", "Proxy.ErrorPageTimeLimit", "Proxy.ErrorPageFlowLimit",
-			"Proxy.ErrorAlways", "Proxy.BridgeHTTP3", "Proxy.ForceAutoSSL", "Proxy.SSL", "Auth.HTTPOnlyPass",
+			"http_proxy_ip", "http_proxy_port", "https_proxy_port", "http3_proxy_port",
+			"http_proxy_response_timeout", "error_page", "error_page_time_limit", "error_page_flow_limit",
+			"error_always", "bridge_http3", "force_auto_ssl", "x_nps_http_only",
+			"ssl_email", "ssl_ca", "ssl_path", "ssl_zerossl_api", "https_default_cert_file", "https_default_key_file",
+			"ssl_cache_max", "ssl_cache_reload", "ssl_cache_idle",
 		}, Apply: restart},
-		{Name: "p2p", Settings: []string{"Network.P2PIP", "Network.P2PPort", "P2P"}, Apply: restart},
+		{Name: "p2p", Settings: []string{
+			"p2p_ip", "p2p_port", "p2p_stun_servers",
+			"p2p_enable_upnp_portmap", "p2p_enable_pcp_portmap", "p2p_enable_natpmp_portmap",
+			"p2p_portmap_lease_seconds", "p2p_probe_timeout_ms", "p2p_handshake_timeout_ms", "p2p_transport_timeout_ms",
+		}, Apply: restart},
 		{Name: "web listener", Settings: []string{
-			"Network.WebIP", "Network.WebPort", "Web.IP", "Web.Port", "Web.Host",
-			"Web.OpenSSL", "Web.CertFile", "Web.KeyFile",
+			"web_ip", "web_port", "web_host", "web_open_ssl", "web_cert_file", "web_key_file",
 		}, Apply: restart},
 		{Name: "ip register listener", Settings: []string{
-			"App.IPRegisterIP", "App.IPRegisterPort", "App.IPRegisterCertFile", "App.IPRegisterKeyFile",
+			"ip_register_ip", "ip_register_port", "ip_register_cert_file", "ip_register_key_file",
 		}, Apply: restart},
-		{Name: "flow store", Settings: []string{"Runtime.FlowStoreInterval"}, Apply: restart},
+		{Name: "flow store", Settings: []string{"flow_store_interval"}, Apply: restart},
 	}
 }

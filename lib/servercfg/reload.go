@@ -3,7 +3,6 @@ package servercfg
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -16,18 +15,19 @@ var ErrRestartRequired = errors.New("restart required")
 // RestartRequired is the Apply of the settings only read at startup.
 func RestartRequired(_, _ *Snapshot) error { return ErrRestartRequired }
 
-// An Applier owns some settings of the Snapshot and says how a reload makes
-// their changes take effect. Every setting is owned by exactly one Applier
-// (CheckAppliers), so that the Appliers are the one record of what a reload
-// applies.
+// An Applier owns some config keys and says how a reload makes their
+// changes take effect. Every key nps knows (Keys) is owned by exactly one
+// Applier (CheckSettings, Unowned), so that the Appliers are the one record
+// of what a reload applies.
 type Applier struct {
 	// Name names the Applier in reports.
 	Name string
-	// Settings are the fields the Applier owns, as paths of the Snapshot
-	// such as "Log.Level"; a struct field owns all the fields within it.
+	// Settings are the config keys the Applier owns, such as "log_level".
+	// A key changes when what it gives differs, also when it is not set
+	// and the key it defaults to changed.
 	Settings []string
 	// Apply makes the changes of the settings take effect once cur is the
-	// current snapshot; it is called only when one of them differs between
+	// current snapshot; it is called only when one of them changed between
 	// old and cur. Nil means the settings are read where they are used, so
 	// that they take effect with the snapshot. RestartRequired reports
 	// settings that take effect at the next start.
@@ -135,6 +135,7 @@ func Reload(appliers ...Applier) Report {
 		}
 	}
 	if len(r.Failed) == 0 {
+		r.sortKeys()
 		return r
 	}
 	if prev != nil {
@@ -149,6 +150,14 @@ func Reload(appliers ...Applier) Report {
 	}
 	r.Applied, r.Restart = []string{}, []string{}
 	return r
+}
+
+// sortKeys sorts the keys of a report and drops repeats.
+func (r *Report) sortKeys() {
+	for _, keys := range []*[]string{&r.Applied, &r.Restart} {
+		slices.Sort(*keys)
+		*keys = slices.Compact(*keys)
+	}
 }
 
 func readCurrent() (string, *store, error) {
@@ -170,96 +179,52 @@ func readCurrent() (string, *store, error) {
 	return "", nil, errors.Join(errs...)
 }
 
-// changedSettings returns the settings that differ between old and cur.
+// changedSettings returns the keys of settings whose reads differ between
+// old and cur.
 func changedSettings(settings []string, old, cur *Snapshot) []string {
 	var changed []string
-	for _, s := range settings {
-		if !reflect.DeepEqual(settingValue(old, s).Interface(), settingValue(cur, s).Interface()) {
-			changed = append(changed, s)
+	for _, key := range settings {
+		if !slices.Equal(old.reads[key], cur.reads[key]) {
+			changed = append(changed, key)
 		}
 	}
 	return changed
 }
 
-func settingValue(cfg *Snapshot, path string) reflect.Value {
-	v := reflect.ValueOf(cfg).Elem()
-	for name := range strings.SplitSeq(path, ".") {
-		v = v.FieldByName(name)
-	}
-	return v
-}
-
-// Settings returns the paths of all the settings of the Snapshot: its
-// fields that are not structs, and those within the struct fields.
-func Settings() []string {
-	var paths []string
-	var walk func(t reflect.Type, prefix string)
-	walk = func(t reflect.Type, prefix string) {
-		for f := range t.Fields() {
-			path := prefix + f.Name
-			if f.Type.Kind() == reflect.Struct {
-				walk(f.Type, path+".")
-				continue
-			}
-			paths = append(paths, path)
-		}
-	}
-	walk(reflect.TypeFor[Snapshot](), "")
-	return paths
-}
-
-// CheckSettings returns an error for a setting of the appliers that is not
-// a field of the Snapshot or that two of them own.
+// CheckSettings returns an error for a key of the appliers that nps does
+// not know or that two of them own.
 func CheckSettings(appliers []Applier) error {
+	known := Keys()
 	owner := map[string]string{}
 	var errs []error
 	for _, a := range appliers {
-		for _, s := range a.Settings {
-			if !validSetting(s) {
-				errs = append(errs, fmt.Errorf("%s: %q is not a setting", a.Name, s))
+		for _, key := range a.Settings {
+			if _, found := slices.BinarySearch(known, key); !found {
+				errs = append(errs, fmt.Errorf("%s: %q is not a config key", a.Name, key))
 				continue
 			}
-			for o, by := range owner {
-				if o == s || strings.HasPrefix(o, s+".") || strings.HasPrefix(s, o+".") {
-					errs = append(errs, fmt.Errorf("%q of %s overlaps %q of %s", s, a.Name, o, by))
-				}
+			if by, ok := owner[key]; ok {
+				errs = append(errs, fmt.Errorf("%q is owned by both %s and %s", key, by, a.Name))
 			}
-			owner[s] = a.Name
+			owner[key] = a.Name
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// Unowned returns the settings of the Snapshot that no applier owns.
+// Unowned returns the config keys that no applier owns.
 func Unowned(appliers []Applier) []string {
-	var missing []string
-	for _, s := range Settings() {
-		owned := false
-		for _, a := range appliers {
-			for _, o := range a.Settings {
-				if o == s || strings.HasPrefix(s, o+".") {
-					owned = true
-				}
-			}
+	owned := map[string]bool{}
+	for _, a := range appliers {
+		for _, key := range a.Settings {
+			owned[key] = true
 		}
-		if !owned {
-			missing = append(missing, s)
+	}
+	var missing []string
+	for _, key := range Keys() {
+		if !owned[key] {
+			missing = append(missing, key)
 		}
 	}
 	return missing
-}
-
-func validSetting(path string) bool {
-	t := reflect.TypeFor[Snapshot]()
-	for name := range strings.SplitSeq(path, ".") {
-		if t.Kind() != reflect.Struct {
-			return false
-		}
-		f, ok := t.FieldByName(name)
-		if !ok || !f.IsExported() {
-			return false
-		}
-		t = f.Type
-	}
-	return path != ""
 }

@@ -27,22 +27,31 @@ sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 
 `nps reload` 命令已移除。
 
-每次重载在日志中写一行结果，接口返回同样的内容：已生效的设置、需要重启的设置和失败项。配置文件读取或解析失败时什么都不变。某项设置应用失败（例如 Web 管理界面无法按新设置建立）时整次重载撤销，恢复原配置并应用回去。
+每次重载在日志中写一行结果，接口返回同样的内容：已生效的配置键、需要重启的配置键和失败项。配置文件读取或解析失败时什么都不变。某项设置应用失败（例如 Web 管理界面无法按新设置建立）时整次重载撤销，恢复原配置并应用回去。
 
 立即生效：
 
-- `log_level`、`ntp_server`、`ntp_interval`、`system_info_display`、Webhook 设置、`flow_limit_type`、`client_history_limit`
-- Web 管理界面：`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`instance_key_file`、`appname`、账号和 TOTP、`auth_key`、`auth_crypt_key`、`allow_x_real_ip`、`trusted_proxy_ips`、用户登录与注册开关、各项 `allow_*` 功能开关、验证码与 PoW、登录封禁与登录名单、`ip_register_max_hours`、客户端连接地址的显示设置、`http_proxy_access_port`、`https_proxy_access_port`
-- 运行时读取的：`allow_local_proxy`（之后启动的隧道）、`allow_secret_link`、`allow_secret_local`、`http_add_origin_header`、`auth_time_window`
+- 日志级别与时间同步：`log_level`、`ntp_server`、`ntp_interval`
+- 统计与限制：`system_info_display`、`flow_limit_type`、`client_history_limit`
+- Webhook：`webhook_url`、`webhook_secret`、`webhook_timeout`、`webhook_retries`、`webhook_queue_size`、`webhook_report_interval`
+- Web 管理界面：`appname`、`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`instance_key_file`、`ip_register_max_hours`、`http_proxy_access_port`、`https_proxy_access_port`
+- 账号与登录：`web_username`、`web_password`、`totp_secret`、`auth_key`、`auth_crypt_key`、`allow_x_real_ip`、`trusted_proxy_ips`、`allow_user_login`、`allow_user_register`、`allow_user_vkey_login`、`allow_user_change_username`
+- 用户功能开关：`allow_flow_limit`、`allow_rate_limit`、`allow_time_limit`、`allow_connection_num_limit`、`allow_multi_ip`、`allow_tunnel_num_limit`、`allow_user_local`
+- 登录防护：`open_captcha`、`force_pow`、`pow_bits`、`login_ban_time`、`login_ip_ban_time`、`login_user_ban_time`、`login_max_fail_times`、`login_max_body`、`login_max_skew`、`login_acl_mode`、`login_acl_rules`
+- 客户端连接地址的显示：`bridge_addr`、`bridge_show_path`、`bridge_tcp_show`、`bridge_tcp_show_ip`、`bridge_tcp_show_port`、`bridge_kcp_show`、`bridge_kcp_show_ip`、`bridge_kcp_show_port`、`bridge_quic_show`、`bridge_quic_show_ip`、`bridge_quic_show_port`、`bridge_tls_show`、`bridge_tls_show_ip`、`bridge_tls_show_port`、`bridge_ws_show`、`bridge_ws_show_ip`、`bridge_ws_show_port`、`bridge_wss_show`、`bridge_wss_show_ip`、`bridge_wss_show_port`、`bridge_quic_show_alpn`
+- 运行时读取的：`allow_local_proxy`、`allow_secret_link`、`allow_secret_local`、`http_add_origin_header`、`auth_time_window`（`allow_local_proxy` 只影响之后启动的隧道）
 
 以下变更需要重启才生效，重载时列出：
 
-- Web、HTTP/HTTPS/HTTP3、客户端连接、P2P、IP 登记页、pprof 的监听设置，Web 管理界面的 HTTPS 证书
-- QUIC 传输参数、日志输出方式（级别除外）
-- `timezone`、`dns_server`、`secure_mode`、`allow_ports`、`public_vkey`、`visitor_vkey`、`disconnect_timeout`、`mux_ping_interval`、`flow_store_interval`
-- `bridge_select_mode`、客户端连接证书、`bridge_type` 与各连接方式开关
-- 域名转发：错误页、`http_proxy_response_timeout`、`bridge_http3`、`force_auto_ssl`、SSL 证书与 ACME 设置、`x_nps_http_only`
-- P2P 设置、`geoip_path`、`geosite_path`、`acl_max_rules`
+- 日志输出：`log`、`log_path`、`log_max_files`、`log_max_days`、`log_max_size`、`log_compress`、`log_color`
+- 进程：`timezone`、`dns_server`、`pprof_ip`、`pprof_port`、`geoip_path`、`geosite_path`、`acl_max_rules`、`flow_store_interval`
+- 客户端连接监听：`bridge_ip`、`bridge_host`、`bridge_path`、`bridge_port`、`bridge_trusted_ips`、`bridge_real_ip_header`、`bridge_tcp_ip`、`bridge_tcp_port`、`bridge_kcp_ip`、`bridge_kcp_port`、`bridge_quic_ip`、`bridge_quic_port`、`bridge_tls_ip`、`bridge_tls_port`、`bridge_ws_ip`、`bridge_ws_port`、`bridge_wss_ip`、`bridge_wss_port`、`tls_bridge_port`、`bridge_type`、`tcp_enable`、`kcp_enable`、`quic_enable`、`tls_enable`、`ws_enable`、`wss_enable`
+- QUIC 传输：`quic_alpn`、`quic_keep_alive_period`、`quic_max_idle_timeout`、`quic_max_incoming_streams`
+- 客户端连接：`bridge_select_mode`、`bridge_cert_file`、`bridge_key_file`、`secure_mode`、`allow_ports`、`public_vkey`、`visitor_vkey`、`disconnect_timeout`、`mux_ping_interval`
+- 域名转发：`http_proxy_ip`、`http_proxy_port`、`https_proxy_port`、`http3_proxy_port`、`http_proxy_response_timeout`、`error_page`、`error_page_time_limit`、`error_page_flow_limit`、`error_always`、`bridge_http3`、`force_auto_ssl`、`x_nps_http_only`、`ssl_email`、`ssl_ca`、`ssl_path`、`ssl_zerossl_api`、`https_default_cert_file`、`https_default_key_file`、`ssl_cache_max`、`ssl_cache_reload`、`ssl_cache_idle`
+- P2P：`p2p_ip`、`p2p_port`、`p2p_stun_servers`、`p2p_enable_upnp_portmap`、`p2p_enable_pcp_portmap`、`p2p_enable_natpmp_portmap`、`p2p_portmap_lease_seconds`、`p2p_probe_timeout_ms`、`p2p_handshake_timeout_ms`、`p2p_transport_timeout_ms`
+- Web 管理界面监听：`web_ip`、`web_port`、`web_host`、`web_open_ssl`、`web_cert_file`、`web_key_file`
+- IP 登记页监听：`ip_register_ip`、`ip_register_port`、`ip_register_cert_file`、`ip_register_key_file`
 
 ## 停止和重启
 
