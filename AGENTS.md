@@ -45,8 +45,9 @@ and nps forwards visitors through that connection to targets npc reaches.
    `web/static/page/languages.xml`, and to `docs/reference/web-api.md` and
    `docs/reference/npc-config.md`.
 
-`lib/model/settings_test.go` and the bridge config tests fail when a layer is
-missed (all but `languages.xml`).
+`lib/model/settings_test.go`, the bridge config tests and
+`web/ui/languages_test.go` fail when a layer is missed. `Update` copies every
+field of an edit except those `TestUpdateCopiesFields` lists as kept.
 
 ## Commands
 

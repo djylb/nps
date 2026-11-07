@@ -144,10 +144,6 @@
 		<zh-CN>取消</zh-CN>
 		<en-US>Cancel</en-US>
 	</lang>
-	<lang id="word-clearflow">
-		<zh-CN>流量清零</zh-CN>
-		<en-US>Clear Traffic</en-US>
-	</lang>
 	<lang id="word-admin">
 		<zh-CN>管理员</zh-CN>
 		<en-US>Admin</en-US>
@@ -324,10 +320,6 @@
 		<zh-CN>仪表盘</zh-CN>
 		<en-US>Dashboard</en-US>
 	</lang>
-	<lang id="word-globalparam">
-		<zh-CN>全局参数</zh-CN>
-		<en-US>Global Params</en-US>
-	</lang>
 	<lang id="word-banlist">
 		<zh-CN>封禁管理</zh-CN>
 		<en-US>Ban List</en-US>
@@ -375,10 +367,6 @@
 	<lang id="word-ping">
 		<zh-CN>Ping 检测</zh-CN>
 		<en-US>Ping Test</en-US>
-	</lang>
-	<lang id="word-username">
-		<zh-CN>用户名</zh-CN>
-		<en-US>Username</en-US>
 	</lang>
 	<lang id="word-exportflow">
 		<zh-CN>出口流量</zh-CN>
