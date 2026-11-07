@@ -15,6 +15,7 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/timeshim"
 	flag "github.com/spf13/pflag"
 )
 
@@ -90,11 +91,11 @@ func superviseLaunch(
 			case remote.Revoked:
 				logs.Warn("launch input %d was revoked, stopping it and retrying in %s", index, launchSourcePause)
 				good = nil
-				sleepContext(ctx, launchSourcePause)
+				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourcePause)
 				continue
 			case good == nil:
 				logs.Warn("launch input %d failed, retrying in %s: %v", index, launchSourceRetry, err)
-				sleepContext(ctx, launchSourceRetry)
+				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourceRetry)
 				continue
 			default:
 				logs.Warn("launch input %d failed, using the last good payload: %v", index, err)
@@ -112,7 +113,7 @@ func superviseLaunch(
 			return err
 		}
 		logs.Warn("launch input %d closed, restarting in %s: %v", index, launchRelaunchWait, err)
-		sleepContext(ctx, launchRelaunchWait)
+		_ = timeshim.Sleep(ctx, timeshim.Real, launchRelaunchWait)
 	}
 	return nil
 }
@@ -124,13 +125,4 @@ func launchReconnects(profiles []launch.Profile) bool {
 		}
 	}
 	return client.AutoReconnect
-}
-
-func sleepContext(ctx context.Context, d time.Duration) {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-	case <-ctx.Done():
-	}
 }

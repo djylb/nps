@@ -13,6 +13,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/timeshim"
 )
 
 // p2pStableAfter is how long a direct path must have lived for its loss to
@@ -166,7 +167,7 @@ func (p *p2pPeer) run() {
 				return
 			}
 			gaveUp = false
-		} else if !sleepWithContext(ctx, wait) {
+		} else if timeshim.Sleep(ctx, timeshim.Real, wait) != nil {
 			return
 		}
 		t, err := p.punch(ctx, background)

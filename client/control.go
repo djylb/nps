@@ -29,6 +29,7 @@ import (
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/timeshim"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
 )
@@ -116,14 +117,7 @@ var errAdd = errors.New("the server returned an error, which port or host may ha
 // WaitReconnect waits for the time before the next connection attempt. It
 // returns false if ctx ended first.
 func WaitReconnect(ctx context.Context) bool {
-	t := time.NewTimer(5 * time.Second)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
+	return timeshim.Sleep(ctx, timeshim.Real, 5*time.Second) == nil
 }
 
 // errSessionEnded is returned once the connection to the server ended and

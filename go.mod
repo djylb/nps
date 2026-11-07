@@ -16,6 +16,7 @@ require (
 	github.com/djylb/netx v0.0.0-20261107102209-6050d7bdd3ea
 	github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7
 	github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9
+	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f
 	github.com/djylb/upstream v0.0.0-20261106113312-bb3198022f11
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
@@ -43,7 +44,6 @@ require (
 	github.com/bytedance/sonic/loader v0.5.3 // indirect
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
-	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f // indirect
 	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect

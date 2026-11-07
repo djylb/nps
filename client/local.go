@@ -402,20 +402,6 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 	return c, nil
 }
 
-func sleepWithContext(ctx context.Context, d time.Duration) bool {
-	if d <= 0 {
-		return ctx.Err() == nil
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
 // Close stops the listeners, the direct paths and the relay tunnel, and
 // waits for the direct paths' goroutines.
 func (mgr *P2PManager) Close() {
