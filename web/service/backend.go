@@ -6,6 +6,7 @@ import (
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/server/ports"
 )
@@ -71,6 +72,8 @@ type Runtime interface {
 	CanUpdateSelf() bool
 	// UpdateSelf updates the server to the latest release and restarts it.
 	UpdateSelf() (string, error)
+	// ReloadConfig reloads the config file and reports what took effect.
+	ReloadConfig() servercfg.Report
 }
 
 type Backend struct {
@@ -333,6 +336,10 @@ func (offlineRuntime) TunnelRunning(int) bool { return false }
 func (offlineRuntime) CanUpdateSelf() bool { return false }
 
 func (offlineRuntime) UpdateSelf() (string, error) { return "", ErrServerUpdateUnavailable }
+
+func (offlineRuntime) ReloadConfig() servercfg.Report {
+	return servercfg.Report{Path: servercfg.Path(), Error: ErrConfigReloadUnavailable.Error()}
+}
 
 // bridgeErrors turns the errors of the bridge that the web manager tells
 // apart into its own.

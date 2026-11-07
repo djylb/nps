@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 )
 
@@ -65,6 +66,25 @@ func (a *App) UpdateGeoData(c Context) {
 		return
 	}
 	ajax(c, "geodata updated", 1)
+}
+
+// ReloadConfigResponse is the answer of ReloadConfig: status 1 when the new
+// settings are current, msg sums the report up.
+type ReloadConfigResponse struct {
+	Status int              `json:"status"`
+	Msg    string           `json:"msg"`
+	Report servercfg.Report `json:"report"`
+}
+
+// ReloadConfig reloads the config file into the running server.
+func (a *App) ReloadConfig(c Context) {
+	r := a.system().ReloadConfig()
+	status := 0
+	if r.OK() {
+		status = 1
+		a.Emit(c, Event{Name: "config.reloaded", Resource: "config", Action: "reload"})
+	}
+	c.RespondJSON(200, ReloadConfigResponse{Status: status, Msg: r.String(), Report: r})
 }
 
 func (a *App) BanList(c Context) {

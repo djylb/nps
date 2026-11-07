@@ -332,6 +332,9 @@ curl -X POST \
   - 参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`（多行）、`globalWhiteIpList`（多行）、`globalRateLimit`（全局带宽，KB/s）、`globalMaxConn`（全局最大转发连接数）
   - 规则有误时返回 `status: 0`，`msg` 中给出名单和行号
 - **更新 Geo 数据：** `POST /global/updategeo`
+- **重新加载配置：** `POST /global/reload`，与 `SIGUSR1` 相同，见[重载配置](/guide/server/operations.md)
+  - 返回：`status`（`1` 新配置已生效，`0` 未生效）、`msg`（结果摘要，同日志）、`report`
+  - `report`：`path`（配置文件）、`error`（读取失败的原因，此时什么都不变）、`applied`（已生效的设置）、`restart`（需要重启的设置）、`failed`（失败项：`name`、`settings`、`error`；有失败时整次重载撤销）、`rollback_failed`（撤销时未能应用回去的项，通常为空）
 - **导出配置：** `GET /global/export`；含明文密钥，见[导出与导入配置](/guide/server/config-transfer.md)
 - **导入配置：** `POST /global/import`（表单字段 `data` 为文件内容）
 - **更新服务端：** `POST /index/updateserver`

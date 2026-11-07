@@ -139,6 +139,8 @@ func (stubRuntime) CanUpdateSelf() bool { return false }
 
 func (stubRuntime) UpdateSelf() (string, error) { return "", nil }
 
+func (stubRuntime) ReloadConfig() servercfg.Report { return servercfg.Report{} }
+
 func TestDefaultClientServiceUsesInjectedRepositoryForList(t *testing.T) {
 	repo := stubRepository{
 		listVisibleClient: func(ListClientsInput) ([]*model.Client, int) {

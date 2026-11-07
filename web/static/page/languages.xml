@@ -1245,6 +1245,26 @@
 		<zh-CN>导入配置</zh-CN>
 		<en-US>Import</en-US>
 	</lang>
+	<lang id="word-reloadconfig">
+		<zh-CN>重新加载配置</zh-CN>
+		<en-US>Reload Config</en-US>
+	</lang>
+	<lang id="info-reloadconfig">
+		<zh-CN>重新读取 nps.conf，与发送 SIGUSR1 相同。日志级别、NTP、Webhook、Web 管理界面和登录等设置立即生效；监听、证书、时区等设置需要重启 nps，会在下方列出。某项应用失败时整次重载撤销，保持原设置。</zh-CN>
+		<en-US>Reads nps.conf again, as SIGUSR1 does. The log level, NTP, webhook, web interface and login settings take effect at once; listeners, certificates, the timezone and the like need nps to restart and are listed below. When one of them fails to apply, the whole reload is undone and the previous settings stay.</en-US>
+	</lang>
+	<lang id="word-reloadapplied">
+		<zh-CN>已生效</zh-CN>
+		<en-US>Applied</en-US>
+	</lang>
+	<lang id="word-reloadrestart">
+		<zh-CN>需要重启</zh-CN>
+		<en-US>Needs a Restart</en-US>
+	</lang>
+	<lang id="word-reloadfailed">
+		<zh-CN>失败</zh-CN>
+		<en-US>Failed</en-US>
+	</lang>
 	<lang id="word-geodata">
 		<zh-CN>Geo 数据</zh-CN>
 		<en-US>Geodata</en-US>

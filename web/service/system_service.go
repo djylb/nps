@@ -62,6 +62,9 @@ type SystemService interface {
 	// name, geoip or geosite, or of geoip and the files present when name is
 	// empty, and applies it.
 	UpdateGeoData(name string) (GeoDataStatus, error)
+	// ReloadConfig reloads the config file into the running server and
+	// reports what took effect, what needs a restart and what failed.
+	ReloadConfig() servercfg.Report
 }
 
 // GeoDataStatus describes the geodata files of the access lists.
@@ -132,6 +135,13 @@ func (s DefaultSystemService) UpdateServer() (string, error) {
 		err = ErrServerUpdateRunning
 	}
 	return v, err
+}
+
+func (s DefaultSystemService) ReloadConfig() servercfg.Report {
+	if s.Runtime == nil {
+		return offlineRuntime{}.ReloadConfig()
+	}
+	return s.Runtime.ReloadConfig()
 }
 
 func (DefaultSystemService) GeoDataStatus() GeoDataStatus {

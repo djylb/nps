@@ -60,6 +60,30 @@
             </div>
         </div>
     </div>
+    <!--重载配置-->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5 langtag="word-reloadconfig"></h5>
+                </div>
+                <div class="ibox-content">
+                    <p class="help-block" langtag="info-reloadconfig"></p>
+                    <button class="btn btn-primary" id="reload_config_btn" onclick="reloadConfig(this)" type="button">
+                        <i class="fa fa-fw fa-lg fa-sync"></i> <span langtag="word-reloadconfig"></span>
+                    </button>
+                    <dl class="m-t" id="reload_config_result" style="display: none">
+                        <dt langtag="word-reloadapplied"></dt>
+                        <dd class="text-success" id="reload_config_applied"></dd>
+                        <dt langtag="word-reloadrestart"></dt>
+                        <dd class="text-warning" id="reload_config_restart"></dd>
+                        <dt langtag="word-reloadfailed"></dt>
+                        <dd class="text-danger" id="reload_config_failed"></dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
     <!--Geo 数据-->
     <div class="row">
         <div class="col-lg-12">
@@ -152,6 +176,34 @@
             });
         };
         reader.readAsText(file);
+    }
+
+    function reloadConfig(btn) {
+        var $btn = $(btn);
+        if ($btn.data('busy')) return;
+        $btn.data('busy', true).addClass('disabled');
+        $.ajax({
+            type: 'POST',
+            url: '{{.web_base_url}}/global/reload',
+            success: function (res) {
+                var r = (res && res.report) || {};
+                var failed = (r.failed || []).map(function (f) {
+                    return f.name + ' (' + (f.settings || []).join(', ') + '): ' + f.error;
+                });
+                if (r.error) failed.push(r.error);
+                $('#reload_config_applied').text((r.applied || []).join(', ') || '-');
+                $('#reload_config_restart').text((r.restart || []).join(', ') || '-');
+                $('#reload_config_failed').text(failed.join('; ') || '-');
+                $('#reload_config_result').show();
+                showMsg(res && res.msg, res && res.status ? 'success' : 'error', res && res.status ? 3000 : 8000);
+            },
+            error: function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 8000);
+            },
+            complete: function () {
+                $btn.data('busy', false).removeClass('disabled');
+            }
+        });
     }
 
     function updateGeoData(btn, name) {

@@ -16,6 +16,7 @@ var (
 	ErrServerNotRunning          = errors.New("the server is not running")
 	ErrClientUpdateUnsupported   = errors.New("client version does not support remote update")
 	ErrServerUpdateUnavailable   = errors.New("server update is unavailable")
+	ErrConfigReloadUnavailable   = errors.New("no server runs to reload the config")
 	ErrServerUpdateRunning       = errors.New("server update is already running")
 	ErrGeoDataUpdateRunning      = errors.New("geodata update is already running")
 	ErrRegisterKeyInvalid        = errors.New("invalid registration key")

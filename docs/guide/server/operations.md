@@ -15,22 +15,34 @@
 
 ## 重载配置
 
-向运行中的 nps 发送 `SIGUSR1`：
+修改 `nps.conf` 后，以下任一方式让运行中的 nps 重新读取：
+
+- Web 管理界面（管理员）：全局参数页的“重新加载配置”，或接口 `POST /global/reload`，见 [Web API](/reference/web-api.md)。Windows 用这种方式。
+- 向进程发送 `SIGUSR1`（Windows 没有此信号）：
 
 ```bash
 sudo systemctl kill -s USR1 Nps  # systemd 服务，服务名以实际安装为准
 sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 ```
 
-Windows 没有重载信号，修改配置后需要重启服务。`nps reload` 命令已移除。
+`nps reload` 命令已移除。
 
-重载时应用日志级别、NTP、系统信息显示、Webhook 和 Web 管理界面设置；账号、登录限制、`auth_key` 等运行时读取的配置同时更新。以下变更需要重启才生效，重载时日志会提示：
+每次重载在日志中写一行结果，接口返回同样的内容：已生效的设置、需要重启的设置和失败项。配置文件读取或解析失败时什么都不变。某项设置应用失败（例如 Web 管理界面无法按新设置建立）时整次重载撤销，恢复原配置并应用回去。
 
-- Web、HTTP/HTTPS/HTTP3、客户端连接、P2P、pprof 的监听设置
+立即生效：
+
+- `log_level`、`ntp_server`、`ntp_interval`、`system_info_display`、Webhook 设置、`flow_limit_type`、`client_history_limit`
+- Web 管理界面：`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`instance_key_file`、`appname`、账号和 TOTP、`auth_key`、`auth_crypt_key`、`allow_x_real_ip`、`trusted_proxy_ips`、用户登录与注册开关、各项 `allow_*` 功能开关、验证码与 PoW、登录封禁与登录名单、`ip_register_max_hours`、客户端连接地址的显示设置、`http_proxy_access_port`、`https_proxy_access_port`
+- 运行时读取的：`allow_local_proxy`（之后启动的隧道）、`allow_secret_link`、`allow_secret_local`、`http_add_origin_header`、`auth_time_window`
+
+以下变更需要重启才生效，重载时列出：
+
+- Web、HTTP/HTTPS/HTTP3、客户端连接、P2P、IP 登记页、pprof 的监听设置，Web 管理界面的 HTTPS 证书
 - QUIC 传输参数、日志输出方式（级别除外）
-- `timezone`、`dns_server`、`secure_mode`、`allow_ports`、`public_vkey`、`visitor_vkey`
-- `bridge_select_mode`、客户端连接证书
-- `geoip_path`、`geosite_path`、`acl_max_rules`
+- `timezone`、`dns_server`、`secure_mode`、`allow_ports`、`public_vkey`、`visitor_vkey`、`disconnect_timeout`、`mux_ping_interval`、`flow_store_interval`
+- `bridge_select_mode`、客户端连接证书、`bridge_type` 与各连接方式开关
+- 域名转发：错误页、`http_proxy_response_timeout`、`bridge_http3`、`force_auto_ssl`、SSL 证书与 ACME 设置、`x_nps_http_only`
+- P2P 设置、`geoip_path`、`geosite_path`、`acl_max_rules`
 
 ## 停止和重启
 

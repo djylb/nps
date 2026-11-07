@@ -23,6 +23,7 @@ func (s stubSystemService) BridgeDisplay(*servercfg.Snapshot, string) BridgeDisp
 func (stubSystemService) RegisterManagementAccess(string, []int, bool) {}
 func (stubSystemService) UpdateServer() (string, error)                { return "", nil }
 func (stubSystemService) GeoDataStatus() GeoDataStatus                 { return GeoDataStatus{} }
+func (stubSystemService) ReloadConfig() servercfg.Report               { return servercfg.Report{} }
 func (stubSystemService) UpdateGeoData(string) (GeoDataStatus, error) {
 	return GeoDataStatus{}, nil
 }
