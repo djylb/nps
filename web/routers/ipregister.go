@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/web/framework"
 	"github.com/djylb/nps/web/ui"
 	"github.com/gin-gonic/gin"
@@ -15,14 +15,14 @@ import (
 // static files and captcha, behind the global access lists.
 func InitIPRegister() http.Handler {
 	state := NewState(nil)
-	ui.SetRoot(filepath.Join(common.GetRunPath(), "web", "views"))
+	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))
 	engine := gin.New()
 	// The visitor address comes from webapi.VisitorIP; forwarding headers
 	// are not trusted from any peer.
 	_ = engine.SetTrustedProxies(nil)
 	engine.Use(gin.Recovery())
 	engine.Use(globalFirewallMiddleware(state))
-	engine.Static("/static", filepath.Join(common.GetRunPath(), "web", "static"))
+	engine.Static("/static", filepath.Join(runenv.GetRunPath(), "web", "static"))
 	engine.GET("/", handle(state.App.StandaloneIPRegisterPage))
 	engine.GET("/ip/register", handle(state.App.StandaloneIPRegisterPage))
 	engine.POST("/ip/register", handle(state.App.IPRegister))

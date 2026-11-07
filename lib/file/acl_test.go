@@ -6,10 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -101,8 +99,8 @@ func TestLoadUsesLegacyAccessListsAsTheyAre(t *testing.T) {
 func TestLoadObsoleteClientFile(t *testing.T) {
 	dir := t.TempDir()
 	writeConf(t, dir, "clients.json",
-		`{"Id":3,"VerifyKey":"k3","Status":true,"Cnf":{},"Flow":{},"BlackIpList":["1.1.1.1","x y"]}`+"\n"+common.ConnDataSeq+
-			`{"Id":4,"VerifyKey":"k4","Status":true,"Cnf":{},"Flow":{}}`+"\n"+common.ConnDataSeq)
+		`{"Id":3,"VerifyKey":"k3","Status":true,"Cnf":{},"Flow":{},"BlackIpList":["1.1.1.1","x y"]}`+"\n"+connDataSeq+
+			`{"Id":4,"VerifyKey":"k4","Status":true,"Cnf":{},"Flow":{}}`+"\n"+connDataSeq)
 	db := NewJsonDb(dir)
 	db.LoadClientFromJsonFile()
 	v, ok := db.Clients.Load(3)

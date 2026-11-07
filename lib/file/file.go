@@ -13,13 +13,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/runenv"
 )
 
 func NewJsonDb(runPath string) *JsonDb {
@@ -78,8 +77,8 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 			post.HttpProxy = true
 			post.Socks5Proxy = false
 		}
-		if post.TargetType != common.ConnTCP && post.TargetType != common.ConnUDP {
-			post.TargetType = common.ConnAll
+		if post.TargetType != model.ConnTCP && post.TargetType != model.ConnUDP {
+			post.TargetType = model.ConnAll
 		}
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))
@@ -145,7 +144,7 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 			post.Target = new(model.Target)
 		}
 		if post.CertType == "" {
-			post.CertType = common.GetCertType(post.CertFile)
+			post.CertType = crypt.GetCertType(post.CertFile)
 		}
 		if post.CertHash == "" {
 			post.CertHash = crypt.FNV1a64(post.CertType, post.CertFile, post.KeyFile)
@@ -261,14 +260,14 @@ func (s *JsonDb) GetHostId() int32 {
 
 func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{})) {
 	// 如果文件不存在，则创建空文件
-	if !common.FileExists(filePath) {
+	if !runenv.FileExists(filePath) {
 		if err := createEmptyFile(filePath); err != nil {
 			panic(err)
 		}
 	}
 
 	// 读取文件内容
-	b, err := common.ReadAllFromFile(filePath)
+	b, err := os.ReadFile(filePath)
 	if err != nil {
 		panic(err)
 	}
@@ -299,10 +298,10 @@ func backupUnreadable(filePath string, content []byte) {
 }
 
 func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
-	// 加载旧版的json文件，以"\n"+common.ConnDataSeq分隔
+	// 加载旧版的json文件，以"\n"+connDataSeq分隔
 	var err error
 	// 根据分隔符处理内容
-	for _, v := range strings.Split(string(b), "\n"+common.ConnDataSeq) {
+	for _, v := range strings.Split(string(b), "\n"+connDataSeq) {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			continue
@@ -381,14 +380,14 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 }
 
 func loadSyncMapFromFileWithSingleJson(filePath string, f func(value string)) {
-	if !common.FileExists(filePath) {
+	if !runenv.FileExists(filePath) {
 		if err := createEmptyFile(filePath); err != nil {
 			panic(err)
 		}
 		return
 	}
 
-	b, err := common.ReadAllFromFile(filePath)
+	b, err := os.ReadFile(filePath)
 	if err != nil {
 		panic(err)
 	}
@@ -399,13 +398,13 @@ func loadSyncMapFromFileWithSingleJson(filePath string, f func(value string)) {
 // 创建空文件的辅助函数
 func createEmptyFile(filePath string) error {
 	dir := filepath.Dir(filePath)
-	if !common.FileExists(dir) {
+	if !runenv.FileExists(dir) {
 		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 			return err
 		}
 	}
 
-	if !common.FileExists(filePath) {
+	if !runenv.FileExists(filePath) {
 		file, err := os.Create(filePath)
 		if err != nil {
 			return err
@@ -531,3 +530,6 @@ func syncDir(dir string) {
 	defer func() { _ = d.Close() }()
 	_ = d.Sync()
 }
+
+// connDataSeq separates the records of the old JSON files.
+const connDataSeq = "*#*"

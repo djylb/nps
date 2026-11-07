@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 )
 
 type ManagementShellAssets struct {
@@ -25,7 +25,7 @@ func (a ManagementShellAssets) Clone() ManagementShellAssets {
 }
 
 func DefaultManagementShellAssets(baseURL string) ManagementShellAssets {
-	return ResolveManagementShellAssets(filepath.Join(common.GetRunPath(), "web", "static", "app"), joinShellAssetBase(baseURL, "/static/app"))
+	return ResolveManagementShellAssets(filepath.Join(runenv.GetRunPath(), "web", "static", "app"), joinShellAssetBase(baseURL, "/static/app"))
 }
 
 func ResolveManagementShellAssets(staticRoot, staticBase string) ManagementShellAssets {

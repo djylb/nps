@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 const clientConnectGraceWindow = 3 * time.Second
@@ -86,15 +87,15 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
 				defer cancel()
 				switch strings.ToLower(targetStr) {
-				case common.ConnTCP:
+				case model.ConnTCP:
 					return conn.DialVirtual(ctx, s.VirtualTcpListener, link.RemoteAddr)
-				case common.ConnTLS:
+				case model.ConnTLS:
 					return conn.DialVirtual(ctx, s.VirtualTlsListener, link.RemoteAddr)
-				case common.ConnWS:
+				case model.ConnWS:
 					return conn.DialVirtual(ctx, s.VirtualWsListener, link.RemoteAddr)
-				case common.ConnWSS:
+				case model.ConnWSS:
 					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
-				case common.ConnWeb:
+				case model.ConnWeb:
 					return GetWebServerConn(ctx, link.RemoteAddr)
 				case "ipreg":
 					return GetIPRegisterConn(ctx, link.RemoteAddr)
@@ -106,10 +107,10 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			}
 		}
 		network := "tcp"
-		if link.ConnType == common.ConnUDP {
+		if link.ConnType == model.ConnUDP {
 			network = "udp"
 		}
-		target, err = net.DialTimeout(network, common.FormatAddress(link.Host), linkOpenTimeout(link))
+		target, err = net.DialTimeout(network, netaddr.FormatAddress(link.Host), linkOpenTimeout(link))
 		return
 	}
 

@@ -24,16 +24,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/ipreg"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -43,10 +42,10 @@ import (
 
 func TestDirectPageRenderAndPageAPI(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -350,10 +349,10 @@ func TestAPIInputMiddlewareSupportsJSON(t *testing.T) {
 
 func TestWebBaseURLPrefix(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -454,10 +453,10 @@ func TestWebBaseURLPrefix(t *testing.T) {
 
 func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -495,10 +494,10 @@ func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
 
 func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -542,10 +541,10 @@ func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
 
 func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -581,10 +580,10 @@ func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
 
 func TestCloseUnknownPathWithoutResponseWhenEnabled(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -642,10 +641,10 @@ func TestCloseUnknownPathWithoutResponseWhenEnabled(t *testing.T) {
 
 func TestBootstrapPagesReflectPermissions(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	resetTestDB(t)
@@ -807,10 +806,10 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 
 func TestAuthPageControllerAliases(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -912,10 +911,10 @@ func TestAuthPageControllerAliases(t *testing.T) {
 
 func TestPageCatalogRespectsFeatureFlags(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
@@ -965,10 +964,10 @@ func TestPageCatalogRespectsFeatureFlags(t *testing.T) {
 
 func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
 	defer func() {
-		common.ConfPath = oldConfPath
+		runenv.ConfPath = oldConfPath
 	}()
 
 	resetTestDB(t)
@@ -1196,7 +1195,7 @@ func createTestTunnel(t *testing.T, id int, client *model.Client, port int) *mod
 		Mode:       "tcp",
 		Status:     true,
 		Client:     client,
-		TargetType: common.ConnTCP,
+		TargetType: model.ConnTCP,
 		Target: &model.Target{
 			TargetStr: "127.0.0.1:80",
 		},
@@ -1381,9 +1380,9 @@ func deriveTestSessionKeys(t *testing.T, cfg *servercfg.Snapshot) ([]byte, []byt
 
 func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
-	defer func() { common.ConfPath = oldConfPath }()
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
+	defer func() { runenv.ConfPath = oldConfPath }()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
 		"web_password=secret",
@@ -1445,9 +1444,9 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 
 func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
-	defer func() { common.ConfPath = oldConfPath }()
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
+	defer func() { runenv.ConfPath = oldConfPath }()
 	configPath := writeTestConfig(t, "nps.conf", strings.Join([]string{
 		"web_username=admin",
 		"web_password=secret",
@@ -1509,9 +1508,9 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 
 func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
-	defer func() { common.ConfPath = oldConfPath }()
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
+	defer func() { runenv.ConfPath = oldConfPath }()
 	configPath := writeTestConfig(t, "nps.conf", "web_username=admin\nweb_password=secret\nweb_base_url=\nopen_captcha=false\n")
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -1560,9 +1559,9 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 // of reverse proxies such as Nginx, which then failed the login.
 func TestLoginSetsOneSessionCookie(t *testing.T) {
 	repoRoot := testRepoRoot(t)
-	oldConfPath := common.ConfPath
-	common.ConfPath = repoRoot
-	defer func() { common.ConfPath = oldConfPath }()
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = repoRoot
+	defer func() { runenv.ConfPath = oldConfPath }()
 	configPath := writeTestConfig(t, "nps.conf", "web_username=admin\nweb_password=secret\nweb_base_url=\nopen_captcha=false\nsecure_mode=true\n")
 	if err := servercfg.Load(configPath); err != nil {
 		t.Fatalf("Load() error = %v", err)

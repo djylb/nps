@@ -1,4 +1,4 @@
-package common
+package auth
 
 import (
 	"encoding/base64"
@@ -51,5 +51,39 @@ func TestUsernameOnlyRequiresAuth(t *testing.T) {
 	r.Header.Set("Authorization", basic("user:"))
 	if !CheckAuth(r, "user", "", nil, nil) {
 		t.Fatal("CheckAuth() rejected the configured username with an empty password")
+	}
+}
+
+func TestPowHelpers(t *testing.T) {
+	if ValidatePoW(0, "abc") {
+		t.Fatal("ValidatePoW(bits<1) = true, want false")
+	}
+	found := false
+	for i := 0; i < 64; i++ {
+		if ValidatePoW(1, "seed", string(rune('A'+i))) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("ValidatePoW(1, seed+suffix) never succeeded in search window")
+	}
+	if ValidatePoW(256, "abc") {
+		t.Fatal("ValidatePoW(256, abc) = true, want false")
+	}
+}
+
+func TestTrustedProxyHelpers(t *testing.T) {
+	if !IsTrustedProxy("*", "203.0.113.1:80") {
+		t.Fatal("IsTrustedProxy wildcard = false, want true")
+	}
+	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "10.0.5.9:1234") {
+		t.Fatal("IsTrustedProxy wildcard IPv4 = false, want true")
+	}
+	if !IsTrustedProxy("10.0.*.*,192.168.1.0/24,2001:db8::1", "[2001:db8::1]:443") {
+		t.Fatal("IsTrustedProxy exact IPv6 = false, want true")
+	}
+	if IsTrustedProxy("192.168.1.0/24", "bad-ip") {
+		t.Fatal("IsTrustedProxy(invalid ip) = true, want false")
 	}
 }

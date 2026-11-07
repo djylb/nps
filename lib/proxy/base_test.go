@@ -11,11 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/byterate"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestAcquireForwarding(t *testing.T) {
@@ -103,12 +101,12 @@ func TestAuth(t *testing.T) {
 			errCh <- s.Auth(r, c, "user", "pass", nil, nil)
 		}()
 
-		buf := make([]byte, len(common.UnauthorizedBytes))
+		buf := make([]byte, len(unauthorizedBytes))
 		if _, err := io.ReadFull(clientSide, buf); err != nil {
 			t.Fatalf("Read() unauthorized bytes error = %v", err)
 		}
-		if got := string(buf); got != common.UnauthorizedBytes {
-			t.Fatalf("unauthorized bytes = %q, want %q", got, common.UnauthorizedBytes)
+		if got := string(buf); got != unauthorizedBytes {
+			t.Fatalf("unauthorized bytes = %q, want %q", got, unauthorizedBytes)
 		}
 
 		err := <-errCh
@@ -124,11 +122,11 @@ func TestWriteConnFail(t *testing.T) {
 	defer func() { _ = clientSide.Close() }()
 	go s.writeConnFail(serverSide)
 
-	buf := make([]byte, len(common.ConnectionFailBytes)+len(s.ErrorContent))
+	buf := make([]byte, len(connectionFailBytes)+len(s.ErrorContent))
 	if _, err := io.ReadFull(clientSide, buf); err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	want := common.ConnectionFailBytes + "detail"
+	want := connectionFailBytes + "detail"
 	if got := string(buf); got != want {
 		t.Fatalf("writeConnFail() bytes = %q, want %q", got, want)
 	}
@@ -167,12 +165,12 @@ func TestWriteConnFailWithNilErrorContent(t *testing.T) {
 	defer func() { _ = clientSide.Close() }()
 	go s.writeConnFail(serverSide)
 
-	buf := make([]byte, len(common.ConnectionFailBytes))
+	buf := make([]byte, len(connectionFailBytes))
 	if _, err := io.ReadFull(clientSide, buf); err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if got := string(buf); !strings.HasPrefix(got, common.ConnectionFailBytes) {
-		t.Fatalf("writeConnFail() bytes = %q, want prefix %q", got, common.ConnectionFailBytes)
+	if got := string(buf); !strings.HasPrefix(got, connectionFailBytes) {
+		t.Fatalf("writeConnFail() bytes = %q, want prefix %q", got, connectionFailBytes)
 	}
 
 	_ = serverSide.Close()

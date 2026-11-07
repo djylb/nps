@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"strconv"
@@ -8,14 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
-	"context"
-
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 // routeNode is one connected npc instance: its mux stream carries the links
@@ -111,7 +108,7 @@ func freePort(t *testing.T) int {
 // openRoute opens one link of route the way the proxies do.
 func openRoute(b *Bridge, clientId int, r model.Route) error {
 	return r.Target.Dial(func(addr string) (bool, error) {
-		link := conn.NewLink(common.ConnTCP, addr, false, false, "", false)
+		link := conn.NewLink(model.ConnTCP, addr, false, false, "", false)
 		link.Option.Node = r.Node
 		c, err := b.Session(clientId).OpenLink(link, 0)
 		if err == nil {
@@ -243,7 +240,7 @@ func TestLegacyClientHasNoRoutes(t *testing.T) {
 }
 
 func TestLinkNodeStaysOffTheWire(t *testing.T) {
-	link := conn.NewLink(common.ConnTCP, "h", false, false, "", false)
+	link := conn.NewLink(model.ConnTCP, "h", false, false, "", false)
 	plain, _ := json.Marshal(link)
 	link.Option.Node = "a"
 	routed, _ := json.Marshal(link)
@@ -255,7 +252,7 @@ func TestLinkNodeStaysOffTheWire(t *testing.T) {
 func TestDeadRouteNodeDoesNotCloseTheClient(t *testing.T) {
 	b, client := routeFixture(t)
 	joinRouteNode(t, b, client.Id, "a")
-	link := conn.NewLink(common.ConnTCP, "h", false, false, "", false)
+	link := conn.NewLink(model.ConnTCP, "h", false, false, "", false)
 	link.Option.Node = "gone"
 	if _, err := b.Session(client.Id).OpenLink(link, 0); err == nil {
 		t.Fatal("a link through a missing node succeeded")
@@ -346,7 +343,7 @@ func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
 	}
 	b.PruneRoutes(drop, drop)
 	// A web-managed entry of the client asks for any node meanwhile.
-	if _, err := b.Session(client.Id).OpenLink(conn.NewLink(common.ConnTCP, "127.0.0.1:1", false, false, "", false), 0); err == nil {
+	if _, err := b.Session(client.Id).OpenLink(conn.NewLink(model.ConnTCP, "127.0.0.1:1", false, false, "", false), 0); err == nil {
 		t.Fatal("link opened without a tunnel")
 	}
 	if _, ok := b.Client.Load(client.Id); !ok {

@@ -4,9 +4,8 @@ import (
 	"errors"
 
 	"github.com/djylb/nps/lib/model"
-
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/textutil"
 	webservice "github.com/djylb/nps/web/service"
 )
 
@@ -40,7 +39,7 @@ func (a *App) AddClient(c Context) {
 		Remark:           requestEscapedString(c, "remark"),
 		User:             requestEscapedString(c, "u"),
 		Password:         requestEscapedString(c, "p"),
-		Compress:         common.GetBoolByStr(requestEscapedString(c, "compress")),
+		Compress:         textutil.GetBoolByStr(requestEscapedString(c, "compress")),
 		Crypt:            requestBoolValue(c, "crypt"),
 		ConfigConnAllow:  requestBoolValue(c, "config_conn_allow"),
 		RateLimit:        requestIntValue(c, "rate_limit"),
@@ -98,7 +97,7 @@ func (a *App) EditClient(c Context) {
 		Remark:                  requestEscapedString(c, "remark"),
 		User:                    requestEscapedString(c, "u"),
 		Password:                requestEscapedString(c, "p"),
-		Compress:                common.GetBoolByStr(requestEscapedString(c, "compress")),
+		Compress:                textutil.GetBoolByStr(requestEscapedString(c, "compress")),
 		Crypt:                   requestBoolValue(c, "crypt"),
 		ConfigConnAllow:         requestBoolValue(c, "config_conn_allow"),
 		RateLimit:               requestIntValue(c, "rate_limit"),

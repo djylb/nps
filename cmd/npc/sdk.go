@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/djylb/nps/client"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/version"
 )
 
@@ -59,7 +59,7 @@ func Logs() *C.char {
 
 //export SetDnsServer
 func SetDnsServer(dnsServer *C.char) {
-	common.SetCustomDNS(C.GoString(dnsServer))
+	netaddr.SetCustomDNS(C.GoString(dnsServer))
 }
 
 func main() {

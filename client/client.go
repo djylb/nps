@@ -14,10 +14,10 @@ import (
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 type TRPClient struct {
@@ -279,15 +279,15 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		_ = src.Close()
 		return
 	}
-	lk.Host = common.FormatAddress(lk.Host)
+	lk.Host = netaddr.FormatAddress(lk.Host)
 	//connect to target if conn type is tcp or udp
 	var targetConn net.Conn
-	if LocalIPForward && s.localIP != "" && common.IsPublicHost(lk.Host) {
+	if LocalIPForward && s.localIP != "" && netaddr.IsPublicHost(lk.Host) {
 		dialer := net.Dialer{Timeout: lk.Option.Timeout}
 		if lk.ConnType == "udp" {
-			dialer.LocalAddr = common.BuildUDPBindAddr(s.localIP)
+			dialer.LocalAddr = netaddr.BuildUDPBindAddr(s.localIP)
 		} else {
-			dialer.LocalAddr = common.BuildTCPBindAddr(s.localIP)
+			dialer.LocalAddr = netaddr.BuildTCPBindAddr(s.localIP)
 		}
 		targetConn, err = dialer.DialContext(s.ctx, lk.ConnType, lk.Host)
 	} else {

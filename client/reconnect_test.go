@@ -12,12 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // serveNameDNS answers A and AAAA queries from ips and returns its address.
@@ -74,7 +73,7 @@ func TestDialTargets(t *testing.T) {
 	useTestDNS(t)
 	var ips atomic.Value
 	ips.Store([]net.IP{net.ParseIP("::1"), net.ParseIP("192.0.2.1"), net.ParseIP("192.0.2.2")})
-	common.SetCustomDNS(serveNameDNS(t, &ips))
+	netaddr.SetCustomDNS(serveNameDNS(t, &ips))
 
 	const name = "npc-test.example.invalid:8024"
 	if got := dialTargets("tcp", name); !slices.Equal(got, []string{name}) {
@@ -84,7 +83,7 @@ func TestDialTargets(t *testing.T) {
 		t.Fatalf("kcp targets of an IP = %v", got)
 	}
 	want := []string{"192.0.2.1:8024", "192.0.2.2:8024", "[::1]:8024"}
-	for _, tp := range []string{"kcp", common.ConnQUIC} {
+	for _, tp := range []string{"kcp", model.ConnQUIC} {
 		got := dialTargets(tp, name)
 		slices.Sort(got)
 		if !slices.Equal(got, want) {

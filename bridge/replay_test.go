@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/djylb/guard/replay"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 )
 
 func TestAuthReplayTimeWindow(t *testing.T) {
 	var r authReplay
-	now := common.TimeNow().Unix()
+	now := clock.Now().Unix()
 	for _, tc := range []struct {
 		ts, window int64
 		valid      bool
@@ -32,7 +32,7 @@ func TestAuthReplayTimeWindow(t *testing.T) {
 
 func TestAuthReplayRejectsReplays(t *testing.T) {
 	var r authReplay
-	now := common.TimeNow().Unix()
+	now := clock.Now().Unix()
 	if err := r.check(now, []byte("mac"), 300); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestAuthReplayRejectsReplays(t *testing.T) {
 
 func TestAuthReplayConcurrentRequests(t *testing.T) {
 	var r authReplay
-	now := common.TimeNow().Unix()
+	now := clock.Now().Unix()
 	var accepted atomic.Int32
 	var wg sync.WaitGroup
 	for range 32 {

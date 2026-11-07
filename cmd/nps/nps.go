@@ -5,6 +5,7 @@ import (
 	goflag "flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,16 +13,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server"
@@ -89,9 +91,9 @@ func main() {
 	if cp := strings.TrimSpace(*confPath); cp != "" {
 		if servercfg.IsSupportedConfigPath(cp) {
 			servercfg.SetPreferredPath(cp)
-			common.ConfPath = filepath.Dir(cp)
+			runenv.ConfPath = filepath.Dir(cp)
 		} else {
-			common.ConfPath = cp
+			runenv.ConfPath = cp
 		}
 	}
 
@@ -126,7 +128,7 @@ func main() {
 		log.Fatalln("load config file error", err.Error())
 	}
 	cfg := servercfg.Current()
-	geoIPPath, geoSitePath := common.GetPath(cfg.App.GeoIPPath), common.GetPath(cfg.App.GeoSitePath)
+	geoIPPath, geoSitePath := runenv.GetPath(cfg.App.GeoIPPath), runenv.GetPath(cfg.App.GeoSitePath)
 	// before any access list is compiled
 	acl.SetGeoData(geoIPPath, geoSitePath)
 	acl.SetMaxRules(cfg.App.AclMaxRules)
@@ -161,26 +163,26 @@ func main() {
 	pprofIp := cfg.App.PprofIP
 	pprofPort := cfg.App.PprofPort
 	if pprofPort != "0" {
-		pprofAddr := common.BuildAddress(pprofIp, pprofPort)
-		common.InitPProfByAddr(pprofAddr)
+		pprofAddr := net.JoinHostPort(pprofIp, pprofPort)
+		runenv.InitPProfByAddr(pprofAddr)
 	}
 
-	err := common.SetTimezone(cfg.App.Timezone)
+	err := clock.SetTimezone(cfg.App.Timezone)
 	if err != nil {
 		logs.Warn("Set timezone error %v", err)
 	}
-	common.SetCustomDNS(cfg.App.DNSServer)
+	netaddr.SetCustomDNS(cfg.App.DNSServer)
 	logType := cfg.Log.Type
 	logLevel = cfg.Log.Level
 	logPath := cfg.Log.Path
 	if logPath == "" || strings.EqualFold(logPath, "on") || strings.EqualFold(logPath, "true") {
-		logPath = common.GetLogPath()
+		logPath = runenv.GetLogPath()
 	}
 	if !strings.EqualFold(logPath, "off") && !strings.EqualFold(logPath, "false") && !strings.EqualFold(logPath, "docker") && logPath != "/dev/null" {
 		if !filepath.IsAbs(logPath) {
-			logPath = filepath.Join(common.GetRunPath(), logPath)
+			logPath = filepath.Join(runenv.GetRunPath(), logPath)
 		}
-		if common.IsWindows() {
+		if runenv.IsWindows() {
 			logPath = strings.ReplaceAll(logPath, "\\", "\\\\")
 		}
 	}
@@ -301,9 +303,9 @@ func applyRuntime(cfg *servercfg.Snapshot) {
 }
 
 func applyNtp(cfg *servercfg.Snapshot) {
-	common.SetNtpServer(cfg.App.NTPServer)
-	common.SetNtpInterval(time.Duration(cfg.App.NTPInterval) * time.Minute)
-	go common.SyncTime()
+	clock.SetNtpServer(cfg.App.NTPServer)
+	clock.SetNtpInterval(time.Duration(cfg.App.NTPInterval) * time.Minute)
+	go clock.Sync()
 }
 
 func newServiceConfig() *service.Config {
@@ -414,8 +416,8 @@ func run() {
 	applyNtp(cfg)
 	connection.InitConnectionService()
 	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
-	//crypt.InitTls(filepath.Join(common.GetRunPath(), "conf", "server.pem"), filepath.Join(common.GetRunPath(), "conf", "server.key"))
-	cert, err := common.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
+	//crypt.InitTls(filepath.Join(runenv.GetRunPath(), "conf", "server.pem"), filepath.Join(runenv.GetRunPath(), "conf", "server.key"))
+	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
 	if err != nil {
 		logs.Info("Using randomly generated certificate.")
 	}

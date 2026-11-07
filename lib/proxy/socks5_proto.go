@@ -4,10 +4,9 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 func socks5ConnectReplyAddr(task *model.Tunnel, clientConn net.Conn) netx.Addr {
@@ -29,7 +28,7 @@ func socks5UDPReplyAddr(task *model.Tunnel, tcpConn net.Conn, udpLocal net.Addr,
 func socks5ReplyAddrFromNetAddr(task *model.Tunnel, tcpLocal, udpLocal net.Addr, fallbackPort int, clientIP ...net.IP) netx.Addr {
 	var client net.IP
 	if len(clientIP) > 0 {
-		client = common.NormalizeIP(clientIP[0])
+		client = netaddr.NormalizeIP(clientIP[0])
 	}
 	wantV6 := client != nil && client.To4() == nil
 
@@ -67,8 +66,8 @@ func taskPort(task *model.Tunnel) int {
 func socks5ReplyIP(task *model.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP, wantV6 bool) net.IP {
 	publicClient := isGlobalIP(client)
 	trySpecificIP := func(value net.IP) net.IP {
-		value = common.NormalizeIP(value)
-		if value == nil || value.IsUnspecified() || common.IsZeroIP(value) {
+		value = netaddr.NormalizeIP(value)
+		if value == nil || value.IsUnspecified() || netaddr.IsZeroIP(value) {
 			return nil
 		}
 		if (value.To4() == nil) != wantV6 {

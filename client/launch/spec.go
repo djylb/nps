@@ -19,8 +19,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/textutil"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -276,11 +277,11 @@ func expandDirect(name string, values map[string]any, trusted bool) ([]Profile, 
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		list := common.HandleArrEmptyVal(strings.Split(strings.ReplaceAll(text, "，", ","), ","))
+		list := textutil.HandleArrEmptyVal(strings.Split(strings.ReplaceAll(text, "，", ","), ","))
 		lists[key] = &list
 		ptrs = append(ptrs, &list)
 	}
-	count := common.ExtendArrs(ptrs...)
+	count := textutil.ExtendArrs(ptrs...)
 	var out []Profile
 	for i := range count {
 		node := maps.Clone(values)
@@ -404,7 +405,7 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 			return nil, errors.New("a local server requires a password")
 		}
 		if l.TargetType == "" {
-			l.TargetType = common.ConnAll
+			l.TargetType = model.ConnAll
 		}
 	}
 	if name == "" {

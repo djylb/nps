@@ -7,21 +7,23 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/server/connection"
 )
 
@@ -71,7 +73,7 @@ func NewHttpProxy(bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPor
 func (s *HttpProxy) Start() error {
 	cfg := servercfg.Current()
 	var err error
-	s.ErrorContent, err = common.ReadAllFromFile(common.ResolvePath(cfg.Proxy.ErrorPage))
+	s.ErrorContent, err = os.ReadFile(runenv.ResolvePath(cfg.Proxy.ErrorPage))
 	if err != nil {
 		s.ErrorContent = []byte("nps 404")
 	}
@@ -99,7 +101,7 @@ func (s *HttpProxy) Start() error {
 		certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
 	}
 	certmagic.Default.Storage = &certmagic.FileStorage{
-		Path: common.ResolvePath(cfg.Proxy.SSL.Path),
+		Path: runenv.ResolvePath(cfg.Proxy.SSL.Path),
 	}
 	s.Magic = certmagic.NewDefault()
 	if certmagic.DefaultACME.CA == certmagic.ZeroSSLProductionCA {
@@ -203,7 +205,7 @@ func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
 		return nil
 	}
 
-	content, err := common.ReadAllFromFile(common.ResolvePath(path))
+	content, err := os.ReadFile(runenv.ResolvePath(path))
 	if err != nil {
 		logs.Warn("Failed to load error page from %s: %v", path, err)
 		return nil
@@ -261,7 +263,7 @@ func (s *HttpProxy) changeHostAndHeader(out, in *http.Request, host string, head
 		if out.Header.Get("X-Forwarded-Host") == "" && host == "" {
 			out.Header.Set("X-Forwarded-Host", in.Host)
 		}
-		out.Header.Set("X-Real-IP", common.GetIpByAddr(in.RemoteAddr))
+		out.Header.Set("X-Real-IP", netaddr.GetIpByAddr(in.RemoteAddr))
 	}
 
 	if header == "" {
@@ -303,7 +305,7 @@ func (s *HttpProxy) ChangeRedirectURL(r *http.Request, url string) string {
 // with an unknown variable, is left out.
 func parseHeaderRules(text string) []httprewrite.Rule {
 	var rules []httprewrite.Rule
-	for _, line := range common.SplitLines(text) {
+	for _, line := range textutil.SplitLines(text) {
 		rs, err := httprewrite.ParseRules(html.UnescapeString(line), ruleVars)
 		if err != nil {
 			logs.Debug("header rule %q: %v", line, err)

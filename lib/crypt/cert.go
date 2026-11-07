@@ -1,48 +1,30 @@
-package common
+package crypt
 
 import (
 	"crypto/tls"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/djylb/netx/tlsconn"
+	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/textutil"
 )
 
-// ReadAllFromFile Read file content by file path
-func ReadAllFromFile(filePath string) ([]byte, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return io.ReadAll(f)
-}
-
-func GetPath(filePath string) string {
-	if !filepath.IsAbs(filePath) {
-		filePath = filepath.Join(GetRunPath(), filePath)
-	}
-	path, err := filepath.Abs(filePath)
-	if err != nil {
-		return filePath
-	}
-	return path
-}
-
+// GetCertContent returns filePath itself when it is PEM text containing
+// header, or else the content of that file, relative to the run path.
 func GetCertContent(filePath, header string) (string, error) {
 	if filePath == "" || strings.Contains(filePath, header) {
-		return NormalizeNewlines(filePath), nil
+		return textutil.NormalizeNewlines(filePath), nil
 	}
 	if !filepath.IsAbs(filePath) {
-		filePath = filepath.Join(GetRunPath(), filePath)
+		filePath = filepath.Join(runenv.GetRunPath(), filePath)
 	}
-	content, err := ReadAllFromFile(filePath)
+	content, err := os.ReadFile(filePath)
 	if err != nil || !strings.Contains(string(content), header) {
 		return "", err
 	}
-	return NormalizeNewlines(string(content)), nil
+	return textutil.NormalizeNewlines(string(content)), nil
 }
 
 // LoadKeyPair loads a certificate and its key, each given as PEM text or as
@@ -59,6 +41,8 @@ func LoadKeyPair(certFile, keyFile string) (tls.Certificate, error) {
 	return tlsconn.ParseKeyPair([]byte(certContent), []byte(keyContent))
 }
 
+// GetCertType reports whether s is "empty", PEM "text", an existing "file"
+// or "invalid".
 func GetCertType(s string) string {
 	if s == "" {
 		return "empty"
@@ -70,12 +54,4 @@ func GetCertType(s string) string {
 		return "file"
 	}
 	return "invalid"
-}
-
-// FileExists reports whether the named file or directory exists.
-func FileExists(name string) bool {
-	if _, err := os.Stat(name); err != nil && os.IsNotExist(err) {
-		return false
-	}
-	return true
 }

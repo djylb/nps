@@ -1,11 +1,11 @@
-package common
+package clock
 
 import (
 	"testing"
 	"time"
 )
 
-func TestSyncTimeFailurePreservesOffset(t *testing.T) {
+func TestSyncFailurePreservesOffset(t *testing.T) {
 	timeMutex.Lock()
 	oldOffset, oldServer, oldInterval, oldLast := timeOffset, ntpServer, syncInterval, lastSyncMono
 	timeOffset = 10 * time.Minute
@@ -19,7 +19,7 @@ func TestSyncTimeFailurePreservesOffset(t *testing.T) {
 		timeMutex.Unlock()
 	})
 
-	SyncTime()
+	Sync()
 	timeMutex.RLock()
 	offset, last := timeOffset, lastSyncMono
 	timeMutex.RUnlock()

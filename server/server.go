@@ -11,15 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
@@ -433,7 +432,7 @@ func dealClientData() {
 				v.IsConnect = v.Status
 				v.Version = version.VERSION
 				v.Mode = "local"
-				v.LocalAddr = common.GetOutboundIP().String()
+				v.LocalAddr = netaddr.GetOutboundIP().String()
 				// Add Local Client
 				if !Bridge.Connected(v.Id) && v.Status {
 					Bridge.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewLocalNode("127.0.0.1", version.VERSION)))

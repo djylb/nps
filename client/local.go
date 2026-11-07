@@ -10,16 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
 )
 
@@ -256,12 +254,12 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 	}
 
 	var errs []error
-	if l.TargetType == common.ConnAll || l.TargetType == common.ConnTCP {
+	if l.TargetType == model.ConnAll || l.TargetType == model.ConnTCP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local tcp listener on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)))
 	}
-	if l.TargetType == common.ConnAll || l.TargetType == common.ConnUDP {
+	if l.TargetType == model.ConnAll || l.TargetType == model.ConnUDP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local udp listener on port %d", l.Port), proxy.NewUdpModeServer(pb, task, true)))

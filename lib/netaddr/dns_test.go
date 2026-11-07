@@ -1,4 +1,4 @@
-package common
+package netaddr
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestGetCustomDNSDefaultWhenUnset(t *testing.T) {
 		customDnsAddr = oldCustom
 	})
 
-	if got := GetCustomDNS(); got != "8.8.8.8:53" {
+	if got := customDNS(); got != "8.8.8.8:53" {
 		t.Fatalf("GetCustomDNS() = %q, want %q", got, "8.8.8.8:53")
 	}
 }
@@ -42,7 +42,7 @@ func TestSetCustomDNSFormatsAddress(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			SetCustomDNS(tc.input)
-			if got := GetCustomDNS(); got != tc.want {
+			if got := customDNS(); got != tc.want {
 				t.Fatalf("GetCustomDNS() = %q, want %q", got, tc.want)
 			}
 		})
@@ -58,9 +58,9 @@ func TestSetCustomDNSEmptyInputKeepsPreviousValue(t *testing.T) {
 	})
 
 	SetCustomDNS("9.9.9.9")
-	gotBefore := GetCustomDNS()
+	gotBefore := customDNS()
 	SetCustomDNS("")
-	if gotAfter := GetCustomDNS(); gotAfter != gotBefore {
+	if gotAfter := customDNS(); gotAfter != gotBefore {
 		t.Fatalf("empty SetCustomDNS should keep previous value: before=%q after=%q", gotBefore, gotAfter)
 	}
 }

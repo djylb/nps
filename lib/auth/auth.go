@@ -1,10 +1,10 @@
-package common
+// Package auth checks Basic credentials against single and multiple
+// accounts, validates proof-of-work answers and matches trusted proxies.
+package auth
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"math/big"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -12,20 +12,8 @@ import (
 
 	"github.com/djylb/geomatch"
 	"github.com/djylb/netx/forwarded"
+	"github.com/djylb/nps/lib/textutil"
 )
-
-func RandomBytes(maxLen int) ([]byte, error) {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(maxLen+1)))
-	if err != nil {
-		return nil, err
-	}
-	n := int(nBig.Int64())
-	buf := make([]byte, n)
-	if _, err = rand.Read(buf); err != nil {
-		return nil, err
-	}
-	return buf, nil
-}
 
 func ValidatePoW(bits int, parts ...string) bool {
 	if bits < 1 || bits > 256 {
@@ -181,7 +169,7 @@ func DealMultiUser(s string) map[string]string {
 		return nil
 	}
 	multiUserMap := make(map[string]string)
-	for _, v := range SplitLines(s) {
+	for _, v := range textutil.SplitLines(s) {
 		if strings.TrimSpace(v) == "" {
 			continue
 		}

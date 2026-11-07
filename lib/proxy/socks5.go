@@ -7,13 +7,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 )
 
 // newSocks5Server returns the SOCKS5 server of s. Bind sets its UDP socket.
@@ -41,7 +40,7 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	// clientConn wraps req.Conn only, which every path below closes or relays.
 	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(req.Conn)
-	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, common.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, model.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
 		rep := socks5.ReplyGeneralFailure
@@ -58,7 +57,7 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 		_ = target.Close()
 		return true, err
 	}
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, model.ConnTCP)
 	return true, nil
 }
 
@@ -70,7 +69,7 @@ func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
 	}
 	return []socks5.Authenticator{socks5.UserPassAuth{Check: func(_ context.Context, _ net.Conn, username, password string) (bool, error) {
 		user, passwd := socks5ClientCredentials(s.Task)
-		return common.CheckAuthWithAccountMap(username, password, user, passwd,
+		return auth.CheckAuthWithAccountMap(username, password, user, passwd,
 			model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)), nil
 	}}}
 }
@@ -155,7 +154,7 @@ func socks5NeedsAuth(task *model.Tunnel) bool {
 		return false
 	}
 	user, passwd := socks5ClientCredentials(task)
-	return common.NeedsAuth(user, passwd,
+	return auth.NeedsAuth(user, passwd,
 		model.GetAccountMap(task.MultiAccount), model.GetAccountMap(task.UserAuth))
 }
 

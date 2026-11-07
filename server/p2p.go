@@ -8,9 +8,9 @@ import (
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/holepunch/stun"
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 // p2pSTUNOff is the p2p_stun_servers value that hands the clients no STUN
@@ -67,14 +67,14 @@ func p2pSTUNServers(v string) []string {
 	case strings.EqualFold(v, p2pSTUNOff):
 		return nil
 	}
-	return common.HandleArrEmptyVal(strings.Split(strings.ReplaceAll(v, " ", ""), ","))
+	return textutil.HandleArrEmptyVal(strings.Split(strings.ReplaceAll(v, " ", ""), ","))
 }
 
 // p2pIPv6Configured reports whether p2p_ip lets IPv6 be announced: it is
 // empty, or names :: , an IPv6 address or a host name (which may have AAAA
 // records).
 func p2pIPv6Configured(p2pIP string) bool {
-	entries := common.HandleArrEmptyVal(strings.Split(p2pIP, ","))
+	entries := textutil.HandleArrEmptyVal(strings.Split(p2pIP, ","))
 	if len(entries) == 0 {
 		return true
 	}

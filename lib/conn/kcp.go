@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"net"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/xtaci/kcp-go/v5"
 )
 
@@ -33,7 +33,7 @@ func DialKCPWithLocalIP(raddr string, localIP string) (*kcp.UDPSession, error) {
 		network = "udp"
 	}
 
-	conn, err := net.ListenUDP(network, common.BuildUDPBindAddr(localIP))
+	conn, err := net.ListenUDP(network, netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
 		return nil, err
 	}

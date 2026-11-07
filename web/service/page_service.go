@@ -5,11 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/djylb/nps/lib/model"
-
 	npsbridge "github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/ui"
 )
@@ -247,7 +246,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 			"system_info_display":        cfg.Feature.SystemInfoDisplay,
 		},
 	}
-	if common.IsWindows() {
+	if runenv.IsWindows() {
 		commonData.WindowsSuffix = ".exe"
 	}
 	if bridge.TCP.Enabled {

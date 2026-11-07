@@ -6,7 +6,7 @@ package conn
 import (
 	"net"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 func NewUdpConnByAddr(addr string) (net.PacketConn, error) {
@@ -17,17 +17,17 @@ func NewUdpConnByAddr(addr string) (net.PacketConn, error) {
 	if exact {
 		return net.ListenPacket(network, bindAddr)
 	}
-	port := common.GetPortStrByAddr(addr)
+	port := netaddr.GetPortStrByAddr(addr)
 
 	var conns []net.PacketConn
 
-	if ip4, e := common.GetLocalUdp4IP(); e == nil && ip4 != nil && !ip4.IsUnspecified() {
+	if ip4, e := netaddr.LocalUDP4IP(); e == nil && ip4 != nil && !ip4.IsUnspecified() {
 		if pc4, e4 := net.ListenPacket("udp4", net.JoinHostPort(ip4.String(), port)); e4 == nil {
 			conns = append(conns, pc4)
 		}
 	}
 
-	if ip6, e := common.GetLocalUdp6IP(); e == nil && ip6 != nil && !ip6.IsUnspecified() {
+	if ip6, e := netaddr.LocalUDP6IP(); e == nil && ip6 != nil && !ip6.IsUnspecified() {
 		if pc6, e6 := net.ListenPacket("udp6", net.JoinHostPort(ip6.String(), port)); e6 == nil {
 			conns = append(conns, pc6)
 		}

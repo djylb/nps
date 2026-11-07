@@ -4,12 +4,11 @@ import (
 	"errors"
 	"net"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 type SecretServer struct {
@@ -34,7 +33,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	}
 	defer release()
 
-	connType := common.ConnTCP
+	connType := model.ConnTCP
 	host := ""
 	localProxy := false
 	needAck := false
@@ -55,9 +54,9 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 		if s.allowSecretLink {
 			connType = lk.ConnType
 			if lk.Host != "" {
-				host = common.FormatAddress(lk.Host)
+				host = netaddr.FormatAddress(lk.Host)
 				if s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(host) {
-					logs.Warn("secret dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(host))
+					logs.Warn("secret dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, netaddr.ExtractHost(host))
 					_ = c.Close()
 					return errProxyAccessDenied
 				}
@@ -68,12 +67,12 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 				localProxy = s.Task.Target.LocalProxy
 			}
 		} else {
-			if s.Task.TargetType == common.ConnAll {
+			if s.Task.TargetType == model.ConnAll {
 				switch lk.ConnType {
-				case common.ConnUDP:
-					connType = common.ConnUDP
+				case model.ConnUDP:
+					connType = model.ConnUDP
 				default:
-					connType = common.ConnTCP
+					connType = model.ConnTCP
 				}
 			} else {
 				connType = s.Task.TargetType
@@ -121,7 +120,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	// for local ones.
 	proxyProtocol := route.Target.ProxyProtocol
 	visitor := c.Conn
-	if connType == common.ConnUDP {
+	if connType == model.ConnUDP {
 		// The visitor stream carries length-framed datagrams, where a single
 		// stream-level PROXY header would be taken for a frame.
 		proxyProtocol = 0

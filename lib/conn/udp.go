@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // smartUdpReadErrorEnqueueTimeout bounds how long a read loop waits to queue
@@ -51,7 +51,7 @@ func NewSmartUdpConn(conns []net.PacketConn, addr *net.UDPAddr) *SmartUdpConn {
 func (s *SmartUdpConn) readLoop(c net.PacketConn) {
 	defer s.wg.Done()
 	for {
-		buf := common.BufPool.Get()
+		buf := BufPool.Get()
 		n, addr, err := c.ReadFrom(buf)
 		s.mu.Lock()
 		s.lastConn = c
@@ -60,13 +60,13 @@ func (s *SmartUdpConn) readLoop(c net.PacketConn) {
 
 		select {
 		case <-s.quit:
-			common.BufPool.Put(buf)
+			BufPool.Put(buf)
 			return
 		case s.packetCh <- pkt:
 			// delivered, buffer will be returned in ReadFrom or on flush
 		default:
 			if err == nil || !s.enqueueReadError(pkt) {
-				common.BufPool.Put(buf)
+				BufPool.Put(buf)
 			}
 		}
 
@@ -96,7 +96,7 @@ func (s *SmartUdpConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	if !ok {
 		return 0, nil, io.EOF
 	}
-	defer common.BufPool.Put(pkt.buf)
+	defer BufPool.Put(pkt.buf)
 	if pkt.err != nil {
 		return 0, nil, pkt.err
 	}
@@ -147,7 +147,7 @@ func (s *SmartUdpConn) Close() error {
 		s.wg.Wait()
 		close(s.packetCh)
 		for pkt := range s.packetCh {
-			common.BufPool.Put(pkt.buf)
+			BufPool.Put(pkt.buf)
 		}
 	})
 	return s.closeErr
@@ -189,13 +189,13 @@ func resolveUDPBindTarget(addr string) (*net.UDPAddr, string, string, bool, erro
 	if err != nil {
 		return nil, "", "", false, err
 	}
-	host := common.GetIpByAddr(addr)
+	host := netaddr.GetIpByAddr(addr)
 	if host == "" {
 		return udpAddr, "", "", false, nil
 	}
-	ip := common.NormalizeIP(udpAddr.IP)
+	ip := netaddr.NormalizeIP(udpAddr.IP)
 	if ip == nil {
-		ip = common.NormalizeIP(net.ParseIP(host))
+		ip = netaddr.NormalizeIP(net.ParseIP(host))
 	}
 	if ip == nil {
 		return nil, "", "", false, fmt.Errorf("invalid udp bind ip %q", host)

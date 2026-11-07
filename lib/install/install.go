@@ -17,7 +17,7 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/selfupdate"
 )
@@ -160,7 +160,7 @@ func copyServerAssets(srcDir, destDir string) error {
 // location and returns that path. Windows keeps the executable where it is.
 // Helper copies named <bin>-update left by older installs are removed.
 func installExecutable(srcDir, bin string) (string, error) {
-	if common.IsWindows() {
+	if runenv.IsWindows() {
 		exe, err := currentExecutable()
 		if err != nil {
 			return "", err
@@ -236,7 +236,7 @@ func currentExecutable() (string, error) {
 }
 
 func executableName(bin string) string {
-	if common.IsWindows() {
+	if runenv.IsWindows() {
 		return bin + ".exe"
 	}
 	return bin
@@ -257,17 +257,17 @@ func containsFile(paths []string, p string) bool {
 
 // NPC installs the npc executable and returns the path the service should run.
 func NPC() (string, error) {
-	if err := os.MkdirAll(common.GetInstallPath(), 0o755); err != nil {
+	if err := os.MkdirAll(runenv.GetInstallPath(), 0o755); err != nil {
 		return "", err
 	}
-	return installExecutable(common.GetAppPath(), "npc")
+	return installExecutable(runenv.GetAppPath(), "npc")
 }
 
 // NPS installs the nps executable, web assets and, on a fresh install, the
 // config directory. It returns the path the service should run.
 func NPS() (string, error) {
-	path := common.GetInstallPath()
-	appPath := common.GetAppPath()
+	path := runenv.GetInstallPath()
+	appPath := runenv.GetAppPath()
 	log.Println("install path:" + path)
 	if exists, err := pathExists(path); err != nil {
 		return "", err
@@ -288,7 +288,7 @@ func NPS() (string, error) {
 	log.Println("install ok!")
 	log.Println("Static files and configuration files in the current directory will be useless")
 	log.Println("The new configuration file is located in", path, "you can edit them")
-	if !common.IsWindows() {
+	if !runenv.IsWindows() {
 		log.Println(`You can start with:
 nps start|stop|restart|uninstall|update
 anywhere!`)
@@ -297,7 +297,7 @@ anywhere!`)
 nps.exe start|stop|restart|uninstall|update
 now!`)
 	}
-	chMod(common.GetLogPath(), 0777)
+	chMod(runenv.GetLogPath(), 0777)
 	return binPath, nil
 }
 
@@ -381,7 +381,7 @@ func pathExists(path string) (bool, error) {
 }
 
 func chMod(name string, mode os.FileMode) {
-	if !common.IsWindows() {
+	if !runenv.IsWindows() {
 		_ = os.Chmod(name, mode)
 	}
 }

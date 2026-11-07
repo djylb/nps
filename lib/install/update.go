@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/selfupdate"
 	"github.com/shirou/gopsutil/v4/process"
@@ -133,7 +133,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 		u.Files = append(u.Files, selfupdate.File{Member: executableName(bin), Target: t, Mode: 0o755})
 	}
 	if bin == "nps" {
-		run := common.GetRunPath()
+		run := runenv.GetRunPath()
 		u.Files = append(u.Files,
 			selfupdate.File{Member: "web/views", Target: filepath.Join(run, "web", "views"), Dir: true},
 			selfupdate.File{Member: "web/static", Target: filepath.Join(run, "web", "static"), Dir: true},
@@ -183,7 +183,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	}
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			if common.IsWindows() {
+			if runenv.IsWindows() {
 				err = fmt.Errorf("%w; run the update as administrator", err)
 			} else {
 				err = fmt.Errorf("%w; run the update as root", err)
@@ -340,7 +340,7 @@ func executableTargets(bin, service string) ([]string, error) {
 		return nil, err
 	}
 	targets := []string{exe}
-	if !common.IsWindows() {
+	if !runenv.IsWindows() {
 		for _, dir := range systemBinDirs {
 			p, err := filepath.EvalSymlinks(filepath.Join(dir, bin))
 			if err != nil {
@@ -364,7 +364,7 @@ func isExecutableOf(p, bin string) bool {
 		return false
 	}
 	name := filepath.Base(p)
-	if common.IsWindows() {
+	if runenv.IsWindows() {
 		return strings.EqualFold(name, executableName(bin))
 	}
 	return name == bin

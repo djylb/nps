@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/djylb/guard/replay"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 )
 
 // defaultAuthWindow is the time window, in seconds, of a negative
@@ -72,7 +72,7 @@ func (r *authReplay) prepare(ts, window int64) (w, prev *replay.Window, at time.
 	}
 	at = time.Unix(ts, 0)
 	if window == 0 {
-		at = common.TimeNow()
+		at = clock.Now()
 	}
 	return w, prev, at, nil
 }
@@ -82,12 +82,12 @@ func (r *authReplay) prepare(ts, window int64) (w, prev *replay.Window, at time.
 func (r *authReplay) windows(window int64) (w, prev *replay.Window, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := common.TimeNow()
+	now := clock.Now()
 	if r.w == nil || r.window != window {
 		conf := replay.Config{
 			Window: time.Duration(window) * time.Second,
 			Skew:   time.Duration(window) * time.Second,
-			Now:    common.TimeNow,
+			Now:    clock.Now,
 		}
 		if window == 0 {
 			conf.Window, conf.Skew = 2*defaultAuthWindow*time.Second, 0

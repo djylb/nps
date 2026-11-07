@@ -10,8 +10,8 @@ import (
 
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
@@ -130,7 +130,7 @@ func loadCertPair(prefix, certFile, keyFile string) (tls.Certificate, error) {
 }
 
 func loadWebPEM(name, value, header string) (string, error) {
-	content, err := common.GetCertContent(value, header)
+	content, err := crypt.GetCertContent(value, header)
 	if err != nil {
 		return "", fmt.Errorf("%s %q: %w", name, value, err)
 	}

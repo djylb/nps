@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/quic-go/quic-go"
 )
 
@@ -150,7 +150,7 @@ func SignalStream(c net.Conn) net.Conn {
 }
 
 func DialQuicWithLocalIP(ctx context.Context, server string, tlsCfg *tls.Config, quicCfg *quic.Config, localIP string) (*quic.Conn, error) {
-	bindAddr := common.BuildUDPBindAddr(localIP)
+	bindAddr := netaddr.BuildUDPBindAddr(localIP)
 	if bindAddr == nil {
 		return quic.DialAddr(ctx, server, tlsCfg, quicCfg)
 	}

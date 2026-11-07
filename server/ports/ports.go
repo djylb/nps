@@ -4,9 +4,10 @@ package ports
 
 import (
 	"math/rand"
+	"net"
 
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -17,7 +18,7 @@ var (
 
 func InitAllowPort() {
 	p := servercfg.Current().Feature.AllowPorts
-	ports = common.GetPorts(p)
+	ports = netaddr.GetPorts(p)
 	buildAllowPortSet()
 }
 
@@ -57,10 +58,10 @@ func testPortUsage(p int, m string, needUDP bool) (b bool) {
 		}
 	}
 	needTCP := m != "udp"
-	if needTCP && !common.TestTcpPort(p) {
+	if needTCP && !canListenTCP(p) {
 		return false
 	}
-	if needUDP && !common.TestUdpPort(p) {
+	if needUDP && !canListenUDP(p) {
 		return false
 	}
 	return true
@@ -142,4 +143,26 @@ func GenerateTunnelPort(t *model.Tunnel) int {
 		}
 	}
 	return 0
+}
+
+// canListenTCP reports whether a TCP listener can open on port.
+func canListenTCP(port int) bool {
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: port})
+	defer func() {
+		if l != nil {
+			_ = l.Close()
+		}
+	}()
+	return err == nil
+}
+
+// canListenUDP reports whether a UDP listener can open on port.
+func canListenUDP(port int) bool {
+	l, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: port})
+	defer func() {
+		if l != nil {
+			_ = l.Close()
+		}
+	}()
+	return err == nil
 }

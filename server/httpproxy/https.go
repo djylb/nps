@@ -14,16 +14,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/portmux/tlshello"
 )
@@ -117,7 +116,7 @@ func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
 func (s *HttpsServer) loadCert(certFile, keyFile, certType string) (*tls.Certificate, error) {
 	switch certType {
 	case "file":
-		return s.cert.LoadFiles(common.GetPath(certFile), common.GetPath(keyFile))
+		return s.cert.LoadFiles(runenv.GetPath(certFile), runenv.GetPath(keyFile))
 	case "text":
 		return s.cert.LoadPEM([]byte(certFile), []byte(keyFile))
 	default:
@@ -284,7 +283,7 @@ func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, 
 	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, model.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = c.Close()
 	}
@@ -303,7 +302,7 @@ func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni str
 	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, model.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = tlsConn.Close()
 	}

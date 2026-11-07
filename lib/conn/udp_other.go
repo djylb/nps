@@ -5,7 +5,7 @@ package conn
 import (
 	"net"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 func NewUdpConnByAddr(addr string) (net.PacketConn, error) {
@@ -16,7 +16,7 @@ func NewUdpConnByAddr(addr string) (net.PacketConn, error) {
 	if exact {
 		return net.ListenPacket(network, bindAddr)
 	}
-	port := common.GetPortStrByAddr(addr)
+	port := netaddr.GetPortStrByAddr(addr)
 
 	var conns []net.PacketConn
 	if pc4, e4 := net.ListenPacket("udp4", ":"+port); e4 == nil {

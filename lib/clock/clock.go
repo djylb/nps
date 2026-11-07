@@ -1,7 +1,8 @@
-package common
+// Package clock corrects the local clock by an NTP offset and sets the
+// process time zone.
+package clock
 
 import (
-	"encoding/binary"
 	"sync"
 	"time"
 	_ "time/tzdata"
@@ -31,7 +32,7 @@ func SetNtpInterval(d time.Duration) {
 	syncInterval = d
 }
 
-func CalibrateTimeOffset(server string) (time.Duration, error) {
+func calibrateOffset(server string) (time.Duration, error) {
 	if server == "" {
 		return 0, nil
 	}
@@ -42,14 +43,14 @@ func CalibrateTimeOffset(server string) (time.Duration, error) {
 	return time.Until(ntpTime), nil
 }
 
-func TimeNow() time.Time {
-	SyncTime()
+func Now() time.Time {
+	Sync()
 	timeMutex.RLock()
 	defer timeMutex.RUnlock()
 	return time.Now().Add(timeOffset)
 }
 
-func SyncTime() {
+func Sync() {
 	timeMutex.RLock()
 	srv, last, interval := ntpServer, lastSyncMono, syncInterval
 	timeMutex.RUnlock()
@@ -66,7 +67,7 @@ func SyncTime() {
 	timeMutex.Lock()
 	lastSyncMono = now
 	timeMutex.Unlock()
-	offset, err := CalibrateTimeOffset(srv)
+	offset, err := calibrateOffset(srv)
 	if err != nil {
 		logs.Error("ntp[%s] sync failed: %v", srv, err)
 		// Keep the last successful correction when the NTP server is unavailable.
@@ -90,16 +91,4 @@ func SetTimezone(tz string) error {
 	}
 	time.Local = loc
 	return nil
-}
-
-// TimestampToBytes 8bit
-func TimestampToBytes(ts int64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(ts))
-	return b
-}
-
-// BytesToTimestamp 8bit
-func BytesToTimestamp(b []byte) int64 {
-	return int64(binary.BigEndian.Uint64(b))
 }

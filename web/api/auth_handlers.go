@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
@@ -159,7 +159,7 @@ func (a *App) GetAuthKey(c Context) {
 }
 
 func (a *App) GetTime(c Context) {
-	c.RespondJSON(200, TimeResponse{Time: common.TimeNow().Unix()})
+	c.RespondJSON(200, TimeResponse{Time: clock.Now().Unix()})
 }
 
 func (a *App) GetCert(c Context) {

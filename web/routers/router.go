@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	"github.com/djylb/nps/web/ui"
@@ -17,7 +17,7 @@ func Init() (http.Handler, error) {
 	state := NewState(nil)
 	cfg := state.CurrentConfig()
 
-	ui.SetRoot(filepath.Join(common.GetRunPath(), "web", "views"))
+	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))
 	framework.SetSessionConfigProvider(state.CurrentConfig)
 	if err := framework.InitSessionStore(cfg); err != nil {
 		return nil, fmt.Errorf("init session store: %w", err)
@@ -35,7 +35,7 @@ func Init() (http.Handler, error) {
 	engine.NoRoute(unknownRouteHandler(cfg.Web.CloseOnNotFound))
 	engine.NoMethod(unknownRouteHandler(cfg.Web.CloseOnNotFound))
 
-	engine.Static(joinBase(cfg.Web.BaseURL, "/static"), filepath.Join(common.GetRunPath(), "web", "static"))
+	engine.Static(joinBase(cfg.Web.BaseURL, "/static"), filepath.Join(runenv.GetRunPath(), "web", "static"))
 
 	basePath := strings.TrimRight(strings.TrimSpace(cfg.Web.BaseURL), "/")
 	group := engine.Group(basePath)

@@ -10,15 +10,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -102,7 +101,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			}
 			// Several connections of one client may shake hands at once.
 			client.Lock()
-			client.Addr, client.LocalAddr, client.Mode = common.GetIpByAddr(c.RemoteAddr().String()), res.LocalIP.String(), mode
+			client.Addr, client.LocalAddr, client.Mode = netaddr.GetIpByAddr(c.RemoteAddr().String()), res.LocalIP.String(), mode
 			client.Unlock()
 		}
 	}

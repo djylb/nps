@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	webapi "github.com/djylb/nps/web/api"
@@ -92,7 +92,7 @@ func protectedRouteMiddleware(state *State) gin.HandlerFunc {
 		cfg := state.CurrentConfig()
 
 		timestamp, _ := strconv.Atoi(c.Query("timestamp"))
-		if !webservice.ValidAuthKey(cfg.Auth.Key, c.Query("auth_key"), timestamp, common.TimeNow().Unix()) {
+		if !webservice.ValidAuthKey(cfg.Auth.Key, c.Query("auth_key"), timestamp, clock.Now().Unix()) {
 			if framework.SessionValue(c, "auth") != true {
 				abortUnauthorized(c, state.LoginURL())
 				return

@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 // ErrInvalidAccessList is wrapped by the errors that report rejected rules
@@ -75,7 +74,7 @@ func normalizeDestRules(raw string) (string, error) {
 }
 
 func splitRuleLines(text string) []string {
-	return common.SplitLines(text)
+	return textutil.SplitLines(text)
 }
 
 // joinRuleLines renders a list for a text area.

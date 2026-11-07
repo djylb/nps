@@ -13,15 +13,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
@@ -117,7 +119,7 @@ func main() {
 	}
 
 	// Timezone
-	if err := common.SetTimezone(*timezone); err != nil {
+	if err := clock.SetTimezone(*timezone); err != nil {
 		logs.Warn("Set timezone error %v", err)
 	}
 
@@ -125,11 +127,11 @@ func main() {
 	configureLogging()
 
 	// DNS
-	common.SetCustomDNS(*dnsServer)
+	netaddr.SetCustomDNS(*dnsServer)
 
 	// NTP
-	common.SetNtpServer(*ntpServer)
-	common.SetNtpInterval(time.Duration(*ntpInterval) * time.Minute)
+	clock.SetNtpServer(*ntpServer)
+	clock.SetNtpInterval(time.Duration(*ntpInterval) * time.Minute)
 
 	// KeepAlive
 	if *keepAlive > 0 {
@@ -307,12 +309,12 @@ func configureLogging() {
 		*logLevel = "trace"
 	}
 	if *logPath == "" || strings.EqualFold(*logPath, "on") || strings.EqualFold(*logPath, "true") {
-		*logPath = common.GetNpcLogPath()
+		*logPath = runenv.GetNpcLogPath()
 	}
 	if !filepath.IsAbs(*logPath) {
-		*logPath = filepath.Join(common.GetRunPath(), *logPath)
+		*logPath = filepath.Join(runenv.GetRunPath(), *logPath)
 	}
-	if common.IsWindows() {
+	if runenv.IsWindows() {
 		*logPath = strings.ReplaceAll(*logPath, "\\", "\\\\")
 	}
 	logs.Init(*logType, *logLevel, *logPath, *logMaxSize, *logMaxFiles, *logMaxDays, *logCompress, *logColor)
@@ -365,7 +367,7 @@ func (p *Npc) run() error {
 // 主运行逻辑
 func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
-	common.InitPProfByAddr(*pprofAddr)
+	runenv.InitPProfByAddr(*pprofAddr)
 	if *tlsEnable {
 		*connType = "tls"
 	}
@@ -376,7 +378,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	//p2p or secret command
 	if *password != "" {
 		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
-		common.SyncTime()
+		clock.Sync()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
 		commonConfig.VKey = *verifyKey
@@ -397,7 +399,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		go func() { _ = p2pm.StartLocalServer(localServer) }()
 		return
 	}
-	env := common.GetEnvMap()
+	env := runenv.GetEnvMap()
 	if *serverAddr == "" {
 		*serverAddr = env["NPC_SERVER_ADDR"]
 	}
@@ -413,7 +415,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	hasCommand := *verifyKey != "" && *serverAddr != ""
 	if hasCommand {
 		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
-		common.SyncTime()
+		clock.Sync()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
 		*verifyKey = strings.ReplaceAll(*verifyKey, "，", ",")
@@ -425,10 +427,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		connTypes := strings.Split(*connType, ",")
 		localIPs := strings.Split(*localIP, ",")
 
-		serverAddrs = common.HandleArrEmptyVal(serverAddrs)
-		verifyKeys = common.HandleArrEmptyVal(verifyKeys)
-		connTypes = common.HandleArrEmptyVal(connTypes)
-		localIPs = common.HandleArrEmptyVal(localIPs)
+		serverAddrs = textutil.HandleArrEmptyVal(serverAddrs)
+		verifyKeys = textutil.HandleArrEmptyVal(verifyKeys)
+		connTypes = textutil.HandleArrEmptyVal(connTypes)
+		localIPs = textutil.HandleArrEmptyVal(localIPs)
 
 		if len(connTypes) == 0 {
 			connTypes = append(connTypes, "tcp")
@@ -439,7 +441,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			os.Exit(1)
 		}
 
-		maxLength := common.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
+		maxLength := textutil.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
 		for i := 0; i < maxLength; i++ {
 			serverAddr := serverAddrs[i]
 			verifyKey := verifyKeys[i]
@@ -468,7 +470,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	if *configPath != "" || !hasCommand {
 		if *configPath == "" {
-			*configPath = common.GetConfigPath()
+			*configPath = runenv.GetConfigPath()
 		}
 
 		configPaths := strings.Split(*configPath, ",")

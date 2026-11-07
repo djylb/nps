@@ -12,7 +12,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
 	flag "github.com/spf13/pflag"
@@ -46,7 +46,7 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string
 		}
 	}
 	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
-	common.SyncTime()
+	clock.Sync()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
 	for i, input := range inputs {
 		uuids := make(map[string]string)

@@ -12,9 +12,9 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxyproto"
 	"github.com/djylb/netx/socks5"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -60,7 +60,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 
 	// Bind one local UDP socket for all outbound UDP traffic.
 	// Using nil lets the kernel pick family/port.
-	local, err := net.ListenUDP("udp", common.BuildUDPBindAddr(localIP))
+	local, err := net.ListenUDP("udp", netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
 		logs.Error("bind local udp port error %v", err)
 		return
@@ -73,8 +73,8 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 	// send through the tunnel.
 	go func() {
 		defer cancel()
-		buf := common.BufPool.Get()
-		defer common.BufPool.Put(buf)
+		buf := BufPool.Get()
+		defer BufPool.Put(buf)
 
 		for {
 			select {
@@ -114,8 +114,8 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 
 	// Tunnel -> internet: read one datagram per frame and send its payload
 	// via the local UDP socket.
-	frameBuf := common.BufPool.Get()
-	defer common.BufPool.Put(frameBuf)
+	frameBuf := BufPool.Get()
+	defer BufPool.Put(frameBuf)
 
 	for {
 		select {

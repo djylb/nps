@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -32,9 +32,9 @@ func writeTestCert(t *testing.T, dir, certName, keyName string) []byte {
 
 func TestLoadCertReloadsChangedRelativeFiles(t *testing.T) {
 	dir := t.TempDir()
-	oldConf := common.ConfPath
-	common.ConfPath = dir
-	t.Cleanup(func() { common.ConfPath = oldConf })
+	oldConf := runenv.ConfPath
+	runenv.ConfPath = dir
+	t.Cleanup(func() { runenv.ConfPath = oldConf })
 
 	first := writeTestCert(t, dir, "host.pem", "host.key")
 	s := &HttpsServer{cert: newCertFiles(servercfg.SSLConfig{CacheReload: 1})}

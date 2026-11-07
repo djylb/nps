@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
@@ -59,7 +60,7 @@ func (a *App) LoginVerify(c Context) {
 	if ((isUserBan && cfg.Security.SecureMode) || cfg.Security.ForcePoW || !captchaVerified || isIPBan) && cfg.Security.PoWBits > 0 {
 		powX := requestString(c, "powx")
 		bits := requestIntValue(c, "bits")
-		if bits != cfg.Security.PoWBits || !common.ValidatePoW(cfg.Security.PoWBits, rawPassword, powX) {
+		if bits != cfg.Security.PoWBits || !auth.ValidatePoW(cfg.Security.PoWBits, rawPassword, powX) {
 			logs.Warn("PoW failed for user %s from %s", username, ip)
 			loginPolicy.RecordIPFailure(ip)
 			if !captchaVerified {
@@ -95,7 +96,7 @@ func (a *App) LoginVerify(c Context) {
 	}
 
 	if cfg.Security.SecureMode {
-		nowMillis := common.TimeNow().UnixMilli()
+		nowMillis := clock.Now().UnixMilli()
 		if payload.Timestamp < nowMillis-settings.MaxSkew || payload.Timestamp > nowMillis+settings.MaxSkew {
 			logs.Warn("Timestamp expired for user %s from %s", username, ip)
 			loginPolicy.RecordIPFailure(ip)
@@ -164,7 +165,7 @@ func (a *App) RegisterUser(c Context) {
 	}
 
 	if cfg.Security.SecureMode {
-		nowMillis := common.TimeNow().UnixMilli()
+		nowMillis := clock.Now().UnixMilli()
 		maxSkew := a.loginPolicy().Settings().MaxSkew
 		if payload.Timestamp < nowMillis-maxSkew || payload.Timestamp > nowMillis+maxSkew {
 			ajaxWithNonceTimestamp(c, "timestamp expired", 0, nonce, nowMillis)
@@ -248,7 +249,7 @@ func (a *App) doLogin(c Context, username, password, totp string) bool {
 func VisitorIP(c Context, cfg *servercfg.Snapshot) string {
 	ip := requestRemoteIP(c)
 	httpOnlyPass := cfg.Auth.HTTPOnlyPass
-	if (cfg.Auth.AllowXRealIP && common.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
+	if (cfg.Auth.AllowXRealIP && auth.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
 		(httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass) {
 		if realIP := c.RequestHeader("X-Real-IP"); realIP != "" {
 			ip = realIP

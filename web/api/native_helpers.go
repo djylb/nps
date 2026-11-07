@@ -4,7 +4,7 @@ import (
 	"html"
 	"strings"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/textutil"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 )
@@ -12,7 +12,7 @@ import (
 // requestString returns the field key with its line endings, whatever the
 // visitor's system uses, turned into \n.
 func requestString(c Context, key string) string {
-	return common.NormalizeNewlines(c.String(key))
+	return textutil.NormalizeNewlines(c.String(key))
 }
 
 func requestEscapedString(c Context, key string) string {

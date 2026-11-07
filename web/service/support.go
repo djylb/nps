@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/djylb/nps/lib/model"
-
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/server/connection"
 )
 
@@ -41,7 +41,7 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	if cfg == nil {
 		cfg = servercfg.Current()
 	}
-	bridgeIP := common.GetIpByAddr(defaultString(cfg.Bridge.Addr, host))
+	bridgeIP := netaddr.GetIpByAddr(defaultString(cfg.Bridge.Addr, host))
 	if strings.IndexByte(bridgeIP, ':') >= 0 && (!strings.HasPrefix(bridgeIP, "[") || !strings.HasSuffix(bridgeIP, "]")) {
 		bridgeIP = "[" + bridgeIP + "]"
 	}
@@ -122,7 +122,7 @@ func changeTunnelStatus(id int, name, action string) error {
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		tunnel.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
+		tunnel.Flow.SetTimeLimit(textutil.GetTimeNoErrByStr(""))
 	default:
 		return fmt.Errorf("unknown name: %q", name)
 	}
@@ -151,7 +151,7 @@ func changeHostStatus(id int, name, action string) error {
 		if normalizeAction(action) != "clear" {
 			return fmt.Errorf("unsupported action %q for %s", action, name)
 		}
-		host.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
+		host.Flow.SetTimeLimit(textutil.GetTimeNoErrByStr(""))
 	case "auto_ssl":
 		if err := applyBoolAction(&host.AutoSSL, action); err != nil {
 			return err
@@ -184,7 +184,7 @@ func changeHostStatus(id int, name, action string) error {
 		return fmt.Errorf("unknown name: %q", name)
 	}
 
-	host.CertType = common.GetCertType(host.CertFile)
+	host.CertType = crypt.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
 	return DefaultBackend().repo().SaveHost(host, "")
 }
@@ -234,7 +234,7 @@ func clearClientStatus(client *model.Client, name string) {
 	case "flow_limit":
 		client.Flow.SetFlowLimit(0)
 	case "time_limit":
-		client.Flow.SetTimeLimit(common.GetTimeNoErrByStr(""))
+		client.Flow.SetTimeLimit(textutil.GetTimeNoErrByStr(""))
 	case "rate_limit":
 		client.RateLimit = 0
 	case "conn_limit":

@@ -9,14 +9,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 type DbUtils struct {
@@ -43,7 +44,7 @@ func GetDb() *DbUtils {
 	if d := db.Load(); d != nil {
 		return d
 	}
-	jsonDb := NewJsonDb(common.GetRunPath())
+	jsonDb := NewJsonDb(runenv.GetRunPath())
 	jsonDb.LoadClientFromJsonFile()
 	jsonDb.LoadTaskFromJsonFile()
 	jsonDb.LoadHostFromJsonFile()
@@ -104,7 +105,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 	list := make([]*model.Client, 0)
 	var cnt int
 	originLength := length
-	id := common.GetIntNoErrByStr(search)
+	id := textutil.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Clients, true, sort, order)
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Clients.Load(key); ok {
@@ -115,7 +116,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 			if clientId != 0 && clientId != v.Id {
 				continue
 			}
-			if search != "" && v.Id != id && !common.ContainsFold(v.VerifyKey, search) && !common.ContainsFold(v.Remark, search) {
+			if search != "" && v.Id != id && !textutil.ContainsFold(v.VerifyKey, search) && !textutil.ContainsFold(v.Remark, search) {
 				continue
 			}
 			cnt++
@@ -136,8 +137,8 @@ func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(s
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*model.Client)
 		if hashFunc(v.VerifyKey) == vKey && v.Status && v.Id > 0 {
-			v.Addr = common.GetIpByAddr(addr)
-			v.LocalAddr = common.GetIpByAddr(localAddr)
+			v.Addr = netaddr.GetIpByAddr(addr)
+			v.LocalAddr = netaddr.GetIpByAddr(localAddr)
 			id = v.Id
 			exist = true
 			return false
@@ -313,8 +314,8 @@ func normalizeTask(t *model.Tunnel) {
 		t.HttpProxy = true
 		t.Socks5Proxy = false
 	}
-	if t.TargetType != common.ConnTCP && t.TargetType != common.ConnUDP {
-		t.TargetType = common.ConnAll
+	if t.TargetType != model.ConnTCP && t.TargetType != model.ConnUDP {
+		t.TargetType = model.ConnAll
 	}
 	t.CompileDestACL()
 	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))
@@ -445,7 +446,7 @@ func (s *DbUtils) NewHost(t *model.Host) error {
 		return errors.New("host has exist")
 	}
 	HostIndex.Add(t.Host, t.Id)
-	t.CertType = common.GetCertType(t.CertFile)
+	t.CertType = crypt.GetCertType(t.CertFile)
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
 	t.Flow = newEntryFlow(t.Flow)
 	t.CompileSourceLists(acl.ScopeUser, hostOwner(t))
@@ -470,12 +471,12 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*model.Ho
 	list := make([]*model.Host, 0)
 	var cnt int
 	originLength := length
-	searchId := common.GetIntNoErrByStr(search)
+	searchId := textutil.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Hosts, false, "", "")
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Hosts.Load(key); ok {
 			v := value.(*model.Host)
-			if search != "" && v.Id != searchId && !common.ContainsFold(v.Host, search) && !common.ContainsFold(v.Remark, search) && !common.ContainsFold(v.Client.VerifyKey, search) {
+			if search != "" && v.Id != searchId && !textutil.ContainsFold(v.Host, search) && !textutil.ContainsFold(v.Remark, search) && !textutil.ContainsFold(v.Client.VerifyKey, search) {
 				continue
 			}
 			if id == 0 || v.Client.Id == id {
@@ -645,7 +646,7 @@ func (s *DbUtils) GetHostById(id int) (h *model.Host, err error) {
 
 // GetInfoByHost get key by host from x
 func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *model.Host, err error) {
-	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
+	host = strings.TrimSuffix(strings.ToLower(netaddr.GetIpByAddr(host)), ".")
 	hostLength := len(host)
 
 	requestPath := r.RequestURI
@@ -750,7 +751,7 @@ func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*model
 }
 
 func (s *DbUtils) findCertHost(host string, accept func(*model.Host) bool) (*model.Host, error) {
-	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
+	host = strings.TrimSuffix(strings.ToLower(netaddr.GetIpByAddr(host)), ".")
 	if host == "" {
 		return nil, errors.New("invalid Host")
 	}

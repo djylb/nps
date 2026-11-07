@@ -14,10 +14,11 @@ import (
 
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/upstream"
 )
 
@@ -395,8 +396,8 @@ func (s *Client) EnsureWebPassword() {
 			s.WebTotpSecret, _ = crypt.GenerateTOTPSecret()
 		}
 	}
-	if idx := strings.LastIndex(s.WebPassword, common.TOTPSeq); idx != -1 {
-		secret := s.WebPassword[idx+len(common.TOTPSeq):]
+	if idx := strings.LastIndex(s.WebPassword, totpSeq); idx != -1 {
+		secret := s.WebPassword[idx+len(totpSeq):]
 		s.WebPassword = s.WebPassword[:idx]
 		if !crypt.IsValidTOTPSecret(secret) {
 			secret, _ = crypt.GenerateTOTPSecret()
@@ -498,8 +499,8 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 	if t == nil || t.Target == nil {
 		return nil, nil, false
 	}
-	ports = common.GetPorts(t.Ports)
-	targets = common.GetPorts(t.Target.TargetStr)
+	ports = netaddr.GetPorts(t.Ports)
+	targets = netaddr.GetPorts(t.Target.TargetStr)
 	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && len(ports) != len(targets) {
 		return nil, nil, false
 	} else if t.Mode == "secret" || t.Mode == "p2p" {
@@ -798,7 +799,7 @@ func (s *Host) Update(h *Host) {
 	s.RedirectURL = h.RedirectURL
 	s.HttpsJustProxy = h.HttpsJustProxy
 	s.AutoSSL = h.AutoSSL
-	s.CertType = common.GetCertType(h.CertFile)
+	s.CertType = crypt.GetCertType(h.CertFile)
 	s.CertHash = crypt.FNV1a64(h.CertType, h.CertFile, h.KeyFile)
 	s.CertFile = h.CertFile
 	s.KeyFile = h.KeyFile
@@ -861,7 +862,7 @@ var targetOutlier = upstream.OutlierConfig{
 }
 
 func parseTargets(targetStr string) []string {
-	return common.TrimArr(common.SplitLines(strings.ReplaceAll(targetStr, "：", ":")))
+	return trimArr(textutil.SplitLines(strings.ReplaceAll(targetStr, "：", ":")))
 }
 
 // targetPool returns the pool of the configured addresses, synchronizing
@@ -1019,4 +1020,32 @@ func (s *Tunnel) SetIsHTTP(isHTTP bool) {
 	s.Lock()
 	s.IsHttp = isHTTP
 	s.Unlock()
+}
+
+// Names of connection and target types: bridge transports, link types and
+// the TargetType of a tunnel.
+const (
+	ConnAll  = "all"
+	ConnTCP  = "tcp"
+	ConnUDP  = "udp"
+	ConnTLS  = "tls"
+	ConnQUIC = "quic"
+	ConnWeb  = "web"
+	ConnWS   = "ws"
+	ConnWSS  = "wss"
+)
+
+// totpSeq separates the web password from its TOTP secret.
+const totpSeq = "totp:"
+
+// trimArr trims the elements of arr and drops the empty ones.
+func trimArr(arr []string) []string {
+	newArr := make([]string, 0)
+	for _, v := range arr {
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			newArr = append(newArr, trimmed)
+		}
+	}
+	return newArr
 }

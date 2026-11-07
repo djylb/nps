@@ -18,17 +18,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxydial"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
@@ -132,15 +132,15 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 	}
 	logs.Info("Loading configuration file %s successfully", path)
 
-	common.SetCustomDNS(cnf.CommonConfig.DnsServer)
+	netaddr.SetCustomDNS(cnf.CommonConfig.DnsServer)
 
 	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 
-	common.SetNtpServer(cnf.CommonConfig.NtpServer)
+	clock.SetNtpServer(cnf.CommonConfig.NtpServer)
 	if cnf.CommonConfig.NtpInterval > 0 {
-		common.SetNtpInterval(time.Duration(cnf.CommonConfig.NtpInterval) * time.Minute)
+		clock.SetNtpInterval(time.Duration(cnf.CommonConfig.NtpInterval) * time.Minute)
 	}
-	common.SyncTime()
+	clock.Sync()
 
 	var uuid string
 
@@ -347,7 +347,7 @@ func EnsurePort(server string, tp string) string {
 	if err == nil && port != "" {
 		return server
 	}
-	if p, ok := common.DefaultPort[tp]; ok {
+	if p, ok := defaultPort[tp]; ok {
 		return net.JoinHostPort(server, p)
 	}
 	return server
@@ -373,13 +373,13 @@ type serverInfo struct {
 // dialServer is NewConn returning the server information as well.
 func dialServer(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, serverInfo, error) {
 	alpn := "nps"
-	server, path := common.SplitServerAndPath(server)
+	server, path := netaddr.SplitServerAndPath(server)
 	if path == "" {
 		path = "/ws"
 	} else {
 		alpn = strings.TrimSpace(strings.TrimPrefix(path, "/"))
 	}
-	addr, host, sni := common.SplitAddrAndHost(server)
+	addr, host, sni := netaddr.SplitAddrAndHost(server)
 	server = EnsurePort(addr, tp)
 
 	var (
@@ -403,7 +403,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 // the handshake tells whether it is alive, so UDP transports try each in turn.
 func dialTargets(tp, server string) []string {
 	switch tp {
-	case "tcp", common.ConnTLS, common.ConnWS, common.ConnWSS:
+	case "tcp", model.ConnTLS, model.ConnWS, model.ConnWSS:
 		return []string{server}
 	}
 	host, port, err := net.SplitHostPort(server)
@@ -537,8 +537,8 @@ var HandshakeHooks = struct {
 	OutboundIP func() net.IP
 	PadLen     func() int
 }{
-	Timestamp:  func() int64 { return common.TimeNow().Unix() - int64(rand.Intn(6)) },
-	OutboundIP: common.GetOutboundIP,
+	Timestamp:  func() int64 { return clock.Now().Unix() - int64(rand.Intn(6)) },
+	OutboundIP: netaddr.GetOutboundIP,
 	PadLen:     func() int { return rand.Intn(MaxPad) },
 }
 
@@ -583,7 +583,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 	}
 	uuid := res.ServerUUID
 	info.fingerprint = res.Fingerprint
-	if proxyUrl == "" && tp != common.ConnWS && tp != common.ConnWSS {
+	if proxyUrl == "" && tp != model.ConnWS && tp != model.ConnWSS {
 		if ap, perr := netip.ParseAddrPort(connection.RemoteAddr().String()); perr == nil {
 			info.ip = ap.Addr().Unmap().String()
 		}
@@ -614,7 +614,7 @@ func SendType(c *conn.Conn, connType, uuid string) error {
 // is taken as an http proxy. The whole dial, including any proxy handshake,
 // is bounded by timeout.
 func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string) (net.Conn, error) {
-	forward := &net.Dialer{Timeout: timeout, LocalAddr: common.BuildTCPBindAddr(localIP)}
+	forward := &net.Dialer{Timeout: timeout, LocalAddr: netaddr.BuildTCPBindAddr(localIP)}
 	var d netx.ContextDialer
 	if proxyUrl == "" {
 		var err error
@@ -644,3 +644,12 @@ func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string
 //	auth := username + ":" + password
 //	return base64.StdEncoding.EncodeToString([]byte(auth))
 //}
+
+var defaultPort = map[string]string{
+	"tcp":  "8024",
+	"kcp":  "8024",
+	"tls":  "8025",
+	"quic": "8025",
+	"ws":   "80",
+	"wss":  "443",
+}

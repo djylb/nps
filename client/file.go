@@ -11,13 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"golang.org/x/net/webdav"
 )
 
@@ -64,7 +63,7 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	if t.MultiAccount == nil {
 		t.MultiAccount = new(model.MultiAccount)
 	}
-	ports := common.GetPorts(t.Ports)
+	ports := netaddr.GetPorts(t.Ports)
 	if len(ports) == 0 {
 		ports = append(ports, 0)
 	}

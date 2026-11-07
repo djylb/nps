@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/upstream"
 	"github.com/djylb/upstream/health"
 	"github.com/djylb/upstream/uphttp"
@@ -123,7 +123,7 @@ func (hc *HealthChecker) setGroup(m healthcheck.Group) {
 	}}
 	for _, addr := range m.Targets {
 		key := healthKey{spec: spec, addr: addr}
-		t.Address = common.FormatAddress(addr)
+		t.Address = netaddr.FormatAddress(addr)
 		generation := hc.checker.AddToGroup(m.Name, key, t)
 		hc.mu.Lock()
 		keys := hc.byAddr[t.Address]
@@ -149,7 +149,7 @@ func (hc *HealthChecker) delGroup(group string) {
 		if _, held := hc.checker.Status(key); held {
 			continue
 		}
-		addr := common.FormatAddress(key.addr)
+		addr := netaddr.FormatAddress(key.addr)
 		delete(hc.byAddr[addr], key)
 		if len(hc.byAddr[addr]) == 0 {
 			delete(hc.byAddr, addr)

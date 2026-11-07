@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/portmux"
 	"github.com/djylb/portmux/hostmatch"
 )
@@ -75,7 +75,7 @@ func newPortMux(port int, managerHost, clientHost string) (*portMux, error) {
 // hostPattern returns host as an exact host pattern, or "" when it cannot
 // be one.
 func hostPattern(host string) string {
-	host = common.GetIpByAddr(host)
+	host = netaddr.GetIpByAddr(host)
 	if host == "" || host == "*" || host[0] == '*' || host[0] == '.' || hostmatch.CheckPattern(host) != nil {
 		return ""
 	}

@@ -6,13 +6,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx/httphead"
 	"github.com/djylb/netx/httpproxy"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // Timeouts of the HTTP proxy: the wait for the next request on a kept-alive
@@ -59,11 +59,11 @@ func newHTTPProxyServer(s *TunnelModeServer) *httpproxy.Server {
 // accepting any when it has none.
 func (s *TunnelModeServer) checkProxyAccount(user, password string) bool {
 	u, p := socks5ClientCredentials(s.Task)
-	accounts, auth := model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)
-	if !common.NeedsAuth(u, p, accounts, auth) {
+	accounts, authMap := model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)
+	if !auth.NeedsAuth(u, p, accounts, authMap) {
 		return true
 	}
-	return common.CheckAuthWithAccountMap(user, password, u, p, accounts, auth)
+	return auth.CheckAuthWithAccountMap(user, password, u, p, accounts, authMap)
 }
 
 // httpFallbackAuth decides requests without Basic proxy credentials: it
@@ -85,7 +85,7 @@ func (a httpFallbackAuth) Authenticate(_ context.Context, req *httpproxy.Request
 	if v == "" {
 		return "", httpproxy.ErrAuthRequired
 	}
-	user, password, ok := common.ParseBasicAuth(v)
+	user, password, ok := auth.ParseBasicAuth(v)
 	if !ok || !a.s.checkProxyAccount(user, password) {
 		return "", httpproxy.ErrAuthFailed
 	}
@@ -96,7 +96,7 @@ func (a httpFallbackAuth) Authenticate(_ context.Context, req *httpproxy.Request
 // task or client is over its flow or time limit.
 func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Request) error {
 	if s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(req.Dst.String()) {
-		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(req.Dst.String()))
+		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, netaddr.ExtractHost(req.Dst.String()))
 		return &httpproxy.StatusError{Code: 403, Err: errProxyAccessDenied}
 	}
 	if err := conn.CheckFlowLimits(s.Task.Flow, "Task"); err != nil {
@@ -111,7 +111,7 @@ func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Requ
 // openHTTPLink opens a link to the destination of req through the client
 // tunnel.
 func (s *TunnelModeServer) openHTTPLink(c *conn.Conn, req *httpproxy.Request) (net.Conn, *conn.Link, bool, error) {
-	target, link, isLocal, err := s.openClientLink(c, s.Task.Client, req.Dst.String(), common.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLink(c, s.Task.Client, req.Dst.String(), model.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if errors.Is(err, errProxyAccessDenied) {
 		err = &httpproxy.StatusError{Code: 403, Err: err}
 	} else if err == nil && (target == nil || link == nil) {
@@ -135,7 +135,7 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 		return true, err
 	}
 	clientConn := conn.NewConn(req.Conn)
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, model.ConnTCP)
 	return true, nil
 }
 

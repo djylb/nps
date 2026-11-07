@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/kardianos/service"
 )
 
@@ -60,7 +60,7 @@ func RestartAfterUpdate(s service.Service, name string, replaced []string) error
 		fmt.Printf("WARNING: service %s runs %s, which this update did not replace; run install again to point the service at the updated executable\n", name, exe)
 		return nil
 	}
-	if common.IsWindows() && !service.Interactive() {
+	if runenv.IsWindows() && !service.Interactive() {
 		// The caller is the service process, which the restart ends.
 		exe := serviceExecutable(name)
 		if exe == "" {

@@ -4,10 +4,9 @@ import (
 	"math"
 	"sort"
 
-	"github.com/djylb/nps/lib/model"
-
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 func GetTunnel(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*model.Tunnel, int) {
@@ -210,16 +209,16 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 		}
 	}
 
-	searchInt := common.GetIntNoErrByStr(search)
+	searchInt := textutil.GetIntNoErrByStr(search)
 
 	// search + paging
 	for _, v := range allList {
 		if search != "" &&
 			v.Id != searchInt &&
 			v.Port != searchInt &&
-			!common.ContainsFold(v.Password, search) &&
-			!common.ContainsFold(v.Remark, search) &&
-			!common.ContainsFold(v.Target.TargetStr, search) {
+			!textutil.ContainsFold(v.Password, search) &&
+			!textutil.ContainsFold(v.Remark, search) &&
+			!textutil.ContainsFold(v.Target.TargetStr, search) {
 			continue
 		}
 

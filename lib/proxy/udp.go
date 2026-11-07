@@ -4,12 +4,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -90,7 +88,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	addr := visitor.RemoteAddr()
 	route := s.Task.Route()
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || s.Task.Client.Id < 0
-	link := conn.NewLink(common.ConnUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
+	link := conn.NewLink(model.ConnUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
 	link.Option.Node = route.Node
 	clientConn, err := s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 	if err != nil {
@@ -109,8 +107,8 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	go func() {
 		defer func() { _ = visitor.Close() }()
 		// One datagram per read, which a short buffer would truncate.
-		buf := common.BufPool.Get()
-		defer common.BufPool.Put(buf)
+		buf := conn.BufPool.Get()
+		defer conn.BufPool.Put(buf)
 		for {
 			n, err := tunnel.Read(buf)
 			if err != nil {
@@ -124,8 +122,8 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		}
 	}()
 
-	buf := common.BufPool.Get()
-	defer common.BufPool.Put(buf)
+	buf := conn.BufPool.Get()
+	defer conn.BufPool.Put(buf)
 	// The PROXY header, if any, goes in front of the first datagram only.
 	var header []byte
 	if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {

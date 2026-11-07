@@ -9,11 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/djylb/nps/lib/model"
-
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
@@ -30,9 +29,9 @@ type requestParamFixture struct {
 
 func newRequestParamFixture(t *testing.T) *requestParamFixture {
 	t.Helper()
-	oldConfPath := common.ConfPath
-	common.ConfPath = testRepoRoot(t)
-	t.Cleanup(func() { common.ConfPath = oldConfPath })
+	oldConfPath := runenv.ConfPath
+	runenv.ConfPath = testRepoRoot(t)
+	t.Cleanup(func() { runenv.ConfPath = oldConfPath })
 
 	resetTestDB(t)
 	webservice.SharedLoginPolicy().RemoveAllBans()

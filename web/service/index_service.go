@@ -5,12 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 type IndexService interface {
@@ -230,7 +230,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		},
 		UserAuth: &model.MultiAccount{
 			Content:    input.Auth,
-			AccountMap: common.DealMultiUser(input.Auth),
+			AccountMap: auth.DealMultiUser(input.Auth),
 		},
 		Id:           id,
 		Status:       true,
@@ -244,7 +244,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		DestAclRules: destRules,
 		Flow: &model.Flow{
 			FlowLimit: input.FlowLimit,
-			TimeLimit: common.GetTimeNoErrByStr(input.TimeLimit),
+			TimeLimit: textutil.GetTimeNoErrByStr(input.TimeLimit),
 		},
 	}
 
@@ -340,7 +340,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 		ProxyProtocol: input.ProxyProtocol,
 		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
 	}
-	tunnel.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
+	tunnel.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: auth.DealMultiUser(input.Auth)}
 	tunnel.Password = input.Password
 	tunnel.LocalPath = input.LocalPath
 	tunnel.StripPre = input.StripPre
@@ -353,7 +353,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.SetHealthCheck(input.HealthCheck)
 	tunnel.SetMaxConn(input.MaxConn)
 	tunnel.SetRateLimits(input.UploadLimit, input.DownloadLimit)
-	tunnel.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
+	tunnel.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
 
 	if err := s.repo().SaveTunnel(tunnel); err != nil {
 		return TunnelMutation{}, err
@@ -556,7 +556,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		},
 		UserAuth: &model.MultiAccount{
 			Content:    input.Auth,
-			AccountMap: common.DealMultiUser(input.Auth),
+			AccountMap: auth.DealMultiUser(input.Auth),
 		},
 		HeaderChange:     input.Header,
 		RespHeaderChange: input.RespHeader,
@@ -567,7 +567,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		RedirectURL:      input.RedirectURL,
 		Flow: &model.Flow{
 			FlowLimit: input.FlowLimit,
-			TimeLimit: common.GetTimeNoErrByStr(input.TimeLimit),
+			TimeLimit: textutil.GetTimeNoErrByStr(input.TimeLimit),
 		},
 		Scheme:         normalizeScheme(input.Scheme),
 		HttpsJustProxy: input.HTTPSJustProxy,
@@ -645,7 +645,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.Client, host.Target = client, target
 	host.Unlock()
 	host.SetHealthCheck(input.HealthCheck)
-	host.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
+	host.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: auth.DealMultiUser(input.Auth)}
 	host.HeaderChange = input.Header
 	host.RespHeaderChange = input.RespHeader
 	host.HostChange = input.HostChange
@@ -661,7 +661,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.CertFile = input.CertFile
 	host.SetMaxConn(input.MaxConn)
 	host.SetRateLimits(input.UploadLimit, input.DownloadLimit)
-	host.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
+	host.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
 	if input.ResetFlow {
 		host.Flow.ResetTraffic()
 	}
@@ -670,7 +670,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.CompatMode = input.CompatMode
 	host.TargetIsHttps = input.TargetIsHTTPS
 
-	host.CertType = common.GetCertType(host.CertFile)
+	host.CertType = crypt.GetCertType(host.CertFile)
 	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
 	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")")
 	if err := s.repo().SaveHost(host, oldHost); err != nil {
@@ -683,7 +683,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 }
 
 func sanitizeBridgeTarget(target string, isAdmin bool, fallback string) string {
-	normalized := strings.ToLower(strings.TrimSpace(common.NormalizeNewlines(target)))
+	normalized := strings.ToLower(strings.TrimSpace(textutil.NormalizeNewlines(target)))
 	if !isAdmin && strings.Contains(normalized, "bridge://") {
 		return fallback
 	}

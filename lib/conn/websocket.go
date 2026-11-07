@@ -12,7 +12,7 @@ import (
 	"github.com/djylb/netx/forwarded"
 	"github.com/djylb/netx/wsconn"
 	"github.com/djylb/netx/wsconn/wshttp"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
 )
 
 // wsOptions closes without the closing handshake, so that closing a tunnel
@@ -83,7 +83,7 @@ func wsResolvers(trustedIps, realIpHeader string) []*forwarded.Resolver {
 	if trustedIps == "" {
 		return nil
 	}
-	trusted := common.TrustedProxies(trustedIps)
+	trusted := auth.TrustedProxies(trustedIps)
 	if realIpHeader == "" {
 		return []*forwarded.Resolver{
 			{Trusted: trusted, Header: forwarded.HeaderXForwardedFor},

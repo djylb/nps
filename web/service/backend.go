@@ -3,12 +3,11 @@ package service
 import (
 	"errors"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/ports"
 )
@@ -131,7 +130,7 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Cl
 	list := make([]*model.Client, 0)
 	var count int
 	originLimit := input.Limit
-	searchID := common.GetIntNoErrByStr(input.Search)
+	searchID := textutil.GetIntNoErrByStr(input.Search)
 	keys := file.GetMapKeys(&file.GetDb().JsonDb.Clients, true, input.Sort, input.Order)
 	for _, key := range keys {
 		value, ok := file.GetDb().JsonDb.Clients.Load(key)
@@ -147,8 +146,8 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Cl
 		}
 		if input.Search != "" &&
 			client.Id != searchID &&
-			!common.ContainsFold(client.VerifyKey, input.Search) &&
-			!common.ContainsFold(client.Remark, input.Search) {
+			!textutil.ContainsFold(client.VerifyKey, input.Search) &&
+			!textutil.ContainsFold(client.Remark, input.Search) {
 			continue
 		}
 		count++

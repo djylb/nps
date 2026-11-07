@@ -5,8 +5,9 @@ import (
 	"sync"
 
 	"github.com/djylb/nps/client"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // Options holds the command line defaults a payload does not set.
@@ -56,10 +57,10 @@ func (p Profile) run(ctx context.Context, uuid string, opts Options) (string, er
 		return uuid, nil
 	}
 	if c.DnsServer != "" {
-		common.SetCustomDNS(c.DnsServer)
+		netaddr.SetCustomDNS(c.DnsServer)
 	}
 	if c.NtpServer != "" {
-		common.SetNtpServer(c.NtpServer)
+		clock.SetNtpServer(c.NtpServer)
 	}
 	if len(p.Config.LocalServer) > 0 && c.DisconnectTime == 0 {
 		c.DisconnectTime = opts.P2PTimeout

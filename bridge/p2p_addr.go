@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/textutil"
 )
 
 const (
@@ -68,9 +69,9 @@ func newP2PAnnouncer(p2pIP string) *p2pAnnouncer {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
 		detect: func(wildcard netip.Addr) netip.Addr {
-			ip := common.GetOutboundIPv4()
+			ip := netaddr.GetOutboundIPv4()
 			if wildcard.Is6() {
-				ip = common.GetOutboundIPv6()
+				ip = netaddr.GetOutboundIPv6()
 			}
 			a, _ := netip.AddrFromSlice(ip)
 			return a.Unmap()
@@ -79,7 +80,7 @@ func newP2PAnnouncer(p2pIP string) *p2pAnnouncer {
 			if !client.IsValid() {
 				return netip.Addr{}
 			}
-			a, _ := netip.AddrFromSlice(common.PickEgressIPFor(client.AsSlice()))
+			a, _ := netip.AddrFromSlice(netaddr.PickEgressIPFor(client.AsSlice()))
 			return a.Unmap()
 		},
 		cache: make(map[string]p2pResolved),
@@ -92,7 +93,7 @@ func newP2PAnnouncer(p2pIP string) *p2pAnnouncer {
 // wildcards. A p2p_ip that names no family at all (an unresolved name) allows
 // both.
 func (a *p2pAnnouncer) configured(ctx context.Context) (addrs, wildcards []netip.Addr, families [2]bool) {
-	entries := common.HandleArrEmptyVal(strings.Split(a.p2pIP, ","))
+	entries := textutil.HandleArrEmptyVal(strings.Split(a.p2pIP, ","))
 	if len(entries) == 0 {
 		return nil, []netip.Addr{netip.IPv4Unspecified(), netip.IPv6Unspecified()}, [2]bool{true, true}
 	}

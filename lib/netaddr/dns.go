@@ -1,4 +1,4 @@
-package common
+package netaddr
 
 import (
 	"context"
@@ -125,9 +125,9 @@ func (d *preferredDNS) probe() bool {
 	return err == nil && n >= 12 && buf[0] == dnsProbeQuery[0] && buf[1] == dnsProbeQuery[1]
 }
 
-func GetCustomDNS() string {
+func customDNS() string {
 	if customDnsAddr != "" {
 		return customDnsAddr
 	}
-	return "8.8.8.8:53"
+	return ipv4DNS
 }

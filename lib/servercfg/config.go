@@ -11,7 +11,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/runenv"
 	viperini "github.com/go-viper/encoding/ini"
 	"github.com/spf13/viper"
 )
@@ -153,7 +153,7 @@ func DefaultPaths() []string {
 	mu.RUnlock()
 
 	candidates := []string{explicit}
-	for _, base := range []string{common.GetRunPath(), common.GetAppPath()} {
+	for _, base := range []string{runenv.GetRunPath(), runenv.GetAppPath()} {
 		for _, ext := range SupportedExtensions() {
 			candidates = append(candidates, filepath.Join(base, "conf", "nps"+ext))
 		}

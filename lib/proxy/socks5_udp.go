@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -57,7 +56,7 @@ func (c *sourceFilterPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 }
 
 func (s *TunnelModeServer) socks5UDPAddr(req *socks5.Request, socket net.Addr) netx.Addr {
-	clientIP := common.NormalizeIP(common.ParseIPFromAddr(req.Conn.RemoteAddr().String()))
+	clientIP := netaddr.NormalizeIP(netaddr.ParseIPFromAddr(req.Conn.RemoteAddr().String()))
 	return socks5UDPReplyAddr(s.Task, req.Conn, socket, clientIP)
 }
 

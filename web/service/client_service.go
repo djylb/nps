@@ -8,14 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/ipreg"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/textutil"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -158,7 +157,7 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 			ExportFlow: 0,
 			InletFlow:  0,
 			FlowLimit:  input.FlowLimit,
-			TimeLimit:  common.GetTimeNoErrByStr(input.TimeLimit),
+			TimeLimit:  textutil.GetTimeNoErrByStr(input.TimeLimit),
 		},
 		CreateTime: time.Now().Format("2006-01-02 15:04:05"),
 	}
@@ -222,7 +221,7 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 		if client.Id > 0 {
 			s.repo().ReplaceClientVKeyIndex(oldVerifyKey, client.VerifyKey, client.Id)
 		}
-		client.Flow.SetLimits(input.FlowLimit, common.GetTimeNoErrByStr(input.TimeLimit))
+		client.Flow.SetLimits(input.FlowLimit, textutil.GetTimeNoErrByStr(input.TimeLimit))
 		client.RateLimit = input.RateLimit
 		client.SetMaxConn(input.MaxConn)
 		client.MaxTunnelNum = input.MaxTunnelNum

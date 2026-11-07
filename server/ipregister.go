@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
@@ -32,7 +31,7 @@ func StartIPRegisterServer(handler http.Handler) {
 		}
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
-	addr := common.BuildAddress(cfg.App.IPRegisterIP, strconv.Itoa(cfg.App.IPRegisterPort))
+	addr := net.JoinHostPort(cfg.App.IPRegisterIP, strconv.Itoa(cfg.App.IPRegisterPort))
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		logs.Error("IP registration page: %v", err)

@@ -16,17 +16,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/holepunch/coord"
 	"github.com/djylb/holepunch/natprobe"
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 )
 
 const (
@@ -527,7 +525,7 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id int, caps legacy.Caps, tunnelTyp
 // bridge directly, so that the server address its client reports is the
 // bridge's own: a WebSocket bridge may sit behind a reverse proxy or CDN.
 func p2pDirect(tunnelType string) bool {
-	return tunnelType != common.ConnWS && tunnelType != common.ConnWSS
+	return tunnelType != model.ConnWS && tunnelType != model.ConnWSS
 }
 
 // resolveP2PTarget finds the P2P task of a password and its provider's

@@ -1,4 +1,6 @@
-package common
+// Package runenv locates the run, install, log and config paths of the
+// process, reports its uptime and serves pprof on request.
+package runenv
 
 import (
 	"fmt"
@@ -9,8 +11,31 @@ import (
 	"time"
 )
 
-var ConfPath string
-var StartTime = time.Now()
+func GetPath(filePath string) string {
+	if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(GetRunPath(), filePath)
+	}
+	path, err := filepath.Abs(filePath)
+	if err != nil {
+		return filePath
+	}
+	return path
+}
+
+// FileExists reports whether the named file or directory exists.
+func FileExists(name string) bool {
+	if _, err := os.Stat(name); err != nil && os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+var (
+	// ConfPath overrides the install path when set.
+	ConfPath string
+
+	startTime = time.Now()
+)
 
 // GetRunPath Get the currently selected configuration file directory
 // For non-Windows systems, select the /etc/nps as config directory if exist, or select ./
@@ -104,7 +129,7 @@ func ResolvePath(path string) string {
 }
 
 func GetRunTime() string {
-	totalSecs := int64(time.Since(StartTime).Seconds())
+	totalSecs := int64(time.Since(startTime).Seconds())
 	days := totalSecs / 86400
 	totalSecs %= 86400
 	hours := totalSecs / 3600
@@ -128,9 +153,22 @@ func GetRunTime() string {
 }
 
 func GetRunSecs() int64 {
-	return int64(time.Since(StartTime).Seconds())
+	return int64(time.Since(startTime).Seconds())
 }
 
 func GetStartTime() int64 {
-	return StartTime.Unix()
+	return startTime.Unix()
+}
+
+// GetEnvMap get env
+func GetEnvMap() map[string]string {
+	m := make(map[string]string)
+	environ := os.Environ()
+	for i := range environ {
+		tmp := strings.Split(environ[i], "=")
+		if len(tmp) == 2 {
+			m[tmp[0]] = tmp[1]
+		}
+	}
+	return m
 }

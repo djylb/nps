@@ -16,14 +16,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
 )
 
@@ -141,7 +140,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	// Auto 301 to HTTPS
 	if !isHttpOnlyRequest && host.AutoHttps && r.TLS == nil {
-		redirectHost := common.RemovePortFromHost(r.Host)
+		redirectHost := netaddr.RemovePortFromHost(r.Host)
 		if s.HttpsPort != 443 {
 			redirectHost += ":" + s.HttpsPortStr
 		}
@@ -243,7 +242,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		},
 		Transport: trs.forRoute(route),
 		//FlushInterval: 100 * time.Millisecond,
-		BufferPool: common.BufPoolCopy,
+		BufferPool: conn.BufPoolCopy,
 		ModifyResponse: func(resp *http.Response) error {
 			// CORS
 			if host.AutoCORS {
@@ -645,5 +644,5 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 // backendTLSConfig is the TLS client configuration for a backend reached
 // with the SNI of the client request.
 func backendTLSConfig(sni string) *tls.Config {
-	return &tls.Config{InsecureSkipVerify: true, ServerName: common.RemovePortFromHost(sni)}
+	return &tls.Config{InsecureSkipVerify: true, ServerName: netaddr.RemovePortFromHost(sni)}
 }

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -17,7 +16,7 @@ import (
 func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
 	validSecret := "JBSWY3DPEHPK3PXP"
 	c := &Client{
-		WebPassword: "plainpass" + common.TOTPSeq + validSecret,
+		WebPassword: "plainpass" + totpSeq + validSecret,
 	}
 
 	c.EnsureWebPassword()

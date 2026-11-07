@@ -1,6 +1,8 @@
-package common
+package textutil
 
-import "strings"
+import (
+	"strings"
+)
 
 // NormalizeNewlines turns the line endings of s, \r\n (Windows), \r (classic
 // Mac) and \n (Unix), into \n, and drops a byte order mark at the start.

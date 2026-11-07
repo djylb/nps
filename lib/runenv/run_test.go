@@ -1,4 +1,4 @@
-package common
+package runenv
 
 import (
 	"os"
@@ -74,10 +74,10 @@ func TestResolvePath(t *testing.T) {
 }
 
 func TestRunTimeAndSecs(t *testing.T) {
-	oldStart := StartTime
-	defer func() { StartTime = oldStart }()
+	oldStart := startTime
+	defer func() { startTime = oldStart }()
 
-	StartTime = time.Now().Add(-(24*time.Hour + 2*time.Hour + 3*time.Minute + 4*time.Second))
+	startTime = time.Now().Add(-(24*time.Hour + 2*time.Hour + 3*time.Minute + 4*time.Second))
 
 	runtimeText := GetRunTime()
 	for _, token := range []string{"1d", "2h", "3m", "4s"} {
@@ -91,16 +91,16 @@ func TestRunTimeAndSecs(t *testing.T) {
 		t.Fatalf("GetRunSecs() = %d, want >= %d", got, minInt)
 	}
 
-	if got := GetStartTime(); got != StartTime.Unix() {
-		t.Fatalf("GetStartTime() = %d, want %d", got, StartTime.Unix())
+	if got := GetStartTime(); got != startTime.Unix() {
+		t.Fatalf("GetStartTime() = %d, want %d", got, startTime.Unix())
 	}
 }
 
 func TestRunTimeZeroValueShowsSeconds(t *testing.T) {
-	oldStart := StartTime
-	defer func() { StartTime = oldStart }()
+	oldStart := startTime
+	defer func() { startTime = oldStart }()
 
-	StartTime = time.Now()
+	startTime = time.Now()
 	if got := GetRunTime(); !strings.Contains(got, "s") {
 		t.Fatalf("GetRunTime() = %q, want seconds suffix", got)
 	}
@@ -129,5 +129,30 @@ func TestLogAndTmpPaths(t *testing.T) {
 	}
 	if got := GetConfigPath(); got != "conf/npc.conf" {
 		t.Fatalf("GetConfigPath() = %q, want %q", got, "conf/npc.conf")
+	}
+}
+
+func TestPathAndFileHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	f := filepath.Join(tmpDir, "sample.txt")
+	if err := os.WriteFile(f, []byte("abc"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !FileExists(f) || FileExists(filepath.Join(tmpDir, "missing.txt")) {
+		t.Fatal("FileExists() returned unexpected result")
+	}
+	if got, err := os.ReadFile(f); err != nil || string(got) != "abc" {
+		t.Fatalf("ReadAllFromFile() = (%q, %v), want (abc, nil)", string(got), err)
+	}
+
+	oldConf := ConfPath
+	oldArgs := append([]string(nil), os.Args...)
+	defer func() { ConfPath = oldConf; os.Args = oldArgs }()
+	ConfPath = tmpDir
+	os.Args = []string{"nps", "-c", "conf/nps.conf"}
+
+	if got := GetPath("conf/a.conf"); !strings.HasSuffix(got, filepath.Join("conf", "a.conf")) {
+		t.Fatalf("GetPath(relative) = %q, want suffix conf/a.conf", got)
 	}
 }

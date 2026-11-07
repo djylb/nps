@@ -2,17 +2,18 @@ package server
 
 import (
 	"math"
+	stdnet "net"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
@@ -150,7 +151,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 			ioRecv = v
 		}
 
-		upTime := common.GetRunTime()
+		upTime := runenv.GetRunTime()
 
 		now := time.Now()
 
@@ -192,8 +193,8 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data := make(map[string]interface{})
 	data["version"] = version.VERSION
 	data["minVersion"] = GetMinVersion()
-	data["hostCount"] = common.GetSyncMapLen(&file.GetDb().JsonDb.Hosts)
-	data["clientCount"] = common.GetSyncMapLen(&file.GetDb().JsonDb.Clients)
+	data["hostCount"] = syncMapLen(&file.GetDb().JsonDb.Hosts)
+	data["clientCount"] = syncMapLen(&file.GetDb().JsonDb.Clients)
 
 	dealClientData()
 
@@ -254,16 +255,16 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["httpsProxyPort"] = intStringOrEmpty(cfg.Network.HTTPSProxyPort)
 	data["registeredIps"] = ipreg.Count()
 	data["flowStoreInterval"] = intStringOrEmpty(cfg.Runtime.FlowStoreInterval)
-	data["serverIp"] = common.GetServerIp(connection.Network().P2PIP)
-	data["serverIpv4"] = common.GetOutboundIPv4().String()
-	data["serverIpv6"] = common.GetOutboundIPv6().String()
+	data["serverIp"] = netaddr.GetServerIp(connection.Network().P2PIP)
+	data["serverIpv4"] = netaddr.GetOutboundIPv4().String()
+	data["serverIpv6"] = netaddr.GetOutboundIPv6().String()
 	data["p2pIp"] = connection.Network().P2PIP
 	data["p2pPort"] = connection.Network().P2PPort
-	data["p2pAddr"] = common.BuildAddress(common.GetServerIp(connection.Network().P2PIP), strconv.Itoa(connection.Network().P2PPort))
+	data["p2pAddr"] = stdnet.JoinHostPort(netaddr.GetServerIp(connection.Network().P2PIP), strconv.Itoa(connection.Network().P2PPort))
 	data["logLevel"] = cfg.Log.Level
-	data["upTime"] = common.GetRunTime()
-	data["upSecs"] = common.GetRunSecs()
-	data["startTime"] = common.GetStartTime()
+	data["upTime"] = runenv.GetRunTime()
+	data["upSecs"] = runenv.GetRunSecs()
+	data["startTime"] = runenv.GetStartTime()
 
 	tcpCount := 0
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
@@ -374,4 +375,14 @@ func cloneDashboardValue(value interface{}) interface{} {
 	default:
 		return value
 	}
+}
+
+// syncMapLen counts the entries of m.
+func syncMapLen(m *sync.Map) int {
+	var c int
+	m.Range(func(key, value interface{}) bool {
+		c++
+		return true
+	})
+	return c
 }

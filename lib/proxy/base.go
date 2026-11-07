@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/byterate"
-	"github.com/djylb/nps/lib/common"
+	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 var errProxyAccessDenied = errors.New("proxy access denied")
@@ -95,15 +95,15 @@ func (s *BaseServer) FlowAddHost(host *model.Host, in, out int64) {
 
 // write fail bytes to the connection
 func (s *BaseServer) writeConnFail(c net.Conn) {
-	_, _ = c.Write([]byte(common.ConnectionFailBytes))
+	_, _ = c.Write([]byte(connectionFailBytes))
 	_, _ = c.Write(s.ErrorContent)
 }
 
 // Auth check
 func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccount, userAuth *model.MultiAccount) error {
-	if !common.CheckAuth(r, u, p, model.GetAccountMap(multiAccount), model.GetAccountMap(userAuth)) {
+	if !auth.CheckAuth(r, u, p, model.GetAccountMap(multiAccount), model.GetAccountMap(userAuth)) {
 		if c != nil {
-			_, _ = c.Write([]byte(common.UnauthorizedBytes))
+			_, _ = c.Write([]byte(unauthorizedBytes))
 			_ = c.Close()
 		}
 		return errors.New("401 Unauthorized")
@@ -191,7 +191,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != model.AclOff {
 		if !task.AllowsDestination(addr) {
 			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s",
-				client.Id, task.Id, common.ExtractHost(addr))
+				client.Id, task.Id, netaddr.ExtractHost(addr))
 			return nil, nil, false, errProxyAccessDenied
 		}
 	}
@@ -211,10 +211,19 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 }
 
 func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *model.Client, flows []conn.Flow, proxyProtocol int, rb []byte, task *model.Tunnel, isLocal bool, tp string) {
-	isFramed := tp == common.ConnUDP
+	isFramed := tp == model.ConnUDP
 	var entry conn.Entry
 	if task != nil {
 		entry = task
 	}
 	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, true, proxyProtocol, rb, entry, isLocal, isFramed)
 }
+
+const unauthorizedBytes = "HTTP/1.1 401 Unauthorized\r\n" +
+	"Content-Type: text/plain; charset=utf-8\r\n" +
+	"WWW-Authenticate: Basic realm=\"easyProxy\"\r\n" +
+	"\r\n" +
+	"401 Unauthorized"
+
+const connectionFailBytes = "HTTP/1.1 404 Not Found\r\n" +
+	"\r\n"
