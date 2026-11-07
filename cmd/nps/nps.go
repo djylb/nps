@@ -196,7 +196,7 @@ func main() {
 		logType = "file"
 	}
 	logs.Init(logType, logLevel, logPath, logMaxSize, logMaxFiles, logMaxDays, logCompress, logColor)
-	warnArgs()
+	warnArgs(strings.EqualFold(logType, "off"))
 	for _, w := range cfg.Legacy {
 		logs.Warn("%s", w)
 	}
@@ -299,8 +299,15 @@ func newServiceConfig() *service.Config {
 // is set up.
 var argWarnings []string
 
-func warnArgs() {
+// warnArgs logs argWarnings, or writes them to standard error when the log
+// is off, as an OpenWrt init script sets, so that they still reach the
+// system log.
+func warnArgs(logOff bool) {
 	for _, w := range argWarnings {
+		if logOff {
+			fmt.Fprintln(os.Stderr, "WARN", w)
+			continue
+		}
 		logs.Warn("%s", w)
 	}
 }

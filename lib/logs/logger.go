@@ -141,7 +141,7 @@ func Init(
 			zerolog.ConsoleWriter{
 				Out:        os.Stdout,
 				TimeFormat: zerolog.TimeFieldFormat,
-				NoColor:    !color,
+				NoColor:    !color || !isTerminal(os.Stdout),
 			},
 		)
 	}
@@ -298,3 +298,10 @@ func (zapAdapter) Write(p []byte) (n int, err error) {
 }
 
 func (zapAdapter) Sync() error { return nil }
+
+// isTerminal reports whether f is a terminal; colour codes written anywhere
+// else, such as the journal or OpenWrt's system log, show up as text.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
