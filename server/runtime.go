@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -200,7 +199,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 
 	data := make(map[string]interface{})
 	data["version"] = version.VERSION
-	data["minVersion"] = GetMinVersion()
+	data["minVersion"] = s.bridge.MinClientVersion()
 	data["hostCount"] = syncMapLen(&s.db.JsonDb.Hosts)
 	data["clientCount"] = syncMapLen(&s.db.JsonDb.Clients)
 
@@ -342,10 +341,6 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 
 func GetVersion() string {
 	return version.VERSION
-}
-
-func GetMinVersion() string {
-	return bridge.MinClientVersion()
 }
 
 func GetCurrentYear() int {

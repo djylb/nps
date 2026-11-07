@@ -63,6 +63,10 @@ type Runtime interface {
 	ListHosts(offset, limit, clientID int, search, sort, order string) ([]*model.Host, int)
 	RemoveHostCache(int)
 	TunnelRunning(int) bool
+	// CanUpdateSelf reports whether the server may be updated from the web.
+	CanUpdateSelf() bool
+	// UpdateSelf updates the server to the latest release and restarts it.
+	UpdateSelf() (string, error)
 }
 
 type Backend struct {
@@ -112,15 +116,11 @@ func (defaultRepository) RangeClients(fn func(*model.Client) bool) {
 }
 
 func (defaultRepository) RangeTunnels(fn func(*model.Tunnel) bool) {
-	file.GetDb().JsonDb.Tasks.Range(func(_, value interface{}) bool {
-		return fn(value.(*model.Tunnel))
-	})
+	file.GetDb().RangeTunnels(fn)
 }
 
 func (defaultRepository) RangeHosts(fn func(*model.Host) bool) {
-	file.GetDb().JsonDb.Hosts.Range(func(_, value interface{}) bool {
-		return fn(value.(*model.Host))
-	})
+	file.GetDb().RangeHosts(fn)
 }
 
 func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
@@ -172,11 +172,11 @@ func (defaultRepository) NextClientID() int {
 }
 
 func (defaultRepository) NextTunnelID() int {
-	return int(file.GetDb().JsonDb.GetTaskId())
+	return file.GetDb().NextTunnelID()
 }
 
 func (defaultRepository) NextHostID() int {
-	return int(file.GetDb().JsonDb.GetHostId())
+	return file.GetDb().NextHostID()
 }
 
 func (defaultRepository) CreateClient(client *model.Client) error {
@@ -338,6 +338,10 @@ func (offlineRuntime) ListHosts(offset, limit, clientID int, search, _, _ string
 func (offlineRuntime) RemoveHostCache(int) {}
 
 func (offlineRuntime) TunnelRunning(int) bool { return false }
+
+func (offlineRuntime) CanUpdateSelf() bool { return false }
+
+func (offlineRuntime) UpdateSelf() (string, error) { return "", ErrServerUpdateUnavailable }
 
 // bridgeErrors turns the errors of the bridge that the web manager tells
 // apart into its own.

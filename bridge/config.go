@@ -9,7 +9,6 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/ports"
 )
@@ -43,23 +42,21 @@ loop:
 				break loop
 			}
 
-			id, err := file.GetDb().GetClientIdByBlake2bVkey(string(b))
+			id, err := s.store.GetClientIdByBlake2bVkey(string(b))
 			if err != nil {
 				break loop
 			}
 
 			var remarks []string
 			if client.IsConnect && !isPub {
-				file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-					v := value.(*model.Host)
+				s.store.RangeHosts(func(v *model.Host) bool {
 					if v.Client.Id == id {
 						remarks = append(remarks, v.Remark)
 					}
 					return true
 				})
 
-				file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-					v := value.(*model.Tunnel)
+				s.store.RangeTunnels(func(v *model.Tunnel) bool {
 					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
 						remarks = append(remarks, v.Remark)
 					}
@@ -80,7 +77,7 @@ loop:
 			client.Id = 0
 			client.VerifyKey = ""
 
-			if err = file.GetDb().NewClient(client); err != nil {
+			if err = s.store.NewClient(client); err != nil {
 				fail = true
 				_ = legacy.WriteStatus(c, false)
 				break loop
@@ -91,7 +88,7 @@ loop:
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
 			node := newNode(uuid, caps)
-			s.storeClient(client.Id, NewClient(client.Id, node))
+			s.storeClient(client.Id, NewClient(client.Id, node, s.selectMode))
 			if caps.NodeID {
 				published = node
 				published.awaitTunnel()
@@ -100,7 +97,7 @@ loop:
 		case legacy.FlagNewHost:
 			h, err := legacy.ReadHost(c)
 			if err == nil {
-				h.Id = int(file.GetDb().JsonDb.GetHostId())
+				h.Id = s.store.NextHostID()
 			}
 			if err != nil || h.Target == nil {
 				fail = true
@@ -141,7 +138,7 @@ loop:
 		case legacy.FlagNewTask:
 			t, err := legacy.ReadTask(c)
 			if err == nil {
-				t.Id = int(file.GetDb().JsonDb.GetTaskId())
+				t.Id = s.store.NextTunnelID()
 			}
 			if err != nil {
 				fail = true
@@ -161,7 +158,7 @@ loop:
 
 		ports:
 			for i := 0; i < len(ports); i++ {
-				tl := configPortTask(t, client, int(file.GetDb().JsonDb.GetTaskId()), ports, targets, i)
+				tl := configPortTask(t, client, s.store.NextTunnelID(), ports, targets, i)
 				if caps.NodeID {
 					join(client.Id)
 				}
@@ -187,7 +184,7 @@ loop:
 				if tt != nil && !dispatch(s.OpenTask, tt) {
 					logs.Warn("Open task %s of client %d timed out", tt.Remark, client.Id)
 					if created {
-						_ = file.GetDb().DelTask(tt.Id)
+						_ = s.store.DelTask(tt.Id)
 					}
 					if !writeAddFail(c) {
 						fail = true
@@ -279,16 +276,16 @@ func (s *Bridge) publishHost(h *model.Host, client *model.Client, uuid string, c
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	s.cancelClose(client.Id)
-	hh, ok := file.GetDb().ClientHost(client, h)
+	hh, ok := s.store.ClientHost(client, h)
 	if !ok {
-		if file.GetDb().IsHostExist(h) {
+		if s.store.IsHostExist(h) {
 			return nil, errors.New("the host already exists")
 		}
 		h.Routes = s.newRoutes(client.Id)
 		if caps.NodeID {
 			h.Routes.Publish(uuid, h.Target)
 		}
-		return nil, file.GetDb().NewHost(h)
+		return nil, s.store.NewHost(h)
 	}
 	if !hh.NoStore {
 		return nil, nil
@@ -297,7 +294,7 @@ func (s *Bridge) publishHost(h *model.Host, client *model.Client, uuid string, c
 		hh.Routes.Publish(uuid, h.Target)
 	}
 	hh.Update(h)
-	file.GetDb().HostChanged(hh)
+	s.store.HostChanged(hh)
 	return hh, nil
 }
 
@@ -309,7 +306,7 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	s.cancelClose(client.Id)
-	tt, ok := file.GetDb().ClientTunnel(client, tl)
+	tt, ok := s.store.ClientTunnel(client, tl)
 	if !ok {
 		if b := ports.TestTunnelPort(tl); !b && tl.Mode != "secret" && tl.Mode != "p2p" && tl.Port > 0 {
 			return nil, false, fmt.Errorf("port %d is not available", tl.Port)
@@ -318,7 +315,7 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 		if caps.NodeID {
 			tl.Routes.Publish(uuid, tl.Target)
 		}
-		if err := file.GetDb().NewTask(tl); err != nil {
+		if err := s.store.NewTask(tl); err != nil {
 			return nil, false, err
 		}
 		return tl, true, nil
@@ -327,7 +324,7 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 		return nil, false, nil
 	}
 	tl.Id = tt.Id
-	if err := file.GetDb().ReserveTaskPassword(tl); err != nil {
+	if err := s.store.ReserveTaskPassword(tl); err != nil {
 		return nil, false, err
 	}
 	joining := tt.Routes.HasOther(uuid) && tt.Mode == tl.Mode && tt.ServerIp == tl.ServerIp
@@ -335,7 +332,7 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 		tt.Routes.Publish(uuid, tl.Target)
 	}
 	tt.Update(tl)
-	file.GetDb().TunnelChanged(tt)
+	s.store.TunnelChanged(tt)
 	if joining {
 		return nil, false, nil
 	}
@@ -348,8 +345,7 @@ func (s *Bridge) PruneRoutes(delTask, delHost func(id int)) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	var tasks, hosts []int
-	file.GetDb().JsonDb.Tasks.Range(func(_, value any) bool {
-		v := value.(*model.Tunnel)
+	s.store.RangeTunnels(func(v *model.Tunnel) bool {
 		if v.NoStore && s.pruneRoutes(v.Client.Id, v.Routes) {
 			if v.Routes.Len() == 0 {
 				tasks = append(tasks, v.Id)
@@ -361,8 +357,7 @@ func (s *Bridge) PruneRoutes(delTask, delHost func(id int)) {
 		}
 		return true
 	})
-	file.GetDb().JsonDb.Hosts.Range(func(_, value any) bool {
-		v := value.(*model.Host)
+	s.store.RangeHosts(func(v *model.Host) bool {
 		if v.NoStore && s.pruneRoutes(v.Client.Id, v.Routes) {
 			if v.Routes.Len() == 0 {
 				hosts = append(hosts, v.Id)

@@ -18,7 +18,6 @@ import (
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
@@ -131,7 +130,7 @@ func (s *HttpsServer) Start() error {
 	conn.Accept(s.httpsListener, func(c net.Conn) {
 		// Only the global list: the entry lists depend on the request's host,
 		// which may differ from the SNI.
-		if proxy.SourceDenied(c.RemoteAddr(), nil, nil, "") {
+		if proxy.SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), nil, nil, "") {
 			_ = c.Close()
 			return
 		}
@@ -140,7 +139,7 @@ func (s *HttpsServer) Start() error {
 		if err != nil {
 			logs.Debug("Failed to read clientHello from %v, err=%v", c.RemoteAddr(), err)
 			// Check if the request is an HTTP request.
-			checkHTTPAndRedirect(c, rb)
+			s.checkHTTPAndRedirect(c, rb)
 			return
 		}
 
@@ -151,7 +150,7 @@ func (s *HttpsServer) Start() error {
 			return
 		}
 
-		host, err := file.GetDb().FindCertByHost(serverName)
+		host, err := s.store.FindCertByHost(serverName)
 		if err != nil {
 			host = nil
 		}
@@ -234,7 +233,7 @@ func readClientHello(c net.Conn) (*tlshello.Hello, []byte, error) {
 	}
 }
 
-func checkHTTPAndRedirect(c net.Conn, rb []byte) {
+func (s *HttpsServer) checkHTTPAndRedirect(c net.Conn, rb []byte) {
 	_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 	defer func() { _ = c.Close() }()
 
@@ -250,7 +249,7 @@ func checkHTTPAndRedirect(c net.Conn, rb []byte) {
 	req.URL.Scheme = "https"
 	_ = c.SetDeadline(time.Time{})
 
-	_, err = file.GetDb().GetInfoByHost(req.Host, req)
+	_, err = s.store.GetInfoByHost(req.Host, req)
 	if err != nil {
 		logs.Debug("Host not found: %s %s %s", req.URL.Scheme, req.Host, req.RequestURI)
 		return

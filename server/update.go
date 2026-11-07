@@ -2,15 +2,11 @@ package server
 
 import (
 	"errors"
-	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
 )
-
-// DisableRemoteUpdate keeps the web interface from updating the server.
-var DisableRemoteUpdate bool
 
 // ServiceName is the name nps is installed as a system service under.
 const ServiceName = "Nps"
@@ -26,26 +22,24 @@ var (
 	ErrUpdateRunning = errors.New("an update is already running")
 )
 
-var updating atomic.Bool
-
 // CanUpdateSelf reports whether the web interface may update the server.
-func CanUpdateSelf() bool {
-	return !DisableRemoteUpdate && install.CanRestartSelf()
+func (s *Server) CanUpdateSelf() bool {
+	return !s.noUpdate && install.CanRestartSelf()
 }
 
 // UpdateSelf updates the server to the latest release and restarts it
 // shortly as the new version. It returns the version updated to, or "" when
 // the running version is the latest.
-func UpdateSelf() (string, error) {
-	if DisableRemoteUpdate {
+func (s *Server) UpdateSelf() (string, error) {
+	if s.noUpdate {
 		return "", ErrUpdateDisabled
 	}
-	if !updating.CompareAndSwap(false, true) {
+	if !s.updating.CompareAndSwap(false, true) {
 		return "", ErrUpdateRunning
 	}
 	u, err := install.UpdateSelf("nps", ServiceName)
 	if u == nil {
-		updating.Store(false)
+		s.updating.Store(false)
 		return "", err
 	}
 	logs.Info("Updated to %s, restarting", u.Version)
@@ -53,7 +47,7 @@ func UpdateSelf() (string, error) {
 		time.Sleep(restartDelay)
 		if err := u.Restart(); err != nil {
 			logs.Error("Restart after the update to %s failed: %v", u.Version, err)
-			updating.Store(false)
+			s.updating.Store(false)
 		}
 	}()
 	return u.Version, nil

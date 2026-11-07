@@ -15,7 +15,6 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
@@ -29,6 +28,7 @@ import (
 
 type HttpProxy struct {
 	*proxy.BaseServer
+	store                 Store
 	HttpServer            *HttpServer
 	HttpsServer           *HttpsServer
 	Http3Server           *Http3Server
@@ -51,9 +51,10 @@ type HttpProxy struct {
 	ForceAutoSsl          bool
 }
 
-func NewHttpProxy(bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
+func NewHttpProxy(store Store, bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
 	httpProxy := &HttpProxy{
 		BaseServer:            proxy.NewBaseServer(bridge, task, allowLocalProxy),
+		store:                 store,
 		HttpPort:              httpPort,
 		HttpsPort:             httpsPort,
 		Http3Port:             http3Port,
@@ -113,7 +114,7 @@ func (s *HttpProxy) Start() error {
 	}
 	s.Magic.OnDemand = &certmagic.OnDemandConfig{
 		DecisionFunc: func(ctx context.Context, name string) error {
-			h, err := file.GetDb().FindCertByHost(name)
+			h, err := s.store.FindCertByHost(name)
 			if err != nil {
 				return fmt.Errorf("unknown host %q", name)
 			}

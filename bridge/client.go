@@ -37,14 +37,9 @@ func nameOf(m SelectMode) string {
 	return fmt.Sprintf("%d", m)
 }
 
-var ClientSelectMode = Primary
-
-func SetClientSelectMode(v any) error {
-	const (
-		minMode = int32(Primary)
-		maxMode = int32(Random)
-	)
-
+// ParseSelectMode reads a select mode given by name or number. Anything else
+// is an error, with Primary as the mode to fall back to.
+func ParseSelectMode(v any) (SelectMode, error) {
 	var mode SelectMode
 	var bad bool
 
@@ -78,19 +73,17 @@ func SetClientSelectMode(v any) error {
 		bad = true
 	}
 
-	if int32(mode) < minMode || int32(mode) > maxMode {
+	if mode < Primary || mode > Random {
 		bad = true
 	}
-
 	if bad {
-		ClientSelectMode = Primary
-		logs.Warn("Invalid client select mode %v; fallback to %s(%d)", v, nameOf(Primary), Primary)
-		return fmt.Errorf("invalid select mode %v: fallback to Primary", v)
+		return Primary, fmt.Errorf("invalid select mode %v: fallback to %s(%d)", v, nameOf(Primary), Primary)
 	}
-	ClientSelectMode = mode
-	logs.Info("Client select mode set to %s(%d)", nameOf(mode), mode)
-	return nil
+	return mode, nil
 }
+
+// String names the mode.
+func (m SelectMode) String() string { return nameOf(m) }
 
 const retryTimeMax = 3
 const connectGraceProtectWindow = 3 * time.Second
@@ -363,9 +356,9 @@ type Client struct {
 	LastUUID        string
 	nodes           sync.Map // map[nodeUUID]*Node
 	nodePool        *upstream.Pool[*Node]
-	poolMode        atomic.Int32 // the SelectMode nodePool is configured for
-	files           sync.Map     // map[fileUUID]nodeUUID
-	retryTime       int          // it will add 1 when ping not ok until to 3 will close the client
+	mode            SelectMode // how nodes are chosen
+	files           sync.Map   // map[fileUUID]nodeUUID
+	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
 	closed          uint32
 	lastConnectNano atomic.Int64
 }
@@ -384,13 +377,14 @@ func nodePoolConfig(mode SelectMode) upstream.Config {
 	return cfg
 }
 
-func NewClient(id int, n *Node) *Client {
+// NewClient returns client id with node n, choosing nodes by mode.
+func NewClient(id int, n *Node, mode SelectMode) *Client {
 	c := &Client{
 		Id:       id,
 		LastUUID: n.UUID,
-		nodePool: upstream.New[*Node](nodePoolConfig(ClientSelectMode)),
+		mode:     mode,
+		nodePool: upstream.New[*Node](nodePoolConfig(mode)),
 	}
-	c.poolMode.Store(int32(ClientSelectMode))
 	c.MarkConnectedNow()
 	n.Client = c
 	c.nodes.Store(n.UUID, n)
@@ -504,13 +498,9 @@ func (c *Client) CheckNode() *Node { return c.selectNode(true) }
 
 // GetNode is CheckNode, except that the RoundRobin and Random modes choose
 // a node for every call.
-func (c *Client) GetNode() *Node { return c.selectNode(ClientSelectMode == Primary) }
+func (c *Client) GetNode() *Node { return c.selectNode(c.mode == Primary) }
 
 func (c *Client) selectNode(sticky bool) *Node {
-	mode := ClientSelectMode
-	if c.poolMode.Swap(int32(mode)) != int32(mode) {
-		_ = c.nodePool.SetConfig(nodePoolConfig(mode))
-	}
 	c.mu.RLock()
 	last := c.LastUUID
 	c.mu.RUnlock()

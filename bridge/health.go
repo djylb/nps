@@ -9,7 +9,6 @@ import (
 
 	"github.com/djylb/nps/lib/model"
 
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logs"
 )
@@ -30,10 +29,11 @@ type healthPeer interface {
 // healthPush is the state of the health groups of one connection. Its goroutine
 // alone changes sent, under mu; mu is never held across network I/O.
 type healthPush struct {
-	mu   sync.Mutex
-	sent map[string]healthGroup
-	quit chan struct{}
-	done chan struct{}
+	store Store
+	mu    sync.Mutex
+	sent  map[string]healthGroup
+	quit  chan struct{}
+	done  chan struct{}
 }
 
 // apply takes an unhealthy target out of the rotation of the group's entry, or
@@ -114,7 +114,7 @@ func newHealthGroup(group string, check model.HealthCheck, target *model.Target)
 // by npc instances has a target per instance, which each checks for itself. Any
 // other entry has one target shared by the nodes of the client, and one node
 // checks it, so that nodes do not overwrite each other's verdicts.
-func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGroup {
+func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[string]healthGroup {
 	groups := make(map[string]healthGroup)
 	shared := client.healthNode() == node.UUID
 	add := func(group string, check model.HealthCheck, routes *model.RouteSet, fallback *model.Target) {
@@ -131,8 +131,7 @@ func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGr
 			groups[group] = g
 		}
 	}
-	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*model.Tunnel)
+	store.RangeTunnels(func(v *model.Tunnel) bool {
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && v.Status && (v.Mode == "tcp" || v.Mode == "secret")
 		target := v.Target
@@ -142,8 +141,7 @@ func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGr
 		}
 		return true
 	})
-	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*model.Host)
+	store.RangeHosts(func(v *model.Host) bool {
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && !v.IsClose
 		target := v.Target
@@ -177,7 +175,7 @@ func (c *Client) healthNode() string {
 // closed, stopping waits briefly at most.
 func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *Node) *healthPush {
 	kick := make(chan struct{}, 1)
-	p := &healthPush{sent: make(map[string]healthGroup), quit: make(chan struct{}), done: make(chan struct{})}
+	p := &healthPush{store: s.store, sent: make(map[string]healthGroup), quit: make(chan struct{}), done: make(chan struct{})}
 	node.healthKick.Store(&kick)
 	kickClientHealth(client) // who checks shared targets may have changed
 	go func() {
@@ -210,7 +208,7 @@ func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *
 // sync makes what node checks through peer match the entries. A changed or
 // removed group is deleted first; a changed one is then sent again.
 func (p *healthPush) sync(id int, peer healthPeer, client *Client, node *Node) error {
-	want := desiredHealthGroups(id, node, client)
+	want := desiredHealthGroups(p.store, id, node, client)
 	for name, old := range p.sent {
 		if g, ok := want[name]; ok && g.same(old) {
 			continue

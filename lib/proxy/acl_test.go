@@ -13,26 +13,8 @@ import (
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 )
-
-func useTestDb(t *testing.T, global *model.Glob) {
-	t.Helper()
-	db := &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
-	db.JsonDb.Global = global
-	t.Cleanup(file.ReplaceDb(db))
-	oldSource := globalSource.Load()
-	SetGlobalSource(func() *acl.Source {
-		if g := file.GetDb().GetGlobal(); g != nil {
-			return g.SourceACL()
-		}
-		return nil
-	})
-	t.Cleanup(func() {
-		globalSource.Store(oldSource)
-	})
-}
 
 func tcpAddr(s string) net.Addr {
 	a, _ := net.ResolveTCPAddr("tcp", s)
@@ -42,7 +24,7 @@ func tcpAddr(s string) net.Addr {
 func TestSourceDeniedLevels(t *testing.T) {
 	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"1.1.1.1"}, nil, acl.ScopeGlobal, "global")
-	useTestDb(t, g)
+	global := g.SourceACL()
 
 	client := &model.Client{Id: 3}
 	client.SetSourceLists(acl.DenyFirst, nil, []string{"1.1.1.0/24", "2.2.2.0/24"}, acl.ScopeUser, "client")
@@ -56,34 +38,32 @@ func TestSourceDeniedLevels(t *testing.T) {
 		"2.2.2.3:80": false, // allowed by every level
 		"1.1.1.9:80": false,
 	} {
-		if got := SourceDenied(tcpAddr(addr), client, taskLists(task), taskName(task)); got != denied {
+		if got := SourceDenied(tcpAddr(addr), global, client, taskLists(task), taskName(task)); got != denied {
 			t.Errorf("SourceDenied(%s) = %v, want %v", addr, got, denied)
 		}
-		if got := SourceDeniedString(addr, client, taskLists(task), taskName(task)); got != denied {
+		if got := SourceDeniedString(addr, global, client, taskLists(task), taskName(task)); got != denied {
 			t.Errorf("SourceDeniedString(%s) = %v, want %v", addr, got, denied)
 		}
-		if got := datagramDenied(tcpAddr(addr), client, taskLists(task)); got != denied {
+		if got := datagramDenied(tcpAddr(addr), global, client, taskLists(task)); got != denied {
 			t.Errorf("datagramDenied(%s) = %v, want %v", addr, got, denied)
 		}
 	}
 }
 
 func TestSourceDeniedWithoutLists(t *testing.T) {
-	useTestDb(t, nil)
-	if SourceDenied(tcpAddr("1.2.3.4:5"), &model.Client{}, nil, "tunnel") {
+	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, &model.Client{}, nil, "tunnel") {
 		t.Fatal("no lists denied an address")
 	}
-	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, nil, "tunnel") {
+	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, nil, nil, "tunnel") {
 		t.Fatal("missing client denied an address")
 	}
 }
 
 func TestSourceDeniedHostEntry(t *testing.T) {
-	useTestDb(t, nil)
 	h := &model.Host{Id: 7, Host: "a.com", Client: &model.Client{Id: 1}, Flow: &model.Flow{}, Target: &model.Target{}}
 	h.SetSourceLists(acl.DenyFirst, nil, []string{"10.0.0.0/8"}, acl.ScopeUser, "host")
 	tn := model.NewTunnelByHost(h, 443)
-	if !SourceDenied(tcpAddr("8.8.8.8:1"), h.Client, taskLists(tn), taskName(tn)) {
+	if !SourceDenied(tcpAddr("8.8.8.8:1"), nil, h.Client, taskLists(tn), taskName(tn)) {
 		t.Fatal("host whitelist not applied to its HTTPS tunnel")
 	}
 	if taskName(tn) != "host" {
@@ -92,7 +72,6 @@ func TestSourceDeniedHostEntry(t *testing.T) {
 }
 
 func TestSourceDeniedRegisteredOnly(t *testing.T) {
-	useTestDb(t, nil)
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
 	client := &model.Client{Id: 3}
@@ -100,30 +79,30 @@ func TestSourceDeniedRegisteredOnly(t *testing.T) {
 	task.RegisteredOnly = true
 	other := &model.Tunnel{Id: 6, Client: client}
 
-	if !SourceDenied(tcpAddr("192.0.2.1:80"), client, taskLists(task), taskName(task)) {
+	if !SourceDenied(tcpAddr("192.0.2.1:80"), nil, client, taskLists(task), taskName(task)) {
 		t.Fatal("unregistered address passed a registered-only tunnel")
 	}
-	if SourceDenied(tcpAddr("192.0.2.1:80"), client, taskLists(other), taskName(other)) {
+	if SourceDenied(tcpAddr("192.0.2.1:80"), nil, client, taskLists(other), taskName(other)) {
 		t.Fatal("registration required by a tunnel that does not ask for it")
 	}
 	ipreg.Register(4, netip.MustParseAddr("192.0.2.1"), time.Hour)
-	if !SourceDenied(tcpAddr("192.0.2.1:80"), client, taskLists(task), taskName(task)) {
+	if !SourceDenied(tcpAddr("192.0.2.1:80"), nil, client, taskLists(task), taskName(task)) {
 		t.Fatal("registration for another client accepted")
 	}
 	ipreg.Register(3, netip.MustParseAddr("192.0.2.1"), time.Hour)
-	if SourceDenied(tcpAddr("192.0.2.1:80"), client, taskLists(task), taskName(task)) || datagramDenied(tcpAddr("192.0.2.1:80"), client, taskLists(task)) {
+	if SourceDenied(tcpAddr("192.0.2.1:80"), nil, client, taskLists(task), taskName(task)) || datagramDenied(tcpAddr("192.0.2.1:80"), nil, client, taskLists(task)) {
 		t.Fatal("registered address denied")
 	}
-	if !SourceDeniedString("192.0.2.2:80", client, taskLists(task), taskName(task)) {
+	if !SourceDeniedString("192.0.2.2:80", nil, client, taskLists(task), taskName(task)) {
 		t.Fatal("unregistered address passed by text")
 	}
 
 	client.RegisteredOnly = true
-	if !SourceDenied(tcpAddr("192.0.2.2:80"), client, taskLists(other), taskName(other)) {
+	if !SourceDenied(tcpAddr("192.0.2.2:80"), nil, client, taskLists(other), taskName(other)) {
 		t.Fatal("client-level registration not required")
 	}
 	ipreg.Register(ipreg.AnyClient, netip.MustParseAddr("192.0.2.2"), time.Hour)
-	if SourceDenied(tcpAddr("192.0.2.2:80"), client, taskLists(other), taskName(other)) {
+	if SourceDenied(tcpAddr("192.0.2.2:80"), nil, client, taskLists(other), taskName(other)) {
 		t.Fatal("registration for every client not accepted")
 	}
 }
@@ -149,7 +128,6 @@ func TestSocks5UDPDatagramDestination(t *testing.T) {
 }
 
 func TestProcessMixDeniesSourceBeforeHandshake(t *testing.T) {
-	useTestDb(t, nil)
 	client := &model.Client{Id: 3, Cnf: &model.Config{U: "u", P: "p"}}
 	task := &model.Tunnel{Id: 9, Mode: "mixProxy", Client: client}
 	task.SetSourceLists(acl.DenyFirst, []string{"127.0.0.1"}, nil, acl.ScopeUser, "tunnel 9")

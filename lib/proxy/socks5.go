@@ -77,7 +77,7 @@ func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	// the source lists apply before any handshake, so that denied
 	// addresses cannot try the proxy credentials
-	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
+	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
 		_ = c.Close()
 		return errProxyAccessDenied
 	}

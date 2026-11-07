@@ -14,7 +14,8 @@ const module = "github.com/djylb/nps/"
 
 // rules keep the shared code apart from what only nps runs: the store stays
 // with the server, so that npc carries neither, and the entities here stay
-// free of both.
+// free of both. The bridge and the host proxy reach the store only through
+// the interfaces the server passes them.
 var rules = []struct {
 	dirs   []string // code under these, tests aside
 	except []string
@@ -22,6 +23,7 @@ var rules = []struct {
 }{
 	{[]string{"lib/", "client/", "cmd/npc/", "bridge/legacy/"}, []string{"lib/file/"}, "lib/file"},
 	{[]string{"lib/", "client/", "cmd/npc/", "bridge/legacy/"}, nil, "server"},
+	{[]string{"bridge/", "server/httpproxy/"}, nil, "lib/file"},
 }
 
 func TestImportBoundary(t *testing.T) {

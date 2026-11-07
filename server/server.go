@@ -15,7 +15,6 @@ import (
 
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
@@ -47,6 +46,14 @@ type Config struct {
 	DisconnectTimeout int
 	// Transports are the bridge transports that listen on a port of their own.
 	Transports bridge.Transports
+	// SecureMode refuses the handshakes of npc versions that predate secure
+	// mode.
+	SecureMode bool
+	// SelectMode is how a client with several nodes picks the node of a new
+	// link.
+	SelectMode bridge.SelectMode
+	// DisableRemoteUpdate keeps the web interface from updating the server.
+	DisableRemoteUpdate bool
 }
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
@@ -58,6 +65,8 @@ type Server struct {
 	tasks      sync.Map // task id -> proxy.Service, or nil for a task without a listener
 	hostCache  *index.AnyIntIndex
 	transports bridge.Transports
+	noUpdate   bool        // remote update is disabled
+	updating   atomic.Bool // an update runs
 
 	webHandler   atomic.Pointer[webHandlerBox]
 	ipRegHandler http.Handler
@@ -79,10 +88,16 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		db:         db,
 		hostCache:  index.NewAnyIntIndex(),
 		transports: cfg.Transports,
+		noUpdate:   cfg.DisableRemoteUpdate,
 		// Once the server stops, its work may end with any error.
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
 	}
-	s.bridge = bridge.NewTunnel(&s.tasks, cfg.DisconnectTimeout)
+	s.bridge = bridge.NewTunnel(db, &s.tasks, bridge.Options{
+		DisconnectTime: cfg.DisconnectTimeout,
+		SecureMode:     cfg.SecureMode,
+		SelectMode:     cfg.SelectMode,
+	})
+	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
 	// registered first, so closed last
 	_, _ = s.scope.Add(closerFunc(func() { s.ApplyWebhook(servercfg.WebhookConfig{}) }))
@@ -121,12 +136,6 @@ func (s *Server) Start(ctx context.Context) error {
 		return ErrClosed
 	}
 	cfg := servercfg.Current()
-	proxy.SetGlobalSource(func() *acl.Source {
-		if g := s.db.GetGlobal(); g != nil {
-			return g.SourceACL()
-		}
-		return nil
-	})
 	s.startIPRegister(cfg)
 	startP2P(s.bridge, cfg)
 	if err := s.bridge.StartTunnel(s.transports); err != nil {
@@ -386,7 +395,7 @@ func (s *Server) newMode(c *model.Tunnel) proxy.Service {
 		// http cache settings are currently unused.
 		addOrigin := cfg.Proxy.AddOriginHeader
 		httpOnlyPass := cfg.Auth.HTTPOnlyPass
-		service = httpproxy.NewHttpProxy(b, c, httpPort, httpsPort, http3Port, httpOnlyPass, addOrigin, allowLocalProxy, s.hostCache)
+		service = httpproxy.NewHttpProxy(s.db, b, c, httpPort, httpsPort, http3Port, httpOnlyPass, addOrigin, allowLocalProxy, s.hostCache)
 	}
 	return service
 }
@@ -592,7 +601,7 @@ func (s *Server) dealClientData() {
 				v.LocalAddr = netaddr.GetOutboundIP().String()
 				// Add Local Client
 				if !b.Connected(v.Id) && v.Status {
-					b.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewLocalNode("127.0.0.1", version.VERSION)))
+					b.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewLocalNode("127.0.0.1", version.VERSION), bridge.Primary))
 					logs.Debug("Inserted virtual client for ID %d", v.Id)
 				}
 			} else {

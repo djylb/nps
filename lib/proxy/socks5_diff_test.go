@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"net/netip"
@@ -40,6 +41,8 @@ func (b *echoBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 }
 
 func (b *echoBridge) IsServer() bool { return b.server }
+
+func (b *echoBridge) GlobalSource() *acl.Source { return nil }
 
 func (b *echoBridge) CliProcess(*conn.Conn, string) {}
 
@@ -222,7 +225,6 @@ func TestSocks5UDPDropsFragmentsAndDeniedDestinations(t *testing.T) {
 }
 
 func TestSocks5UDPDropsDatagramsOfDeniedSource(t *testing.T) {
-	useTestDb(t, nil)
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
 	ipreg.Register(1, netip.MustParseAddr("127.0.0.1"), time.Hour)

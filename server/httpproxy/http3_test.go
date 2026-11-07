@@ -12,7 +12,13 @@ import (
 	"github.com/djylb/nps/lib/file"
 )
 
-func newTestHttp3Server(t *testing.T) *Http3Server {
+// newTestDb returns an empty host database of its own.
+func newTestDb(t *testing.T) *file.DbUtils {
+	return &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
+}
+
+// newTestHttp3Server returns an HTTP/3 server of the hosts in store.
+func newTestHttp3Server(t *testing.T, store Store) *Http3Server {
 	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -20,21 +26,20 @@ func newTestHttp3Server(t *testing.T) *Http3Server {
 	}
 	t.Cleanup(func() { _ = pc.Close() })
 	https := &HttpsServer{
-		HttpServer:   &HttpServer{HttpProxy: &HttpProxy{ForceAutoSsl: true}},
+		HttpServer:   &HttpServer{HttpProxy: &HttpProxy{ForceAutoSsl: true, store: store}},
 		certMagicTls: &tls.Config{},
 	}
 	return NewHttp3Server(https, pc)
 }
 
 func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
-
+	db := newTestDb(t)
 	host := &model.Host{Id: 1, Host: "offload.example", Scheme: "all", AutoSSL: true, Client: &model.Client{Id: 1}}
-	file.GetDb().JsonDb.Hosts.Store(host.Id, host)
+	db.JsonDb.Hosts.Store(host.Id, host)
 	file.HostIndex.Add(host.Host, host.Id)
 	t.Cleanup(func() { file.HostIndex.Remove(host.Host, host.Id) })
 
-	s := newTestHttp3Server(t)
+	s := newTestHttp3Server(t, db)
 	hello := &tls.ClientHelloInfo{ServerName: host.Host}
 	if cfg, _ := s.GetConfigForClient(hello); cfg == nil {
 		t.Fatalf("regular host must get an HTTP/3 TLS config")
@@ -46,7 +51,7 @@ func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
 }
 
 func TestHttp3CloseBeforeStart(t *testing.T) {
-	s := newTestHttp3Server(t)
+	s := newTestHttp3Server(t, newTestDb(t))
 	s.httpsStatus.Store(true)
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -57,7 +62,7 @@ func TestHttp3CloseBeforeStart(t *testing.T) {
 }
 
 func TestHttp3CloseWaitsForBridgeAcceptLoop(t *testing.T) {
-	s := newTestHttp3Server(t)
+	s := newTestHttp3Server(t, newTestDb(t))
 	s.httpsServer = &http.Server{}
 	s.Http3Bridge = true
 	s.ticketKeys = [][32]byte{{1}}

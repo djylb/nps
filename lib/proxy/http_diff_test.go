@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"encoding/base64"
+	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"net/http"
@@ -253,6 +254,8 @@ func (b *failingBridge) OpenLink(*conn.Link, int) (net.Conn, error) {
 }
 
 func (b *failingBridge) IsServer() bool { return true }
+
+func (b *failingBridge) GlobalSource() *acl.Source { return nil }
 
 func (b *failingBridge) CliProcess(*conn.Conn, string) {}
 

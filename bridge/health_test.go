@@ -39,9 +39,9 @@ func healthEnv(t *testing.T) (*model.Client, *model.Tunnel) {
 func runSignal(t *testing.T, version string) (net.Conn, func()) {
 	t.Helper()
 	npc, srv := net.Pipe()
-	s := NewTunnel(nil, 30)
+	s := NewTunnel(file.GetDb(), nil, Options{DisconnectTime: 30})
 	node := NewNode("uuid-"+version, version, legacy.LatestIndex)
-	client := NewClient(5, node)
+	client := NewClient(5, node, Primary)
 	s.Client.Store(5, client)
 	c := conn.NewConn(srv)
 	node.AddSignal(c)
@@ -129,18 +129,18 @@ func (*fakeOpenTunnel) Reason() string { return "" }
 func TestHealthGroupOfPublishedEntry(t *testing.T) {
 	client, tn := healthEnv(t)
 	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
-	c := NewClient(client.Id, node)
+	c := NewClient(client.Id, node, Primary)
 	tn.NoStore = true
 	tn.Routes = model.NewRouteSet(func(string) bool { return true })
 	own := &model.Target{TargetStr: "127.0.0.1:3\n127.0.0.1:4"}
 	tn.Routes.Publish(node.UUID, own)
 	tn.Update(&model.Tunnel{Mode: "tcp", Target: own})
-	g, ok := desiredHealthGroups(client.Id, node, c)["t9"]
+	g, ok := desiredHealthGroups(file.GetDb(), client.Id, node, c)["t9"]
 	if !ok || g.target != own {
 		t.Fatalf("group %+v, %v", g, ok)
 	}
 	other := NewNode("n2", "0.35.0", legacy.LatestIndex)
-	if _, ok := desiredHealthGroups(client.Id, other, c)["t9"]; ok {
+	if _, ok := desiredHealthGroups(file.GetDb(), client.Id, other, c)["t9"]; ok {
 		t.Fatal("a node that does not publish the entry checks it")
 	}
 }
@@ -181,7 +181,7 @@ func TestUDPTunnelGetsNoHealthGroup(t *testing.T) {
 	client, tn := healthEnv(t)
 	tn.Mode = "udp"
 	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
-	if got := desiredHealthGroups(client.Id, node, NewClient(client.Id, node)); len(got) != 0 {
+	if got := desiredHealthGroups(file.GetDb(), client.Id, node, NewClient(client.Id, node, Primary)); len(got) != 0 {
 		t.Fatalf("groups %v", got)
 	}
 }
@@ -190,10 +190,9 @@ func TestRepublishedTunnelAnnouncesChange(t *testing.T) {
 	client, tn := healthEnv(t)
 	tn.NoStore, tn.Remark, tn.Port = true, "r", 7000
 	tn.Routes = model.NewRouteSet(func(string) bool { return true })
-	s := newBridge(nil, 30)
+	s := NewTunnel(file.GetDb(), nil, Options{DisconnectTime: 30})
 	var calls atomic.Int32
-	file.SetEntriesChanged(func() { calls.Add(1) })
-	t.Cleanup(func() { file.SetEntriesChanged(func() {}) })
+	file.GetDb().OnEntriesChanged(func() { calls.Add(1) })
 	again := &model.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &model.Target{TargetStr: "a:1"}, Client: client}
 	if _, _, err := s.publishTask(again, client, "n1", legacy.CapsOf(legacy.LatestIndex, "0.35.0")); err != nil {
 		t.Fatal(err)

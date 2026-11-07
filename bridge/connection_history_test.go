@@ -23,13 +23,13 @@ func TestRegistryConnectionHistory(t *testing.T) {
 			db.JsonDb.Clients.Delete(id)
 		}
 	}()
-	b := NewTunnel(&sync.Map{}, 30)
-	first := NewClient(id, NewNode("one", "", 8))
+	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
+	first := NewClient(id, NewNode("one", "", 8), Primary)
 	b.loadOrStoreClient(id, first)
-	b.loadOrStoreClient(id, NewClient(id, NewNode("two", "", 8)))
+	b.loadOrStoreClient(id, NewClient(id, NewNode("two", "", 8), Primary))
 	b.DelClient(id)
 	b.DelClient(id)
-	b.loadOrStoreClient(id, NewClient(id, NewNode("three", "", 8)))
+	b.loadOrStoreClient(id, NewClient(id, NewNode("three", "", 8), Primary))
 	b.DelClient(id)
 	raw, err := json.Marshal(c.ConnectionHistory)
 	if err != nil {

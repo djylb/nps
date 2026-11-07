@@ -34,7 +34,7 @@ func listenSocks5UDP(bridge NetBridge, task *model.Tunnel, addr string) (net.Pac
 		listener = rate.NewVisitorPacketConn(listener, task.Client.Rate, task.RateLimiter())
 	}
 	if bridge.IsServer() {
-		listener = &sourceFilterPacketConn{PacketConn: listener, task: task}
+		listener = &sourceFilterPacketConn{PacketConn: listener, bridge: bridge, task: task}
 	}
 	return listener, nil
 }
@@ -43,13 +43,14 @@ func listenSocks5UDP(bridge NetBridge, task *model.Tunnel, addr string) (net.Pac
 // deny, also once an association has started.
 type sourceFilterPacketConn struct {
 	net.PacketConn
-	task *model.Tunnel
+	bridge NetBridge
+	task   *model.Tunnel
 }
 
 func (c *sourceFilterPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
 		n, addr, err := c.PacketConn.ReadFrom(p)
-		if err != nil || c.task == nil || c.task.Client == nil || !datagramDenied(addr, c.task.Client, &c.task.SourceLists) {
+		if err != nil || c.task == nil || c.task.Client == nil || !datagramDenied(addr, c.bridge.GlobalSource(), c.task.Client, &c.task.SourceLists) {
 			return n, addr, err
 		}
 	}

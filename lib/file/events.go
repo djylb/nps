@@ -105,13 +105,13 @@ func (s *DbUtils) hostCreated(h *model.Host) {
 
 // TunnelChanged reports that the entry t was changed in place.
 func (s *DbUtils) TunnelChanged(t *model.Tunnel) {
-	notifyEntriesChanged()
+	s.JsonDb.notifyEntriesChanged()
 	s.tunnelSaved(t)
 }
 
 // HostChanged reports that the entry h was changed in place.
 func (s *DbUtils) HostChanged(h *model.Host) {
-	notifyEntriesChanged()
+	s.JsonDb.notifyEntriesChanged()
 	if bus := s.events.bus.Load(); bus != nil {
 		bus.Publish(changeType(&s.events.hosts, h.Id, !h.IsClose, EventHostUpdated, EventHostStarted, EventHostStopped), model.NewHostInfo(h))
 	}

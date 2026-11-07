@@ -45,6 +45,8 @@ type JsonDb struct {
 	HostFilePath     string //host file path
 	ClientFilePath   string //client file path
 	GlobalFilePath   string //global file path
+
+	entriesChanged atomic.Pointer[func()] // see DbUtils.OnEntriesChanged
 }
 
 func (s *JsonDb) LoadTaskFromJsonFile() error {
@@ -200,21 +202,19 @@ func (s *JsonDb) GetClient(id int) (c *model.Client, err error) {
 
 var hostLock sync.Mutex
 
-// entriesChanged is called after tunnels or hosts were stored.
-var entriesChanged atomic.Pointer[func()]
+// OnEntriesChanged makes f called after tunnels or hosts of s were stored
+// or changed in place, without any lock held; f must return promptly. The
+// server that owns s sets it before it starts.
+func (s *DbUtils) OnEntriesChanged(f func()) { s.JsonDb.entriesChanged.Store(&f) }
 
-// SetEntriesChanged sets what is called after tunnels or hosts were stored,
-// without any lock held. It must return promptly.
-func SetEntriesChanged(f func()) { entriesChanged.Store(&f) }
-
-func notifyEntriesChanged() {
-	if f := entriesChanged.Load(); f != nil {
+func (s *JsonDb) notifyEntriesChanged() {
+	if f := s.entriesChanged.Load(); f != nil {
 		(*f)()
 	}
 }
 
 func (s *JsonDb) StoreHostToJsonFile() error {
-	defer notifyEntriesChanged()
+	defer s.notifyEntriesChanged()
 	hostLock.Lock()
 	defer hostLock.Unlock()
 	return storeSyncMapToFile(&s.Hosts, s.HostFilePath)
@@ -223,7 +223,7 @@ func (s *JsonDb) StoreHostToJsonFile() error {
 var taskLock sync.Mutex
 
 func (s *JsonDb) StoreTasksToJsonFile() error {
-	defer notifyEntriesChanged()
+	defer s.notifyEntriesChanged()
 	taskLock.Lock()
 	defer taskLock.Unlock()
 	return storeSyncMapToFile(&s.Tasks, s.TaskFilePath)

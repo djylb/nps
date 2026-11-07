@@ -31,19 +31,16 @@ import (
 func TestP2PEndToEnd(t *testing.T) {
 	for _, secure := range []bool{false, true} {
 		t.Run(fmt.Sprintf("secure=%t", secure), func(t *testing.T) {
-			old := bridge.ServerSecureMode
-			bridge.ServerSecureMode = secure
-			t.Cleanup(func() { bridge.ServerSecureMode = old })
-			testP2PEndToEnd(t)
+			testP2PEndToEnd(t, secure)
 		})
 	}
 }
 
-func testP2PEndToEnd(t *testing.T) {
+func testP2PEndToEnd(t *testing.T, secure bool) {
 	if testing.Short() {
 		t.Skip("end-to-end")
 	}
-	env := startP2PTestEnv(t)
+	env := startP2PTestEnv(t, secure)
 	target := serveTCP(t, func(c net.Conn) {
 		defer func() { _ = c.Close() }()
 		_, _ = io.Copy(c, c)
@@ -67,7 +64,7 @@ func TestP2PDeclinedByProvider(t *testing.T) {
 	old := DisableP2P
 	DisableP2P = true
 	t.Cleanup(func() { DisableP2P = old })
-	env := startP2PTestEnv(t)
+	env := startP2PTestEnv(t, false)
 	mgr := NewP2PManager(env.ctx, env.cancel, &config.CommonConfig{
 		Server: env.bridgeAddr, VKey: p2pTestVisitorKey, Tp: "tcp", DisconnectTime: 30,
 		Client: &model.Client{Cnf: &model.Config{}},
@@ -99,8 +96,9 @@ type p2pTestEnv struct {
 }
 
 // startP2PTestEnv runs a bridge with its P2P service on loopback, a
-// provider client registered on it and the p2p task of p2pTestPassword.
-func startP2PTestEnv(t *testing.T) p2pTestEnv {
+// provider client registered on it and the p2p task of p2pTestPassword;
+// secure runs the bridge in secure mode.
+func startP2PTestEnv(t *testing.T, secure bool) p2pTestEnv {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
@@ -119,7 +117,7 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 		t.Fatal(err)
 	}
 
-	b := bridge.NewTunnel(&sync.Map{}, 30)
+	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure})
 	if err := b.StartP2P(bridge.P2PConfig{IP: "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}

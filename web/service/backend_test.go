@@ -133,6 +133,10 @@ func (stubRuntime) ListHosts(int, int, int, string, string, string) ([]*model.Ho
 func (stubRuntime) RemoveHostCache(int)    {}
 func (stubRuntime) TunnelRunning(int) bool { return false }
 
+func (stubRuntime) CanUpdateSelf() bool { return false }
+
+func (stubRuntime) UpdateSelf() (string, error) { return "", nil }
+
 func TestDefaultClientServiceUsesInjectedRepositoryForList(t *testing.T) {
 	repo := stubRepository{
 		listVisibleClient: func(ListClientsInput) ([]*model.Client, int) {

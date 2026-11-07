@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/connection"
 	"github.com/quic-go/quic-go"
@@ -172,7 +171,7 @@ func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 }
 
 func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config, error) {
-	host, err := file.GetDb().FindCertByHost(info.ServerName)
+	host, err := s.store.FindCertByHost(info.ServerName)
 	if err != nil {
 		host = nil
 	}

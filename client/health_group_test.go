@@ -138,7 +138,8 @@ func TestServerGivenHealthGroups(t *testing.T) {
 		}
 	}
 
-	br := bridge.NewTunnel(&sync.Map{}, 30)
+	br := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
+	file.GetDb().OnEntriesChanged(br.EntriesChanged)
 	bridgeAddr := serveTCP(t, func(cn net.Conn) { br.CliProcess(conn.NewConn(cn), "tcp") })
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

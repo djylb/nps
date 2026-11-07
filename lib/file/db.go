@@ -647,6 +647,22 @@ func (s *DbUtils) GetClient(id int) (c *model.Client, err error) {
 	return
 }
 
+// RangeTunnels calls fn for every stored tunnel until fn returns false.
+func (s *DbUtils) RangeTunnels(fn func(*model.Tunnel) bool) {
+	s.JsonDb.Tasks.Range(func(_, v any) bool { return fn(v.(*model.Tunnel)) })
+}
+
+// RangeHosts calls fn for every stored host until fn returns false.
+func (s *DbUtils) RangeHosts(fn func(*model.Host) bool) {
+	s.JsonDb.Hosts.Range(func(_, v any) bool { return fn(v.(*model.Host)) })
+}
+
+// NextTunnelID reserves the id of a new tunnel.
+func (s *DbUtils) NextTunnelID() int { return int(s.JsonDb.GetTaskId()) }
+
+// NextHostID reserves the id of a new host.
+func (s *DbUtils) NextHostID() int { return int(s.JsonDb.GetHostId()) }
+
 func (s *DbUtils) GetGlobal() (c *model.Glob) {
 	return s.JsonDb.Global
 }

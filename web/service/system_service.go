@@ -80,14 +80,22 @@ type GeoFileStatus struct {
 	ModTime string
 }
 
-type DefaultSystemService struct{}
+// DefaultSystemService serves the system information of Runtime, the running
+// server; a nil Runtime runs nothing and cannot be updated.
+type DefaultSystemService struct {
+	Runtime Runtime
+}
 
-func (DefaultSystemService) Info() SystemInfo {
+func (s DefaultSystemService) canUpdate() bool {
+	return s.Runtime != nil && s.Runtime.CanUpdateSelf()
+}
+
+func (s DefaultSystemService) Info() SystemInfo {
 	return SystemInfo{
 		Version: server.GetVersion(),
 		Year:    server.GetCurrentYear(),
 		// the update button only appears when a newer release exists
-		CanUpdate: server.CanUpdateSelf() && install.UpdateAvailable(),
+		CanUpdate: s.canUpdate() && install.UpdateAvailable(),
 	}
 }
 
@@ -115,11 +123,11 @@ func (DefaultSystemService) BridgeDisplay(cfg *servercfg.Snapshot, host string) 
 	return display
 }
 
-func (DefaultSystemService) UpdateServer() (string, error) {
-	if !server.CanUpdateSelf() {
+func (s DefaultSystemService) UpdateServer() (string, error) {
+	if !s.canUpdate() {
 		return "", ErrServerUpdateUnavailable
 	}
-	v, err := server.UpdateSelf()
+	v, err := s.Runtime.UpdateSelf()
 	if errors.Is(err, server.ErrUpdateRunning) {
 		err = ErrServerUpdateRunning
 	}

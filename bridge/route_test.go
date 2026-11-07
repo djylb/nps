@@ -91,7 +91,7 @@ func routeFixture(t *testing.T) (*Bridge, *model.Client) {
 	if err := file.GetDb().NewClient(client); err != nil {
 		t.Fatal(err)
 	}
-	b := NewTunnel(&sync.Map{}, 30)
+	b := NewTunnel(file.GetDb(), &sync.Map{}, Options{DisconnectTime: 30})
 	return b, client
 }
 
@@ -224,7 +224,7 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 func TestLegacyClientHasNoRoutes(t *testing.T) {
 	b, client := routeFixture(t)
 	const ver = 5
-	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver)))
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver), Primary))
 	publish(t, b, client, "config-conn", ver, legacy.FlagNewTask, &model.Tunnel{
 		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "r", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
@@ -270,7 +270,7 @@ func TestCloseSignalSparesAReturningClient(t *testing.T) {
 	cleanup := func() { cleanups++ }
 
 	// Gone, and still gone when the signal is handled.
-	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n1", "", ver)))
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n1", "", ver), Primary))
 	b.DelClient(client.Id)
 	<-b.CloseClient
 	if !b.CloseIfDisconnected(client.Id, cleanup) || cleanups != 1 {
@@ -278,10 +278,10 @@ func TestCloseSignalSparesAReturningClient(t *testing.T) {
 	}
 
 	// Reconnected before the signal is handled.
-	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n2", "", ver)))
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n2", "", ver), Primary))
 	b.DelClient(client.Id)
 	<-b.CloseClient
-	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n3", "", ver)))
+	b.Client.Store(client.Id, NewClient(client.Id, NewNode("n3", "", ver), Primary))
 	if b.CloseIfDisconnected(client.Id, cleanup) || cleanups != 1 {
 		t.Fatal("a reconnected client was cleaned up")
 	}

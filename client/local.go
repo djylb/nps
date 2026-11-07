@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -204,6 +205,9 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 func (b *P2pBridge) IsServer() bool {
 	return false
 }
+
+// GlobalSource is nil: npc has no global source lists.
+func (b *P2pBridge) GlobalSource() *acl.Source { return nil }
 
 func (b *P2pBridge) CliProcess(*conn.Conn, string) {
 	// no-op

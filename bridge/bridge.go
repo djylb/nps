@@ -10,14 +10,22 @@ import (
 
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
-// ServerSecureMode makes the bridge refuse the handshakes of npc versions
-// that predate secure mode.
-var ServerSecureMode = false
+// Options are the settings a bridge is built with.
+type Options struct {
+	// DisconnectTime is how long, in seconds, a silent client tunnel lives.
+	DisconnectTime int
+	// SecureMode refuses the handshakes of npc versions that predate
+	// secure mode.
+	SecureMode bool
+	// SelectMode is how a client with several nodes picks the node of a
+	// new link.
+	SelectMode SelectMode
+}
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
 const bridgeHandshakeReadTimeout = 10 * time.Second
@@ -56,7 +64,10 @@ type Bridge struct {
 	CloseClient        chan int
 	SecretChan         chan *conn.Secret
 	runList            *sync.Map //map[int]interface{}
+	store              Store
 	disconnectTime     int
+	secureMode         bool
+	selectMode         SelectMode
 	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
@@ -74,10 +85,29 @@ type Bridge struct {
 	closeOnce sync.Once
 }
 
-func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
-	b := newBridge(runList, disconnectTime)
-	file.SetEntriesChanged(b.kickHealth)
+// NewTunnel returns a bridge of the entries in store; runList holds the
+// running tunnels. Changes of the stored entries are reported to it through
+// EntriesChanged.
+func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
+	b := newBridge(runList, opts.DisconnectTime)
+	b.store = store
+	b.secureMode = opts.SecureMode
+	b.selectMode = opts.SelectMode
 	return b
+}
+
+// EntriesChanged has every node compare its health groups with the stored
+// entries; the owner of the store calls it after tunnels or hosts changed.
+// It returns promptly.
+func (s *Bridge) EntriesChanged() { s.kickHealth() }
+
+// GlobalSource returns the global source access lists, nil if there are
+// none.
+func (s *Bridge) GlobalSource() *acl.Source {
+	if g := s.store.GetGlobal(); g != nil {
+		return g.SourceACL()
+	}
+	return nil
 }
 
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
@@ -111,10 +141,10 @@ func (s *Bridge) DelClient(id int) {
 		}
 
 		s.recordConnection(id, false)
-		if file.GetDb().IsPubClient(id) {
+		if s.store.IsPubClient(id) {
 			return
 		}
-		if c, err := file.GetDb().GetClient(id); err == nil {
+		if c, err := s.store.GetClient(id); err == nil {
 			s.closingMu.Lock()
 			s.closing[id] = struct{}{}
 			s.closingMu.Unlock()
@@ -168,7 +198,7 @@ func (s *Bridge) IsServer() bool {
 // Registry mutations and their history events share a lock so rapid reconnects
 // cannot publish an offline event after a newer connection has arrived.
 func (s *Bridge) recordConnection(id int, online bool) {
-	db := file.GetDb()
+	db := s.store
 	c, err := db.GetClient(id)
 	if err == nil {
 		c.RecordConnection(online, time.Now())
@@ -193,7 +223,7 @@ func (s *Bridge) joinNode(id int, uuid string, node *Node, addConn func(*Node)) 
 	for {
 		// Either the client map owns the new client, or it is dropped: it holds only node.
 		//noinspection GoResourceLeak
-		client := NewClient(id, node)
+		client := NewClient(id, node, s.selectMode)
 		v, loaded := s.loadOrStoreClient(id, client)
 		if !loaded {
 			client.MarkConnectedNow()

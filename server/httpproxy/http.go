@@ -19,7 +19,6 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -108,7 +107,7 @@ func abortRequest() {
 
 func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// Get host
-	host, err := file.GetDb().GetInfoByHost(r.Host, r)
+	host, err := s.store.GetInfoByHost(r.Host, r)
 	if err != nil || host.IsClose {
 		logs.Debug("Host not found: %s %s %s", r.URL.Scheme, r.Host, r.RequestURI)
 		if !s.ErrorAlways {
@@ -122,7 +121,7 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// source access lists
-	if proxy.SourceDeniedString(r.RemoteAddr, host.Client, &host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")") {
+	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, &host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")") {
 		abortRequest()
 	}
 

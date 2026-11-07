@@ -59,8 +59,6 @@ func main() {
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 
-	server.DisableRemoteUpdate = *noUpdate
-
 	args := flag.Args()
 	var cmd string
 	if len(args) > 0 {
@@ -429,8 +427,17 @@ func run() (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	selectMode, err := bridge.ParseSelectMode(cfg.Bridge.SelectMode)
+	if err != nil {
+		logs.Warn("Invalid client select mode %v; fallback to %s(%d)", cfg.Bridge.SelectMode, selectMode, selectMode)
+	} else {
+		logs.Info("Client select mode set to %s(%d)", selectMode, selectMode)
+	}
 	srv := server.New(db, server.Config{
-		DisconnectTimeout: cfg.Runtime.DisconnectTimeout,
+		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
+		SecureMode:          cfg.Security.SecureMode,
+		SelectMode:          selectMode,
+		DisableRemoteUpdate: *noUpdate,
 		Transports: bridge.Transports{
 			TCP:  cfg.Bridge.ServerTCPEnabled,
 			TLS:  cfg.Bridge.ServerTLSEnabled,
@@ -446,16 +453,12 @@ func run() (*server.Server, error) {
 	}
 	srv.SetWebHandler(handler)
 	srv.SetIPRegisterHandler(routers.InitIPRegister(srv))
-	if server.CanUpdateSelf() {
+	if srv.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	if cfg.Security.SecureMode {
-		bridge.ServerSecureMode = true
-	}
 	logs.Info("the config path is: %s", servercfg.Path())
-	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, bridge.MinClientVersion())
-	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
+	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, srv.Bridge().MinClientVersion())
 	applyNtp(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err

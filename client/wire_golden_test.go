@@ -172,7 +172,7 @@ func recordHandshake(t *testing.T, index int, seed uint64) handshakeVector {
 	cs, ss := net.Pipe()
 	defer func() { _ = cs.Close() }()
 	rec := &recordConn{Conn: ss, remote: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 40000}}
-	b := bridge.NewTunnel(&sync.Map{}, 30)
+	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
 	go b.CliProcess(conn.NewConn(rec), "tcp")
 
 	c, uuid, _, err := handshakeConn(cs, "tcp", goldenKey, false, false, nil, "")

@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"strings"
@@ -29,6 +30,8 @@ func (b *localDialBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 }
 
 func (b *localDialBridge) IsServer() bool { return true }
+
+func (b *localDialBridge) GlobalSource() *acl.Source { return nil }
 
 func (b *localDialBridge) CliProcess(*conn.Conn, string) {}
 

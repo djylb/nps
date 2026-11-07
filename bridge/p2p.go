@@ -22,7 +22,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 )
@@ -531,7 +530,7 @@ func p2pDirect(tunnelType string) bool {
 // resolveP2PTarget finds the P2P task of a password and its provider's
 // node; code is empty when the request may proceed.
 func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *model.Tunnel, node *Node, code, msg string) {
-	t = file.GetDb().GetTaskByMd5Password(passwordMd5)
+	t = s.store.GetTaskByMd5Password(passwordMd5)
 	switch {
 	case t == nil:
 		return nil, nil, legacy.P2PCodeRefused, "no task has this password"

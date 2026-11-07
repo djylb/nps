@@ -13,7 +13,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
@@ -47,7 +46,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		return
 	}
 	remote := c.Conn.RemoteAddr()
-	if file.GetDb().GlobalDenied(remote, "Bridge") {
+	if s.store.GlobalDenied(remote, "Bridge") {
 		_ = c.Close()
 		return
 	}
@@ -55,20 +54,20 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	c.SetReadTimeout(bridgeHandshakeReadTimeout)
 	window := servercfg.Current().Security.AuthTimeWindow
 	res, err := legacy.ServerHandshake(c, remote, legacy.ServerAuth{
-		Secure: ServerSecureMode,
+		Secure: s.secureMode,
 		LookupDigest: func(digest string) (legacy.Credential, error) {
-			id, err := file.GetDb().GetClientIdByBlake2bVkey(digest)
+			id, err := s.store.GetClientIdByBlake2bVkey(digest)
 			if err != nil {
 				return legacy.Credential{}, err
 			}
-			client, err := file.GetDb().GetClient(id)
+			client, err := s.store.GetClient(id)
 			if err != nil {
 				return legacy.Credential{}, err
 			}
 			return legacy.Credential{ID: id, Key: client.VerifyKey, Enabled: client.Status}, nil
 		},
 		LookupMD5: func(digest string, remote net.Addr) (legacy.Credential, error) {
-			id, err := file.GetDb().GetIdByVerifyKey(digest, remote.String(), "", crypt.Md5)
+			id, err := s.store.GetIdByVerifyKey(digest, remote.String(), "", crypt.Md5)
 			if err != nil {
 				return legacy.Credential{}, err
 			}
@@ -94,7 +93,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		return
 	}
 	if res.Caps.TimestampAuth {
-		if client, err := file.GetDb().GetClient(res.ClientID); err == nil {
+		if client, err := s.store.GetClient(res.ClientID); err == nil {
 			mode := tunnelType
 			if res.Caps.TransportInInfo {
 				mode = fmt.Sprintf("%s,%s", tunnelType, res.Transport)
@@ -124,13 +123,13 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		return
 	}
 	c.SetAlive()
-	keyClient, err := file.GetDb().GetClient(id)
+	keyClient, err := s.store.GetClient(id)
 	if err != nil || !allowsFlag(keyClient.KeyKind, flag) {
 		logs.Warn("Workflow %q of client %d from %v refused", flag, id, addr)
 		_ = c.Close()
 		return
 	}
-	isPub := file.GetDb().IsPubClient(id)
+	isPub := s.store.IsPubClient(id)
 	switch flag {
 	case legacy.WorkMain:
 		tcpConn, ok := c.Conn.(*net.TCPConn)
@@ -190,7 +189,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		}
 
 	case legacy.WorkConfig:
-		client, err := file.GetDb().GetClient(id)
+		client, err := s.store.GetClient(id)
 		if err != nil || (!isPub && !client.ConfigConnAllow) {
 			_ = c.Close()
 			return
@@ -288,7 +287,7 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 		if ip, ok := netaddr.ParseIP(c.RemoteAddr().String()); ok && hour > 0 {
 			// the public key is an administrator's key: it registers for
 			// every client
-			if file.GetDb().IsPubClient(id) {
+			if s.store.IsPubClient(id) {
 				id = ipreg.AnyClient
 			}
 			until := ipreg.Register(id, ip, time.Hour*time.Duration(hour))
@@ -301,7 +300,7 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 }
 
 // MinClientVersion is the oldest npc core version the bridge accepts.
-func MinClientVersion() string { return legacy.MinCoreVersion(ServerSecureMode) }
+func (s *Bridge) MinClientVersion() string { return legacy.MinCoreVersion(s.secureMode) }
 
 // NewLocalNode returns the node of the client that nps runs itself, which
 // speaks the latest protocol.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/file"
 )
 
 // signalNode returns a node announcing vs whose signal connection is one end
@@ -26,14 +27,14 @@ func signalNode(t *testing.T, uuid, vs string) (*Node, *conn.Conn) {
 }
 
 func TestRequestClientUpdate(t *testing.T) {
-	b := NewTunnel(&sync.Map{}, 30)
+	b := NewTunnel(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}, &sync.Map{}, Options{DisconnectTime: 30})
 
 	if _, err := b.RequestClientUpdate(1); !errors.Is(err, ErrClientOffline) {
 		t.Fatalf("unknown client: err = %v, want ErrClientOffline", err)
 	}
 
 	old, _ := signalNode(t, "old", "0.34.8")
-	b.Client.Store(1, NewClient(1, old))
+	b.Client.Store(1, NewClient(1, old, Primary))
 	if _, err := b.RequestClientUpdate(1); !errors.Is(err, ErrUpdateUnsupported) {
 		t.Fatalf("old npc only: err = %v, want ErrUpdateUnsupported", err)
 	}

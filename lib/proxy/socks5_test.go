@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"errors"
+	"github.com/djylb/nps/lib/acl"
 	"io"
 	"net"
 	"net/netip"
@@ -33,6 +34,8 @@ func (b *testUDP5Bridge) IsServer() bool {
 	return false
 }
 
+func (b *testUDP5Bridge) GlobalSource() *acl.Source { return nil }
+
 func (b *testUDP5Bridge) CliProcess(*conn.Conn, string) {}
 
 type failBridge struct{}
@@ -44,6 +47,8 @@ func (failBridge) OpenLink(*conn.Link, int) (net.Conn, error) {
 }
 
 func (failBridge) IsServer() bool { return false }
+
+func (failBridge) GlobalSource() *acl.Source { return nil }
 
 func (failBridge) CliProcess(*conn.Conn, string) {}
 

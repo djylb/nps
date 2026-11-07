@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/djylb/byterate"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
@@ -37,6 +38,9 @@ type NetBridge interface {
 	// Session returns the way to open links to client clientId.
 	Session(clientId int) conn.ClientSession
 	IsServer() bool
+	// GlobalSource returns the global source access lists of the server,
+	// nil if there are none, as on npc.
+	GlobalSource() *acl.Source
 	CliProcess(c *conn.Conn, tunnelType string)
 }
 
@@ -185,7 +189,7 @@ func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link,
 }
 
 func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp string, localProxy bool, node string, task *model.Tunnel) (net.Conn, *conn.Link, bool, error) {
-	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
+	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
 	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != model.AclOff {

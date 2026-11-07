@@ -149,7 +149,7 @@ func TestReconnectFollowsNameToNewAddress(t *testing.T) {
 	if err := file.GetDb().NewClient(model.NewClient(vkey, true, false)); err != nil {
 		t.Fatal(err)
 	}
-	b := bridge.NewTunnel(&sync.Map{}, 30)
+	b := bridge.NewTunnel(file.GetDb(), &sync.Map{}, bridge.Options{DisconnectTime: 30})
 
 	first := listenBridge(t, b, "127.0.0.1:0")
 	port := first.ln.Addr().(*net.TCPAddr).Port

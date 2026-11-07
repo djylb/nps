@@ -46,7 +46,7 @@ func (s *UdpModeServer) Bind() error {
 		pc := rate.NewVisitorPacketConn(udp, s.Task.Client.Rate, s.Task.RateLimiter())
 		s.listener = netx.NewPacketListener(pc,
 			netx.WithPacketAcceptFilter(func(peer net.Addr, _ []byte) bool {
-				return !s.Bridge.IsServer() || !datagramDenied(peer, s.Task.Client, &s.Task.SourceLists)
+				return !s.Bridge.IsServer() || !datagramDenied(peer, s.Bridge.GlobalSource(), s.Task.Client, &s.Task.SourceLists)
 			}),
 			netx.WithPacketIdleTimeout(udpSessionIdleTimeout),
 			netx.WithPacketQueue(udpSessionQueue),

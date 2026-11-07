@@ -23,7 +23,7 @@ type Services struct {
 // a nil runtime means none runs.
 func New(runtime Runtime) Services {
 	backend := NewBackend(runtime)
-	system := DefaultSystemService{}
+	system := DefaultSystemService{Runtime: backend.Runtime}
 	resolver := DefaultPermissionResolver()
 	loginPolicy := SharedLoginPolicy()
 	clients := DefaultClientService{ConfigProvider: servercfg.Current, Backend: backend}

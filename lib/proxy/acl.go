@@ -3,7 +3,6 @@ package proxy
 import (
 	"net"
 	"strconv"
-	"sync/atomic"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -12,19 +11,9 @@ import (
 	"github.com/djylb/nps/lib/logs"
 )
 
-// globalSource returns the global source lists; nil, as npc has, means none.
-var globalSource atomic.Pointer[func() *acl.Source]
-
-// SetGlobalSource sets where the global source lists come from. nps sets it
-// to its stored global settings; npc has none.
-func SetGlobalSource(f func() *acl.Source) { globalSource.Store(&f) }
-
-// sourcePolicies returns the source access lists of the global settings,
-// client and entry, a tunnel or host; missing levels allow everything.
-func sourcePolicies(client *model.Client, entry *model.SourceLists) (global, cli, ent *acl.Source) {
-	if f := globalSource.Load(); f != nil {
-		global = (*f)()
-	}
+// sourcePolicies returns the source access lists of the client and entry, a
+// tunnel or host; missing levels allow everything.
+func sourcePolicies(client *model.Client, entry *model.SourceLists) (cli, ent *acl.Source) {
 	if client != nil {
 		cli = client.SourceACL()
 	}
@@ -35,10 +24,11 @@ func sourcePolicies(client *model.Client, entry *model.SourceLists) (global, cli
 }
 
 // SourceDenied reports whether the access lists of the global settings, the
-// client and the entry deny the visitor addr, and logs a denial. entryName
-// names the entry in the log, for example "tunnel 3".
-func SourceDenied(addr net.Addr, client *model.Client, entry *model.SourceLists, entryName string) bool {
-	g, c, e := sourcePolicies(client, entry)
+// client and the entry deny the visitor addr, and logs a denial. g, the global lists, is
+// nil where there are no global lists, as on npc. entryName names the entry
+// in the log, for example "tunnel 3".
+func SourceDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *model.SourceLists, entryName string) bool {
+	c, e := sourcePolicies(client, entry)
 	if !acl.Allows(addr, g, c, e) {
 		logs.Warn("Access from %v %v", addr, acl.Decide(addr, levelNames(client, entryName), g, c, e))
 		return true
@@ -51,8 +41,8 @@ func SourceDenied(addr net.Addr, client *model.Client, entry *model.SourceLists,
 }
 
 // SourceDeniedString is SourceDenied for an address given as text.
-func SourceDeniedString(addr string, client *model.Client, entry *model.SourceLists, entryName string) bool {
-	g, c, e := sourcePolicies(client, entry)
+func SourceDeniedString(addr string, g *acl.Source, client *model.Client, entry *model.SourceLists, entryName string) bool {
+	c, e := sourcePolicies(client, entry)
 	if !acl.AllowsString(addr, g, c, e) {
 		logs.Warn("Access from %s %v", addr, acl.DecideString(addr, levelNames(client, entryName), g, c, e))
 		return true
@@ -66,8 +56,8 @@ func SourceDeniedString(addr string, client *model.Client, entry *model.SourceLi
 
 // datagramDenied is SourceDenied for single datagrams, which are dropped
 // with a trace entry only so that a flood of them does not flood the log.
-func datagramDenied(addr net.Addr, client *model.Client, entry *model.SourceLists) bool {
-	g, c, e := sourcePolicies(client, entry)
+func datagramDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *model.SourceLists) bool {
+	c, e := sourcePolicies(client, entry)
 	if acl.Allows(addr, g, c, e) && (client == nil || !registrationRequired(client, entry) || ipreg.RegisteredAddr(client.Id, addr)) {
 		return false
 	}

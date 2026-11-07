@@ -27,7 +27,9 @@ and nps forwards visitors through that connection to targets npc reaches.
 
 - `lib/`, `client/`, `cmd/npc/` and `bridge/legacy/` do not import
   `lib/file` (the store) or `server/...`: npc carries neither
-  (`lib/model/boundary_test.go`).
+  (`lib/model/boundary_test.go`). `bridge` and `server/httpproxy` do not
+  import `lib/file` either: they reach the store through the small `Store`
+  interface each defines, which `server.New` passes them.
 - Only `bridge`, `client`, `cmd` and `server/connection/portmux.go` import
   `bridge/legacy`; only `bridge/legacy` and a few listed files import
   `internal/tunnelwire` (their `boundary_test.go`).

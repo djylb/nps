@@ -36,13 +36,14 @@ func newTestCert(t *testing.T, names ...string) testCert {
 // default certificate covering only default.test.
 type certSelectEnv struct {
 	t     *testing.T
+	db    *file.DbUtils
 	s     *Http3Server
 	deflt testCert
 }
 
 func newCertSelectEnv(t *testing.T) *certSelectEnv {
 	t.Helper()
-	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
+	db := newTestDb(t)
 
 	dir := t.TempDir()
 	deflt := newTestCert(t, "default.test")
@@ -53,11 +54,11 @@ func newCertSelectEnv(t *testing.T) *certSelectEnv {
 	if err := os.WriteFile(keyFile, deflt.keyPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s := newTestHttp3Server(t)
+	s := newTestHttp3Server(t, db)
 	s.cert = newCertFiles(servercfg.SSLConfig{})
 	s.defaultCertFile, s.defaultKeyFile, s.hasDefaultCert = certFile, keyFile, true
 	s.ticketKeys = [][32]byte{{1}}
-	return &certSelectEnv{t: t, s: s, deflt: deflt}
+	return &certSelectEnv{t: t, db: db, s: s, deflt: deflt}
 }
 
 func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *testCert) *model.Host {
@@ -65,7 +66,7 @@ func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *t
 	if cert != nil {
 		h.CertFile, h.KeyFile, h.CertType = string(cert.certPEM), string(cert.keyPEM), "text"
 	}
-	file.GetDb().JsonDb.Hosts.Store(h.Id, h)
+	e.db.JsonDb.Hosts.Store(h.Id, h)
 	file.HostIndex.Add(h.Host, h.Id)
 	e.t.Cleanup(func() { file.HostIndex.Remove(h.Host, h.Id) })
 	return h

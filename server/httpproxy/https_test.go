@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/proxy"
 )
 
@@ -52,7 +53,7 @@ func startHTTPS(t *testing.T, e *certSelectEnv) string {
 	}
 	l := &trackingListener{Listener: inner}
 	s := e.s.HttpsServer
-	s.HttpProxy.BaseServer = &proxy.BaseServer{ErrorContent: []byte("nps 404")}
+	s.HttpProxy.BaseServer = &proxy.BaseServer{Bridge: listlessBridge{}, ErrorContent: []byte("nps 404")}
 	s.ErrorAlways = true
 	s.tlsNextProtos = []string{"http/1.1"}
 	s.httpsListener = l
@@ -71,6 +72,14 @@ func startHTTPS(t *testing.T, e *certSelectEnv) string {
 	})
 	return l.Addr().String()
 }
+
+// listlessBridge is a server bridge without global source lists; the tests
+// that use it open no links to clients.
+type listlessBridge struct{ proxy.NetBridge }
+
+func (listlessBridge) IsServer() bool { return true }
+
+func (listlessBridge) GlobalSource() *acl.Source { return nil }
 
 // trackingListener counts the connections it accepted until they close, so
 // a test can wait for every connection handler to finish.

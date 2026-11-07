@@ -11,7 +11,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 )
 
-func TestSetClientSelectMode(t *testing.T) {
+func TestParseSelectMode(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      any
@@ -28,12 +28,12 @@ func TestSetClientSelectMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := SetClientSelectMode(tt.in)
+			mode, err := ParseSelectMode(tt.in)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("SetClientSelectMode(%v) err=%v, wantErr=%v", tt.in, err, tt.wantErr)
+				t.Fatalf("ParseSelectMode(%v) err=%v, wantErr=%v", tt.in, err, tt.wantErr)
 			}
-			if ClientSelectMode != tt.want {
-				t.Fatalf("SetClientSelectMode(%v) mode=%v, want=%v", tt.in, ClientSelectMode, tt.want)
+			if mode != tt.want {
+				t.Fatalf("ParseSelectMode(%v) mode=%v, want=%v", tt.in, mode, tt.want)
 			}
 		})
 	}
@@ -41,7 +41,7 @@ func TestSetClientSelectMode(t *testing.T) {
 
 func TestClientGetNodeByFileRespectsGraceThenPrunesOfflineNode(t *testing.T) {
 	node := NewNode("n1", "", 6)
-	client := NewClient(1, node)
+	client := NewClient(1, node, Primary)
 
 	if err := client.AddFile("file-key", "n1"); err != nil {
 		t.Fatalf("AddFile returned error: %v", err)
@@ -65,7 +65,7 @@ func TestClientGetNodeByFileRespectsGraceThenPrunesOfflineNode(t *testing.T) {
 
 func TestClientGetNodeByFileReturnsOnlineNodeWithoutExternalDependency(t *testing.T) {
 	node := NewNode("n2", "", 6)
-	client := NewClient(-1, node)
+	client := NewClient(-1, node, Primary)
 
 	if err := client.AddFile("f2", "n2"); err != nil {
 		t.Fatalf("AddFile returned error: %v", err)
@@ -78,7 +78,7 @@ func TestClientGetNodeByFileReturnsOnlineNodeWithoutExternalDependency(t *testin
 
 func TestRemoveOfflineNodesRetriesBeforeRemoval(t *testing.T) {
 	node := NewNode("n3", "", 6)
-	client := NewClient(2, node)
+	client := NewClient(2, node, Primary)
 	client.lastConnectNano.Store(time.Now().Add(-10 * time.Second).UnixNano())
 	node.joinNano = time.Now().Add(-10 * time.Second).UnixNano()
 
@@ -123,9 +123,7 @@ func TestNodeCloseIfSignalCurrentKeepsReplacedNode(t *testing.T) {
 }
 
 func TestClientNodeSelectModes(t *testing.T) {
-	defer func() { ClientSelectMode = Primary }()
-	ClientSelectMode = Primary
-	client := NewClient(-1, NewNode("a", "", 8))
+	client := NewClient(-1, NewNode("a", "", 8), Primary)
 	client.AddNode(NewNode("b", "", 8))
 	for i := 0; i < 3; i++ {
 		if n := client.GetNode(); n == nil || n.UUID != "b" {
@@ -133,7 +131,8 @@ func TestClientNodeSelectModes(t *testing.T) {
 		}
 	}
 
-	ClientSelectMode = RoundRobin
+	client = NewClient(-1, NewNode("a", "", 8), RoundRobin)
+	client.AddNode(NewNode("b", "", 8))
 	seen := map[string]int{}
 	for i := 0; i < 4; i++ {
 		seen[client.GetNode().UUID]++
@@ -147,10 +146,8 @@ func TestClientNodeSelectModes(t *testing.T) {
 }
 
 func TestClientCheckNodeSkipsOfflineNodesInGrace(t *testing.T) {
-	defer func() { ClientSelectMode = Primary }()
-	ClientSelectMode = Primary
 	node := NewNode("n4", "", 6)
-	client := NewClient(3, node)
+	client := NewClient(3, node, Primary)
 	if got := client.CheckNode(); got != nil {
 		t.Fatalf("an offline node in its grace window must not be chosen, got %v", got)
 	}

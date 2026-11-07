@@ -9,7 +9,6 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -69,7 +68,7 @@ func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate
 	var best *tls.Certificate
 	bestMatch := matchNone
 	if host.Client != nil {
-		file.GetDb().RangeClientCertHosts(host.Client.Id, func(v *model.Host) bool {
+		s.store.RangeClientCertHosts(host.Client.Id, func(v *model.Host) bool {
 			if v.Id == host.Id {
 				return true
 			}
