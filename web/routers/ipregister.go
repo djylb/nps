@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 
 	"github.com/djylb/nps/lib/runenv"
+	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
+	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 	"github.com/gin-gonic/gin"
 )
@@ -13,8 +15,8 @@ import (
 // InitIPRegister returns the handler of the registration page on its own
 // listener and behind bridge://ipreg: the page at / and /ip/register, its
 // static files and captcha, behind the global access lists.
-func InitIPRegister() http.Handler {
-	state := NewState(nil)
+func InitIPRegister(runtime webservice.Runtime) http.Handler {
+	state := NewStateWithApp(webapi.NewWithOptions(nil, webapi.Options{Runtime: runtime}))
 	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))
 	engine := gin.New()
 	// The visitor address comes from webapi.VisitorIP; forwarding headers

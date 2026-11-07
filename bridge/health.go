@@ -261,8 +261,13 @@ func (s *Bridge) ping() {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		s.pingClients()
+	for {
+		select {
+		case <-ticker.C:
+			s.pingClients()
+		case <-s.ctx.Done():
+			return
+		}
 	}
 }
 

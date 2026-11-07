@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/djylb/nps/lib/conn"
@@ -25,41 +24,33 @@ func (s *stubDialer) DialVirtual(remote string) (net.Conn, error) {
 
 func (s *stubDialer) ServeVirtual(_ net.Conn) {}
 
-func setLookupForTest(t *testing.T, fn func(int) (TunnelDialer, bool)) {
-	t.Helper()
-	old := lookup.Load()
-	lookup.Store(fn)
-	t.Cleanup(func() {
-		lookup = atomic.Value{}
-		if old != nil {
-			lookup.Store(old.(func(int) (TunnelDialer, bool)))
-		}
-	})
+func bridgeWithLookup(fn TunnelLookup) *Bridge {
+	b := newBridge(nil, 30)
+	b.SetTunnelLookup(fn)
+	return b
 }
 
 func TestGetTunnelConnWhenLookupNotSet(t *testing.T) {
-	lookup = atomic.Value{}
-
-	_, err := GetTunnelConn(1, "127.0.0.1:80")
+	_, err := newBridge(nil, 30).TunnelConn(1, "127.0.0.1:80")
 	if err == nil || !strings.Contains(err.Error(), "tunnel lookup not set") {
-		t.Fatalf("GetTunnelConn() err=%v, want tunnel lookup not set", err)
+		t.Fatalf("TunnelConn() err=%v, want tunnel lookup not set", err)
 	}
 }
 
 func TestGetTunnelConnWhenTunnelNotFound(t *testing.T) {
-	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
+	b := bridgeWithLookup(func(id int) (TunnelDialer, bool) {
 		return nil, false
 	})
 
-	_, err := GetTunnelConn(1, "127.0.0.1:80")
+	_, err := b.TunnelConn(1, "127.0.0.1:80")
 	if err == nil || !strings.Contains(err.Error(), "tunnel not found") {
-		t.Fatalf("GetTunnelConn() err=%v, want tunnel not found", err)
+		t.Fatalf("TunnelConn() err=%v, want tunnel not found", err)
 	}
 }
 
 func TestGetTunnelConnDelegatesToDialer(t *testing.T) {
 	called := false
-	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
+	b := bridgeWithLookup(func(id int) (TunnelDialer, bool) {
 		return &stubDialer{dialFn: func(remote string) (net.Conn, error) {
 			called = true
 			if remote != "127.0.0.1:8080" {
@@ -71,53 +62,46 @@ func TestGetTunnelConnDelegatesToDialer(t *testing.T) {
 		}}, true
 	})
 
-	c, err := GetTunnelConn(7, "127.0.0.1:8080")
+	c, err := b.TunnelConn(7, "127.0.0.1:8080")
 	if err != nil {
-		t.Fatalf("GetTunnelConn() err=%v, want nil", err)
+		t.Fatalf("TunnelConn() err=%v, want nil", err)
 	}
 	if !called {
-		t.Fatal("GetTunnelConn() did not call dialer")
+		t.Fatal("b.TunnelConn() did not call dialer")
 	}
 	_ = c.Close()
 }
 
 func TestGetTunnelConnPropagatesDialError(t *testing.T) {
 	wantErr := errors.New("dial failed")
-	setLookupForTest(t, func(id int) (TunnelDialer, bool) {
+	b := bridgeWithLookup(func(id int) (TunnelDialer, bool) {
 		return &stubDialer{dialFn: func(remote string) (net.Conn, error) {
 			return nil, wantErr
 		}}, true
 	})
 
-	_, err := GetTunnelConn(7, "127.0.0.1:8080")
+	_, err := b.TunnelConn(7, "127.0.0.1:8080")
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("GetTunnelConn() err=%v, want %v", err, wantErr)
+		t.Fatalf("TunnelConn() err=%v, want %v", err, wantErr)
 	}
 }
 
 func TestGetWebServerConnWhenListenerNotSet(t *testing.T) {
-	orig := WebServerListener
-	WebServerListener = nil
-	t.Cleanup(func() { WebServerListener = orig })
-
-	_, err := GetWebServerConn(context.Background(), "127.0.0.1:8080")
+	_, err := newBridge(nil, 30).WebServerConn(context.Background(), "127.0.0.1:8080")
 	if err == nil || !strings.Contains(err.Error(), "web server not set") {
-		t.Fatalf("GetWebServerConn() err=%v, want web server not set", err)
+		t.Fatalf("WebServerConn() err=%v, want web server not set", err)
 	}
 }
 
 func TestGetWebServerConnDialSuccess(t *testing.T) {
-	orig := WebServerListener
 	l := conn.NewVirtualListener(conn.LocalTCPAddr)
-	WebServerListener = l
-	t.Cleanup(func() {
-		_ = l.Close()
-		WebServerListener = orig
-	})
+	t.Cleanup(func() { _ = l.Close() })
+	b := newBridge(nil, 30)
+	b.SetWebListener(l)
 
-	c, err := GetWebServerConn(context.Background(), "127.0.0.1:8080")
+	c, err := b.WebServerConn(context.Background(), "127.0.0.1:8080")
 	if err != nil {
-		t.Fatalf("GetWebServerConn() err=%v, want nil", err)
+		t.Fatalf("WebServerConn() err=%v, want nil", err)
 	}
 	defer func() { _ = c.Close() }()
 	accepted, err := l.Accept()

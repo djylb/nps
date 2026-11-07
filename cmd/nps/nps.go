@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/bridge"
@@ -45,7 +46,8 @@ var (
 )
 
 func main() {
-	watchReload(reloadConfig)
+	prg := &nps{exit: make(chan struct{}), stopped: make(chan struct{})}
+	watchReload(prg.reloadConfig)
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")
@@ -98,7 +100,6 @@ func main() {
 
 	install.RecoverUpdate()
 	svcConfig := newServiceConfig()
-	prg := &nps{exit: make(chan struct{})}
 
 	// update needs no config, so a broken config file can still be replaced
 	if cmd == "update" || cmd == "update-force" {
@@ -199,8 +200,8 @@ func main() {
 	if err != nil {
 		logs.Error("service function disabled %v", err)
 		// run without service
-		mustRun()
-		err := <-server.Failed()
+		srv := prg.mustRun()
+		err := <-srv.Failed()
 		logs.Error("nps stopped: %v", err)
 		os.Exit(1)
 	}
@@ -270,7 +271,7 @@ func printUsage(cmd string) {
 	flag.PrintDefaults()
 }
 
-func reloadConfig() {
+func (p *nps) reloadConfig() {
 	old := servercfg.Current()
 	if err := servercfg.Reload(); err != nil {
 		logs.Warn("Config reload failed: %v", err)
@@ -281,12 +282,14 @@ func reloadConfig() {
 	applyRuntime(cfg)
 	applyNtp(cfg)
 	stats.StartSystemInfo()
-	server.ApplyWebhook(cfg.Webhook)
-	handler, err := routers.Init()
-	if err != nil {
-		logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
-	} else {
-		server.SetWebHandler(handler)
+	if srv := p.srv.Load(); srv != nil {
+		srv.ApplyWebhook(cfg.Webhook)
+		handler, err := routers.Init(srv)
+		if err != nil {
+			logs.Warn("Config reload: the web manager keeps its previous settings: %v", err)
+		} else {
+			srv.SetWebHandler(handler)
+		}
 	}
 	if names := servercfg.RestartRequired(old, cfg); len(names) > 0 {
 		logs.Warn("Config reloaded, but these changes need a restart: %s", strings.Join(names, ", "))
@@ -357,8 +360,13 @@ func normalizeLegacyLongFlags() {
 }
 
 type nps struct {
-	exit chan struct{}
+	exit    chan struct{} // closed when the service manager stops nps
+	stopped chan struct{} // closed once the server has stopped after exit
+	srv     atomic.Pointer[server.Server]
 }
+
+// stopTimeout bounds how long stopping waits for the server to close.
+const stopTimeout = 10 * time.Second
 
 func (p *nps) Start(s service.Service) error {
 	_, _ = s.Status()
@@ -368,6 +376,11 @@ func (p *nps) Start(s service.Service) error {
 func (p *nps) Stop(s service.Service) error {
 	_, _ = s.Status()
 	close(p.exit)
+	select {
+	case <-p.stopped:
+	case <-time.After(stopTimeout):
+		logs.Warn("nps did not stop within %v", stopTimeout)
+	}
 	if service.Interactive() {
 		os.Exit(0)
 	}
@@ -383,44 +396,59 @@ func (p *nps) run() error {
 			logs.Warn("nps: panic serving %v: %s", err, buf)
 		}
 	}()
-	mustRun()
+	srv := p.mustRun()
 	select {
 	case <-p.exit:
-	case err := <-server.Failed():
+	case err := <-srv.Failed():
 		logs.Error("nps stopped: %v", err)
 		os.Exit(1)
 	}
 	logs.Warn("stop...")
+	_ = srv.Close()
+	close(p.stopped)
 	return nil
 }
 
 // mustRun starts nps and ends the process with a non-zero code when that
 // fails: nothing is served then.
-func mustRun() {
-	if err := run(); err != nil {
+func (p *nps) mustRun() *server.Server {
+	srv, err := run()
+	if err != nil {
 		logs.Error("nps failed to start: %v", err)
 		os.Exit(1)
 	}
+	p.srv.Store(srv)
+	return srv
 }
 
-func run() error {
+// run starts the server as the configuration says.
+func run() (*server.Server, error) {
 	install.StartUpdate()
 	cfg := servercfg.Current()
-	if _, err := file.LoadDb(); err != nil {
-		return err
-	}
-	handler, err := routers.Init()
+	db, err := file.LoadDb()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	server.SetWebHandler(handler)
-	server.StartIPRegisterServer(routers.InitIPRegister())
+	srv := server.New(db, server.Config{
+		DisconnectTimeout: cfg.Runtime.DisconnectTimeout,
+		Transports: bridge.Transports{
+			TCP:  cfg.Bridge.ServerTCPEnabled,
+			TLS:  cfg.Bridge.ServerTLSEnabled,
+			WS:   cfg.Bridge.ServerWSEnabled,
+			WSS:  cfg.Bridge.ServerWSSEnabled,
+			KCP:  cfg.Bridge.ServerKCPEnabled,
+			QUIC: cfg.Bridge.ServerQUICEnabled,
+		},
+	})
+	handler, err := routers.Init(srv)
+	if err != nil {
+		return nil, err
+	}
+	srv.SetWebHandler(handler)
+	srv.SetIPRegisterHandler(routers.InitIPRegister(srv))
 	if server.CanUpdateSelf() {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
-	}
-	task := &model.Tunnel{
-		Mode: "webServer",
 	}
 	if cfg.Security.SecureMode {
 		bridge.ServerSecureMode = true
@@ -430,7 +458,7 @@ func run() error {
 	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
 	applyNtp(cfg)
 	if err := connection.InitConnectionService(); err != nil {
-		return err
+		return nil, err
 	}
 	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
 	//crypt.InitTls(filepath.Join(runenv.GetRunPath(), "conf", "server.pem"), filepath.Join(runenv.GetRunPath(), "conf", "server.key"))
@@ -441,13 +469,10 @@ func run() error {
 	crypt.InitTls(cert)
 	ports.InitAllowPort()
 	stats.StartSystemInfo()
-	timeout := cfg.Runtime.DisconnectTimeout
-	bridge.ServerKcpEnable = cfg.Bridge.ServerKCPEnabled
-	bridge.ServerQuicEnable = cfg.Bridge.ServerQUICEnabled
-	bridge.ServerTcpEnable = cfg.Bridge.ServerTCPEnabled
-	bridge.ServerTlsEnable = cfg.Bridge.ServerTLSEnabled
-	bridge.ServerWsEnable = cfg.Bridge.ServerWSEnabled
-	bridge.ServerWssEnable = cfg.Bridge.ServerWSSEnabled
 	go file.WatchAccessLists(context.Background(), time.Minute)
-	return server.StartNewServer(task, timeout)
+	if err := srv.Start(context.Background()); err != nil {
+		_ = srv.Close()
+		return nil, err
+	}
+	return srv, nil
 }

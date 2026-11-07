@@ -15,7 +15,6 @@ import (
 
 	"github.com/djylb/nps/lib/model"
 
-	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
@@ -41,9 +40,23 @@ func useTempDb(t *testing.T) {
 	})
 }
 
+// newTestServer returns a server of the current store that is not started:
+// it runs the tasks without a listener that the services start.
+func newTestServer(t *testing.T) *server.Server {
+	t.Helper()
+	srv := server.New(file.GetDb(), server.Config{DisconnectTimeout: 30})
+	t.Cleanup(func() { _ = srv.Close() })
+	return srv
+}
+
 func seedConfig(t *testing.T) (DefaultClientService, DefaultIndexService) {
 	t.Helper()
-	backend := DefaultBackend()
+	return seedConfigOn(t, newTestServer(t))
+}
+
+func seedConfigOn(t *testing.T, runtime Runtime) (DefaultClientService, DefaultIndexService) {
+	t.Helper()
+	backend := NewBackend(runtime)
 	clients := DefaultClientService{ConfigProvider: servercfg.Current, Backend: backend}
 	indexes := DefaultIndexService{Backend: backend}
 	id, err := clients.Add(AddClientInput{VKey: "vkey-a", Remark: "a", WebUserName: "alice"})
@@ -72,7 +85,7 @@ func storeCounts() (clients, tunnels, hosts int) {
 func TestImportAddsUnderNewIDs(t *testing.T) {
 	useTempDb(t)
 	seedConfig(t)
-	transfer := DefaultConfigTransferService{Backend: DefaultBackend()}
+	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
 	data, err := transfer.Export()
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +119,7 @@ func TestImportAddsUnderNewIDs(t *testing.T) {
 func TestImportRefusalLeavesNothing(t *testing.T) {
 	useTempDb(t)
 	seedConfig(t)
-	transfer := DefaultConfigTransferService{Backend: DefaultBackend()}
+	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
 	data, err := transfer.Export()
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +161,7 @@ func TestImportRefusalLeavesNothing(t *testing.T) {
 // A port taken by something else is found before anything is added.
 func TestImportRefusesAPortInUse(t *testing.T) {
 	useTempDb(t)
-	transfer := DefaultConfigTransferService{Backend: DefaultBackend()}
+	transfer := DefaultConfigTransferService{Backend: NewBackend(newTestServer(t))}
 	l, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
@@ -222,13 +235,11 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 		types = append(types, kind)
 	}))
 	defer receiver.Close()
-	oldBridge := server.Bridge
-	server.Bridge = bridge.NewTunnel(&server.RunList, 30)
-	defer func() { server.Bridge = oldBridge }()
-	server.ApplyWebhook(servercfg.WebhookConfig{URL: receiver.URL, Secret: "topsecret", TimeoutSeconds: 2, QueueSize: 64, ReportInterval: 1})
-	defer server.ApplyWebhook(servercfg.WebhookConfig{})
+	srv := newTestServer(t)
+	srv.ApplyWebhook(servercfg.WebhookConfig{URL: receiver.URL, Secret: "topsecret", TimeoutSeconds: 2, QueueSize: 64, ReportInterval: 1})
+	defer srv.ApplyWebhook(servercfg.WebhookConfig{})
 
-	clients, indexes := seedConfig(t)
+	clients, indexes := seedConfigOn(t, srv)
 	tunnel := file.GetDb().GetTaskByMd5Password(crypt.Md5("pw-a"))
 	for _, step := range []func() error{
 		func() error { return indexes.StopTunnel(tunnel.Id, "") },

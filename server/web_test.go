@@ -77,15 +77,15 @@ func TestServeHTTPListenersClosesPeersOnFirstExit(t *testing.T) {
 }
 
 func TestSetWebHandlerAppliesToRunningServer(t *testing.T) {
-	t.Cleanup(func() { webHandler.Store(nil) })
-	running := http.HandlerFunc(serveWeb)
-	SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	srv := &Server{}
+	running := http.HandlerFunc(srv.serveWeb)
+	srv.SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	rec := httptest.NewRecorder()
 	running.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) }))
+	srv.SetWebHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) }))
 	rec = httptest.NewRecorder()
 	running.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusAccepted {

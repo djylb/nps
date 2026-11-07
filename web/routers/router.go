@@ -9,12 +9,15 @@ import (
 	"github.com/djylb/nps/lib/runenv"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
+	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 	"github.com/gin-gonic/gin"
 )
 
-func Init() (http.Handler, error) {
-	state := NewState(nil)
+// Init returns the handler of the web manager acting on runtime, the running
+// server.
+func Init(runtime webservice.Runtime) (http.Handler, error) {
+	state := NewStateWithApp(webapi.NewWithOptions(nil, webapi.Options{Runtime: runtime}))
 	cfg := state.CurrentConfig()
 
 	ui.SetRoot(filepath.Join(runenv.GetRunPath(), "web", "views"))

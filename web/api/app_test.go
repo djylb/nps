@@ -11,7 +11,7 @@ func TestNewWithOptionsUsesOverrides(t *testing.T) {
 	providedCfg := &servercfg.Snapshot{
 		App: servercfg.AppConfig{Name: "cfg-node"},
 	}
-	customServices := webservice.New()
+	customServices := webservice.New(nil)
 	customHooks := NoopHooks{}
 	configured := false
 

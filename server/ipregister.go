@@ -6,19 +6,28 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
-// StartIPRegisterServer serves handler, the registration page, to
-// bridge://ipreg targets and, when the configuration sets ip_register_port,
-// on a listener of its own.
-func StartIPRegisterServer(handler http.Handler) {
-	bridge.IPRegisterListener = conn.NewVirtualListener(nil)
-	go func() { _ = http.Serve(bridge.IPRegisterListener, handler) }()
-	cfg := servercfg.Current()
+// SetIPRegisterHandler sets the registration page that Start serves; call it
+// before Start. Without it the page does not run.
+func (s *Server) SetIPRegisterHandler(handler http.Handler) { s.ipRegHandler = handler }
+
+// startIPRegister serves the registration page to bridge://ipreg targets
+// and, when the configuration sets ip_register_port, on a listener of its own.
+func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
+	if s.ipRegHandler == nil {
+		return
+	}
+	hs := &http.Server{Handler: s.ipRegHandler}
+	if !s.addCloser(hs) {
+		return
+	}
+	virtual := conn.NewVirtualListener(nil)
+	s.bridge.SetIPRegisterListener(virtual)
+	s.group.Go(func() { _ = hs.Serve(virtual) })
 	if cfg.App.IPRegisterPort <= 0 {
 		return
 	}
@@ -43,5 +52,7 @@ func StartIPRegisterServer(handler http.Handler) {
 		scheme = "https"
 	}
 	logs.Info("IP registration page listening on %s://%s", scheme, addr)
-	go func() { _ = http.Serve(l, handler) }()
+	if !s.group.Go(func() { _ = hs.Serve(l) }) {
+		_ = l.Close()
+	}
 }

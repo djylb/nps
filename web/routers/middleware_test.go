@@ -58,7 +58,7 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

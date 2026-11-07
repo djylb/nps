@@ -8,7 +8,6 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/nps/lib/event"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/webhook"
@@ -42,7 +41,7 @@ type TunnelsReport struct {
 	Hosts   []HostState   `json:"hosts"`
 }
 
-var webhookState struct {
+type webhookState struct {
 	sync.Mutex
 	cfg    servercfg.WebhookConfig
 	bus    *event.Bus
@@ -54,15 +53,15 @@ var webhookState struct {
 // ApplyWebhook makes the webhook run as cfg says; it restarts it, discarding
 // what is queued, only if cfg changed. The hub exists only while a webhook is
 // configured, so entry changes cost nothing otherwise.
-func ApplyWebhook(cfg servercfg.WebhookConfig) {
-	w := &webhookState
+func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
+	w := &s.webhook
 	w.Lock()
 	defer w.Unlock()
 	if cfg == w.cfg {
 		return
 	}
 	if w.bus != nil {
-		file.GetDb().SetEventBus(nil)
+		s.db.SetEventBus(nil)
 		close(w.stop)
 		<-w.done
 		w.sender.Close()
@@ -83,12 +82,12 @@ func ApplyWebhook(cfg servercfg.WebhookConfig) {
 		Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second,
 		Retries: cfg.Retries,
 	}, w.bus.Subscribe(cfg.QueueSize))
-	file.GetDb().SetEventBus(w.bus)
+	s.db.SetEventBus(w.bus)
 	w.stop, w.done = make(chan struct{}), make(chan struct{})
-	go reportTunnels(w.bus, time.Duration(cfg.ReportInterval)*time.Second, w.stop, w.done)
+	go s.reportTunnels(w.bus, time.Duration(cfg.ReportInterval)*time.Second, w.stop, w.done)
 }
 
-func reportTunnels(bus *event.Bus, interval time.Duration, stop <-chan struct{}, done chan<- struct{}) {
+func (s *Server) reportTunnels(bus *event.Bus, interval time.Duration, stop <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 	if interval <= 0 {
 		<-stop
@@ -99,7 +98,7 @@ func reportTunnels(bus *event.Bus, interval time.Duration, stop <-chan struct{},
 	for {
 		select {
 		case <-ticker.C:
-			bus.Publish(EventTunnelsReport, BuildTunnelsReport())
+			bus.Publish(EventTunnelsReport, s.BuildTunnelsReport())
 		case <-stop:
 			return
 		}
@@ -107,12 +106,12 @@ func reportTunnels(bus *event.Bus, interval time.Duration, stop <-chan struct{},
 }
 
 // BuildTunnelsReport snapshots all tunnels and domain entries, by id.
-func BuildTunnelsReport() TunnelsReport {
+func (s *Server) BuildTunnelsReport() TunnelsReport {
 	r := TunnelsReport{Tunnels: []TunnelState{}, Hosts: []HostState{}}
-	online := func(c *model.Client) bool { return c != nil && Bridge != nil && Bridge.Connected(c.Id) }
-	file.GetDb().JsonDb.Tasks.Range(func(_, v any) bool {
+	online := func(c *model.Client) bool { return c != nil && s.bridge.Connected(c.Id) }
+	s.db.JsonDb.Tasks.Range(func(_, v any) bool {
 		t := v.(*model.Tunnel)
-		_, running := RunList.Load(t.Id)
+		running := s.TunnelRunning(t.Id)
 		flow := t.Flow.Values()
 		r.Tunnels = append(r.Tunnels, TunnelState{
 			TunnelInfo: model.NewTunnelInfo(t), Running: running, ClientOnline: online(t.Client),
@@ -120,7 +119,7 @@ func BuildTunnelsReport() TunnelsReport {
 		})
 		return true
 	})
-	file.GetDb().JsonDb.Hosts.Range(func(_, v any) bool {
+	s.db.JsonDb.Hosts.Range(func(_, v any) bool {
 		h := v.(*model.Host)
 		flow := h.Flow.Values()
 		r.Hosts = append(r.Hosts, HostState{

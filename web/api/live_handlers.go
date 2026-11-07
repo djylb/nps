@@ -8,7 +8,6 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/nps/lib/rate"
-	"github.com/djylb/nps/server"
 	webservice "github.com/djylb/nps/web/service"
 )
 
@@ -69,6 +68,10 @@ func (a *App) LiveStatus(c Context) {
 		}
 	}
 	rows := make([]map[string]interface{}, 0, len(items))
+	rt := a.Services.Runtime
+	if rt == nil {
+		rt = webservice.DefaultBackend().Runtime
+	}
 	admin := a.Services.Authz.RequireAdmin(principal) == nil
 	for _, it := range items {
 		id := it.ID
@@ -157,10 +160,9 @@ func (a *App) LiveStatus(c Context) {
 			case "IsClose":
 				row[f] = closed
 			case "RunStatus":
-				_, running := server.RunList.Load(id)
-				row[f] = running
+				row[f] = rt.TunnelRunning(id)
 			case "IsConnect", "Client.IsConnect":
-				row[f] = server.ClientConnected(client.Id)
+				row[f] = rt.ClientConnected(client.Id)
 			case "LastOnlineTime":
 				row[f] = client.LastSeenTime()
 			case "ConnectionHistory":

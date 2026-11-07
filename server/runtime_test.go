@@ -3,31 +3,26 @@ package server
 import (
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/file"
 )
 
 func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
-	cacheMu.Lock()
-	oldCache := dashboardCache
-	oldLastRefresh := lastRefresh
-	oldLastFullRefresh := lastFullRefresh
-	dashboardCache = map[string]interface{}{
+	s := New(file.GetDb(), Config{})
+	t.Cleanup(func() { _ = s.Close() })
+	d := &s.dash
+	d.cacheMu.Lock()
+	d.cache = map[string]interface{}{
 		"count": 1,
 		"nested": map[string]interface{}{
 			"value": 2,
 		},
 	}
-	lastRefresh = time.Now()
-	lastFullRefresh = time.Now()
-	cacheMu.Unlock()
-	defer func() {
-		cacheMu.Lock()
-		dashboardCache = oldCache
-		lastRefresh = oldLastRefresh
-		lastFullRefresh = oldLastFullRefresh
-		cacheMu.Unlock()
-	}()
+	d.lastRefresh = time.Now()
+	d.lastFullRefresh = time.Now()
+	d.cacheMu.Unlock()
 
-	snapshot := GetDashboardData(false)
+	snapshot := s.DashboardData(false)
 	snapshot["count"] = 99
 
 	nested, ok := snapshot["nested"].(map[string]interface{})
@@ -36,15 +31,15 @@ func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
 	}
 	nested["value"] = 77
 
-	again := GetDashboardData(false)
+	again := s.DashboardData(false)
 	if again["count"] == 99 {
-		t.Fatalf("GetDashboardData() returned shared top-level cache: %+v", again)
+		t.Fatalf("DashboardData() returned shared top-level cache: %+v", again)
 	}
 	againNested, ok := again["nested"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("again nested type = %T, want map[string]interface{}", again["nested"])
 	}
 	if againNested["value"] == 77 {
-		t.Fatalf("GetDashboardData() returned shared nested cache: %+v", againNested)
+		t.Fatalf("DashboardData() returned shared nested cache: %+v", againNested)
 	}
 }

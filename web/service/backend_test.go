@@ -130,7 +130,8 @@ func (stubRuntime) DeleteTunnel(int) error        { return nil }
 func (stubRuntime) ListHosts(int, int, int, string, string, string) ([]*model.Host, int) {
 	return nil, 0
 }
-func (stubRuntime) RemoveHostCache(int) {}
+func (stubRuntime) RemoveHostCache(int)    {}
+func (stubRuntime) TunnelRunning(int) bool { return false }
 
 func TestDefaultClientServiceUsesInjectedRepositoryForList(t *testing.T) {
 	repo := stubRepository{

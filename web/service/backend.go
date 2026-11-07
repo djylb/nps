@@ -8,7 +8,6 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/textutil"
-	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/ports"
 )
 
@@ -63,6 +62,7 @@ type Runtime interface {
 	DeleteTunnel(int) error
 	ListHosts(offset, limit, clientID int, search, sort, order string) ([]*model.Host, int)
 	RemoveHostCache(int)
+	TunnelRunning(int) bool
 }
 
 type Backend struct {
@@ -70,10 +70,22 @@ type Backend struct {
 	Runtime    Runtime
 }
 
+// DefaultBackend is the backend of the store without a running server.
 func DefaultBackend() Backend {
+	return NewBackend(nil)
+}
+
+// NewBackend is the backend of the store and of runtime, the running
+// server; a nil runtime means none runs.
+func NewBackend(runtime Runtime) Backend {
+	if runtime == nil {
+		runtime = offlineRuntime{}
+	} else {
+		runtime = bridgeErrors{runtime}
+	}
 	return Backend{
 		Repository: defaultRepository{},
-		Runtime:    defaultRuntime{},
+		Runtime:    runtime,
 	}
 }
 
@@ -92,8 +104,6 @@ func (b Backend) runtime() Runtime {
 }
 
 type defaultRepository struct{}
-
-type defaultRuntime struct{}
 
 func (defaultRepository) RangeClients(fn func(*model.Client) bool) {
 	file.GetDb().JsonDb.Clients.Range(func(_, value interface{}) bool {
@@ -114,17 +124,12 @@ func (defaultRepository) RangeHosts(fn func(*model.Host) bool) {
 }
 
 func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
-	if input.Visibility.IsAdmin {
-		clientID := visibleClientID(input.Visibility)
-		return server.GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, clientID)
-	}
-
 	visible := visibleClientSet(input.Visibility)
+	if input.Visibility.IsAdmin || len(visible) == 1 {
+		return file.GetDb().GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
+	}
 	if len(visible) == 0 {
 		return nil, 0
-	}
-	if len(visible) == 1 {
-		return server.GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
 	}
 
 	list := make([]*model.Client, 0)
@@ -286,28 +291,60 @@ func (defaultRepository) ClientOwnsHost(clientID, hostID int) bool {
 	return false
 }
 
-func (defaultRuntime) DashboardData(force bool) map[string]interface{} {
-	return server.GetDashboardData(force)
+// offlineRuntime is the runtime while no server runs: no client is
+// connected, no task runs and none can be started.
+type offlineRuntime struct{}
+
+func (offlineRuntime) DashboardData(bool) map[string]interface{} { return map[string]interface{}{} }
+
+func (offlineRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
+	return file.GetDb().GetClientList(offset, limit, search, sort, order, clientID)
 }
 
-func (defaultRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
-	return server.GetClientList(offset, limit, search, sort, order, clientID)
+func (offlineRuntime) PingClient(int, string) int { return -1 }
+
+func (offlineRuntime) DisconnectClient(int) {}
+
+func (offlineRuntime) ClientConnected(int) bool { return false }
+
+func (offlineRuntime) RequestClientUpdate(int) (int, error) { return 0, ErrClientOffline }
+
+func (offlineRuntime) DeleteClientResources(int) {}
+
+func (offlineRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
+	return ports.GenerateTunnelPort(tunnel)
 }
 
-func (defaultRuntime) PingClient(id int, remoteAddr string) int {
-	return server.PingClient(id, remoteAddr)
+func (offlineRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
+	return ports.TestTunnelPort(tunnel)
 }
 
-func (defaultRuntime) DisconnectClient(id int) {
-	server.DelClientConnect(id)
+func (offlineRuntime) ListTunnels(int, int, string, int, string, string, string) ([]*model.Tunnel, int) {
+	return nil, 0
 }
 
-func (defaultRuntime) ClientConnected(id int) bool {
-	return server.Bridge != nil && server.Bridge.Connected(id)
+func (offlineRuntime) AddTunnel(*model.Tunnel) error { return ErrServerNotRunning }
+
+func (offlineRuntime) StopTunnel(int) error { return ErrServerNotRunning }
+
+func (offlineRuntime) StartTunnel(int) error { return ErrServerNotRunning }
+
+func (offlineRuntime) DeleteTunnel(int) error { return ErrServerNotRunning }
+
+func (offlineRuntime) ListHosts(offset, limit, clientID int, search, _, _ string) ([]*model.Host, int) {
+	return file.GetDb().GetHost(offset, limit, clientID, search)
 }
 
-func (defaultRuntime) RequestClientUpdate(id int) (int, error) {
-	n, err := server.RequestClientUpdate(id)
+func (offlineRuntime) RemoveHostCache(int) {}
+
+func (offlineRuntime) TunnelRunning(int) bool { return false }
+
+// bridgeErrors turns the errors of the bridge that the web manager tells
+// apart into its own.
+type bridgeErrors struct{ Runtime }
+
+func (r bridgeErrors) RequestClientUpdate(id int) (int, error) {
+	n, err := r.Runtime.RequestClientUpdate(id)
 	switch {
 	case errors.Is(err, bridge.ErrClientOffline):
 		err = ErrClientOffline
@@ -315,44 +352,4 @@ func (defaultRuntime) RequestClientUpdate(id int) (int, error) {
 		err = ErrClientUpdateUnsupported
 	}
 	return n, err
-}
-
-func (defaultRuntime) DeleteClientResources(id int) {
-	server.DelTunnelAndHostByClientId(id, false)
-}
-
-func (defaultRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
-	return ports.GenerateTunnelPort(tunnel)
-}
-
-func (defaultRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
-	return ports.TestTunnelPort(tunnel)
-}
-
-func (defaultRuntime) ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*model.Tunnel, int) {
-	return server.GetTunnel(offset, limit, tunnelType, clientID, search, sort, order)
-}
-
-func (defaultRuntime) AddTunnel(tunnel *model.Tunnel) error {
-	return server.AddTask(tunnel)
-}
-
-func (defaultRuntime) StopTunnel(id int) error {
-	return server.StopServer(id)
-}
-
-func (defaultRuntime) StartTunnel(id int) error {
-	return server.StartTask(id)
-}
-
-func (defaultRuntime) DeleteTunnel(id int) error {
-	return server.DelTask(id)
-}
-
-func (defaultRuntime) ListHosts(offset, limit, clientID int, search, sort, order string) ([]*model.Host, int) {
-	return server.GetHostList(offset, limit, clientID, search, sort, order)
-}
-
-func (defaultRuntime) RemoveHostCache(id int) {
-	server.HttpProxyCache.Remove(id)
 }

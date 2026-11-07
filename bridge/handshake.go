@@ -108,8 +108,10 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	// The labels name the client in stack dumps and tracebacks of everything
 	// the connection starts.
 	labels := pprof.Labels("client", strconv.Itoa(res.ClientID), "bridge", tunnelType)
-	go pprof.Do(context.Background(), labels, func(context.Context) {
-		s.typeDeal(c, res.ClientID, res.Caps, tunnelType, true)
+	s.spawn(c, func() {
+		pprof.Do(context.Background(), labels, func(context.Context) {
+			s.typeDeal(c, res.ClientID, res.Caps, tunnelType, true)
+		})
 	})
 }
 
@@ -142,7 +144,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		node := newNode(uuid, caps)
 		node.AddSignal(c)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddSignal(c) })
-		go s.GetHealthFromClient(id, c, client, node)
+		s.spawn(c, func() { s.GetHealthFromClient(id, c, client, node) })
 		logs.Info("ClientId %d connection succeeded, address:%v ", id, addr)
 
 	case legacy.WorkChan:
@@ -156,7 +158,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		node.AddTunnel(tunnel)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddTunnel(tunnel) })
 		if caps.TunnelStreams {
-			go func() {
+			s.spawn(c, func() {
 				defer func() {
 					reason := tunnel.Reason()
 					if reason != "" {
@@ -181,9 +183,10 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 					if p, ok := stream.(interface{ SetPriority() }); ok {
 						p.SetPriority()
 					}
-					go s.typeDeal(conn.NewConn(stream), id, caps, tunnelType, false)
+					sc := conn.NewConn(stream)
+					s.spawn(sc, func() { s.typeDeal(sc, id, caps, tunnelType, false) })
 				})
-			}()
+			})
 		}
 
 	case legacy.WorkConfig:
@@ -193,10 +196,10 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 			return
 		}
 		_ = binary.Write(c, binary.LittleEndian, isPub)
-		go s.getConfig(c, isPub, client, caps, uuid)
+		s.spawn(c, func() { s.getConfig(c, isPub, client, caps, uuid) })
 
 	case legacy.WorkRegister:
-		go s.register(c, id)
+		s.spawn(c, func() { s.register(c, id) })
 		return
 
 	case legacy.WorkVisitor:
@@ -206,7 +209,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 			return
 		}
 		tunnel := legacy.NewTunnel(c, tunnelType, caps, s.disconnectTime, false)
-		go func() {
+		s.spawn(c, func() {
 			idle := NewIdleTimer(30*time.Second, func() { _ = c.Close() })
 			defer func() {
 				logs.Trace("Visitor connection closed, client %d, remote %v", id, addr)
@@ -215,11 +218,12 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 			}()
 			serveStreams(tunnel, func(stream net.Conn) {
 				idle.Inc()
-				go s.typeDeal(conn.NewConn(stream).OnClose(func(*conn.Conn) {
+				sc := conn.NewConn(stream).OnClose(func(*conn.Conn) {
 					idle.Dec()
-				}), id, caps, tunnelType, false)
+				})
+				s.spawn(sc, func() { s.typeDeal(sc, id, caps, tunnelType, false) })
 			})
-		}()
+		})
 
 	case legacy.WorkSecret:
 		c.SetReadTimeout(bridgeHandshakeReadTimeout)

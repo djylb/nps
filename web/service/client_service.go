@@ -121,7 +121,14 @@ type ClientQRCodeInput struct {
 }
 
 func (s DefaultClientService) List(input ListClientsInput) ListClientsResult {
-	rows, count := s.repo().ListVisibleClients(input)
+	var rows []*model.Client
+	var count int
+	if input.Visibility.IsAdmin || len(visibleClientSet(input.Visibility)) == 1 {
+		// the running server refreshes what it knows of the clients
+		rows, count = s.runtime().ListClients(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
+	} else {
+		rows, count = s.repo().ListVisibleClients(input)
+	}
 	bridge := BestBridge(s.config(), input.Host)
 	port, _ := strconv.Atoi(bridge.Port)
 	return ListClientsResult{

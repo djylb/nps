@@ -13,6 +13,7 @@ var (
 	ErrClientNotFound            = errors.New("client not found")
 	ErrVirtualClientOperation    = errors.New("operation is not supported for virtual clients")
 	ErrClientOffline             = errors.New("client is offline")
+	ErrServerNotRunning          = errors.New("the server is not running")
 	ErrClientUpdateUnsupported   = errors.New("client version does not support remote update")
 	ErrServerUpdateUnavailable   = errors.New("server update is unavailable")
 	ErrServerUpdateRunning       = errors.New("server update is already running")

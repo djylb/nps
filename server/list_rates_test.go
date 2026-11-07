@@ -19,7 +19,7 @@ func (speedTestConn) Close() error                { return nil }
 
 func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		loadTestData(t,
+		s := loadTestData(t,
 			`[{"Id":1,"VerifyKey":"a"},{"Id":2,"VerifyKey":"b"},{"Id":3,"VerifyKey":"c"}]`,
 			`[{"Id":1,"Port":1,"Mode":"tcp","Client":{"Id":1}},{"Id":2,"Port":2,"Mode":"tcp","Client":{"Id":2}},{"Id":3,"Port":3,"Mode":"tcp","Client":{"Id":3}}]`,
 			`[{"Id":1,"Host":"a.test","Client":{"Id":1}},{"Id":2,"Host":"b.test","Client":{"Id":2}},{"Id":3,"Host":"c.test","Client":{"Id":3}}]`)
@@ -53,15 +53,15 @@ func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 					want[0], want[2] = want[2], want[0]
 				}
 				for offset := 0; offset < 3; offset++ {
-					tunnels, n := GetTunnel(offset, 1, "tcp", 0, "", tc.field, order)
+					tunnels, n := s.ListTunnels(offset, 1, "tcp", 0, "", tc.field, order)
 					if n != 3 || len(tunnels) != 1 || tunnels[0].Id != want[offset] {
 						t.Fatalf("tunnels %s %s offset %d: %+v want %d", tc.field, order, offset, tunnels, want[offset])
 					}
-					hosts, n := GetHostList(offset, 1, 0, "", tc.field, order)
+					hosts, n := s.ListHosts(offset, 1, 0, "", tc.field, order)
 					if n != 3 || len(hosts) != 1 || hosts[0].Id != want[offset] {
 						t.Fatalf("hosts %s %s offset %d want %d", tc.field, order, offset, want[offset])
 					}
-					clients, n := GetClientList(offset, 1, "", tc.field, order, 0)
+					clients, n := s.ListClients(offset, 1, "", tc.field, order, 0)
 					if n != 3 || len(clients) != 1 || clients[0].Id != want[offset] {
 						t.Fatalf("clients %s %s offset %d want %d; got %+v", tc.field, order, offset, want[offset], clients)
 					}
@@ -77,11 +77,11 @@ func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 			}
 		}
 		// Client scope and search still filter before pagination.
-		hosts, n := GetHostList(0, 1, 2, "b.test", "upload_rate", "desc")
+		hosts, n := s.ListHosts(0, 1, 2, "b.test", "upload_rate", "desc")
 		if n != 1 || len(hosts) != 1 || hosts[0].Id != 2 {
 			t.Fatal("host scope/search changed")
 		}
-		tunnels, n := GetTunnel(0, 1, "tcp", 2, "", "speed", "desc")
+		tunnels, n := s.ListTunnels(0, 1, "tcp", 2, "", "speed", "desc")
 		if n != 1 || len(tunnels) != 1 || tunnels[0].Id != 2 {
 			t.Fatal("tunnel scope changed")
 		}

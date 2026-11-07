@@ -9,17 +9,18 @@ import (
 	"github.com/djylb/nps/lib/textutil"
 )
 
-func GetTunnel(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*model.Tunnel, int) {
+// ListTunnels returns a page of the tasks that match, and how many match.
+func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*model.Tunnel, int) {
 	allList := make([]*model.Tunnel, 0) //store all Tunnel
 	list := make([]*model.Tunnel, 0)
 	originLength := length
 	var cnt int
 
-	keys := file.GetMapKeys(&file.GetDb().JsonDb.Tasks, false, "", "")
+	keys := file.GetMapKeys(&s.db.JsonDb.Tasks, false, "", "")
 
 	// get all Tunnel and filter
 	for _, key := range keys {
-		if value, ok := file.GetDb().JsonDb.Tasks.Load(key); ok {
+		if value, ok := s.db.JsonDb.Tasks.Load(key); ok {
 			v, ok := value.(*model.Tunnel)
 			if !ok || v == nil || v.Client == nil || v.Target == nil {
 				continue
@@ -224,13 +225,13 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 		cnt++
 
-		if Bridge.Connected(v.Client.Id) {
+		if s.bridge.Connected(v.Client.Id) {
 			v.Client.IsConnect = true
 		} else {
 			v.Client.IsConnect = false
 		}
 
-		if _, ok := RunList.Load(v.Id); ok {
+		if _, ok := s.tasks.Load(v.Id); ok {
 			v.RunStatus = true
 		} else {
 			v.RunStatus = false
@@ -248,10 +249,10 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 	return list, cnt
 }
 
-// GetHostList get client list
-func GetHostList(start, length, clientId int, search, sortField, order string) (list []*model.Host, cnt int) {
+// ListHosts returns a page of the domain entries that match, and how many match.
+func (s *Server) ListHosts(start, length, clientId int, search, sortField, order string) (list []*model.Host, cnt int) {
 	// all the matching hosts are sorted before a page is taken
-	list, cnt = file.GetDb().GetHost(0, 0, clientId, search)
+	list, cnt = s.db.GetHost(0, 0, clientId, search)
 	defer func() { list = page(list, start, length) }()
 	fv := flowSnapshots(list, func(h *model.Host) *model.Flow { return h.Flow })
 
@@ -469,10 +470,10 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 	return
 }
 
-// GetClientList get client list
-func GetClientList(start, length int, search, sortField, order string, clientId int) (list []*model.Client, cnt int) {
+// ListClients returns a page of the clients that match, and how many match.
+func (s *Server) ListClients(start, length int, search, sortField, order string, clientId int) (list []*model.Client, cnt int) {
 	// all the matching clients are sorted before a page is taken
-	list, cnt = file.GetDb().GetClientList(0, 0, search, sortField, order, clientId)
+	list, cnt = s.db.GetClientList(0, 0, search, sortField, order, clientId)
 	defer func() { list = page(list, start, length) }()
 	fv := flowSnapshots(list, func(c *model.Client) *model.Flow { return c.Flow })
 
@@ -607,7 +608,7 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 		}
 	}
 
-	dealClientData()
+	s.dealClientData()
 	return
 }
 
@@ -664,12 +665,4 @@ func sortCurrentRates[T interface{ CurrentRates() (int64, int64) }](rows []T, fi
 	for i, entry := range values {
 		rows[i] = entry.row
 	}
-}
-
-// ClientConnected reads live bridge membership without refreshing or sorting lists.
-func ClientConnected(id int) bool {
-	if Bridge == nil || Bridge.Client == nil {
-		return false
-	}
-	return Bridge.Connected(id)
 }

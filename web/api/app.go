@@ -47,6 +47,8 @@ type Options struct {
 	Services          *webservice.Services
 	ConfigureServices func(*webservice.Services)
 	ConfigProvider    func() *servercfg.Snapshot
+	// Runtime is the running server the services act on; nil means none.
+	Runtime webservice.Runtime
 }
 
 func New(cfg *servercfg.Snapshot) *App {
@@ -69,7 +71,7 @@ func NewWithOptions(cfg *servercfg.Snapshot, options Options) *App {
 	if nodeID == "" {
 		nodeID = "nps"
 	}
-	services := webservice.New()
+	services := webservice.New(options.Runtime)
 	if options.Services != nil {
 		services = *options.Services
 	}

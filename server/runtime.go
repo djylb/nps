@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -24,68 +23,76 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 )
 
-var (
-	// Cache
+// dashboard caches the dashboard data and samples the network speed.
+type dashboard struct {
 	cacheMu         sync.RWMutex
-	dashboardCache  map[string]interface{}
+	cache           map[string]interface{}
 	lastRefresh     time.Time
 	lastFullRefresh time.Time
 
-	// Net IO
 	samplerOnce    sync.Once
 	lastBytesSent  uint64
 	lastBytesRecv  uint64
 	lastSampleTime time.Time
 	ioSendRate     atomic.Value // float64
 	ioRecvRate     atomic.Value // float64
-)
+}
 
-func startSpeedSampler() {
-	samplerOnce.Do(func() {
+func (s *Server) startSpeedSampler() {
+	d := &s.dash
+	d.samplerOnce.Do(func() {
 		if io1, _ := net.IOCounters(false); len(io1) > 0 {
-			lastBytesSent = io1[0].BytesSent
-			lastBytesRecv = io1[0].BytesRecv
+			d.lastBytesSent = io1[0].BytesSent
+			d.lastBytesRecv = io1[0].BytesRecv
 		}
-		lastSampleTime = time.Now()
+		d.lastSampleTime = time.Now()
 
-		go func() {
+		s.group.Go(func() {
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
-			for now := range ticker.C {
+			for {
+				var now time.Time
+				select {
+				case now = <-ticker.C:
+				case <-s.ctx.Done():
+					return
+				}
 				if io2, _ := net.IOCounters(false); len(io2) > 0 {
 					sent := io2[0].BytesSent
 					recv := io2[0].BytesRecv
-					elapsed := now.Sub(lastSampleTime).Seconds()
+					elapsed := now.Sub(d.lastSampleTime).Seconds()
 
 					// calculate bytes/sec
-					rateSent := float64(stats.CounterDelta(sent, lastBytesSent)) / elapsed
-					rateRecv := float64(stats.CounterDelta(recv, lastBytesRecv)) / elapsed
+					rateSent := float64(stats.CounterDelta(sent, d.lastBytesSent)) / elapsed
+					rateRecv := float64(stats.CounterDelta(recv, d.lastBytesRecv)) / elapsed
 
-					ioSendRate.Store(rateSent)
-					ioRecvRate.Store(rateRecv)
+					d.ioSendRate.Store(rateSent)
+					d.ioRecvRate.Store(rateRecv)
 
-					lastBytesSent = sent
-					lastBytesRecv = recv
-					lastSampleTime = now
+					d.lastBytesSent = sent
+					d.lastBytesRecv = recv
+					d.lastSampleTime = now
 				}
 			}
-		}()
+		})
 	})
 }
 
-func InitDashboardData() {
-	startSpeedSampler()
-	GetDashboardData(true)
-	//return
+func (s *Server) initDashboardData() {
+	s.startSpeedSampler()
+	s.DashboardData(true)
 }
 
-func GetDashboardData(force bool) map[string]interface{} {
+// DashboardData returns the dashboard data, refreshed when force or when the
+// cache is old.
+func (s *Server) DashboardData(force bool) map[string]interface{} {
 	cfg := servercfg.Current()
-	cacheMu.RLock()
-	cached := dashboardCache
-	lastR := lastRefresh
-	lastFR := lastFullRefresh
-	cacheMu.RUnlock()
+	d := &s.dash
+	d.cacheMu.RLock()
+	cached := d.cache
+	lastR := d.lastRefresh
+	lastFR := d.lastFullRefresh
+	d.cacheMu.RUnlock()
 
 	if cached != nil && !force && time.Since(lastFR) < 5*time.Second {
 		if time.Since(lastR) < 1*time.Second {
@@ -93,7 +100,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 		}
 
 		tcpCount := 0
-		file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
+		s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
 			tcpCount += int(value.(*model.Client).CurrentConnections())
 			return true
 		})
@@ -144,10 +151,10 @@ func GetDashboardData(force bool) map[string]interface{} {
 		}
 
 		var ioSend, ioRecv interface{}
-		if v, ok := ioSendRate.Load().(float64); ok {
+		if v, ok := d.ioSendRate.Load().(float64); ok {
 			ioSend = v
 		}
-		if v, ok := ioRecvRate.Load().(float64); ok {
+		if v, ok := d.ioRecvRate.Load().(float64); ok {
 			ioRecv = v
 		}
 
@@ -155,8 +162,8 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 		now := time.Now()
 
-		cacheMu.Lock()
-		dst := cloneDashboardData(dashboardCache)
+		d.cacheMu.Lock()
+		dst := cloneDashboardData(d.cache)
 		if dst == nil {
 			dst = cloneDashboardData(cached)
 		}
@@ -183,9 +190,9 @@ func GetDashboardData(force bool) map[string]interface{} {
 		if ioRecv != nil {
 			dst["io_recv"] = ioRecv
 		}
-		dashboardCache = dst
-		lastRefresh = now
-		cacheMu.Unlock()
+		d.cache = dst
+		d.lastRefresh = now
+		d.cacheMu.Unlock()
 
 		return cloneDashboardData(dst)
 	}
@@ -193,14 +200,14 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data := make(map[string]interface{})
 	data["version"] = version.VERSION
 	data["minVersion"] = GetMinVersion()
-	data["hostCount"] = syncMapLen(&file.GetDb().JsonDb.Hosts)
-	data["clientCount"] = syncMapLen(&file.GetDb().JsonDb.Clients)
+	data["hostCount"] = syncMapLen(&s.db.JsonDb.Hosts)
+	data["clientCount"] = syncMapLen(&s.db.JsonDb.Clients)
 
-	dealClientData()
+	s.dealClientData()
 
 	c := 0
 	var in, out int64
-	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*model.Client)
 		if v.NoDisplay { // the public and visitor keys are not clients to show
 			data["clientCount"] = data["clientCount"].(int) - 1
@@ -218,7 +225,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["exportFlowCount"] = int(out)
 
 	var tcpN, udpN, secretN, socks5N, p2pN, httpN int
-	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Tasks.Range(func(key, value interface{}) bool {
 		t := value.(*model.Tunnel)
 		switch t.Mode {
 		case "tcp":
@@ -267,7 +274,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["startTime"] = runenv.GetStartTime()
 
 	tcpCount := 0
-	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		tcpCount += int(value.(*model.Client).CurrentConnections())
 		return true
 	})
@@ -309,10 +316,10 @@ func GetDashboardData(force bool) map[string]interface{} {
 		}
 	}
 
-	if v, ok := ioSendRate.Load().(float64); ok {
+	if v, ok := d.ioSendRate.Load().(float64); ok {
 		data["io_send"] = v
 	}
-	if v, ok := ioRecvRate.Load().(float64); ok {
+	if v, ok := d.ioRecvRate.Load().(float64); ok {
 		data["io_recv"] = v
 	}
 
@@ -323,11 +330,11 @@ func GetDashboardData(force bool) map[string]interface{} {
 	}
 
 	now := time.Now()
-	cacheMu.Lock()
-	dashboardCache = data
-	lastRefresh = now
-	lastFullRefresh = now
-	cacheMu.Unlock()
+	d.cacheMu.Lock()
+	d.cache = data
+	d.lastRefresh = now
+	d.lastFullRefresh = now
+	d.cacheMu.Unlock()
 
 	return cloneDashboardData(data)
 }

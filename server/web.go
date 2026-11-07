@@ -6,21 +6,25 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"sync/atomic"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
 )
 
+// WebServer serves the web manager of a Server on the web port and on the
+// in-memory listener that bridge://web targets reach.
 type WebServer struct {
-	proxy.BaseServer
+	srv         *Server
+	mu          sync.Mutex
+	closed      bool
 	tcpListener net.Listener
+	virtual     *netx.ChanListener
+	servers     []*http.Server // closing them closes their connections too
 }
 
 type httpServeTarget struct {
@@ -30,18 +34,17 @@ type httpServeTarget struct {
 
 type webHandlerBox struct{ http.Handler }
 
-// webHandler is the handler of the web manager, replaced on a config reload.
-var webHandler atomic.Pointer[webHandlerBox]
-
-func SetWebHandler(handler http.Handler) {
+// SetWebHandler sets the handler of the web manager; it applies to a running
+// server, so a config reload replaces it.
+func (s *Server) SetWebHandler(handler http.Handler) {
 	if handler == nil {
 		handler = http.NotFoundHandler()
 	}
-	webHandler.Store(&webHandlerBox{handler})
+	s.webHandler.Store(&webHandlerBox{handler})
 }
 
-func serveWeb(w http.ResponseWriter, r *http.Request) {
-	if h := webHandler.Load(); h != nil {
+func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
+	if h := s.webHandler.Load(); h != nil {
 		h.ServeHTTP(w, r)
 		return
 	}
@@ -51,7 +54,7 @@ func serveWeb(w http.ResponseWriter, r *http.Request) {
 func (s *WebServer) Start() error {
 	ip := connection.Network().WebIP
 	p := connection.Network().WebPort
-	handler := http.HandlerFunc(serveWeb)
+	handler := http.HandlerFunc(s.srv.serveWeb)
 	cfg := servercfg.Current()
 
 	var tlsConfig *tls.Config
@@ -63,40 +66,54 @@ func (s *WebServer) Start() error {
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
 
-	if bridge.WebServerListener != nil {
-		_ = bridge.WebServerListener.Close()
-		bridge.WebServerListener = nil
-	}
 	lAddr := &net.TCPAddr{IP: net.ParseIP(ip), Port: p}
-	bridge.WebServerListener = conn.NewVirtualListener(lAddr)
+	virtual := conn.NewVirtualListener(lAddr)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = virtual.Close()
+		return net.ErrClosed
+	}
+	plain := &http.Server{Handler: handler}
+	s.virtual = virtual
+	s.servers = append(s.servers, plain)
+	s.mu.Unlock()
+	s.srv.bridge.SetWebListener(virtual)
 	targets := []httpServeTarget{{
-		listener: bridge.WebServerListener,
-		serve: func(l net.Listener) error {
-			return http.Serve(l, handler)
-		},
+		listener: virtual,
+		serve:    plain.Serve,
 	}}
 
 	if p > 0 {
 		l, err := connection.Listen(connection.KindWeb)
 		if err != nil {
-			_ = bridge.WebServerListener.Close()
+			_ = s.Close()
 			return err
 		}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = l.Close()
+			return net.ErrClosed
+		}
 		s.tcpListener = l
+		var secure *http.Server
 		if tlsConfig != nil {
+			secure = &http.Server{Handler: handler, TLSConfig: tlsConfig}
+			s.servers = append(s.servers, secure)
+		}
+		s.mu.Unlock()
+		if secure != nil {
 			targets = append(targets, httpServeTarget{
 				listener: l,
 				serve: func(l net.Listener) error {
-					srv := &http.Server{Handler: handler, TLSConfig: tlsConfig}
-					return srv.ServeTLS(l, "", "")
+					return secure.ServeTLS(l, "", "")
 				},
 			})
 		} else {
 			targets = append(targets, httpServeTarget{
 				listener: l,
-				serve: func(l net.Listener) error {
-					return http.Serve(l, handler)
-				},
+				serve:    plain.Serve,
 			})
 		}
 	} else {
@@ -141,26 +158,35 @@ func loadWebPEM(name, value, header string) (string, error) {
 	return content, nil
 }
 
+// Close closes the listeners of the web manager; Start then returns.
 func (s *WebServer) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 	if s.tcpListener != nil {
 		_ = s.tcpListener.Close()
 	}
-	if bridge.WebServerListener != nil {
-		_ = bridge.WebServerListener.Close()
-		bridge.WebServerListener = nil
+	if s.virtual != nil {
+		s.srv.bridge.SetWebListener(nil)
+		_ = s.virtual.Close()
+	}
+	for _, hs := range s.servers {
+		_ = hs.Close()
 	}
 	return nil
 }
 
-func NewWebServer(bridge *bridge.Bridge) *WebServer {
-	s := new(WebServer)
-	s.Bridge = bridge
-	return s
+// NewWebServer returns the web manager of srv.
+func NewWebServer(srv *Server) *WebServer {
+	return &WebServer{srv: srv}
 }
 
+// serveHTTPListeners serves the targets until one of them stops, closes the
+// others and returns the first error once all of them have returned.
 func serveHTTPListeners(targets ...httpServeTarget) error {
 	errCh := make(chan error, 1)
 	var once sync.Once
+	var wg sync.WaitGroup
 
 	closeAll := func() {
 		for _, target := range targets {
@@ -174,14 +200,14 @@ func serveHTTPListeners(targets ...httpServeTarget) error {
 		if target.listener == nil || target.serve == nil {
 			continue
 		}
-		go func(target httpServeTarget) {
+		wg.Go(func() {
 			err := target.serve(target.listener)
 			once.Do(func() {
 				closeAll()
 				errCh <- err
 			})
-		}(target)
+		})
 	}
-
+	wg.Wait()
 	return <-errCh
 }

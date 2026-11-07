@@ -15,10 +15,14 @@ type Services struct {
 	Index       IndexService
 	Pages       PageService
 	Config      ConfigTransferService
+	// Runtime is the running server, or one that runs nothing.
+	Runtime Runtime
 }
 
-func New() Services {
-	backend := DefaultBackend()
+// New returns the services of the store and of runtime, the running server;
+// a nil runtime means none runs.
+func New(runtime Runtime) Services {
+	backend := NewBackend(runtime)
 	system := DefaultSystemService{}
 	resolver := DefaultPermissionResolver()
 	loginPolicy := SharedLoginPolicy()
@@ -35,6 +39,7 @@ func New() Services {
 		Globals:     globals,
 		Index:       index,
 		Config:      DefaultConfigTransferService{Backend: backend},
+		Runtime:     backend.Runtime,
 		Pages: DefaultPageService{
 			Clients: clients,
 			Globals: globals,

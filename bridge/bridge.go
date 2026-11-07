@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"context"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -8,20 +10,15 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/internal/lifecycle"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
-var (
-	ServerTcpEnable  = false
-	ServerKcpEnable  = false
-	ServerQuicEnable = false
-	ServerTlsEnable  = false
-	ServerWsEnable   = false
-	ServerWssEnable  = false
-	ServerSecureMode = false
-)
+// ServerSecureMode makes the bridge refuse the handshakes of npc versions
+// that predate secure mode.
+var ServerSecureMode = false
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
 const bridgeHandshakeReadTimeout = 10 * time.Second
@@ -65,6 +62,17 @@ type Bridge struct {
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
+	lookup             atomic.Pointer[TunnelLookup]
+	webListener        atomic.Pointer[netx.ChanListener]
+	ipRegListener      atomic.Pointer[netx.ChanListener]
+
+	tasks     lifecycle.Group // the goroutines Close waits for
+	ctx       context.Context // done once Close starts
+	cancel    context.CancelFunc
+	closeMu   sync.Mutex
+	closers   []io.Closer             // the listeners Start opened
+	conns     map[*conn.Conn]struct{} // the accepted connections still open
+	closeOnce sync.Once
 }
 
 func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
@@ -74,7 +82,11 @@ func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 }
 
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Bridge{
+		ctx:            ctx,
+		cancel:         cancel,
+		conns:          make(map[*conn.Conn]struct{}),
 		Client:         &sync.Map{},
 		OpenHost:       make(chan *model.Host, 100),
 		OpenTask:       make(chan *model.Tunnel, 100),

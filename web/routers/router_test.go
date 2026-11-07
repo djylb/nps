@@ -62,7 +62,7 @@ func TestDirectPageRenderAndPageAPI(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +369,7 @@ func TestWebBaseURLPrefix(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,7 +472,7 @@ func TestInvalidSessionCookieFallsBackToFreshSession(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +513,7 @@ func TestBlankAdminCredentialsAutoLogin(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestLoginVerifyRejectsOversizedChunkedBody(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +664,7 @@ func TestBootstrapPagesReflectPermissions(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +827,7 @@ func TestAuthPageControllerAliases(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +932,7 @@ func TestPageCatalogRespectsFeatureFlags(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,7 +998,7 @@ func TestAuthorizationBoundariesForMultiClientUser(t *testing.T) {
 
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1400,7 +1400,7 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 	client.RegisterKey = "reg-key-9"
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1463,7 +1463,7 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 	t.Cleanup(ipreg.Reset)
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1484,7 +1484,7 @@ func TestIPRegisterPathsWithBaseURLAndStandalone(t *testing.T) {
 		t.Fatalf("POST /nps/ip/register with the public key = %s", reg.Body.String())
 	}
 
-	standalone := InitIPRegister()
+	standalone := InitIPRegister(nil)
 	for _, path := range []string{"/", "/ip/register"} {
 		resp := httptest.NewRecorder()
 		standalone.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
@@ -1520,7 +1520,7 @@ func TestGlobalTrafficAndRateLimit(t *testing.T) {
 	t.Cleanup(func() { rate.SetGlobalLimit(0); rate.ResetGlobalTraffic() })
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1570,7 +1570,7 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 	resetTestDB(t)
 	crypt.InitTls(tls.Certificate{})
 	gin.SetMode(gin.TestMode)
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1629,7 +1629,7 @@ func TestLoginSetsOneSessionCookie(t *testing.T) {
 
 func mustInit(t *testing.T) http.Handler {
 	t.Helper()
-	handler, err := Init()
+	handler, err := Init(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
