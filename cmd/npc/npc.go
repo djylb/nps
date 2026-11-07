@@ -166,19 +166,6 @@ func main() {
 		}
 	}
 
-	// 配置服务启动参数
-	for _, v := range os.Args[1:] {
-		switch v {
-		case "install", "start", "stop", "uninstall", "restart",
-			"status", "register", "update", "update-force":
-			continue
-		}
-		if !strings.Contains(v, "-service=") && !strings.Contains(v, "-debug=") {
-			svcConfig.Arguments = append(svcConfig.Arguments, v)
-		}
-	}
-	svcConfig.Arguments = append(svcConfig.Arguments, "-debug=false")
-
 	// 创建服务
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -240,6 +227,16 @@ func main() {
 			os.Exit(1)
 		}
 		svcConfig.Executable = binPath
+		confDir := filepath.Join(runenv.GetInstallPath(), "conf")
+		svcArgs, files, err := serviceArguments(flag.CommandLine, confDir, os.Getenv("NPC_LAUNCH"))
+		if err == nil {
+			err = writeServiceFiles(confDir, files)
+		}
+		if err != nil {
+			logs.Error("install failed: %v", err)
+			os.Exit(1)
+		}
+		svcConfig.Arguments = svcArgs
 		if s, err = service.New(prg, svcConfig); err != nil {
 			logs.Error("%v", err)
 			return
