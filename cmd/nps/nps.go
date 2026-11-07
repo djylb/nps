@@ -56,7 +56,7 @@ func main() {
 	flag.CommandLine.SortFlags = false
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "service", "install", "uninstall", "start", "stop", "restart", "update", "update-force", "update-geo")
+	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "service", "install", "uninstall", "start", "stop", "restart", "update", "update-force", "update-geo", "version")
 	os.Args = append(os.Args[:1], prepared...)
 	ignoredArgs = ignored
 	flag.Parse()
@@ -78,7 +78,7 @@ func main() {
 		return
 	}
 	// show version
-	if *ver {
+	if *ver || cmd == "version" {
 		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
 	}
@@ -260,7 +260,7 @@ func main() {
 // "service", which the service managers run, both start the server.
 func knownCommand(cmd string) bool {
 	switch cmd {
-	case "", "service", "install", "uninstall", "start", "stop", "restart", "update", "update-force", "update-geo":
+	case "", "service", "install", "uninstall", "start", "stop", "restart", "update", "update-force", "update-geo", "version":
 		return true
 	}
 	return false
@@ -268,7 +268,7 @@ func knownCommand(cmd string) bool {
 
 func printUsage(cmd string) {
 	fmt.Fprintf(os.Stderr, "unknown command %q\n\nUsage: %s [flags] [command]\n\nWithout a command nps runs in the foreground.\n\nCommands:\n", cmd, filepath.Base(os.Args[0]))
-	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update geoip and the geodata files present, or the one named geoip or geosite\n  service       run as a service, used by the service manager\n\nFlags:\n")
+	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update geoip and the geodata files present, or the one named geoip or geosite\n  version       show the version, as -version\n  service       run as a service, used by the service manager\n\nFlags:\n")
 	flag.PrintDefaults()
 }
 

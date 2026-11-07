@@ -83,7 +83,7 @@ func main() {
 	flag.CommandLine.SortFlags = false
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force")
+	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
 	os.Args = append(os.Args[:1], prepared...)
 	ignoredArgs = ignored
 	flag.Parse()
@@ -104,7 +104,7 @@ func main() {
 		return
 	}
 	// Version
-	if *ver {
+	if *ver || cmd == "version" {
 		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
 	}

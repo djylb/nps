@@ -6,7 +6,7 @@
 
 ## 命令
 
-`install`、`uninstall`、`start`、`stop`、`restart`、`status`、`register`、`update`、`update-force`。
+`install`、`uninstall`、`start`、`stop`、`restart`、`status`、`register`、`update`、`update-force`、`version`（同 `-version`）。
 
 ## 参数
 
