@@ -22,7 +22,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/server/proxy"
+	"github.com/djylb/nps/lib/proxy"
 )
 
 type ctxKey string

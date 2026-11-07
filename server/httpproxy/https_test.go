@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/server/proxy"
+	"github.com/djylb/nps/lib/proxy"
 )
 
 func TestHttpsListenerPushAfterCloseDoesNotPanic(t *testing.T) {

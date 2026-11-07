@@ -21,8 +21,8 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/server/proxy"
 	"github.com/djylb/portmux/tlshello"
 )
 

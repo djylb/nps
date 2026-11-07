@@ -13,9 +13,9 @@ import (
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
-	"github.com/djylb/nps/server/proxy"
 	"github.com/djylb/nps/server/tool"
 )
 
