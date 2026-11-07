@@ -177,11 +177,12 @@ nps.exe -conf_path=D:\test\nps
 | 名称 | 默认 | 示例 | 说明 |
 | --- | --- | --- | --- |
 | `log` | `stdout` | `stdout` | `stdout`、`file`、`both`、`off`；以服务运行时 `stdout` 改写文件 |
-| `log_level` | `trace` | `trace` | `trace`、`debug`、`info`、`warn`、`error`、`fatal`、`panic`、`off` |
+| `log_level` | `info` | `info,bridge=debug` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn`；修改后热生效 |
+| `log_format` | `text` | `json` | `text`（logfmt，一行一个事件）或 `json`，见[日志](../guide/server/logging.md) |
+| `security_log` | 空 | `/var/log/nps/security.log` | 另写一份只含安全事件的文件，供 fail2ban 使用；轮转设置同上 |
 | `log_path` | 系统默认 | `conf/nps.log` | 路径、`off`、`docker`；系统默认为 Windows 程序目录 `nps.log`，其他 `/var/log/nps.log` |
 | `log_compress` | `false` | `false` | 压缩日志 |
 | `log_max_files` | `30` | `10` | 日志文件数上限 |
 | `log_max_days` | `30` | `7` | 保留天数 |
 | `log_max_size` | `5` | `2` | 单文件大小（MB） |
-| `log_color` | `true` | - | 控制台彩色 |
 | `pprof_ip` / `pprof_port` | 空 / `0` | - | pprof 监听；端口 `0` 关闭 |

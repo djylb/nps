@@ -24,17 +24,17 @@ webhook_secret=换成随机字符串
 
 | 类型 | 时机 | `data` |
 | --- | --- | --- |
-| `client.online`、`client.offline` | 客户端上下线 | 客户端 |
-| `tunnel.created`、`tunnel.updated`、`tunnel.started`、`tunnel.stopped`、`tunnel.deleted` | 隧道变更 | 隧道 |
-| `host.created`、`host.updated`、`host.started`、`host.stopped`、`host.deleted` | 域名变更 | 域名 |
-| `tunnels.report` | 周期全量上报 | `tunnels` 和 `hosts` 列表 |
+| `client_online`、`client_offline` | 客户端上下线 | 客户端 |
+| `tunnel_created`、`tunnel_updated`、`tunnel_started`、`tunnel_stopped`、`tunnel_deleted` | 隧道变更 | 隧道 |
+| `host_created`、`host_updated`、`host_started`、`host_stopped`、`host_deleted` | 域名变更 | 域名 |
+| `tunnels_report` | 周期全量上报 | `tunnels` 和 `hosts` 列表 |
 
 Web 上保存隧道会重启它，因此依次收到 `updated`、`stopped`、`started`。事件不含密钥、密码和证书。
 
 ```json
 {
   "id": "…",
-  "type": "tunnel.created",
+  "type": "tunnel_created",
   "time": "2026-11-06T12:00:00Z",
   "data": {
     "id": 3, "client_id": 1, "mode": "tcp", "port": 8001,

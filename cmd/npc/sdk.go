@@ -8,16 +8,16 @@ import (
 	"context"
 
 	"github.com/djylb/nps/client"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/version"
 )
 
 var cl *client.TRPClient
 
 func init() {
-	logs.EnableInMemoryBuffer(0) // 0 = Default 64KB
-	logs.Init("off", "trace", "", 0, 0, 0, false, false)
+	_ = logsetup.Apply(logsetup.Options{Output: "off", Level: "trace", Buffer: 64 << 10})
 }
 
 //export StartClientByVerifyKey
@@ -49,12 +49,12 @@ func Version() *C.char {
 
 //export SetLogsLevel
 func SetLogsLevel(logsLevel *C.char) {
-	logs.SetLevel(C.GoString(logsLevel))
+	_ = obs.Default.SetLevel(C.GoString(logsLevel))
 }
 
 //export Logs
 func Logs() *C.char {
-	return C.CString(logs.GetBufferedLogs())
+	return C.CString(obs.Default.TakeBuffered())
 }
 
 //export SetDnsServer

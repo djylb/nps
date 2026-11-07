@@ -23,6 +23,7 @@ import (
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 )
 
@@ -584,6 +585,7 @@ func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 		}),
 		ReadHeaderTimeout: serverReadHeaderTimeout,
 		IdleTimeout:       serverIdleTimeout,
+		ErrorLog:          obs.HTTPErrorLog(proxyLog, scheme),
 	}
 }
 

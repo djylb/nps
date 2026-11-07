@@ -37,12 +37,12 @@
 | `-debug` | 调试模式：日志输出到控制台，级别 `trace` | `true` |
 | `-log` | `stdout`、`file`、`both`、`off`；`-debug` 开启时 `file` 改为 `stdout` | `file` |
 | `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |
-| `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`fatal`、`panic`、`off` | `trace` |
+| `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn` | `info` |
+| `-log_format` | `text`（logfmt）或 `json` | `text` |
 | `-log_compress` | 压缩日志 | `false` |
 | `-log_max_days` | 保留天数，`0` 关闭 | `7` |
 | `-log_max_files` | 文件数，`0` 关闭 | `10` |
 | `-log_max_size` | 单文件 MB，`0` 关闭 | `5` |
-| `-log_color` | 控制台彩色 | `true` |
 | `-pprof` | PProf 地址 `ip:port` | 无 |
 | `-dns_server` | 优先 DNS，不可达时回退到系统 DNS | `8.8.8.8` |
 | `-ntp_server` | NTP 服务器 | 无 |

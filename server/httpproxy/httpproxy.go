@@ -113,18 +113,19 @@ func (s *HttpProxy) Start() error {
 	var magic *certmagic.Config
 	cache := certmagic.NewCache(certmagic.CacheOptions{
 		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) { return magic, nil },
-		Logger:           logs.ZapLogger,
+		Logger:           acmeZap(),
 	})
 	magic = certmagic.New(cache, certmagic.Config{
 		Storage:  &certmagic.FileStorage{Path: runenv.ResolvePath(cfg.Proxy.SSL.Path)},
-		Logger:   logs.ZapLogger,
+		Logger:   acmeZap(),
 		OnDemand: onDemand,
+		OnEvent:  certEvent,
 	})
 	acme := certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
 		CA:     ca,
 		Email:  cfg.Proxy.SSL.Email,
 		Agreed: true,
-		Logger: logs.ZapLogger,
+		Logger: acmeZap(),
 	})
 	magic.Issuers = []certmagic.Issuer{acme}
 	if ca == certmagic.ZeroSSLProductionCA {

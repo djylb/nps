@@ -23,6 +23,7 @@ var NPC = []Rule{
 	ignore("proto_version", false, "ignored: npc only speaks the latest protocol; if the server is older, update the server first"),
 	ignore("stun_addr", false, "ignored: it no longer has an effect; STUN servers are now set on the server (p2p_stun_servers in nps.conf)"),
 	ignore("p2p_type", false, "ignored: it no longer has an effect; P2P picks its transport itself"),
+	ignore("log_color", false, "ignored: log lines are plain logfmt or JSON (-log_format)"),
 	ignore("log_daily", false, "ignored: it no longer has an effect; logs rotate by -log_max_size and -log_max_days"),
 }
 

@@ -26,7 +26,6 @@ require (
 	github.com/gorilla/sessions v1.4.0
 	github.com/kardianos/service v1.3.0
 	github.com/quic-go/quic-go v0.65.0
-	github.com/rs/zerolog v1.35.1
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.1.0
@@ -36,7 +35,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
@@ -64,7 +62,6 @@ require (
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20261101121723-be84dd9509a0 // indirect
-	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mholt/acmez/v3 v3.1.7 // indirect
 	github.com/miekg/dns v1.1.73 // indirect

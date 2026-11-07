@@ -4,7 +4,6 @@ import (
 	"context"
 	goflag "flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/cliargs"
+	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
@@ -37,7 +37,6 @@ import (
 )
 
 var (
-	logLevel string
 	confPath = flag.StringP("conf_path", "c", "", "Set Conf Path")
 	ver      = flag.BoolP("version", "v", false, "Show Current Version")
 	genTOTP  = flag.Bool("gen2fa", false, "Generate TOTP Secret")
@@ -103,7 +102,7 @@ func main() {
 
 	// update needs no config, so a broken config file can still be replaced
 	if cmd == "update" || cmd == "update-force" {
-		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
+		_ = logsetup.Apply(logsetup.Options{})
 		var s service.Service
 		if svc, err := service.New(prg, svcConfig); err == nil {
 			s = svc
@@ -125,7 +124,8 @@ func main() {
 	}
 
 	if err := servercfg.LoadDefault(); err != nil {
-		log.Fatalln("load config file error", err.Error())
+		fmt.Fprintln(os.Stderr, "load config file error:", err)
+		os.Exit(1)
 	}
 	cfg := servercfg.Current()
 	geoIPPath, geoSitePath := runenv.GetPath(cfg.App.GeoIPPath), runenv.GetPath(cfg.App.GeoSitePath)
@@ -134,7 +134,7 @@ func main() {
 	acl.SetMaxRules(cfg.App.AclMaxRules)
 	server.ApplyLimits(cfg)
 	if cmd == "update-geo" {
-		logs.Init("stdout", "info", "", 0, 0, 0, false, true)
+		_ = logsetup.Apply(logsetup.Options{})
 		var name string
 		if len(args) > 1 {
 			name = args[1]
@@ -172,31 +172,21 @@ func main() {
 		logs.Warn("Set timezone error %v", err)
 	}
 	netaddr.SetCustomDNS(cfg.App.DNSServer)
-	logType := cfg.Log.Type
-	logLevel = cfg.Log.Level
 	logPath := cfg.Log.Path
 	if logPath == "" || strings.EqualFold(logPath, "on") || strings.EqualFold(logPath, "true") {
 		logPath = runenv.GetLogPath()
 	}
-	if !strings.EqualFold(logPath, "off") && !strings.EqualFold(logPath, "false") && !strings.EqualFold(logPath, "docker") && logPath != "/dev/null" {
-		if !filepath.IsAbs(logPath) {
-			logPath = filepath.Join(runenv.GetRunPath(), logPath)
-		}
-		if runenv.IsWindows() {
-			logPath = strings.ReplaceAll(logPath, "\\", "\\\\")
-		}
+	logOpts := logsetup.Options{
+		Output: cfg.Log.Type, Format: cfg.Log.Format, Level: cfg.Log.Level,
+		Path: logPath, Security: cfg.Log.Security, Dir: runenv.GetRunPath(),
+		MaxSize: cfg.Log.MaxSize, MaxFiles: cfg.Log.MaxFiles, MaxDays: cfg.Log.MaxDays, Compress: cfg.Log.Compress,
+		Service: len(os.Args) > 1 && os.Args[1] == "service",
 	}
-	logMaxFiles := cfg.Log.MaxFiles
-	logMaxDays := cfg.Log.MaxDays
-	logMaxSize := cfg.Log.MaxSize
-	logCompress := cfg.Log.Compress
-	logColor := cfg.Log.Color
-
-	if len(os.Args) > 1 && os.Args[1] == "service" && !strings.EqualFold(logType, "off") && !strings.EqualFold(logType, "both") {
-		logType = "file"
+	if err := logsetup.Apply(logOpts); err != nil {
+		fmt.Fprintln(os.Stderr, "log:", err)
+		os.Exit(1)
 	}
-	logs.Init(logType, logLevel, logPath, logMaxSize, logMaxFiles, logMaxDays, logCompress, logColor)
-	warnArgs(strings.EqualFold(logType, "off"))
+	warnArgs(strings.EqualFold(cfg.Log.Type, "off"))
 	for _, w := range cfg.Legacy {
 		logs.Warn("%s", w)
 	}

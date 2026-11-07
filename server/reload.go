@@ -7,6 +7,7 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/stats"
 )
@@ -67,10 +68,9 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 	restart := servercfg.RestartRequired
 	return []servercfg.Applier{
 		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
-			logs.SetLevel(cur.Log.Level)
-			return nil
+			return obs.Default.SetLevel(cur.Log.Level)
 		}},
-		{Name: "log output", Settings: []string{"log", "log_path", "log_max_files", "log_max_days", "log_max_size", "log_compress", "log_color"}, Apply: restart},
+		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress"}, Apply: restart},
 		{Name: "ntp", Settings: []string{"ntp_server", "ntp_interval"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			ApplyNTP(cur)
 			return nil

@@ -7,6 +7,7 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/nps/lib/event"
+	"github.com/djylb/nps/lib/logevent"
 )
 
 // The events of the stored entries, published by DbUtils where entries change,
@@ -16,20 +17,6 @@ import (
 //
 // A tunnel that restarts, as saving it from the web does, reports its stop and
 // start as well as the update.
-const (
-	EventClientOnline  = "client.online"
-	EventClientOffline = "client.offline"
-	EventTunnelCreated = "tunnel.created"
-	EventTunnelUpdated = "tunnel.updated"
-	EventTunnelStarted = "tunnel.started"
-	EventTunnelStopped = "tunnel.stopped"
-	EventTunnelDeleted = "tunnel.deleted"
-	EventHostCreated   = "host.created"
-	EventHostUpdated   = "host.updated"
-	EventHostStarted   = "host.started"
-	EventHostStopped   = "host.stopped"
-	EventHostDeleted   = "host.deleted"
-)
 
 // entryEvents tells what changed on entries, which are edited in place and so
 // cannot be compared with their stored self.
@@ -79,27 +66,27 @@ func changeType(seen *sync.Map, id int, enabled bool, updated, started, stopped 
 func (s *DbUtils) tunnelCreated(t *model.Tunnel) {
 	if bus := s.events.bus.Load(); bus != nil {
 		s.events.tunnels.Store(t.Id, t.Status)
-		bus.Publish(EventTunnelCreated, model.NewTunnelInfo(t))
+		bus.Publish(logevent.TunnelCreated.Name, model.NewTunnelInfo(t))
 	}
 }
 
 func (s *DbUtils) tunnelSaved(t *model.Tunnel) {
 	if bus := s.events.bus.Load(); bus != nil {
-		bus.Publish(changeType(&s.events.tunnels, t.Id, t.Status, EventTunnelUpdated, EventTunnelStarted, EventTunnelStopped), model.NewTunnelInfo(t))
+		bus.Publish(changeType(&s.events.tunnels, t.Id, t.Status, logevent.TunnelUpdated.Name, logevent.TunnelStarted.Name, logevent.TunnelStopped.Name), model.NewTunnelInfo(t))
 	}
 }
 
 func (s *DbUtils) tunnelDeleted(t *model.Tunnel) {
 	if bus := s.events.bus.Load(); bus != nil {
 		s.events.tunnels.Delete(t.Id)
-		bus.Publish(EventTunnelDeleted, model.NewTunnelInfo(t))
+		bus.Publish(logevent.TunnelDeleted.Name, model.NewTunnelInfo(t))
 	}
 }
 
 func (s *DbUtils) hostCreated(h *model.Host) {
 	if bus := s.events.bus.Load(); bus != nil {
 		s.events.hosts.Store(h.Id, !h.IsClose)
-		bus.Publish(EventHostCreated, model.NewHostInfo(h))
+		bus.Publish(logevent.HostCreated.Name, model.NewHostInfo(h))
 	}
 }
 
@@ -113,14 +100,14 @@ func (s *DbUtils) TunnelChanged(t *model.Tunnel) {
 func (s *DbUtils) HostChanged(h *model.Host) {
 	s.JsonDb.notifyEntriesChanged()
 	if bus := s.events.bus.Load(); bus != nil {
-		bus.Publish(changeType(&s.events.hosts, h.Id, !h.IsClose, EventHostUpdated, EventHostStarted, EventHostStopped), model.NewHostInfo(h))
+		bus.Publish(changeType(&s.events.hosts, h.Id, !h.IsClose, logevent.HostUpdated.Name, logevent.HostStarted.Name, logevent.HostStopped.Name), model.NewHostInfo(h))
 	}
 }
 
 func (s *DbUtils) hostDeleted(h *model.Host) {
 	if bus := s.events.bus.Load(); bus != nil {
 		s.events.hosts.Delete(h.Id)
-		bus.Publish(EventHostDeleted, model.NewHostInfo(h))
+		bus.Publish(logevent.HostDeleted.Name, model.NewHostInfo(h))
 	}
 }
 
@@ -141,8 +128,8 @@ func (s *DbUtils) ClientPresence(id int, c *model.Client, online bool) {
 		info.Remark, info.Addr, info.Version = c.Remark, c.Addr, c.Version
 	}
 	if online {
-		bus.Publish(EventClientOnline, info)
+		bus.Publish(logevent.ClientOnline.Name, info)
 	} else {
-		bus.Publish(EventClientOffline, info)
+		bus.Publish(logevent.ClientOffline.Name, info)
 	}
 }

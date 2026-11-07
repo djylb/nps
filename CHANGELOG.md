@@ -11,6 +11,7 @@
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
 - **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
 - npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法
+- 日志重写：一个事件一行的 logfmt（`log_format=json` 可选 JSON），固定字段 `time level event module`，按模块设级别（`log_level=info,p2p=debug`，nps 热生效），固定事件名与 webhook 共用，`security_log` 单独输出安全事件供 fail2ban 使用；自动证书、HTTP 服务器与第三方库的日志一并接入。默认级别由 `trace` 改为 `info`；`log_color` 已无作用，忽略并告警。见 docs/guide/server/logging.md
 - npc 在 OpenWrt 上默认不写日志（`-log=off`），避免占满闪存和内存盘；需要时用 `-log=file` 等参数开启。nps 仍按配置文件
 - npc 的 `-stun_addr`、`-p2p_type`、`-log_daily` 已无作用，忽略并告警
 - nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动

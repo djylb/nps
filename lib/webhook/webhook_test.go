@@ -32,7 +32,7 @@ func TestRetriesKeepIDAndSignature(t *testing.T) {
 			t.Error("bad signature")
 		}
 		var e event.Event
-		if err := json.Unmarshal(body, &e); err != nil || e.ID != r.Header.Get(HeaderEventID) || e.Type != "tunnel.created" {
+		if err := json.Unmarshal(body, &e); err != nil || e.ID != r.Header.Get(HeaderEventID) || e.Type != "tunnel_created" {
 			t.Errorf("bad body %s: %v", body, err)
 		}
 		ids <- e.ID
@@ -45,7 +45,7 @@ func TestRetriesKeepIDAndSignature(t *testing.T) {
 	defer b.Close()
 	s := Start(Config{URL: srv.URL, Secret: "s3", Retries: 2, Backoff: time.Millisecond}, b.Subscribe(4))
 	defer s.Close()
-	b.Publish("tunnel.created", map[string]int{"id": 1})
+	b.Publish("tunnel_created", map[string]int{"id": 1})
 	waitFor(t, func() bool { return s.Delivered() == 1 })
 	if a, c := <-ids, <-ids; a != c {
 		t.Fatalf("id changed across retries: %s, %s", a, c)

@@ -17,6 +17,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/cliargs"
+	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/crypt"
@@ -56,13 +57,13 @@ var (
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
 	logType        = flag.String("log", defaultLogType, "Log output mode (stdout|file|both|off)")
-	logLevel       = flag.String("log_level", "trace", "Log level (trace|debug|info|warn|error|fatal|panic|off)")
+	logLevel       = flag.String("log_level", "info", "Log level (trace|debug|info|warn|error|off), with per-module levels: info,p2p=debug")
 	logPath        = flag.String("log_path", "", "NPC log path (empty to use default, 'off' to disable)")
 	logMaxSize     = flag.Int("log_max_size", defaultLogMaxSize, "Maximum log file size in MB before rotation (0 to disable)")
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
 	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
-	logColor       = flag.Bool("log_color", true, "Enable ANSI color codes in console output (true or false)")
+	logFormat      = flag.String("log_format", "text", "Log line format (text|json)")
 	debug          = flag.Bool("debug", true, "Enable debug mode")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
@@ -293,13 +294,14 @@ func configureLogging() {
 	if *logPath == "" || strings.EqualFold(*logPath, "on") || strings.EqualFold(*logPath, "true") {
 		*logPath = runenv.GetNpcLogPath()
 	}
-	if !filepath.IsAbs(*logPath) {
-		*logPath = filepath.Join(runenv.GetRunPath(), *logPath)
+	err := logsetup.Apply(logsetup.Options{
+		Output: *logType, Format: *logFormat, Level: *logLevel, Path: *logPath, Dir: runenv.GetRunPath(),
+		MaxSize: *logMaxSize, MaxFiles: *logMaxFiles, MaxDays: *logMaxDays, Compress: *logCompress,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "log:", err)
+		os.Exit(1)
 	}
-	if runenv.IsWindows() {
-		*logPath = strings.ReplaceAll(*logPath, "\\", "\\\\")
-	}
-	logs.Init(*logType, *logLevel, *logPath, *logMaxSize, *logMaxFiles, *logMaxDays, *logCompress, *logColor)
 	warnArgs(strings.EqualFold(*logType, "off"))
 }
 

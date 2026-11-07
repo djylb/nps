@@ -62,14 +62,15 @@ type AppConfig struct {
 }
 
 type LogConfig struct {
-	Type     string
-	Level    string
+	Type     string // stdout, file, both, off
+	Format   string // text (logfmt) or json
+	Level    string // "info,bridge=debug"
 	Path     string
+	Security string // security log file; empty for none
 	MaxFiles int
 	MaxDays  int
-	MaxSize  int
+	MaxSize  int // MB
 	Compress bool
-	Color    bool
 }
 
 type WebConfig struct {
@@ -326,13 +327,14 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Log = LogConfig{
 		Type:     r.stringDefault("stdout", "log"),
-		Level:    r.stringDefault("trace", "log_level"),
+		Format:   r.stringDefault("text", "log_format"),
+		Level:    r.stringDefault("info", "log_level"),
 		Path:     r.stringValue("log_path"),
+		Security: r.stringValue("security_log"),
 		MaxFiles: r.intDefault(30, "log_max_files"),
 		MaxDays:  r.intDefault(30, "log_max_days"),
 		MaxSize:  r.intDefault(5, "log_max_size"),
 		Compress: r.boolDefault(false, "log_compress"),
-		Color:    r.boolDefault(true, "log_color"),
 	}
 
 	cfg.Web = WebConfig{

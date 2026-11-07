@@ -9,6 +9,7 @@ import (
 
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -22,7 +23,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	if s.ipRegHandler == nil {
 		return
 	}
-	hs := &http.Server{Handler: s.ipRegHandler}
+	hs := &http.Server{Handler: s.ipRegHandler, ErrorLog: obs.HTTPErrorLog(webLog, "ip_register")}
 	if !s.own(hs) {
 		return
 	}
