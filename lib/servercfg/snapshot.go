@@ -28,6 +28,9 @@ type Snapshot struct {
 	// reads holds, for each config key, what the reads of the key gave
 	// while the snapshot was built, in order; a reload compares them.
 	reads map[string][]string
+	// Legacy holds a warning for each key of an earlier version the config
+	// sets (legacyKeys).
+	Legacy []string
 }
 
 type AppConfig struct {
@@ -301,7 +304,7 @@ func Current() *Snapshot {
 
 func buildSnapshot(values map[string]any) *Snapshot {
 	r := &valueReader{values: values, reads: map[string][]string{}}
-	cfg := &Snapshot{reads: r.reads}
+	cfg := &Snapshot{reads: r.reads, Legacy: legacyWarnings(values)}
 
 	cfg.App = AppConfig{
 		Name:               r.stringDefault("nps", "appname"),
@@ -436,7 +439,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.BridgeTCPPort = r.intDefault(cfg.Network.BridgePort, "bridge_tcp_port")
 	cfg.Network.BridgeKCPPort = r.intDefault(cfg.Network.BridgePort, "bridge_kcp_port")
 	cfg.Network.BridgeQUICPort = r.intDefault(0, "bridge_quic_port")
-	cfg.Network.BridgeTLSPort = r.intDefault(r.intDefault(0, "tls_bridge_port"), "bridge_tls_port")
+	cfg.Network.BridgeTLSPort = r.intDefault(0, names("bridge_tls_port")...)
 	cfg.Network.BridgeWSPort = r.intDefault(0, "bridge_ws_port")
 	cfg.Network.BridgeWSSPort = r.intDefault(0, "bridge_wss_port")
 	cfg.Network.BridgePath = r.stringDefault("/ws", "bridge_path")

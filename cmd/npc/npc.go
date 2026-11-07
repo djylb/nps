@@ -83,9 +83,9 @@ func main() {
 	flag.CommandLine.SortFlags = false
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
+	prepared, warnings := cliargs.Prepare(flag.CommandLine, os.Args[1:], cliargs.NPC, "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
 	os.Args = append(os.Args[:1], prepared...)
-	ignoredArgs = ignored
+	argWarnings = warnings
 	flag.Parse()
 
 	args := flag.Args()
@@ -266,13 +266,14 @@ func main() {
 	_ = s.Run()
 }
 
-// ignoredArgs are the command-line arguments left out as unknown; they are
-// logged once logging is set up.
-var ignoredArgs []string
+// argWarnings are the warnings about command-line arguments of earlier
+// versions or unknown ones (cliargs.Prepare); they are logged once logging
+// is set up.
+var argWarnings []string
 
-func warnIgnoredArgs() {
-	for _, a := range ignoredArgs {
-		logs.Warn("unknown argument %q ignored", a)
+func warnArgs() {
+	for _, w := range argWarnings {
+		logs.Warn("%s", w)
 	}
 }
 
@@ -297,7 +298,7 @@ func configureLogging() {
 		*logPath = strings.ReplaceAll(*logPath, "\\", "\\\\")
 	}
 	logs.Init(*logType, *logLevel, *logPath, *logMaxSize, *logMaxFiles, *logMaxDays, *logCompress, *logColor)
-	warnIgnoredArgs()
+	warnArgs()
 }
 
 type Npc struct {

@@ -36,6 +36,9 @@ func (s *Server) ConfigAppliers() []servercfg.Applier {
 func (s *Server) ReloadConfig() servercfg.Report {
 	r := servercfg.Reload(s.ConfigAppliers()...)
 	if r.OK() {
+		for _, w := range servercfg.Current().Legacy {
+			logs.Warn("%s", w)
+		}
 		if len(r.Restart) > 0 {
 			logs.Warn("%s", r)
 		} else {

@@ -1,7 +1,9 @@
 // Package cliargs prepares the command line of nps and npc for pflag. A
 // service keeps the arguments it was installed with, so an update must not
-// stop because an argument was renamed or removed since: such arguments are
-// dropped with a warning rather than failing the start.
+// stop because an argument was renamed or removed since: an argument of an
+// earlier version is translated to what replaces it or dropped with a
+// warning (the Rules NPC and NPS), and any other unknown argument is
+// dropped with a warning, rather than failing the start.
 package cliargs
 
 import (
@@ -11,13 +13,28 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Prepare returns args, without the program name, ready for fs.Parse:
-// single-dash long flags such as -server become --server, and flags fs does
-// not define are left out and listed in ignored. A dropped flag written
-// without "=" also takes the argument after it, its value, unless that
-// starts with "-" or is one of commands. Arguments after "--" are kept as
-// they are.
-func Prepare(fs *pflag.FlagSet, args []string, commands ...string) (out, ignored []string) {
+// A Rule says what an argument of an earlier version becomes.
+type Rule struct {
+	// Name is the flag name as earlier versions spelt it, without dashes.
+	Name string
+	// Bool marks a boolean flag: it never takes the argument after it as
+	// its value, as -name, -name=true and -name=false.
+	Bool bool
+	// Translate returns the arguments that replace the flag given value
+	// ("" when none was given), and the warning to log about it. They are
+	// placed after the other flags, so they win over what those set, as
+	// earlier versions let the old flag win.
+	Translate func(value string, hasValue bool) (args []string, warning string)
+}
+
+// Prepare returns args, without the program name, ready for fs.Parse, and
+// the warnings to log once logging is set up: single-dash long flags such
+// as -server become --server; a flag fs does not define is handled by its
+// rule in rules or else left out. A flag left out that is not Bool and is
+// written without "=" also takes the argument after it, its value, unless
+// that starts with "-" or is one of commands. Arguments after "--" are kept
+// as they are.
+func Prepare(fs *pflag.FlagSet, args []string, rules []Rule, commands ...string) (out, warnings []string) {
 	long := map[string]bool{}
 	short := map[string]bool{}
 	fs.VisitAll(func(f *pflag.Flag) {
@@ -27,10 +44,12 @@ func Prepare(fs *pflag.FlagSet, args []string, commands ...string) (out, ignored
 		}
 	})
 	out = make([]string, 0, len(args))
+	var added, rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
-			return append(out, args[i:]...), ignored
+			rest = args[i:]
+			break
 		}
 		if len(a) < 2 || a[0] != '-' {
 			out = append(out, a)
@@ -38,7 +57,7 @@ func Prepare(fs *pflag.FlagSet, args []string, commands ...string) (out, ignored
 		}
 		double := strings.HasPrefix(a, "--")
 		body := strings.TrimLeft(a, "-")
-		name, _, hasValue := strings.Cut(body, "=")
+		name, value, hasValue := strings.Cut(body, "=")
 		switch {
 		case long[normalize(name)]:
 			if !double {
@@ -50,16 +69,37 @@ func Prepare(fs *pflag.FlagSet, args []string, commands ...string) (out, ignored
 			out = append(out, a)
 			continue
 		}
-		if !hasValue && i+1 < len(args) {
+		rule := findRule(rules, name)
+		if !hasValue && (rule == nil || !rule.Bool) && i+1 < len(args) {
 			next := args[i+1]
 			if !strings.HasPrefix(next, "-") && !slices.Contains(commands, next) {
 				a += " " + next
+				value, hasValue = next, true
 				i++
 			}
 		}
-		ignored = append(ignored, a)
+		if rule == nil {
+			warnings = append(warnings, "unknown argument \""+a+"\" ignored")
+			continue
+		}
+		extra, warning := rule.Translate(value, hasValue)
+		added = append(added, extra...)
+		if warning != "" {
+			warnings = append(warnings, "\""+a+"\": "+warning)
+		}
 	}
-	return out, ignored
+	out = append(out, added...)
+	return append(out, rest...), warnings
+}
+
+func findRule(rules []Rule, name string) *Rule {
+	name = normalize(name)
+	for i := range rules {
+		if normalize(rules[i].Name) == name {
+			return &rules[i]
+		}
+	}
+	return nil
 }
 
 // shorthands reports whether name is one or more defined shorthand letters,

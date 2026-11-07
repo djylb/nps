@@ -53,4 +53,17 @@
 | `-get2fa` | 根据密钥输出当前验证码 | 无 |
 | `-version`, `-v` | 显示版本 | |
 
+## 旧写法
+
+旧版安装的服务会保留当时的参数，更新后照常启动：
+
+| 参数 | 处理 |
+| --- | --- |
+| `-tls_enable`（含 `=true`） | 旧写法，等同 `-type=tls`，覆盖 `-type`；`=false` 无作用 |
+| `-proto_version` | 忽略并告警：npc 只使用最新协议，服务端较旧时请先升级服务端 |
+| `-stun_addr` | 忽略并告警：STUN 服务器改在服务端 `p2p_stun_servers` 设置 |
+| `-p2p_type`、`-log_daily` | 忽略并告警，已无作用 |
+
+其他不认识的参数忽略并告警。
+
 环境变量：`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_CONFIG_PATH`、`NPC_LOCAL_IP`、`NPC_LAUNCH`。

@@ -6,6 +6,8 @@
 
 `server_addr`、`conn_type`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
 
+旧写法 `tls_enable=true` 等同 `conn_type=tls`，并覆盖 `conn_type`（会告警）。
+
 ## 域名段
 
 `host`、`target_addr`、`target_is_https`、`host_change`、`scheme`、`location`、`path_rewrite`、`cert_file`、`key_file`、`https_just_proxy`、`auto_ssl`、`auto_https`、`auto_cors`、`compat_mode`、`redirect_url`、`multi_account`、`proxy_protocol`、`max_conn`、`upload_limit`、`download_limit`、`header_<名称>`（请求头）、`response_<名称>`（响应头）。
@@ -27,4 +29,4 @@ target_type=tcp
 fallback_secret=true
 ```
 
-`health_*` 配置节已不再支持，见[健康检查](/guide/tunnels/health-check.md)。
+`health_*` 配置节已不再支持，读到时告警并忽略；健康检查改在服务端按隧道或域名配置，见[健康检查](/guide/tunnels/health-check.md)。

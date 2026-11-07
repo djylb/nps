@@ -46,9 +46,12 @@ and nps forwards visitors through that connection to targets npc reaches.
   (or `conf/npc-service-launch-N.conf` for `--launch` input) and the service
   passes `--launch=@<that file>`. Later npc versions look next to that file
   for their migration file, so these names and locations do not change.
-- nps and npc ignore command-line arguments they do not know, with a
-  warning (`internal/cliargs`), so that a service installed by an older
-  version still starts after an update.
+- nps and npc translate command-line arguments of earlier versions or
+  ignore them with a warning, by the rules in `internal/cliargs/rules.go`,
+  and ignore other unknown ones with a warning, so that a service installed
+  by an older version still starts after an update. Old npc.conf and
+  nps.conf keys are handled in `lib/config/legacy.go` and
+  `lib/servercfg/legacy.go`.
 
 ## Adding a tunnel or host setting
 

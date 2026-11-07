@@ -9,8 +9,11 @@
 
 ### v0.35.0
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
-- **不兼容**：npc 移除 `-proto_version`（不再能连接旧版服务端，请先更新服务端）和 `-tls_enable`（改用 `-type=tls`）；npc.conf 的 `tls_enable` 不再生效（改用 `conn_type=tls`，读到时告警）。服务启动参数里仍带这两个参数时会被忽略并告警，不影响启动
+- **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
+- npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法
+- npc 的 `-stun_addr`、`-p2p_type`、`-log_daily` 已无作用，忽略并告警
 - nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动
+- nps.conf 仍设 `ip_limit` 时告警，说明改用按客户端、隧道、域名开启的“仅允许已登记的IP”
 - `npc install` 不再把 `vkey` 等连接参数写进服务定义：改写到安装目录下仅属主可读的 `conf/npc-service.json`（`--launch` 内容写到 `conf/npc-service-launch-N.conf`），服务以 `--launch=@文件` 运行，运行方式不变；只用 `-config` 安装时不变，相对路径转为绝对路径。已安装的服务需重新 install 才生效
 - nps、npc 新增 `version` 子命令，与 `-version` 相同
 - npc 只给了 `-server`、`-vkey` 其中一个时报错退出并指出缺哪个，不再静默改读配置文件；两个都不给时仍读配置文件

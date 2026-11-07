@@ -143,9 +143,8 @@ func buildConfig(content string, sections []section) (*Config, error) {
 				local.Type = "p2p"
 			}
 			c.LocalServer = append(c.LocalServer, local)
-		case hasHealthKeys(keys):
-			// Health checks are set on the server now.
-			logs.Warn("Ignoring section [%s]: health checks are now enabled per tunnel or host on the server", sec.name)
+		case legacySection(sec.name, keys) != "":
+			logs.Warn("%s", legacySection(sec.name, keys))
 		case name == "common":
 			c.CommonConfig = dealCommon(sec.body)
 		case keys["host"]:
@@ -239,6 +238,7 @@ func dealCommon(s string) *CommonConfig {
 	c.AutoReconnection = true
 	c.Client = model.NewClient("", true, true)
 	c.Client.Cnf = new(model.Config)
+	var legacy legacyCommon
 	for _, v := range textutil.SplitLines(s) {
 		item, ok := splitKV(v)
 		if !ok {
@@ -289,10 +289,11 @@ func dealCommon(s string) *CommonConfig {
 			runenv.InitPProfByAddr(item[1])
 		case "disconnect_timeout":
 			c.DisconnectTime = textutil.GetIntNoErrByStr(item[1])
-		case "tls_enable":
-			logs.Warn("npc.conf: tls_enable is no longer read; set conn_type=tls")
+		default:
+			legacy.read(item)
 		}
 	}
+	legacy.apply(c)
 	return c
 }
 
@@ -382,17 +383,6 @@ func loadMultiAccount(m *model.MultiAccount, path string) error {
 	m.Content = content
 	m.AccountMap = dealMultiUser(content)
 	return nil
-}
-
-// hasHealthKeys reports whether a section is one of the health check sections
-// of earlier versions.
-func hasHealthKeys(keys map[string]bool) bool {
-	for k := range keys {
-		if strings.HasPrefix(k, "health_") {
-			return true
-		}
-	}
-	return false
 }
 
 func dealTunnel(s string) (*model.Tunnel, error) {
