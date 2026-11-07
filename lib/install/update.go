@@ -28,7 +28,7 @@ import (
 const ReleaseSigningKey = "ed25519:PcyApOO6AE0rjSIDLEUYJnO9lZLx/4XnzVwJDt5Pcz8="
 
 // BuildTarget names the variant of a build for a CPU feature level or an
-// old system, such as "v7" or "softfloat"; set by build.assets.sh.
+// old system, such as "v7" or "softfloat"; set by scripts/build_assets.sh.
 var BuildTarget string
 
 // releaseProduct is the product named in the release manifests.
@@ -258,7 +258,7 @@ func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 
 // artifactName names the release artifact built like this binary of bin.
 // It must match the names the release workflow gives the archives of
-// build.assets.sh and build.assets.old.sh.
+// scripts/build_assets.sh and scripts/build_assets_old.sh.
 func artifactName(bin string) string {
 	if BuildTarget != "" {
 		return bin + "-" + BuildTarget

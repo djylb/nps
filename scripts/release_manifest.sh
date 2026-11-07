@@ -1,7 +1,7 @@
 #!/bin/bash
 # Writes DIST/manifest.json, the signed release manifest nps and npc update
-# themselves from, for the release archives of build.assets.sh and
-# build.assets.old.sh in DIST.
+# themselves from, for the release archives of scripts/build_assets.sh and
+# scripts/build_assets_old.sh in DIST.
 #
 # Usage: UPDATE_SIGNING_KEY=... scripts/release_manifest.sh VERSION DIST
 #        UPDATE_SIGNING_KEY=... scripts/release_manifest.sh --renew DIST

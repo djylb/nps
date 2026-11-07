@@ -20,18 +20,18 @@ MKDIR_BIN_CMD = if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_
 CLEAN_DIST_CMD = if exist "$(subst /,\,$(DIST_DIR))" rmdir /s /q "$(subst /,\,$(DIST_DIR))"
 BUILD_CLIENT_CMD = set "CGO_ENABLED=$(CGO_ENABLED)" && $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/npc$(EXE) ./cmd/npc
 BUILD_SERVER_CMD = set "CGO_ENABLED=$(CGO_ENABLED)" && $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/nps$(EXE) ./cmd/nps
-RELEASE_ALL_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./build.sh all"
-RELEASE_CLIENT_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./build.sh client"
-RELEASE_SERVER_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./build.sh server"
+RELEASE_ALL_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./scripts/build.sh all"
+RELEASE_CLIENT_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./scripts/build.sh client"
+RELEASE_SERVER_CMD = set "DIST_DIR=$(DIST_DIR)" && set "TARGETS=$(TARGETS)" && set "CLIENT_TARGETS=$(CLIENT_TARGETS)" && set "SERVER_TARGETS=$(SERVER_TARGETS)" && set "LDFLAGS=$(LDFLAGS)" && $(BASH) -lc "./scripts/build.sh server"
 else
 BASH := bash
 MKDIR_BIN_CMD = mkdir -p "$(BIN_DIR)"
 CLEAN_DIST_CMD = rm -rf "$(DIST_DIR)"
 BUILD_CLIENT_CMD = CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/npc$(EXE) ./cmd/npc
 BUILD_SERVER_CMD = CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/nps$(EXE) ./cmd/nps
-RELEASE_ALL_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./build.sh all
-RELEASE_CLIENT_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./build.sh client
-RELEASE_SERVER_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./build.sh server
+RELEASE_ALL_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./scripts/build.sh all
+RELEASE_CLIENT_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./scripts/build.sh client
+RELEASE_SERVER_CMD = DIST_DIR="$(DIST_DIR)" TARGETS="$(TARGETS)" CLIENT_TARGETS="$(CLIENT_TARGETS)" SERVER_TARGETS="$(SERVER_TARGETS)" LDFLAGS="$(LDFLAGS)" $(BASH) ./scripts/build.sh server
 endif
 
 .PHONY: help build build-client build-server test fmt release release-client release-server package ci clean

@@ -31,8 +31,8 @@ jobs:
 
       - name: Build
         run: |
-          chmod +x build.assets.sh
-          ./build.assets.sh
+          chmod +x scripts/build_assets.sh
+          scripts/build_assets.sh
 
       - name: Get NPS version
         id: version
@@ -92,8 +92,8 @@ jobs:
 
       - name: Build (old)
         run: |
-          chmod +x build.assets.old.sh
-          ./build.assets.old.sh
+          chmod +x scripts/build_assets_old.sh
+          scripts/build_assets_old.sh
 
       - name: Get NPS version
         id: version
@@ -226,8 +226,8 @@ jobs:
           NDK_CACHE_DIR: ${{ env.NDK_CACHE_DIR }}
           NDK: ${{ env.NDK_CACHE_DIR }}/android-ndk-${{ env.NDK_VERSION }}
         run: |
-          chmod +x build.android.sh
-          ./build.android.sh
+          chmod +x scripts/build_android.sh
+          scripts/build_android.sh
           ls -l android_libs_client.tar.gz || true
 
       - name: Get NPS version

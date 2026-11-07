@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${DIST_DIR:-dist}"
 case "$DIST_DIR" in
   /*|[A-Za-z]:/*)
@@ -21,7 +21,7 @@ SERVER_TARGETS="${SERVER_TARGETS:-${TARGETS:-$DEFAULT_TARGETS}}"
 
 usage() {
   cat <<'EOF'
-Usage: ./build.sh [all|client|server|list]
+Usage: scripts/build.sh [all|client|server|list]
 
 Builds release archives for the common nps/npc targets.
 
