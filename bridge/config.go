@@ -161,51 +161,7 @@ loop:
 
 		ports:
 			for i := 0; i < len(ports); i++ {
-				tl := &model.Tunnel{
-					MaxConn:      t.MaxConn,
-					RateLimits:   model.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
-					Mode:         t.Mode,
-					Port:         ports[i],
-					ServerIp:     t.ServerIp,
-					Client:       client,
-					Password:     t.Password,
-					LocalPath:    t.LocalPath,
-					StripPre:     t.StripPre,
-					ReadOnly:     t.ReadOnly,
-					Socks5Proxy:  t.Socks5Proxy,
-					HttpProxy:    t.HttpProxy,
-					TargetType:   t.TargetType,
-					DestAclMode:  t.DestAclMode,
-					DestAclRules: t.DestAclRules,
-					MultiAccount: t.MultiAccount,
-					Id:           int(file.GetDb().JsonDb.GetTaskId()),
-					Status:       true,
-					Flow:         new(model.Flow),
-					NoStore:      true,
-				}
-
-				if len(ports) == 1 {
-					tl.Target = t.Target
-					tl.Target.LocalProxy = false
-					tl.Remark = t.Remark
-				} else {
-					tl.Remark = fmt.Sprintf("%s_%d", t.Remark, tl.Port)
-					if t.TargetAddr != "" {
-						tl.Target = &model.Target{
-							TargetStr: fmt.Sprintf("%s:%d", t.TargetAddr, targets[i]),
-						}
-					} else {
-						tl.Target = &model.Target{
-							TargetStr: strconv.Itoa(targets[i]),
-						}
-					}
-					if t.Target != nil {
-						tl.Target.ProxyProtocol = t.Target.ProxyProtocol
-					}
-				}
-				if tl.MultiAccount == nil {
-					tl.MultiAccount = new(model.MultiAccount)
-				}
+				tl := configPortTask(t, client, int(file.GetDb().JsonDb.GetTaskId()), ports, targets, i)
 				if caps.NodeID {
 					join(client.Id)
 				}
@@ -253,6 +209,57 @@ loop:
 		published.awaitTunnel() // the npc dials from here on
 	}
 	_ = c.Close()
+}
+
+// configPortTask returns the entry of the i-th port of t, a task a client
+// sent, as the server stores it under id.
+func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, targets []int, i int) *model.Tunnel {
+	tl := &model.Tunnel{
+		MaxConn:      t.MaxConn,
+		RateLimits:   model.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
+		Mode:         t.Mode,
+		Port:         ports[i],
+		ServerIp:     t.ServerIp,
+		Client:       client,
+		Password:     t.Password,
+		LocalPath:    t.LocalPath,
+		StripPre:     t.StripPre,
+		ReadOnly:     t.ReadOnly,
+		Socks5Proxy:  t.Socks5Proxy,
+		HttpProxy:    t.HttpProxy,
+		TargetType:   t.TargetType,
+		DestAclMode:  t.DestAclMode,
+		DestAclRules: t.DestAclRules,
+		MultiAccount: t.MultiAccount,
+		Id:           id,
+		Status:       true,
+		Flow:         new(model.Flow),
+		NoStore:      true,
+	}
+
+	if len(ports) == 1 {
+		tl.Target = t.Target
+		tl.Target.LocalProxy = false
+		tl.Remark = t.Remark
+	} else {
+		tl.Remark = fmt.Sprintf("%s_%d", t.Remark, tl.Port)
+		if t.TargetAddr != "" {
+			tl.Target = &model.Target{
+				TargetStr: fmt.Sprintf("%s:%d", t.TargetAddr, targets[i]),
+			}
+		} else {
+			tl.Target = &model.Target{
+				TargetStr: strconv.Itoa(targets[i]),
+			}
+		}
+		if t.Target != nil {
+			tl.Target.ProxyProtocol = t.Target.ProxyProtocol
+		}
+	}
+	if tl.MultiAccount == nil {
+		tl.MultiAccount = new(model.MultiAccount)
+	}
+	return tl
 }
 
 // dropConfigNode ends the node whose configuration failed. The other
