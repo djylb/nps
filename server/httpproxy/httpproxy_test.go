@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-func TestChangeRedirectURL(t *testing.T) {
-	s := &HttpProxy{}
+func TestRedirectURL(t *testing.T) {
 
 	req := &http.Request{
 		Host:       "example.com:8080",
@@ -25,24 +24,23 @@ func TestChangeRedirectURL(t *testing.T) {
 	}
 
 	t.Run("replaces template variables", func(t *testing.T) {
-		got := s.ChangeRedirectURL(req, "https://${host}/new?from=${request_uri}&xff=${proxy_add_x_forwarded_for}&ip=${remote_ip}")
+		got := compileRedirectURL("https://${host}/new?from=${request_uri}&xff=${proxy_add_x_forwarded_for}&ip=${remote_ip}").expand(req)
 		want := "https://example.com/new?from=/old/path?a=1&b=2&xff=1.1.1.1, 2.2.2.2, 10.0.0.1&ip=10.0.0.1"
 		if got != want {
-			t.Fatalf("ChangeRedirectURL() = %q, want %q", got, want)
+			t.Fatalf("redirect URL = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("returns html-unescaped literal when no template", func(t *testing.T) {
-		got := s.ChangeRedirectURL(req, " https://static.example.com/a?x=1&amp;y=2 ")
+		got := compileRedirectURL(" https://static.example.com/a?x=1&amp;y=2 ").expand(req)
 		want := "https://static.example.com/a?x=1&y=2"
 		if got != want {
-			t.Fatalf("ChangeRedirectURL() = %q, want %q", got, want)
+			t.Fatalf("redirect URL = %q, want %q", got, want)
 		}
 	})
 }
 
-func TestChangeHostAndHeader(t *testing.T) {
-	s := &HttpProxy{}
+func TestRewriteHeaders(t *testing.T) {
 
 	req := &http.Request{
 		Host:       "demo.local:8080",
@@ -66,7 +64,8 @@ func TestChangeHostAndHeader(t *testing.T) {
 		"X-Remove-Me: ${unset}",
 	}, "\n")
 
-	s.ChangeHostAndHeader(req, "upstream.example.com", headerRules, true)
+	p := &hostPlan{hostChange: "upstream.example.com", headerRules: parseHeaderRules(headerRules)}
+	p.rewriteUpgrade(req, &proxyRequest{httpOnly: true})
 
 	if req.Host != "upstream.example.com" {
 		t.Fatalf("Host = %q, want %q", req.Host, "upstream.example.com")
@@ -88,11 +87,10 @@ func TestChangeHostAndHeader(t *testing.T) {
 	}
 }
 
-func TestChangeResponseHeader(t *testing.T) {
-	s := &HttpProxy{}
+func TestResponseRules(t *testing.T) {
 
 	t.Run("handles nil response safely", func(t *testing.T) {
-		s.ChangeResponseHeader(nil, "X-Test: abc")
+		applyResponseRules(nil, parseHeaderRules("X-Test: abc"))
 	})
 
 	req := &http.Request{
@@ -128,7 +126,7 @@ func TestChangeResponseHeader(t *testing.T) {
 		"X-Resp-Date: ${date}",
 		"X-Delete-Me: ${unset}",
 	}, "\n")
-	s.ChangeResponseHeader(resp, headerRules)
+	applyResponseRules(resp, parseHeaderRules(headerRules))
 
 	if got := resp.Header.Get("X-Resp-Scheme"); got != "https" {
 		t.Fatalf("X-Resp-Scheme = %q, want %q", got, "https")

@@ -17,21 +17,13 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/httprewrite"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
-)
-
-type ctxKey string
-
-const (
-	ctxRemoteAddr ctxKey = "nps_remote_addr"
-	ctxHost       ctxKey = "nps_host"
-	ctxSNI        ctxKey = "nps_sni"
-	ctxRoute      ctxKey = "nps_route"
 )
 
 type HttpServer struct {
@@ -105,8 +97,9 @@ func abortRequest() {
 	panic(http.ErrAbortHandler)
 }
 
+// handleProxy runs a request through the stages described in plan.go.
 func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
-	// Get host
+	// entry
 	host, err := s.store.GetInfoByHost(r.Host, r)
 	if err != nil || host.IsClose {
 		logs.Debug("Host not found: %s %s %s", r.URL.Scheme, r.Host, r.RequestURI)
@@ -119,45 +112,27 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(s.ErrorContent)
 		return
 	}
-
-	// source access lists
 	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, &host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")") {
 		abortRequest()
 	}
+	p := s.plans.get(host, s.compilePlan)
+	req := &proxyRequest{plan: p, remote: r.RemoteAddr, tls: r.TLS != nil}
 
-	// AutoSSL
-	if s.autoSSL(host) && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") {
+	// scheme
+	if p.acme && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") {
 		s.Acme.HandleHTTPChallenge(w, r)
 		return
 	}
-
-	// HTTP-Only
-	isHttpOnlyRequest := s.HttpOnlyPass != "" && r.Header.Get("X-NPS-Http-Only") == s.HttpOnlyPass
-	if isHttpOnlyRequest {
+	if s.HttpOnlyPass != "" && r.Header.Get("X-NPS-Http-Only") == s.HttpOnlyPass {
+		req.httpOnly = true
 		r.Header.Del("X-NPS-Http-Only")
 	}
-
-	// Auto 301 to HTTPS
-	if !isHttpOnlyRequest && host.AutoHttps && r.TLS == nil {
-		redirectHost := netaddr.Host(r.Host)
-		if s.HttpsPort != 443 {
-			redirectHost = net.JoinHostPort(redirectHost, s.HttpsPortStr)
-		} else if strings.IndexByte(redirectHost, ':') >= 0 {
-			redirectHost = "[" + redirectHost + "]"
-		}
-		http.Redirect(w, r, "https://"+redirectHost+r.RequestURI, http.StatusMovedPermanently)
+	if p.autoHttps && !req.httpOnly && !req.tls {
+		http.Redirect(w, r, s.httpsURL(r), http.StatusMovedPermanently)
 		return
 	}
 
-	// Path Rewrite
-	if host.PathRewrite != "" && strings.HasPrefix(r.URL.Path, host.Location) {
-		if !host.CompatMode {
-			r.Header.Set("X-Original-Path", r.URL.Path)
-		}
-		r.URL.Path = host.PathRewrite + r.URL.Path[len(host.Location):]
-	}
-
-	// Check flow and conn
+	// admission
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
 		http.Error(w, "Access denied: "+err.Error(), http.StatusTooManyRequests)
@@ -166,87 +141,82 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	// HTTP Auth. Upgrade and CONNECT requests may carry protocols whose
+	// authentication. Upgrade and CONNECT requests may carry protocols whose
 	// clients cannot send Basic credentials, so they proceed unauthenticated;
 	// such a request only reaches the client if the backend completes the
 	// handshake.
-	authed := true
-	if err := s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, host.MultiAccount, host.UserAuth); err != nil {
-		if !isTunnelRequest(r) {
-			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
-			writeUnauthorized(w)
-			return
-		}
-		authed = false
-	}
-
-	// 307 Temporary Redirect
-	if host.RedirectURL != "" {
-		if !authed {
-			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
-			writeUnauthorized(w)
-			return
-		}
-		redirectURL := s.ChangeRedirectURL(r, host.RedirectURL)
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+	req.authed = s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, host.MultiAccount, host.UserAuth) == nil
+	if !req.authed && !isTunnelRequest(r) {
+		logs.Warn("Unauthorized request from %s", r.RemoteAddr)
+		writeUnauthorized(w)
 		return
 	}
 
+	// rewrite
+	p.rewritePath(r)
+	if p.redirect != nil {
+		if !req.authed {
+			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
+			writeUnauthorized(w)
+			return
+		}
+		http.Redirect(w, r, p.redirect.expand(r), http.StatusTemporaryRedirect)
+		return
+	}
 	logs.Debug("%s request, method %s, host %s, url %s, remote address %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr)
 
-	sni := r.Host
-	if host.HostChange != "" {
-		sni = host.HostChange
+	// upstream
+	req.route = host.Route()
+	req.sni = r.Host
+	if p.hostChange != "" {
+		req.sni = p.hostChange
 	}
-	ctx := context.WithValue(r.Context(), ctxRemoteAddr, r.RemoteAddr)
-	ctx = context.WithValue(ctx, ctxHost, host)
-	ctx = context.WithValue(ctx, ctxSNI, sni)
-	r = r.WithContext(ctx)
+	r = r.WithContext(context.WithValue(r.Context(), requestKey{}, req))
 
-	// WebSocket
+	// forward
 	if isTunnelRequest(r) {
 		logs.Trace("Handling websocket from %s", r.RemoteAddr)
-		s.handleWebsocket(w, r, host, isHttpOnlyRequest, authed)
+		s.forwardTunnel(w, r, req)
 		return
 	}
+	p.proxy.ServeHTTP(w, r)
+}
 
-	var trs *hostTransports
-	if v, ok := s.HttpProxyCache.Get(host.Id); ok {
-		trs = v.(*hostTransports)
-	} else {
-		v, _ := s.HttpProxyCache.LoadOrStore(host.Id, s.newTransports(host))
-		trs = v.(*hostTransports)
+// httpsURL is the HTTPS URL of r, on the HTTPS port of the proxy.
+func (s *HttpServer) httpsURL(r *http.Request) string {
+	host := netaddr.Host(r.Host)
+	if s.HttpsPort != 443 {
+		host = net.JoinHostPort(host, s.HttpsPortStr)
+	} else if strings.IndexByte(host, ':') >= 0 {
+		host = "[" + host + "]"
 	}
-	route := host.Route()
-	r = r.WithContext(context.WithValue(r.Context(), ctxRoute, route))
+	return "https://" + host + r.RequestURI
+}
 
-	rp := &httputil.ReverseProxy{
+// newReverseProxy returns the reverse proxy of the regular requests of p.
+func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
+			req := requestOf(pr.In.Context())
 			proxy.KeepClientForwarding(pr)
-			req := pr.Out
-			if host.TargetIsHttps {
-				req.URL.Scheme = "https"
-			} else {
-				req.URL.Scheme = "http"
-			}
+			out := pr.Out
+			out.URL.Scheme = p.backendScheme
 			// Header rules cannot change connection-scoped headers; ReverseProxy
 			// has already set them for the outbound hop.
-			hop := snapshotHeaders(req.Header, hopHeaders)
-			s.changeHostAndHeader(req, pr.In, host.HostChange, host.HeaderChange, isHttpOnlyRequest)
-			restoreHeaders(req.Header, hopHeaders, hop)
-			req.URL.Host = r.Host
-			if isHttpOnlyRequest {
-				req.Header.Del("X-Forwarded-For")
+			hop := snapshotHeaders(out.Header, hopHeaders)
+			p.rewriteHeaders(out, pr.In, !req.httpOnly)
+			restoreHeaders(out.Header, hopHeaders, hop)
+			out.URL.Host = pr.In.Host
+			if req.httpOnly {
+				out.Header.Del("X-Forwarded-For")
 			} else {
-				proxy.AppendForwardedFor(req.Header, pr.In.RemoteAddr)
+				proxy.AppendForwardedFor(out.Header, pr.In.RemoteAddr)
 			}
 		},
-		Transport: trs.forRoute(route),
-		//FlushInterval: 100 * time.Millisecond,
+		Transport:  p.transports,
 		BufferPool: conn.BufPoolCopy,
 		ModifyResponse: func(resp *http.Response) error {
-			// CORS
-			if host.AutoCORS {
+			if p.autoCORS {
 				origin := resp.Request.Header.Get("Origin")
 				if origin != "" && resp.Header.Get("Access-Control-Allow-Origin") == "" {
 					logs.Debug("ModifyResponse: setting CORS headers for origin=%s", origin)
@@ -254,15 +224,14 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 					resp.Header.Set("Access-Control-Allow-Credentials", "true")
 				}
 			}
-			// H3
-			if s.Http3Port > 0 && r.TLS != nil && !host.HttpsJustProxy && !host.CompatMode {
-				resp.Header.Set("Alt-Svc", `h3=":`+s.Http3PortStr+`"; ma=86400`)
+			if p.altSvc != "" && requestOf(resp.Request.Context()).tls {
+				resp.Header.Set("Alt-Svc", p.altSvc)
 			}
-			s.ChangeResponseHeader(resp, host.RespHeaderChange)
+			applyResponseRules(resp, p.respRules)
 			return nil
 		},
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
-			s.HttpProxyCache.Remove(host.Id)
+			s.plans.drop(p)
 			if err == io.EOF {
 				logs.Info("ErrorHandler: io.EOF encountered, writing 521")
 				rw.WriteHeader(521)
@@ -285,7 +254,6 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 	}
-	rp.ServeHTTP(w, r)
 }
 
 // hostTransports are the backend transports of one host. The route of each
@@ -304,8 +272,19 @@ func (t *hostTransports) forRoute(route model.Route) *http.Transport {
 	return t.reuse
 }
 
-func (s *HttpServer) newTransports(host *model.Host) *hostTransports {
-	return &hostTransports{reuse: s.newTransport(host.CompatMode), single: s.newTransport(true)}
+func (t *hostTransports) RoundTrip(r *http.Request) (*http.Response, error) {
+	return t.forRoute(requestOf(r.Context()).route).RoundTrip(r)
+}
+
+func (t *hostTransports) CloseIdleConnections() {
+	t.reuse.CloseIdleConnections()
+	t.single.CloseIdleConnections()
+}
+
+// newTransports returns the transports of a host; noKeepAlive keeps no
+// connection for a later request on any route.
+func (s *HttpServer) newTransports(noKeepAlive bool) *hostTransports {
+	return &hostTransports{reuse: s.newTransport(noKeepAlive), single: s.newTransport(true)}
 }
 
 func (s *HttpServer) newTransport(disableKeepAlives bool) *http.Transport {
@@ -320,22 +299,63 @@ func (s *HttpServer) newTransport(disableKeepAlives bool) *http.Transport {
 	}
 }
 
-func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *model.Host, isHttpOnlyRequest, authed bool) {
-	// Get target addr
-	route := host.Route()
-	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || host.Client.Id < 0
+// openLink opens a link to the route of req through its client. dialing is
+// called with each target address tried, failed with each that failed.
+func (s *HttpServer) openLink(req *proxyRequest, dialing func(addr string), failed func(addr string, err error)) (io.ReadWriteCloser, error) {
+	h, route := req.plan.host, req.route
+	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || h.Client.Id < 0
 	var link *conn.Link
-	var targetConn net.Conn
+	var target net.Conn
 	err := route.Target.Dial(func(addr string) (bool, error) {
-		logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, addr)
-		link = conn.NewLink(conn.LinkTCP, addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
+		if dialing != nil {
+			dialing(addr)
+		}
+		link = conn.NewLink(conn.LinkTCP, addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, req.remote, isLocal)
 		link.Option.Node = route.Node
 		var err error
-		targetConn, err = s.Bridge.Session(host.Client.Id).OpenLink(link, 0)
+		target, err = s.Bridge.Session(h.Client.Id).OpenLink(link, 0)
 		if err != nil {
-			logs.Info("handleWebsocket: connection to target %s failed: %v", addr, err)
+			failed(addr, err)
 		}
 		return isLocal, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, s.Bridge.LinkCert(), isLocal, h.RateLimiter()), nil
+}
+
+// sendProxyHeader writes the PROXY header of req's route, if it has one, to c.
+func sendProxyHeader(ctx context.Context, c net.Conn, req *proxyRequest) error {
+	if req.route.Target.ProxyProtocol == 0 {
+		return nil
+	}
+	ra, _ := net.ResolveTCPAddr("tcp", req.remote)
+	if ra == nil || ra.IP == nil {
+		ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
+	}
+	la, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
+	hdr := conn.ProxyProtocolHeader(req.route.Target.ProxyProtocol, ra, la)
+	if hdr == nil {
+		return nil
+	}
+	_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, err := hdr.WriteTo(c); err != nil {
+		return err
+	}
+	_ = c.SetWriteDeadline(time.Time{})
+	return nil
+}
+
+// forwardTunnel forwards an upgrade or CONNECT request: it sends the
+// request to the backend and, once the backend completes the handshake,
+// relays the connection both ways.
+func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *proxyRequest) {
+	p, host := req.plan, req.plan.host
+	rawConn, err := s.openLink(req, func(addr string) {
+		logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, addr)
+	}, func(addr string, err error) {
+		logs.Info("handleWebsocket: connection to target %s failed: %v", addr, err)
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrNoTarget) {
@@ -344,31 +364,18 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		w.WriteHeader(http.StatusBadGateway)
 		return
 	}
-	rawConn := conn.GetConn(targetConn, link.Crypt, link.Compress, host.Client.Rate, s.Bridge.LinkCert(), isLocal, host.RateLimiter())
 	// Every path below closes netConn, which wraps wsConn, or hands it to the relay.
 	//noinspection GoResourceLeak
 	wsConn := netx.WrapConn(rawConn, nil)
 	var netConn net.Conn = wsConn
 
-	if route.Target.ProxyProtocol != 0 {
-		ra, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
-		if ra == nil || ra.IP == nil {
-			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
-		}
-		la, _ := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, ra, la); hdr != nil {
-			_ = netConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if _, err := hdr.WriteTo(netConn); err != nil {
-				_ = netConn.Close()
-				return
-			}
-			_ = netConn.SetWriteDeadline(time.Time{})
-		}
+	if err := sendProxyHeader(r.Context(), netConn, req); err != nil {
+		_ = netConn.Close()
+		return
 	}
 
-	if host.TargetIsHttps {
-		sni, _ := r.Context().Value(ctxSNI).(string)
-		tlsConn, err := tlsconn.Client(r.Context(), netConn, backendTLSConfig(sni))
+	if p.backendTLS {
+		tlsConn, err := tlsconn.Client(r.Context(), netConn, backendTLSConfig(req.sni))
 		if err != nil {
 			logs.Error("TLS handshake with backend failed: %v", err)
 			w.WriteHeader(http.StatusBadGateway)
@@ -377,7 +384,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		netConn = tlsConn
 	}
 
-	s.ChangeHostAndHeader(r, host.HostChange, host.HeaderChange, isHttpOnlyRequest || host.CompatMode)
+	p.rewriteUpgrade(r, req)
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -411,14 +418,14 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		(r.Method != http.MethodConnect && resp.StatusCode == http.StatusSwitchingProtocols)
 	if !good {
 		logs.Info("handleWebsocket: backend answered handshake with status %d, host %s, remote address %s", resp.StatusCode, r.Host, r.RemoteAddr)
-		if !authed {
+		if !req.authed {
 			// An unauthenticated client never sees a backend response.
 			_ = netConn.Close()
 			logs.Warn("Unauthorized request from %s", r.RemoteAddr)
 			writeUnauthorized(w)
 			return
 		}
-		s.relayHandshakeRefusal(w, resp, host, netConn)
+		s.relayHandshakeRefusal(w, resp, p.respRules, netConn)
 		return
 	}
 
@@ -523,24 +530,24 @@ func restoreHeaders(h http.Header, names []string, saved http.Header) {
 // still open, since resp.Body streams from it, and closes it afterwards. The
 // tunnel connection ignores read deadlines, so the body copy is bounded by
 // closing the connection once the response timeout elapses.
-func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *model.Host, backend net.Conn) {
+func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Response, respRules []httprewrite.Rule, backend net.Conn) {
 	defer func() { _ = backend.Close() }()
 	if s.ResponseHeaderTimeout > 0 {
 		timer := time.AfterFunc(s.ResponseHeaderTimeout, func() { _ = backend.Close() })
 		defer timer.Stop()
 	}
-	s.writeHandshakeRefusal(w, resp, host)
+	s.writeHandshakeRefusal(w, resp, respRules)
 }
 
 // writeHandshakeRefusal relays a backend response that did not complete an
 // upgrade or CONNECT handshake as an ordinary HTTP response and asks the
 // server to close the client connection afterwards.
-func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *model.Host) {
+func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Response, respRules []httprewrite.Rule) {
 	if resp.StatusCode < http.StatusOK {
 		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
 	}
-	s.ChangeResponseHeader(resp, host.RespHeaderChange)
+	applyResponseRules(resp, respRules)
 	header := w.Header()
 	for k, vv := range resp.Header {
 		header[k] = vv
@@ -577,28 +584,16 @@ func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 		}),
 		ReadHeaderTimeout: serverReadHeaderTimeout,
 		IdleTimeout:       serverIdleTimeout,
-		// Disable HTTP/2.
-		//TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
 }
 
+// DialContext opens the backend connection of a regular request, whose
+// proxyRequest ctx carries.
 func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
-	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
-	remote := ctx.Value(ctxRemoteAddr).(string)
-	h := ctx.Value(ctxHost).(*model.Host)
-	route := ctx.Value(ctxRoute).(model.Route)
-	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || h.Client.Id < 0
-	var link *conn.Link
-	var target net.Conn
-	err := route.Target.Dial(func(addr string) (bool, error) {
-		link = conn.NewLink(conn.LinkTCP, addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
-		link.Option.Node = route.Node
-		var err error
-		target, err = s.Bridge.Session(h.Client.Id).OpenLink(link, 0)
-		if err != nil {
-			logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, addr, err)
-		}
-		return isLocal, err
+	req := requestOf(ctx)
+	h := req.plan.host
+	rawConn, err := s.openLink(req, nil, func(addr string, err error) {
+		logs.Info("DialContext: connection to host %d (target %s) failed: %v", h.Id, addr, err)
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrNoTarget) {
@@ -606,22 +601,10 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		}
 		return nil, err
 	}
-	rawConn := conn.GetConn(target, link.Crypt, link.Compress, h.Client.Rate, s.Bridge.LinkCert(), isLocal, h.RateLimiter())
 	flowConn := conn.NewFlowConn(rawConn, h.Flow, h.Client.Flow)
-	if route.Target.ProxyProtocol != 0 {
-		ra, _ := net.ResolveTCPAddr("tcp", remote)
-		if ra == nil || ra.IP == nil {
-			ra = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
-		}
-		la, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
-		if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, ra, la); hdr != nil {
-			_ = flowConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if _, err := hdr.WriteTo(flowConn); err != nil {
-				_ = flowConn.Close()
-				return nil, fmt.Errorf("write PROXY header: %w", err)
-			}
-			_ = flowConn.SetWriteDeadline(time.Time{})
-		}
+	if err := sendProxyHeader(ctx, flowConn, req); err != nil {
+		_ = flowConn.Close()
+		return nil, fmt.Errorf("write PROXY header: %w", err)
 	}
 	return flowConn, nil
 }
@@ -631,10 +614,7 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 	if err != nil {
 		return nil, err
 	}
-
-	sni := ctx.Value(ctxSNI).(string)
-
-	tlsConn, err := tlsconn.Client(ctx, c, backendTLSConfig(sni))
+	tlsConn, err := tlsconn.Client(ctx, c, backendTLSConfig(requestOf(ctx).sni))
 	if err != nil {
 		logs.Error("TLS handshake with backend failed: %v", err)
 		return nil, err

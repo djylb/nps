@@ -28,7 +28,6 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/quic-go/quic-go/http3"
@@ -124,7 +123,7 @@ func newProxyEnv(t *testing.T, o envOptions) *proxyEnv {
 	}
 
 	hp := NewHttpProxy(e.db, e.bridge, &model.Tunnel{Flow: &model.Flow{}, Client: e.client},
-		httpL.Addr().(*net.TCPAddr).Port, httpsPort, 0, "only-pass", false, o.localProxy, index.NewAnyIntIndex())
+		httpL.Addr().(*net.TCPAddr).Port, httpsPort, 0, "only-pass", false, o.localProxy, NewPlans())
 	if udp != nil {
 		hp.Http3Port = udp.LocalAddr().(*net.UDPAddr).Port
 		hp.Http3PortStr = strconv.Itoa(hp.Http3Port)
@@ -167,7 +166,7 @@ func newProxyEnv(t *testing.T, o envOptions) *proxyEnv {
 		}
 		wg.Wait()
 		httpsL.conns.Wait()
-		hp.HttpProxyCache.Clear()
+		hp.plans.Clear()
 	})
 	return e
 }
@@ -202,7 +201,7 @@ func (e *proxyEnv) editHost(h *model.Host, edit func(*model.Host)) {
 	h.Lock()
 	edit(h)
 	h.Unlock()
-	e.hp.HttpProxyCache.Remove(h.Id)
+	e.hp.plans.Remove(h.Id)
 }
 
 func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

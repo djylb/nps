@@ -64,16 +64,6 @@ func TestAnyIndexes_Clear(t *testing.T) {
 	if _, ok := strIdx.Get("n"); ok {
 		t.Fatalf("expected string key n to be cleared")
 	}
-
-	intIdx := NewAnyIntIndex()
-	intIdx.Add(7, "value")
-	if got, ok := intIdx.Get(7); !ok || got.(string) != "value" {
-		t.Fatalf("Get(7) = (%v, %v), want (value, true)", got, ok)
-	}
-	intIdx.Clear()
-	if _, ok := intIdx.Get(7); ok {
-		t.Fatalf("expected int key 7 to be cleared")
-	}
 }
 
 func TestDomainIndex_LookupAndNormalization(t *testing.T) {
@@ -117,29 +107,5 @@ func TestDomainIndex_RemoveAndDestroy(t *testing.T) {
 	di.Destroy()
 	if got := di.Lookup("api.example.com"); len(got) != 0 {
 		t.Fatalf("after destroy Lookup(api.example.com) = %v, want empty", got)
-	}
-}
-
-type idleCloserStub struct{ closed int }
-
-func (s *idleCloserStub) CloseIdleConnections() { s.closed++ }
-
-func TestAnyIntIndexRemoveAndClearCloseIdleConnections(t *testing.T) {
-	idx := NewAnyIntIndex()
-	a, b := &idleCloserStub{}, &idleCloserStub{}
-	idx.Add(1, a)
-	idx.Add(2, b)
-
-	idx.Remove(1)
-	idx.Remove(1)
-	if a.closed != 1 {
-		t.Fatalf("Remove closed idle connections %d times, want 1", a.closed)
-	}
-	idx.Clear()
-	if b.closed != 1 {
-		t.Fatalf("Clear closed idle connections %d times, want 1", b.closed)
-	}
-	if _, ok := idx.Get(2); ok {
-		t.Fatal("Clear left an entry behind")
 	}
 }

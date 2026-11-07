@@ -15,10 +15,8 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
@@ -35,7 +33,7 @@ type HttpProxy struct {
 	HttpPort              int
 	HttpsPort             int
 	Http3Port             int
-	HttpProxyCache        *index.AnyIntIndex
+	plans                 *Plans
 	HttpOnlyPass          string
 	HttpPortStr           string
 	HttpsPortStr          string
@@ -52,14 +50,14 @@ type HttpProxy struct {
 	ForceAutoSsl          bool
 }
 
-func NewHttpProxy(store Store, bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
+func NewHttpProxy(store Store, bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, plans *Plans) *HttpProxy {
 	httpProxy := &HttpProxy{
 		BaseServer:            proxy.NewBaseServer(bridge, task, allowLocalProxy),
 		store:                 store,
 		HttpPort:              httpPort,
 		HttpsPort:             httpsPort,
 		Http3Port:             http3Port,
-		HttpProxyCache:        httpProxyCache,
+		plans:                 plans,
 		HttpOnlyPass:          httpOnlyPass,
 		AddOrigin:             addOrigin,
 		HttpPortStr:           strconv.Itoa(httpPort),
@@ -247,75 +245,8 @@ func (s *HttpProxy) Close() error {
 	if certCache != nil {
 		certCache.Stop()
 	}
-	s.HttpProxyCache.Clear()
+	s.plans.Clear()
 	return nil
-}
-
-// ChangeHostAndHeader Change headers and host of request
-func (s *HttpProxy) ChangeHostAndHeader(r *http.Request, host string, header string, httpOnly bool) {
-	in := *r
-	if header != "" {
-		in.Header = r.Header.Clone()
-	}
-	s.changeHostAndHeader(r, &in, host, header, httpOnly)
-}
-
-// changeHostAndHeader applies the host and header rules to out, the request
-// sent on. Rule variables read in, the request as the client sent it.
-func (s *HttpProxy) changeHostAndHeader(out, in *http.Request, host string, header string, httpOnly bool) {
-	scheme := "http"
-	if in.TLS != nil {
-		scheme = "https"
-	}
-	if host != "" {
-		out.Host = host
-		if orig := out.Header.Get("Origin"); orig != "" {
-			out.Header.Set("Origin", scheme+"://"+host)
-		}
-	}
-
-	if !httpOnly && servercfg.Current().Proxy.AddOriginHeader {
-		if out.Header.Get("X-Forwarded-Proto") == "" {
-			out.Header.Set("X-Forwarded-Proto", scheme)
-		}
-		if out.Header.Get("X-Forwarded-Host") == "" && host == "" {
-			out.Header.Set("X-Forwarded-Host", in.Host)
-		}
-		out.Header.Set("X-Real-IP", netaddr.Host(in.RemoteAddr))
-	}
-
-	if header == "" {
-		return
-	}
-	c := httprewrite.Context{Request: in}
-	_ = httprewrite.ApplyRequest(out, parseHeaderRules(header), &c)
-}
-
-// ChangeResponseHeader Change headers of response
-func (s *HttpProxy) ChangeResponseHeader(resp *http.Response, header string) {
-	if header == "" || resp == nil || resp.Request == nil {
-		return
-	}
-	c := httprewrite.Context{Request: resp.Request, Response: resp}
-	_ = httprewrite.ApplyHeader(resp.Header, parseHeaderRules(header), &c)
-}
-
-// ChangeRedirectURL Change redirect URL
-func (s *HttpProxy) ChangeRedirectURL(r *http.Request, url string) string {
-	val := html.UnescapeString(strings.TrimSpace(url))
-	if !strings.Contains(val, "${") {
-		return val
-	}
-	t, err := httprewrite.Compile(val, ruleVars)
-	if err != nil {
-		logs.Debug("redirect URL %q: %v", val, err)
-		return val
-	}
-	c := httprewrite.Context{Request: r}
-	if expanded, err := t.Expand(&c); err == nil {
-		return expanded
-	}
-	return val
 }
 
 // parseHeaderRules parses header rules, one "Name: value" per line with

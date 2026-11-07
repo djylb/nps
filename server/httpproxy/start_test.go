@@ -14,7 +14,6 @@ import (
 
 	"github.com/djylb/nps/lib/model"
 
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
@@ -57,10 +56,10 @@ func TestServeReportsPartialBindAndCloseStopsTheRest(t *testing.T) {
 	})
 
 	s := &HttpProxy{
-		BaseServer:     proxy.NewBaseServer(nil, nil, false),
-		HttpPort:       free,
-		HttpsPort:      connection.Network().HTTPSProxyPort,
-		HttpProxyCache: index.NewAnyIntIndex(),
+		BaseServer: proxy.NewBaseServer(nil, nil, false),
+		HttpPort:   free,
+		HttpsPort:  connection.Network().HTTPSProxyPort,
+		plans:      NewPlans(),
 	}
 	if err := s.serve(); err == nil || !strings.Contains(err.Error(), "HTTPS listener") {
 		t.Fatalf("serve() = %v", err)
@@ -99,9 +98,9 @@ func TestServeAndCloseConcurrently(t *testing.T) {
 		_ = probe.Close()
 
 		s := &HttpProxy{
-			BaseServer:     proxy.NewBaseServer(nil, nil, false),
-			HttpPort:       connection.Network().HTTPProxyPort,
-			HttpProxyCache: index.NewAnyIntIndex(),
+			BaseServer: proxy.NewBaseServer(nil, nil, false),
+			HttpPort:   connection.Network().HTTPProxyPort,
+			plans:      NewPlans(),
 		}
 		done := make(chan error, 1)
 		go func() { done <- s.serve() }()
@@ -132,7 +131,7 @@ func TestProxyProtocolConnectionsAreNotReused(t *testing.T) {
 		accepted.Store(0)
 		s := &HttpServer{HttpProxy: &HttpProxy{}}
 		// The route decides, not the target of the last publisher on the host.
-		tr := s.newTransports(&model.Host{Target: &model.Target{}}).forRoute(model.Route{Target: &model.Target{ProxyProtocol: proxyProtocol}})
+		tr := s.newTransports(false).forRoute(model.Route{Target: &model.Target{ProxyProtocol: proxyProtocol}})
 		tr.DialContext, tr.DialTLSContext = nil, nil
 		defer tr.CloseIdleConnections()
 		for range 2 {

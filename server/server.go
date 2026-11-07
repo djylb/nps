@@ -18,7 +18,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -70,7 +69,7 @@ type Server struct {
 	db         *file.DbUtils
 	bridge     *bridge.Bridge
 	tasks      sync.Map // task id -> proxy.Service, or nil for a task without a listener
-	hostCache  *index.AnyIntIndex
+	hostCache  *httpproxy.Plans
 	transports bridge.Transports
 	ports      ports.Allowed
 	identity   *crypt.Identity
@@ -96,7 +95,7 @@ type Server struct {
 func New(db *file.DbUtils, cfg Config) *Server {
 	s := &Server{
 		db:         db,
-		hostCache:  index.NewAnyIntIndex(),
+		hostCache:  httpproxy.NewPlans(),
 		transports: cfg.Transports,
 		ports:      cfg.AllowedPorts,
 		identity:   cfg.Identity,
