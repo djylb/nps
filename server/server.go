@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -415,7 +414,7 @@ func dealClientData() {
 				v.LocalAddr = common.GetOutboundIP().String()
 				// Add Local Client
 				if !Bridge.Connected(v.Id) && v.Status {
-					Bridge.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewNode("127.0.0.1", version.VERSION, legacy.LatestIndex)))
+					Bridge.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewLocalNode("127.0.0.1", version.VERSION)))
 					logs.Debug("Inserted virtual client for ID %d", v.Id)
 				}
 			} else {

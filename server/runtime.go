@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
@@ -335,7 +334,7 @@ func GetVersion() string {
 }
 
 func GetMinVersion() string {
-	return legacy.MinCoreVersion(bridge.ServerSecureMode)
+	return bridge.MinClientVersion()
 }
 
 func GetCurrentYear() int {

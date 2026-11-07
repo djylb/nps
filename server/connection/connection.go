@@ -6,9 +6,7 @@ import (
 	"os"
 	"slices"
 	"sync/atomic"
-	"time"
 
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 )
@@ -37,7 +35,6 @@ func InitConnectionService() {
 	cfg := servercfg.Current()
 	Configure(cfg.Network)
 	n := Network()
-	legacy.SetPingInterval(time.Duration(n.MuxPingInterval) * time.Second)
 
 	if n.BridgePort != 0 && (n.HTTPProxyPort == n.BridgePort || n.HTTPSProxyPort == n.BridgePort || n.WebPort == n.BridgePort || n.BridgeTLSPort == n.BridgePort) {
 		if n.BridgePort <= 0 || n.BridgePort > 65535 {

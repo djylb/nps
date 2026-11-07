@@ -18,8 +18,12 @@ var (
 	ErrClientOffline = errors.New("client is offline")
 	// ErrUpdateUnsupported is returned by RequestClientUpdate when no
 	// connected npc of the client acts on update requests.
-	ErrUpdateUnsupported = fmt.Errorf("client version does not support remote update, npc %s or newer is required", legacy.RemoteUpdateMinVersion)
+	ErrUpdateUnsupported = fmt.Errorf("client version does not support remote update, npc %s or newer is required", RemoteUpdateMinVersion)
 )
+
+// RemoteUpdateMinVersion is the oldest npc release that acts on update
+// requests.
+const RemoteUpdateMinVersion = legacy.RemoteUpdateMinVersion
 
 // updateRequest is the body of an update request; it carries no fields yet.
 type updateRequest struct{}

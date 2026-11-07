@@ -407,10 +407,11 @@ func run() {
 		bridge.ServerSecureMode = true
 	}
 	logs.Info("the config path is: %s", servercfg.Path())
-	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, legacy.MinCoreVersion(bridge.ServerSecureMode))
+	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, bridge.MinClientVersion())
 	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
 	applyNtp(cfg)
 	connection.InitConnectionService()
+	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
 	//crypt.InitTls(filepath.Join(common.GetRunPath(), "conf", "server.pem"), filepath.Join(common.GetRunPath(), "conf", "server.key"))
 	cert, err := common.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
 	if err != nil {

@@ -269,3 +269,10 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 	}
 	_ = c.Close()
 }
+
+// MinClientVersion is the oldest npc core version the bridge accepts.
+func MinClientVersion() string { return legacy.MinCoreVersion(ServerSecureMode) }
+
+// NewLocalNode returns the node of the client that nps runs itself, which
+// speaks the latest protocol.
+func NewLocalNode(uuid, version string) *Node { return NewNode(uuid, version, legacy.LatestIndex) }

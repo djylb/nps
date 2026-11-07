@@ -5,9 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -94,7 +92,7 @@ mux_ping_interval = 8
 	if n.QUICKeepAlivePeriod != 12 || n.QUICMaxIdleTimeout != 34 || n.QUICMaxIncomingStreams != 999 {
 		t.Fatalf("quic values not loaded correctly")
 	}
-	if n.MuxPingInterval != 8 || legacy.PingInterval() != 8*time.Second {
+	if n.MuxPingInterval != 8 {
 		t.Fatalf("mux ping interval not loaded correctly")
 	}
 }
