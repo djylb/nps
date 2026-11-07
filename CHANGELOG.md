@@ -9,7 +9,8 @@
 
 ### v0.35.0
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
-- **不兼容**：npc 移除 `-proto_version`（不再能连接旧版服务端，请先更新服务端）和 `-tls_enable`（改用 `-type=tls`）；npc.conf 的 `tls_enable` 不再生效（改用 `conn_type=tls`，读到时告警）。服务启动参数里带这两个参数的，更新后需去掉，否则 npc 无法启动
+- **不兼容**：npc 移除 `-proto_version`（不再能连接旧版服务端，请先更新服务端）和 `-tls_enable`（改用 `-type=tls`）；npc.conf 的 `tls_enable` 不再生效（改用 `conn_type=tls`，读到时告警）。服务启动参数里仍带这两个参数时会被忽略并告警，不影响启动
+- nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动
 - 健康检查不再兼容旧版 npc：旧版自配检查的报告会被忽略
 - npc 新增 `--launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
 - 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错

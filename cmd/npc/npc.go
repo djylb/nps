@@ -15,6 +15,7 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
+	"github.com/djylb/nps/internal/cliargs"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/crypt"
@@ -79,10 +80,12 @@ func main() {
 		name = strings.ReplaceAll(name, ".", "_")
 		return flag.NormalizedName(name)
 	})
-	normalizeLegacyLongFlags()
 	flag.CommandLine.SortFlags = false
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
+	prepared, ignored := cliargs.Prepare(flag.CommandLine, os.Args[1:], "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force")
+	os.Args = append(os.Args[:1], prepared...)
+	ignoredArgs = ignored
 	flag.Parse()
 
 	args := flag.Args()
@@ -266,35 +269,14 @@ func main() {
 	_ = s.Run()
 }
 
-func normalizeLegacyLongFlags() {
-	norm := func(s string) string {
-		s = strings.ReplaceAll(s, "-", "_")
-		s = strings.ReplaceAll(s, ".", "_")
-		return s
+// ignoredArgs are the command-line arguments left out as unknown; they are
+// logged once logging is set up.
+var ignoredArgs []string
+
+func warnIgnoredArgs() {
+	for _, a := range ignoredArgs {
+		logs.Warn("unknown argument %q ignored", a)
 	}
-	defined := map[string]struct{}{}
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		defined[norm(f.Name)] = struct{}{}
-	})
-	if len(os.Args) <= 1 {
-		return
-	}
-	out := make([]string, 0, len(os.Args))
-	out = append(out, os.Args[0])
-	for _, a := range os.Args[1:] {
-		if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && len(a) > 2 {
-			s := a[1:]
-			name, val := s, ""
-			if i := strings.IndexByte(s, '='); i >= 0 {
-				name, val = s[:i], s[i:]
-			}
-			if _, ok := defined[norm(name)]; ok {
-				a = "--" + name + val
-			}
-		}
-		out = append(out, a)
-	}
-	os.Args = out
 }
 
 // Log configure
@@ -318,6 +300,7 @@ func configureLogging() {
 		*logPath = strings.ReplaceAll(*logPath, "\\", "\\\\")
 	}
 	logs.Init(*logType, *logLevel, *logPath, *logMaxSize, *logMaxFiles, *logMaxDays, *logCompress, *logColor)
+	warnIgnoredArgs()
 }
 
 type Npc struct {
