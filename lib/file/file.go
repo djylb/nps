@@ -15,6 +15,7 @@ import (
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
@@ -28,6 +29,9 @@ func NewJsonDb(runPath string) *JsonDb {
 		HostFilePath:   filepath.Join(runPath, "conf", "hosts.json"),
 		ClientFilePath: filepath.Join(runPath, "conf", "clients.json"),
 		GlobalFilePath: filepath.Join(runPath, "conf", "global.json"),
+		hostIndex:      index.NewDomainIndex(),
+		vkeyIndex:      index.NewStringIDIndex(),
+		taskPasswords:  newTaskPasswords(),
 	}
 }
 
@@ -47,10 +51,17 @@ type JsonDb struct {
 	GlobalFilePath   string //global file path
 
 	entriesChanged atomic.Pointer[func()] // see DbUtils.OnEntriesChanged
+
+	hostIndex     *index.DomainIndex   // host name -> host ids
+	vkeyIndex     *index.StringIDIndex // blake2b of a verify key -> client id
+	taskPasswords *taskPasswords
+
+	// one lock per file, so that two writes of a file never interleave
+	hostLock, taskLock, clientLock, globalLock sync.Mutex
 }
 
 func (s *JsonDb) LoadTaskFromJsonFile() error {
-	resetTaskPasswords()
+	s.taskPasswords.reset()
 	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v interface{}) {
 		var err error
 		post := v.(*model.Tunnel)
@@ -67,7 +78,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		if post.Target == nil {
 			post.Target = new(model.Target)
 		}
-		_ = reserveTaskPassword(post, false)
+		_ = s.taskPasswords.reserve(post, false)
 		post.NowConn = 0
 		switch post.Mode {
 		case "socks5":
@@ -90,7 +101,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 }
 
 func (s *JsonDb) LoadClientFromJsonFile() error {
-	Blake2bVkeyIndex.Clear()
+	s.vkeyIndex.Clear()
 	return loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v interface{}) {
 		post := v.(*model.Client)
 		if post.ConnectionHistory == nil {
@@ -104,7 +115,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 			post.Cnf = new(model.Config)
 		}
 		if post.Id > 0 {
-			Blake2bVkeyIndex.Add(crypt.Blake2b(post.VerifyKey), post.Id)
+			s.vkeyIndex.Add(crypt.Blake2b(post.VerifyKey), post.Id)
 		}
 		if post.RateLimit > 0 {
 			post.Rate = rate.NewRate(int64(post.RateLimit) * 1024)
@@ -126,7 +137,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 }
 
 func (s *JsonDb) LoadHostFromJsonFile() error {
-	HostIndex.Destroy()
+	s.hostIndex.Destroy()
 	return loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v interface{}) {
 		var err error
 		post := v.(*model.Host)
@@ -152,7 +163,7 @@ func (s *JsonDb) LoadHostFromJsonFile() error {
 		post.NowConn = 0
 		post.CompileSourceLists(acl.ScopeUser, hostOwner(post))
 		s.Hosts.Store(post.Id, post)
-		HostIndex.Add(post.Host, post.Id)
+		s.hostIndex.Add(post.Host, post.Id)
 		if post.Id > int(s.HostIncreaseId) {
 			s.HostIncreaseId = int32(post.Id)
 		}
@@ -200,8 +211,6 @@ func (s *JsonDb) GetClient(id int) (c *model.Client, err error) {
 	return
 }
 
-var hostLock sync.Mutex
-
 // OnEntriesChanged makes f called after tunnels or hosts of s were stored
 // or changed in place, without any lock held; f must return promptly. The
 // server that owns s sets it before it starts.
@@ -215,33 +224,27 @@ func (s *JsonDb) notifyEntriesChanged() {
 
 func (s *JsonDb) StoreHostToJsonFile() error {
 	defer s.notifyEntriesChanged()
-	hostLock.Lock()
-	defer hostLock.Unlock()
+	s.hostLock.Lock()
+	defer s.hostLock.Unlock()
 	return storeSyncMapToFile(&s.Hosts, s.HostFilePath)
 }
 
-var taskLock sync.Mutex
-
 func (s *JsonDb) StoreTasksToJsonFile() error {
 	defer s.notifyEntriesChanged()
-	taskLock.Lock()
-	defer taskLock.Unlock()
+	s.taskLock.Lock()
+	defer s.taskLock.Unlock()
 	return storeSyncMapToFile(&s.Tasks, s.TaskFilePath)
 }
 
-var clientLock sync.Mutex
-
 func (s *JsonDb) StoreClientsToJsonFile() error {
-	clientLock.Lock()
-	defer clientLock.Unlock()
+	s.clientLock.Lock()
+	defer s.clientLock.Unlock()
 	return storeSyncMapToFile(&s.Clients, s.ClientFilePath)
 }
 
-var globalLock sync.Mutex
-
 func (s *JsonDb) StoreGlobalToJsonFile() error {
-	globalLock.Lock()
-	defer globalLock.Unlock()
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
 	return storeGlobalToFile(s.Global, s.GlobalFilePath)
 }
 

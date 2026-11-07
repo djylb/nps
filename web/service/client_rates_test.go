@@ -20,7 +20,7 @@ func (visibleRateConn) Close() error                { return nil }
 
 func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: &file.JsonDb{}}))
+		t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}))
 		for id := 1; id <= 4; id++ {
 			client := &model.Client{Id: id, Remark: "visible", Rate: rate.NewRate(0), NoDisplay: id == 4}
 			file.GetDb().JsonDb.Clients.Store(id, client)

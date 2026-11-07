@@ -26,12 +26,9 @@ type DbUtils struct {
 }
 
 var (
-	db                atomic.Pointer[DbUtils]
-	loadMu            sync.Mutex
-	loadErr           error // set once under loadMu, before db
-	HostIndex         = index.NewDomainIndex()
-	Blake2bVkeyIndex  = index.NewStringIDIndex()
-	TaskPasswordIndex = index.NewStringIDIndex()
+	db      atomic.Pointer[DbUtils]
+	loadMu  sync.Mutex
+	loadErr error // set once under loadMu, before db
 )
 
 // GetDb returns the store, loading it from the files of the run path on
@@ -169,9 +166,19 @@ func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(s
 	return 0, errors.New("not found")
 }
 
+// ReplaceClientVKey moves the authentication index entry of client id from
+// the verify key oldKey to newKey.
+func (s *DbUtils) ReplaceClientVKey(oldKey, newKey string, id int) {
+	if id <= 0 {
+		return
+	}
+	s.JsonDb.vkeyIndex.Remove(crypt.Blake2b(oldKey))
+	s.JsonDb.vkeyIndex.Add(crypt.Blake2b(newKey), id)
+}
+
 func (s *DbUtils) GetClientIdByBlake2bVkey(vkey string) (id int, err error) {
 	var exist bool
-	id, exist = Blake2bVkeyIndex.Get(vkey)
+	id, exist = s.JsonDb.vkeyIndex.Get(vkey)
 	if exist && id > 0 {
 		return
 	}
@@ -212,9 +219,9 @@ func newEntryFlow(f *model.Flow) *model.Flow {
 // NewTask adds t. A password explicitly set on a task created through the
 // web or API that is already used by another task is rejected; for tasks
 // delivered by a client configuration (NoStore) it is replaced by a random one,
-// see reserveTaskPassword.
+// see taskPasswords.reserve.
 func (s *DbUtils) NewTask(t *model.Tunnel) error {
-	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
+	if err := s.JsonDb.taskPasswords.reserve(t, !t.NoStore); err != nil {
 		return err
 	}
 	t.Flow = newEntryFlow(t.Flow)
@@ -230,7 +237,7 @@ func (s *DbUtils) NewTask(t *model.Tunnel) error {
 // is tracked separately and released when it changes. A rejected password
 // leaves the stored task and the password index unchanged.
 func (s *DbUtils) UpdateTask(t *model.Tunnel) error {
-	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
+	if err := s.JsonDb.taskPasswords.reserve(t, !t.NoStore); err != nil {
 		return err
 	}
 	if old, ok := s.JsonDb.Tasks.Load(t.Id); ok {
@@ -249,44 +256,55 @@ func (s *DbUtils) UpdateTask(t *model.Tunnel) error {
 // NewTask and UpdateTask. It is used before an existing task is updated in
 // place from t.
 func (s *DbUtils) ReserveTaskPassword(t *model.Tunnel) error {
-	return reserveTaskPassword(t, !t.NoStore)
+	return s.JsonDb.taskPasswords.reserve(t, !t.NoStore)
 }
 
-var (
-	// taskPasswordLock guards TaskPasswordIndex writes and taskPasswordClaims
-	// so that two tasks can never claim the same password.
-	taskPasswordLock sync.Mutex
-	// taskPasswordClaims maps a task id to the password hash it holds in
-	// TaskPasswordIndex.
-	taskPasswordClaims = make(map[int]string)
-)
-
-func resetTaskPasswords() {
-	taskPasswordLock.Lock()
-	defer taskPasswordLock.Unlock()
-	TaskPasswordIndex.Clear()
-	taskPasswordClaims = make(map[int]string)
+// taskPasswords holds the password every task claims, so that two tasks
+// can never claim the same password.
+type taskPasswords struct {
+	mu     sync.Mutex
+	index  *index.StringIDIndex // password hash -> task id
+	claims map[int]string       // task id -> the password hash it holds in index
 }
 
-// releaseTaskPasswordLocked drops the password claim of task id.
-func releaseTaskPasswordLocked(id int) {
-	if hash, ok := taskPasswordClaims[id]; ok {
-		if idxId, ok := TaskPasswordIndex.Get(hash); ok && idxId == id {
-			TaskPasswordIndex.Remove(hash)
+func newTaskPasswords() *taskPasswords {
+	return &taskPasswords{index: index.NewStringIDIndex(), claims: make(map[int]string)}
+}
+
+func (p *taskPasswords) reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.index.Clear()
+	p.claims = make(map[int]string)
+}
+
+func (p *taskPasswords) release(id int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.releaseLocked(id)
+}
+
+// releaseLocked drops the password claim of task id.
+func (p *taskPasswords) releaseLocked(id int) {
+	if hash, ok := p.claims[id]; ok {
+		if idxId, ok := p.index.Get(hash); ok && idxId == id {
+			p.index.Remove(hash)
 		}
-		delete(taskPasswordClaims, id)
+		delete(p.claims, id)
 	}
 }
 
-// reserveTaskPassword makes t.Password the password claimed by t.Id and
-// releases the one the task held before. A secret or p2p task without a
-// password gets a random one, regenerated until it is unique. An explicitly
-// set password that another task already uses is rejected when strict, leaving
-// t and the index unchanged; otherwise it is logged and replaced by a random
-// one.
-func reserveTaskPassword(t *model.Tunnel, strict bool) error {
-	taskPasswordLock.Lock()
-	defer taskPasswordLock.Unlock()
+// lookup returns the task id that claims the password of md5 hash.
+func (p *taskPasswords) lookup(hash string) (int, bool) { return p.index.Get(hash) }
+
+// reserve makes t.Password the password claimed by t.Id and releases the
+// one the task held before. A secret or p2p task without a password gets a
+// random one, regenerated until it is unique. An explicitly set password
+// that another task already uses is rejected when strict, leaving t and the
+// index unchanged; otherwise it is logged and replaced by a random one.
+func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	password := t.Password
 	generated := false
 	if (t.Mode == "secret" || t.Mode == "p2p") && password == "" {
@@ -294,11 +312,11 @@ func reserveTaskPassword(t *model.Tunnel, strict bool) error {
 		generated = true
 	}
 	if password == "" {
-		releaseTaskPasswordLocked(t.Id)
+		p.releaseLocked(t.Id)
 		return nil
 	}
 	for {
-		idxId, ok := TaskPasswordIndex.Get(crypt.Md5(password))
+		idxId, ok := p.index.Get(crypt.Md5(password))
 		if !ok || idxId == t.Id {
 			break
 		}
@@ -313,11 +331,11 @@ func reserveTaskPassword(t *model.Tunnel, strict bool) error {
 	}
 	t.Password = password
 	hash := crypt.Md5(password)
-	if taskPasswordClaims[t.Id] != hash {
-		releaseTaskPasswordLocked(t.Id)
+	if p.claims[t.Id] != hash {
+		p.releaseLocked(t.Id)
 	}
-	TaskPasswordIndex.Add(hash, t.Id)
-	taskPasswordClaims[t.Id] = hash
+	p.index.Add(hash, t.Id)
+	p.claims[t.Id] = hash
 	return nil
 }
 
@@ -354,9 +372,7 @@ func (s *DbUtils) SaveGlobal(t *model.Glob) error {
 }
 
 func (s *DbUtils) DelTask(id int) error {
-	taskPasswordLock.Lock()
-	releaseTaskPasswordLocked(id)
-	taskPasswordLock.Unlock()
+	s.JsonDb.taskPasswords.release(id)
 	v, existed := s.JsonDb.Tasks.LoadAndDelete(id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	if existed {
@@ -367,7 +383,7 @@ func (s *DbUtils) DelTask(id int) error {
 
 // GetTaskByMd5Password md5 password
 func (s *DbUtils) GetTaskByMd5Password(p string) (t *model.Tunnel) {
-	id, ok := TaskPasswordIndex.Get(p)
+	id, ok := s.JsonDb.taskPasswords.lookup(p)
 	if ok {
 		if v, ok := s.JsonDb.Tasks.Load(id); ok {
 			t = v.(*model.Tunnel)
@@ -400,7 +416,7 @@ func (s *DbUtils) GetTask(id int) (t *model.Tunnel, err error) {
 func (s *DbUtils) DelHost(id int) error {
 	v, existed := s.JsonDb.Hosts.LoadAndDelete(id)
 	if existed {
-		HostIndex.Remove(v.(*model.Host).Host, id)
+		s.JsonDb.hostIndex.Remove(v.(*model.Host).Host, id)
 	}
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	if existed {
@@ -461,7 +477,7 @@ func (s *DbUtils) NewHost(t *model.Host) error {
 	if s.IsHostExist(t) {
 		return errors.New("host has exist")
 	}
-	HostIndex.Add(t.Host, t.Id)
+	s.JsonDb.hostIndex.Add(t.Host, t.Id)
 	t.CertType = crypt.GetCertType(t.CertFile)
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
 	t.Flow = newEntryFlow(t.Flow)
@@ -475,8 +491,8 @@ func (s *DbUtils) NewHost(t *model.Host) error {
 // SaveHost stores the entry h, edited in place, which was named oldHost before.
 func (s *DbUtils) SaveHost(h *model.Host, oldHost string) error {
 	if oldHost != "" && oldHost != h.Host {
-		HostIndex.Remove(oldHost, h.Id)
-		HostIndex.Add(h.Host, h.Id)
+		s.JsonDb.hostIndex.Remove(oldHost, h.Id)
+		s.JsonDb.hostIndex.Add(h.Host, h.Id)
 	}
 	err := s.JsonDb.StoreHostToJsonFile()
 	s.HostChanged(h)
@@ -514,7 +530,7 @@ func (s *DbUtils) DelClient(id int) error {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
 		c := v.(*model.Client)
 		if c.Id > 0 {
-			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+			s.JsonDb.vkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
 		}
 		if c.Rate != nil {
 			c.Rate.Stop()
@@ -561,7 +577,7 @@ reset:
 	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
 	s.JsonDb.Clients.Store(c.Id, c)
 	if c.Id > 0 {
-		Blake2bVkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
+		s.JsonDb.vkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
 	}
 	logStoreError(s.JsonDb.StoreClientsToJsonFile())
 	return nil
@@ -598,7 +614,7 @@ func (s *DbUtils) UpdateClient(t *model.Client) error {
 		c := v.(*model.Client)
 		t.ConnectionHistory = c.ConnectionHistory
 		if c.Id > 0 {
-			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
+			s.JsonDb.vkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
 		}
 		if c.Rate != nil {
 			t.Rate = c.Rate
@@ -612,7 +628,7 @@ func (s *DbUtils) UpdateClient(t *model.Client) error {
 	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
 	s.JsonDb.Clients.Store(t.Id, t)
 	if t.Id > 0 {
-		Blake2bVkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
+		s.JsonDb.vkeyIndex.Add(crypt.Blake2b(t.VerifyKey), t.Id)
 	}
 	var limit int64
 	if t.RateLimit > 0 {
@@ -688,7 +704,7 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *model.Host, er
 
 	scheme := r.URL.Scheme
 
-	ids := HostIndex.Lookup(host)
+	ids := s.JsonDb.hostIndex.Lookup(host)
 	if len(ids) == 0 {
 		return nil, errors.New("the host could not be parsed")
 	}
@@ -790,7 +806,7 @@ func (s *DbUtils) findCertHost(host string, accept func(*model.Host) bool) (*mod
 
 	var best *model.Host
 	var bestRank certHostRank
-	for _, id := range HostIndex.Lookup(host) {
+	for _, id := range s.JsonDb.hostIndex.Lookup(host) {
 		value, ok := s.JsonDb.Hosts.Load(id)
 		if !ok {
 			continue

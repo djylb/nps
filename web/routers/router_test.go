@@ -28,7 +28,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
@@ -1155,19 +1154,8 @@ func resetTestDB(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatalf("create temp conf dir: %v", err)
 	}
-	oldHostIndex := file.HostIndex
-	oldVkeyIndex := file.Blake2bVkeyIndex
-	oldTaskPasswordIndex := file.TaskPasswordIndex
 	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 	file.GetDb().JsonDb.Global = &model.Glob{}
-	file.HostIndex = index.NewDomainIndex()
-	file.Blake2bVkeyIndex = index.NewStringIDIndex()
-	file.TaskPasswordIndex = index.NewStringIDIndex()
-	t.Cleanup(func() {
-		file.HostIndex = oldHostIndex
-		file.Blake2bVkeyIndex = oldVkeyIndex
-		file.TaskPasswordIndex = oldTaskPasswordIndex
-	})
 	return root
 }
 

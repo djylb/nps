@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +16,11 @@ import (
 
 // newTestDb returns an empty host database of its own.
 func newTestDb(t *testing.T) *file.DbUtils {
-	return &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 }
 
 // newTestHttp3Server returns an HTTP/3 server of the hosts in store.
@@ -35,9 +41,9 @@ func newTestHttp3Server(t *testing.T, store Store) *Http3Server {
 func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
 	db := newTestDb(t)
 	host := &model.Host{Id: 1, Host: "offload.example", Scheme: "all", AutoSSL: true, Client: &model.Client{Id: 1}}
-	db.JsonDb.Hosts.Store(host.Id, host)
-	file.HostIndex.Add(host.Host, host.Id)
-	t.Cleanup(func() { file.HostIndex.Remove(host.Host, host.Id) })
+	if err := db.NewHost(host); err != nil {
+		t.Fatal(err)
+	}
 
 	s := newTestHttp3Server(t, db)
 	hello := &tls.ClientHelloInfo{ServerName: host.Host}

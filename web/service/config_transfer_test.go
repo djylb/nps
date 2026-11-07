@@ -17,7 +17,6 @@ import (
 
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/webhook"
 	"github.com/djylb/nps/server"
@@ -25,19 +24,12 @@ import (
 
 func useTempDb(t *testing.T) {
 	t.Helper()
-	oldHosts, oldKeys, oldPasswords := file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(file.ReplaceDb(&file.DbUtils{JsonDb: file.NewJsonDb(root)}))
 	file.GetDb().JsonDb.Global = &model.Glob{}
-	file.HostIndex = index.NewDomainIndex()
-	file.Blake2bVkeyIndex = index.NewStringIDIndex()
-	file.TaskPasswordIndex = index.NewStringIDIndex()
-	t.Cleanup(func() {
-		file.HostIndex, file.Blake2bVkeyIndex, file.TaskPasswordIndex = oldHosts, oldKeys, oldPasswords
-	})
 }
 
 // newTestServer returns a server of the current store that is not started:

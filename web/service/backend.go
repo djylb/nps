@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/textutil"
@@ -212,11 +211,7 @@ func (defaultRepository) VerifyVKey(vkey string, exceptID int) bool {
 }
 
 func (defaultRepository) ReplaceClientVKeyIndex(oldKey, newKey string, clientID int) {
-	if clientID <= 0 {
-		return
-	}
-	file.Blake2bVkeyIndex.Remove(crypt.Blake2b(oldKey))
-	file.Blake2bVkeyIndex.Add(crypt.Blake2b(newKey), clientID)
+	file.GetDb().ReplaceClientVKey(oldKey, newKey, clientID)
 }
 
 func (defaultRepository) CreateTunnel(tunnel *model.Tunnel) error {

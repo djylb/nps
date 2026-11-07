@@ -13,14 +13,14 @@ import (
 
 func newTestDb(t *testing.T) *DbUtils {
 	t.Helper()
-	resetTaskPasswords()
-	t.Cleanup(resetTaskPasswords)
 	dir := t.TempDir()
-	return &DbUtils{JsonDb: &JsonDb{TaskFilePath: filepath.Join(dir, "tasks.json")}}
+	db := &DbUtils{JsonDb: NewJsonDb(dir)}
+	db.JsonDb.TaskFilePath = filepath.Join(dir, "tasks.json")
+	return db
 }
 
-func passwordOwner(pwd string) (int, bool) {
-	return TaskPasswordIndex.Get(crypt.Md5(pwd))
+func passwordOwner(db *DbUtils, pwd string) (int, bool) {
+	return db.JsonDb.taskPasswords.lookup(crypt.Md5(pwd))
 }
 
 func TestTaskPasswordConflicts(t *testing.T) {
@@ -45,7 +45,7 @@ func TestTaskPasswordConflicts(t *testing.T) {
 	if client.Password == "shared" {
 		t.Fatalf("client task password must be replaced on conflict")
 	}
-	if id, ok := passwordOwner(client.Password); !ok || id != 3 {
+	if id, ok := passwordOwner(db, client.Password); !ok || id != 3 {
 		t.Fatalf("replacement password not claimed: %d %v", id, ok)
 	}
 
@@ -53,7 +53,7 @@ func TestTaskPasswordConflicts(t *testing.T) {
 	if err := db.NewTask(generated); err != nil {
 		t.Fatalf("NewTask(generated): %v", err)
 	}
-	if id, ok := passwordOwner(generated.Password); generated.Password == "" || !ok || id != 4 {
+	if id, ok := passwordOwner(db, generated.Password); generated.Password == "" || !ok || id != 4 {
 		t.Fatalf("generated password not claimed: %q %d %v", generated.Password, id, ok)
 	}
 }
@@ -73,10 +73,10 @@ func TestUpdateTaskInPlaceReleasesOldPassword(t *testing.T) {
 	if err := db.UpdateTask(task); err != nil {
 		t.Fatalf("UpdateTask: %v", err)
 	}
-	if _, ok := passwordOwner("old"); ok {
+	if _, ok := passwordOwner(db, "old"); ok {
 		t.Fatalf("old password still claimed after in-place update")
 	}
-	if id, ok := passwordOwner("new"); !ok || id != 1 {
+	if id, ok := passwordOwner(db, "new"); !ok || id != 1 {
 		t.Fatalf("new password not claimed: %d %v", id, ok)
 	}
 
@@ -89,14 +89,14 @@ func TestUpdateTaskInPlaceReleasesOldPassword(t *testing.T) {
 	if v, _ := db.JsonDb.Tasks.Load(1); v.(*model.Tunnel) != task || task.Password != "new" {
 		t.Fatalf("stored task changed by a rejected update")
 	}
-	if id, ok := passwordOwner("new"); !ok || id != 1 {
+	if id, ok := passwordOwner(db, "new"); !ok || id != 1 {
 		t.Fatalf("password claim lost after rejected update: %d %v", id, ok)
 	}
 
 	if err := db.DelTask(1); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := passwordOwner("new"); ok {
+	if _, ok := passwordOwner(db, "new"); ok {
 		t.Fatalf("password still claimed after DelTask")
 	}
 }
@@ -107,7 +107,7 @@ func TestLoadedDuplicatePasswordStaysEditable(t *testing.T) {
 	second := &model.Tunnel{Id: 2, Mode: "secret", Password: "dup"}
 	// Same path as LoadTaskFromJsonFile.
 	for _, task := range []*model.Tunnel{first, second} {
-		_ = reserveTaskPassword(task, false)
+		_ = db.JsonDb.taskPasswords.reserve(task, false)
 		db.JsonDb.Tasks.Store(task.Id, task)
 	}
 	if first.Password != "dup" || second.Password == "dup" {
@@ -220,7 +220,6 @@ func TestNewTaskAndHostKeepLimits(t *testing.T) {
 	if err := db.NewHost(host); err != nil {
 		t.Fatalf("NewHost: %v", err)
 	}
-	t.Cleanup(func() { HostIndex.Remove(host.Host, host.Id) })
 	if host.Flow.FlowLimit != 200 || !host.Flow.TimeLimit.Equal(expire) {
 		t.Fatalf("host flow = %+v", host.Flow)
 	}

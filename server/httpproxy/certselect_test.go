@@ -66,9 +66,11 @@ func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *t
 	if cert != nil {
 		h.CertFile, h.KeyFile, h.CertType = string(cert.certPEM), string(cert.keyPEM), "text"
 	}
+	// stored as is, duplicates included; SaveHost indexes the name as a rename would
 	e.db.JsonDb.Hosts.Store(h.Id, h)
-	file.HostIndex.Add(h.Host, h.Id)
-	e.t.Cleanup(func() { file.HostIndex.Remove(h.Host, h.Id) })
+	if err := e.db.SaveHost(h, "-"); err != nil {
+		e.t.Fatal(err)
+	}
 	return h
 }
 
