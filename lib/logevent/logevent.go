@@ -170,12 +170,10 @@ func NetReason(err error) string {
 	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
 		return "closed"
 	}
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
+	if ne, ok := errors.AsType[net.Error](err); ok && ne.Timeout() {
 		return "timeout"
 	}
-	var de *net.DNSError
-	if errors.As(err, &de) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return "dns"
 	}
 	s := strings.ToLower(err.Error())

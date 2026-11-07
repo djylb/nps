@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sort"
 	"strings"
@@ -59,7 +60,7 @@ func newLevels() *Levels {
 func (l *Levels) Of(module string) slog.Level { return l.cur.Load().of(module) }
 
 // Set replaces the default and per-module levels as spec says,
-// "info,bridge=debug,p2p=warn". Raises stay until they expire.
+// "info,db=debug,net=warn". Raises stay until they expire.
 func (l *Levels) Set(spec string) error {
 	t, err := parseLevels(spec)
 	if err != nil {
@@ -104,9 +105,7 @@ func (l *Levels) Lower(module string) {
 func (l *Levels) publish() {
 	now := time.Now()
 	t := levelTable{def: l.base.def, modules: make(map[string]slog.Level, len(l.base.modules)+len(l.raises))}
-	for m, v := range l.base.modules {
-		t.modules[m] = v
-	}
+	maps.Copy(t.modules, l.base.modules)
 	var next time.Time
 	for m, r := range l.raises {
 		if !now.Before(r.until) {
@@ -151,7 +150,7 @@ func (l *Levels) stop() {
 }
 
 // ServeHTTP shows the levels on GET, and on PUT or POST takes a JSON body
-// {"level": "info,p2p=debug"} to Set, or {"module": "p2p", "level":
+// {"level": "info,net=debug"} to Set, or {"module": "net", "level":
 // "debug", "ttl": "10m"} to Raise. Mount it behind the application's own
 // authorization.
 func (l *Levels) ServeHTTP(w http.ResponseWriter, r *http.Request) {

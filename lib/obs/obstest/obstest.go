@@ -2,6 +2,7 @@
 package obstest
 
 import (
+	"io"
 	"log/slog"
 	"sync"
 
@@ -73,4 +74,22 @@ func (r *Recorder) Reset() {
 	r.mu.Lock()
 	r.lines = nil
 	r.mu.Unlock()
+}
+
+// TB is the part of testing.TB that ToTest uses.
+type TB interface {
+	Output() io.Writer
+	Cleanup(func())
+}
+
+// ToTest returns Logs that write every line, logfmt, to the output of t,
+// where go test shows it with the test's own log; it closes when t ends.
+func ToTest(t TB) *obs.Logs {
+	l := obs.New()
+	route := obs.Route{Name: "test", Match: obs.MinLevel(obs.LevelTrace), Below: true, Output: obs.WriterOutput(t.Output())}
+	if err := l.Configure(obs.Config{Output: "off", Level: "off", Routes: []obs.Route{route}}); err != nil {
+		panic(err)
+	}
+	t.Cleanup(l.Close)
+	return l
 }

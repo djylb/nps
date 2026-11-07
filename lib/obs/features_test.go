@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -44,22 +46,63 @@ func withRoute(t *testing.T, c Config, enc Encoder) (*Logs, *memOut) {
 	return l, o
 }
 
+// newRouted is withRoute for synctest bubbles: the caller closes it inside
+// the bubble.
+func newRouted(t *testing.T, c Config) (*Logs, *memOut) {
+	t.Helper()
+	o := &memOut{}
+	c.Output = "off"
+	c.Routes = append(c.Routes, Route{Name: "t", Output: o})
+	l := New()
+	if err := l.Configure(c); err != nil {
+		t.Fatal(err)
+	}
+	return l, o
+}
+
 func TestRaiseExpires(t *testing.T) {
-	l, o := withRoute(t, Config{Level: "warn"}, nil)
-	m := l.Module("p2p")
-	m.Debug("before")
-	l.Levels().Raise("p2p", slog.LevelDebug, 50*time.Millisecond)
-	m.Debug("during")
-	l.Module("bridge").Debug("other module")
-	time.Sleep(120 * time.Millisecond)
-	m.Debug("after")
-	got := o.all()
-	if strings.Contains(got, "before") || !strings.Contains(got, "during") || strings.Contains(got, "other module") || strings.Contains(got, "after") {
-		t.Fatalf("got %q", got)
-	}
-	if s := l.Levels().String(); s != "warn" {
-		t.Fatalf("levels %q", s)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newRouted(t, Config{Level: "warn"})
+		defer l.Close()
+		m := l.Module("net")
+		m.Debug("before")
+		l.Levels().Raise("net", slog.LevelDebug, 10*time.Minute)
+		m.Debug("during")
+		l.Module("db").Debug("other module")
+		time.Sleep(10*time.Minute - time.Second)
+		synctest.Wait()
+		m.Debug("still")
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		m.Debug("after")
+		got := o.all()
+		if strings.Contains(got, "before") || !strings.Contains(got, "during") || !strings.Contains(got, "still") ||
+			strings.Contains(got, "other module") || strings.Contains(got, "after") {
+			t.Fatalf("got %q", got)
+		}
+		if s := l.Levels().String(); s != "warn" {
+			t.Fatalf("levels %q", s)
+		}
+	})
+}
+
+func TestLimitWindow(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		d := &Def{Name: "limited_ev", Level: slog.LevelInfo, Limit: "src_ip"}
+		l, o := newRouted(t, Config{})
+		defer l.Close()
+		m := l.Module("x")
+		for range 3 {
+			Emit(m, d, "src_ip", "1.1.1.1")
+		}
+		time.Sleep(LimitWindow)
+		synctest.Wait()
+		Emit(m, d, "src_ip", "1.1.1.1")
+		got := o.all()
+		if strings.Count(got, "event=limited_ev") != 2 || !strings.Contains(got, "suppressed=2") {
+			t.Fatalf("got %q", got)
+		}
+	})
 }
 
 func TestLevelsHTTP(t *testing.T) {
@@ -76,7 +119,7 @@ func TestLevelsHTTP(t *testing.T) {
 		resp.Body.Close()
 		return resp.StatusCode
 	}
-	if c := put(`{"level":"info,p2p=debug"}`); c != 200 {
+	if c := put(`{"level":"info,net=debug"}`); c != 200 {
 		t.Fatal(c)
 	}
 	if c := put(`{"module":"web","level":"trace","ttl":"1m"}`); c != 200 {
@@ -95,7 +138,7 @@ func TestLevelsHTTP(t *testing.T) {
 		Raises map[string]string
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&st)
-	if st.Level != "info,p2p=debug" || !strings.HasPrefix(st.Raises["web"], "trace until ") {
+	if st.Level != "info,net=debug" || !strings.HasPrefix(st.Raises["web"], "trace until ") {
 		t.Fatalf("state %+v", st)
 	}
 	if l.Levels().Of("web") != LevelTrace {
@@ -211,5 +254,31 @@ func TestEventCarriesDefWithoutRegistry(t *testing.T) {
 	Emit(l.Module("m"), d, "src_ip", "1.1.1.1")
 	if got != d {
 		t.Fatal("security route did not get the event")
+	}
+}
+
+func TestPprofLabels(t *testing.T) {
+	l, o := withRoute(t, Config{Context: ContextAttrs(PprofLabels)}, nil)
+	pprof.Do(context.Background(), pprof.Labels("component", "relay"), func(ctx context.Context) {
+		l.Module("x").InfoContext(ctx, "m")
+	})
+	if !strings.Contains(o.all(), "component=relay msg=m") {
+		t.Fatalf("got %q", o.all())
+	}
+}
+
+func TestJSONStringEscaping(t *testing.T) {
+	for _, in := range []string{"plain", "q\"b\\s", "nl\nret\rtab\t", "ctl\x01\x7f", "bad\xffutf8", "ls\u2028ps\u2029", "中文"} {
+		got := appendJSONString(nil, in)
+		var out string
+		if err := json.Unmarshal(got, &out); err != nil {
+			t.Fatalf("%q -> %s: %v", in, got, err)
+		}
+		if want := strings.ToValidUTF8(in, "\ufffd"); out != want {
+			t.Fatalf("%q -> %s -> %q", in, got, out)
+		}
+		if bytes.ContainsAny(got, "\n\r") {
+			t.Fatalf("raw newline in %s", got)
+		}
 	}
 }

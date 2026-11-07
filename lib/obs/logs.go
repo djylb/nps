@@ -35,7 +35,7 @@ type Config struct {
 	// Pretty makes the console use PrettyEncoder when it is a terminal,
 	// whatever Format says, coloured.
 	Pretty bool
-	// Level is a default level and per-module ones, "info,bridge=debug".
+	// Level is a default level and per-module ones, "info,db=debug".
 	Level string
 	// File is the log file for "file" and "both".
 	File Rotation

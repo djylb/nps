@@ -87,14 +87,12 @@ func (r *Rotating) rotate() {
 	base := strings.TrimSuffix(r.cfg.Path, ext)
 	name := base + "-" + time.Now().Format("20060102T150405.000") + ext
 	if os.Rename(r.cfg.Path, name) == nil {
-		r.bg.Add(1)
-		go func() {
-			defer r.bg.Done()
+		r.bg.Go(func() {
 			if r.cfg.Compress {
 				compressFile(name)
 			}
 			r.prune(base, ext)
-		}()
+		})
 	}
 	if err := r.open(); err != nil {
 		r.f = nil

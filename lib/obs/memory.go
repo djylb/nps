@@ -3,6 +3,7 @@ package obs
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,10 +46,10 @@ func (q *Query) match(e *Entry) bool {
 	if !q.AnyLevel && e.Level < q.MinLevel {
 		return false
 	}
-	if len(q.Modules) > 0 && !contains(q.Modules, e.Module) {
+	if len(q.Modules) > 0 && !slices.Contains(q.Modules, e.Module) {
 		return false
 	}
-	if len(q.Events) > 0 && !contains(q.Events, e.Event) {
+	if len(q.Events) > 0 && !slices.Contains(q.Events, e.Event) {
 		return false
 	}
 	if q.Text != "" {
@@ -62,15 +63,6 @@ func (q *Query) match(e *Entry) bool {
 		}
 	}
 	return true
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // Memory keeps the last entries in memory for a viewer, such as a web page:
@@ -135,7 +127,7 @@ func (m *Memory) Query(q Query) []Entry {
 	defer m.mu.Unlock()
 	var out []Entry
 	n := len(m.buf)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		e := &m.buf[(m.next+i)%n]
 		if q.match(e) {
 			out = append(out, *e)
@@ -195,7 +187,7 @@ func (m *Memory) Subscribe(ctx context.Context, q Query, size int) *Subscription
 }
 
 // Text returns the kept entries q selects encoded with enc, for a plain
-// download or the npc SDK.
+// download or an application that polls for lines.
 func (m *Memory) Text(q Query, enc Encoder) string {
 	var b []byte
 	for _, e := range m.Query(q) {

@@ -20,3 +20,8 @@ func TestRecorder(t *testing.T) {
 		t.Fatalf("lines %+v", r.Lines())
 	}
 }
+
+func TestToTest(t *testing.T) {
+	l := ToTest(t)
+	l.Module("m").Debug("visible in go test -v")
+}

@@ -28,12 +28,12 @@ func newBuffered(t *testing.T, level string) *Logs {
 
 func TestLineOrderAndQuoting(t *testing.T) {
 	l := newBuffered(t, "info")
-	Emit(l.Module("bridge"), &testAuth, "src_ip", "1.2.3.4", "reason", "bad proof\nlevel=ERROR forged")
+	Emit(l.Module("auth"), &testAuth, "src_ip", "1.2.3.4", "reason", "bad proof\nlevel=ERROR forged")
 	got := l.TakeBuffered()
 	if strings.Count(got, "\n") != 1 {
 		t.Fatalf("not one line: %q", got)
 	}
-	if !strings.Contains(got, " level=WARN event=test_auth_failed module=bridge src_ip=1.2.3.4 reason=\"bad proof\\nlevel=ERROR forged\"\n") {
+	if !strings.Contains(got, " level=WARN event=test_auth_failed module=auth src_ip=1.2.3.4 reason=\"bad proof\\nlevel=ERROR forged\"\n") {
 		t.Fatalf("line = %q", got)
 	}
 	if !strings.HasPrefix(got, "time=") {
@@ -42,11 +42,11 @@ func TestLineOrderAndQuoting(t *testing.T) {
 }
 
 func TestModuleLevels(t *testing.T) {
-	l := newBuffered(t, "warn,p2p=debug")
-	l.Module("bridge").Info("hidden")
-	l.Module("p2p").Debug("shown", "k", 1)
+	l := newBuffered(t, "warn,net=debug")
+	l.Module("auth").Info("hidden")
+	l.Module("net").Debug("shown", "k", 1)
 	got := l.TakeBuffered()
-	if strings.Contains(got, "hidden") || !strings.Contains(got, "module=p2p k=1 msg=shown") {
+	if strings.Contains(got, "hidden") || !strings.Contains(got, "module=net k=1 msg=shown") {
 		t.Fatalf("got %q", got)
 	}
 	if err := l.SetLevel("bogus"); err == nil {
@@ -83,9 +83,9 @@ func TestRateLimit(t *testing.T) {
 
 func TestRedactedAndGroups(t *testing.T) {
 	l := newBuffered(t, "info")
-	l.Module("web").With("req", "r1").WithGroup("g").Info("m", "vkey", Redacted("s3cret"), "err", errors.New("boom"))
+	l.Module("web").With("req", "r1").WithGroup("g").Info("m", "token", Redacted("s3cret"), "err", errors.New("boom"))
 	got := l.TakeBuffered()
-	if strings.Contains(got, "s3cret") || !strings.Contains(got, "req=r1 g.vkey=[REDACTED] g.err=boom msg=m") {
+	if strings.Contains(got, "s3cret") || !strings.Contains(got, "req=r1 g.token=[REDACTED] g.err=boom msg=m") {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -98,11 +98,11 @@ func TestSecurityFileAndJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	Emit(l.Module("bridge"), &testAuth, "src_ip", "9.9.9.9")
+	Emit(l.Module("auth"), &testAuth, "src_ip", "9.9.9.9")
 	l.Close()
 	sec, _ := os.ReadFile(filepath.Join(dir, "sec.log"))
 	main, _ := os.ReadFile(filepath.Join(dir, "a.log"))
-	if !strings.Contains(string(sec), `"level":"WARN","event":"test_auth_failed","module":"bridge","src_ip":"9.9.9.9"}`) {
+	if !strings.Contains(string(sec), `"level":"WARN","event":"test_auth_failed","module":"auth","src_ip":"9.9.9.9"}`) {
 		t.Fatalf("security log %q", sec)
 	}
 	if len(main) != 0 {

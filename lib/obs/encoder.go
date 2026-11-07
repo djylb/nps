@@ -320,9 +320,56 @@ func needsQuote(s string) bool {
 	return false
 }
 
+// appendJSONString writes s as a JSON string: quotes, backslashes and
+// control characters escaped, invalid UTF-8 replaced, and U+2028 and U+2029
+// escaped so the line is also safe inside JavaScript.
 func appendJSONString(b []byte, s string) []byte {
-	q, _ := json.Marshal(s)
-	return append(b, q...)
+	const hex = "0123456789abcdef"
+	b = append(b, '"')
+	start := 0
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < utf8.RuneSelf {
+			if c >= ' ' && c != '"' && c != '\\' && c != 0x7f {
+				i++
+				continue
+			}
+			b = append(b, s[start:i]...)
+			switch c {
+			case '"', '\\':
+				b = append(b, '\\', c)
+			case '\n':
+				b = append(b, '\\', 'n')
+			case '\r':
+				b = append(b, '\\', 'r')
+			case '\t':
+				b = append(b, '\\', 't')
+			default:
+				b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&15])
+			}
+			i++
+			start = i
+			continue
+		}
+		r, n := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && n == 1 {
+			b = append(b, s[start:i]...)
+			b = append(b, `\ufffd`...)
+			i += n
+			start = i
+			continue
+		}
+		if r == '\u2028' || r == '\u2029' {
+			b = append(b, s[start:i]...)
+			b = append(b, '\\', 'u', '2', '0', '2', hex[r&15])
+			i += n
+			start = i
+			continue
+		}
+		i += n
+	}
+	b = append(b, s[start:]...)
+	return append(b, '"')
 }
 
 func appendJSONValue(b []byte, v slog.Value) []byte {
