@@ -1,4 +1,4 @@
-package obs
+package slogx
 
 import (
 	"compress/gzip"

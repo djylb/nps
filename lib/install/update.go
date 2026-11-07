@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"io"
 	"io/fs"
 	"net/http"
@@ -128,7 +128,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 	var to string
 	defer func() {
 		if err != nil {
-			obs.Emit(log, &logevent.UpdateFailed, "from", version.VERSION, "to", to, "reason", "update_failed", "err", err)
+			slogx.Emit(log, &logevent.UpdateFailed, "from", version.VERSION, "to", to, "reason", "update_failed", "err", err)
 		}
 	}()
 	targets, err := updateTargets(bin, service)
@@ -180,7 +180,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 		return nil, nil
 	}
 	to = c.Version
-	obs.Emit(log, &logevent.UpdateAvailable, "from", version.VERSION, "to", c.Version)
+	slogx.Emit(log, &logevent.UpdateAvailable, "from", version.VERSION, "to", c.Version)
 	running := processesRunning(targets)
 	services := servicesToRestart(service, targets, running)
 	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) && !runsVersion(p, c.Version) {
@@ -200,7 +200,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 	for _, t := range targets {
 		fmt.Println("Replaced", t)
 	}
-	obs.Emit(log, &logevent.UpdateApplied, "from", version.VERSION, "to", c.Version)
+	slogx.Emit(log, &logevent.UpdateApplied, "from", version.VERSION, "to", c.Version)
 	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running, Services: services}, nil
 }
 

@@ -8,10 +8,10 @@ import (
 	_ "time/tzdata"
 
 	"github.com/beevik/ntp"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("clock")
+var log = slogx.Module("clock")
 
 var (
 	timeOffset   time.Duration

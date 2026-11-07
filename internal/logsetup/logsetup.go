@@ -1,4 +1,4 @@
-// Package logsetup turns the log settings of nps and npc into obs
+// Package logsetup turns the log settings of nps and npc into slogx
 // configuration, the same way for both.
 package logsetup
 
@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/obs"
 	_ "github.com/djylb/nps/lib/logevent" // registers the events
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // Options are the log settings as nps.conf and the npc flags give them.
@@ -30,8 +30,8 @@ type Options struct {
 	Memory int
 }
 
-// Config returns the obs configuration of o.
-func (o Options) Config() (obs.Config, error) {
+// Config returns the slogx configuration of o.
+func (o Options) Config() (slogx.Config, error) {
 	out := strings.ToLower(strings.TrimSpace(o.Output))
 	switch out {
 	case "", "stdout":
@@ -40,7 +40,7 @@ func (o Options) Config() (obs.Config, error) {
 		out = "off"
 	case "file", "both", "off":
 	default:
-		return obs.Config{}, fmt.Errorf("unknown log output %q (stdout, file, both, off)", o.Output)
+		return slogx.Config{}, fmt.Errorf("unknown log output %q (stdout, file, both, off)", o.Output)
 	}
 	path := o.Path
 	switch strings.ToLower(path) {
@@ -53,15 +53,15 @@ func (o Options) Config() (obs.Config, error) {
 	if o.Service && out == "stdout" && path != "" {
 		out = "file"
 	}
-	c := obs.Config{Output: out, Level: o.Level, Memory: o.Memory, Pretty: true}
+	c := slogx.Config{Output: out, Level: o.Level, Memory: o.Memory, Pretty: true}
 	switch strings.ToLower(o.Format) {
 	case "", "text", "logfmt":
 	case "json":
-		c.Format = obs.JSON
+		c.Format = slogx.JSON
 	default:
-		return obs.Config{}, fmt.Errorf("unknown log format %q (text, json)", o.Format)
+		return slogx.Config{}, fmt.Errorf("unknown log format %q (text, json)", o.Format)
 	}
-	rot := func(p string) obs.Rotation {
+	rot := func(p string) slogx.Rotation {
 		if p != "" && !filepath.IsAbs(p) {
 			p = filepath.Join(o.Dir, p)
 		}
@@ -69,7 +69,7 @@ func (o Options) Config() (obs.Config, error) {
 		if o.MaxSize <= 0 {
 			size = -1
 		}
-		return obs.Rotation{Path: p, MaxSize: size, MaxFiles: o.MaxFiles,
+		return slogx.Rotation{Path: p, MaxSize: size, MaxFiles: o.MaxFiles,
 			MaxAge: time.Duration(o.MaxDays) * 24 * time.Hour, Compress: o.Compress}
 	}
 	if out == "file" || out == "both" {
@@ -81,16 +81,16 @@ func (o Options) Config() (obs.Config, error) {
 	return c, nil
 }
 
-// Apply configures obs.Default as o says and sends the standard library's
+// Apply configures slogx.Default as o says and sends the standard library's
 // logger to it.
 func Apply(o Options) error {
 	c, err := o.Config()
 	if err != nil {
 		return err
 	}
-	if err := obs.Default.Configure(c); err != nil {
+	if err := slogx.Default.Configure(c); err != nil {
 		return err
 	}
-	obs.CaptureStdLog(obs.Module("lib"))
+	slogx.CaptureStdLog(slogx.Module("lib"))
 	return nil
 }

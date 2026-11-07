@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/event"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("webhook")
+var log = slogx.Module("webhook")
 
 // The headers of a delivery.
 const (

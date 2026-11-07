@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/selfupdate"
 )
 
-var log = obs.Module("install")
+var log = slogx.Module("install")
 
 // ErrRestartUnsupported is returned by UpdateSelf and RestartSelf where the
 // calling process cannot restart itself reliably (see CanRestartSelf).
@@ -105,7 +105,7 @@ func StartUpdate() {
 			log.Info("update confirmed", "to", out.Version)
 		}()
 	case selfupdate.StatusRolledBack:
-		obs.EmitMsg(log, &logevent.UpdateFailed, "rolled back; restarting", "from", out.Previous, "to", out.Version, "reason", "rolled_back")
+		slogx.EmitMsg(log, &logevent.UpdateFailed, "rolled back; restarting", "from", out.Previous, "to", out.Version, "reason", "rolled_back")
 		if err := RestartSelf(exe); err != nil {
 			log.Error("restart after rollback failed, restart manually", "to", out.Previous, "err", err)
 		}

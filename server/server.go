@@ -21,10 +21,10 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/httpproxy"
@@ -459,7 +459,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		return nil
 	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
-		obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
+		slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
 		return errors.New("the port open error")
 	}
 	svr := s.newMode(t)
@@ -468,7 +468,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	}
 	if b, ok := svr.(proxy.Binder); ok {
 		if err := b.Bind(); err != nil {
-			obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 			return err
 		}
 	}
@@ -484,7 +484,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
 		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
-				obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+				slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 				s.tasks.CompareAndDelete(t.Id, svr)
 				_ = svr.Close()
 			}
@@ -694,7 +694,7 @@ func (s *Server) storeAll() {
 	}
 }
 
-var log = obs.Module("server")
+var log = slogx.Module("server")
 
 // tunnelRoute names tunnel t in route fields.
 func tunnelRoute(t *model.Tunnel) string { return t.LogRoute() }

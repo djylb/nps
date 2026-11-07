@@ -10,19 +10,19 @@ import (
 
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/gin-gonic/gin"
 )
 
-var log = obs.Module("web")
+var log = slogx.Module("web")
 
 // loginRefused writes the login_failed event of a login from ip that the
 // login source list refuses.
 func loginRefused(ip string) {
-	obs.Emit(log, &logevent.LoginFailed, "src_ip", ip, "reason", "acl")
+	slogx.Emit(log, &logevent.LoginFailed, "src_ip", ip, "reason", "acl")
 }
 
 func sessionMiddleware() gin.HandlerFunc {

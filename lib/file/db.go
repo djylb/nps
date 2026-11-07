@@ -13,12 +13,12 @@ import (
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
 )
 
-var log = obs.Module("store")
+var log = slogx.Module("store")
 
 type DbUtils struct {
 	JsonDb *JsonDb

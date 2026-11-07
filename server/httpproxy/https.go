@@ -20,10 +20,10 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/portmux/tlshello"
 )
 
@@ -105,7 +105,7 @@ func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
 		IdleTimeout:   time.Duration(cfg.CacheIdle) * time.Minute,
 		CheckInterval: check,
 		OnError: func(err *tlsconn.CertError) {
-			obs.EmitMsg(proxyLog, &logevent.CertFailed, "certificate reload failed, the previous one stays in use", "reason", "load_failed", "err", err)
+			slogx.EmitMsg(proxyLog, &logevent.CertFailed, "certificate reload failed, the previous one stays in use", "reason", "load_failed", "err", err)
 		},
 	}
 }
@@ -281,7 +281,7 @@ func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, 
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
 	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
-		obs.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
 		_ = c.Close()
 	}
 }
@@ -300,7 +300,7 @@ func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni str
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
 	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
-		obs.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
 		_ = tlsConn.Close()
 	}
 }

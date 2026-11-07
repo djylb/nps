@@ -1,4 +1,4 @@
-// Package obs is structured logging on log/slog: one line per event, fixed
+// Package slogx is structured logging on log/slog: one line per event, fixed
 // fields first (time, level, event, module), then the event's own fields,
 // then msg. It adds to slog what an application needs around it: logfmt,
 // JSON and terminal encoders; per-module levels with temporary raises;
@@ -8,7 +8,7 @@
 // library's log.
 //
 // Callers only ever hold a *slog.Logger, from Logs.Module.
-package obs
+package slogx
 
 import (
 	"context"

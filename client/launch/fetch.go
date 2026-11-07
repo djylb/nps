@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("client")
+var log = slogx.Module("client")
 
 const fetchTimeout = 15 * time.Second
 

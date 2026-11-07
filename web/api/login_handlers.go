@@ -14,8 +14,8 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -118,7 +118,7 @@ func (a *App) LoginVerify(c Context) {
 	time.Sleep(time.Millisecond * time.Duration(rand.Intn(20)))
 	reason := a.doLogin(c, username, payload.Password, totpCode)
 	if reason == "" {
-		obs.Emit(log, &logevent.LoginOK, "src_ip", ip, "user", username)
+		slogx.Emit(log, &logevent.LoginOK, "src_ip", ip, "user", username)
 		deleteSession(c, "login_nonce")
 		ajax(c, "login success", 1)
 		return
@@ -206,7 +206,7 @@ func (a *App) LogoutRedirect(c Context) {
 
 // loginFailed writes the login_failed event of a login from ip as user.
 func loginFailed(ip, user, reason string, args ...any) {
-	obs.Emit(log, &logevent.LoginFailed, append([]any{"src_ip", ip, "user", user, "reason", reason}, args...)...)
+	slogx.Emit(log, &logevent.LoginFailed, append([]any{"src_ip", ip, "user", user, "reason", reason}, args...)...)
 }
 
 // logLogout notes that the user of c logged out.

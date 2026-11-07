@@ -11,8 +11,8 @@ import (
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/server/connection"
 )
 
@@ -74,7 +74,7 @@ func (s *WebServer) Start() error {
 		_ = virtual.Close()
 		return net.ErrClosed
 	}
-	plain := &http.Server{Handler: handler, ErrorLog: obs.HTTPErrorLog(webLog, "web")}
+	plain := &http.Server{Handler: handler, ErrorLog: slogx.HTTPErrorLog(webLog, "web")}
 	s.virtual = virtual
 	s.servers = append(s.servers, plain)
 	s.mu.Unlock()
@@ -99,7 +99,7 @@ func (s *WebServer) Start() error {
 		s.tcpListener = l
 		var secure *http.Server
 		if tlsConfig != nil {
-			secure = &http.Server{Handler: handler, TLSConfig: tlsConfig, ErrorLog: obs.HTTPErrorLog(webLog, "web_tls")}
+			secure = &http.Server{Handler: handler, TLSConfig: tlsConfig, ErrorLog: slogx.HTTPErrorLog(webLog, "web_tls")}
 			s.servers = append(s.servers, secure)
 		}
 		s.mu.Unlock()
@@ -212,4 +212,4 @@ func serveHTTPListeners(targets ...httpServeTarget) error {
 	return <-errCh
 }
 
-var webLog = obs.Module("web")
+var webLog = slogx.Module("web")

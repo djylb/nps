@@ -10,7 +10,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // GlobalDenied reports whether the global access lists, the firewall in
@@ -25,7 +25,7 @@ func (s *DbUtils) GlobalDenied(addr net.Addr, what string) bool {
 	if src == nil || acl.Allows(addr, src, nil, nil) {
 		return false
 	}
-	obs.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr.String()), "route", what, "reason", "acl", "rule", acl.Decide(addr, []string{"global"}, src, nil, nil))
+	slogx.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr.String()), "route", what, "reason", "acl", "rule", acl.Decide(addr, []string{"global"}, src, nil, nil))
 	return true
 }
 
@@ -39,7 +39,7 @@ func (s *DbUtils) GlobalDeniedString(addr, what string) bool {
 	if src == nil || acl.AllowsString(addr, src, nil, nil) {
 		return false
 	}
-	obs.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr), "route", what, "reason", "acl", "rule", acl.DecideString(addr, []string{"global"}, src, nil, nil))
+	slogx.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr), "route", what, "reason", "acl", "rule", acl.DecideString(addr, []string{"global"}, src, nil, nil))
 	return true
 }
 

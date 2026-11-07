@@ -17,10 +17,10 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("bridge")
+var log = slogx.Module("bridge")
 
 // Options are the settings a bridge is built with.
 type Options struct {
@@ -251,14 +251,14 @@ func (s *Bridge) recordConnection(id int, online bool, session *Client) {
 		carrier = t
 	}
 	if online {
-		obs.Emit(log, &logevent.ClientOnline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version)
+		slogx.Emit(log, &logevent.ClientOnline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version)
 		return
 	}
 	var dur int64
 	if session != nil && !session.started.IsZero() {
 		dur = now.Sub(session.started).Milliseconds()
 	}
-	obs.Emit(log, &logevent.ClientOffline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version, "duration_ms", dur)
+	slogx.Emit(log, &logevent.ClientOffline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version, "duration_ms", dur)
 }
 
 func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {

@@ -7,13 +7,13 @@ import (
 	"sync"
 
 	"github.com/djylb/nps/lib/instancekey"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )
 
-var log = obs.Module("web")
+var log = slogx.Module("web")
 
 const sessionName = "nps_session"
 

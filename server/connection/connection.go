@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 var pMux *portMux
@@ -110,4 +110,4 @@ func Listen(k Kind) (net.Listener, error) {
 
 func validPort(port int) bool { return port > 0 && port <= 65535 }
 
-var log = obs.Module("server")
+var log = slogx.Module("server")

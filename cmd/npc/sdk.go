@@ -10,7 +10,7 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 )
 
@@ -49,12 +49,12 @@ func Version() *C.char {
 
 //export SetLogsLevel
 func SetLogsLevel(logsLevel *C.char) {
-	_ = obs.Default.SetLevel(C.GoString(logsLevel))
+	_ = slogx.Default.SetLevel(C.GoString(logsLevel))
 }
 
 //export Logs
 func Logs() *C.char {
-	return C.CString(obs.Default.TakeBuffered())
+	return C.CString(slogx.Default.TakeBuffered())
 }
 
 //export SetDnsServer

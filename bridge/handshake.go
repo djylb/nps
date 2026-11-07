@@ -18,8 +18,8 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // allowsFlag is the one rule for which workflows each kind of vkey may open.
@@ -82,10 +82,10 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			log.Debug("handshake ended", "src_ip", ip, "src_port", port, "carrier", tunnelType, "err", err)
 		} else if reason == "bad_key" {
 			// the error names the key digest, which is as good as the key
-			obs.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+			slogx.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
 				"carrier", tunnelType, "reason", reason)
 		} else {
-			obs.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+			slogx.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
 				"carrier", tunnelType, "reason", reason, "err", err)
 		}
 		_ = c.Close()

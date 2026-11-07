@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // watchReopen reopens the log files on every SIGHUP, so that an external
@@ -18,7 +18,7 @@ func watchReopen() {
 	signal.Notify(s, syscall.SIGHUP)
 	go func() {
 		for range s {
-			obs.Default.Reopen()
+			slogx.Default.Reopen()
 		}
 	}()
 }

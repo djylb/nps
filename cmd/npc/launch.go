@@ -14,7 +14,7 @@ import (
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/timeshim"
 	flag "github.com/spf13/pflag"
@@ -47,7 +47,7 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string
 			cfgLog.Warn("flag ignored because --launch is set", "flag", name)
 		}
 	}
-	obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
+	slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 	clock.Sync()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
 	for i, input := range inputs {

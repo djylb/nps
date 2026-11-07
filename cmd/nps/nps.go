@@ -23,9 +23,9 @@ import (
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/connection"
@@ -38,8 +38,8 @@ import (
 )
 
 var (
-	log    = obs.Module("server")
-	cfgLog = obs.Module("config")
+	log    = slogx.Module("server")
+	cfgLog = slogx.Module("config")
 )
 
 var (
@@ -205,7 +205,7 @@ func main() {
 		srv := prg.mustRun()
 		<-srv.Done()
 		log.Error("nps stopped", "err", srv.Close())
-		obs.Default.Close()
+		slogx.Default.Close()
 		os.Exit(1)
 	}
 
@@ -355,9 +355,9 @@ func (p *nps) run() error {
 		log.Error("nps stopped", "err", srv.Close())
 		os.Exit(1)
 	}
-	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
+	slogx.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
 	_ = srv.Close()
-	obs.Default.Flush()
+	slogx.Default.Flush()
 	close(p.stopped)
 	return nil
 }
@@ -423,7 +423,7 @@ func run() (*server.Server, error) {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
+	slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
 	server.ApplyNTP(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err

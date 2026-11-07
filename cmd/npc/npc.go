@@ -25,8 +25,8 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
@@ -34,8 +34,8 @@ import (
 )
 
 var (
-	log    = obs.Module("client")
-	cfgLog = obs.Module("config")
+	log    = slogx.Module("client")
+	cfgLog = slogx.Module("config")
 )
 
 // Config
@@ -354,8 +354,8 @@ func (p *Npc) run() error {
 	}()
 	run(p.ctx, p.cancel)
 	<-p.exit
-	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
-	obs.Default.Flush()
+	slogx.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
+	slogx.Default.Flush()
 	return nil
 }
 
@@ -369,7 +369,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	//p2p or secret command
 	if *password != "" {
-		obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
+		slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
@@ -419,7 +419,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		os.Exit(1)
 	}
 	if hasCommand {
-		obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
+		slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
@@ -456,7 +456,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
-					log.Info("connecting", "server", serverAddr, "vkey", obs.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
+					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
 						log.Info("client closed, reconnecting", "server", serverAddr)

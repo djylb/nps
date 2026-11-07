@@ -1,12 +1,12 @@
-// Package obstest records obs lines for tests to assert on.
-package obstest
+// Package slogxtest records slogx lines for tests to assert on.
+package slogxtest
 
 import (
 	"io"
 	"log/slog"
 	"sync"
 
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // Line is a recorded line.
@@ -26,22 +26,22 @@ type Recorder struct {
 
 // Route returns a route that records into r: all lines at or above min,
 // whatever the module levels.
-func (r *Recorder) Route(min slog.Level) obs.Route {
-	return obs.Route{Name: "obstest", Match: obs.MinLevel(min), Below: true, Func: r.add}
+func (r *Recorder) Route(min slog.Level) slogx.Route {
+	return slogx.Route{Name: "slogxtest", Match: slogx.MinLevel(min), Below: true, Func: r.add}
 }
 
 // New returns Logs that write nothing but to the returned Recorder, which
 // takes every line at or above trace.
-func New() (*obs.Logs, *Recorder) {
+func New() (*slogx.Logs, *Recorder) {
 	r := &Recorder{}
-	l := obs.New()
-	if err := l.Configure(obs.Config{Output: "off", Level: "off", Routes: []obs.Route{r.Route(obs.LevelTrace)}}); err != nil {
+	l := slogx.New()
+	if err := l.Configure(slogx.Config{Output: "off", Level: "off", Routes: []slogx.Route{r.Route(slogx.LevelTrace)}}); err != nil {
 		panic(err)
 	}
 	return l, r
 }
 
-func (r *Recorder) add(rec *obs.Record) {
+func (r *Recorder) add(rec *slogx.Record) {
 	ln := Line{Level: rec.Level, Module: rec.Module, Event: rec.Event, Msg: rec.Msg, Attrs: map[string]string{}}
 	for _, a := range rec.Attrs {
 		ln.Attrs[a.Key] = a.Value.String()
@@ -84,10 +84,10 @@ type TB interface {
 
 // ToTest returns Logs that write every line, logfmt, to the output of t,
 // where go test shows it with the test's own log; it closes when t ends.
-func ToTest(t TB) *obs.Logs {
-	l := obs.New()
-	route := obs.Route{Name: "test", Match: obs.MinLevel(obs.LevelTrace), Below: true, Output: obs.WriterOutput(t.Output())}
-	if err := l.Configure(obs.Config{Output: "off", Level: "off", Routes: []obs.Route{route}}); err != nil {
+func ToTest(t TB) *slogx.Logs {
+	l := slogx.New()
+	route := slogx.Route{Name: "test", Match: slogx.MinLevel(slogx.LevelTrace), Below: true, Output: slogx.WriterOutput(t.Output())}
+	if err := l.Configure(slogx.Config{Output: "off", Level: "off", Routes: []slogx.Route{route}}); err != nil {
 		panic(err)
 	}
 	t.Cleanup(l.Close)

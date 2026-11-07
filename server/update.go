@@ -6,7 +6,7 @@ import (
 
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // ServiceName is the name nps is installed as a system service under.
@@ -43,11 +43,11 @@ func (s *Server) UpdateSelf() (string, error) {
 		s.updating.Store(false)
 		return "", err
 	}
-	obs.EmitMsg(log, &logevent.UpdateApplied, "restarting", "to", u.Version)
+	slogx.EmitMsg(log, &logevent.UpdateApplied, "restarting", "to", u.Version)
 	go func() {
 		time.Sleep(restartDelay)
 		if err := u.Restart(); err != nil {
-			obs.EmitMsg(log, &logevent.UpdateFailed, "restart after update failed", "to", u.Version, "reason", logevent.NetReason(err), "err", err)
+			slogx.EmitMsg(log, &logevent.UpdateFailed, "restart after update failed", "to", u.Version, "reason", logevent.NetReason(err), "err", err)
 			s.updating.Store(false)
 		}
 	}()

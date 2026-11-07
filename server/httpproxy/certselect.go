@@ -10,7 +10,7 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // certMatch is how a certificate covers a server name.
@@ -59,7 +59,7 @@ func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate
 	if host.HasCert() {
 		cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
 		if err != nil {
-			obs.Emit(proxyLog, &logevent.CertFailed, "domain", host.Host, "reason", "load_failed", "err", err)
+			slogx.Emit(proxyLog, &logevent.CertFailed, "domain", host.Host, "reason", "load_failed", "err", err)
 		} else if certCovers(cert, sni) != matchNone {
 			return cert, nil
 		}
@@ -103,7 +103,7 @@ func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
 	}
 	cert, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
 	if err != nil {
-		obs.EmitMsg(proxyLog, &logevent.CertFailed, "default certificate load failed", "domain", sni, "reason", "load_failed", "err", err)
+		slogx.EmitMsg(proxyLog, &logevent.CertFailed, "default certificate load failed", "domain", sni, "reason", "load_failed", "err", err)
 		return nil
 	}
 	if certCovers(cert, sni) == matchNone {

@@ -1,4 +1,4 @@
-package obstest
+package slogx
 
 import (
 	"testing"

@@ -27,7 +27,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/timeshim"
 	"github.com/quic-go/quic-go"
@@ -212,9 +212,9 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	}
 	_ = c.Close()
 	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
-		log.Info("web access login", "user", "user", "password", obs.Redacted(vkey))
+		log.Info("web access login", "user", "user", "password", slogx.Redacted(vkey))
 	} else {
-		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", obs.Redacted(cnf.CommonConfig.Client.WebPassword))
+		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", slogx.Redacted(cnf.CommonConfig.Client.WebPassword))
 	}
 
 	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)

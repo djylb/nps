@@ -16,13 +16,13 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/upstream"
 )
 
-var log = obs.Module("store")
+var log = slogx.Module("store")
 
 // ACLMode: 0=off, 1=whitelist(deny-by-default), 2=blacklist(allow-by-default)
 const (

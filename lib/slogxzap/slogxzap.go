@@ -1,7 +1,7 @@
-// Package obszap gives libraries that log with zap (certmagic, acmez) a
+// Package slogxzap gives libraries that log with zap (certmagic, acmez) a
 // *zap.Logger whose lines go to a *slog.Logger. Their lines below Min are
 // written at debug.
-package obszap
+package slogxzap
 
 import (
 	"context"

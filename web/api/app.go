@@ -6,13 +6,13 @@ import (
 
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/nps/lib/slogx"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 )
 
-var log = obs.Module("web")
+var log = slogx.Module("web")
 
 type RequestMetadata struct {
 	NodeID    string `json:"node_id,omitempty"`

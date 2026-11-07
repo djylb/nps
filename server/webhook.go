@@ -8,7 +8,7 @@ import (
 
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 
 	"github.com/djylb/nps/lib/event"
 	"github.com/djylb/nps/lib/servercfg"
@@ -63,7 +63,7 @@ func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
 		return
 	}
 	if w.bus != nil {
-		obs.Default.SetSink(nil)
+		slogx.Default.SetSink(nil)
 		s.db.SetEventBus(nil)
 		close(w.stop)
 		<-w.done
@@ -86,7 +86,7 @@ func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
 		Retries: cfg.Retries,
 	}, w.bus.Subscribe(cfg.QueueSize))
 	s.db.SetEventBus(w.bus)
-	obs.Default.SetSink(busSink(w.bus))
+	slogx.Default.SetSink(busSink(w.bus))
 	w.stop, w.done = make(chan struct{}), make(chan struct{})
 	go s.reportTunnels(w.bus, time.Duration(cfg.ReportInterval)*time.Second, w.stop, w.done)
 }
@@ -139,8 +139,8 @@ func (s *Server) BuildTunnelsReport() TunnelsReport {
 
 // busSink publishes the bus events of the log (logevent, Bus) to bus, their
 // fields as the data.
-func busSink(bus *event.Bus) obs.Sink {
-	return func(d *obs.Def, attrs []slog.Attr) {
+func busSink(bus *event.Bus) slogx.Sink {
+	return func(d *slogx.Def, attrs []slog.Attr) {
 		data := make(map[string]any, len(attrs))
 		for _, a := range attrs {
 			data[a.Key] = a.Value.Any()

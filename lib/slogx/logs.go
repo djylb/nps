@@ -1,4 +1,4 @@
-package obs
+package slogx
 
 import (
 	"context"
@@ -193,7 +193,7 @@ func (l *Logs) Configure(c Config) error {
 	l.mu.Unlock()
 	closeAll(old.closers)
 	for _, f := range fallback {
-		Emit(l.Module("obs"), &LogFallback, "reason", f)
+		Emit(l.Module("slogx"), &LogFallback, "reason", f)
 	}
 	return nil
 }

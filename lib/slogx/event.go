@@ -1,4 +1,4 @@
-package obs
+package slogx
 
 import (
 	"context"
@@ -52,7 +52,7 @@ func Register(defs ...*Def) {
 	defer registryMu.Unlock()
 	for _, d := range defs {
 		if old, ok := registry[d.Name]; ok && old != d && (old.Security != d.Security || old.Bus != d.Bus) {
-			panic("obs: event " + d.Name + " defined twice")
+			panic("slogx: event " + d.Name + " defined twice")
 		}
 		registry[d.Name] = d
 	}

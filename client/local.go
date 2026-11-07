@@ -19,8 +19,8 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // ------------------------------
@@ -148,7 +148,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 		if t != nil {
 			c, err := t.openLink(b.mgr.ctx, *link)
 			if err == nil {
-				p2pLog.Log(context.Background(), obs.LevelTrace, "using direct path", "target", link.Host)
+				p2pLog.Log(context.Background(), slogx.LevelTrace, "using direct path", "target", link.Host)
 				return c, nil
 			}
 			b.peer.suspect(t, err)
@@ -156,7 +156,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 				return nil, fmt.Errorf("P2P direct path: %w", err)
 			}
 			directErr = err
-			obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
+			slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
 		}
 	}
 	c, err := b.sendViaSecret(*link)

@@ -21,7 +21,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 const (
@@ -37,14 +37,14 @@ var (
 	// src_port, role (client, visitor, p2p), identity (when known), reason
 	// (bad_key, unknown_key, disabled, malformed, timeout, garbage,
 	// version).
-	AuthFailed = obs.Def{Name: "auth_failed", Level: warn, Security: true, Bus: true, Limit: "src_ip"}
+	AuthFailed = slogx.Def{Name: "auth_failed", Level: warn, Security: true, Bus: true, Limit: "src_ip"}
 	// LoginFailed / LoginOK: web manager login. Fields: src_ip, user,
 	// reason (bad_password, bad_captcha, bad_totp, banned, disabled).
-	LoginFailed = obs.Def{Name: "login_failed", Level: warn, Security: true, Bus: true}
-	LoginOK     = obs.Def{Name: "login_ok", Level: info, Bus: true}
+	LoginFailed = slogx.Def{Name: "login_failed", Level: warn, Security: true, Bus: true}
+	LoginOK     = slogx.Def{Name: "login_ok", Level: info, Bus: true}
 	// BanAdded / BanRemoved: src_ip, scope (login, auth), until.
-	BanAdded   = obs.Def{Name: "ban_added", Level: warn, Security: true, Bus: true}
-	BanRemoved = obs.Def{Name: "ban_removed", Level: info, Bus: true}
+	BanAdded   = slogx.Def{Name: "ban_added", Level: warn, Security: true, Bus: true}
+	BanRemoved = slogx.Def{Name: "ban_removed", Level: info, Bus: true}
 )
 
 // Clients and sessions.
@@ -53,95 +53,95 @@ var (
 	// (tcp, tls, kcp, quic, ws, wss), version; offline adds duration_ms.
 	// The store publishes these to the bus with the client itself, so the
 	// log lines do not go there too.
-	ClientOnline  = obs.Def{Name: "client_online", Level: info}
-	ClientOffline = obs.Def{Name: "client_offline", Level: info}
+	ClientOnline  = slogx.Def{Name: "client_online", Level: info}
+	ClientOffline = slogx.Def{Name: "client_offline", Level: info}
 	// SessionTakeover: the same client connected again; identity, src_ip.
-	SessionTakeover = obs.Def{Name: "session_takeover", Level: warn}
+	SessionTakeover = slogx.Def{Name: "session_takeover", Level: warn}
 	// LimitExceeded: identity, route, kind (flow, conn, rate, expire).
-	LimitExceeded = obs.Def{Name: "limit_exceeded", Level: warn, Bus: true, Limit: "identity"}
+	LimitExceeded = slogx.Def{Name: "limit_exceeded", Level: warn, Bus: true, Limit: "identity"}
 )
 
 // Traffic and policy.
 var (
 	// TunnelDenied: a visitor was refused; src_ip, route, reason (acl,
 	// ip_limit, black_ip, conn_limit, client_offline, auth).
-	TunnelDenied = obs.Def{Name: "tunnel_denied", Level: info, Limit: "src_ip"}
+	TunnelDenied = slogx.Def{Name: "tunnel_denied", Level: info, Limit: "src_ip"}
 	// RelayFailed: dialing or relaying a target failed; route, target,
 	// reason.
-	RelayFailed = obs.Def{Name: "relay_failed", Level: info, Limit: "target"}
+	RelayFailed = slogx.Def{Name: "relay_failed", Level: info, Limit: "target"}
 	// HTTPAccess: a request through the domain proxy; route, src_ip,
 	// method, host, path, status, bytes, dur_ms.
-	HTTPAccess = obs.Def{Name: "http_access", Level: debug}
+	HTTPAccess = slogx.Def{Name: "http_access", Level: debug}
 )
 
 // Entries: tunnels and domain entries, as the store reports them. The bus
 // carries the entry itself.
 var (
-	TunnelCreated = obs.Def{Name: "tunnel_created", Level: info}
-	TunnelUpdated = obs.Def{Name: "tunnel_updated", Level: info}
-	TunnelStarted = obs.Def{Name: "tunnel_started", Level: info}
-	TunnelStopped = obs.Def{Name: "tunnel_stopped", Level: info}
-	TunnelDeleted = obs.Def{Name: "tunnel_deleted", Level: info}
-	HostCreated   = obs.Def{Name: "host_created", Level: info}
-	HostUpdated   = obs.Def{Name: "host_updated", Level: info}
-	HostStarted   = obs.Def{Name: "host_started", Level: info}
-	HostStopped   = obs.Def{Name: "host_stopped", Level: info}
-	HostDeleted   = obs.Def{Name: "host_deleted", Level: info}
+	TunnelCreated = slogx.Def{Name: "tunnel_created", Level: info}
+	TunnelUpdated = slogx.Def{Name: "tunnel_updated", Level: info}
+	TunnelStarted = slogx.Def{Name: "tunnel_started", Level: info}
+	TunnelStopped = slogx.Def{Name: "tunnel_stopped", Level: info}
+	TunnelDeleted = slogx.Def{Name: "tunnel_deleted", Level: info}
+	HostCreated   = slogx.Def{Name: "host_created", Level: info}
+	HostUpdated   = slogx.Def{Name: "host_updated", Level: info}
+	HostStarted   = slogx.Def{Name: "host_started", Level: info}
+	HostStopped   = slogx.Def{Name: "host_stopped", Level: info}
+	HostDeleted   = slogx.Def{Name: "host_deleted", Level: info}
 	// TunnelsReport is the periodic full report, bus only.
-	TunnelsReport = obs.Def{Name: "tunnels_report", Level: debug}
+	TunnelsReport = slogx.Def{Name: "tunnels_report", Level: debug}
 	// ListenFailed: a tunnel or service port could not be opened; route,
 	// addr, reason.
-	ListenFailed = obs.Def{Name: "listen_failed", Level: errl, Bus: true}
+	ListenFailed = slogx.Def{Name: "listen_failed", Level: errl, Bus: true}
 )
 
 // Process and configuration.
 var (
 	// Started / Stopping: version, role (nps, npc).
-	Started  = obs.Def{Name: "started", Level: info}
-	Stopping = obs.Def{Name: "stopping", Level: info}
+	Started  = slogx.Def{Name: "started", Level: info}
+	Stopping = slogx.Def{Name: "stopping", Level: info}
 	// ConfigApplied / ConfigFailed: keys (changed), reason.
-	ConfigApplied = obs.Def{Name: "config_applied", Level: info, Bus: true}
-	ConfigFailed  = obs.Def{Name: "config_failed", Level: warn, Bus: true}
+	ConfigApplied = slogx.Def{Name: "config_applied", Level: info, Bus: true}
+	ConfigFailed  = slogx.Def{Name: "config_failed", Level: warn, Bus: true}
 	// UpdateAvailable / UpdateApplied / UpdateFailed: from, to, reason.
-	UpdateAvailable = obs.Def{Name: "update_available", Level: info, Bus: true}
-	UpdateApplied   = obs.Def{Name: "update_applied", Level: info, Bus: true}
-	UpdateFailed    = obs.Def{Name: "update_failed", Level: warn, Bus: true}
+	UpdateAvailable = slogx.Def{Name: "update_available", Level: info, Bus: true}
+	UpdateApplied   = slogx.Def{Name: "update_applied", Level: info, Bus: true}
+	UpdateFailed    = slogx.Def{Name: "update_failed", Level: warn, Bus: true}
 	// SourceUpdated / SourceFailed: external data such as geo files; source,
 	// reason.
-	SourceUpdated = obs.Def{Name: "source_updated", Level: info}
-	SourceFailed  = obs.Def{Name: "source_failed", Level: warn}
+	SourceUpdated = slogx.Def{Name: "source_updated", Level: info}
+	SourceFailed  = slogx.Def{Name: "source_failed", Level: warn}
 )
 
 // Certificates.
 var (
 	// CertIssued: domain, issuer, renewal (0 or 1), expires, remaining_s.
-	CertIssued = obs.Def{Name: "cert_issued", Level: info, Bus: true}
+	CertIssued = slogx.Def{Name: "cert_issued", Level: info, Bus: true}
 	// CertFailed: domain, renewal, remaining_s, reason (issue_failed,
 	// challenge_failed, rate_limited, dns_failed, account_failed,
 	// load_failed, expired, file_removed), msg. Use CertFailedUrgent when
 	// fewer than 7 days remain.
-	CertFailed       = obs.Def{Name: "cert_failed", Level: warn, Bus: true, Limit: "domain"}
-	CertFailedUrgent = obs.Def{Name: "cert_failed", Level: errl, Bus: true, Limit: "domain"}
+	CertFailed       = slogx.Def{Name: "cert_failed", Level: warn, Bus: true, Limit: "domain"}
+	CertFailedUrgent = slogx.Def{Name: "cert_failed", Level: errl, Bus: true, Limit: "domain"}
 	// CertRevoked: domain, reason, revoked_at.
-	CertRevoked = obs.Def{Name: "cert_revoked", Level: warn, Bus: true}
+	CertRevoked = slogx.Def{Name: "cert_revoked", Level: warn, Bus: true}
 )
 
 // npc.
 var (
 	// Connected / ConnectFailed / Disconnected: server, carrier, reason;
 	// disconnected adds dur_ms.
-	Connected     = obs.Def{Name: "connected", Level: info}
-	Disconnected  = obs.Def{Name: "disconnected", Level: warn}
-	ConnectFailed = obs.Def{Name: "connect_failed", Level: warn, Limit: "server"}
+	Connected     = slogx.Def{Name: "connected", Level: info}
+	Disconnected  = slogx.Def{Name: "disconnected", Level: warn}
+	ConnectFailed = slogx.Def{Name: "connect_failed", Level: warn, Limit: "server"}
 	// P2PConnected / P2PFailed / P2PPathChanged: peer, path (direct, relay),
 	// reason, rtt_ms.
-	P2PConnected   = obs.Def{Name: "p2p_connected", Level: info, Bus: true}
-	P2PFailed      = obs.Def{Name: "p2p_failed", Level: info, Bus: true}
-	P2PPathChanged = obs.Def{Name: "p2p_path_changed", Level: debug}
+	P2PConnected   = slogx.Def{Name: "p2p_connected", Level: info, Bus: true}
+	P2PFailed      = slogx.Def{Name: "p2p_failed", Level: info, Bus: true}
+	P2PPathChanged = slogx.Def{Name: "p2p_path_changed", Level: debug}
 )
 
 // All is every event of the table.
-var All = []*obs.Def{
+var All = []*slogx.Def{
 	&AuthFailed, &LoginFailed, &LoginOK, &BanAdded, &BanRemoved,
 	&ClientOnline, &ClientOffline, &SessionTakeover, &LimitExceeded,
 	&TunnelDenied, &RelayFailed, &HTTPAccess,
@@ -152,10 +152,10 @@ var All = []*obs.Def{
 	&UpdateAvailable, &UpdateApplied, &UpdateFailed, &SourceUpdated, &SourceFailed,
 	&CertIssued, &CertFailed, &CertRevoked,
 	&Connected, &ConnectFailed, &Disconnected, &P2PConnected, &P2PFailed, &P2PPathChanged,
-	&obs.LogFallback, &obs.TLSHandshakeFailed,
+	&slogx.LogFallback, &slogx.TLSHandshakeFailed,
 }
 
-func init() { obs.Register(All...) }
+func init() { slogx.Register(All...) }
 
 // NetReason maps a dial or relay error to the short reason words of
 // relay_failed and limit_exceeded: eof, timeout, refused, reset, closed,

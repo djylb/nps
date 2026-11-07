@@ -106,7 +106,7 @@ func TestStoreHasNoPackageState(t *testing.T) {
 }
 
 // isModuleLogger reports whether g is the package's module logger,
-// var log = obs.Module(...), which holds no store state.
+// var log = slogx.Module(...), which holds no store state.
 func isModuleLogger(g *ast.GenDecl) bool {
 	if len(g.Specs) != 1 {
 		return false
@@ -124,5 +124,5 @@ func isModuleLogger(g *ast.GenDecl) bool {
 		return false
 	}
 	pkg, ok := sel.X.(*ast.Ident)
-	return ok && pkg.Name == "obs"
+	return ok && pkg.Name == "slogx"
 }

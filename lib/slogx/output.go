@@ -1,4 +1,4 @@
-package obs
+package slogx
 
 import (
 	"io"
@@ -8,7 +8,7 @@ import (
 )
 
 // Output receives encoded lines, one per Write. Write must be safe for
-// concurrent use; obs never writes the same Output from two goroutines
+// concurrent use; slogx never writes the same Output from two goroutines
 // without its own lock, but outputs shared between routes are called from
 // any goroutine.
 type Output interface {

@@ -13,10 +13,10 @@ import (
 	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/internal/tunnelwire/mux"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("bridge")
+var log = slogx.Module("bridge")
 
 type muxLogger struct{}
 

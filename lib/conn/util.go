@@ -12,11 +12,11 @@ import (
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("conn")
+var log = slogx.Module("conn")
 
 // GetConn returns LinkConn of conn limited and counted by rt and entry, as
 // rate.NewRateConn does.

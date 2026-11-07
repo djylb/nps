@@ -1,10 +1,10 @@
-# obs 设计（准备拆成独立库）
+# slogx 设计（准备拆成独立库）
 
-obs 是 `log/slog` 之上的一层：提供 handler、路由、事件与运维能力。它不另起一套日志 API，调用方只需要 `*slog.Logger`。目标是做成通用库：nps 0.35、新版 nps 和其他项目都直接用它，库里不出现任何项目名，只依赖标准库。
+slogx 是 `log/slog` 之上的一层：提供 handler、路由、事件与运维能力。它不另起一套日志 API，调用方只需要 `*slog.Logger`。目标是做成通用库：nps 0.35、新版 nps 和其他项目都直接用它，库里不出现任何项目名，只依赖标准库。
 
 ## 取舍：从 zap 和 zerolog 借鉴什么
 
-| 能力 | zap | zerolog | obs 的做法 |
+| 能力 | zap | zerolog | slogx 的做法 |
 | --- | --- | --- | --- |
 | 调用 API | 自有 Field | 链式调用 | **用 slog**：标准接口，第三方库（holepunch 等）可直接接收 |
 | 级别未开启时零开销 | Check 后再写 | 链式提前返回 | `Enabled` 先判断；`LogValuer` 延迟求值；编码缓冲复用 |
@@ -17,7 +17,7 @@ obs 是 `log/slog` 之上的一层：提供 handler、路由、事件与运维�
 | 缓冲与异步 | BufferedWriteSyncer | diode 无锁写入 | **可选异步输出**：有界队列，满了就丢弃并计数，不阻塞业务；`Flush` 和 `Close` 保证落盘 |
 | 写失败处理 | ErrorOutput | ErrorHandler | 写失败降级到 stderr，并发出 `log_fallback` |
 | 上下文传递 | — | `Ctx(ctx)` | 从 `context` 中提取关联字段（会话 ID、请求 ID、trace），通过 `ContextAttrs` 注入 |
-| 测试 | zaptest/observer | — | `obstest.Recorder`：在内存里记录结构化记录，可按事件或字段断言 |
+| 测试 | zaptest/observer | — | `slogxtest.Recorder`：在内存里记录结构化记录，可按事件或字段断言 |
 | 脱敏 | — | — | `Redacted` 类型，另可按字段名配置屏蔽表 |
 | 网页查看 | — | — | `Memory`：保存最近 N 条结构化记录，支持查询（级别、模块、事件、时间、关键字、按序号增量拉取）和订阅（订阅端慢则丢弃并计数），网页通过 SSE 或 WebSocket 接入 |
 | 固定事件 | — | — | `Def`：名字、级别、是否安全事件、是否进总线、限频规则；**一个定义同时供日志和总线使用** |
@@ -46,17 +46,17 @@ Logger(slog) ──► handler ──► Record（已展平，带 *Def）
 ## 对外接口（草案）
 
 ```go
-logs := obs.New(obs.Config{...})          // 或 obs.Default
+logs := slogx.New(slogx.Config{...})          // 或 slogx.Default
 l := logs.Module("bridge")                // *slog.Logger
-obs.Emit(l, &AuthFailed, "src_ip", ip)    // 固定事件
+slogx.Emit(l, &AuthFailed, "src_ip", ip)    // 固定事件
 logs.Configure(cfg)                       // 热替换
 logs.Levels().Set("info,p2p=debug")
 logs.Levels().Raise("p2p", slog.LevelDebug, 10*time.Minute)
 logs.Handler()                            // 交给 slog.SetDefault 或第三方库
 logs.Flush(); logs.Close()
-obs.HTTPErrorLog(l, "web")                // net/http
-obs.CaptureStdLog(l)
-obstest.NewRecorder()                     // 测试
+slogx.HTTPErrorLog(l, "web")                // net/http
+slogx.CaptureStdLog(l)
+slogxtest.NewRecorder()                     // 测试
 ```
 
 Config 可以用代码构建，也可以从一份简单的配置（JSON 或键值）解析，nps.conf 和新版 JSON 配置都能直接映射过来。
@@ -72,7 +72,7 @@ Config 可以用代码构建，也可以从一份简单的配置（JSON 或键�
 
 ## 实现状态（2026-11-08）
 
-已实现：`Record` 携带 `*Def`、三种编码器、`Output`/`Rotating`/`Async`/`WriterOutput`、`Route` 与 `Match`、`Levels`（`Set`/`Raise`/`Lower`/`ServeHTTP`）、限频与采样、`AddSource`、`StackFrom`、`Context`、`Memory`（查询与订阅）、`obstest.Recorder`、`HTTPErrorLog`、`CaptureStdLog`。
+已实现：`Record` 携带 `*Def`、三种编码器、`Output`/`Rotating`/`Async`/`WriterOutput`、`Route` 与 `Match`、`Levels`（`Set`/`Raise`/`Lower`/`ServeHTTP`）、限频与采样、`AddSource`、`StackFrom`、`Context`、`Memory`（查询与订阅）、`slogxtest.Recorder`、`HTTPErrorLog`、`CaptureStdLog`。
 
 ## 与 nps 的边界
 

@@ -16,10 +16,10 @@ import (
 
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
-var log = obs.Module("crypt")
+var log = slogx.Module("crypt")
 
 var (
 	SkipVerify = false

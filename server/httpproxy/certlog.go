@@ -8,17 +8,17 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/obs"
-	"github.com/djylb/nps/lib/obszap"
+	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/nps/lib/slogxzap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var acmeLog = obs.Module("acme")
+var acmeLog = slogx.Module("acme")
 
 // acmeZap is the zap logger of certmagic and acmez: their warnings and
 // errors are plain lines of module acme, the rest debug.
-func acmeZap() *zap.Logger { return obszap.New(acmeLog, zapcore.WarnLevel) }
+func acmeZap() *zap.Logger { return slogxzap.New(acmeLog, zapcore.WarnLevel) }
 
 // certEvent maps certmagic's events to cert_* events; it never stops an
 // operation.
@@ -33,7 +33,7 @@ func certEvent(_ context.Context, name string, data map[string]any) error {
 	switch name {
 	case "cert_obtained":
 		issuer, _ := data["issuer"].(string)
-		obs.Emit(acmeLog, &logevent.CertIssued, "domain", domain, "issuer", issuer, "renewal", r)
+		slogx.Emit(acmeLog, &logevent.CertIssued, "domain", domain, "issuer", issuer, "renewal", r)
 	case "cert_failed":
 		d := &logevent.CertFailed
 		if hasRemaining && remaining < 7*24*time.Hour {
@@ -52,13 +52,13 @@ func certEvent(_ context.Context, name string, data map[string]any) error {
 		if hasRemaining {
 			args = append(args, "remaining_s", int64(remaining.Seconds()))
 		}
-		obs.EmitMsg(acmeLog, d, msg, args...)
+		slogx.EmitMsg(acmeLog, d, msg, args...)
 	case "cert_ocsp_revoked":
 		var subjects []string
 		if s, ok := data["subjects"].([]string); ok {
 			subjects = s
 		}
-		obs.Emit(acmeLog, &logevent.CertRevoked, "domain", strings.Join(subjects, ","), "reason", "ocsp")
+		slogx.Emit(acmeLog, &logevent.CertRevoked, "domain", strings.Join(subjects, ","), "reason", "ocsp")
 	case "cert_obtaining":
 		acmeLog.Debug("obtaining certificate", "domain", domain, "renewal", r)
 	}
@@ -84,7 +84,7 @@ func acmeReason(msg string) string {
 	return "issue_failed"
 }
 
-var proxyLog = obs.Module("httpproxy")
+var proxyLog = slogx.Module("httpproxy")
 
 // srcIP is the IP of a remote address, without the port.
 func srcIP(addr string) string { return netaddr.Host(addr) }
@@ -98,10 +98,10 @@ func emitLimit(host *model.Host, err error) {
 	} else if traffic {
 		kind = "flow"
 	}
-	obs.Emit(proxyLog, &logevent.LimitExceeded, "identity", host.Client.Id, "route", host.Host, "kind", kind, "reason", logevent.NetReason(err), "err", err)
+	slogx.Emit(proxyLog, &logevent.LimitExceeded, "identity", host.Client.Id, "route", host.Host, "kind", kind, "reason", logevent.NetReason(err), "err", err)
 }
 
 // emitAuthDenied reports a request to host without valid credentials.
 func emitAuthDenied(host *model.Host, remote string) {
-	obs.Emit(proxyLog, &logevent.TunnelDenied, "src_ip", srcIP(remote), "route", host.Host, "reason", "auth")
+	slogx.Emit(proxyLog, &logevent.TunnelDenied, "src_ip", srcIP(remote), "route", host.Host, "reason", "auth")
 }

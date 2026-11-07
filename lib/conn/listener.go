@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
 )
@@ -63,7 +63,7 @@ func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
 	stream, err := sess.AcceptStream(ctx)
 	cancel()
 	if err != nil {
-		log.Log(context.Background(), obs.LevelTrace, "quic stream not accepted", "err", err)
+		log.Log(context.Background(), slogx.LevelTrace, "quic stream not accepted", "err", err)
 		_ = sess.CloseWithError(0, "closed")
 		return
 	}

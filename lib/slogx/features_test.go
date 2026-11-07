@@ -1,4 +1,4 @@
-package obs
+package slogx
 
 import (
 	"bytes"
@@ -193,7 +193,7 @@ func TestSourceAndContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), key{}, "r42")
 	l.Module("web").InfoContext(ctx, "handled")
 	got := o.all()
-	if !strings.Contains(got, "req=r42 msg=handled source=obs/features_test.go:") {
+	if !strings.Contains(got, "req=r42 msg=handled source=slogx/features_test.go:") {
 		t.Fatalf("got %q", got)
 	}
 }

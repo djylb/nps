@@ -8,7 +8,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/obs"
+	"github.com/djylb/nps/lib/slogx"
 )
 
 // serveP2P answers an invitation as the provider: it joins the session on a
@@ -18,12 +18,12 @@ import (
 func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	stream, err := tunnel.OpenStream(s.ctx)
 	if err != nil {
-		obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "open_stream", "err", err)
+		slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "open_stream", "err", err)
 		return
 	}
 	join := legacy.P2PJoin{SessionID: invite.SessionID, Token: invite.Token, ServerIP: s.server.ip}
 	if DisableP2P {
-		obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "disabled")
+		slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "disabled")
 		join.Decline = "P2P is disabled on the provider"
 		c := conn.NewConn(stream)
 		if err := SendType(c, legacy.WorkP2PSession, s.uuid); err == nil {
@@ -35,7 +35,7 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	}
 	tc, _, err := openP2PControl(s.ctx, conn.NewConn(stream), legacy.WorkP2PSession, s.uuid, s.server.fingerprint, join)
 	if err != nil {
-		obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "join_failed", "err", err)
+		slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "join_failed", "err", err)
 		return
 	}
 	// The provider accepts a background session whenever the server offers
@@ -45,9 +45,9 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	if err != nil {
 		var herr *holepunch.Error
 		if errors.As(err, &herr) {
-			obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err, "nat", p2pNATSummary(herr.Diagnostics))
+			slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err, "nat", p2pNATSummary(herr.Diagnostics))
 		} else {
-			obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err)
+			slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err)
 		}
 		return
 	}
@@ -55,12 +55,12 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	p2pLog.Debug("punched", "peer", "provider", "session", invite.SessionID, "nat", p2pNATSummary(&diag))
 	pc, err := acceptP2PTransport(s.ctx, sess)
 	if err != nil {
-		obs.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "visitor_not_connected", "err", err)
+		slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "visitor_not_connected", "err", err)
 		return
 	}
 	defer func() { _ = pc.Close() }()
 	qc := pc.QUIC()
-	obs.Emit(p2pLog, &logevent.P2PConnected, "peer", "provider", "session", invite.SessionID, "path", "direct", "addr", qc.RemoteAddr().String())
+	slogx.Emit(p2pLog, &logevent.P2PConnected, "peer", "provider", "session", invite.SessionID, "path", "direct", "addr", qc.RemoteAddr().String())
 	for {
 		st, err := qc.AcceptStream(s.ctx)
 		if err != nil {

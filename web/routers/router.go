@@ -9,8 +9,8 @@ import (
 
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/slogx"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -37,7 +37,7 @@ func Init(db *file.DbUtils, identity *crypt.Identity, runtime webservice.Runtime
 	engine.RedirectTrailingSlash = false
 	engine.RedirectFixedPath = false
 	engine.HandleMethodNotAllowed = false
-	engine.Use(gin.RecoveryWithWriter(obs.StdLogger(obs.Module("web"), slog.LevelError).Writer()))
+	engine.Use(gin.RecoveryWithWriter(slogx.StdLogger(slogx.Module("web"), slog.LevelError).Writer()))
 	engine.Use(globalFirewallMiddleware(state))
 	engine.NoRoute(unknownRouteHandler(cfg.Web.CloseOnNotFound))
 	engine.NoMethod(unknownRouteHandler(cfg.Web.CloseOnNotFound))
