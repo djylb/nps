@@ -86,8 +86,7 @@ web_password=web-pass
 rate_limit=1024
 flow_limit=2048
 max_conn=12
-disconnect_timeout=30
-tls_enable=true`
+disconnect_timeout=30`
 
 	c := dealCommon(s)
 	if c.Server != "127.0.0.1:8284" || c.Tp != "kcp" || c.VKey != "123" {
@@ -108,17 +107,17 @@ tls_enable=true`
 	if c.Client.RateLimit != 1024 || c.Client.Flow.FlowLimit != 2048 || c.Client.MaxConn != 12 {
 		t.Fatalf("limit fields parse failed: %+v", c.Client)
 	}
-	if c.DisconnectTime != 30 || !c.TlsEnable {
-		t.Fatalf("disconnect or tls parse failed: %+v", c)
+	if c.DisconnectTime != 30 {
+		t.Fatalf("disconnect parse failed: %+v", c)
 	}
 }
 
 func TestDealCommon_BoolCase(t *testing.T) {
-	c := dealCommon("vkey=abc\ntls_enable=True\ncompress=TRUE\nauto_reconnection=nope")
-	if !c.TlsEnable || !c.Client.Cnf.Compress {
-		t.Fatalf("True/TRUE not read as true: tls=%v compress=%v", c.TlsEnable, c.Client.Cnf.Compress)
+	c := dealCommon("vkey=abc\nauto_reconnection=True\ncompress=TRUE\ndisconnect_timeout=5")
+	if !c.AutoReconnection || !c.Client.Cnf.Compress {
+		t.Fatalf("True/TRUE not read as true: auto_reconnection=%v compress=%v", c.AutoReconnection, c.Client.Cnf.Compress)
 	}
-	if c.AutoReconnection {
+	if d := dealCommon("vkey=abc\nauto_reconnection=nope"); d.AutoReconnection {
 		t.Fatal("an invalid boolean must read as false")
 	}
 }

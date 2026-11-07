@@ -162,9 +162,9 @@ func goldenDb(t *testing.T) *file.DbUtils {
 func recordHandshake(t *testing.T, db *file.DbUtils, cert tls.Certificate, index int, seed uint64) handshakeVector {
 	t.Helper()
 	cryptotest.SetGlobalRandom(t, seed)
-	oldVer := Ver
-	Ver = index
-	t.Cleanup(func() { Ver = oldVer })
+	oldVer := protocolIndex
+	protocolIndex = index
+	t.Cleanup(func() { protocolIndex = oldVer })
 
 	cs, ss := net.Pipe()
 	defer func() { _ = cs.Close() }()

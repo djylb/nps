@@ -138,6 +138,4 @@ npc update-force
 > `npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`  
 > 这里 `xxx:123` 使用 tcp, `yyy:456` 和 `zzz:789` 使用tls
 
-> 如需连接旧版本服务器请添加 `-proto_version=0`
-
 ---

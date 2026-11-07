@@ -33,9 +33,7 @@
 | `-auto_reconnect` | 断线自动重连 | `true` |
 | `-disconnect_timeout` | 连接超时（秒） | `30` |
 | `-keepalive` | 保活周期（秒），`0` 用默认 | `0` |
-| `-proto_version` | 协议版本 `0-8`，见[兼容范围](/getting-started/versioning.md) | `8` |
 | `-skip_verify` | 跳过服务器证书校验 | `false` |
-| `-tls_enable` | 已弃用，等同 `-type=tls` | `false` |
 | `-debug` | 调试模式：日志输出到控制台，级别 `trace` | `true` |
 | `-log` | `stdout`、`file`、`both`、`off`；`-debug` 开启时 `file` 改为 `stdout` | `file` |
 | `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |

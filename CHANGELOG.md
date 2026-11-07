@@ -9,6 +9,8 @@
 
 ### v0.35.0
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
+- **不兼容**：npc 移除 `-proto_version`（不再能连接旧版服务端，请先更新服务端）和 `-tls_enable`（改用 `-type=tls`）；npc.conf 的 `tls_enable` 不再生效（改用 `conn_type=tls`，读到时告警）。服务启动参数里带这两个参数的，更新后需去掉，否则 npc 无法启动
+- 健康检查不再兼容旧版 npc：旧版自配检查的报告会被忽略
 - npc 新增 `--launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
 - 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错
 - 新增 `visitor_vkey`：只能访问 secret/P2P 隧道，设置后网页上的访问命令使用此密钥
@@ -16,7 +18,7 @@
 - 新增 `login_acl_mode`、`login_acl_rules` 限制登录和注册的来源
 - 重载配置时提示需要重启才生效的变更
 - HTTP/3 关闭时等待 QUIC 连接处理结束
-- 移除 `nps reload` 命令，改为向 nps 进程发送 `SIGUSR1` 重载（`kill -USR1` 或服务管理器），Windows 需重启；重载时应用日志级别、NTP 和 Web 管理界面设置，其余变更提示需要重启
+- 移除 `nps reload` 命令，改为发送 `SIGUSR1`（`kill -USR1` 或服务管理器）或在网页全局参数页、`POST /api/v1/global/reload` 重载，Windows 也可用；重载结果列出已生效和需要重启的配置键，哪些配置热生效见运维文档
 - 修复运行时 `SetLevel` 不影响证书等组件日志级别
 - 带 PROXY 头的域名后端连接不再复用，避免后续访问者地址错误；是否复用按每个请求选中的实例判断。未带 PROXY 头的实例之间，复用的连接仍留在原实例上
 - HTTP/HTTPS/HTTP3 监听失败时不再退出整个 nps：记录错误并停止这组监听中已启动的部分，其他功能继续运行

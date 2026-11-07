@@ -4,7 +4,7 @@
 
 ## [common]
 
-`server_addr`、`conn_type`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`、`tls_enable`。
+`server_addr`、`conn_type`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
 
 ## 域名段
 

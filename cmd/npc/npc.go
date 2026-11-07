@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	goflag "flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -60,7 +59,6 @@ var (
 	logColor       = flag.Bool("log_color", true, "Enable ANSI color codes in console output (true or false)")
 	debug          = flag.Bool("debug", true, "Enable debug mode")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
-	protoVer       = flag.Int("proto_version", legacy.LatestIndex, fmt.Sprintf("Protocol version (0-%d)", legacy.LatestIndex))
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
 	disconnectTime = flag.Int("disconnect_timeout", 30, "Disconnect timeout in seconds")
 	keepAlive      = flag.Int("keepalive", 0, "KeepAlive Period in seconds")
@@ -68,7 +66,6 @@ var (
 	dnsServer      = flag.String("dns_server", "8.8.8.8", "DNS server for domain lookup")
 	ntpServer      = flag.String("ntp_server", "", "NTP server for time synchronization")
 	ntpInterval    = flag.Int("ntp_interval", 5, "interval between NTP synchronizations (minutes)")
-	tlsEnable      = flag.Bool("tls_enable", false, "Enable TLS (Deprecated)")
 	timezone       = flag.String("timezone", "", "Time zone to use for time(eg: Asia/Shanghai)")
 	genTOTP        = flag.Bool("gen2fa", false, "Generate TOTP Secret")
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
@@ -105,19 +102,15 @@ func main() {
 	}
 	// Version
 	if *ver {
-		version.PrintVersion(legacy.CoreVersion(*protoVer))
+		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
 	}
 	install.RecoverUpdate()
-	client.Ver = *protoVer
 	client.SkipTLSVerify = *skipVerify
 	client.DisableP2P = *disableP2P
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
-	if !legacy.CapsOf(*protoVer, version.VERSION).CertFingerprint {
-		crypt.SkipVerify = true
-	}
 
 	// Timezone
 	if err := clock.SetTimezone(*timezone); err != nil {
@@ -375,17 +368,13 @@ func (p *Npc) run() error {
 func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
 	runenv.InitPProfByAddr(*pprofAddr)
-	if *tlsEnable {
-		logs.Warn("-tls_enable is deprecated; use -type=tls")
-		*connType = "tls"
-	}
 	if inputs := launchPayloads(); len(inputs) > 0 {
 		startLaunch(ctx, cancel, inputs)
 		return
 	}
 	//p2p or secret command
 	if *password != "" {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
+		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
@@ -431,7 +420,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	hasCommand := *verifyKey != "" && *serverAddr != ""
 	if hasCommand {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
+		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")

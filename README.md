@@ -162,4 +162,3 @@ npc update-force
 > `npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`
 > Here, `xxx:123` uses TCP, and `yyy:456` and `zzz:789` use TLS.
 
-> If you need to connect to older server versions, add `-proto_version=0` to the startup command.

@@ -57,7 +57,7 @@ type P2pBridge struct {
 func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
 	useP2P := l.Type != "secret" && !DisableP2P
 	if useP2P && !clientCaps().P2P {
-		logs.Warn("P2P needs protocol version %d or newer (running %d); local port %d relays only", legacy.P2PMinIndex, Ver, l.Port)
+		logs.Warn("P2P needs protocol version %d or newer (running %d); local port %d relays only", legacy.P2PMinIndex, protocolIndex, l.Port)
 		useP2P = false
 	}
 	b := &P2pBridge{

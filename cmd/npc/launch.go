@@ -46,7 +46,7 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string
 			logs.Warn("--%s is ignored because --launch is set", name)
 		}
 	}
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(*protoVer))
+	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 	clock.Sync()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
 	for i, input := range inputs {

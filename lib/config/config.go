@@ -21,7 +21,6 @@ type CommonConfig struct {
 	VKey             string
 	Tp               string //bridgeType kcp or tcp
 	AutoReconnection bool
-	TlsEnable        bool
 	ProxyUrl         string
 	LocalIP          string
 	DnsServer        string
@@ -291,7 +290,7 @@ func dealCommon(s string) *CommonConfig {
 		case "disconnect_timeout":
 			c.DisconnectTime = textutil.GetIntNoErrByStr(item[1])
 		case "tls_enable":
-			c.TlsEnable = parseBool(item)
+			logs.Warn("npc.conf: tls_enable is no longer read; set conn_type=tls")
 		}
 	}
 	return c

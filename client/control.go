@@ -39,7 +39,9 @@ const MaxPad = 64
 
 const dialTimeout = 10 * time.Second
 
-var Ver = legacy.LatestIndex
+// protocolIndex is the protocol version npc speaks, always the latest. Tests
+// set older ones to check that the bridge still accepts released clients.
+var protocolIndex = legacy.LatestIndex
 var SkipTLSVerify = false
 var DisableP2P = false
 var AutoReconnect = true
@@ -186,9 +188,6 @@ func StartFromFile(pCtx context.Context, path string) error {
 // client uuid to pass to the next run. Local servers run until ctx ends or one
 // of them fails to start.
 func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string, error) {
-	if cnf.CommonConfig.TlsEnable {
-		cnf.CommonConfig.Tp = "tls"
-	}
 	if len(cnf.LocalServer) > 0 {
 		return uuid, runLocalServers(ctx, cnf)
 	}
@@ -562,7 +561,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 
 	c := conn.NewConn(connection)
 	res, err := legacy.ClientHandshake(c, legacy.ClientConfig{
-		Index:         Ver,
+		Index:         protocolIndex,
 		ClientVersion: version.VERSION,
 		Key:           vkey,
 		Transport:     tp,
@@ -585,12 +584,12 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 			logs.Error("error reading server response: %v", err)
 			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
 		case errors.Is(err, legacy.ErrVersionMismatch):
-			logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(Ver))
+			logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(protocolIndex))
 		}
 		return nil, "", serverInfo{}, err
 	}
 	if res.VersionWarning {
-		logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(Ver))
+		logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(protocolIndex))
 	}
 	uuid := res.ServerUUID
 	info.fingerprint = res.Fingerprint
@@ -603,7 +602,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 }
 
 // clientCaps returns what this client speaks.
-func clientCaps() legacy.Caps { return legacy.CapsOf(Ver, version.VERSION) }
+func clientCaps() legacy.Caps { return legacy.CapsOf(protocolIndex, version.VERSION) }
 
 func SendType(c *conn.Conn, connType, uuid string) error {
 	if c == nil {

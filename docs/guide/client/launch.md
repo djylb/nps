@@ -2,7 +2,7 @@
 
 `--launch` 用一段内容启动 npc，不需要配置文件。可以重复传入，每个输入独立运行；也可以用环境变量 `NPC_LAUNCH` 传一个。
 
-设置后 `-server`、`-vkey`、`-type`、`-config`、`-proxy`、`-local_ip`、`-password`、`-target` 被忽略并告警。日志、`-skip_verify`、`-proto_version` 等进程级设置仍只由命令行决定。
+设置后 `-server`、`-vkey`、`-type`、`-config`、`-proxy`、`-local_ip`、`-password`、`-target` 被忽略并告警。日志、`-skip_verify` 等进程级设置仍只由命令行决定。
 
 ```bash
 npc --launch 'npc://vkey@1.2.3.4:8024?type=tls'
