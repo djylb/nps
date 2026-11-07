@@ -113,7 +113,7 @@ type UpdateResult struct {
 // next start. A nil result with a nil error means the running version is
 // already the latest.
 func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateResult, error) {
-	targets, err := executableTargets(bin, service)
+	targets, err := updateTargets(bin, service)
 	if err != nil {
 		return nil, err
 	}
@@ -236,8 +236,10 @@ func latestRelease(ctx context.Context, bin string) (string, error) {
 
 // newUpdater returns an updater of bin without files or journal. An update
 // always runs on somebody's request, hence the grants; force installs the
-// latest release even if it is not newer or failed before.
-func newUpdater(bin string, force bool) (*selfupdate.Updater, error) {
+// latest release even if it is not newer or failed before. Tests replace it.
+var newUpdater = releaseUpdater
+
+func releaseUpdater(bin string, force bool) (*selfupdate.Updater, error) {
 	key, err := selfupdate.ParsePublicKey(ReleaseSigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("this build has no valid release signing key, so it cannot verify updates; download the new release instead: %w", err)
@@ -330,6 +332,9 @@ func executableVersion(path string) (string, error) {
 	}
 	return "", errors.New("no version in output")
 }
+
+// updateTargets is executableTargets; tests replace it.
+var updateTargets = executableTargets
 
 // executableTargets returns the running executable, on Unix the copies
 // install placed in the system bin directories, and the executable the
