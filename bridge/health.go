@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logs"
@@ -80,7 +82,7 @@ func hostHealthGroup(id int) string   { return "h" + strconv.Itoa(id) }
 // healthGroup is a health group as it should be on a node, or as it was sent.
 type healthGroup struct {
 	msg    healthcheck.Group
-	target *file.Target
+	target *model.Target
 }
 
 // same reports whether g needs no new message after o: an edit that replaces
@@ -93,7 +95,7 @@ func (g healthGroup) same(o healthGroup) bool {
 
 // newHealthGroup returns the group of target, or false if it needs no checks:
 // one address has no other to fail over to.
-func newHealthGroup(group string, check file.HealthCheck, target *file.Target) (healthGroup, bool) {
+func newHealthGroup(group string, check model.HealthCheck, target *model.Target) (healthGroup, bool) {
 	if !check.Enabled {
 		return healthGroup{}, false
 	}
@@ -115,7 +117,7 @@ func newHealthGroup(group string, check file.HealthCheck, target *file.Target) (
 func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGroup {
 	groups := make(map[string]healthGroup)
 	shared := client.healthNode() == node.UUID
-	add := func(group string, check file.HealthCheck, routes *file.RouteSet, fallback *file.Target) {
+	add := func(group string, check model.HealthCheck, routes *model.RouteSet, fallback *model.Target) {
 		target := fallback
 		if routes.Len() > 0 {
 			target = routes.Target(node.UUID, nil)
@@ -130,7 +132,7 @@ func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGr
 		}
 	}
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*file.Tunnel)
+		v := value.(*model.Tunnel)
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && v.Status && (v.Mode == "tcp" || v.Mode == "secret")
 		target := v.Target
@@ -141,7 +143,7 @@ func desiredHealthGroups(id int, node *Node, client *Client) map[string]healthGr
 		return true
 	})
 	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*file.Host)
+		v := value.(*model.Host)
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && !v.IsClose
 		target := v.Target

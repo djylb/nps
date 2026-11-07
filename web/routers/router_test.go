@@ -24,6 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -1161,7 +1163,7 @@ func resetTestDB(t *testing.T) string {
 	oldVkeyIndex := file.Blake2bVkeyIndex
 	oldTaskPasswordIndex := file.TaskPasswordIndex
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	file.Db.JsonDb.Global = &file.Glob{}
+	file.Db.JsonDb.Global = &model.Glob{}
 	file.HostIndex = index.NewDomainIndex()
 	file.Blake2bVkeyIndex = index.NewStringIDIndex()
 	file.TaskPasswordIndex = index.NewStringIDIndex()
@@ -1174,16 +1176,16 @@ func resetTestDB(t *testing.T) string {
 	return root
 }
 
-func createTestClient(t *testing.T, id int, username, password string) *file.Client {
+func createTestClient(t *testing.T, id int, username, password string) *model.Client {
 	t.Helper()
-	client := &file.Client{
+	client := &model.Client{
 		Id:          id,
 		Status:      true,
 		VerifyKey:   fmt.Sprintf("vk-%d", id),
-		Cnf:         &file.Config{},
+		Cnf:         &model.Config{},
 		WebUserName: username,
 		WebPassword: password,
-		Flow:        &file.Flow{},
+		Flow:        &model.Flow{},
 	}
 	if err := file.GetDb().NewClient(client); err != nil {
 		t.Fatalf("NewClient(%d) error = %v", id, err)
@@ -1191,16 +1193,16 @@ func createTestClient(t *testing.T, id int, username, password string) *file.Cli
 	return client
 }
 
-func createTestTunnel(t *testing.T, id int, client *file.Client, port int) *file.Tunnel {
+func createTestTunnel(t *testing.T, id int, client *model.Client, port int) *model.Tunnel {
 	t.Helper()
-	tunnel := &file.Tunnel{
+	tunnel := &model.Tunnel{
 		Id:         id,
 		Port:       port,
 		Mode:       "tcp",
 		Status:     true,
 		Client:     client,
 		TargetType: common.ConnTCP,
-		Target: &file.Target{
+		Target: &model.Target{
 			TargetStr: "127.0.0.1:80",
 		},
 	}
@@ -1210,13 +1212,13 @@ func createTestTunnel(t *testing.T, id int, client *file.Client, port int) *file
 	return tunnel
 }
 
-func createTestHost(t *testing.T, id int, client *file.Client, host string) *file.Host {
+func createTestHost(t *testing.T, id int, client *model.Client, host string) *model.Host {
 	t.Helper()
-	record := &file.Host{
+	record := &model.Host{
 		Id:     id,
 		Host:   host,
 		Client: client,
-		Target: &file.Target{
+		Target: &model.Target{
 			TargetStr: "127.0.0.1:80",
 		},
 	}
@@ -1427,7 +1429,7 @@ func TestIPRegisterPageAndGlobalFirewall(t *testing.T) {
 		t.Fatalf("POST /ip/register with the registration key = %s", ok.Body.String())
 	}
 
-	g := new(file.Glob)
+	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"192.0.2.0/24"}, nil, acl.ScopeGlobal, "global")
 	file.Db.JsonDb.Global = g
 	for _, path := range []string{"/login/index", "/ip/register", "/static/css/style.css"} {

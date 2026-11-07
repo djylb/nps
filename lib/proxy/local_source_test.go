@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
@@ -24,7 +26,7 @@ func TestLocalProxyLeavesServerDataAlone(t *testing.T) {
 	a, b := net.Pipe()
 	defer func() { _ = a.Close(); _ = b.Close() }()
 	s := &BaseServer{Bridge: failBridge{}}
-	task := &file.Tunnel{Mode: "p2pt", Client: &file.Client{}}
+	task := &model.Tunnel{Mode: "p2pt", Client: &model.Client{}}
 	func() {
 		defer func() { _ = recover() }() // only the source check matters here
 		_, _, _, _ = s.openClientLink(conn.NewConn(a), task.Client, "127.0.0.1:1", "tcp", false, "", task)

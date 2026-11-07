@@ -3,7 +3,6 @@ package legacy
 import (
 	"bytes"
 	"errors"
-	"github.com/djylb/nps/lib/healthcheck"
 	"io"
 	"net"
 	"os"
@@ -11,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/healthcheck"
+
 	"encoding/hex"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/tunnelwire"
 	"golang.org/x/crypto/blake2b"

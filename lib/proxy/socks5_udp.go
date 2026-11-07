@@ -8,11 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -30,7 +31,7 @@ var (
 )
 
 type socks5UDPRegistry struct {
-	task            *file.Tunnel
+	task            *model.Tunnel
 	bridge          NetBridge
 	allowLocalProxy bool
 	listener        net.PacketConn
@@ -46,7 +47,7 @@ type socks5UDPRegistry struct {
 	pendingByIP    map[string][]*socks5UDPSession
 }
 
-func newSocks5UDPRegistry(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool, addr string) (*socks5UDPRegistry, error) {
+func newSocks5UDPRegistry(bridge NetBridge, task *model.Tunnel, allowLocalProxy bool, addr string) (*socks5UDPRegistry, error) {
 	listener, err := conn.NewUdpConnByAddr(addr)
 	if err != nil {
 		return nil, err
@@ -414,7 +415,7 @@ func newSocks5UDPSession(registry *socks5UDPRegistry, control net.Conn, requeste
 	return session, nil
 }
 
-func validateSocks5UDPTunnelTask(task *file.Tunnel) error {
+func validateSocks5UDPTunnelTask(task *model.Tunnel) error {
 	switch {
 	case task == nil:
 		return errors.New("nil socks5 udp task")
@@ -650,7 +651,7 @@ func cloneUDPAddr(addr *net.UDPAddr) *net.UDPAddr {
 // destination of a datagram.
 func (s *socks5UDPSession) allowsDestination(addr string) bool {
 	t := s.registry.task
-	if t == nil || t.Mode != "mixProxy" || t.DestAclMode == file.AclOff {
+	if t == nil || t.Mode != "mixProxy" || t.DestAclMode == model.AclOff {
 		return true
 	}
 	return t.AllowsDestination(addr)

@@ -11,17 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestAcquireForwarding(t *testing.T) {
 	s := &BaseServer{}
 
 	t.Run("expired service", func(t *testing.T) {
-		client := &file.Client{Flow: &file.Flow{TimeLimit: time.Now().Add(-time.Second)}}
+		client := &model.Client{Flow: &model.Flow{TimeLimit: time.Now().Add(-time.Second)}}
 		_, err := s.AcquireForwarding(client, nil)
 		if err == nil || err.Error() != "service access expired" {
 			t.Fatalf("AcquireForwarding() error = %v, want service access expired", err)
@@ -29,7 +30,7 @@ func TestAcquireForwarding(t *testing.T) {
 	})
 
 	t.Run("traffic limit exceeded", func(t *testing.T) {
-		client := &file.Client{Flow: &file.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 1}, MaxConn: 10}
+		client := &model.Client{Flow: &model.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 1}, MaxConn: 10}
 		_, err := s.AcquireForwarding(client, nil)
 		if err == nil || err.Error() != "traffic limit exceeded" {
 			t.Fatalf("AcquireForwarding() error = %v, want traffic limit exceeded", err)
@@ -37,7 +38,7 @@ func TestAcquireForwarding(t *testing.T) {
 	})
 
 	t.Run("connection limit exceeded", func(t *testing.T) {
-		client := &file.Client{Flow: &file.Flow{}, MaxConn: 1}
+		client := &model.Client{Flow: &model.Flow{}, MaxConn: 1}
 		if !client.GetConn() {
 			t.Fatal("seed reservation")
 		}
@@ -49,7 +50,7 @@ func TestAcquireForwarding(t *testing.T) {
 	})
 
 	t.Run("success increments connection count", func(t *testing.T) {
-		client := &file.Client{Flow: &file.Flow{}, MaxConn: 2, NowConn: 0}
+		client := &model.Client{Flow: &model.Flow{}, MaxConn: 2, NowConn: 0}
 		release, err := s.AcquireForwarding(client, nil)
 		if err != nil {
 			t.Fatalf("AcquireForwarding() unexpected error = %v", err)
@@ -62,10 +63,10 @@ func TestAcquireForwarding(t *testing.T) {
 }
 
 func TestFlowAddAndFlowAddHost(t *testing.T) {
-	taskFlow := &file.Flow{}
-	hostFlow := &file.Flow{}
-	s := &BaseServer{Task: &file.Tunnel{Flow: taskFlow}}
-	h := &file.Host{Flow: hostFlow}
+	taskFlow := &model.Flow{}
+	hostFlow := &model.Flow{}
+	s := &BaseServer{Task: &model.Tunnel{Flow: taskFlow}}
+	h := &model.Host{Flow: hostFlow}
 
 	s.FlowAdd(10, 20)
 	s.FlowAddHost(h, 30, 40)
@@ -137,7 +138,7 @@ func TestWriteConnFail(t *testing.T) {
 
 func TestAcquireForwardingAtTrafficLimitBoundary(t *testing.T) {
 	s := &BaseServer{}
-	client := &file.Client{Flow: &file.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 0}, MaxConn: 2}
+	client := &model.Client{Flow: &model.Flow{FlowLimit: 1, ExportFlow: 1 << 20, InletFlow: 0}, MaxConn: 2}
 
 	release, err := s.AcquireForwarding(client, nil)
 	if err != nil {
@@ -153,7 +154,7 @@ func TestAuthWithMultiAccount(t *testing.T) {
 	s := &BaseServer{}
 	r := httptest.NewRequest("GET", "http://example.com", nil)
 	r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("worker:p@ss")))
-	multi := &file.MultiAccount{AccountMap: map[string]string{"worker": "p@ss"}}
+	multi := &model.MultiAccount{AccountMap: map[string]string{"worker": "p@ss"}}
 
 	if err := s.Auth(r, nil, "", "", multi, nil); err != nil {
 		t.Fatalf("Auth() with multi-account unexpected error = %v", err)
@@ -185,7 +186,7 @@ func TestTunnelModeServerCloseBeforeStartReleasesPort(t *testing.T) {
 	port := probe.Addr().(*net.TCPAddr).Port
 	_ = probe.Close()
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	task := &file.Tunnel{Mode: "tcp", ServerIp: "127.0.0.1", Port: port, Client: &file.Client{Cnf: &file.Config{}, Flow: &file.Flow{}}, Flow: &file.Flow{}, Target: &file.Target{}}
+	task := &model.Tunnel{Mode: "tcp", ServerIp: "127.0.0.1", Port: port, Client: &model.Client{Cnf: &model.Config{}, Flow: &model.Flow{}}, Flow: &model.Flow{}, Target: &model.Target{}}
 
 	// Bound but never started: Close must release the port and Start must not reopen it.
 	bound := NewTunnelModeServer(ProcessTunnel, failBridge{}, task, false)

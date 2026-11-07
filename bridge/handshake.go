@@ -8,6 +8,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -19,16 +21,16 @@ import (
 )
 
 // allowsFlag is the one rule for which workflows each kind of vkey may open.
-func allowsFlag(kind file.KeyKind, flag string) bool {
+func allowsFlag(kind model.KeyKind, flag string) bool {
 	switch flag {
 	case legacy.WorkRegister, legacy.WorkConfig:
-		return kind != file.KeyVisitor
+		return kind != model.KeyVisitor
 	case legacy.WorkVisitor, legacy.WorkSecret, legacy.WorkP2P:
 		return true
 	case legacy.WorkMain:
-		return kind == file.KeyControl
+		return kind == model.KeyControl
 	case legacy.WorkChan, legacy.WorkFile, legacy.WorkP2PSession:
-		return kind == file.KeyControl || kind == file.KeyPublic
+		return kind == model.KeyControl || kind == model.KeyPublic
 	}
 	return false
 }
@@ -52,7 +54,25 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	c.SetReadDeadlineBySecond(bridgeHandshakeReadTimeout)
 	window := servercfg.Current().Security.AuthTimeWindow
 	res, err := legacy.ServerHandshake(c, remote, legacy.ServerAuth{
-		Secure:      ServerSecureMode,
+		Secure: ServerSecureMode,
+		LookupDigest: func(digest string) (legacy.Credential, error) {
+			id, err := file.GetDb().GetClientIdByBlake2bVkey(digest)
+			if err != nil {
+				return legacy.Credential{}, err
+			}
+			client, err := file.GetDb().GetClient(id)
+			if err != nil {
+				return legacy.Credential{}, err
+			}
+			return legacy.Credential{ID: id, Key: client.VerifyKey, Enabled: client.Status}, nil
+		},
+		LookupMD5: func(digest string, remote net.Addr) (legacy.Credential, error) {
+			id, err := file.GetDb().GetIdByVerifyKey(digest, remote.String(), "", crypt.Md5)
+			if err != nil {
+				return legacy.Credential{}, err
+			}
+			return legacy.Credential{ID: id, Enabled: true}, nil
+		},
 		CheckTime:   func(ts int64) error { return authReplays.checkTime(ts, window) },
 		CheckReplay: func(ts int64, mac []byte) error { return authReplays.check(ts, mac, window) },
 		Fingerprint: func() []byte { return crypt.GetCertFingerprint(crypt.GetCert()) },

@@ -7,20 +7,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 )
 
-func useTestDb(t *testing.T, global *file.Glob) {
+func useTestDb(t *testing.T, global *model.Glob) {
 	t.Helper()
 	file.GetDb()
 	old := file.Db
 	db := &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
 	db.JsonDb.Global = global
 	file.Db = db
-	t.Cleanup(func() { file.Db = old })
+	oldSource := globalSource.Load()
+	SetGlobalSource(func() *acl.Source {
+		if g := file.GetDb().GetGlobal(); g != nil {
+			return g.SourceACL()
+		}
+		return nil
+	})
+	t.Cleanup(func() {
+		file.Db = old
+		globalSource.Store(oldSource)
+	})
 }
 
 func tcpAddr(s string) net.Addr {
@@ -29,13 +41,13 @@ func tcpAddr(s string) net.Addr {
 }
 
 func TestSourceDeniedLevels(t *testing.T) {
-	g := new(file.Glob)
+	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"1.1.1.1"}, nil, acl.ScopeGlobal, "global")
 	useTestDb(t, g)
 
-	client := &file.Client{Id: 3}
+	client := &model.Client{Id: 3}
 	client.SetSourceLists(acl.DenyFirst, nil, []string{"1.1.1.0/24", "2.2.2.0/24"}, acl.ScopeUser, "client")
-	task := &file.Tunnel{Id: 5, Client: client}
+	task := &model.Tunnel{Id: 5, Client: client}
 	task.SetSourceLists(acl.DenyFirst, []string{"2.2.2.2"}, nil, acl.ScopeUser, "tunnel")
 
 	for addr, denied := range map[string]bool{
@@ -59,7 +71,7 @@ func TestSourceDeniedLevels(t *testing.T) {
 
 func TestSourceDeniedWithoutLists(t *testing.T) {
 	useTestDb(t, nil)
-	if SourceDenied(tcpAddr("1.2.3.4:5"), &file.Client{}, nil, "tunnel") {
+	if SourceDenied(tcpAddr("1.2.3.4:5"), &model.Client{}, nil, "tunnel") {
 		t.Fatal("no lists denied an address")
 	}
 	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, nil, "tunnel") {
@@ -69,9 +81,9 @@ func TestSourceDeniedWithoutLists(t *testing.T) {
 
 func TestSourceDeniedHostEntry(t *testing.T) {
 	useTestDb(t, nil)
-	h := &file.Host{Id: 7, Host: "a.com", Client: &file.Client{Id: 1}, Flow: &file.Flow{}, Target: &file.Target{}}
+	h := &model.Host{Id: 7, Host: "a.com", Client: &model.Client{Id: 1}, Flow: &model.Flow{}, Target: &model.Target{}}
 	h.SetSourceLists(acl.DenyFirst, nil, []string{"10.0.0.0/8"}, acl.ScopeUser, "host")
-	tn := file.NewTunnelByHost(h, 443)
+	tn := model.NewTunnelByHost(h, 443)
 	if !SourceDenied(tcpAddr("8.8.8.8:1"), h.Client, taskLists(tn), taskName(tn)) {
 		t.Fatal("host whitelist not applied to its HTTPS tunnel")
 	}
@@ -84,10 +96,10 @@ func TestSourceDeniedRegisteredOnly(t *testing.T) {
 	useTestDb(t, nil)
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
-	client := &file.Client{Id: 3}
-	task := &file.Tunnel{Id: 5, Client: client}
+	client := &model.Client{Id: 3}
+	task := &model.Tunnel{Id: 5, Client: client}
 	task.RegisteredOnly = true
-	other := &file.Tunnel{Id: 6, Client: client}
+	other := &model.Tunnel{Id: 6, Client: client}
 
 	if !SourceDenied(tcpAddr("192.0.2.1:80"), client, taskLists(task), taskName(task)) {
 		t.Fatal("unregistered address passed a registered-only tunnel")
@@ -118,7 +130,7 @@ func TestSourceDeniedRegisteredOnly(t *testing.T) {
 }
 
 func TestSocks5UDPDatagramDestination(t *testing.T) {
-	task := &file.Tunnel{Id: 8, Mode: "mixProxy", DestAclMode: file.AclWhitelist, DestAclRules: "192.0.2.53\nfull:dns.example"}
+	task := &model.Tunnel{Id: 8, Mode: "mixProxy", DestAclMode: model.AclWhitelist, DestAclRules: "192.0.2.53\nfull:dns.example"}
 	task.CompileDestACL()
 	s := &socks5UDPSession{registry: &socks5UDPRegistry{task: task}}
 	for addr, want := range map[string]bool{
@@ -131,7 +143,7 @@ func TestSocks5UDPDatagramDestination(t *testing.T) {
 			t.Errorf("datagram to %s allowed = %v, want %v", addr, got, want)
 		}
 	}
-	task.DestAclMode = file.AclOff
+	task.DestAclMode = model.AclOff
 	if !s.allowsDestination("198.51.100.1:53") {
 		t.Fatal("datagram dropped with the destination list off")
 	}
@@ -139,8 +151,8 @@ func TestSocks5UDPDatagramDestination(t *testing.T) {
 
 func TestProcessMixDeniesSourceBeforeHandshake(t *testing.T) {
 	useTestDb(t, nil)
-	client := &file.Client{Id: 3, Cnf: &file.Config{U: "u", P: "p"}}
-	task := &file.Tunnel{Id: 9, Mode: "mixProxy", Client: client}
+	client := &model.Client{Id: 3, Cnf: &model.Config{U: "u", P: "p"}}
+	task := &model.Tunnel{Id: 9, Mode: "mixProxy", Client: client}
 	task.SetSourceLists(acl.DenyFirst, []string{"127.0.0.1"}, nil, acl.ScopeUser, "tunnel 9")
 	server, peer := net.Pipe()
 	defer func() { _ = peer.Close() }()

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -17,7 +19,7 @@ import (
 func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 	_ = file.GetDb()
 	useTestDb(t)
-	existing := file.NewClient("existing-vkey", false, false)
+	existing := model.NewClient("existing-vkey", false, false)
 	existing.Id = 7
 	if err := file.GetDb().NewClient(existing); err != nil {
 		t.Fatal(err)
@@ -34,7 +36,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 
 	c := conn.NewConn(clientSide)
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
-	sent := file.NewClient(existing.VerifyKey, true, true)
+	sent := model.NewClient(existing.VerifyKey, true, true)
 	sent.Id = existing.Id
 	if err := legacy.WriteClient(c, sent); err != nil {
 		t.Fatal(err)
@@ -70,7 +72,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	_ = file.GetDb()
 	useTestDb(t)
-	client := file.NewClient("conflict-vkey", false, false)
+	client := model.NewClient("conflict-vkey", false, false)
 	if err := file.GetDb().NewClient(client); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +90,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	_ = free.Close()
 
 	b := NewTunnel(&sync.Map{}, 30)
-	b.OpenTask = make(chan *file.Tunnel, 8)
+	b.OpenTask = make(chan *model.Tunnel, 8)
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("node", "", legacy.LatestIndex)))
 	clientSide, serverSide := net.Pipe()
 	defer func() { _ = clientSide.Close() }()
@@ -101,7 +103,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 
 	send := func(port int, remark string) bool {
-		task := &file.Tunnel{Mode: "tcp", Ports: strconv.Itoa(port), Remark: remark, Target: &file.Target{TargetStr: "127.0.0.1:80"}}
+		task := &model.Tunnel{Mode: "tcp", Ports: strconv.Itoa(port), Remark: remark, Target: &model.Target{TargetStr: "127.0.0.1:80"}}
 		if err := legacy.WriteTask(c, task); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +124,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	}
 	var remarks []string
 	file.GetDb().JsonDb.Tasks.Range(func(_, v any) bool {
-		remarks = append(remarks, v.(*file.Tunnel).Remark)
+		remarks = append(remarks, v.(*model.Tunnel).Remark)
 		return true
 	})
 	if len(remarks) != 1 || remarks[0] != "ok" {

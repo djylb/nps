@@ -4,16 +4,17 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 )
 
-func socks5ConnectReplyAddr(task *file.Tunnel, clientConn net.Conn) netx.Addr {
+func socks5ConnectReplyAddr(task *model.Tunnel, clientConn net.Conn) netx.Addr {
 	return socks5ReplyAddrFromNetAddr(task, addrOf(clientConn), nil, taskPort(task))
 }
 
-func socks5UDPReplyAddr(task *file.Tunnel, tcpConn net.Conn, udpConn net.PacketConn, clientIP net.IP) netx.Addr {
+func socks5UDPReplyAddr(task *model.Tunnel, tcpConn net.Conn, udpConn net.PacketConn, clientIP net.IP) netx.Addr {
 	var tcpLocal net.Addr
 	if tcpConn != nil {
 		tcpLocal = tcpConn.LocalAddr()
@@ -29,7 +30,7 @@ func socks5UDPReplyAddr(task *file.Tunnel, tcpConn net.Conn, udpConn net.PacketC
 	return socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, fallbackPort, clientIP)
 }
 
-func socks5ReplyAddrFromNetAddr(task *file.Tunnel, tcpLocal, udpLocal net.Addr, fallbackPort int, clientIP ...net.IP) netx.Addr {
+func socks5ReplyAddrFromNetAddr(task *model.Tunnel, tcpLocal, udpLocal net.Addr, fallbackPort int, clientIP ...net.IP) netx.Addr {
 	var client net.IP
 	if len(clientIP) > 0 {
 		client = common.NormalizeIP(clientIP[0])
@@ -55,7 +56,7 @@ func addrOf(c net.Conn) net.Addr {
 	return c.LocalAddr()
 }
 
-func taskPort(task *file.Tunnel) int {
+func taskPort(task *model.Tunnel) int {
 	if task == nil {
 		return 0
 	}
@@ -67,7 +68,7 @@ func taskPort(task *file.Tunnel) int {
 // client can reach it: a private local address is withheld from a public client
 // (for example behind 1:1 NAT), and the zero address tells the client to reuse
 // the server address of its control connection instead.
-func socks5ReplyIP(task *file.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP, wantV6 bool) net.IP {
+func socks5ReplyIP(task *model.Tunnel, tcpLocal, udpLocal net.Addr, client net.IP, wantV6 bool) net.IP {
 	publicClient := isGlobalIP(client)
 	trySpecificIP := func(value net.IP) net.IP {
 		value = common.NormalizeIP(value)

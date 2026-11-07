@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -12,55 +14,55 @@ import (
 )
 
 type Repository interface {
-	RangeClients(func(*file.Client) bool)
-	RangeTunnels(func(*file.Tunnel) bool)
-	RangeHosts(func(*file.Host) bool)
-	ListVisibleClients(ListClientsInput) ([]*file.Client, int)
+	RangeClients(func(*model.Client) bool)
+	RangeTunnels(func(*model.Tunnel) bool)
+	RangeHosts(func(*model.Host) bool)
+	ListVisibleClients(ListClientsInput) ([]*model.Client, int)
 	NextClientID() int
 	NextTunnelID() int
 	NextHostID() int
-	CreateClient(*file.Client) error
-	GetClient(int) (*file.Client, error)
-	SaveClient(*file.Client) error
+	CreateClient(*model.Client) error
+	GetClient(int) (*model.Client, error)
+	SaveClient(*model.Client) error
 	PersistClients() error
 	PersistGlobal() error
 	DeleteClient(int) error
 	VerifyUserName(string, int) bool
 	VerifyVKey(string, int) bool
 	ReplaceClientVKeyIndex(oldKey, newKey string, clientID int)
-	CreateTunnel(*file.Tunnel) error
-	GetTunnel(int) (*file.Tunnel, error)
-	SaveTunnel(*file.Tunnel) error
+	CreateTunnel(*model.Tunnel) error
+	GetTunnel(int) (*model.Tunnel, error)
+	SaveTunnel(*model.Tunnel) error
 	DeleteTunnelRecord(int) error
-	CreateHost(*file.Host) error
-	GetHost(int) (*file.Host, error)
-	SaveHost(*file.Host, string) error
-	FindReusableCert(host string, excludeID, clientID int) (*file.Host, error)
+	CreateHost(*model.Host) error
+	GetHost(int) (*model.Host, error)
+	SaveHost(*model.Host, string) error
+	FindReusableCert(host string, excludeID, clientID int) (*model.Host, error)
 	PersistHosts() error
 	DeleteHostRecord(int) error
-	HostExists(*file.Host) bool
-	GetGlobal() *file.Glob
-	SaveGlobal(*file.Glob) error
+	HostExists(*model.Host) bool
+	GetGlobal() *model.Glob
+	SaveGlobal(*model.Glob) error
 	ClientOwnsTunnel(int, int) bool
 	ClientOwnsHost(int, int) bool
 }
 
 type Runtime interface {
 	DashboardData(bool) map[string]interface{}
-	ListClients(offset, limit int, search, sort, order string, clientID int) ([]*file.Client, int)
+	ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int)
 	PingClient(int, string) int
 	DisconnectClient(int)
 	ClientConnected(int) bool
 	RequestClientUpdate(int) (int, error)
 	DeleteClientResources(int)
-	GenerateTunnelPort(*file.Tunnel) int
-	TunnelPortAvailable(*file.Tunnel) bool
-	ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*file.Tunnel, int)
-	AddTunnel(*file.Tunnel) error
+	GenerateTunnelPort(*model.Tunnel) int
+	TunnelPortAvailable(*model.Tunnel) bool
+	ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*model.Tunnel, int)
+	AddTunnel(*model.Tunnel) error
 	StopTunnel(int) error
 	StartTunnel(int) error
 	DeleteTunnel(int) error
-	ListHosts(offset, limit, clientID int, search, sort, order string) ([]*file.Host, int)
+	ListHosts(offset, limit, clientID int, search, sort, order string) ([]*model.Host, int)
 	RemoveHostCache(int)
 }
 
@@ -94,25 +96,25 @@ type defaultRepository struct{}
 
 type defaultRuntime struct{}
 
-func (defaultRepository) RangeClients(fn func(*file.Client) bool) {
+func (defaultRepository) RangeClients(fn func(*model.Client) bool) {
 	file.GetDb().JsonDb.Clients.Range(func(_, value interface{}) bool {
-		return fn(value.(*file.Client))
+		return fn(value.(*model.Client))
 	})
 }
 
-func (defaultRepository) RangeTunnels(fn func(*file.Tunnel) bool) {
+func (defaultRepository) RangeTunnels(fn func(*model.Tunnel) bool) {
 	file.GetDb().JsonDb.Tasks.Range(func(_, value interface{}) bool {
-		return fn(value.(*file.Tunnel))
+		return fn(value.(*model.Tunnel))
 	})
 }
 
-func (defaultRepository) RangeHosts(fn func(*file.Host) bool) {
+func (defaultRepository) RangeHosts(fn func(*model.Host) bool) {
 	file.GetDb().JsonDb.Hosts.Range(func(_, value interface{}) bool {
-		return fn(value.(*file.Host))
+		return fn(value.(*model.Host))
 	})
 }
 
-func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*file.Client, int) {
+func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
 	if input.Visibility.IsAdmin {
 		clientID := visibleClientID(input.Visibility)
 		return server.GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, clientID)
@@ -126,7 +128,7 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*file.Cli
 		return server.GetClientList(input.Offset, input.Limit, input.Search, input.Sort, input.Order, visibleClientID(input.Visibility))
 	}
 
-	list := make([]*file.Client, 0)
+	list := make([]*model.Client, 0)
 	var count int
 	originLimit := input.Limit
 	searchID := common.GetIntNoErrByStr(input.Search)
@@ -136,7 +138,7 @@ func (defaultRepository) ListVisibleClients(input ListClientsInput) ([]*file.Cli
 		if !ok {
 			continue
 		}
-		client := value.(*file.Client)
+		client := value.(*model.Client)
 		if client.NoDisplay {
 			continue
 		}
@@ -173,15 +175,15 @@ func (defaultRepository) NextHostID() int {
 	return int(file.GetDb().JsonDb.GetHostId())
 }
 
-func (defaultRepository) CreateClient(client *file.Client) error {
+func (defaultRepository) CreateClient(client *model.Client) error {
 	return file.GetDb().NewClient(client)
 }
 
-func (defaultRepository) GetClient(id int) (*file.Client, error) {
+func (defaultRepository) GetClient(id int) (*model.Client, error) {
 	return file.GetDb().GetClient(id)
 }
 
-func (defaultRepository) SaveClient(_ *file.Client) error {
+func (defaultRepository) SaveClient(_ *model.Client) error {
 	return file.GetDb().JsonDb.StoreClientsToJsonFile()
 }
 
@@ -213,15 +215,15 @@ func (defaultRepository) ReplaceClientVKeyIndex(oldKey, newKey string, clientID 
 	file.Blake2bVkeyIndex.Add(crypt.Blake2b(newKey), clientID)
 }
 
-func (defaultRepository) CreateTunnel(tunnel *file.Tunnel) error {
+func (defaultRepository) CreateTunnel(tunnel *model.Tunnel) error {
 	return file.GetDb().NewTask(tunnel)
 }
 
-func (defaultRepository) GetTunnel(id int) (*file.Tunnel, error) {
+func (defaultRepository) GetTunnel(id int) (*model.Tunnel, error) {
 	return file.GetDb().GetTask(id)
 }
 
-func (defaultRepository) SaveTunnel(tunnel *file.Tunnel) error {
+func (defaultRepository) SaveTunnel(tunnel *model.Tunnel) error {
 	return file.GetDb().UpdateTask(tunnel)
 }
 
@@ -229,19 +231,19 @@ func (defaultRepository) DeleteTunnelRecord(id int) error {
 	return file.GetDb().DelTask(id)
 }
 
-func (defaultRepository) CreateHost(host *file.Host) error {
+func (defaultRepository) CreateHost(host *model.Host) error {
 	return file.GetDb().NewHost(host)
 }
 
-func (defaultRepository) GetHost(id int) (*file.Host, error) {
+func (defaultRepository) GetHost(id int) (*model.Host, error) {
 	return file.GetDb().GetHostById(id)
 }
 
-func (defaultRepository) SaveHost(host *file.Host, oldHost string) error {
+func (defaultRepository) SaveHost(host *model.Host, oldHost string) error {
 	return file.GetDb().SaveHost(host, oldHost)
 }
 
-func (defaultRepository) FindReusableCert(host string, excludeID, clientID int) (*file.Host, error) {
+func (defaultRepository) FindReusableCert(host string, excludeID, clientID int) (*model.Host, error) {
 	return file.GetDb().FindReusableCert(host, excludeID, clientID)
 }
 
@@ -253,15 +255,15 @@ func (defaultRepository) DeleteHostRecord(id int) error {
 	return file.GetDb().DelHost(id)
 }
 
-func (defaultRepository) HostExists(host *file.Host) bool {
+func (defaultRepository) HostExists(host *model.Host) bool {
 	return file.GetDb().IsHostExist(host)
 }
 
-func (defaultRepository) GetGlobal() *file.Glob {
+func (defaultRepository) GetGlobal() *model.Glob {
 	return file.GetDb().GetGlobal()
 }
 
-func (defaultRepository) SaveGlobal(glob *file.Glob) error {
+func (defaultRepository) SaveGlobal(glob *model.Glob) error {
 	return file.GetDb().SaveGlobal(glob)
 }
 
@@ -270,7 +272,7 @@ func (defaultRepository) ClientOwnsTunnel(clientID, tunnelID int) bool {
 		return false
 	}
 	if v, ok := file.GetDb().JsonDb.Tasks.Load(tunnelID); ok {
-		return v.(*file.Tunnel).Client.Id == clientID
+		return v.(*model.Tunnel).Client.Id == clientID
 	}
 	return false
 }
@@ -280,7 +282,7 @@ func (defaultRepository) ClientOwnsHost(clientID, hostID int) bool {
 		return false
 	}
 	if v, ok := file.GetDb().JsonDb.Hosts.Load(hostID); ok {
-		return v.(*file.Host).Client.Id == clientID
+		return v.(*model.Host).Client.Id == clientID
 	}
 	return false
 }
@@ -289,7 +291,7 @@ func (defaultRuntime) DashboardData(force bool) map[string]interface{} {
 	return server.GetDashboardData(force)
 }
 
-func (defaultRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*file.Client, int) {
+func (defaultRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
 	return server.GetClientList(offset, limit, search, sort, order, clientID)
 }
 
@@ -320,19 +322,19 @@ func (defaultRuntime) DeleteClientResources(id int) {
 	server.DelTunnelAndHostByClientId(id, false)
 }
 
-func (defaultRuntime) GenerateTunnelPort(tunnel *file.Tunnel) int {
+func (defaultRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
 	return tool.GenerateTunnelPort(tunnel)
 }
 
-func (defaultRuntime) TunnelPortAvailable(tunnel *file.Tunnel) bool {
+func (defaultRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
 	return tool.TestTunnelPort(tunnel)
 }
 
-func (defaultRuntime) ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*file.Tunnel, int) {
+func (defaultRuntime) ListTunnels(offset, limit int, tunnelType string, clientID int, search, sort, order string) ([]*model.Tunnel, int) {
 	return server.GetTunnel(offset, limit, tunnelType, clientID, search, sort, order)
 }
 
-func (defaultRuntime) AddTunnel(tunnel *file.Tunnel) error {
+func (defaultRuntime) AddTunnel(tunnel *model.Tunnel) error {
 	return server.AddTask(tunnel)
 }
 
@@ -348,7 +350,7 @@ func (defaultRuntime) DeleteTunnel(id int) error {
 	return server.DelTask(id)
 }
 
-func (defaultRuntime) ListHosts(offset, limit, clientID int, search, sort, order string) ([]*file.Host, int) {
+func (defaultRuntime) ListHosts(offset, limit, clientID int, search, sort, order string) ([]*model.Host, int) {
 	return server.GetHostList(offset, limit, clientID, search, sort, order)
 }
 

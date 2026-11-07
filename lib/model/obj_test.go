@@ -1,10 +1,8 @@
-package file
+package model
 
 import (
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,22 +12,6 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/rate"
 )
-
-func TestSortClientByKey(t *testing.T) {
-	clients := &sync.Map{}
-	clients.Store("a", &Client{Id: 1, Flow: &Flow{ExportFlow: 10, InletFlow: 100}})
-	clients.Store("b", &Client{Id: 2, Flow: &Flow{ExportFlow: 30, InletFlow: 50}})
-	clients.Store("c", &Client{Id: 3, Flow: &Flow{ExportFlow: 20, InletFlow: 80}})
-	clients.Store("d", &Client{Id: 4}) // no flow: zero traffic
-	clients.Store("e", "not a client")
-
-	if got := sortClientByKey(clients, "ExportFlow", "desc"); !reflect.DeepEqual(got, []int{2, 3, 1, 4}) {
-		t.Fatalf("ExportFlow desc = %v, want [2 3 1 4]", got)
-	}
-	if got := sortClientByKey(clients, "InletFlow", "asc"); !reflect.DeepEqual(got, []int{4, 2, 3, 1}) {
-		t.Fatalf("InletFlow asc = %v, want [4 2 3 1]", got)
-	}
-}
 
 func TestEnsureWebPasswordExtractsAndRepairsTotpSecret(t *testing.T) {
 	validSecret := "JBSWY3DPEHPK3PXP"
@@ -391,24 +373,6 @@ func TestFlowLimitActual(t *testing.T) {
 	}
 }
 
-func TestClientFlowsMarked(t *testing.T) {
-	t.Cleanup(func() { SetFlowLimitActual(false) })
-	SetFlowLimitActual(true)
-	db := &DbUtils{JsonDb: NewJsonDb(t.TempDir())}
-	c := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
-	if err := db.NewClient(c); err != nil && !strings.Contains(err.Error(), "store") {
-		t.Fatal(err)
-	}
-	if traffic, _ := c.Flow.Over(); !traffic {
-		t.Fatal("a new client's flow not marked")
-	}
-	u := &Client{Id: 3, VerifyKey: "vk-marked", Cnf: new(Config), Flow: &Flow{FlowLimit: 1, InletFlow: 600 << 10}}
-	_ = db.UpdateClient(u)
-	if traffic, _ := u.Flow.Over(); !traffic {
-		t.Fatal("an updated client's flow not marked")
-	}
-}
-
 func TestClientFlowTotalsRaceFree(t *testing.T) {
 	c := NewClient("vk", false, false)
 	done := make(chan struct{})
@@ -450,33 +414,4 @@ func TestUpdateRacesWithClone(t *testing.T) {
 		}
 	})
 	wg.Wait()
-}
-
-func TestUpdateTaskKeepsFlowOfActiveConnections(t *testing.T) {
-	useFlowTestDb(t)
-	stored := &Tunnel{Id: 5, Mode: "tcp", Flow: &Flow{}, Target: &Target{}, Client: &Client{Id: 1, Cnf: &Config{}, Flow: &Flow{}}}
-	GetDb().JsonDb.Tasks.Store(stored.Id, stored)
-	active := stored.Flow
-	edited := stored.Clone()
-	edited.Flow.SetFlowLimit(7)
-	if err := GetDb().UpdateTask(edited); err != nil {
-		t.Fatal(err)
-	}
-	if edited.Flow != active {
-		t.Fatal("the edited task counts on another flow than its active connections")
-	}
-	if active.Values().FlowLimit != 7 {
-		t.Fatalf("flow limit = %d", active.Values().FlowLimit)
-	}
-}
-
-func useFlowTestDb(t *testing.T) {
-	t.Helper()
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	old := Db
-	Db = &DbUtils{JsonDb: NewJsonDb(root)}
-	t.Cleanup(func() { Db = old })
 }

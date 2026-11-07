@@ -3,15 +3,15 @@ package service
 import (
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 type globalConnectionRepository struct {
 	stubRepository
-	saved *file.Glob
+	saved *model.Glob
 }
 
-func (r *globalConnectionRepository) SaveGlobal(g *file.Glob) error { r.saved = g; return nil }
+func (r *globalConnectionRepository) SaveGlobal(g *model.Glob) error { r.saved = g; return nil }
 
 func TestGlobalConnectionInput(t *testing.T) {
 	repo := new(globalConnectionRepository)

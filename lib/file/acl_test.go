@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/rate"
@@ -75,7 +77,7 @@ func TestLoadUsesLegacyAccessListsAsTheyAre(t *testing.T) {
 		}
 	}
 	v, _ := db.Clients.Load(1)
-	c := v.(*Client)
+	c := v.(*model.Client)
 	for a, allowed := range map[string]bool{"1.2.3.4:1": false, "5.6.7.8:1": false, "8.8.8.8:1": true} {
 		if got := acl.Allows(tcpAddr(a), nil, c.SourceACL(), nil); got != allowed {
 			t.Errorf("client 1 list, %s: allowed = %v, want %v", a, got, allowed)
@@ -85,7 +87,7 @@ func TestLoadUsesLegacyAccessListsAsTheyAre(t *testing.T) {
 		t.Fatal("global list not applied")
 	}
 	v, _ = db.Tasks.Load(1)
-	task := v.(*Tunnel)
+	task := v.(*model.Tunnel)
 	// as geomatch reads it: the bare host name is a keyword
 	for a, allowed := range map[string]bool{"example.com:443": true, "www.example.com:443": true, "x.a.com:80": true, "a.com:80": false, "10.1.1.1:80": true, "8.8.8.8:53": false} {
 		if got := task.AllowsDestination(a); got != allowed {
@@ -107,7 +109,7 @@ func TestLoadObsoleteClientFile(t *testing.T) {
 	if !ok {
 		t.Fatal("client 3 lost")
 	}
-	if acl.Allows(tcpAddr("1.1.1.1:1"), nil, v.(*Client).SourceACL(), nil) {
+	if acl.Allows(tcpAddr("1.1.1.1:1"), nil, v.(*model.Client).SourceACL(), nil) {
 		t.Fatal("list of an obsolete file not applied")
 	}
 	if _, ok := db.Clients.Load(4); !ok {
@@ -116,9 +118,9 @@ func TestLoadObsoleteClientFile(t *testing.T) {
 }
 
 func TestNewTunnelByHostUsesHostLists(t *testing.T) {
-	h := &Host{Client: &Client{Id: 1}, Flow: &Flow{}, Target: &Target{}}
+	h := &model.Host{Client: &model.Client{Id: 1}, Flow: &model.Flow{}, Target: &model.Target{}}
 	h.SetSourceLists(acl.DenyFirst, []string{"1.2.3.4"}, nil, acl.ScopeUser, "host")
-	tn := NewTunnelByHost(h, 443)
+	tn := model.NewTunnelByHost(h, 443)
 	if acl.Allows(tcpAddr("1.2.3.4:1"), nil, nil, tn.SourceACL()) {
 		t.Fatal("tunnel built for a host ignores the host lists")
 	}
@@ -129,7 +131,7 @@ func TestGlobalDenied(t *testing.T) {
 	if db.GlobalDenied(tcpAddr("192.0.2.1:1"), "Bridge") || db.GlobalDeniedString("192.0.2.1", "Web") {
 		t.Fatal("no global settings denied an address")
 	}
-	g := new(Glob)
+	g := new(model.Glob)
 	g.SetSourceLists(acl.DenyFirst, []string{"192.0.2.0/24"}, nil, acl.ScopeGlobal, "global")
 	db.JsonDb.Global = g
 	if !db.GlobalDenied(tcpAddr("192.0.2.1:1"), "Bridge") || !db.GlobalDeniedString("192.0.2.9", "Web") {
@@ -147,7 +149,7 @@ func TestGlobalTrafficPersisted(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := NewJsonDb(dir)
-	db.Global = &Glob{RateLimit: 50}
+	db.Global = &model.Glob{RateLimit: 50}
 	rate.SetGlobalTraffic(1234, 5678)
 	if err := db.StoreGlobalToJsonFile(); err != nil {
 		t.Fatal(err)

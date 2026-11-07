@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
@@ -61,8 +63,8 @@ func newCertSelectEnv(t *testing.T) *certSelectEnv {
 	return &certSelectEnv{t: t, s: s, deflt: deflt}
 }
 
-func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *testCert) *file.Host {
-	h := &file.Host{Id: id, Host: name, Location: location, Scheme: "all", Client: &file.Client{Id: clientID}}
+func (e *certSelectEnv) addHost(id, clientID int, name, location string, cert *testCert) *model.Host {
+	h := &model.Host{Id: id, Host: name, Location: location, Scheme: "all", Client: &model.Client{Id: clientID}}
 	if cert != nil {
 		h.CertFile, h.KeyFile, h.CertType = string(cert.certPEM), string(cert.keyPEM), "text"
 	}

@@ -4,13 +4,15 @@ import (
 	"math"
 	"sort"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
 )
 
-func GetTunnel(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*file.Tunnel, int) {
-	allList := make([]*file.Tunnel, 0) //store all Tunnel
-	list := make([]*file.Tunnel, 0)
+func GetTunnel(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*model.Tunnel, int) {
+	allList := make([]*model.Tunnel, 0) //store all Tunnel
+	list := make([]*model.Tunnel, 0)
 	originLength := length
 	var cnt int
 
@@ -19,7 +21,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 	// get all Tunnel and filter
 	for _, key := range keys {
 		if value, ok := file.GetDb().JsonDb.Tasks.Load(key); ok {
-			v, ok := value.(*file.Tunnel)
+			v, ok := value.(*model.Tunnel)
 			if !ok || v == nil || v.Client == nil || v.Target == nil {
 				continue
 			}
@@ -30,7 +32,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 		}
 	}
 
-	fv := flowSnapshots(allList, func(t *file.Tunnel) *file.Flow { return t.Flow })
+	fv := flowSnapshots(allList, func(t *model.Tunnel) *model.Flow { return t.Flow })
 
 	// sort by field, asc or desc
 	switch sortField {
@@ -149,7 +151,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f file.FlowValues) int64 {
+		rem := func(f model.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
@@ -248,11 +250,11 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 }
 
 // GetHostList get client list
-func GetHostList(start, length, clientId int, search, sortField, order string) (list []*file.Host, cnt int) {
+func GetHostList(start, length, clientId int, search, sortField, order string) (list []*model.Host, cnt int) {
 	// all the matching hosts are sorted before a page is taken
 	list, cnt = file.GetDb().GetHost(0, 0, clientId, search)
 	defer func() { list = page(list, start, length) }()
-	fv := flowSnapshots(list, func(h *file.Host) *file.Flow { return h.Flow })
+	fv := flowSnapshots(list, func(h *model.Host) *model.Flow { return h.Flow })
 
 	// sort by field, asc or desc
 	switch sortField {
@@ -413,7 +415,7 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f file.FlowValues) int64 {
+		rem := func(f model.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
@@ -469,11 +471,11 @@ func GetHostList(start, length, clientId int, search, sortField, order string) (
 }
 
 // GetClientList get client list
-func GetClientList(start, length int, search, sortField, order string, clientId int) (list []*file.Client, cnt int) {
+func GetClientList(start, length int, search, sortField, order string, clientId int) (list []*model.Client, cnt int) {
 	// all the matching clients are sorted before a page is taken
 	list, cnt = file.GetDb().GetClientList(0, 0, search, sortField, order, clientId)
 	defer func() { list = page(list, start, length) }()
-	fv := flowSnapshots(list, func(c *file.Client) *file.Flow { return c.Flow })
+	fv := flowSnapshots(list, func(c *model.Client) *model.Flow { return c.Flow })
 
 	// sort by Id, Remark, Port..., asc or desc
 	switch sortField {
@@ -526,7 +528,7 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 	case "FlowRemain":
 		asc := order == "asc"
 		const mb = int64(1024 * 1024)
-		rem := func(f file.FlowValues) int64 {
+		rem := func(f model.FlowValues) int64 {
 			if f.FlowLimit == 0 {
 				if asc {
 					return math.MaxInt64
@@ -612,8 +614,8 @@ func GetClientList(start, length int, search, sortField, order string, clientId 
 
 // flowSnapshots takes a snapshot of the flow of every entry of list, so that
 // sorting reads consistent values under no lock; a nil flow reads as zero.
-func flowSnapshots[T any](list []T, flow func(T) *file.Flow) map[*file.Flow]file.FlowValues {
-	fv := make(map[*file.Flow]file.FlowValues, len(list))
+func flowSnapshots[T any](list []T, flow func(T) *model.Flow) map[*model.Flow]model.FlowValues {
+	fv := make(map[*model.Flow]model.FlowValues, len(list))
 	for _, v := range list {
 		if f := flow(v); f != nil {
 			fv[f] = f.Values()

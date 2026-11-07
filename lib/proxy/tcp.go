@@ -13,10 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -30,7 +31,7 @@ type TunnelModeServer struct {
 }
 
 // NewTunnelModeServer tcp|host|mixproxy
-func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *TunnelModeServer {
+func NewTunnelModeServer(process process, bridge NetBridge, task *model.Tunnel, allowLocalProxy bool) *TunnelModeServer {
 	return &TunnelModeServer{
 		BaseServer:        NewBaseServer(bridge, task, allowLocalProxy),
 		process:           process,
@@ -168,7 +169,7 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	flows := []conn.Flow{s.Task.Flow, s.Task.Client.Flow}
 	err := s.DealTarget(c, s.Task.Client, nil, common.ConnTCP, nil, flows, s.Task)
-	if !errors.Is(err, file.ErrNoTarget) {
+	if !errors.Is(err, model.ErrNoTarget) {
 		return err
 	}
 	if s.Task.Mode != "file" && s.Bridge.IsServer() {
@@ -197,12 +198,12 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		logs.Info("%v", err)
 		return err
 	}
-	if !common.CheckProxyAuth(r, s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, file.GetAccountMap(s.Task.MultiAccount), file.GetAccountMap(s.Task.UserAuth)) {
+	if !common.CheckProxyAuth(r, s.Task.Client.Cnf.U, s.Task.Client.Cnf.P, model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)) {
 		_, _ = c.Write([]byte(common.ProxyAuthRequiredBytes))
 		_ = c.Close()
 		return errors.New("407 Proxy Authentication Required")
 	}
-	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
+	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff {
 		if !s.Task.AllowsDestination(addr) {
 			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
 			_, _ = c.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"))
@@ -222,7 +223,7 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 	transport := &http.Transport{
 		ResponseHeaderTimeout: 100 * time.Second,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff {
+			if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff {
 				if !s.Task.AllowsDestination(addr) {
 					logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(addr))
 					return nil, errors.New("destination denied by dest acl")

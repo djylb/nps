@@ -5,10 +5,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestFlowBudgetTakesOverPersistedTraffic(t *testing.T) {
-	flow := &Flow{FlowLimit: 1, InletFlow: 1 << 20}
+	flow := &model.Flow{FlowLimit: 1, InletFlow: 1 << 20}
 	if traffic, _ := flow.Over(); traffic {
 		t.Fatal("a flow exactly at its quota reported over")
 	}
@@ -46,7 +48,7 @@ func TestFlowBudgetTakesOverPersistedTraffic(t *testing.T) {
 }
 
 func TestFlowCounterPersistenceDuringTransfer(t *testing.T) {
-	f := new(Flow)
+	f := new(model.Flow)
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for range 200 {
@@ -63,7 +65,7 @@ func TestFlowCounterPersistenceDuringTransfer(t *testing.T) {
 	if v.InletFlow != 600 || v.ExportFlow != 1000 {
 		t.Fatal("persistent adapter lost counter bytes")
 	}
-	var back Flow
+	var back model.Flow
 	b, _ := json.Marshal(f)
 	if err := json.Unmarshal(b, &back); err != nil || back.Values().InletFlow != 600 {
 		t.Fatalf("JSON round trip = %s, %v", b, err)

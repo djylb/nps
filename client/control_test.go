@@ -12,11 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 // serveOnce accepts one connection on a new listener and runs handle on it.
@@ -255,8 +256,8 @@ func TestWaitReconnectEndsWithContext(t *testing.T) {
 // A silent server, or one lost in the middle, must end the config exchange
 // with an error so that the client reconnects.
 func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
-	task := &file.Tunnel{Mode: "tcp", Ports: "1"}
-	cnf := &config.Config{CommonConfig: &config.CommonConfig{VKey: "k"}, Tasks: []*file.Tunnel{task}}
+	task := &model.Tunnel{Mode: "tcp", Ports: "1"}
+	cnf := &config.Config{CommonConfig: &config.CommonConfig{VKey: "k"}, Tasks: []*model.Tunnel{task}}
 	fsm := NewFileServerManager(t.Context())
 	t.Cleanup(fsm.CloseAll)
 

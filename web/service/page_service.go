@@ -5,10 +5,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	npsbridge "github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/ui"
 )
@@ -162,7 +163,7 @@ func (s DefaultPageService) buildGlobal(input PageBuildInput) (PageBuildResult, 
 	switch strings.TrimSpace(input.Action) {
 	case "index":
 		data["name"] = "global"
-		data["globalNowConn"], _ = file.GlobalConnections()
+		data["globalNowConn"], _ = model.GlobalConnections()
 		data["globalIpListPriority"] = acl.DenyFirst
 		if global := s.globals().Get(); global != nil {
 			data["globalIpListPriority"] = global.IpListPriority
@@ -282,7 +283,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 }
 
 // setAccessListData exposes the lists of an edited entry to its template.
-func setAccessListData(data map[string]interface{}, l *file.SourceLists) {
+func setAccessListData(data map[string]interface{}, l *model.SourceLists) {
 	data["RegisteredOnly"] = l.RegisteredOnly
 	data["IpListPriority"] = l.IpListPriority
 	data["BlackIpList"] = joinRuleLines(l.BlackIpList)

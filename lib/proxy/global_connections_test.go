@@ -3,16 +3,16 @@ package proxy
 import (
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestGlobalClientAndTunnelAdmissionCleanup(t *testing.T) {
-	baseline, old := file.GlobalConnections()
-	file.SetGlobalMaxConn(int(baseline + 1))
-	t.Cleanup(func() { file.SetGlobalMaxConn(int(old)) })
+	baseline, old := model.GlobalConnections()
+	model.SetGlobalMaxConn(int(baseline + 1))
+	t.Cleanup(func() { model.SetGlobalMaxConn(int(old)) })
 	s := &BaseServer{}
-	a := &file.Client{Flow: &file.Flow{}}
-	b := &file.Client{Flow: &file.Flow{}, MaxConn: 1}
+	a := &model.Client{Flow: &model.Flow{}}
+	b := &model.Client{Flow: &model.Flow{}, MaxConn: 1}
 	release, err := s.AcquireForwarding(a, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestGlobalClientAndTunnelAdmissionCleanup(t *testing.T) {
 	}
 	release()
 	release() // The returned lease is idempotent.
-	task := &file.Tunnel{Client: b, MaxConn: 1}
+	task := &model.Tunnel{Client: b, MaxConn: 1}
 	release, err = s.AcquireForwarding(b, task.ControlGroup())
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestGlobalClientAndTunnelAdmissionCleanup(t *testing.T) {
 		t.Fatal("ancestor rollback failed")
 	}
 	release()
-	if current, _ := file.GlobalConnections(); current != baseline {
+	if current, _ := model.GlobalConnections(); current != baseline {
 		t.Fatal("lease leaked global slot")
 	}
 }

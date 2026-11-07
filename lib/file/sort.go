@@ -3,6 +3,8 @@ package file
 import (
 	"sort"
 	"sync"
+
+	"github.com/djylb/nps/lib/model"
 )
 
 // sortClientByKey returns the ids of the clients in m sorted by their inlet
@@ -16,7 +18,7 @@ func sortClientByKey(m *sync.Map, sortKey, order string) (res []int) {
 	}
 	var list []entry
 	m.Range(func(_, value interface{}) bool {
-		c, ok := value.(*Client)
+		c, ok := value.(*model.Client)
 		if !ok || c == nil {
 			return true
 		}

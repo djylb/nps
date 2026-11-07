@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
@@ -62,7 +63,7 @@ func TestServerPort(p int, m string) (b bool) {
 	return testPortUsage(p, m, m == "udp")
 }
 
-func TestTunnelPort(t *file.Tunnel) bool {
+func TestTunnelPort(t *model.Tunnel) bool {
 	if t == nil {
 		return false
 	}
@@ -91,7 +92,7 @@ func testPortUsage(p int, m string, needUDP bool) (b bool) {
 	return true
 }
 
-func tunnelNeedsUDP(t *file.Tunnel) bool {
+func tunnelNeedsUDP(t *model.Tunnel) bool {
 	if t == nil {
 		return false
 	}
@@ -132,11 +133,11 @@ func GenerateServerPort(m string) int {
 	return 0
 }
 
-func GenerateTunnelPort(t *file.Tunnel) int {
+func GenerateTunnelPort(t *model.Tunnel) int {
 	if t == nil {
 		return 0
 	}
-	probe := &file.Tunnel{
+	probe := &model.Tunnel{
 		Mode:        t.Mode,
 		Socks5Proxy: t.Socks5Proxy,
 	}

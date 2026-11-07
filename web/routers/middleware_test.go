@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -20,10 +22,10 @@ import (
 type requestParamFixture struct {
 	handler http.Handler
 	cookies []*http.Cookie
-	clientA *file.Client
-	clientB *file.Client
-	clientC *file.Client
-	hostOfB *file.Host
+	clientA *model.Client
+	clientB *model.Client
+	clientC *model.Client
+	hostOfB *model.Host
 }
 
 func newRequestParamFixture(t *testing.T) *requestParamFixture {

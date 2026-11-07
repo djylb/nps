@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/file"
 )
@@ -104,7 +106,7 @@ func TestListsSortBeforePaging(t *testing.T) {
 	}
 }
 
-func hostNames(list []*file.Host) []string {
+func hostNames(list []*model.Host) []string {
 	names := make([]string, 0, len(list))
 	for _, h := range list {
 		names = append(names, h.Host)

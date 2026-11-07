@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/crypt"
 )
 
@@ -13,7 +15,7 @@ func TestVirtualClientsExcludedFromAuthenticationIndex(t *testing.T) {
 	key := "virtual-audit-" + t.Name()
 	hash := crypt.Blake2b(key)
 	t.Cleanup(func() { Blake2bVkeyIndex.Remove(hash) })
-	client := &Client{Id: -9, VerifyKey: key, Status: true, Cnf: &Config{}, Flow: &Flow{}}
+	client := &model.Client{Id: -9, VerifyKey: key, Status: true, Cnf: &model.Config{}, Flow: &model.Flow{}}
 	if err := db.NewClient(client); err != nil {
 		t.Fatal(err)
 	}

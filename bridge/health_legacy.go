@@ -6,8 +6,10 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/model"
 )
 
 // healthSendTimeout bounds writing one health group message.
@@ -60,7 +62,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 		retry = 0
 		switch {
 		case rep.Group == "":
-			legacy.ApplyOwnHealthReport(id, node.UUID, rep)
+			applyOwnHealthReport(id, node.UUID, rep)
 		case push != nil:
 			push.apply(rep)
 		}
@@ -74,4 +76,30 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 	}
 	client.RemoveOfflineNodes(false)
 	kickClientHealth(client)
+}
+
+// applyOwnHealthReport applies a report of a check that a released npc configured
+// itself. It names only an address, so it goes to every entry of the client
+// holding that address. It goes with those clients.
+func applyOwnHealthReport(id int, node string, rep healthcheck.Report) {
+	file.GetDb().JsonDb.Tasks.Range(func(key, value any) bool {
+		v := value.(*model.Tunnel)
+		if v.Client.Id == id && v.Mode == "tcp" {
+			v.RLock()
+			fallback := v.Target
+			v.RUnlock()
+			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
+		}
+		return true
+	})
+	file.GetDb().JsonDb.Hosts.Range(func(key, value any) bool {
+		v := value.(*model.Host)
+		if v.Client.Id == id {
+			v.RLock()
+			fallback := v.Target
+			v.RUnlock()
+			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
+		}
+		return true
+	})
 }

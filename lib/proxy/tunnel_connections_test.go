@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestTunnelConnectionLimitRejectsAndReleases(t *testing.T) {
@@ -17,7 +18,7 @@ func TestTunnelConnectionLimitRejectsAndReleases(t *testing.T) {
 		client, tunnel int
 	}{{"tunnel", 10, 1}, {"client", 1, 10}} {
 		t.Run(tc.name, func(t *testing.T) {
-			task := &file.Tunnel{MaxConn: tc.tunnel, Client: &file.Client{MaxConn: tc.client, Flow: &file.Flow{}}, Flow: &file.Flow{}}
+			task := &model.Tunnel{MaxConn: tc.tunnel, Client: &model.Client{MaxConn: tc.client, Flow: &model.Flow{}}, Flow: &model.Flow{}}
 			entered := make(chan struct{}, 3)
 			release := make(chan struct{})
 			s := NewTunnelModeServer(func(_ *conn.Conn, _ *TunnelModeServer) error { entered <- struct{}{}; <-release; return nil }, &localDialBridge{}, task, false)
@@ -62,7 +63,7 @@ func TestTunnelConnectionLimitRejectsAndReleases(t *testing.T) {
 }
 
 func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
-	task := &file.Tunnel{MaxConn: 1, Client: &file.Client{Flow: &file.Flow{}}}
+	task := &model.Tunnel{MaxConn: 1, Client: &model.Client{Flow: &model.Flow{}}}
 	if !task.GetConn() {
 		t.Fatal("initial reservation")
 	}
@@ -80,7 +81,7 @@ func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
 
 func TestUDPTunnelRejectionReleasesClientSlot(t *testing.T) {
 	for _, flowFailure := range []bool{false, true} {
-		task := &file.Tunnel{MaxConn: 1, Client: &file.Client{Flow: &file.Flow{}}, Flow: &file.Flow{}}
+		task := &model.Tunnel{MaxConn: 1, Client: &model.Client{Flow: &model.Flow{}}, Flow: &model.Flow{}}
 		if flowFailure {
 			task.Flow.TimeLimit = time.Now().Add(-time.Hour)
 		} else if !task.GetConn() {
@@ -111,8 +112,8 @@ func TestUDPTunnelRejectionReleasesClientSlot(t *testing.T) {
 }
 
 func TestNetxGroupShutdownReleasesHierarchy(t *testing.T) {
-	baseline, _ := file.GlobalConnections()
-	task := &file.Tunnel{MaxConn: 1, Client: &file.Client{Flow: &file.Flow{}}}
+	baseline, _ := model.GlobalConnections()
+	task := &model.Tunnel{MaxConn: 1, Client: &model.Client{Flow: &model.Flow{}}}
 	entered := make(chan struct{}, 1)
 	server := NewTunnelModeServer(func(c *conn.Conn, _ *TunnelModeServer) error {
 		entered <- struct{}{}
@@ -135,7 +136,7 @@ func TestNetxGroupShutdownReleasesHierarchy(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("netx group did not close the active connection")
 	}
-	if active, _ := file.GlobalConnections(); active != baseline || task.Client.CurrentConnections() != 0 || task.CurrentConnections() != 0 {
+	if active, _ := model.GlobalConnections(); active != baseline || task.Client.CurrentConnections() != 0 || task.CurrentConnections() != 0 {
 		t.Fatal("shutdown leaked ancestor slots")
 	}
 	_, late := tcpConnPair(t)

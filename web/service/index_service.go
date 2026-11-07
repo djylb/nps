@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -14,16 +16,16 @@ import (
 type IndexService interface {
 	DashboardData(force bool) map[string]interface{}
 	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
-	ListTunnels(TunnelListInput) ([]*file.Tunnel, int)
+	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
 	AddTunnel(AddTunnelInput) (TunnelMutation, error)
-	GetTunnel(id int) (*file.Tunnel, error)
+	GetTunnel(id int) (*model.Tunnel, error)
 	EditTunnel(EditTunnelInput) (TunnelMutation, error)
 	StopTunnel(id int, mode string) error
 	DeleteTunnel(id int) error
 	StartTunnel(id int, mode string) error
 	ClearTunnel(id int, mode string) error
-	ListHosts(HostListInput) ([]*file.Host, int)
-	GetHost(id int) (*file.Host, error)
+	ListHosts(HostListInput) ([]*model.Host, int)
+	GetHost(id int) (*model.Host, error)
 	DeleteHost(id int) error
 	StartHost(id int, mode string) error
 	StopHost(id int, mode string) error
@@ -74,7 +76,7 @@ type AddTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
-	HealthCheck    file.HealthCheck
+	HealthCheck    model.HealthCheck
 	Auth           string
 	Remark         string
 	Password       string
@@ -104,7 +106,7 @@ type EditTunnelInput struct {
 	TargetType     string
 	Target         string
 	ProxyProtocol  int
-	HealthCheck    file.HealthCheck
+	HealthCheck    model.HealthCheck
 	Auth           string
 	Remark         string
 	Password       string
@@ -131,7 +133,7 @@ type AddHostInput struct {
 	Host           string
 	Target         string
 	ProxyProtocol  int
-	HealthCheck    file.HealthCheck
+	HealthCheck    model.HealthCheck
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -167,7 +169,7 @@ type EditHostInput struct {
 	Host           string
 	Target         string
 	ProxyProtocol  int
-	HealthCheck    file.HealthCheck
+	HealthCheck    model.HealthCheck
 	Auth           string
 	Header         string
 	RespHeader     string
@@ -202,7 +204,7 @@ func (s DefaultIndexService) DashboardData(force bool) map[string]interface{} {
 	return s.runtime().DashboardData(force)
 }
 
-func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*file.Tunnel, int) {
+func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*model.Tunnel, int) {
 	return s.runtime().ListTunnels(input.Offset, input.Limit, input.Type, input.ClientID, input.Search, input.Sort, input.Order)
 }
 
@@ -216,17 +218,17 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		return TunnelMutation{}, err
 	}
 	id := s.repo().NextTunnelID()
-	tunnel := &file.Tunnel{
+	tunnel := &model.Tunnel{
 		Port:       input.Port,
 		ServerIp:   input.ServerIP,
 		Mode:       input.Mode,
 		TargetType: input.TargetType,
-		Target: &file.Target{
+		Target: &model.Target{
 			TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, ""),
 			ProxyProtocol: input.ProxyProtocol,
 			LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
 		},
-		UserAuth: &file.MultiAccount{
+		UserAuth: &model.MultiAccount{
 			Content:    input.Auth,
 			AccountMap: common.DealMultiUser(input.Auth),
 		},
@@ -240,7 +242,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		Socks5Proxy:  input.EnableSocks5,
 		DestAclMode:  normalizeACLMode(input.DestACLMode),
 		DestAclRules: destRules,
-		Flow: &file.Flow{
+		Flow: &model.Flow{
 			FlowLimit: input.FlowLimit,
 			TimeLimit: common.GetTimeNoErrByStr(input.TimeLimit),
 		},
@@ -260,7 +262,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 		return TunnelMutation{}, ErrClientNotFound
 	}
 	tunnel.Client = client
-	if tunnel.Client.MaxTunnelNum != 0 && tunnel.Client.GetTunnelNum() >= tunnel.Client.MaxTunnelNum {
+	if tunnel.Client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(tunnel.Client) >= tunnel.Client.MaxTunnelNum {
 		return TunnelMutation{}, ErrTunnelLimitExceeded
 	}
 
@@ -275,7 +277,7 @@ func (s DefaultIndexService) AddTunnel(input AddTunnelInput) (TunnelMutation, er
 	return TunnelMutation{ID: tunnel.Id, ClientID: input.ClientID, Mode: tunnel.Mode}, nil
 }
 
-func (s DefaultIndexService) GetTunnel(id int) (*file.Tunnel, error) {
+func (s DefaultIndexService) GetTunnel(id int) (*model.Tunnel, error) {
 	tunnel, err := s.repo().GetTunnel(id)
 	if err != nil {
 		return nil, ErrTunnelNotFound
@@ -309,7 +311,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	if desiredMode == "" {
 		desiredMode = tunnel.Mode
 	}
-	probe := &file.Tunnel{
+	probe := &model.Tunnel{
 		Port:        input.Port,
 		Mode:        desiredMode,
 		HttpProxy:   input.EnableHTTP,
@@ -333,12 +335,12 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 	tunnel.ServerIp = input.ServerIP
 	tunnel.Mode = desiredMode
 	tunnel.TargetType = input.TargetType
-	tunnel.Target = &file.Target{
+	tunnel.Target = &model.Target{
 		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
 		ProxyProtocol: input.ProxyProtocol,
 		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
 	}
-	tunnel.UserAuth = &file.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
+	tunnel.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
 	tunnel.Password = input.Password
 	tunnel.LocalPath = input.LocalPath
 	tunnel.StripPre = input.StripPre
@@ -372,7 +374,7 @@ func (s DefaultIndexService) EditTunnel(input EditTunnelInput) (TunnelMutation, 
 // editTargetClient returns the client an edited tunnel or host belongs to.
 // A zero clientID keeps the current client; moving to another client
 // applies the same tunnel count limit as creation.
-func (s DefaultIndexService) editTargetClient(current *file.Client, clientID int) (*file.Client, error) {
+func (s DefaultIndexService) editTargetClient(current *model.Client, clientID int) (*model.Client, error) {
 	if clientID == 0 {
 		if current == nil {
 			return nil, ErrClientNotFound
@@ -386,7 +388,7 @@ func (s DefaultIndexService) editTargetClient(current *file.Client, clientID int
 	if current != nil && current.Id == client.Id {
 		return client, nil
 	}
-	if client.MaxTunnelNum != 0 && client.GetTunnelNum() >= client.MaxTunnelNum {
+	if client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(client) >= client.MaxTunnelNum {
 		return nil, ErrTunnelLimitExceeded
 	}
 	return client, nil
@@ -440,11 +442,11 @@ func (s DefaultIndexService) ClearTunnel(id int, mode string) error {
 	return changeTunnelStatus(id, mode, "clear")
 }
 
-func (s DefaultIndexService) ListHosts(input HostListInput) ([]*file.Host, int) {
+func (s DefaultIndexService) ListHosts(input HostListInput) ([]*model.Host, int) {
 	return s.runtime().ListHosts(input.Offset, input.Limit, input.ClientID, input.Search, input.Sort, input.Order)
 }
 
-func (s DefaultIndexService) GetHost(id int) (*file.Host, error) {
+func (s DefaultIndexService) GetHost(id int) (*model.Host, error) {
 	host, err := s.repo().GetHost(id)
 	if err != nil {
 		return nil, ErrHostNotFound
@@ -544,15 +546,15 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		return HostMutation{}, err
 	}
 	id := s.repo().NextHostID()
-	host := &file.Host{
+	host := &model.Host{
 		Id:   id,
 		Host: input.Host,
-		Target: &file.Target{
+		Target: &model.Target{
 			TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, ""),
 			ProxyProtocol: input.ProxyProtocol,
 			LocalProxy:    localProxyEnabled(input.ClientID, input.LocalProxy, input.AllowUserLocal),
 		},
-		UserAuth: &file.MultiAccount{
+		UserAuth: &model.MultiAccount{
 			Content:    input.Auth,
 			AccountMap: common.DealMultiUser(input.Auth),
 		},
@@ -563,7 +565,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		Location:         input.Location,
 		PathRewrite:      input.PathRewrite,
 		RedirectURL:      input.RedirectURL,
-		Flow: &file.Flow{
+		Flow: &model.Flow{
 			FlowLimit: input.FlowLimit,
 			TimeLimit: common.GetTimeNoErrByStr(input.TimeLimit),
 		},
@@ -588,7 +590,7 @@ func (s DefaultIndexService) AddHost(input AddHostInput) (HostMutation, error) {
 		return HostMutation{}, ErrClientNotFound
 	}
 	host.Client = client
-	if host.Client.MaxTunnelNum != 0 && host.Client.GetTunnelNum() >= host.Client.MaxTunnelNum {
+	if host.Client.MaxTunnelNum != 0 && file.GetDb().ClientEntryCount(host.Client) >= host.Client.MaxTunnelNum {
 		return HostMutation{}, ErrTunnelLimitExceeded
 	}
 
@@ -618,7 +620,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	oldHost := host.Host
 	scheme := normalizeScheme(input.Scheme)
 	if host.Host != input.Host || host.Location != input.Location || host.Scheme != scheme {
-		tmpHost := &file.Host{Id: host.Id, Host: input.Host, Location: input.Location, Scheme: scheme}
+		tmpHost := &model.Host{Id: host.Id, Host: input.Host, Location: input.Location, Scheme: scheme}
 		if s.repo().HostExists(tmpHost) {
 			return HostMutation{}, ErrHostExists
 		}
@@ -634,7 +636,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	}
 
 	host.Host = input.Host
-	target := &file.Target{
+	target := &model.Target{
 		TargetStr:     sanitizeBridgeTarget(input.Target, input.IsAdmin, targetFallback),
 		ProxyProtocol: input.ProxyProtocol,
 		LocalProxy:    localProxyEnabled(client.Id, input.LocalProxy, input.AllowUserLocal),
@@ -643,7 +645,7 @@ func (s DefaultIndexService) EditHost(input EditHostInput) (HostMutation, error)
 	host.Client, host.Target = client, target
 	host.Unlock()
 	host.SetHealthCheck(input.HealthCheck)
-	host.UserAuth = &file.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
+	host.UserAuth = &model.MultiAccount{Content: input.Auth, AccountMap: common.DealMultiUser(input.Auth)}
 	host.HeaderChange = input.Header
 	host.RespHeaderChange = input.RespHeader
 	host.HostChange = input.HostChange
@@ -690,10 +692,10 @@ func sanitizeBridgeTarget(target string, isAdmin bool, fallback string) string {
 
 func normalizeACLMode(mode int) int {
 	switch mode {
-	case file.AclOff, file.AclWhitelist, file.AclBlacklist:
+	case model.AclOff, model.AclWhitelist, model.AclBlacklist:
 		return mode
 	default:
-		return file.AclOff
+		return model.AclOff
 	}
 }
 
@@ -742,7 +744,7 @@ func (s DefaultIndexService) runtime() Runtime {
 	return DefaultBackend().Runtime
 }
 
-func (s DefaultIndexService) resolveTunnelPort(tunnel *file.Tunnel) (int, error) {
+func (s DefaultIndexService) resolveTunnelPort(tunnel *model.Tunnel) (int, error) {
 	if tunnel.Port <= 0 {
 		tunnel.Port = s.runtime().GenerateTunnelPort(tunnel)
 	}

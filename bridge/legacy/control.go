@@ -8,17 +8,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/internal/tunnelwire/control"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/rate"
 )
 
 // ReadTask reads a task sent with FlagNewTask. It holds no state of the sender:
-// a new id, flow and no-store mark.
-func ReadTask(r io.Reader) (*file.Tunnel, error) {
+// a fresh flow and the no-store mark; the receiver gives it an id.
+func ReadTask(r io.Reader) (*model.Tunnel, error) {
 	var m *control.Task
 	if err := control.Read(r, &m); err != nil {
 		return nil, err
@@ -30,14 +31,13 @@ func ReadTask(r io.Reader) (*file.Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Id = int(file.GetDb().JsonDb.GetTaskId())
 	t.NoStore = true
-	t.Flow = new(file.Flow)
+	t.Flow = new(model.Flow)
 	return t, nil
 }
 
-// ReadHost reads a host sent with FlagNewHost.
-func ReadHost(r io.Reader) (*file.Host, error) {
+// ReadHost reads a host sent with FlagNewHost; the receiver gives it an id.
+func ReadHost(r io.Reader) (*model.Host, error) {
 	var m *control.Host
 	if err := control.Read(r, &m); err != nil {
 		return nil, err
@@ -49,14 +49,13 @@ func ReadHost(r io.Reader) (*file.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	h.Id = int(file.GetDb().JsonDb.GetHostId())
-	h.Flow = new(file.Flow)
+	h.Flow = new(model.Flow)
 	h.NoStore = true
 	return h, nil
 }
 
 // ReadClient reads a client sent with FlagNewConf.
-func ReadClient(r io.Reader) (*file.Client, error) {
+func ReadClient(r io.Reader) (*model.Client, error) {
 	var m *control.Client
 	if err := control.Read(r, &m); err != nil {
 		return nil, err
@@ -71,35 +70,35 @@ func ReadClient(r io.Reader) (*file.Client, error) {
 	c.NoStore = true
 	c.Status = true
 	if c.Flow == nil {
-		c.Flow = new(file.Flow)
+		c.Flow = new(model.Flow)
 	}
 	c.NoDisplay = false
 	return c, nil
 }
 
 // WriteTask sends t with FlagNewTask.
-func WriteTask(w io.Writer, t *file.Tunnel) error {
+func WriteTask(w io.Writer, t *model.Tunnel) error {
 	return control.Write(w, taskToWire(t), FlagNewTask)
 }
 
 // WriteHost sends h with FlagNewHost.
-func WriteHost(w io.Writer, h *file.Host) error {
+func WriteHost(w io.Writer, h *model.Host) error {
 	return control.Write(w, hostToWire(h), FlagNewHost)
 }
 
 // WriteClient sends c with FlagNewConf.
-func WriteClient(w io.Writer, c *file.Client) error {
+func WriteClient(w io.Writer, c *model.Client) error {
 	return control.Write(w, clientToWire(c), FlagNewConf)
 }
 
-func flowFromWire(m *control.Flow) *file.Flow {
+func flowFromWire(m *control.Flow) *model.Flow {
 	if m == nil {
 		return nil
 	}
-	return &file.Flow{ExportFlow: m.ExportFlow, InletFlow: m.InletFlow, FlowLimit: m.FlowLimit, TimeLimit: m.TimeLimit}
+	return &model.Flow{ExportFlow: m.ExportFlow, InletFlow: m.InletFlow, FlowLimit: m.FlowLimit, TimeLimit: m.TimeLimit}
 }
 
-func flowToWire(f *file.Flow) *control.Flow {
+func flowToWire(f *model.Flow) *control.Flow {
 	if f == nil {
 		return nil
 	}
@@ -107,47 +106,47 @@ func flowToWire(f *file.Flow) *control.Flow {
 	return &control.Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit}
 }
 
-func listsFromWire(m control.SourceLists) file.SourceLists {
-	return file.SourceLists{IpListPriority: m.IpListPriority, BlackIpList: m.BlackIpList, WhiteIpList: m.WhiteIpList, RegisteredOnly: m.RegisteredOnly}
+func listsFromWire(m control.SourceLists) model.SourceLists {
+	return model.SourceLists{IpListPriority: m.IpListPriority, BlackIpList: m.BlackIpList, WhiteIpList: m.WhiteIpList, RegisteredOnly: m.RegisteredOnly}
 }
 
-func listsToWire(l *file.SourceLists) control.SourceLists {
+func listsToWire(l *model.SourceLists) control.SourceLists {
 	return control.SourceLists{IpListPriority: l.IpListPriority, BlackIpList: l.BlackIpList, WhiteIpList: l.WhiteIpList, RegisteredOnly: l.RegisteredOnly}
 }
 
-func targetFromWire(m *control.Target) *file.Target {
+func targetFromWire(m *control.Target) *model.Target {
 	if m == nil {
 		return nil
 	}
-	return &file.Target{TargetStr: m.TargetStr, LocalProxy: m.LocalProxy, ProxyProtocol: m.ProxyProtocol}
+	return &model.Target{TargetStr: m.TargetStr, LocalProxy: m.LocalProxy, ProxyProtocol: m.ProxyProtocol}
 }
 
-func targetToWire(t *file.Target) *control.Target {
+func targetToWire(t *model.Target) *control.Target {
 	if t == nil {
 		return nil
 	}
 	return &control.Target{TargetStr: t.TargetStr, LocalProxy: t.LocalProxy, ProxyProtocol: t.ProxyProtocol}
 }
 
-func accountFromWire(m *control.MultiAccount) *file.MultiAccount {
+func accountFromWire(m *control.MultiAccount) *model.MultiAccount {
 	if m == nil {
 		return nil
 	}
-	return &file.MultiAccount{Content: m.Content, AccountMap: m.AccountMap}
+	return &model.MultiAccount{Content: m.Content, AccountMap: m.AccountMap}
 }
 
-func accountToWire(a *file.MultiAccount) *control.MultiAccount {
+func accountToWire(a *model.MultiAccount) *control.MultiAccount {
 	if a == nil {
 		return nil
 	}
 	return &control.MultiAccount{Content: a.Content, AccountMap: a.AccountMap}
 }
 
-func clientFromWire(m *control.Client) (*file.Client, error) {
+func clientFromWire(m *control.Client) (*model.Client, error) {
 	if m == nil {
 		return nil, nil
 	}
-	c := &file.Client{
+	c := &model.Client{
 		Id: m.Id, VerifyKey: m.VerifyKey, Mode: m.Mode, Addr: m.Addr, LocalAddr: m.LocalAddr, Remark: m.Remark,
 		Status: m.Status, IsConnect: m.IsConnect, RateLimit: m.RateLimit, Flow: flowFromWire(m.Flow),
 		NoStore: m.NoStore, NoDisplay: m.NoDisplay, MaxConn: m.MaxConn, NowConn: m.NowConn,
@@ -157,7 +156,7 @@ func clientFromWire(m *control.Client) (*file.Client, error) {
 		RegisterKey: m.RegisterKey, RegisterMaxHours: m.RegisterMaxHours,
 	}
 	if m.Cnf != nil {
-		c.Cnf = &file.Config{U: m.Cnf.U, P: m.Cnf.P, Compress: m.Cnf.Compress, Crypt: m.Cnf.Crypt}
+		c.Cnf = &model.Config{U: m.Cnf.U, P: m.Cnf.P, Compress: m.Cnf.Compress, Crypt: m.Cnf.Crypt}
 	}
 	c.ExportFlow.Store(m.ExportFlow)
 	c.InletFlow.Store(m.InletFlow)
@@ -167,7 +166,7 @@ func clientFromWire(m *control.Client) (*file.Client, error) {
 	lists := listsFromWire(m.SourceLists)
 	c.IpListPriority, c.BlackIpList, c.WhiteIpList, c.RegisteredOnly = lists.IpListPriority, lists.BlackIpList, lists.WhiteIpList, lists.RegisteredOnly
 	if len(m.ConnectionHistory) > 0 {
-		c.ConnectionHistory = new(file.ConnectionHistory)
+		c.ConnectionHistory = new(model.ConnectionHistory)
 		if err := json.Unmarshal(m.ConnectionHistory, c.ConnectionHistory); err != nil {
 			var typeErr *json.UnmarshalTypeError
 			if !errors.As(err, &typeErr) {
@@ -178,7 +177,7 @@ func clientFromWire(m *control.Client) (*file.Client, error) {
 	return c, nil
 }
 
-func clientToWire(c *file.Client) *control.Client {
+func clientToWire(c *model.Client) *control.Client {
 	if c == nil {
 		return nil
 	}
@@ -207,12 +206,12 @@ func clientToWire(c *file.Client) *control.Client {
 	return m
 }
 
-func taskFromWire(m *control.Task) (*file.Tunnel, error) {
+func taskFromWire(m *control.Task) (*model.Tunnel, error) {
 	client, err := clientFromWire(m.Client)
 	if err != nil {
 		return nil, err
 	}
-	t := &file.Tunnel{
+	t := &model.Tunnel{
 		MaxConn: m.MaxConn, Id: m.Id, Port: m.Port, ServerIp: m.ServerIp, Mode: m.Mode, Status: m.Status,
 		RunStatus: m.RunStatus, Client: client, Ports: m.Ports, Flow: flowFromWire(m.Flow), NowConn: m.NowConn,
 		Password: m.Password, Remark: m.Remark, TargetAddr: m.TargetAddr, TargetType: m.TargetType,
@@ -229,7 +228,7 @@ func taskFromWire(m *control.Task) (*file.Tunnel, error) {
 	return t, nil
 }
 
-func taskToWire(t *file.Tunnel) *control.Task {
+func taskToWire(t *model.Tunnel) *control.Task {
 	return &control.Task{
 		RateLimits: control.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
 		MaxConn:    t.MaxConn, Id: t.Id, Port: t.Port, ServerIp: t.ServerIp, Mode: t.Mode, Status: t.Status,
@@ -246,12 +245,12 @@ func taskToWire(t *file.Tunnel) *control.Task {
 	}
 }
 
-func hostFromWire(m *control.Host) (*file.Host, error) {
+func hostFromWire(m *control.Host) (*model.Host, error) {
 	client, err := clientFromWire(m.Client)
 	if err != nil {
 		return nil, err
 	}
-	h := &file.Host{
+	h := &model.Host{
 		Id: m.Id, Host: m.Host, HeaderChange: m.HeaderChange, RespHeaderChange: m.RespHeaderChange,
 		HostChange: m.HostChange, Location: m.Location, PathRewrite: m.PathRewrite, Remark: m.Remark, Scheme: m.Scheme,
 		RedirectURL: m.RedirectURL, HttpsJustProxy: m.HttpsJustProxy, TlsOffload: m.TlsOffload, AutoSSL: m.AutoSSL,
@@ -267,7 +266,7 @@ func hostFromWire(m *control.Host) (*file.Host, error) {
 	return h, nil
 }
 
-func hostToWire(h *file.Host) *control.Host {
+func hostToWire(h *model.Host) *control.Host {
 	return &control.Host{
 		RateLimits: control.RateLimits{UploadLimit: h.UploadLimit, DownloadLimit: h.DownloadLimit},
 		Id:         h.Id, Host: h.Host, HeaderChange: h.HeaderChange, RespHeaderChange: h.RespHeaderChange,
@@ -317,32 +316,6 @@ func ReadStatus(r io.Reader) (bool, error) { return control.ReadStatus(r) }
 func WriteHealth(w io.Writer, addr, status string) error {
 	_, err := w.Write(control.EncodeHealth(addr, status))
 	return err
-}
-
-// ApplyOwnHealthReport applies a report of a check that a released npc configured
-// itself. It names only an address, so it goes to every entry of the client
-// holding that address. It goes with those clients.
-func ApplyOwnHealthReport(id int, node string, rep healthcheck.Report) {
-	file.GetDb().JsonDb.Tasks.Range(func(key, value any) bool {
-		v := value.(*file.Tunnel)
-		if v.Client.Id == id && v.Mode == "tcp" {
-			v.RLock()
-			fallback := v.Target
-			v.RUnlock()
-			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
-		}
-		return true
-	})
-	file.GetDb().JsonDb.Hosts.Range(func(key, value any) bool {
-		v := value.(*file.Host)
-		if v.Client.Id == id {
-			v.RLock()
-			fallback := v.Target
-			v.RUnlock()
-			v.Routes.Target(node, fallback).SetHealthy(rep.Addr, rep.Up)
-		}
-		return true
-	})
 }
 
 // healthGroupWire is the body of HealthSet: targets added to a group. A large
@@ -431,7 +404,7 @@ func ReadHealth(r io.Reader) (healthcheck.Report, error) {
 }
 
 // FileKey names a client's file server on both sides of a file task.
-func FileKey(key string, t *file.Tunnel) string {
+func FileKey(key string, t *model.Tunnel) string {
 	return control.FileKey(key, t.Mode, t.ServerIp, t.Port, t.LocalPath, t.StripPre, t.ReadOnly, t.MultiAccount.Content)
 }
 

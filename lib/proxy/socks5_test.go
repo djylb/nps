@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 type testUDP5Bridge struct {
@@ -46,18 +47,18 @@ func (failBridge) IsServer() bool { return false }
 
 func (failBridge) CliProcess(*conn.Conn, string) {}
 
-func newTestSocks5Task(port int, mode string) *file.Tunnel {
-	task := &file.Tunnel{
+func newTestSocks5Task(port int, mode string) *model.Tunnel {
+	task := &model.Tunnel{
 		Port:     port,
 		ServerIp: "127.0.0.1",
 		Mode:     mode,
-		Client: &file.Client{
+		Client: &model.Client{
 			Id:   1,
-			Cnf:  &file.Config{},
-			Flow: &file.Flow{},
+			Cnf:  &model.Config{},
+			Flow: &model.Flow{},
 		},
-		Flow:   &file.Flow{},
-		Target: &file.Target{},
+		Flow:   &model.Flow{},
+		Target: &model.Target{},
 	}
 	if mode == "mixProxy" {
 		task.Socks5Proxy = true
@@ -65,7 +66,7 @@ func newTestSocks5Task(port int, mode string) *file.Tunnel {
 	return task
 }
 
-func startTestTunnelModeServer(t *testing.T, task *file.Tunnel, bridge NetBridge) (*TunnelModeServer, chan error) {
+func startTestTunnelModeServer(t *testing.T, task *model.Tunnel, bridge NetBridge) (*TunnelModeServer, chan error) {
 	t.Helper()
 
 	server := NewTunnelModeServer(ProcessMix, bridge, task, false)
@@ -929,7 +930,7 @@ func TestSocks5UDPReplyAddrWithholdsPrivateAddressFromPublicClient(t *testing.T)
 	udpLocal := &net.UDPAddr{IP: net.IPv4zero, Port: 1080}
 	publicClient := net.ParseIP("8.8.8.8")
 
-	task := &file.Tunnel{Port: 1080}
+	task := &model.Tunnel{Port: 1080}
 	if got := socks5ReplyAddrFromNetAddr(task, tcpLocal, udpLocal, 1080, publicClient); got.IP.String() != "0.0.0.0" {
 		t.Fatalf("reply host for public client = %s, want 0.0.0.0", got.IP)
 	}
@@ -944,7 +945,7 @@ func TestSocks5UDPReplyAddrWithholdsPrivateAddressFromPublicClient(t *testing.T)
 
 // startSocks5Handshake serves one connection of task over a pipe and returns
 // the client side with a channel closed when the server is done.
-func startSocks5Handshake(t *testing.T, task *file.Tunnel) (net.Conn, chan struct{}) {
+func startSocks5Handshake(t *testing.T, task *model.Tunnel) (net.Conn, chan struct{}) {
 	t.Helper()
 	serverSide, clientSide := net.Pipe()
 	t.Cleanup(func() { _ = clientSide.Close() })
@@ -967,7 +968,7 @@ func waitSocks5Done(t *testing.T, done chan struct{}) {
 	}
 }
 
-func newAuthSocks5Task() *file.Tunnel {
+func newAuthSocks5Task() *model.Tunnel {
 	task := newTestSocks5Task(1080, "socks5")
 	task.Client.Cnf.U = "user"
 	task.Client.Cnf.P = "secret"
@@ -1087,11 +1088,11 @@ func TestTunnelModeServerSocks5RequestErrors(t *testing.T) {
 
 func TestSocks5ReplyAddrIPv6Client(t *testing.T) {
 	tcpLocal := &net.TCPAddr{IP: net.ParseIP("2001:db8::5"), Port: 1080}
-	got := socks5ReplyAddrFromNetAddr(&file.Tunnel{Port: 1080}, tcpLocal, nil, 1080, net.ParseIP("2001:db8::9"))
+	got := socks5ReplyAddrFromNetAddr(&model.Tunnel{Port: 1080}, tcpLocal, nil, 1080, net.ParseIP("2001:db8::9"))
 	if got.String() != "[2001:db8::5]:1080" {
 		t.Fatalf("reply addr = %v", got)
 	}
-	got = socks5ReplyAddrFromNetAddr(&file.Tunnel{Port: 1080}, &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 1080}, nil, 1080, net.ParseIP("2001:db8::9"))
+	got = socks5ReplyAddrFromNetAddr(&model.Tunnel{Port: 1080}, &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 1080}, nil, 1080, net.ParseIP("2001:db8::9"))
 	if b, _ := socks5.AppendAddr(nil, got); !bytes.Equal(b, append(append([]byte{4}, make([]byte, 16)...), 0x04, 0x38)) {
 		t.Fatalf("IPv6 client without IPv6 local address: encoded %x, want the IPv6 zero address", b)
 	}

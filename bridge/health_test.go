@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -15,7 +17,7 @@ import (
 )
 
 // healthEnv stores a client with one entry that has checks over two targets.
-func healthEnv(t *testing.T) (*file.Client, *file.Tunnel) {
+func healthEnv(t *testing.T) (*model.Client, *model.Tunnel) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
@@ -24,10 +26,10 @@ func healthEnv(t *testing.T) (*file.Client, *file.Tunnel) {
 	old := file.GetDb() // loads it once, so that nothing loads over this test
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 	t.Cleanup(func() { file.Db = old })
-	client := &file.Client{Id: 5, Cnf: &file.Config{}, Flow: &file.Flow{}}
+	client := &model.Client{Id: 5, Cnf: &model.Config{}, Flow: &model.Flow{}}
 	file.GetDb().JsonDb.Clients.Store(client.Id, client)
-	tn := &file.Tunnel{Id: 9, Mode: "tcp", Status: true, Client: client, Target: &file.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}}
-	tn.SetHealthCheck(file.HealthCheck{Enabled: true})
+	tn := &model.Tunnel{Id: 9, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}}
+	tn.SetHealthCheck(model.HealthCheck{Enabled: true})
 	if err := file.GetDb().NewTask(tn); err != nil {
 		t.Fatal(err)
 	}
@@ -131,10 +133,10 @@ func TestHealthGroupOfPublishedEntry(t *testing.T) {
 	node := NewNode("n1", "0.35.0", legacy.LatestIndex)
 	c := NewClient(client.Id, node)
 	tn.NoStore = true
-	tn.Routes = file.NewRouteSet(func(string) bool { return true })
-	own := &file.Target{TargetStr: "127.0.0.1:3\n127.0.0.1:4"}
+	tn.Routes = model.NewRouteSet(func(string) bool { return true })
+	own := &model.Target{TargetStr: "127.0.0.1:3\n127.0.0.1:4"}
 	tn.Routes.Publish(node.UUID, own)
-	tn.Update(&file.Tunnel{Mode: "tcp", Target: own})
+	tn.Update(&model.Tunnel{Mode: "tcp", Target: own})
 	g, ok := desiredHealthGroups(client.Id, node, c)["t9"]
 	if !ok || g.target != own {
 		t.Fatalf("group %+v, %v", g, ok)
@@ -148,7 +150,7 @@ func TestHealthGroupOfPublishedEntry(t *testing.T) {
 // A report that was on its way when its group closed must not take the target
 // out for good: nothing would correct it.
 func TestLateHealthReportDropped(t *testing.T) {
-	target := &file.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}
+	target := &model.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2"}
 	p := &healthPush{sent: make(map[string]healthGroup)}
 	inRotation := func() int {
 		seen := map[string]bool{}
@@ -189,12 +191,12 @@ func TestUDPTunnelGetsNoHealthGroup(t *testing.T) {
 func TestRepublishedTunnelAnnouncesChange(t *testing.T) {
 	client, tn := healthEnv(t)
 	tn.NoStore, tn.Remark, tn.Port = true, "r", 7000
-	tn.Routes = file.NewRouteSet(func(string) bool { return true })
+	tn.Routes = model.NewRouteSet(func(string) bool { return true })
 	s := newBridge(nil, 30)
 	var calls atomic.Int32
 	file.SetEntriesChanged(func() { calls.Add(1) })
 	t.Cleanup(func() { file.SetEntriesChanged(func() {}) })
-	again := &file.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &file.Target{TargetStr: "a:1"}, Client: client}
+	again := &model.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &model.Target{TargetStr: "a:1"}, Client: client}
 	if _, _, err := s.publishTask(again, client, "n1", legacy.CapsOf(legacy.LatestIndex, "0.35.0")); err != nil {
 		t.Fatal(err)
 	}

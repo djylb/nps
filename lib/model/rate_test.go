@@ -1,4 +1,4 @@
-package file
+package model
 
 import (
 	"encoding/json"
@@ -31,31 +31,6 @@ func TestRateLimitsPersistenceAndHostSharing(t *testing.T) {
 	}
 	h.ClearUploadLimit()
 	if h.UploadLimit != 0 || h.DownloadLimit != 34 {
-		t.Fatal("clear changed opposite limit")
-	}
-}
-
-func TestRateLimitsAcceptedCloneRetainsBuckets(t *testing.T) {
-	db := newTestDb(t)
-	original := &Tunnel{Id: 1, Mode: "tcp"}
-	original.SetRateLimits(10, 20)
-	if err := db.NewTask(original); err != nil {
-		t.Fatal(err)
-	}
-	buckets := original.RateLimiter()
-	clone := original.Clone()
-	clone.SetRateLimits(30, 40)
-	if original.UploadLimit != 10 {
-		t.Fatal("editing clone modified original")
-	}
-	if err := db.UpdateTask(clone); err != nil {
-		t.Fatal(err)
-	}
-	if clone.RateLimiter() != buckets {
-		t.Fatal("accepted edit disconnected active rate buckets")
-	}
-	clone.ClearDownloadLimit()
-	if clone.UploadLimit != 30 || clone.DownloadLimit != 0 {
 		t.Fatal("clear changed opposite limit")
 	}
 }

@@ -8,11 +8,12 @@ import (
 	"slices"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -53,7 +54,7 @@ func (s *TunnelModeServer) handleSocks5Request(c net.Conn) {
 
 func (s *TunnelModeServer) handleSocks5Connect(c net.Conn, dst netx.Addr) {
 	targetAddr := dst.String()
-	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != file.AclOff && !s.Task.AllowsDestination(targetAddr) {
+	if s.Task != nil && s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(targetAddr) {
 		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(targetAddr))
 		_ = socks5.WriteReply(c, socks5.ReplyNotAllowed, netx.Addr{})
 		_ = c.Close()
@@ -163,8 +164,8 @@ func (s *TunnelModeServer) SocksAuth(c net.Conn) error {
 		password,
 		user,
 		passwd,
-		file.GetAccountMap(s.Task.MultiAccount),
-		file.GetAccountMap(s.Task.UserAuth),
+		model.GetAccountMap(s.Task.MultiAccount),
+		model.GetAccountMap(s.Task.UserAuth),
 	)
 	if err := socks5.WriteUserPassStatus(c, valid); err != nil {
 		return err
@@ -265,7 +266,7 @@ func (s *TunnelModeServer) negotiateSocks5Method(c net.Conn, methods []socks5.Me
 	return socks5.WriteMethod(c, socks5.MethodNoAuth)
 }
 
-func effectiveMixProxyFlags(task *file.Tunnel) (httpEnabled, socksEnabled bool) {
+func effectiveMixProxyFlags(task *model.Tunnel) (httpEnabled, socksEnabled bool) {
 	if task == nil {
 		return false, false
 	}
@@ -281,16 +282,16 @@ func effectiveMixProxyFlags(task *file.Tunnel) (httpEnabled, socksEnabled bool) 
 	}
 }
 
-func socks5NeedsAuth(task *file.Tunnel) bool {
+func socks5NeedsAuth(task *model.Tunnel) bool {
 	if task == nil {
 		return false
 	}
 	user, passwd := socks5ClientCredentials(task)
 	return common.NeedsAuth(user, passwd,
-		file.GetAccountMap(task.MultiAccount), file.GetAccountMap(task.UserAuth))
+		model.GetAccountMap(task.MultiAccount), model.GetAccountMap(task.UserAuth))
 }
 
-func socks5ClientCredentials(task *file.Tunnel) (user, passwd string) {
+func socks5ClientCredentials(task *model.Tunnel) (user, passwd string) {
 	if task.Client == nil || task.Client.Cnf == nil {
 		return "", ""
 	}

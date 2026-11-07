@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/file"
 )
 
@@ -30,7 +32,7 @@ func TestHttp3SkipsTlsOffloadHost(t *testing.T) {
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(t.TempDir())}
 	t.Cleanup(func() { file.Db = old })
 
-	host := &file.Host{Id: 1, Host: "offload.example", Scheme: "all", AutoSSL: true, Client: &file.Client{Id: 1}}
+	host := &model.Host{Id: 1, Host: "offload.example", Scheme: "all", AutoSSL: true, Client: &model.Client{Id: 1}}
 	file.Db.JsonDb.Hosts.Store(host.Id, host)
 	file.HostIndex.Add(host.Host, host.Id)
 	t.Cleanup(func() { file.HostIndex.Remove(host.Host, host.Id) })

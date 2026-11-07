@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/acl"
@@ -294,8 +296,8 @@ func reloadConfig() {
 // applyRuntime hands the settings that apply without a restart to the
 // packages that use them.
 func applyRuntime(cfg *servercfg.Snapshot) {
-	file.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
-	file.SetClientHistoryLimit(cfg.Runtime.ClientHistoryLimit)
+	model.SetFlowLimitActual(cfg.Feature.FlowLimitActual)
+	model.SetClientHistoryLimit(cfg.Runtime.ClientHistoryLimit)
 }
 
 func applyNtp(cfg *servercfg.Snapshot) {
@@ -400,7 +402,7 @@ func run() {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	task := &file.Tunnel{
+	task := &model.Tunnel{
 		Mode: "webServer",
 	}
 	if cfg.Security.SecureMode {

@@ -3,7 +3,8 @@ package api
 import (
 	"errors"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -82,7 +83,7 @@ func (a *App) GetOneTunnel(c Context) {
 	if tunnel, err := a.Services.Index.GetTunnel(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, tunnelRateRows([]*file.Tunnel{tunnel})[0])
+		respondCodeData(c, 1, tunnelRateRows([]*model.Tunnel{tunnel})[0])
 	}
 }
 
@@ -173,7 +174,7 @@ func (a *App) GetHost(c Context) {
 	if host, err := a.Services.Index.GetHost(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, hostRateRows([]*file.Host{host})[0])
+		respondCodeData(c, 1, hostRateRows([]*model.Host{host})[0])
 	}
 }
 
@@ -438,8 +439,8 @@ func editHostInput(c Context, cfg *servercfg.Snapshot) webservice.EditHostInput 
 	}
 }
 
-func requestHealthCheck(c Context) file.HealthCheck {
-	return file.HealthCheck{
+func requestHealthCheck(c Context) model.HealthCheck {
+	return model.HealthCheck{
 		Enabled:  requestBoolValue(c, "health_check"),
 		Type:     requestString(c, "health_check_type"),
 		Path:     requestString(c, "health_check_path"),
@@ -458,20 +459,20 @@ func indexAllowLocal(cfg *servercfg.Snapshot, isAdmin bool) bool {
 
 // These response fields are snapshots in bytes/s and are never persisted.
 type tunnelRateRow struct {
-	*file.Tunnel
+	*model.Tunnel
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
 
 type hostRateRow struct {
-	*file.Host
+	*model.Host
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
 
-func tunnelRateRows(rows []*file.Tunnel) []*tunnelRateRow {
+func tunnelRateRows(rows []*model.Tunnel) []*tunnelRateRow {
 	if rows == nil {
 		return nil
 	}
@@ -486,7 +487,7 @@ func tunnelRateRows(rows []*file.Tunnel) []*tunnelRateRow {
 	return result
 }
 
-func hostRateRows(rows []*file.Host) []*hostRateRow {
+func hostRateRows(rows []*model.Host) []*hostRateRow {
 	if rows == nil {
 		return nil
 	}

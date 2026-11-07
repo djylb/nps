@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestAccessListInputValidate(t *testing.T) {
@@ -15,7 +16,7 @@ func TestAccessListInputValidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l := new(file.SourceLists)
+	l := new(model.SourceLists)
 	v.applyTo(l, "test")
 	if l.IpListPriority != acl.AllowFirst || !slices.Equal(l.BlackIpList, []string{"1.2.3.4", "10.0.0.0/8"}) || !slices.Equal(l.WhiteIpList, []string{"geoip:private"}) {
 		t.Fatalf("lists = %+v", l)

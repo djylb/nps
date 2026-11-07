@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"context"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -62,7 +65,7 @@ func joinRouteNode(t *testing.T, b *Bridge, clientId int, uuid string) *routeNod
 }
 
 // publish sends the config messages of uuid through a config connection.
-func publish(t *testing.T, b *Bridge, client *file.Client, uuid string, ver int, flag string, msgs ...any) {
+func publish(t *testing.T, b *Bridge, client *model.Client, uuid string, ver int, flag string, msgs ...any) {
 	t.Helper()
 	clientSide, serverSide := net.Pipe()
 	done := make(chan struct{})
@@ -84,11 +87,11 @@ func publish(t *testing.T, b *Bridge, client *file.Client, uuid string, ver int,
 	<-done
 }
 
-func routeFixture(t *testing.T) (*Bridge, *file.Client) {
+func routeFixture(t *testing.T) (*Bridge, *model.Client) {
 	t.Helper()
 	_ = file.GetDb()
 	useTestDb(t)
-	client := file.NewClient("route-vkey", false, false)
+	client := model.NewClient("route-vkey", false, false)
 	if err := file.GetDb().NewClient(client); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +110,7 @@ func freePort(t *testing.T) int {
 }
 
 // openRoute opens one link of route the way the proxies do.
-func openRoute(b *Bridge, clientId int, r file.Route) error {
+func openRoute(b *Bridge, clientId int, r model.Route) error {
 	return r.Target.Dial(func(addr string) (bool, error) {
 		link := conn.NewLink(common.ConnTCP, addr, false, false, "", false)
 		link.Option.Node = r.Node
@@ -124,8 +127,8 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 	a := joinRouteNode(t, b, client.Id, "a")
 	c := joinRouteNode(t, b, client.Id, "c")
 	port := strconv.Itoa(freePort(t))
-	task := func(target string) *file.Tunnel {
-		return &file.Tunnel{Mode: "tcp", Ports: port, Remark: "r", Target: &file.Target{TargetStr: target}}
+	task := func(target string) *model.Tunnel {
+		return &model.Tunnel{Mode: "tcp", Ports: port, Remark: "r", Target: &model.Target{TargetStr: target}}
 	}
 	publish(t, b, client, "a", legacy.LatestIndex, legacy.FlagNewTask, task("127.0.0.1:1"))
 	opened := <-b.OpenTask
@@ -135,7 +138,7 @@ func TestTaskRoutesAcrossInstances(t *testing.T) {
 		t.Fatal("a joining instance restarted the running task")
 	default:
 	}
-	stored, ok := client.HasTunnel(opened)
+	stored, ok := file.GetDb().ClientTunnel(client, opened)
 	if !ok || stored != opened {
 		t.Fatal("the second instance created another entry")
 	}
@@ -185,16 +188,16 @@ func TestHostRoutesAndStoredEntries(t *testing.T) {
 	b, client := routeFixture(t)
 	a := joinRouteNode(t, b, client.Id, "a")
 	c := joinRouteNode(t, b, client.Id, "c")
-	stored := &file.Host{Host: "web.example.com", Location: "/", Client: client, Flow: new(file.Flow), Target: &file.Target{TargetStr: "127.0.0.1:9"}}
+	stored := &model.Host{Host: "web.example.com", Location: "/", Client: client, Flow: new(model.Flow), Target: &model.Target{TargetStr: "127.0.0.1:9"}}
 	if err := file.GetDb().NewHost(stored); err != nil {
 		t.Fatal(err)
 	}
-	host := func(target string) *file.Host {
-		return &file.Host{Host: "npc.example.com", Remark: "r", Target: &file.Target{TargetStr: target}}
+	host := func(target string) *model.Host {
+		return &model.Host{Host: "npc.example.com", Remark: "r", Target: &model.Target{TargetStr: target}}
 	}
 	publish(t, b, client, "a", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:1"))
 	publish(t, b, client, "c", legacy.LatestIndex, legacy.FlagNewHost, host("127.0.0.1:2"))
-	entry, ok := client.HasHost(&file.Host{Host: "npc.example.com", Location: "/"})
+	entry, ok := file.GetDb().ClientHost(client, &model.Host{Host: "npc.example.com", Location: "/"})
 	if !ok || entry.Routes.Len() != 2 {
 		t.Fatalf("entry %+v, want one host with two routes", entry)
 	}
@@ -226,8 +229,8 @@ func TestLegacyClientHasNoRoutes(t *testing.T) {
 	b, client := routeFixture(t)
 	const ver = 5
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("main-conn", "", ver)))
-	publish(t, b, client, "config-conn", ver, legacy.FlagNewTask, &file.Tunnel{
-		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "r", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	publish(t, b, client, "config-conn", ver, legacy.FlagNewTask, &model.Tunnel{
+		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "r", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
 	task := <-b.OpenTask
 	if r := task.Route(); r.Node != "" || r.Target != task.Target {
@@ -290,8 +293,8 @@ func TestCloseSignalSparesAReturningClient(t *testing.T) {
 	<-b.CloseClient
 
 	// Published without a session yet, as clients before NodeID do.
-	publish(t, b, client, "config-conn", 5, legacy.FlagNewTask, &file.Tunnel{
-		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "again", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	publish(t, b, client, "config-conn", 5, legacy.FlagNewTask, &model.Tunnel{
+		Mode: "tcp", Ports: strconv.Itoa(freePort(t)), Remark: "again", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
 	<-b.OpenTask
 	b.Client.Delete(client.Id)
@@ -323,10 +326,10 @@ func ageNode(t *testing.T, b *Bridge, clientId int, uuid string) (*Client, *Node
 // seconds per server address: what it published must wait for it.
 func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
 	b, client := routeFixture(t)
-	publish(t, b, client, "slow", legacy.LatestIndex, legacy.FlagNewHost, &file.Host{
-		Host: "slow.test", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	publish(t, b, client, "slow", legacy.LatestIndex, legacy.FlagNewHost, &model.Host{
+		Host: "slow.test", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
-	hostOf := func() *file.Host {
+	hostOf := func() *model.Host {
 		h, err := file.GetDb().GetHostById(hostIdByName(t, "slow.test"))
 		if err != nil {
 			t.Fatal(err)
@@ -363,8 +366,8 @@ func TestPublishedEntryWaitsForSlowTunnel(t *testing.T) {
 // A node that never connects its tunnel leaves when its grace ends.
 func TestPublishedEntryLeavesWithoutTunnel(t *testing.T) {
 	b, client := routeFixture(t)
-	publish(t, b, client, "gone", legacy.LatestIndex, legacy.FlagNewHost, &file.Host{
-		Host: "gone.test", Target: &file.Target{TargetStr: "127.0.0.1:1"},
+	publish(t, b, client, "gone", legacy.LatestIndex, legacy.FlagNewHost, &model.Host{
+		Host: "gone.test", Target: &model.Target{TargetStr: "127.0.0.1:1"},
 	})
 	c, node := ageNode(t, b, client.Id, "gone")
 	node.mu.Lock()
@@ -382,7 +385,7 @@ func hostIdByName(t *testing.T, name string) int {
 	t.Helper()
 	id := 0
 	file.GetDb().JsonDb.Hosts.Range(func(_, value any) bool {
-		if h := value.(*file.Host); h.Host == name {
+		if h := value.(*model.Host); h.Host == name {
 			id = h.Id
 		}
 		return true

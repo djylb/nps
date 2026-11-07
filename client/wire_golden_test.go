@@ -24,7 +24,11 @@ import (
 	"testing/cryptotest"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"encoding/binary"
+	"io"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/tunnelwire"
@@ -33,7 +37,6 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/version"
-	"io"
 )
 
 const (
@@ -151,7 +154,7 @@ func goldenDb(t *testing.T) {
 	old := file.Db
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 	t.Cleanup(func() { file.Db = old })
-	cl := file.NewClient(goldenKey, false, false)
+	cl := model.NewClient(goldenKey, false, false)
 	cl.Id = 1
 	if err := file.GetDb().NewClient(cl); err != nil {
 		t.Fatal(err)
@@ -298,13 +301,13 @@ target_addr=127.0.0.1:22
 `
 
 // richTask, richHost and richClient set every field that has a JSON name.
-func richFlow() *file.Flow {
-	return &file.Flow{ExportFlow: 11, InletFlow: 22, FlowLimit: 33, TimeLimit: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
+func richFlow() *model.Flow {
+	return &model.Flow{ExportFlow: 11, InletFlow: 22, FlowLimit: 33, TimeLimit: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 }
 
-func richClient() *file.Client {
-	c := &file.Client{
-		Cnf: &file.Config{U: "u", P: "p", Compress: true, Crypt: true},
+func richClient() *model.Client {
+	c := &model.Client{
+		Cnf: &model.Config{U: "u", P: "p", Compress: true, Crypt: true},
 		Id:  5, VerifyKey: "vk", Mode: "tcp", Addr: "192.0.2.3", LocalAddr: "10.0.0.1", Remark: "r",
 		Status: true, IsConnect: true, RateLimit: 9, Flow: richFlow(), NoStore: true, NoDisplay: true,
 		MaxConn: 4, NowConn: 2, WebUserName: "wu", WebPassword: "wp", WebTotpSecret: "ts",
@@ -321,15 +324,15 @@ func richClient() *file.Client {
 	return c
 }
 
-func richTask() *file.Tunnel {
-	t := &file.Tunnel{
+func richTask() *model.Tunnel {
+	t := &model.Tunnel{
 		MaxConn: 1, Id: 2, Port: 3, ServerIp: "0.0.0.0", Mode: "tcp", Status: true, RunStatus: true,
 		Client: richClient(), Ports: "1-2", Flow: richFlow(), NowConn: 4, Password: "pw", Remark: "rm",
 		TargetAddr: "ta", TargetType: "tt", DestAclMode: 1, DestAclRules: "a\nb", NoStore: true,
 		IsHttp: true, HttpProxy: true, Socks5Proxy: true, LocalPath: "/l", StripPre: "/s", ReadOnly: true,
-		Target:       &file.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2", LocalProxy: true, ProxyProtocol: 2},
-		UserAuth:     &file.MultiAccount{Content: "a=b", AccountMap: map[string]string{"a": "b", "c": "d"}},
-		MultiAccount: &file.MultiAccount{Content: "e=f", AccountMap: map[string]string{"e": "f"}},
+		Target:       &model.Target{TargetStr: "127.0.0.1:1\n127.0.0.1:2", LocalProxy: true, ProxyProtocol: 2},
+		UserAuth:     &model.MultiAccount{Content: "a=b", AccountMap: map[string]string{"a": "b", "c": "d"}},
+		MultiAccount: &model.MultiAccount{Content: "e=f", AccountMap: map[string]string{"e": "f"}},
 	}
 	t.UploadLimit, t.DownloadLimit = 7, 8
 	t.IpListPriority = 1
@@ -341,16 +344,16 @@ func richTask() *file.Tunnel {
 	return t
 }
 
-func richHost() *file.Host {
-	h := &file.Host{
+func richHost() *model.Host {
+	h := &model.Host{
 		Id: 3, Host: "h.example.com", HeaderChange: "hc", RespHeaderChange: "rhc", HostChange: "hc2",
 		Location: "/", PathRewrite: "/p", Remark: "rm", Scheme: "all", RedirectURL: "ru", HttpsJustProxy: true,
 		TlsOffload: true, AutoSSL: true, CertType: "file", CertHash: "ch", CertFile: "cf", KeyFile: "kf",
 		NoStore: true, IsClose: true, AutoHttps: true, AutoCORS: true, CompatMode: true, Flow: richFlow(),
 		MaxConn: 2, NowConn: 1, Client: richClient(), TargetIsHttps: true,
-		Target:       &file.Target{TargetStr: "127.0.0.1:1", ProxyProtocol: 1},
-		UserAuth:     &file.MultiAccount{Content: "a=b", AccountMap: map[string]string{"a": "b"}},
-		MultiAccount: &file.MultiAccount{Content: "c=d", AccountMap: map[string]string{"c": "d"}},
+		Target:       &model.Target{TargetStr: "127.0.0.1:1", ProxyProtocol: 1},
+		UserAuth:     &model.MultiAccount{Content: "a=b", AccountMap: map[string]string{"a": "b"}},
+		MultiAccount: &model.MultiAccount{Content: "c=d", AccountMap: map[string]string{"c": "d"}},
 	}
 	h.UploadLimit, h.DownloadLimit = 5, 6
 	h.IpListPriority = 1
@@ -369,11 +372,11 @@ type infoVector struct {
 // send writes v as a client does.
 func send(w io.Writer, v any, flag string) error {
 	switch m := v.(type) {
-	case *file.Tunnel:
+	case *model.Tunnel:
 		return legacy.WriteTask(w, m)
-	case *file.Host:
+	case *model.Host:
 		return legacy.WriteHost(w, m)
-	case *file.Client:
+	case *model.Client:
 		return legacy.WriteClient(w, m)
 	case *conn.Link:
 		return legacy.WriteLink(w, m)
@@ -419,15 +422,15 @@ func decodeFrame[T any](t *testing.T, frame []byte, read func(io.Reader) (*T, er
 }
 
 func decodeTask(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, legacy.ReadTask, func(v *file.Tunnel) { v.Id = 0 })
+	return decodeFrame(t, frame, legacy.ReadTask, func(v *model.Tunnel) { v.Id = 0 })
 }
 
 func decodeHost(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, legacy.ReadHost, func(v *file.Host) { v.Id = 0 })
+	return decodeFrame(t, frame, legacy.ReadHost, func(v *model.Host) { v.Id = 0 })
 }
 
 func decodeClient(t *testing.T, frame []byte) string {
-	return decodeFrame(t, frame, legacy.ReadClient, func(*file.Client) {})
+	return decodeFrame(t, frame, legacy.ReadClient, func(*model.Client) {})
 }
 
 func rawFrame(s string) []byte {
@@ -447,14 +450,14 @@ func TestWireGoldenInfo(t *testing.T) {
 	}
 	add("client/rich", legacy.FlagNewConf, richClient(), decodeClient)
 	add("client/config", legacy.FlagNewConf, cnf.CommonConfig.Client, decodeClient)
-	add("client/zero", legacy.FlagNewConf, &file.Client{}, decodeClient)
+	add("client/zero", legacy.FlagNewConf, &model.Client{}, decodeClient)
 	add("host/rich", legacy.FlagNewHost, richHost(), decodeHost)
-	add("host/zero", legacy.FlagNewHost, &file.Host{}, decodeHost)
+	add("host/zero", legacy.FlagNewHost, &model.Host{}, decodeHost)
 	for i, h := range cnf.Hosts {
 		add("host/config"+strconv.Itoa(i), legacy.FlagNewHost, h, decodeHost)
 	}
 	add("task/rich", legacy.FlagNewTask, richTask(), decodeTask)
-	add("task/zero", legacy.FlagNewTask, &file.Tunnel{}, decodeTask)
+	add("task/zero", legacy.FlagNewTask, &model.Tunnel{}, decodeTask)
 	for i, task := range cnf.Tasks {
 		add("task/config"+strconv.Itoa(i), legacy.FlagNewTask, task, decodeTask)
 	}
@@ -524,7 +527,7 @@ func TestWireGoldenFrames(t *testing.T) {
 	add("health/up", hb.Bytes())
 	add("key/blake2b", []byte(crypt.Blake2b(goldenKey)))
 	add("key/md5", []byte(crypt.Md5(goldenKey)))
-	add("key/file", []byte(legacy.FileKey("vk", &file.Tunnel{Mode: "file", ServerIp: "0.0.0.0", Port: 9005, LocalPath: "/srv", StripPre: "/web/", ReadOnly: true, MultiAccount: new(file.MultiAccount)})))
+	add("key/file", []byte(legacy.FileKey("vk", &model.Tunnel{Mode: "file", ServerIp: "0.0.0.0", Port: 9005, LocalPath: "/srv", StripPre: "/web/", ReadOnly: true, MultiAccount: new(model.MultiAccount)})))
 	add("key/node", []byte(tunnelwire.NameUUID("192.0.2.2:40000")))
 	add("auth/hmac", goldenMAC())
 	checkGolden(t, "frames.json", out)

@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -43,6 +46,12 @@ func init() {
 		}
 		return nil, false
 	})
+	proxy.SetGlobalSource(func() *acl.Source {
+		if g := file.GetDb().GetGlobal(); g != nil {
+			return g.SourceACL()
+		}
+		return nil
+	})
 }
 
 // InitFromDb init task from db
@@ -51,12 +60,12 @@ func InitFromDb() {
 	if cfg.Feature.AllowLocalProxy {
 		db := file.GetDb()
 		if _, err := db.GetClient(-1); err != nil {
-			local := new(file.Client)
+			local := new(model.Client)
 			local.Id = -1
 			local.Remark = "Local Proxy"
 			local.Addr = "127.0.0.1"
-			local.Cnf = new(file.Config)
-			local.Flow = new(file.Flow)
+			local.Cnf = new(model.Config)
+			local.Flow = new(model.Flow)
 			local.Flow.MarkClient()
 			local.Rate = rate.NewRate(0)
 			local.Rate.Start()
@@ -73,8 +82,8 @@ func InitFromDb() {
 	addKeyClients(cfg.Runtime.PublicVKey, cfg.Runtime.VisitorVKey)
 	//Initialize services in server-side files
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		if value.(*file.Tunnel).Status {
-			_ = AddTask(value.(*file.Tunnel))
+		if value.(*model.Tunnel).Status {
+			_ = AddTask(value.(*model.Tunnel))
 		}
 		return true
 	})
@@ -83,16 +92,16 @@ func InitFromDb() {
 // addKeyClients creates the unstored clients of the public and visitor keys.
 func addKeyClients(public, visitor string) {
 	if public != "" {
-		addKeyClient(public, file.KeyPublic)
+		addKeyClient(public, model.KeyPublic)
 	}
 	// the public key can already do all that the visitor key can
 	if visitor != "" && visitor != public {
-		addKeyClient(visitor, file.KeyVisitor)
+		addKeyClient(visitor, model.KeyVisitor)
 	}
 }
 
-func addKeyClient(vkey string, kind file.KeyKind) {
-	c := file.NewClient(vkey, true, true)
+func addKeyClient(vkey string, kind model.KeyKind) {
+	c := model.NewClient(vkey, true, true)
 	c.KeyKind = kind
 	if err := file.GetDb().NewClient(c); err != nil {
 		logs.Warn("public_vkey or visitor_vkey ignored, use a key of its own: %v", err)
@@ -132,7 +141,7 @@ func DealBridgeTask() {
 			Bridge.CloseIfDisconnected(id, func() {
 				DelTunnelAndHostByClientId(id, true)
 				if v, ok := file.GetDb().JsonDb.Clients.Load(id); ok {
-					if v.(*file.Client).NoStore {
+					if v.(*model.Client).NoStore {
 						_ = file.GetDb().DelClient(id)
 					}
 				}
@@ -162,7 +171,7 @@ func DealBridgeTask() {
 }
 
 // StartNewServer start a new server
-func StartNewServer(cnf *file.Tunnel, bridgeDisconnect int) {
+func StartNewServer(cnf *model.Tunnel, bridgeDisconnect int) {
 	cfg := servercfg.Current()
 	Bridge = bridge.NewTunnel(&RunList, bridgeDisconnect)
 	startP2P(Bridge, cfg)
@@ -219,7 +228,7 @@ func PingClient(id int, addr string) int {
 }
 
 // NewMode new a server by mode name
-func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
+func NewMode(Bridge *bridge.Bridge, c *model.Tunnel) proxy.Service {
 	var service proxy.Service
 	cfg := servercfg.Current()
 	allowLocalProxy := cfg.Feature.AllowLocalProxy
@@ -236,7 +245,7 @@ func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
 		service = proxy.NewUdpModeServer(Bridge, c, allowLocalProxy)
 	case "webServer":
 		InitFromDb()
-		t := &file.Tunnel{
+		t := &model.Tunnel{
 			Port:   0,
 			Mode:   "httpHostServer",
 			Status: true,
@@ -282,7 +291,7 @@ func StopServer(id int) error {
 // AddTask add task. Services that own a listening socket bind it before
 // AddTask returns, so address errors are reported to the caller and a later
 // StopServer always finds the running instance in RunList.
-func AddTask(t *file.Tunnel) error {
+func AddTask(t *model.Tunnel) error {
 	if t.Mode == "secret" || t.Mode == "p2p" {
 		logs.Info("secret task %s start ", t.Remark)
 		RunList.Store(t.Id, nil)
@@ -344,7 +353,7 @@ func DelTask(id int) error {
 func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 	var ids []int
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*file.Tunnel)
+		v := value.(*model.Tunnel)
 		if justDelNoStore && !v.NoStore {
 			return true
 		}
@@ -358,7 +367,7 @@ func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 	}
 	ids = ids[:0]
 	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*file.Host)
+		v := value.(*model.Host)
 		if justDelNoStore && !v.NoStore {
 			return true
 		}
@@ -391,7 +400,7 @@ func DelClientConnect(clientId int) {
 func dealClientData() {
 	//logs.Info("dealClientData.........")
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*file.Client)
+		v := value.(*model.Client)
 		if vv, ok := Bridge.Client.Load(v.Id); ok {
 			v.IsConnect = true
 			v.MarkSeen(time.Now())
@@ -428,8 +437,8 @@ func dealClientData() {
 	// Sum the traffic of each client's hosts and tasks first, so that the
 	// client totals are set once per pass.
 	type inOut struct{ in, out int64 }
-	sums := make(map[*file.Client]inOut)
-	addFlow := func(owner *file.Client, f *file.Flow) {
+	sums := make(map[*model.Client]inOut)
+	addFlow := func(owner *model.Client, f *model.Flow) {
 		if owner == nil {
 			return
 		}
@@ -444,19 +453,19 @@ func dealClientData() {
 		sums[c] = sum
 	}
 	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		if h, ok := value.(*file.Host); ok && h != nil {
+		if h, ok := value.(*model.Host); ok && h != nil {
 			addFlow(h.Client, h.Flow)
 		}
 		return true
 	})
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		if t, ok := value.(*file.Tunnel); ok && t != nil {
+		if t, ok := value.(*model.Tunnel); ok && t != nil {
 			addFlow(t.Client, t.Flow)
 		}
 		return true
 	})
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-		c := value.(*file.Client)
+		c := value.(*model.Client)
 		sum := sums[c]
 		c.InletFlow.Store(sum.in)
 		c.ExportFlow.Store(sum.out)

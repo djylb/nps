@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestSetClientSelectMode(t *testing.T) {
@@ -165,9 +166,9 @@ func TestClientCheckNodeSkipsOfflineNodesInGrace(t *testing.T) {
 
 func TestAllowsFlag(t *testing.T) {
 	const (
-		ctl = 1 << file.KeyControl
-		pub = 1 << file.KeyPublic
-		vis = 1 << file.KeyVisitor
+		ctl = 1 << model.KeyControl
+		pub = 1 << model.KeyPublic
+		vis = 1 << model.KeyVisitor
 	)
 	want := map[string]int{
 		legacy.WorkMain:       ctl,
@@ -182,7 +183,7 @@ func TestAllowsFlag(t *testing.T) {
 		"none":                0,
 	}
 	for flag, mask := range want {
-		for _, kind := range []file.KeyKind{file.KeyControl, file.KeyPublic, file.KeyVisitor} {
+		for _, kind := range []model.KeyKind{model.KeyControl, model.KeyPublic, model.KeyVisitor} {
 			if got := allowsFlag(kind, flag); got != (mask&(1<<kind) != 0) {
 				t.Errorf("allowsFlag(%d, %q) = %v", kind, flag, got)
 			}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -59,7 +61,7 @@ func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 			values := make(map[int]int64, len(keys))
 			for _, key := range keys {
 				if value, ok := m.Load(key); ok {
-					if client, ok := value.(*Client); ok && client != nil {
+					if client, ok := value.(*model.Client); ok && client != nil {
 						upload, download := client.CurrentRates()
 						switch sortKey {
 						case "upload_rate", "UploadRate":
@@ -83,15 +85,15 @@ func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 	return
 }
 
-func (s *DbUtils) GetClientList(start, length int, search, sort, order string, clientId int) ([]*Client, int) {
-	list := make([]*Client, 0)
+func (s *DbUtils) GetClientList(start, length int, search, sort, order string, clientId int) ([]*model.Client, int) {
+	list := make([]*model.Client, 0)
 	var cnt int
 	originLength := length
 	id := common.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Clients, true, sort, order)
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Clients.Load(key); ok {
-			v := value.(*Client)
+			v := value.(*model.Client)
 			if v.NoDisplay {
 				continue
 			}
@@ -117,7 +119,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(string) string) (id int, err error) {
 	var exist bool
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*Client)
+		v := value.(*model.Client)
 		if hashFunc(v.VerifyKey) == vKey && v.Status && v.Id > 0 {
 			v.Addr = common.GetIpByAddr(addr)
 			v.LocalAddr = common.GetIpByAddr(localAddr)
@@ -146,7 +148,7 @@ func (s *DbUtils) GetClientIdByBlake2bVkey(vkey string) (id int, err error) {
 func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 	var exist bool
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*Client)
+		v := value.(*model.Client)
 		if v.Id > 0 && crypt.Md5(v.VerifyKey) == vkey {
 			exist = true
 			id = v.Id
@@ -164,20 +166,20 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 // newEntryFlow returns the counter of a new task or host: zeroed traffic that
 // keeps the flow and time limits requested in f. A fresh Flow is always
 // allocated so the counter is never shared with the caller's object.
-func newEntryFlow(f *Flow) *Flow {
+func newEntryFlow(f *model.Flow) *model.Flow {
 	if f == nil {
-		return new(Flow)
+		return new(model.Flow)
 	}
 	f.RLock()
 	defer f.RUnlock()
-	return &Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
+	return &model.Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
 }
 
 // NewTask adds t. A password explicitly set on a task created through the
 // web or API that is already used by another task is rejected; for tasks
 // delivered by a client configuration (NoStore) it is replaced by a random one,
 // see reserveTaskPassword.
-func (s *DbUtils) NewTask(t *Tunnel) error {
+func (s *DbUtils) NewTask(t *model.Tunnel) error {
 	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
 		return err
 	}
@@ -193,15 +195,13 @@ func (s *DbUtils) NewTask(t *Tunnel) error {
 // stored object itself or an edited copy; the password the task held before
 // is tracked separately and released when it changes. A rejected password
 // leaves the stored task and the password index unchanged.
-func (s *DbUtils) UpdateTask(t *Tunnel) error {
+func (s *DbUtils) UpdateTask(t *model.Tunnel) error {
 	if err := reserveTaskPassword(t, !t.NoStore); err != nil {
 		return err
 	}
 	if old, ok := s.JsonDb.Tasks.Load(t.Id); ok {
-		if previous, ok := old.(*Tunnel); ok && previous != nil && previous != t {
-			t.RateLimits.adopt(&previous.RateLimits)
-			t.ControlGroup()
-			t.adoptFlow(previous)
+		if previous, ok := old.(*model.Tunnel); ok && previous != nil && previous != t {
+			t.AdoptRuntime(previous)
 		}
 	}
 	normalizeTask(t)
@@ -214,7 +214,7 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 // ReserveTaskPassword claims t.Password for t.Id under the same rules as
 // NewTask and UpdateTask. It is used before an existing task is updated in
 // place from t.
-func (s *DbUtils) ReserveTaskPassword(t *Tunnel) error {
+func (s *DbUtils) ReserveTaskPassword(t *model.Tunnel) error {
 	return reserveTaskPassword(t, !t.NoStore)
 }
 
@@ -250,7 +250,7 @@ func releaseTaskPasswordLocked(id int) {
 // set password that another task already uses is rejected when strict, leaving
 // t and the index unchanged; otherwise it is logged and replaced by a random
 // one.
-func reserveTaskPassword(t *Tunnel, strict bool) error {
+func reserveTaskPassword(t *model.Tunnel, strict bool) error {
 	taskPasswordLock.Lock()
 	defer taskPasswordLock.Unlock()
 	password := t.Password
@@ -287,7 +287,7 @@ func reserveTaskPassword(t *Tunnel, strict bool) error {
 	return nil
 }
 
-func normalizeTask(t *Tunnel) {
+func normalizeTask(t *model.Tunnel) {
 	switch t.Mode {
 	case "socks5":
 		t.Mode = "mixProxy"
@@ -313,7 +313,7 @@ func logStoreError(err error) {
 	}
 }
 
-func (s *DbUtils) SaveGlobal(t *Glob) error {
+func (s *DbUtils) SaveGlobal(t *model.Glob) error {
 	t.CompileSourceLists(acl.ScopeGlobal, "the global settings")
 	t.ApplyLimits()
 	s.JsonDb.Global = t
@@ -328,27 +328,27 @@ func (s *DbUtils) DelTask(id int) error {
 	v, existed := s.JsonDb.Tasks.LoadAndDelete(id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	if existed {
-		s.tunnelDeleted(v.(*Tunnel))
+		s.tunnelDeleted(v.(*model.Tunnel))
 	}
 	return nil
 }
 
 // GetTaskByMd5Password md5 password
-func (s *DbUtils) GetTaskByMd5Password(p string) (t *Tunnel) {
+func (s *DbUtils) GetTaskByMd5Password(p string) (t *model.Tunnel) {
 	id, ok := TaskPasswordIndex.Get(p)
 	if ok {
 		if v, ok := s.JsonDb.Tasks.Load(id); ok {
-			t = v.(*Tunnel)
+			t = v.(*model.Tunnel)
 			return
 		}
 	}
 	return
 }
 
-func (s *DbUtils) GetTaskByMd5PasswordOld(p string) (t *Tunnel) {
+func (s *DbUtils) GetTaskByMd5PasswordOld(p string) (t *model.Tunnel) {
 	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		if crypt.Md5(value.(*Tunnel).Password) == p {
-			t = value.(*Tunnel)
+		if crypt.Md5(value.(*model.Tunnel).Password) == p {
+			t = value.(*model.Tunnel)
 			return false
 		}
 		return true
@@ -356,9 +356,9 @@ func (s *DbUtils) GetTaskByMd5PasswordOld(p string) (t *Tunnel) {
 	return
 }
 
-func (s *DbUtils) GetTask(id int) (t *Tunnel, err error) {
+func (s *DbUtils) GetTask(id int) (t *model.Tunnel, err error) {
 	if v, ok := s.JsonDb.Tasks.Load(id); ok {
-		t = v.(*Tunnel)
+		t = v.(*model.Tunnel)
 		return
 	}
 	err = errors.New("not found")
@@ -368,22 +368,22 @@ func (s *DbUtils) GetTask(id int) (t *Tunnel, err error) {
 func (s *DbUtils) DelHost(id int) error {
 	v, existed := s.JsonDb.Hosts.LoadAndDelete(id)
 	if existed {
-		HostIndex.Remove(v.(*Host).Host, id)
+		HostIndex.Remove(v.(*model.Host).Host, id)
 	}
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	if existed {
-		s.hostDeleted(v.(*Host))
+		s.hostDeleted(v.(*model.Host))
 	}
 	return nil
 }
 
-func (s *DbUtils) IsHostExist(h *Host) bool {
+func (s *DbUtils) IsHostExist(h *model.Host) bool {
 	var exist bool
 	if h.Location == "" {
 		h.Location = "/"
 	}
 	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*Host)
+		v := value.(*model.Host)
 		if v.Location == "" {
 			v.Location = "/"
 		}
@@ -396,7 +396,7 @@ func (s *DbUtils) IsHostExist(h *Host) bool {
 	return exist
 }
 
-func (s *DbUtils) IsHostModify(h *Host) bool {
+func (s *DbUtils) IsHostModify(h *model.Host) bool {
 	if h == nil {
 		return true
 	}
@@ -419,7 +419,7 @@ func (s *DbUtils) IsHostModify(h *Host) bool {
 	return false
 }
 
-func (s *DbUtils) NewHost(t *Host) error {
+func (s *DbUtils) NewHost(t *model.Host) error {
 	if t.Location == "" {
 		t.Location = "/"
 	}
@@ -441,7 +441,7 @@ func (s *DbUtils) NewHost(t *Host) error {
 }
 
 // SaveHost stores the entry h, edited in place, which was named oldHost before.
-func (s *DbUtils) SaveHost(h *Host, oldHost string) error {
+func (s *DbUtils) SaveHost(h *model.Host, oldHost string) error {
 	if oldHost != "" && oldHost != h.Host {
 		HostIndex.Remove(oldHost, h.Id)
 		HostIndex.Add(h.Host, h.Id)
@@ -451,15 +451,15 @@ func (s *DbUtils) SaveHost(h *Host, oldHost string) error {
 	return err
 }
 
-func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, int) {
-	list := make([]*Host, 0)
+func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*model.Host, int) {
+	list := make([]*model.Host, 0)
 	var cnt int
 	originLength := length
 	searchId := common.GetIntNoErrByStr(search)
 	keys := GetMapKeys(&s.JsonDb.Hosts, false, "", "")
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Hosts.Load(key); ok {
-			v := value.(*Host)
+			v := value.(*model.Host)
 			if search != "" && v.Id != searchId && !common.ContainsFold(v.Host, search) && !common.ContainsFold(v.Remark, search) && !common.ContainsFold(v.Client.VerifyKey, search) {
 				continue
 			}
@@ -480,7 +480,7 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*Host, in
 
 func (s *DbUtils) DelClient(id int) error {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
-		c := v.(*Client)
+		c := v.(*model.Client)
 		if c.Id > 0 {
 			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
 		}
@@ -493,9 +493,9 @@ func (s *DbUtils) DelClient(id int) error {
 	return nil
 }
 
-func (s *DbUtils) NewClient(c *Client) error {
+func (s *DbUtils) NewClient(c *model.Client) error {
 	if c.ConnectionHistory == nil {
-		c.ConnectionHistory = new(ConnectionHistory)
+		c.ConnectionHistory = new(model.ConnectionHistory)
 	}
 	var isNotSet bool
 	if c.WebUserName != "" && !s.VerifyUserName(c.WebUserName, c.Id) {
@@ -523,7 +523,7 @@ reset:
 		c.Id = int(s.JsonDb.GetClientId())
 	}
 	if c.Flow == nil {
-		c.Flow = new(Flow)
+		c.Flow = new(model.Flow)
 	}
 	c.Flow.MarkClient()
 	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
@@ -538,7 +538,7 @@ reset:
 func (s *DbUtils) VerifyVkey(vkey string, id int) (res bool) {
 	res = true
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*Client)
+		v := value.(*model.Client)
 		if v.VerifyKey == vkey && v.Id != id {
 			res = false
 			return false
@@ -551,7 +551,7 @@ func (s *DbUtils) VerifyVkey(vkey string, id int) (res bool) {
 func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 	res = true
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*Client)
+		v := value.(*model.Client)
 		if v.WebUserName == username && v.Id != id {
 			res = false
 			return false
@@ -561,9 +561,9 @@ func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 	return res
 }
 
-func (s *DbUtils) UpdateClient(t *Client) error {
+func (s *DbUtils) UpdateClient(t *model.Client) error {
 	if v, ok := s.JsonDb.Clients.Load(t.Id); ok {
-		c := v.(*Client)
+		c := v.(*model.Client)
 		t.ConnectionHistory = c.ConnectionHistory
 		if c.Id > 0 {
 			Blake2bVkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
@@ -574,7 +574,7 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 	}
 
 	if t.Flow == nil {
-		t.Flow = new(Flow)
+		t.Flow = new(model.Flow)
 	}
 	t.Flow.MarkClient()
 	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
@@ -603,25 +603,25 @@ func (s *DbUtils) UpdateClient(t *Client) error {
 
 func (s *DbUtils) IsPubClient(id int) bool {
 	client, err := s.GetClient(id)
-	return err == nil && (client.KeyKind == KeyPublic)
+	return err == nil && (client.KeyKind == model.KeyPublic)
 }
 
-func (s *DbUtils) GetClient(id int) (c *Client, err error) {
+func (s *DbUtils) GetClient(id int) (c *model.Client, err error) {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
-		c = v.(*Client)
+		c = v.(*model.Client)
 		return
 	}
 	err = errors.New("can not find client")
 	return
 }
 
-func (s *DbUtils) GetGlobal() (c *Glob) {
+func (s *DbUtils) GetGlobal() (c *model.Glob) {
 	return s.JsonDb.Global
 }
 
-func (s *DbUtils) GetHostById(id int) (h *Host, err error) {
+func (s *DbUtils) GetHostById(id int) (h *model.Host, err error) {
 	if v, ok := s.JsonDb.Hosts.Load(id); ok {
-		h = v.(*Host)
+		h = v.(*model.Host)
 		return
 	}
 	err = errors.New("the host could not be parsed")
@@ -629,7 +629,7 @@ func (s *DbUtils) GetHostById(id int) (h *Host, err error) {
 }
 
 // GetInfoByHost get key by host from x
-func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err error) {
+func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *model.Host, err error) {
 	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
 	hostLength := len(host)
 
@@ -645,7 +645,7 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 		return nil, errors.New("the host could not be parsed")
 	}
 
-	var bestMatch *Host
+	var bestMatch *model.Host
 	var bestDomainLength int
 	var bestLocationLength int
 	for _, id := range ids {
@@ -653,7 +653,7 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 		if !ok {
 			continue
 		}
-		v := value.(*Host)
+		v := value.(*model.Host)
 
 		if v.IsClose || (v.Scheme != "all" && v.Scheme != scheme) {
 			continue
@@ -721,33 +721,33 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 // TLS configured (a certificate or AutoSSL) wins, then the one with the
 // shortest location, then the lowest id, so the choice never depends on map
 // order. Names compare case-insensitively, ignoring a trailing dot.
-func (s *DbUtils) FindCertByHost(host string) (*Host, error) {
+func (s *DbUtils) FindCertByHost(host string) (*model.Host, error) {
 	return s.findCertHost(host, nil)
 }
 
 // FindReusableCert returns the entry whose certificate FindCertByHost would
 // choose for the server name host among those with certificate files, leaving
 // out the entry excludeID and, unless clientID is 0, entries of other clients.
-func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*Host, error) {
-	return s.findCertHost(host, func(v *Host) bool {
+func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*model.Host, error) {
+	return s.findCertHost(host, func(v *model.Host) bool {
 		return v.HasCert() && v.Id != excludeID && (clientID == 0 || (v.Client != nil && v.Client.Id == clientID))
 	})
 }
 
-func (s *DbUtils) findCertHost(host string, accept func(*Host) bool) (*Host, error) {
+func (s *DbUtils) findCertHost(host string, accept func(*model.Host) bool) (*model.Host, error) {
 	host = strings.TrimSuffix(strings.ToLower(common.GetIpByAddr(host)), ".")
 	if host == "" {
 		return nil, errors.New("invalid Host")
 	}
 
-	var best *Host
+	var best *model.Host
 	var bestRank certHostRank
 	for _, id := range HostIndex.Lookup(host) {
 		value, ok := s.JsonDb.Hosts.Load(id)
 		if !ok {
 			continue
 		}
-		v := value.(*Host)
+		v := value.(*model.Host)
 		if v.IsClose || v.Scheme == "http" || (accept != nil && !accept(v)) {
 			continue
 		}
@@ -788,7 +788,7 @@ func (r certHostRank) better(o certHostRank) bool {
 // rankCertHost reports whether the entry v serves the lower-case name host
 // and how specifically: "*.example.com" serves any name below example.com,
 // at any depth, but never example.com itself.
-func rankCertHost(v *Host, host string) (certHostRank, bool) {
+func rankCertHost(v *model.Host, host string) (certHostRank, bool) {
 	name := strings.TrimSuffix(strings.ToLower(v.Host), ".")
 	r := certHostRank{id: v.Id, location: len(v.Location), tls: v.HasCert() || v.AutoSSL}
 	if v.Location == "" {
@@ -808,12 +808,61 @@ func rankCertHost(v *Host, host string) (certHostRank, bool) {
 
 // RangeClientCertHosts calls fn, until it returns false, for each host entry
 // of the client clientID with a certificate configured.
-func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*Host) bool) {
+func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*model.Host) bool) {
 	s.JsonDb.Hosts.Range(func(_, value any) bool {
-		v := value.(*Host)
+		v := value.(*model.Host)
 		if v.Client == nil || v.Client.Id != clientID || !v.HasCert() {
 			return true
 		}
 		return fn(v)
 	})
+}
+
+// ClientTunnel returns the stored tunnel of c on the port or with the
+// password of t.
+func (s *DbUtils) ClientTunnel(c *model.Client, t *model.Tunnel) (tt *model.Tunnel, exist bool) {
+	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*model.Tunnel)
+		if v.Client.Id == c.Id && ((v.Port == t.Port && t.Port != 0) || (v.Password == t.Password && t.Password != "")) {
+			exist = true
+			tt = v
+			return false
+		}
+		return true
+	})
+	return
+}
+
+// ClientEntryCount returns how many tunnels and hosts c has.
+func (s *DbUtils) ClientEntryCount(c *model.Client) (num int) {
+	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*model.Tunnel)
+		if v.Client.Id == c.Id {
+			num++
+		}
+		return true
+	})
+
+	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+		v := value.(*model.Host)
+		if v.Client.Id == c.Id {
+			num++
+		}
+		return true
+	})
+	return
+}
+
+// ClientHost returns the stored host of c with the host and location of h.
+func (s *DbUtils) ClientHost(c *model.Client, h *model.Host) (hh *model.Host, exist bool) {
+	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+		v := value.(*model.Host)
+		if v.Client.Id == c.Id && v.Host == h.Host && h.Location == v.Location {
+			exist = true
+			hh = v
+			return false
+		}
+		return true
+	})
+	return
 }

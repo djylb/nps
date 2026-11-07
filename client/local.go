@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/nps/bridge/legacy"
@@ -16,7 +18,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/proxy"
 )
@@ -216,12 +217,12 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 	}
 	pb := NewP2pBridge(mgr, l)
 
-	task := &file.Tunnel{
+	task := &model.Tunnel{
 		Port:     l.Port,
 		ServerIp: "0.0.0.0",
 		Status:   true,
-		Client: &file.Client{
-			Cnf: &file.Config{
+		Client: &model.Client{
+			Cnf: &model.Config{
 				U:        "",
 				P:        "",
 				Compress: mgr.cfg.Client.Cnf.Compress,
@@ -229,12 +230,12 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 			Status:    true,
 			IsConnect: true,
 			RateLimit: 0,
-			Flow:      &file.Flow{},
+			Flow:      &model.Flow{},
 		},
 		HttpProxy:   true,
 		Socks5Proxy: true,
-		Flow:        &file.Flow{},
-		Target: &file.Target{
+		Flow:        &model.Flow{},
+		Target: &model.Target{
 			TargetStr:  l.Target,
 			LocalProxy: l.LocalProxy,
 		},

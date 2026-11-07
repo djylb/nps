@@ -2,12 +2,12 @@ package service
 
 import (
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 type GlobalService interface {
 	Save(SaveGlobalInput) error
-	Get() *file.Glob
+	Get() *model.Glob
 	BanList() []LoginBanRecord
 	Unban(key string) bool
 	UnbanAll()
@@ -32,14 +32,14 @@ func (s DefaultGlobalService) Save(input SaveGlobalInput) error {
 	if err != nil {
 		return err
 	}
-	g := new(file.Glob)
+	g := new(model.Glob)
 	g.RateLimit = max(input.RateLimit, 0)
 	g.MaxConn = max(input.MaxConn, 0)
 	lists.applyTo(&g.SourceLists, "the global settings")
 	return s.repo().SaveGlobal(g)
 }
 
-func (s DefaultGlobalService) Get() *file.Glob {
+func (s DefaultGlobalService) Get() *model.Glob {
 	return s.repo().GetGlobal()
 }
 

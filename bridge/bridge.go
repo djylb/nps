@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -51,9 +53,9 @@ type Bridge struct {
 	VirtualTlsListener *netx.ChanListener
 	VirtualWsListener  *netx.ChanListener
 	VirtualWssListener *netx.ChanListener
-	OpenHost           chan *file.Host
-	OpenTask           chan *file.Tunnel
-	CloseTask          chan *file.Tunnel
+	OpenHost           chan *model.Host
+	OpenTask           chan *model.Tunnel
+	CloseTask          chan *model.Tunnel
 	CloseClient        chan int
 	SecretChan         chan *conn.Secret
 	runList            *sync.Map //map[int]interface{}
@@ -73,9 +75,9 @@ func NewTunnel(runList *sync.Map, disconnectTime int) *Bridge {
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	return &Bridge{
 		Client:         &sync.Map{},
-		OpenHost:       make(chan *file.Host, 100),
-		OpenTask:       make(chan *file.Tunnel, 100),
-		CloseTask:      make(chan *file.Tunnel, 100),
+		OpenHost:       make(chan *model.Host, 100),
+		OpenTask:       make(chan *model.Tunnel, 100),
+		CloseTask:      make(chan *model.Tunnel, 100),
 		CloseClient:    make(chan int, 100),
 		SecretChan:     make(chan *conn.Secret, 100),
 		runList:        runList,

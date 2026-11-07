@@ -6,6 +6,8 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -52,7 +54,7 @@ func certCovers(cert *tls.Certificate, name string) certMatch {
 //
 // The default certificate is never served for a name it does not cover, so
 // arbitrary server names cannot fetch it. It fails if no certificate fits.
-func (s *HttpsServer) selectCert(host *file.Host, sni string) (*tls.Certificate, error) {
+func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate, error) {
 	var own *tls.Certificate
 	if host.HasCert() {
 		cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
@@ -67,7 +69,7 @@ func (s *HttpsServer) selectCert(host *file.Host, sni string) (*tls.Certificate,
 	var best *tls.Certificate
 	bestMatch := matchNone
 	if host.Client != nil {
-		file.GetDb().RangeClientCertHosts(host.Client.Id, func(v *file.Host) bool {
+		file.GetDb().RangeClientCertHosts(host.Client.Id, func(v *model.Host) bool {
 			if v.Id == host.Id {
 				return true
 			}
@@ -113,7 +115,7 @@ func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
 // autoSSL reports whether TLS for host is terminated with certificates
 // obtained by AutoSSL: the entry enables it and the server listens on the
 // standard HTTP or HTTPS port, or AutoSSL is forced.
-func (s *HttpProxy) autoSSL(host *file.Host) bool {
+func (s *HttpProxy) autoSSL(host *model.Host) bool {
 	return host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl)
 }
 
@@ -122,7 +124,7 @@ func (s *HttpProxy) autoSSL(host *file.Host) bool {
 // selectCert picks otherwise. It returns nil if no enabled entry serves sni,
 // so no certificate is ever handed out for an unconfigured name, or if there
 // is no fitting certificate.
-func (s *HttpsServer) serverTLSConfig(host *file.Host, sni string) (cfg *tls.Config, autoSSL bool) {
+func (s *HttpsServer) serverTLSConfig(host *model.Host, sni string) (cfg *tls.Config, autoSSL bool) {
 	var cert *tls.Certificate
 	switch {
 	case host == nil:

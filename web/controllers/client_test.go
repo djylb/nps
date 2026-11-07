@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -38,12 +39,12 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 	tests := []struct {
 		name   string
 		mode   string
-		assert func(t *testing.T, c *file.Client)
+		assert func(t *testing.T, c *model.Client)
 	}{
 		{
 			name: "clear flow limit",
 			mode: "flow_limit",
-			assert: func(t *testing.T, c *file.Client) {
+			assert: func(t *testing.T, c *model.Client) {
 				if c.Flow.FlowLimit != 0 {
 					t.Fatalf("expected FlowLimit to be 0, got %d", c.Flow.FlowLimit)
 				}
@@ -52,7 +53,7 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 		{
 			name: "clear time limit",
 			mode: "time_limit",
-			assert: func(t *testing.T, c *file.Client) {
+			assert: func(t *testing.T, c *model.Client) {
 				if !c.Flow.TimeLimit.IsZero() {
 					t.Fatalf("expected TimeLimit to be zero, got %v", c.Flow.TimeLimit)
 				}
@@ -61,7 +62,7 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 		{
 			name: "clear connection limit",
 			mode: "conn_limit",
-			assert: func(t *testing.T, c *file.Client) {
+			assert: func(t *testing.T, c *model.Client) {
 				if c.MaxConn != 0 {
 					t.Fatalf("expected MaxConn to be 0, got %d", c.MaxConn)
 				}
@@ -70,7 +71,7 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 		{
 			name: "clear tunnel limit",
 			mode: "tunnel_limit",
-			assert: func(t *testing.T, c *file.Client) {
+			assert: func(t *testing.T, c *model.Client) {
 				if c.MaxTunnelNum != 0 {
 					t.Fatalf("expected MaxTunnelNum to be 0, got %d", c.MaxTunnelNum)
 				}
@@ -80,8 +81,8 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &file.Client{
-				Flow:         &file.Flow{FlowLimit: 1024, TimeLimit: timeLimit},
+			c := &model.Client{
+				Flow:         &model.Flow{FlowLimit: 1024, TimeLimit: timeLimit},
 				Rate:         rate.NewRate(1024),
 				MaxConn:      10,
 				MaxTunnelNum: 20,
@@ -95,7 +96,7 @@ func TestClearClientStatusBasicFields(t *testing.T) {
 
 func TestClearClientStatusRateLimit(t *testing.T) {
 	t.Run("create rate when nil", func(t *testing.T) {
-		c := &file.Client{Flow: &file.Flow{}, RateLimit: 123, Rate: nil}
+		c := &model.Client{Flow: &model.Flow{}, RateLimit: 123, Rate: nil}
 
 		clearClientStatus(c, "rate_limit")
 
@@ -111,7 +112,7 @@ func TestClearClientStatusRateLimit(t *testing.T) {
 	})
 
 	t.Run("reset existing rate limit", func(t *testing.T) {
-		c := &file.Client{Flow: &file.Flow{}, RateLimit: 256, Rate: rate.NewRate(256 * 1024)}
+		c := &model.Client{Flow: &model.Flow{}, RateLimit: 256, Rate: rate.NewRate(256 * 1024)}
 
 		clearClientStatus(c, "rate_limit")
 

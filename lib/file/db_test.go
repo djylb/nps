@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/crypt"
 )
 
@@ -24,11 +26,11 @@ func passwordOwner(pwd string) (int, bool) {
 func TestTaskPasswordConflicts(t *testing.T) {
 	db := newTestDb(t)
 
-	if err := db.NewTask(&Tunnel{Id: 1, Mode: "secret", Password: "shared"}); err != nil {
+	if err := db.NewTask(&model.Tunnel{Id: 1, Mode: "secret", Password: "shared"}); err != nil {
 		t.Fatalf("NewTask(1): %v", err)
 	}
 
-	web := &Tunnel{Id: 2, Mode: "p2p", Password: "shared"}
+	web := &model.Tunnel{Id: 2, Mode: "p2p", Password: "shared"}
 	if err := db.NewTask(web); err == nil {
 		t.Fatalf("explicit duplicate password from the web must be rejected")
 	}
@@ -36,7 +38,7 @@ func TestTaskPasswordConflicts(t *testing.T) {
 		t.Fatalf("rejected password must not be replaced, got %q", web.Password)
 	}
 
-	client := &Tunnel{Id: 3, Mode: "secret", Password: "shared", NoStore: true}
+	client := &model.Tunnel{Id: 3, Mode: "secret", Password: "shared", NoStore: true}
 	if err := db.NewTask(client); err != nil {
 		t.Fatalf("client task must not fail on a duplicate password: %v", err)
 	}
@@ -47,7 +49,7 @@ func TestTaskPasswordConflicts(t *testing.T) {
 		t.Fatalf("replacement password not claimed: %d %v", id, ok)
 	}
 
-	generated := &Tunnel{Id: 4, Mode: "secret"}
+	generated := &model.Tunnel{Id: 4, Mode: "secret"}
 	if err := db.NewTask(generated); err != nil {
 		t.Fatalf("NewTask(generated): %v", err)
 	}
@@ -58,11 +60,11 @@ func TestTaskPasswordConflicts(t *testing.T) {
 
 func TestUpdateTaskInPlaceReleasesOldPassword(t *testing.T) {
 	db := newTestDb(t)
-	task := &Tunnel{Id: 1, Mode: "secret", Password: "old"}
+	task := &model.Tunnel{Id: 1, Mode: "secret", Password: "old"}
 	if err := db.NewTask(task); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.NewTask(&Tunnel{Id: 2, Mode: "secret", Password: "taken"}); err != nil {
+	if err := db.NewTask(&model.Tunnel{Id: 2, Mode: "secret", Password: "taken"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,7 +86,7 @@ func TestUpdateTaskInPlaceReleasesOldPassword(t *testing.T) {
 	if err := db.UpdateTask(edited); err == nil {
 		t.Fatalf("conflicting update must be rejected")
 	}
-	if v, _ := db.JsonDb.Tasks.Load(1); v.(*Tunnel) != task || task.Password != "new" {
+	if v, _ := db.JsonDb.Tasks.Load(1); v.(*model.Tunnel) != task || task.Password != "new" {
 		t.Fatalf("stored task changed by a rejected update")
 	}
 	if id, ok := passwordOwner("new"); !ok || id != 1 {
@@ -101,10 +103,10 @@ func TestUpdateTaskInPlaceReleasesOldPassword(t *testing.T) {
 
 func TestLoadedDuplicatePasswordStaysEditable(t *testing.T) {
 	db := newTestDb(t)
-	first := &Tunnel{Id: 1, Mode: "secret", Password: "dup"}
-	second := &Tunnel{Id: 2, Mode: "secret", Password: "dup"}
+	first := &model.Tunnel{Id: 1, Mode: "secret", Password: "dup"}
+	second := &model.Tunnel{Id: 2, Mode: "secret", Password: "dup"}
 	// Same path as LoadTaskFromJsonFile.
-	for _, task := range []*Tunnel{first, second} {
+	for _, task := range []*model.Tunnel{first, second} {
 		_ = reserveTaskPassword(task, false)
 		db.JsonDb.Tasks.Store(task.Id, task)
 	}
@@ -118,7 +120,7 @@ func TestLoadedDuplicatePasswordStaysEditable(t *testing.T) {
 }
 
 func TestTunnelCloneCopiesAllFields(t *testing.T) {
-	src := &Tunnel{}
+	src := &model.Tunnel{}
 	v := reflect.ValueOf(src).Elem()
 	fill(t, v)
 	src.Flow.ExportFlow, src.Flow.InletFlow, src.Flow.FlowLimit, src.Flow.TimeLimit = 1, 2, 3, time.Unix(4, 0)
@@ -158,7 +160,7 @@ type healthSnapshot struct {
 	Type, Target               string
 }
 
-func healthFields(t *Tunnel) healthSnapshot {
+func healthFields(t *model.Tunnel) healthSnapshot {
 	return healthSnapshot{t.HealthCheckTimeout, t.HealthMaxFail, t.HealthCheckInterval, t.HttpHealthUrl, t.HealthCheckType, t.HealthCheckTarget}
 }
 
@@ -202,8 +204,8 @@ func TestNewTaskAndHostKeepLimits(t *testing.T) {
 	db.JsonDb.HostFilePath = filepath.Join(t.TempDir(), "hosts.json")
 	expire := time.Now().Add(time.Hour).Truncate(time.Second)
 
-	reqFlow := &Flow{FlowLimit: 100, TimeLimit: expire, InletFlow: 7, ExportFlow: 9}
-	task := &Tunnel{Id: 1, Mode: "tcp", Port: 1, Flow: reqFlow}
+	reqFlow := &model.Flow{FlowLimit: 100, TimeLimit: expire, InletFlow: 7, ExportFlow: 9}
+	task := &model.Tunnel{Id: 1, Mode: "tcp", Port: 1, Flow: reqFlow}
 	if err := db.NewTask(task); err != nil {
 		t.Fatalf("NewTask: %v", err)
 	}
@@ -214,7 +216,7 @@ func TestNewTaskAndHostKeepLimits(t *testing.T) {
 		t.Fatalf("task flow = %+v", task.Flow)
 	}
 
-	host := &Host{Id: 1, Host: "a.example", Client: &Client{Id: 1}, Flow: &Flow{FlowLimit: 200, TimeLimit: expire}}
+	host := &model.Host{Id: 1, Host: "a.example", Client: &model.Client{Id: 1}, Flow: &model.Flow{FlowLimit: 200, TimeLimit: expire}}
 	if err := db.NewHost(host); err != nil {
 		t.Fatalf("NewHost: %v", err)
 	}
@@ -223,7 +225,7 @@ func TestNewTaskAndHostKeepLimits(t *testing.T) {
 		t.Fatalf("host flow = %+v", host.Flow)
 	}
 
-	bare := &Tunnel{Id: 2, Mode: "tcp", Port: 2}
+	bare := &model.Tunnel{Id: 2, Mode: "tcp", Port: 2}
 	if err := db.NewTask(bare); err != nil {
 		t.Fatalf("NewTask(bare): %v", err)
 	}

@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -73,7 +74,7 @@ func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdent
 	var matchedClientIDs []int
 	loginMode := "password"
 	verifyTOTP := totpVerifier()
-	s.repo().RangeClients(func(client *file.Client) bool {
+	s.repo().RangeClients(func(client *model.Client) bool {
 		if !client.Status || client.NoDisplay {
 			return true
 		}
@@ -125,13 +126,13 @@ func (s DefaultAuthService) RegisterUser(input RegisterUserInput) (*RegisterUser
 		return nil, ErrReservedUsername
 	}
 
-	client := &file.Client{
+	client := &model.Client{
 		Id:          s.repo().NextClientID(),
 		Status:      true,
-		Cnf:         &file.Config{},
+		Cnf:         &model.Config{},
 		WebUserName: username,
 		WebPassword: password,
-		Flow:        &file.Flow{},
+		Flow:        &model.Flow{},
 	}
 	if err := s.repo().CreateClient(client); err != nil {
 		return nil, err
@@ -270,7 +271,7 @@ func totpVerifier() func(secret, code string) bool {
 	}
 }
 
-func clientCredentialsMatch(client *file.Client, password, totp string, verifyTOTP func(secret, code string) bool) bool {
+func clientCredentialsMatch(client *model.Client, password, totp string, verifyTOTP func(secret, code string) bool) bool {
 	if client == nil {
 		return false
 	}

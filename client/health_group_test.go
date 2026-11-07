@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -63,7 +65,7 @@ func (h *healthTarget) up() {
 }
 
 // rotation returns the addresses target hands out.
-func rotation(target *file.Target) []string {
+func rotation(target *model.Target) []string {
 	seen := map[string]bool{}
 	for range 8 {
 		_ = target.Dial(func(addr string) (bool, error) {
@@ -84,8 +86,8 @@ func sorted(addrs ...string) []string {
 	return addrs
 }
 
-func healthCheck() file.HealthCheck {
-	return file.HealthCheck{Enabled: true, Type: "tcp", Interval: 1, Timeout: 1, MaxFail: 1}
+func healthCheck() model.HealthCheck {
+	return model.HealthCheck{Enabled: true, Type: "tcp", Interval: 1, Timeout: 1, MaxFail: 1}
 }
 
 // groupKeys returns the addresses a group of hc holds.
@@ -112,7 +114,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	t.Cleanup(func() { file.Db = oldDb })
 
 	const key = "healthgroupvkey0"
-	client := file.NewClient(key, true, false)
+	client := model.NewClient(key, true, false)
 	if err := file.GetDb().NewClient(client); err != nil {
 		t.Fatal(err)
 	}
@@ -125,14 +127,14 @@ func TestServerGivenHealthGroups(t *testing.T) {
 		return s
 	}
 
-	tunnel := &file.Tunnel{Id: 1, Mode: "tcp", Status: true, Client: client, Target: &file.Target{TargetStr: list(a, b)}}
+	tunnel := &model.Tunnel{Id: 1, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: list(a, b)}}
 	tunnel.SetHealthCheck(healthCheck())
 	// Holds b as well but has no checks: reports of tunnel 1 must not touch it.
-	bystander := &file.Tunnel{Id: 2, Mode: "tcp", Status: true, Client: client, Target: &file.Target{TargetStr: list(a, b)}}
+	bystander := &model.Tunnel{Id: 2, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: list(a, b)}}
 	// One target only: nothing to fail over to, so no group.
-	single := &file.Tunnel{Id: 3, Mode: "tcp", Status: true, Client: client, Target: &file.Target{TargetStr: list(a)}}
+	single := &model.Tunnel{Id: 3, Mode: "tcp", Status: true, Client: client, Target: &model.Target{TargetStr: list(a)}}
 	single.SetHealthCheck(healthCheck())
-	for _, tn := range []*file.Tunnel{tunnel, bystander, single} {
+	for _, tn := range []*model.Tunnel{tunnel, bystander, single} {
 		if err := file.GetDb().NewTask(tn); err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +233,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	waitFor(t, 5*time.Second, "probe when idle", func() bool { return checks() > before })
 
 	// A new host with the same check shares the running checks.
-	host := &file.Host{Id: 7, Host: "x.test", Client: client, Target: &file.Target{TargetStr: list(a, b)}, Flow: &file.Flow{}}
+	host := &model.Host{Id: 7, Host: "x.test", Client: client, Target: &model.Target{TargetStr: list(a, b)}, Flow: &model.Flow{}}
 	host.SetHealthCheck(healthCheck())
 	if err := file.GetDb().NewHost(host); err != nil {
 		t.Fatal(err)
@@ -243,7 +245,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 
 	// An edit sends its group again: t1 moves from b to c and b stays for h7.
 	edited := tunnel.Clone()
-	edited.Target = &file.Target{TargetStr: list(a, c)}
+	edited.Target = &model.Target{TargetStr: list(a, c)}
 	if err := file.GetDb().UpdateTask(edited); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +268,7 @@ func TestServerGivenHealthGroups(t *testing.T) {
 	// A dropped verdict returns: disabling while down puts the target back.
 	c.down()
 	waitFor(t, 10*time.Second, "c out again", func() bool { return slices.Equal(rotation(edited.Target), []string{a.addr}) })
-	off := file.HealthCheck{Type: "tcp"}
+	off := model.HealthCheck{Type: "tcp"}
 	edited.SetHealthCheck(off)
 	if err := file.GetDb().UpdateTask(edited); err != nil {
 		t.Fatal(err)

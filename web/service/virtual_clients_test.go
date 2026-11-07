@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestVirtualClientAuthorization(t *testing.T) {
@@ -32,12 +32,12 @@ func TestVirtualClientAuthorization(t *testing.T) {
 type virtualClientRepo struct {
 	stubRepository
 	deleted, updatedIndex int
-	client                *file.Client
+	client                *model.Client
 }
 
 func (r *virtualClientRepo) DeleteClient(int) error                     { r.deleted++; return nil }
 func (r *virtualClientRepo) ReplaceClientVKeyIndex(string, string, int) { r.updatedIndex++ }
-func (r *virtualClientRepo) GetClient(int) (*file.Client, error)        { return r.client, nil }
+func (r *virtualClientRepo) GetClient(int) (*model.Client, error)       { return r.client, nil }
 
 type virtualClientRuntime struct {
 	stubRuntime
@@ -50,7 +50,7 @@ func (r *virtualClientRuntime) ClientConnected(int) bool             { return fa
 func (r *virtualClientRuntime) DisconnectClient(id int)              { r.disconnected = append(r.disconnected, id) }
 
 func TestVirtualClientManagementAndRemoteGuards(t *testing.T) {
-	client := &file.Client{Id: -1, Status: true, VerifyKey: "virtual-key", Cnf: &file.Config{}, Flow: &file.Flow{}}
+	client := &model.Client{Id: -1, Status: true, VerifyKey: "virtual-key", Cnf: &model.Config{}, Flow: &model.Flow{}}
 	repo := &virtualClientRepo{client: client}
 	runtime := &virtualClientRuntime{}
 	svc := DefaultClientService{Backend: Backend{Repository: repo, Runtime: runtime}}

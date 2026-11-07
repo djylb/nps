@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/event"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
@@ -17,7 +19,7 @@ const EventTunnelsReport = "tunnels.report"
 
 // TunnelState is a tunnel in the full report.
 type TunnelState struct {
-	file.TunnelInfo
+	model.TunnelInfo
 	Running      bool  `json:"running"`
 	ClientOnline bool  `json:"client_online"`
 	NowConn      int32 `json:"now_conn"`
@@ -27,7 +29,7 @@ type TunnelState struct {
 
 // HostState is a domain entry in the full report.
 type HostState struct {
-	file.HostInfo
+	model.HostInfo
 	ClientOnline bool  `json:"client_online"`
 	NowConn      int32 `json:"now_conn"`
 	InletFlow    int64 `json:"inlet_flow"`
@@ -107,22 +109,22 @@ func reportTunnels(bus *event.Bus, interval time.Duration, stop <-chan struct{},
 // BuildTunnelsReport snapshots all tunnels and domain entries, by id.
 func BuildTunnelsReport() TunnelsReport {
 	r := TunnelsReport{Tunnels: []TunnelState{}, Hosts: []HostState{}}
-	online := func(c *file.Client) bool { return c != nil && Bridge != nil && Bridge.Connected(c.Id) }
+	online := func(c *model.Client) bool { return c != nil && Bridge != nil && Bridge.Connected(c.Id) }
 	file.GetDb().JsonDb.Tasks.Range(func(_, v any) bool {
-		t := v.(*file.Tunnel)
+		t := v.(*model.Tunnel)
 		_, running := RunList.Load(t.Id)
 		flow := t.Flow.Values()
 		r.Tunnels = append(r.Tunnels, TunnelState{
-			TunnelInfo: file.NewTunnelInfo(t), Running: running, ClientOnline: online(t.Client),
+			TunnelInfo: model.NewTunnelInfo(t), Running: running, ClientOnline: online(t.Client),
 			NowConn: t.CurrentConnections(), InletFlow: flow.InletFlow, ExportFlow: flow.ExportFlow,
 		})
 		return true
 	})
 	file.GetDb().JsonDb.Hosts.Range(func(_, v any) bool {
-		h := v.(*file.Host)
+		h := v.(*model.Host)
 		flow := h.Flow.Values()
 		r.Hosts = append(r.Hosts, HostState{
-			HostInfo: file.NewHostInfo(h), ClientOnline: online(h.Client),
+			HostInfo: model.NewHostInfo(h), ClientOnline: online(h.Client),
 			NowConn: h.CurrentConnections(), InletFlow: flow.InletFlow, ExportFlow: flow.ExportFlow,
 		})
 		return true

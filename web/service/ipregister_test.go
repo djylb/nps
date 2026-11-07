@@ -6,17 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
-func registerTestService(clients ...*file.Client) DefaultClientService {
+func registerTestService(clients ...*model.Client) DefaultClientService {
 	cfg := &servercfg.Snapshot{}
 	cfg.App.IPRegisterMaxHours = 2
 	cfg.Runtime.PublicVKey = "pub-key"
 	return DefaultClientService{ConfigProvider: func() *servercfg.Snapshot { return cfg }, Backend: Backend{Repository: stubRepository{
-		rangeClients: func(fn func(*file.Client) bool) {
+		rangeClients: func(fn func(*model.Client) bool) {
 			for _, c := range clients {
 				if !fn(c) {
 					return
@@ -29,9 +30,9 @@ func registerTestService(clients ...*file.Client) DefaultClientService {
 func TestRegisterVisitorIP(t *testing.T) {
 	ipreg.Reset()
 	t.Cleanup(ipreg.Reset)
-	a := &file.Client{Id: 1, Status: true, VerifyKey: "vk-a", RegisterKey: "reg-a", RegisterMaxHours: 4}
-	b := &file.Client{Id: 2, Status: true, VerifyKey: "vk-b"}
-	off := &file.Client{Id: 3, Status: false, VerifyKey: "vk-off"}
+	a := &model.Client{Id: 1, Status: true, VerifyKey: "vk-a", RegisterKey: "reg-a", RegisterMaxHours: 4}
+	b := &model.Client{Id: 2, Status: true, VerifyKey: "vk-b"}
+	off := &model.Client{Id: 3, Status: false, VerifyKey: "vk-off"}
 	s := registerTestService(a, b, off)
 
 	id, until, err := s.RegisterVisitorIP("reg-a", "192.0.2.1", 100)
@@ -63,7 +64,7 @@ func TestRegisterVisitorIP(t *testing.T) {
 }
 
 func TestCheckRegisterKey(t *testing.T) {
-	a := &file.Client{Id: 1, VerifyKey: "vk-a", RegisterKey: "reg-a"}
+	a := &model.Client{Id: 1, VerifyKey: "vk-a", RegisterKey: "reg-a"}
 	s := registerTestService(a)
 	for key, dup := range map[string]bool{"": false, "fresh": false, "reg-a": true, "vk-a": true, "vk-self": true} {
 		err := s.checkRegisterKey(2, key, "vk-self")

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxydial"
 	"github.com/djylb/netx/tlsconn"
@@ -26,7 +28,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
 	"github.com/quic-go/quic-go"
@@ -303,9 +304,9 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 
 // readTaskAddStatus reads the add statuses the server reports for a FlagNewTask:
 // one per port the task expands to, ending at the first failure.
-func readTaskAddStatus(c *conn.Conn, t *file.Tunnel) (bool, error) {
+func readTaskAddStatus(c *conn.Conn, t *model.Tunnel) (bool, error) {
 	n := 1
-	if ports, _, ok := file.ConfigTaskPorts(t); ok {
+	if ports, _, ok := model.ConfigTaskPorts(t); ok {
 		n = len(ports)
 	}
 	for i := 0; i < n; i++ {

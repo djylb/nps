@@ -3,29 +3,30 @@ package service
 import (
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/servercfg"
 )
 
 type stubRepository struct {
-	rangeClients      func(func(*file.Client) bool)
-	listVisibleClient func(ListClientsInput) ([]*file.Client, int)
+	rangeClients      func(func(*model.Client) bool)
+	listVisibleClient func(ListClientsInput) ([]*model.Client, int)
 	nextClientID      func() int
-	createClient      func(*file.Client) error
+	createClient      func(*model.Client) error
 	nextTunnelID      func() int
-	createTunnel      func(*file.Tunnel) error
-	getClient         func(int) (*file.Client, error)
+	createTunnel      func(*model.Tunnel) error
+	getClient         func(int) (*model.Client, error)
 }
 
-func (s stubRepository) RangeClients(fn func(*file.Client) bool) {
+func (s stubRepository) RangeClients(fn func(*model.Client) bool) {
 	if s.rangeClients != nil {
 		s.rangeClients(fn)
 	}
 }
 
-func (stubRepository) RangeTunnels(func(*file.Tunnel) bool) {}
-func (stubRepository) RangeHosts(func(*file.Host) bool)     {}
-func (s stubRepository) ListVisibleClients(input ListClientsInput) ([]*file.Client, int) {
+func (stubRepository) RangeTunnels(func(*model.Tunnel) bool) {}
+func (stubRepository) RangeHosts(func(*model.Host) bool)     {}
+func (s stubRepository) ListVisibleClients(input ListClientsInput) ([]*model.Client, int) {
 	if s.listVisibleClient != nil {
 		return s.listVisibleClient(input)
 	}
@@ -44,52 +45,52 @@ func (s stubRepository) NextTunnelID() int {
 	return 0
 }
 func (stubRepository) NextHostID() int { return 0 }
-func (s stubRepository) CreateClient(client *file.Client) error {
+func (s stubRepository) CreateClient(client *model.Client) error {
 	if s.createClient != nil {
 		return s.createClient(client)
 	}
 	return nil
 }
-func (s stubRepository) GetClient(id int) (*file.Client, error) {
+func (s stubRepository) GetClient(id int) (*model.Client, error) {
 	if s.getClient != nil {
 		return s.getClient(id)
 	}
 	return nil, nil
 }
-func (stubRepository) SaveClient(*file.Client) error              { return nil }
+func (stubRepository) SaveClient(*model.Client) error             { return nil }
 func (stubRepository) PersistClients() error                      { return nil }
 func (stubRepository) PersistGlobal() error                       { return nil }
 func (stubRepository) DeleteClient(int) error                     { return nil }
 func (stubRepository) VerifyUserName(string, int) bool            { return true }
 func (stubRepository) VerifyVKey(string, int) bool                { return true }
 func (stubRepository) ReplaceClientVKeyIndex(string, string, int) {}
-func (s stubRepository) CreateTunnel(tunnel *file.Tunnel) error {
+func (s stubRepository) CreateTunnel(tunnel *model.Tunnel) error {
 	if s.createTunnel != nil {
 		return s.createTunnel(tunnel)
 	}
 	return nil
 }
-func (stubRepository) GetTunnel(int) (*file.Tunnel, error) { return nil, nil }
-func (stubRepository) SaveTunnel(*file.Tunnel) error       { return nil }
-func (stubRepository) DeleteTunnelRecord(int) error        { return nil }
-func (stubRepository) CreateHost(*file.Host) error         { return nil }
-func (stubRepository) GetHost(int) (*file.Host, error)     { return nil, nil }
-func (stubRepository) SaveHost(*file.Host, string) error   { return nil }
-func (stubRepository) PersistHosts() error                 { return nil }
-func (stubRepository) FindReusableCert(string, int, int) (*file.Host, error) {
+func (stubRepository) GetTunnel(int) (*model.Tunnel, error) { return nil, nil }
+func (stubRepository) SaveTunnel(*model.Tunnel) error       { return nil }
+func (stubRepository) DeleteTunnelRecord(int) error         { return nil }
+func (stubRepository) CreateHost(*model.Host) error         { return nil }
+func (stubRepository) GetHost(int) (*model.Host, error)     { return nil, nil }
+func (stubRepository) SaveHost(*model.Host, string) error   { return nil }
+func (stubRepository) PersistHosts() error                  { return nil }
+func (stubRepository) FindReusableCert(string, int, int) (*model.Host, error) {
 	return nil, nil
 }
 func (stubRepository) DeleteHostRecord(int) error     { return nil }
-func (stubRepository) HostExists(*file.Host) bool     { return false }
-func (stubRepository) GetGlobal() *file.Glob          { return nil }
-func (stubRepository) SaveGlobal(*file.Glob) error    { return nil }
+func (stubRepository) HostExists(*model.Host) bool    { return false }
+func (stubRepository) GetGlobal() *model.Glob         { return nil }
+func (stubRepository) SaveGlobal(*model.Glob) error   { return nil }
 func (stubRepository) ClientOwnsTunnel(int, int) bool { return false }
 func (stubRepository) ClientOwnsHost(int, int) bool   { return false }
 
 type stubRuntime struct {
 	dashboardData func(bool) map[string]interface{}
-	generatePort  func(*file.Tunnel) int
-	portAvailable func(*file.Tunnel) bool
+	generatePort  func(*model.Tunnel) int
+	portAvailable func(*model.Tunnel) bool
 }
 
 func (s stubRuntime) DashboardData(force bool) map[string]interface{} {
@@ -99,7 +100,7 @@ func (s stubRuntime) DashboardData(force bool) map[string]interface{} {
 	return nil
 }
 
-func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*file.Client, int) {
+func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*model.Client, int) {
 	return nil, 0
 }
 func (stubRuntime) PingClient(int, string) int           { return 0 }
@@ -107,34 +108,34 @@ func (stubRuntime) DisconnectClient(int)                 {}
 func (stubRuntime) ClientConnected(int) bool             { return false }
 func (stubRuntime) RequestClientUpdate(int) (int, error) { return 0, nil }
 func (stubRuntime) DeleteClientResources(int)            {}
-func (s stubRuntime) GenerateTunnelPort(tunnel *file.Tunnel) int {
+func (s stubRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
 	if s.generatePort != nil {
 		return s.generatePort(tunnel)
 	}
 	return 0
 }
-func (s stubRuntime) TunnelPortAvailable(tunnel *file.Tunnel) bool {
+func (s stubRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
 	if s.portAvailable != nil {
 		return s.portAvailable(tunnel)
 	}
 	return true
 }
-func (stubRuntime) ListTunnels(int, int, string, int, string, string, string) ([]*file.Tunnel, int) {
+func (stubRuntime) ListTunnels(int, int, string, int, string, string, string) ([]*model.Tunnel, int) {
 	return nil, 0
 }
-func (stubRuntime) AddTunnel(*file.Tunnel) error { return nil }
-func (stubRuntime) StopTunnel(int) error         { return nil }
-func (stubRuntime) StartTunnel(int) error        { return nil }
-func (stubRuntime) DeleteTunnel(int) error       { return nil }
-func (stubRuntime) ListHosts(int, int, int, string, string, string) ([]*file.Host, int) {
+func (stubRuntime) AddTunnel(*model.Tunnel) error { return nil }
+func (stubRuntime) StopTunnel(int) error          { return nil }
+func (stubRuntime) StartTunnel(int) error         { return nil }
+func (stubRuntime) DeleteTunnel(int) error        { return nil }
+func (stubRuntime) ListHosts(int, int, int, string, string, string) ([]*model.Host, int) {
 	return nil, 0
 }
 func (stubRuntime) RemoveHostCache(int) {}
 
 func TestDefaultClientServiceUsesInjectedRepositoryForList(t *testing.T) {
 	repo := stubRepository{
-		listVisibleClient: func(ListClientsInput) ([]*file.Client, int) {
-			return []*file.Client{{Id: 7, Remark: "from-backend"}}, 1
+		listVisibleClient: func(ListClientsInput) ([]*model.Client, int) {
+			return []*model.Client{{Id: 7, Remark: "from-backend"}}, 1
 		},
 	}
 	service := DefaultClientService{
@@ -180,10 +181,10 @@ func TestDefaultIndexServiceAddTunnelUsesInjectedRuntimePortPolicy(t *testing.T)
 		Backend: Backend{
 			Repository: stubRepository{
 				nextTunnelID: func() int { return 9 },
-				getClient: func(id int) (*file.Client, error) {
-					return &file.Client{Id: id, Status: true, Flow: &file.Flow{}}, nil
+				getClient: func(id int) (*model.Client, error) {
+					return &model.Client{Id: id, Status: true, Flow: &model.Flow{}}, nil
 				},
-				createTunnel: func(tunnel *file.Tunnel) error {
+				createTunnel: func(tunnel *model.Tunnel) error {
 					created = struct {
 						ID       int
 						Port     int
@@ -200,13 +201,13 @@ func TestDefaultIndexServiceAddTunnelUsesInjectedRuntimePortPolicy(t *testing.T)
 				},
 			},
 			Runtime: stubRuntime{
-				generatePort: func(tunnel *file.Tunnel) int {
+				generatePort: func(tunnel *model.Tunnel) int {
 					if tunnel == nil || tunnel.Mode != "tcp" {
 						t.Fatalf("GenerateTunnelPort() tunnel = %#v, want tcp tunnel", tunnel)
 					}
 					return 18080
 				},
-				portAvailable: func(tunnel *file.Tunnel) bool {
+				portAvailable: func(tunnel *model.Tunnel) bool {
 					return tunnel != nil && tunnel.Port == 18080 && tunnel.Mode == "tcp"
 				},
 			},
@@ -237,8 +238,8 @@ func TestDefaultAuthServiceUsesInjectedRepository(t *testing.T) {
 		},
 		Backend: Backend{
 			Repository: stubRepository{
-				rangeClients: func(fn func(*file.Client) bool) {
-					fn(&file.Client{
+				rangeClients: func(fn func(*model.Client) bool) {
+					fn(&model.Client{
 						Id:          42,
 						Status:      true,
 						WebUserName: "demo",
@@ -277,7 +278,7 @@ func TestDefaultAuthServiceRegisterUserUsesInjectedRepository(t *testing.T) {
 		Backend: Backend{
 			Repository: stubRepository{
 				nextClientID: func() int { return 73 },
-				createClient: func(client *file.Client) error {
+				createClient: func(client *model.Client) error {
 					created = struct {
 						ID       int
 						Username string
@@ -319,8 +320,8 @@ func (r cacheOrderRuntime) RemoveHostCache(int) { r.removed() }
 // The transport cache entry goes after the edit: a request in between would
 // cache a transport of the old settings again.
 func TestEditHostRemovesCacheAfterEdit(t *testing.T) {
-	host := &file.Host{Id: 1, Host: "a.example", Client: &file.Client{Id: 1}, Flow: &file.Flow{}, Target: &file.Target{}}
-	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*file.Client, error) { return host.Client, nil }}, host: host}
+	host := &model.Host{Id: 1, Host: "a.example", Client: &model.Client{Id: 1}, Flow: &model.Flow{}, Target: &model.Target{}}
+	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*model.Client, error) { return host.Client, nil }}, host: host}
 	var hostAtRemoval string
 	s := DefaultIndexService{Backend: Backend{Repository: r, Runtime: cacheOrderRuntime{removed: func() { hostAtRemoval = host.Host }}}}
 	if _, err := s.EditHost(EditHostInput{ID: 1, Host: "b.example"}); err != nil {

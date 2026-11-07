@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
@@ -20,7 +22,7 @@ func writeAddFail(c *conn.Conn) bool {
 	return legacy.WriteStatus(c, false) == nil
 }
 
-func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client, caps legacy.Caps, uuid string) {
+func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *model.Client, caps legacy.Caps, uuid string) {
 	var fail bool
 	var published *Node // the node that awaits its tunnel after this exchange
 	join := func(id int) {
@@ -49,7 +51,7 @@ loop:
 			var remarks []string
 			if client.IsConnect && !isPub {
 				file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-					v := value.(*file.Host)
+					v := value.(*model.Host)
 					if v.Client.Id == id {
 						remarks = append(remarks, v.Remark)
 					}
@@ -57,7 +59,7 @@ loop:
 				})
 
 				file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-					v := value.(*file.Tunnel)
+					v := value.(*model.Tunnel)
 					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
 						remarks = append(remarks, v.Remark)
 					}
@@ -97,6 +99,9 @@ loop:
 
 		case legacy.FlagNewHost:
 			h, err := legacy.ReadHost(c)
+			if err == nil {
+				h.Id = int(file.GetDb().JsonDb.GetHostId())
+			}
 			if err != nil || h.Target == nil {
 				fail = true
 				_ = legacy.WriteStatus(c, false)
@@ -135,13 +140,16 @@ loop:
 
 		case legacy.FlagNewTask:
 			t, err := legacy.ReadTask(c)
+			if err == nil {
+				t.Id = int(file.GetDb().JsonDb.GetTaskId())
+			}
 			if err != nil {
 				fail = true
 				_ = legacy.WriteStatus(c, false)
 				break loop
 			}
 
-			ports, targets, ok := file.ConfigTaskPorts(t)
+			ports, targets, ok := model.ConfigTaskPorts(t)
 			if !ok {
 				logs.Warn("Task %s of client %d has invalid ports", t.Remark, client.Id)
 				if !writeAddFail(c) {
@@ -153,9 +161,9 @@ loop:
 
 		ports:
 			for i := 0; i < len(ports); i++ {
-				tl := &file.Tunnel{
+				tl := &model.Tunnel{
 					MaxConn:      t.MaxConn,
-					RateLimits:   file.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
+					RateLimits:   model.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
 					Mode:         t.Mode,
 					Port:         ports[i],
 					ServerIp:     t.ServerIp,
@@ -172,7 +180,7 @@ loop:
 					MultiAccount: t.MultiAccount,
 					Id:           int(file.GetDb().JsonDb.GetTaskId()),
 					Status:       true,
-					Flow:         new(file.Flow),
+					Flow:         new(model.Flow),
 					NoStore:      true,
 				}
 
@@ -183,11 +191,11 @@ loop:
 				} else {
 					tl.Remark = fmt.Sprintf("%s_%d", t.Remark, tl.Port)
 					if t.TargetAddr != "" {
-						tl.Target = &file.Target{
+						tl.Target = &model.Target{
 							TargetStr: fmt.Sprintf("%s:%d", t.TargetAddr, targets[i]),
 						}
 					} else {
-						tl.Target = &file.Target{
+						tl.Target = &model.Target{
 							TargetStr: strconv.Itoa(targets[i]),
 						}
 					}
@@ -196,7 +204,7 @@ loop:
 					}
 				}
 				if tl.MultiAccount == nil {
-					tl.MultiAccount = new(file.MultiAccount)
+					tl.MultiAccount = new(model.MultiAccount)
 				}
 				if caps.NodeID {
 					join(client.Id)
@@ -260,8 +268,8 @@ func (s *Bridge) dropConfigNode(id int, uuid string, caps legacy.Caps) {
 	s.DelClient(id)
 }
 
-func (s *Bridge) newRoutes(clientId int) *file.RouteSet {
-	return file.NewRouteSet(func(node string) bool {
+func (s *Bridge) newRoutes(clientId int) *model.RouteSet {
+	return model.NewRouteSet(func(node string) bool {
 		v, ok := s.Client.Load(clientId)
 		return ok && v.(*Client).usableNode(node)
 	})
@@ -271,11 +279,11 @@ func (s *Bridge) newRoutes(clientId int) *file.RouteSet {
 // is new. It returns the existing entry that was changed, if any.
 // Entries of clients without a stable node UUID have no routes: any node
 // serves them, and they go when the client does.
-func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, caps legacy.Caps) (*file.Host, error) {
+func (s *Bridge) publishHost(h *model.Host, client *model.Client, uuid string, caps legacy.Caps) (*model.Host, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	s.cancelClose(client.Id)
-	hh, ok := client.HasHost(h)
+	hh, ok := file.GetDb().ClientHost(client, h)
 	if !ok {
 		if file.GetDb().IsHostExist(h) {
 			return nil, errors.New("the host already exists")
@@ -301,11 +309,11 @@ func (s *Bridge) publishHost(h *file.Host, client *file.Client, uuid string, cap
 // is new. It returns the entry whose service has to be restarted, if any, and
 // whether it was created. Another instance joining a running entry does not
 // restart it, which would cut the traffic of the instances already there.
-func (s *Bridge) publishTask(tl *file.Tunnel, client *file.Client, uuid string, caps legacy.Caps) (*file.Tunnel, bool, error) {
+func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string, caps legacy.Caps) (*model.Tunnel, bool, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()
 	s.cancelClose(client.Id)
-	tt, ok := client.HasTunnel(tl)
+	tt, ok := file.GetDb().ClientTunnel(client, tl)
 	if !ok {
 		if b := tool.TestTunnelPort(tl); !b && tl.Mode != "secret" && tl.Mode != "p2p" && tl.Port > 0 {
 			return nil, false, fmt.Errorf("port %d is not available", tl.Port)
@@ -345,7 +353,7 @@ func (s *Bridge) PruneRoutes(delTask, delHost func(id int)) {
 	defer s.routeMu.Unlock()
 	var tasks, hosts []int
 	file.GetDb().JsonDb.Tasks.Range(func(_, value any) bool {
-		v := value.(*file.Tunnel)
+		v := value.(*model.Tunnel)
 		if v.NoStore && s.pruneRoutes(v.Client.Id, v.Routes) {
 			if v.Routes.Len() == 0 {
 				tasks = append(tasks, v.Id)
@@ -358,7 +366,7 @@ func (s *Bridge) PruneRoutes(delTask, delHost func(id int)) {
 		return true
 	})
 	file.GetDb().JsonDb.Hosts.Range(func(_, value any) bool {
-		v := value.(*file.Host)
+		v := value.(*model.Host)
 		if v.NoStore && s.pruneRoutes(v.Client.Id, v.Routes) {
 			if v.Routes.Len() == 0 {
 				hosts = append(hosts, v.Id)
@@ -378,7 +386,7 @@ func (s *Bridge) PruneRoutes(delTask, delHost func(id int)) {
 	}
 }
 
-func (s *Bridge) pruneRoutes(clientId int, routes *file.RouteSet) bool {
+func (s *Bridge) pruneRoutes(clientId int, routes *model.RouteSet) bool {
 	if routes.Len() == 0 {
 		return false
 	}

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/holepunch"
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/config"
@@ -68,7 +70,7 @@ func TestP2PDeclinedByProvider(t *testing.T) {
 	env := startP2PTestEnv(t)
 	mgr := NewP2PManager(env.ctx, env.cancel, &config.CommonConfig{
 		Server: env.bridgeAddr, VKey: p2pTestVisitorKey, Tp: "tcp", DisconnectTime: 30,
-		Client: &file.Client{Cnf: &file.Config{}},
+		Client: &model.Client{Cnf: &model.Config{}},
 	})
 	t.Cleanup(mgr.Close)
 	ctx, cancel := context.WithTimeout(env.ctx, 30*time.Second)
@@ -108,14 +110,14 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 	t.Cleanup(func() { file.Db = oldDb })
 
-	provider := file.NewClient(p2pTestProviderKey, true, false)
-	visitor := file.NewClient(p2pTestVisitorKey, true, false)
-	for _, c := range []*file.Client{provider, visitor} {
+	provider := model.NewClient(p2pTestProviderKey, true, false)
+	visitor := model.NewClient(p2pTestVisitorKey, true, false)
+	for _, c := range []*model.Client{provider, visitor} {
 		if err := file.GetDb().NewClient(c); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := file.GetDb().NewTask(&file.Tunnel{Id: 1, Mode: "p2p", Password: p2pTestPassword, Status: true, Client: provider, Target: &file.Target{}}); err != nil {
+	if err := file.GetDb().NewTask(&model.Tunnel{Id: 1, Mode: "p2p", Password: p2pTestPassword, Status: true, Client: provider, Target: &model.Target{}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +161,7 @@ func startP2PTestEnv(t *testing.T) p2pTestEnv {
 func runVisitor(t *testing.T, ctx context.Context, cancel context.CancelFunc, bridgeAddr, vkey, password, target string) {
 	mgr := NewP2PManager(ctx, cancel, &config.CommonConfig{
 		Server: bridgeAddr, VKey: vkey, Tp: "tcp", DisconnectTime: 30,
-		Client: &file.Client{Cnf: &file.Config{}},
+		Client: &model.Client{Cnf: &model.Config{}},
 	})
 	t.Cleanup(mgr.Close)
 	// A free port may be taken by another test before the local server

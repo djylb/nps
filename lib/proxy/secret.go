@@ -4,10 +4,11 @@ import (
 	"errors"
 	"net"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -17,7 +18,7 @@ type SecretServer struct {
 	allowSecretLocal bool
 }
 
-func NewSecretServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy, allowSecretLink, allowSecretLocal bool) *SecretServer {
+func NewSecretServer(bridge NetBridge, task *model.Tunnel, allowLocalProxy, allowSecretLink, allowSecretLocal bool) *SecretServer {
 	return &SecretServer{
 		BaseServer:       NewBaseServer(bridge, task, allowLocalProxy),
 		allowSecretLink:  allowSecretLink,
@@ -55,7 +56,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 			connType = lk.ConnType
 			if lk.Host != "" {
 				host = common.FormatAddress(lk.Host)
-				if s.Task.DestAclMode != file.AclOff && !s.Task.AllowsDestination(host) {
+				if s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(host) {
 					logs.Warn("secret dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, common.ExtractHost(host))
 					_ = c.Close()
 					return errProxyAccessDenied
@@ -92,7 +93,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	}
 	if host == "" {
 		err = route.Target.Dial(dial)
-		if errors.Is(err, file.ErrNoTarget) {
+		if errors.Is(err, model.ErrNoTarget) {
 			_, err = dial("")
 		}
 	} else {

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -31,7 +33,7 @@ func useTempDb(t *testing.T) {
 		t.Fatal(err)
 	}
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
-	file.Db.JsonDb.Global = &file.Glob{}
+	file.Db.JsonDb.Global = &model.Glob{}
 	file.HostIndex = index.NewDomainIndex()
 	file.Blake2bVkeyIndex = index.NewStringIDIndex()
 	file.TaskPasswordIndex = index.NewStringIDIndex()
@@ -287,7 +289,7 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 
 func TestKickRefusesOfflineAndVirtualClients(t *testing.T) {
 	r := &virtualClientRuntime{}
-	s := DefaultClientService{Backend: Backend{Repository: stubRepository{getClient: func(id int) (*file.Client, error) { return &file.Client{Id: id}, nil }}, Runtime: r}}
+	s := DefaultClientService{Backend: Backend{Repository: stubRepository{getClient: func(id int) (*model.Client, error) { return &model.Client{Id: id}, nil }}, Runtime: r}}
 	if err := s.Kick(-1); err != ErrVirtualClientOperation {
 		t.Fatalf("virtual: %v", err)
 	}

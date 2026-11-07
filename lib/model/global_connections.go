@@ -1,4 +1,4 @@
-package file
+package model
 
 import "github.com/djylb/nps/lib/rate"
 

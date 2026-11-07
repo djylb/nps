@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/quic-go/quic-go"
 )
 
@@ -76,7 +77,7 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 		ctx:        ctx,
 		cancel:     cancel,
 		pCancel:    cancel,
-		cfg:        &config.CommonConfig{Client: &file.Client{Cnf: &file.Config{}}},
+		cfg:        &config.CommonConfig{Client: &model.Client{Cnf: &model.Config{}}},
 		peers:      make(map[string]*p2pPeer),
 		secretConn: legacy.NewMuxCarrier(clientSide, "tcp", 30, true),
 	}

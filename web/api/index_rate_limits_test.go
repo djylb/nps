@@ -6,7 +6,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -78,12 +79,12 @@ func assertRateJSON(t *testing.T, original, wrapped interface{}, upload, downloa
 }
 
 func TestIndexRateRowsPreserveJSON(t *testing.T) {
-	tunnel := &file.Tunnel{Id: 7, Remark: "tunnel", Port: 1234, Flow: &file.Flow{}}
-	host := &file.Host{Id: 8, Host: "example.com", Remark: "host", Flow: &file.Flow{}}
+	tunnel := &model.Tunnel{Id: 7, Remark: "tunnel", Port: 1234, Flow: &model.Flow{}}
+	host := &model.Host{Id: 8, Host: "example.com", Remark: "host", Flow: &model.Flow{}}
 	tunnel.SetRateLimits(12, 34)
 	host.SetRateLimits(56, 78)
-	tr := tunnelRateRows([]*file.Tunnel{tunnel, nil})
-	hr := hostRateRows([]*file.Host{host, nil})
+	tr := tunnelRateRows([]*model.Tunnel{tunnel, nil})
+	hr := hostRateRows([]*model.Host{host, nil})
 	u, d := tunnel.CurrentRates()
 	assertRateJSON(t, tunnel, tr[0], u, d)
 	u, d = host.CurrentRates()
@@ -94,7 +95,7 @@ func TestIndexRateRowsPreserveJSON(t *testing.T) {
 	if tunnelRateRows(nil) != nil || hostRateRows(nil) != nil {
 		t.Fatal("nil slice changed")
 	}
-	if len(tunnelRateRows([]*file.Tunnel{})) != 0 || len(hostRateRows([]*file.Host{})) != 0 {
+	if len(tunnelRateRows([]*model.Tunnel{})) != 0 || len(hostRateRows([]*model.Host{})) != 0 {
 		t.Fatal("empty slice changed")
 	}
 	// Nonzero values must serialize without unit conversion or truncation.
@@ -141,17 +142,17 @@ func (c *rateResponseContext) RespondJSON(_ int, v interface{}) { c.response = v
 
 type rateListService struct {
 	webservice.IndexService
-	tunnel    *file.Tunnel
-	host      *file.Host
+	tunnel    *model.Tunnel
+	host      *model.Host
 	clearID   int
 	clearMode string
 }
 
-func (s *rateListService) ListTunnels(webservice.TunnelListInput) ([]*file.Tunnel, int) {
-	return []*file.Tunnel{s.tunnel}, 17
+func (s *rateListService) ListTunnels(webservice.TunnelListInput) ([]*model.Tunnel, int) {
+	return []*model.Tunnel{s.tunnel}, 17
 }
-func (s *rateListService) ListHosts(webservice.HostListInput) ([]*file.Host, int) {
-	return []*file.Host{s.host}, 18
+func (s *rateListService) ListHosts(webservice.HostListInput) ([]*model.Host, int) {
+	return []*model.Host{s.host}, 18
 }
 func (s *rateListService) ClearTunnel(id int, mode string) error {
 	s.clearID = id
@@ -165,7 +166,7 @@ func (s *rateListService) ClearHost(id int, mode string) error {
 }
 
 func TestIndexRateListHandlers(t *testing.T) {
-	s := &rateListService{tunnel: &file.Tunnel{Id: 7, Remark: "tunnel"}, host: &file.Host{Id: 8, Host: "example.com"}}
+	s := &rateListService{tunnel: &model.Tunnel{Id: 7, Remark: "tunnel"}, host: &model.Host{Id: 8, Host: "example.com"}}
 	app := &App{Services: webservice.Services{Index: s}}
 	c := &rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{}}}
 	app.GetTunnel(c)
@@ -212,8 +213,8 @@ func TestIndexRateClearHandlers(t *testing.T) {
 // Existing consumers decode rows directly into file models. Extra speed fields
 // must remain additive, including when the measured speed is zero.
 func TestIndexRateTableLegacyJSONCompatibility(t *testing.T) {
-	tunnel := &file.Tunnel{Id: 7, Mode: "tcp", Port: 1234, Remark: "legacy tunnel", Client: &file.Client{Id: 3}, Target: &file.Target{TargetStr: "127.0.0.1:80"}, Flow: &file.Flow{InletFlow: 123, ExportFlow: 456}}
-	host := &file.Host{Id: 8, Host: "example.com", Location: "/api", Remark: "legacy host", Client: &file.Client{Id: 3}, Target: &file.Target{TargetStr: "127.0.0.1:81"}, Flow: &file.Flow{InletFlow: 789, ExportFlow: 321}}
+	tunnel := &model.Tunnel{Id: 7, Mode: "tcp", Port: 1234, Remark: "legacy tunnel", Client: &model.Client{Id: 3}, Target: &model.Target{TargetStr: "127.0.0.1:80"}, Flow: &model.Flow{InletFlow: 123, ExportFlow: 456}}
+	host := &model.Host{Id: 8, Host: "example.com", Location: "/api", Remark: "legacy host", Client: &model.Client{Id: 3}, Target: &model.Target{TargetStr: "127.0.0.1:81"}, Flow: &model.Flow{InletFlow: 789, ExportFlow: 321}}
 	tunnel.SetRateLimits(12, 34)
 	host.SetRateLimits(56, 78)
 	for _, tc := range []struct {
@@ -222,13 +223,13 @@ func TestIndexRateTableLegacyJSONCompatibility(t *testing.T) {
 		original interface{}
 		legacy   interface{}
 	}{
-		{"tunnel", tunnelRateRows([]*file.Tunnel{tunnel}), tunnel, new(struct {
-			Rows  []*file.Tunnel `json:"rows"`
-			Total int            `json:"total"`
+		{"tunnel", tunnelRateRows([]*model.Tunnel{tunnel}), tunnel, new(struct {
+			Rows  []*model.Tunnel `json:"rows"`
+			Total int             `json:"total"`
 		})},
-		{"host", hostRateRows([]*file.Host{host}), host, new(struct {
-			Rows  []*file.Host `json:"rows"`
-			Total int          `json:"total"`
+		{"host", hostRateRows([]*model.Host{host}), host, new(struct {
+			Rows  []*model.Host `json:"rows"`
+			Total int           `json:"total"`
 		})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

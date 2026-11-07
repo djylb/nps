@@ -4,10 +4,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -25,7 +26,7 @@ type UdpModeServer struct {
 	listener *netx.PacketListener
 }
 
-func NewUdpModeServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *UdpModeServer {
+func NewUdpModeServer(bridge NetBridge, task *model.Tunnel, allowLocalProxy bool) *UdpModeServer {
 	return &UdpModeServer{BaseServer: NewBaseServer(bridge, task, allowLocalProxy)}
 }
 

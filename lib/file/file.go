@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
@@ -35,7 +37,7 @@ type JsonDb struct {
 	Hosts            sync.Map
 	HostsTmp         sync.Map
 	Clients          sync.Map
-	Global           *Glob
+	Global           *model.Glob
 	RunPath          string
 	ClientIncreaseId int32  //client increased id
 	TaskIncreaseId   int32  //task increased id
@@ -48,9 +50,9 @@ type JsonDb struct {
 
 func (s *JsonDb) LoadTaskFromJsonFile() {
 	resetTaskPasswords()
-	loadSyncMapFromFile(s.TaskFilePath, Tunnel{}, func(v interface{}) {
+	loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v interface{}) {
 		var err error
-		post := v.(*Tunnel)
+		post := v.(*model.Tunnel)
 		if post.Id <= 0 || post.Client == nil {
 			logs.Warn("Tunnel %d skipped: no id or client", post.Id)
 			return
@@ -59,10 +61,10 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 			return
 		}
 		if post.Flow == nil {
-			post.Flow = new(Flow)
+			post.Flow = new(model.Flow)
 		}
 		if post.Target == nil {
-			post.Target = new(Target)
+			post.Target = new(model.Target)
 		}
 		_ = reserveTaskPassword(post, false)
 		post.NowConn = 0
@@ -90,17 +92,17 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 
 func (s *JsonDb) LoadClientFromJsonFile() {
 	Blake2bVkeyIndex.Clear()
-	loadSyncMapFromFile(s.ClientFilePath, Client{}, func(v interface{}) {
-		post := v.(*Client)
+	loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v interface{}) {
+		post := v.(*model.Client)
 		if post.ConnectionHistory == nil {
-			post.ConnectionHistory = new(ConnectionHistory)
+			post.ConnectionHistory = new(model.ConnectionHistory)
 		}
 		if post.Id == 0 {
 			logs.Warn("Client skipped: no id")
 			return
 		}
 		if post.Cnf == nil {
-			post.Cnf = new(Config)
+			post.Cnf = new(model.Config)
 		}
 		if post.Id > 0 {
 			Blake2bVkeyIndex.Add(crypt.Blake2b(post.VerifyKey), post.Id)
@@ -113,7 +115,7 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 		post.Rate.Start()
 		post.NowConn = 0
 		if post.Flow == nil {
-			post.Flow = new(Flow)
+			post.Flow = new(model.Flow)
 		}
 		post.Flow.MarkClient()
 		post.CompileSourceLists(acl.ScopeUser, clientOwner(post))
@@ -126,9 +128,9 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 
 func (s *JsonDb) LoadHostFromJsonFile() {
 	HostIndex.Destroy()
-	loadSyncMapFromFile(s.HostFilePath, Host{}, func(v interface{}) {
+	loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v interface{}) {
 		var err error
-		post := v.(*Host)
+		post := v.(*model.Host)
 		if post.Id <= 0 || post.Client == nil {
 			logs.Warn("Host %d skipped: no id or client", post.Id)
 			return
@@ -137,10 +139,10 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 			return
 		}
 		if post.Flow == nil {
-			post.Flow = new(Flow)
+			post.Flow = new(model.Flow)
 		}
 		if post.Target == nil {
-			post.Target = new(Target)
+			post.Target = new(model.Target)
 		}
 		if post.CertType == "" {
 			post.CertType = common.GetCertType(post.CertFile)
@@ -160,7 +162,7 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 
 func (s *JsonDb) LoadGlobalFromJsonFile() {
 	loadSyncMapFromFileWithSingleJson(s.GlobalFilePath, func(v string) {
-		post := new(Glob)
+		post := new(model.Glob)
 		// "null", as older versions stored empty settings, leaves post nil
 		if strings.TrimSpace(v) == "" {
 			return
@@ -179,19 +181,19 @@ func (s *JsonDb) LoadGlobalFromJsonFile() {
 		s.Global = post
 	})
 	if s.Global == nil {
-		g := new(Glob)
+		g := new(model.Glob)
 		g.CompileSourceLists(acl.ScopeGlobal, "the global settings")
 		s.Global = g
 	}
 }
 
-func clientOwner(c *Client) string { return "client " + strconv.Itoa(c.Id) }
-func taskOwner(t *Tunnel) string   { return "tunnel " + strconv.Itoa(t.Id) }
-func hostOwner(h *Host) string     { return "host " + strconv.Itoa(h.Id) + " (" + h.Host + ")" }
+func clientOwner(c *model.Client) string { return "client " + strconv.Itoa(c.Id) }
+func taskOwner(t *model.Tunnel) string   { return "tunnel " + strconv.Itoa(t.Id) }
+func hostOwner(h *model.Host) string     { return "host " + strconv.Itoa(h.Id) + " (" + h.Host + ")" }
 
-func (s *JsonDb) GetClient(id int) (c *Client, err error) {
+func (s *JsonDb) GetClient(id int) (c *model.Client, err error) {
 	if v, ok := s.Clients.Load(id); ok {
-		c = v.(*Client)
+		c = v.(*model.Client)
 		return
 	}
 	err = errors.New("can not find client")
@@ -306,24 +308,24 @@ func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
 			continue
 		}
 		switch t.(type) {
-		case Client:
-			var client Client
+		case model.Client:
+			var client model.Client
 			if err = json.Unmarshal([]byte(v), &client); err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
 			f(&client)
 			//break
-		case Host:
-			var host Host
+		case model.Host:
+			var host model.Host
 			if err = json.Unmarshal([]byte(v), &host); err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
 			f(&host)
 			//break
-		case Tunnel:
-			var tunnel Tunnel
+		case model.Tunnel:
+			var tunnel model.Tunnel
 			if err = json.Unmarshal([]byte(v), &tunnel); err != nil {
 				fmt.Println("Error:", err)
 				return
@@ -338,8 +340,8 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 	// 加载新的json文件，是一个正常的json数组文件
 	var err error
 	switch t.(type) {
-	case Client:
-		var clients []Client
+	case model.Client:
+		var clients []model.Client
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &clients)
 			if err != nil {
@@ -350,8 +352,8 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 			f(&clients[i])
 		}
 		//break
-	case Host:
-		var hosts []Host
+	case model.Host:
+		var hosts []model.Host
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &hosts)
 			if err != nil {
@@ -362,8 +364,8 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 			f(&hosts[i])
 		}
 		//break
-	case Tunnel:
-		var tunnels []Tunnel
+	case model.Tunnel:
+		var tunnels []model.Tunnel
 		if len(b) != 0 {
 			err = json.Unmarshal(b, &tunnels)
 			if err != nil {
@@ -423,15 +425,15 @@ func storeSyncMapToFile(m *sync.Map, filePath string) error {
 		var rangeErr error
 		m.Range(func(key, value interface{}) bool {
 			switch v := value.(type) {
-			case *Tunnel:
+			case *model.Tunnel:
 				if v.NoStore {
 					return true
 				}
-			case *Host:
+			case *model.Host:
 				if v.NoStore {
 					return true
 				}
-			case *Client:
+			case *model.Client:
 				if v.NoStore {
 					return true
 				}
@@ -466,7 +468,7 @@ func storeSyncMapToFile(m *sync.Map, filePath string) error {
 	})
 }
 
-func storeGlobalToFile(m *Glob, filePath string) error {
+func storeGlobalToFile(m *model.Glob, filePath string) error {
 	if m != nil {
 		in, out := rate.GlobalTraffic()
 		m.Lock()

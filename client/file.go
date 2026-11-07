@@ -11,11 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 	"golang.org/x/net/webdav"
 )
@@ -51,7 +52,7 @@ func NewFileServerManager(parentCtx context.Context) *FileServerManager {
 	return fsm
 }
 
-func (fsm *FileServerManager) StartFileServer(t *file.Tunnel, vkey string) {
+func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	if fsm.ctx.Err() != nil {
 		logs.Warn("file server manager already closed, skip StartFileServer")
 		return
@@ -59,7 +60,7 @@ func (fsm *FileServerManager) StartFileServer(t *file.Tunnel, vkey string) {
 	addr := net.JoinHostPort(t.ServerIp, strconv.Itoa(t.Port))
 	vl := conn.NewVirtualListener(conn.ParseAddr(addr))
 	if t.MultiAccount == nil {
-		t.MultiAccount = new(file.MultiAccount)
+		t.MultiAccount = new(model.MultiAccount)
 	}
 	ports := common.GetPorts(t.Ports)
 	if len(ports) == 0 {

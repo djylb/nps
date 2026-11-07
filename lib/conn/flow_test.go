@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestFlowConnStopsAtQuota(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
 	go func() { _, _ = io.Copy(io.Discard, b) }()
-	task := &file.Flow{FlowLimit: 1, InletFlow: 1<<20 - 100}
-	client := new(file.Flow)
+	task := &model.Flow{FlowLimit: 1, InletFlow: 1<<20 - 100}
+	client := new(model.Flow)
 	c := NewFlowConn(a, task, client)
 	defer c.Close()
 	n, err := c.Write(make([]byte, 1000))
@@ -34,7 +34,7 @@ func TestFlowConnCountsReadsAsExport(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
 	go func() { _, _ = b.Write([]byte("hello")) }()
-	task := new(file.Flow)
+	task := new(model.Flow)
 	c := NewFlowConn(a, task, nil)
 	defer c.Close()
 	if _, err := io.ReadFull(c, make([]byte, 5)); err != nil {
@@ -51,7 +51,7 @@ func TestFlowConnCountsReadsAsExport(t *testing.T) {
 func TestFlowConnClosedAtExpiry(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
-	client := &file.Flow{TimeLimit: time.Now().Add(50 * time.Millisecond)}
+	client := &model.Flow{TimeLimit: time.Now().Add(50 * time.Millisecond)}
 	c := NewFlowConn(a, nil, client)
 	done := make(chan error, 1)
 	go func() {

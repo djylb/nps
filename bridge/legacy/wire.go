@@ -5,8 +5,6 @@ import (
 	"net"
 
 	"github.com/djylb/nps/internal/tunnelwire"
-	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 )
 
 // Caps are what a peer speaks; every version decision reads one of these.
@@ -63,42 +61,33 @@ var (
 
 // ServerAuth is what ServerHandshake needs from the bridge.
 type ServerAuth struct {
-	Secure      bool
-	CheckTime   func(ts int64) error
-	CheckReplay func(ts int64, mac []byte) error
-	Fingerprint func() []byte
-	NewUUID     func() string
+	Secure bool
+	// LookupDigest finds the client whose key has the blake2b digest; LookupMD5
+	// the one whose key has the MD5 digest, as older clients send it.
+	LookupDigest func(digest string) (Credential, error)
+	LookupMD5    func(digest string, remote net.Addr) (Credential, error)
+	CheckTime    func(ts int64) error
+	CheckReplay  func(ts int64, mac []byte) error
+	Fingerprint  func() []byte
+	NewUUID      func() string
 }
+
+// Credential is a client that a key digest names.
+type Credential = tunnelwire.Credential
 
 // ServerResult describes a verified client.
 type ServerResult = tunnelwire.ServerResult
 
-// ServerHandshake verifies the client on rw against the stored clients.
+// ServerHandshake verifies the client on rw against the clients auth finds.
 func ServerHandshake(rw io.ReadWriter, remote net.Addr, auth ServerAuth) (*ServerResult, error) {
 	return tunnelwire.ServerHandshake(rw, tunnelwire.ServerConfig{
-		Secure: auth.Secure,
-		LookupDigest: func(digest string) (tunnelwire.Credential, error) {
-			id, err := file.GetDb().GetClientIdByBlake2bVkey(digest)
-			if err != nil {
-				return tunnelwire.Credential{}, err
-			}
-			client, err := file.GetDb().GetClient(id)
-			if err != nil {
-				return tunnelwire.Credential{}, err
-			}
-			return tunnelwire.Credential{ID: id, Key: client.VerifyKey, Enabled: client.Status}, nil
-		},
-		LookupMD5: func(digest string) (tunnelwire.Credential, error) {
-			id, err := file.GetDb().GetIdByVerifyKey(digest, remote.String(), "", crypt.Md5)
-			if err != nil {
-				return tunnelwire.Credential{}, err
-			}
-			return tunnelwire.Credential{ID: id, Enabled: true}, nil
-		},
-		CheckTime:   auth.CheckTime,
-		CheckReplay: auth.CheckReplay,
-		Fingerprint: auth.Fingerprint,
-		NewUUID:     auth.NewUUID,
+		Secure:       auth.Secure,
+		LookupDigest: auth.LookupDigest,
+		LookupMD5:    func(digest string) (Credential, error) { return auth.LookupMD5(digest, remote) },
+		CheckTime:    auth.CheckTime,
+		CheckReplay:  auth.CheckReplay,
+		Fingerprint:  auth.Fingerprint,
+		NewUUID:      auth.NewUUID,
 	})
 }
 

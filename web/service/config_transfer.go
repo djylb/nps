@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/file"
 )
 
 // configBundleVersion is the version of ConfigBundle's format.
@@ -20,11 +21,11 @@ const configBundleVersion = 1
 // The entries have the form of the json store and hold the secrets it holds;
 // their Client fields are read for the id only.
 type ConfigBundle struct {
-	Version    int            `json:"version"`
-	ExportedAt time.Time      `json:"exported_at"`
-	Clients    []*file.Client `json:"clients"`
-	Tunnels    []*file.Tunnel `json:"tunnels"`
-	Hosts      []*file.Host   `json:"hosts"`
+	Version    int             `json:"version"`
+	ExportedAt time.Time       `json:"exported_at"`
+	Clients    []*model.Client `json:"clients"`
+	Tunnels    []*model.Tunnel `json:"tunnels"`
+	Hosts      []*model.Host   `json:"hosts"`
 	// SkippedFileTunnels counts file mode tunnels, which the web cannot
 	// create and which an import would refuse.
 	SkippedFileTunnels int `json:"skipped_file_tunnels,omitempty"`
@@ -61,18 +62,18 @@ func (s DefaultConfigTransferService) Export() ([]byte, error) {
 	repo := s.Backend.repo()
 	bundle := ConfigBundle{
 		Version: configBundleVersion, ExportedAt: time.Now(),
-		Clients: []*file.Client{}, Tunnels: []*file.Tunnel{}, Hosts: []*file.Host{},
+		Clients: []*model.Client{}, Tunnels: []*model.Tunnel{}, Hosts: []*model.Host{},
 	}
 	exported := make(map[int]bool)
-	repo.RangeClients(func(c *file.Client) bool {
+	repo.RangeClients(func(c *model.Client) bool {
 		if c.Id > 0 && !c.NoStore {
 			exported[c.Id] = true
 			bundle.Clients = append(bundle.Clients, c)
 		}
 		return true
 	})
-	ownerExported := func(c *file.Client) bool { return c != nil && (c.Id <= 0 || exported[c.Id]) }
-	repo.RangeTunnels(func(t *file.Tunnel) bool {
+	ownerExported := func(c *model.Client) bool { return c != nil && (c.Id <= 0 || exported[c.Id]) }
+	repo.RangeTunnels(func(t *model.Tunnel) bool {
 		switch {
 		case t.NoStore || !ownerExported(t.Client):
 		case t.Mode == "file":
@@ -82,7 +83,7 @@ func (s DefaultConfigTransferService) Export() ([]byte, error) {
 		}
 		return true
 	})
-	repo.RangeHosts(func(h *file.Host) bool {
+	repo.RangeHosts(func(h *model.Host) bool {
 		if !h.NoStore && ownerExported(h.Client) {
 			bundle.Hosts = append(bundle.Hosts, h)
 		}
@@ -113,7 +114,7 @@ func (s DefaultConfigTransferService) Import(input ImportConfigInput) (ImportRes
 
 func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved string) error {
 	repo := s.Backend.repo()
-	ids := make(map[int]*file.Client, len(b.Clients))
+	ids := make(map[int]*model.Client, len(b.Clients))
 	seenKeys := make(map[string]bool)
 	seenLogins := make(map[string]bool)
 	for _, c := range b.Clients {
@@ -149,7 +150,7 @@ func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved s
 		}
 	}
 	entries := make(map[int]int)
-	countEntry := func(owner *file.Client) (int, error) {
+	countEntry := func(owner *model.Client) (int, error) {
 		if owner == nil {
 			return 0, errors.New("no client")
 		}
@@ -214,7 +215,7 @@ func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved s
 			return fmt.Errorf("%s: %w", name, err)
 		}
 		h.Scheme = normalizeScheme(h.Scheme)
-		probe := &file.Host{Host: h.Host, Location: h.Location, Scheme: h.Scheme}
+		probe := &model.Host{Host: h.Host, Location: h.Location, Scheme: h.Scheme}
 		if repo.HostExists(probe) {
 			return fmt.Errorf("%s: %w", name, ErrHostExists)
 		}
@@ -242,7 +243,7 @@ func importableMode(mode string) (network string, hasPort, ok bool) {
 
 // validateSourceLists refuses rules the web would refuse, where loading the
 // store only logs and skips them.
-func validateSourceLists(l *file.SourceLists) error {
+func validateSourceLists(l *model.SourceLists) error {
 	_, err := AccessListInput{
 		Black: strings.Join(l.BlackIpList, "\n"),
 		White: strings.Join(l.WhiteIpList, "\n"),
@@ -262,7 +263,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		}
 	}()
 
-	owners := make(map[int]*file.Client, len(b.Clients))
+	owners := make(map[int]*model.Client, len(b.Clients))
 	for _, c := range b.Clients {
 		oldID := c.Id
 		c.Id = repo.NextClientID()
@@ -274,7 +275,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		c.InletFlow.Store(0)
 		c.Flow = freshFlow(c.Flow)
 		if c.Cnf == nil {
-			c.Cnf = new(file.Config)
+			c.Cnf = new(model.Config)
 		}
 		if err = repo.CreateClient(c); err != nil {
 			return result, fmt.Errorf("client %d: %w", oldID, err)
@@ -283,7 +284,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		owners[oldID] = c
 		result.Clients++
 	}
-	owner := func(c *file.Client) (*file.Client, error) {
+	owner := func(c *model.Client) (*model.Client, error) {
 		if c.Id <= 0 {
 			return repo.GetClient(c.Id)
 		}
@@ -300,7 +301,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		t.NowConn = 0
 		t.Routes = nil
 		if t.Target == nil {
-			t.Target = new(file.Target)
+			t.Target = new(model.Target)
 		}
 		if err = repo.CreateTunnel(t); err != nil {
 			return result, fmt.Errorf("tunnel %d: %w", oldID, err)
@@ -324,7 +325,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		h.NowConn = 0
 		h.Routes = nil
 		if h.Target == nil {
-			h.Target = new(file.Target)
+			h.Target = new(model.Target)
 		}
 		if err = repo.CreateHost(h); err != nil {
 			if isHostExistsError(err) {
@@ -342,9 +343,9 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 }
 
 // freshFlow keeps the limits of f; imported entries start with no traffic.
-func freshFlow(f *file.Flow) *file.Flow {
+func freshFlow(f *model.Flow) *model.Flow {
 	if f == nil {
-		return new(file.Flow)
+		return new(model.Flow)
 	}
-	return &file.Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
+	return &model.Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
 }

@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/server"
 	webservice "github.com/djylb/nps/web/service"
@@ -71,12 +72,12 @@ func (a *App) LiveStatus(c Context) {
 	admin := a.Services.Authz.RequireAdmin(principal) == nil
 	for _, it := range items {
 		id := it.ID
-		var client *file.Client
-		var flow *file.Flow
+		var client *model.Client
+		var flow *model.Flow
 		var rates func() (int64, int64)
 		var connections func() int32
 		var enabled, closed bool
-		var history *file.ConnectionHistory
+		var history *model.ConnectionHistory
 		switch kind {
 		case "client":
 			v, err := a.Services.Clients.Get(id)
@@ -116,7 +117,7 @@ func (a *App) LiveStatus(c Context) {
 		row := map[string]interface{}{"Id": id}
 		var up, down int64
 		ratesRead := false
-		var values file.FlowValues
+		var values model.FlowValues
 		flowRead := false
 		for _, f := range it.Fields {
 			switch f {

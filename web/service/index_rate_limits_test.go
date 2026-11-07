@@ -4,43 +4,43 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 type rateLimitRepository struct {
 	stubRepository
-	tunnel                 *file.Tunnel
-	host                   *file.Host
+	tunnel                 *model.Tunnel
+	host                   *model.Host
 	tunnelSaves, hostSaves int
 }
 
-func (r *rateLimitRepository) GetTunnel(int) (*file.Tunnel, error) {
+func (r *rateLimitRepository) GetTunnel(int) (*model.Tunnel, error) {
 	if r.tunnel == nil {
 		return nil, ErrTunnelNotFound
 	}
 	return r.tunnel, nil
 }
-func (r *rateLimitRepository) GetHost(int) (*file.Host, error) {
+func (r *rateLimitRepository) GetHost(int) (*model.Host, error) {
 	if r.host == nil {
 		return nil, ErrHostNotFound
 	}
 	return r.host, nil
 }
-func (r *rateLimitRepository) CreateTunnel(v *file.Tunnel) error { r.tunnel = v; return nil }
-func (r *rateLimitRepository) CreateHost(v *file.Host) error     { r.host = v; return nil }
-func (r *rateLimitRepository) SaveTunnel(v *file.Tunnel) error {
+func (r *rateLimitRepository) CreateTunnel(v *model.Tunnel) error { r.tunnel = v; return nil }
+func (r *rateLimitRepository) CreateHost(v *model.Host) error     { r.host = v; return nil }
+func (r *rateLimitRepository) SaveTunnel(v *model.Tunnel) error {
 	r.tunnel = v
 	r.tunnelSaves++
 	return nil
 }
-func (r *rateLimitRepository) SaveHost(v *file.Host, _ string) error {
+func (r *rateLimitRepository) SaveHost(v *model.Host, _ string) error {
 	r.host = v
 	r.hostSaves++
 	return nil
 }
 
 func newRateLimitService() (DefaultIndexService, *rateLimitRepository) {
-	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*file.Client, error) { return &file.Client{Id: 1}, nil }}}
+	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*model.Client, error) { return &model.Client{Id: 1}, nil }}}
 	return DefaultIndexService{Backend: Backend{Repository: r, Runtime: stubRuntime{}}}, r
 }
 

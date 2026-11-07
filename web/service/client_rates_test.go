@@ -7,6 +7,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -22,7 +24,7 @@ func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 		file.Db = &file.DbUtils{JsonDb: &file.JsonDb{}}
 		t.Cleanup(func() { file.Db = old })
 		for id := 1; id <= 4; id++ {
-			client := &file.Client{Id: id, Remark: "visible", Rate: rate.NewRate(0), NoDisplay: id == 4}
+			client := &model.Client{Id: id, Remark: "visible", Rate: rate.NewRate(0), NoDisplay: id == 4}
 			file.Db.JsonDb.Clients.Store(id, client)
 			conn := rate.NewRateConn(visibleRateConn{bytes.NewReader(make([]byte, id*100))}, client.Rate)
 			if _, err := conn.Write(make([]byte, id*200)); err != nil {

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
 	"github.com/djylb/nps/lib/common"
@@ -47,7 +49,7 @@ type HttpProxy struct {
 	ForceAutoSsl          bool
 }
 
-func NewHttpProxy(bridge proxy.NetBridge, task *file.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
+func NewHttpProxy(bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, httpProxyCache *index.AnyIntIndex) *HttpProxy {
 	httpProxy := &HttpProxy{
 		BaseServer:            proxy.NewBaseServer(bridge, task, allowLocalProxy),
 		HttpPort:              httpPort,

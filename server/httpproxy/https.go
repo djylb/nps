@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
@@ -269,7 +271,7 @@ func checkHTTPAndRedirect(c net.Conn, rb []byte) {
 	}
 }
 
-func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, sni string) {
+func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, sni string) {
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
 		logs.Debug("Client id %d, host id %d, error %v during https connection", host.Client.Id, host.Id, err)
@@ -279,16 +281,16 @@ func (s *HttpsServer) handleHttpsProxy(host *file.Host, c net.Conn, rb []byte, s
 	defer release()
 
 	logs.Info("New HTTPS connection, clientId %d, host %s, remote address %v", host.Client.Id, sni, c.RemoteAddr())
-	task := file.NewTunnelByHost(host, s.HttpsPort)
+	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = c.Close()
 	}
 }
 
-func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni string) {
+func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni string) {
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
 		logs.Debug("Client id %d, host id %d, TLS-only check failed: %v", host.Client.Id, host.Id, err)
@@ -298,10 +300,10 @@ func (s *HttpsServer) handleTlsProxy(host *file.Host, tlsConn net.Conn, sni stri
 	defer release()
 
 	logs.Info("New TLS offload connection, clientId %d, host %s, remote %v", host.Client.Id, sni, tlsConn.RemoteAddr())
-	task := file.NewTunnelByHost(host, s.HttpsPort)
+	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, file.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, common.ConnTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
 		logs.Warn("%v", err)
 		_ = tlsConn.Close()
 	}

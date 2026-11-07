@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
@@ -23,7 +24,7 @@ type ClientService interface {
 	List(ListClientsInput) ListClientsResult
 	Add(AddClientInput) (int, error)
 	Ping(id int, remoteAddr string) (int, error)
-	Get(id int) (*file.Client, error)
+	Get(id int) (*model.Client, error)
 	Edit(EditClientInput) error
 	Clear(id int, mode string, isAdmin bool) error
 	ChangeStatus(id int, status bool) error
@@ -57,7 +58,7 @@ type ListClientsInput struct {
 }
 
 type ListClientsResult struct {
-	Rows       []*file.Client
+	Rows       []*model.Client
 	Total      int
 	BridgeType string
 	BridgeAddr string
@@ -135,12 +136,12 @@ func (s DefaultClientService) List(input ListClientsInput) ListClientsResult {
 
 func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 	id := s.repo().NextClientID()
-	client := &file.Client{
+	client := &model.Client{
 		VerifyKey: input.VKey,
 		Id:        id,
 		Status:    true,
 		Remark:    input.Remark,
-		Cnf: &file.Config{
+		Cnf: &model.Config{
 			U:        input.User,
 			P:        input.Password,
 			Compress: input.Compress,
@@ -153,7 +154,7 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 		WebPassword:     input.WebPassword,
 		WebTotpSecret:   input.WebTotpSecret,
 		MaxTunnelNum:    input.MaxTunnelNum,
-		Flow: &file.Flow{
+		Flow: &model.Flow{
 			ExportFlow: 0,
 			InletFlow:  0,
 			FlowLimit:  input.FlowLimit,
@@ -184,7 +185,7 @@ func (s DefaultClientService) Ping(id int, remoteAddr string) (int, error) {
 	return s.runtime().PingClient(id, remoteAddr), nil
 }
 
-func (s DefaultClientService) Get(id int) (*file.Client, error) {
+func (s DefaultClientService) Get(id int) (*model.Client, error) {
 	return s.repo().GetClient(id)
 }
 
@@ -339,8 +340,8 @@ func (s DefaultClientService) RegisterVisitorIP(key, ip string, hours int) (int,
 		until := ipreg.Register(ipreg.AnyClient, addr, time.Duration(clampHours(hours, def))*time.Hour)
 		return ipreg.AnyClient, until, nil
 	}
-	var found *file.Client
-	s.repo().RangeClients(func(c *file.Client) bool {
+	var found *model.Client
+	s.repo().RangeClients(func(c *model.Client) bool {
 		if c.Id > 0 && c.Status && !c.NoDisplay && (keyEqual(c.RegisterKey, key) || keyEqual(c.VerifyKey, key)) {
 			found = c
 			return false
@@ -378,7 +379,7 @@ func (s DefaultClientService) checkRegisterKey(id int, key, vkey string) error {
 		return ErrRegisterKeyDuplicate
 	}
 	var dup bool
-	s.repo().RangeClients(func(c *file.Client) bool {
+	s.repo().RangeClients(func(c *model.Client) bool {
 		if c.Id != id && (c.RegisterKey == key || c.VerifyKey == key) {
 			dup = true
 			return false

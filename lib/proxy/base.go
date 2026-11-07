@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -43,7 +44,7 @@ type NetBridge interface {
 type BaseServer struct {
 	Id              int
 	Bridge          NetBridge
-	Task            *file.Tunnel
+	Task            *model.Tunnel
 	ErrorContent    []byte
 	AllowLocalProxy bool
 	sync.Mutex
@@ -72,7 +73,7 @@ func (s *BaseServer) MarkClosed(snapshot func()) {
 	snapshot()
 }
 
-func NewBaseServer(bridge NetBridge, task *file.Tunnel, allowLocalProxy bool) *BaseServer {
+func NewBaseServer(bridge NetBridge, task *model.Tunnel, allowLocalProxy bool) *BaseServer {
 	return &BaseServer{
 		Bridge:          bridge,
 		Task:            task,
@@ -88,7 +89,7 @@ func (s *BaseServer) FlowAdd(in, out int64) {
 }
 
 // FlowAddHost change the flow
-func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
+func (s *BaseServer) FlowAddHost(host *model.Host, in, out int64) {
 	host.Flow.Add(in, out)
 }
 
@@ -99,8 +100,8 @@ func (s *BaseServer) writeConnFail(c net.Conn) {
 }
 
 // Auth check
-func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccount, userAuth *file.MultiAccount) error {
-	if !common.CheckAuth(r, u, p, file.GetAccountMap(multiAccount), file.GetAccountMap(userAuth)) {
+func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccount, userAuth *model.MultiAccount) error {
+	if !common.CheckAuth(r, u, p, model.GetAccountMap(multiAccount), model.GetAccountMap(userAuth)) {
 		if c != nil {
 			_, _ = c.Write([]byte(common.UnauthorizedBytes))
 			_ = c.Close()
@@ -112,7 +113,7 @@ func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccou
 
 // AcquireForwarding admits once at a leaf. byterate reserves every ancestor
 // atomically and rolls all slots back if any cap rejects the transfer.
-func (s *BaseServer) AcquireForwarding(client *file.Client, group *byterate.Group) (func(), error) {
+func (s *BaseServer) AcquireForwarding(client *model.Client, group *byterate.Group) (func(), error) {
 	traffic, expired := client.Flow.Over()
 	if expired {
 		return nil, errors.New("service access expired")
@@ -129,8 +130,8 @@ func (s *BaseServer) AcquireForwarding(client *file.Client, group *byterate.Grou
 	return sync.OnceFunc(group.Release), nil
 }
 
-func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
-	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, localProxy bool, task *file.Tunnel) error {
+func (s *BaseServer) DealClient(c *conn.Conn, client *model.Client, addr string,
+	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, localProxy bool, task *model.Tunnel) error {
 	var node string
 	if task != nil {
 		node = task.Route().Node
@@ -146,9 +147,9 @@ func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 // DealTarget is DealClient along a route of task, to one of the addresses of
 // its target, retrying the
 // next address if the server fails to dial one itself. It returns
-// file.ErrNoTarget, leaving c open, if no address can be tried.
-func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
-	rb []byte, tp string, f func(), flows []conn.Flow, task *file.Tunnel) error {
+// model.ErrNoTarget, leaving c open, if no address can be tried.
+func (s *BaseServer) DealTarget(c *conn.Conn, client *model.Client,
+	rb []byte, tp string, f func(), flows []conn.Flow, task *model.Tunnel) error {
 	var target net.Conn
 	var link *conn.Link
 	var isLocal bool
@@ -159,7 +160,7 @@ func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
 		target, link, isLocal, err = s.openClientLink(c, client, addr, tp, dest.LocalProxy, route.Node, task)
 		return isLocal, err
 	})
-	if errors.Is(err, file.ErrNoTarget) {
+	if errors.Is(err, model.ErrNoTarget) {
 		return err
 	}
 	if err != nil {
@@ -169,8 +170,8 @@ func (s *BaseServer) DealTarget(c *conn.Conn, client *file.Client,
 	return s.relayClient(target, c, link, isLocal, client, rb, tp, f, flows, dest.ProxyProtocol, task)
 }
 
-func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link, isLocal bool, client *file.Client,
-	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, task *file.Tunnel) error {
+func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link, isLocal bool, client *model.Client,
+	rb []byte, tp string, f func(), flows []conn.Flow, proxyProtocol int, task *model.Tunnel) error {
 	if target == nil || link == nil {
 		_ = c.Close()
 		return nil
@@ -183,11 +184,11 @@ func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link,
 	return nil
 }
 
-func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp string, localProxy bool, node string, task *file.Tunnel) (net.Conn, *conn.Link, bool, error) {
+func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp string, localProxy bool, node string, task *model.Tunnel) (net.Conn, *conn.Link, bool, error) {
 	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
-	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != file.AclOff {
+	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != model.AclOff {
 		if !task.AllowsDestination(addr) {
 			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s",
 				client.Id, task.Id, common.ExtractHost(addr))
@@ -209,7 +210,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *file.Client, addr, tp 
 	return target, link, isLocal, nil
 }
 
-func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *file.Client, flows []conn.Flow, proxyProtocol int, rb []byte, task *file.Tunnel, isLocal bool, tp string) {
+func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *model.Client, flows []conn.Flow, proxyProtocol int, rb []byte, task *model.Tunnel, isLocal bool, tp string) {
 	isFramed := tp == common.ConnUDP
 	var entry conn.Entry
 	if task != nil {

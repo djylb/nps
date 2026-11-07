@@ -6,8 +6,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/logs"
 )
 
@@ -22,7 +23,7 @@ type CommonConfig struct {
 	DnsServer        string
 	NtpServer        string
 	NtpInterval      int
-	Client           *file.Client
+	Client           *model.Client
 	DisconnectTime   int
 }
 
@@ -41,8 +42,8 @@ type Config struct {
 	content      string
 	title        []string
 	CommonConfig *CommonConfig
-	Hosts        []*file.Host
-	Tasks        []*file.Tunnel
+	Hosts        []*model.Host
+	Tasks        []*model.Tunnel
 	LocalServer  []*LocalServer
 }
 
@@ -233,8 +234,8 @@ func dealCommon(s string) *CommonConfig {
 	c := new(CommonConfig)
 	c.Tp = "tcp"
 	c.AutoReconnection = true
-	c.Client = file.NewClient("", true, true)
-	c.Client.Cnf = new(file.Config)
+	c.Client = model.NewClient("", true, true)
+	c.Client.Cnf = new(model.Config)
 	for _, v := range splitStr(s) {
 		item, ok := splitKV(v)
 		if !ok {
@@ -292,11 +293,11 @@ func dealCommon(s string) *CommonConfig {
 	return c
 }
 
-func dealHost(s string) (*file.Host, error) {
-	h := new(file.Host)
-	h.Target = new(file.Target)
+func dealHost(s string) (*model.Host, error) {
+	h := new(model.Host)
+	h.Target = new(model.Target)
 	h.Scheme = "all"
-	h.MultiAccount = new(file.MultiAccount)
+	h.MultiAccount = new(model.MultiAccount)
 	var headerChange, respHeaderChange string
 	for _, v := range splitStr(s) {
 		item, ok := splitKV(v)
@@ -361,7 +362,7 @@ func dealHost(s string) (*file.Host, error) {
 }
 
 // loadMultiAccount fills m from the account file at path, if there is one.
-func loadMultiAccount(m *file.MultiAccount, path string) error {
+func loadMultiAccount(m *model.MultiAccount, path string) error {
 	if !common.FileExists(path) {
 		return nil
 	}
@@ -389,10 +390,10 @@ func hasHealthKeys(keys map[string]bool) bool {
 	return false
 }
 
-func dealTunnel(s string) (*file.Tunnel, error) {
-	t := new(file.Tunnel)
-	t.Target = new(file.Target)
-	t.MultiAccount = new(file.MultiAccount)
+func dealTunnel(s string) (*model.Tunnel, error) {
+	t := new(model.Tunnel)
+	t.Target = new(model.Target)
+	t.MultiAccount = new(model.MultiAccount)
 	for _, v := range splitStr(s) {
 		item, ok := splitKV(v)
 		if !ok {

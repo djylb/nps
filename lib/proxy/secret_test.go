@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 // localDialBridge serves local-proxy links by dialing the target directly.
@@ -92,17 +93,17 @@ func TestSecretLocalProxySendsProxyHeaderAndPreReadToBackend(t *testing.T) {
 		_, _ = c.Write([]byte("pong"))
 	}()
 
-	task := &file.Tunnel{
+	task := &model.Tunnel{
 		Mode: "secret",
 		// A negative client id is served by the server itself, so the
 		// connection is proxied locally even without link information.
-		Client: &file.Client{
+		Client: &model.Client{
 			Id:   -1,
-			Cnf:  &file.Config{},
-			Flow: &file.Flow{},
+			Cnf:  &model.Config{},
+			Flow: &model.Flow{},
 		},
-		Flow:   &file.Flow{},
-		Target: &file.Target{TargetStr: backend.Addr().String(), LocalProxy: true, ProxyProtocol: 1},
+		Flow:   &model.Flow{},
+		Target: &model.Target{TargetStr: backend.Addr().String(), LocalProxy: true, ProxyProtocol: 1},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
 	s := NewSecretServer(bridge, task, true, false, false)
@@ -165,16 +166,16 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 		_, _ = backend.WriteTo([]byte("pong"), addr)
 	}()
 
-	task := &file.Tunnel{
+	task := &model.Tunnel{
 		Mode:       "secret",
 		TargetType: "all",
-		Client: &file.Client{
+		Client: &model.Client{
 			Id:   -1,
-			Cnf:  &file.Config{},
-			Flow: &file.Flow{},
+			Cnf:  &model.Config{},
+			Flow: &model.Flow{},
 		},
-		Flow:   &file.Flow{},
-		Target: &file.Target{TargetStr: backend.LocalAddr().String(), ProxyProtocol: 2},
+		Flow:   &model.Flow{},
+		Target: &model.Target{TargetStr: backend.LocalAddr().String(), ProxyProtocol: 2},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
 	s := NewSecretServer(bridge, task, true, false, false)
@@ -217,7 +218,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 
 func TestSecretLinkDestinationDenied(t *testing.T) {
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	task := &file.Tunnel{Client: &file.Client{Id: 1, Cnf: &file.Config{}, Flow: &file.Flow{}}, Flow: &file.Flow{}, Target: &file.Target{}, DestAclMode: file.AclBlacklist, DestAclRules: "denied.example"}
+	task := &model.Tunnel{Client: &model.Client{Id: 1, Cnf: &model.Config{}, Flow: &model.Flow{}}, Flow: &model.Flow{}, Target: &model.Target{}, DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
 	s := NewSecretServer(bridge, task, true, true, true)
 	visitor, srv := tcpConnPair(t)
 	go func() {

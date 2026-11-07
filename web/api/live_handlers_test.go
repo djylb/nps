@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	webservice "github.com/djylb/nps/web/service"
 )
 
@@ -22,10 +23,10 @@ func (c *liveContext) RespondJSON(status int, v interface{}) { c.status = status
 
 type liveClients struct {
 	webservice.ClientService
-	clients map[int]*file.Client
+	clients map[int]*model.Client
 }
 
-func (s liveClients) Get(id int) (*file.Client, error) {
+func (s liveClients) Get(id int) (*model.Client, error) {
 	c, ok := s.clients[id]
 	if !ok {
 		return nil, errors.New("missing")
@@ -35,18 +36,18 @@ func (s liveClients) Get(id int) (*file.Client, error) {
 
 type liveIndex struct {
 	webservice.IndexService
-	tunnels map[int]*file.Tunnel
-	hosts   map[int]*file.Host
+	tunnels map[int]*model.Tunnel
+	hosts   map[int]*model.Host
 }
 
-func (s liveIndex) GetTunnel(id int) (*file.Tunnel, error) {
+func (s liveIndex) GetTunnel(id int) (*model.Tunnel, error) {
 	v, ok := s.tunnels[id]
 	if !ok {
 		return nil, errors.New("missing")
 	}
 	return v, nil
 }
-func (s liveIndex) GetHost(id int) (*file.Host, error) {
+func (s liveIndex) GetHost(id int) (*model.Host, error) {
 	v, ok := s.hosts[id]
 	if !ok {
 		return nil, errors.New("missing")
@@ -54,10 +55,10 @@ func (s liveIndex) GetHost(id int) (*file.Host, error) {
 	return v, nil
 }
 func TestLiveStatusFieldsAndOwnership(t *testing.T) {
-	owner := &file.Client{Id: 1, VerifyKey: "secret", Flow: &file.Flow{InletFlow: 123, ExportFlow: 456}, Status: true}
-	other := &file.Client{Id: 2, Flow: &file.Flow{}}
-	virtual := &file.Client{Id: -1, Flow: &file.Flow{}}
-	app := &App{Services: webservice.Services{Authz: webservice.DefaultAuthorizationService{}, Clients: liveClients{clients: map[int]*file.Client{1: owner, 2: other, -1: virtual}}, Index: liveIndex{tunnels: map[int]*file.Tunnel{10: {Id: 10, Client: owner, Flow: owner.Flow}, 20: {Id: 20, Client: other}}, hosts: map[int]*file.Host{10: {Id: 10, Client: owner, Flow: owner.Flow}, 20: {Id: 20, Client: other}}}}}
+	owner := &model.Client{Id: 1, VerifyKey: "secret", Flow: &model.Flow{InletFlow: 123, ExportFlow: 456}, Status: true}
+	other := &model.Client{Id: 2, Flow: &model.Flow{}}
+	virtual := &model.Client{Id: -1, Flow: &model.Flow{}}
+	app := &App{Services: webservice.Services{Authz: webservice.DefaultAuthorizationService{}, Clients: liveClients{clients: map[int]*model.Client{1: owner, 2: other, -1: virtual}}, Index: liveIndex{tunnels: map[int]*model.Tunnel{10: {Id: 10, Client: owner, Flow: owner.Flow}, 20: {Id: 20, Client: other}}, hosts: map[int]*model.Host{10: {Id: 10, Client: owner, Flow: owner.Flow}, 20: {Id: 20, Client: other}}}}}
 	for _, kind := range []string{"client", "tunnel", "host"} {
 		ids := []int{10, 20, 99}
 		if kind == "client" {

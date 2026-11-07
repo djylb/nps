@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestWriteHandshakeRefusalRelaysPlainResponse(t *testing.T) {
@@ -31,7 +31,7 @@ func TestWriteHandshakeRefusalRelaysPlainResponse(t *testing.T) {
 
 	s := &HttpServer{HttpProxy: &HttpProxy{}}
 	rec := httptest.NewRecorder()
-	s.writeHandshakeRefusal(rec, resp, &file.Host{})
+	s.writeHandshakeRefusal(rec, resp, &model.Host{})
 
 	got := rec.Result()
 	body, _ := io.ReadAll(got.Body)
@@ -65,7 +65,7 @@ func TestRelayHandshakeRefusalStreamsBodyBeforeClosingBackend(t *testing.T) {
 
 	s := &HttpServer{HttpProxy: &HttpProxy{ResponseHeaderTimeout: 5 * time.Second}}
 	rec := httptest.NewRecorder()
-	s.relayHandshakeRefusal(rec, resp, &file.Host{}, backend)
+	s.relayHandshakeRefusal(rec, resp, &model.Host{}, backend)
 
 	if got := rec.Body.Len(); rec.Code != http.StatusBadRequest || got != len(body) {
 		t.Fatalf("got status %d, body %d bytes, want 400 and %d bytes", rec.Code, got, len(body))

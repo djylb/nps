@@ -13,12 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/version"
@@ -389,8 +390,8 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		localServer.Port = *localPort
 		localServer.Fallback = *fallbackSecret
 		localServer.LocalProxy = *localProxy
-		commonConfig.Client = new(file.Client)
-		commonConfig.Client.Cnf = new(file.Config)
+		commonConfig.Client = new(model.Client)
+		commonConfig.Client.Cnf = new(model.Config)
 		commonConfig.DisconnectTime = *p2pTime
 		p2pm := client.NewP2PManager(ctx, cancel, commonConfig)
 		go func() { _ = p2pm.StartLocalServer(localServer) }()

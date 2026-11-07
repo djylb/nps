@@ -12,9 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 func TestBasicAuth(t *testing.T) {
@@ -106,7 +107,7 @@ func TestFileServerManagerStartAndCloseAll(t *testing.T) {
 	}
 
 	fsm := NewFileServerManager(context.Background())
-	tunnel := &file.Tunnel{
+	tunnel := &model.Tunnel{
 		ServerIp:  "127.0.0.1",
 		Port:      18080,
 		Ports:     "18080",

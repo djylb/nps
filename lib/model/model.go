@@ -1,4 +1,4 @@
-package file
+package model
 
 import (
 	"context"
@@ -389,51 +389,6 @@ func (s *Client) CurrentConnections() int32 {
 func (s *Client) GetConn() bool { return s.ControlGroup().Acquire() == nil }
 func (s *Client) CutConn()      { s.Rate.Group().Release() }
 
-func (s *Client) HasTunnel(t *Tunnel) (tt *Tunnel, exist bool) {
-	GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*Tunnel)
-		if v.Client.Id == s.Id && ((v.Port == t.Port && t.Port != 0) || (v.Password == t.Password && t.Password != "")) {
-			exist = true
-			tt = v
-			return false
-		}
-		return true
-	})
-	return
-}
-
-func (s *Client) GetTunnelNum() (num int) {
-	GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*Tunnel)
-		if v.Client.Id == s.Id {
-			num++
-		}
-		return true
-	})
-
-	GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*Host)
-		if v.Client.Id == s.Id {
-			num++
-		}
-		return true
-	})
-	return
-}
-
-func (s *Client) HasHost(h *Host) (hh *Host, exist bool) {
-	GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-		v := value.(*Host)
-		if v.Client.Id == s.Id && v.Host == h.Host && h.Location == v.Location {
-			exist = true
-			hh = v
-			return false
-		}
-		return true
-	})
-	return
-}
-
 func (s *Client) EnsureWebPassword() {
 	if s.WebTotpSecret != "" {
 		if !crypt.IsValidTOTPSecret(s.WebTotpSecret) {
@@ -663,6 +618,15 @@ func (t *Tunnel) Update(other *Tunnel) {
 
 // adoptFlow keeps counting on the flow of previous, which active connections
 // add to, with the limits of t.
+// AdoptRuntime makes t, an accepted edit of previous, take over the rate
+// buckets, connection slots and flow of previous, so that the connections
+// already open keep counting against the edited tunnel.
+func (t *Tunnel) AdoptRuntime(previous *Tunnel) {
+	t.RateLimits.adopt(&previous.RateLimits)
+	t.ControlGroup()
+	t.adoptFlow(previous)
+}
+
 func (t *Tunnel) adoptFlow(previous *Tunnel) {
 	if t.Flow == nil || previous.Flow == nil || t.Flow == previous.Flow {
 		return

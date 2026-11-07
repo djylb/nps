@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/index"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
@@ -131,7 +132,7 @@ func TestProxyProtocolConnectionsAreNotReused(t *testing.T) {
 		accepted.Store(0)
 		s := &HttpServer{HttpProxy: &HttpProxy{}}
 		// The route decides, not the target of the last publisher on the host.
-		tr := s.newTransports(&file.Host{Target: &file.Target{}}).forRoute(file.Route{Target: &file.Target{ProxyProtocol: proxyProtocol}})
+		tr := s.newTransports(&model.Host{Target: &model.Target{}}).forRoute(model.Route{Target: &model.Target{ProxyProtocol: proxyProtocol}})
 		tr.DialContext, tr.DialTLSContext = nil, nil
 		defer tr.CloseIdleConnections()
 		for range 2 {

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/djylb/nps/lib/model"
 )
 
 func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
@@ -14,8 +16,8 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		ids := make([]int, 0)
 		keys := make([]string, 0)
 
-		err := loadJsonFile(input, Client{}, func(value interface{}) {
-			c := value.(*Client)
+		err := loadJsonFile(input, model.Client{}, func(value interface{}) {
+			c := value.(*model.Client)
 			ids = append(ids, c.Id)
 			keys = append(keys, c.VerifyKey)
 		})
@@ -34,8 +36,8 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		input := []byte(`[{"Id":10,"Host":"a.com"},{"Id":11,"Host":"b.com"}]`)
 		hosts := make([]string, 0)
 
-		err := loadJsonFile(input, Host{}, func(value interface{}) {
-			h := value.(*Host)
+		err := loadJsonFile(input, model.Host{}, func(value interface{}) {
+			h := value.(*model.Host)
 			hosts = append(hosts, h.Host)
 		})
 		if err != nil {
@@ -50,8 +52,8 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		input := []byte(`[{"Id":21,"Mode":"tcp"},{"Id":22,"Mode":"udp"}]`)
 		modes := make([]string, 0)
 
-		err := loadJsonFile(input, Tunnel{}, func(value interface{}) {
-			tn := value.(*Tunnel)
+		err := loadJsonFile(input, model.Tunnel{}, func(value interface{}) {
+			tn := value.(*model.Tunnel)
 			modes = append(modes, tn.Mode)
 		})
 		if err != nil {
@@ -64,7 +66,7 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 }
 
 func TestLoadJsonFileInvalidJSONReturnsError(t *testing.T) {
-	err := loadJsonFile([]byte(`[{"Id":1}`), Client{}, func(value interface{}) {})
+	err := loadJsonFile([]byte(`[{"Id":1}`), model.Client{}, func(value interface{}) {})
 	if err == nil {
 		t.Fatalf("expected json unmarshal error")
 	}
@@ -87,9 +89,9 @@ func TestStoreSyncMapToFileSkipsNoStoreEntries(t *testing.T) {
 	path := filepath.Join(tmpDir, "clients.json")
 	m := &sync.Map{}
 
-	m.Store(1, &Client{Id: 1, VerifyKey: "visible-1", NoStore: false})
-	m.Store(2, &Client{Id: 2, VerifyKey: "hidden", NoStore: true})
-	m.Store(3, &Client{Id: 3, VerifyKey: "visible-3", NoStore: false})
+	m.Store(1, &model.Client{Id: 1, VerifyKey: "visible-1", NoStore: false})
+	m.Store(2, &model.Client{Id: 2, VerifyKey: "hidden", NoStore: true})
+	m.Store(3, &model.Client{Id: 3, VerifyKey: "visible-3", NoStore: false})
 
 	if err := storeSyncMapToFile(m, path); err != nil {
 		t.Fatalf("expected store to succeed, got %v", err)
@@ -100,7 +102,7 @@ func TestStoreSyncMapToFileSkipsNoStoreEntries(t *testing.T) {
 		t.Fatalf("expected stored file to exist, got %v", err)
 	}
 
-	var clients []Client
+	var clients []model.Client
 	if err = json.Unmarshal(b, &clients); err != nil {
 		t.Fatalf("expected valid json array, got %v", err)
 	}
@@ -126,7 +128,7 @@ func TestStoreToJsonFileReportsErrorAndReleasesLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := &JsonDb{TaskFilePath: target}
-	db.Tasks.Store(1, &Tunnel{Id: 1})
+	db.Tasks.Store(1, &model.Tunnel{Id: 1})
 
 	for i := 0; i < 2; i++ {
 		if err := db.StoreTasksToJsonFile(); err == nil {
@@ -144,7 +146,7 @@ func TestCorruptJSONIsKeptAsBad(t *testing.T) {
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loadSyncMapFromFile(path, Tunnel{}, func(interface{}) {})
+	loadSyncMapFromFile(path, model.Tunnel{}, func(interface{}) {})
 	got, err := os.ReadFile(path + ".bad")
 	if err != nil || string(got) != string(content) {
 		t.Fatalf("backup = %q, %v", got, err)

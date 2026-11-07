@@ -3,8 +3,9 @@ package api
 import (
 	"errors"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/rate"
 	webservice "github.com/djylb/nps/web/service"
 )
@@ -82,7 +83,7 @@ func (a *App) GetClient(c Context) {
 	if client, err := a.Services.Clients.Get(id); err != nil {
 		respondCode(c, 0)
 	} else {
-		respondCodeData(c, 1, clientRateRows([]*file.Client{client})[0])
+		respondCodeData(c, 1, clientRateRows([]*model.Client{client})[0])
 	}
 }
 
@@ -224,13 +225,13 @@ func (a *App) ClientQRCode(c Context) {
 
 // Directional speeds are response-only; the client's combined RateLimit remains unchanged.
 type clientRateRow struct {
-	*file.Client
+	*model.Client
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
 }
 
-func clientRateRows(rows []*file.Client) []*clientRateRow {
+func clientRateRows(rows []*model.Client) []*clientRateRow {
 	if rows == nil {
 		return nil
 	}

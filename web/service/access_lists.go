@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
-	"github.com/djylb/nps/lib/file"
 )
 
 // ErrInvalidAccessList is wrapped by the errors that report rejected rules
@@ -58,7 +59,7 @@ func (in AccessListInput) validate(scope acl.Scope) (accessLists, error) {
 }
 
 // applyTo stores the lists in l, compiled.
-func (v accessLists) applyTo(l *file.SourceLists, owner string) {
+func (v accessLists) applyTo(l *model.SourceLists, owner string) {
 	l.RegisteredOnly = v.registeredOnly
 	l.SetSourceLists(v.priority, v.black, v.white, v.scope, owner)
 }

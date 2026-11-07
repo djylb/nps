@@ -11,21 +11,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/file"
 )
 
 func newTestHTTPProxyServer(t *testing.T) *TunnelModeServer {
 	t.Helper()
-	task := &file.Tunnel{
+	task := &model.Tunnel{
 		Mode: "httpProxy",
-		Client: &file.Client{
+		Client: &model.Client{
 			Id:   1,
-			Cnf:  &file.Config{},
-			Flow: &file.Flow{},
+			Cnf:  &model.Config{},
+			Flow: &model.Flow{},
 		},
-		Flow:   &file.Flow{},
-		Target: &file.Target{},
+		Flow:   &model.Flow{},
+		Target: &model.Target{},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 16)}
 	return NewTunnelModeServer(ProcessHttp, bridge, task, false)

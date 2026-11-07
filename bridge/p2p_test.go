@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
@@ -72,7 +74,7 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (
 func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	useTestDb(t)
 	b := newTestP2PBridge(t)
-	task := &file.Tunnel{Id: 7, Mode: "p2p", Password: "secret", Status: false, Client: &file.Client{Id: 2}}
+	task := &model.Tunnel{Id: 7, Mode: "p2p", Password: "secret", Status: false, Client: &model.Client{Id: 2}}
 	if err := file.GetDb().NewTask(task); err != nil {
 		t.Fatal(err)
 	}

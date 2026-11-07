@@ -5,13 +5,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/file"
 )
 
 func TestRegistryConnectionHistory(t *testing.T) {
 	const id = 987654
 	db := file.GetDb()
-	c := &file.Client{Id: id, ConnectionHistory: new(file.ConnectionHistory)}
+	c := &model.Client{Id: id, ConnectionHistory: new(model.ConnectionHistory)}
 	old, existed := db.JsonDb.Clients.Load(id)
 	db.JsonDb.Clients.Store(id, c)
 	defer func() {
@@ -33,7 +35,7 @@ func TestRegistryConnectionHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var events []file.ConnectionEvent
+	var events []model.ConnectionEvent
 	if err = json.Unmarshal(raw, &events); err != nil {
 		t.Fatal(err)
 	}

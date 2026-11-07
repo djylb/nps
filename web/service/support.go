@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
@@ -111,7 +112,7 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	return result
 }
 
-func ClearClientStatus(client *file.Client, name string) {
+func ClearClientStatus(client *model.Client, name string) {
 	clearClientStatus(client, name)
 }
 
@@ -213,7 +214,7 @@ func changeHostStatus(id int, name, action string) error {
 
 func clearClientStatusByID(id int, name string) error {
 	if id == 0 {
-		DefaultBackend().repo().RangeClients(func(client *file.Client) bool {
+		DefaultBackend().repo().RangeClients(func(client *model.Client) bool {
 			clearClientStatus(client, name)
 			return true
 		})
@@ -235,19 +236,19 @@ func clearClientStatusByID(id int, name string) error {
 	return DefaultBackend().repo().SaveClient(client)
 }
 
-func clearClientStatus(client *file.Client, name string) {
+func clearClientStatus(client *model.Client, name string) {
 	switch strings.TrimSpace(name) {
 	case "flow":
 		client.Flow.ResetTraffic()
 		client.ExportFlow.Store(0)
 		client.InletFlow.Store(0)
-		DefaultBackend().repo().RangeHosts(func(host *file.Host) bool {
+		DefaultBackend().repo().RangeHosts(func(host *model.Host) bool {
 			if host.Client.Id == client.Id {
 				host.Flow.ResetTraffic()
 			}
 			return true
 		})
-		DefaultBackend().repo().RangeTunnels(func(tunnel *file.Tunnel) bool {
+		DefaultBackend().repo().RangeTunnels(func(tunnel *model.Tunnel) bool {
 			if tunnel.Client.Id == client.Id {
 				tunnel.Flow.ResetTraffic()
 			}

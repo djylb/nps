@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/common"
@@ -295,14 +297,14 @@ type hostTransports struct {
 	reuse, single *http.Transport
 }
 
-func (t *hostTransports) forRoute(route file.Route) *http.Transport {
+func (t *hostTransports) forRoute(route model.Route) *http.Transport {
 	if route.Target.ProxyProtocol != 0 {
 		return t.single
 	}
 	return t.reuse
 }
 
-func (s *HttpServer) newTransports(host *file.Host) *hostTransports {
+func (s *HttpServer) newTransports(host *model.Host) *hostTransports {
 	return &hostTransports{reuse: s.newTransport(host.CompatMode), single: s.newTransport(true)}
 }
 
@@ -318,7 +320,7 @@ func (s *HttpServer) newTransport(disableKeepAlives bool) *http.Transport {
 	}
 }
 
-func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *file.Host, isHttpOnlyRequest, authed bool) {
+func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, host *model.Host, isHttpOnlyRequest, authed bool) {
 	// Get target addr
 	route := host.Route()
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || host.Client.Id < 0
@@ -336,7 +338,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 		return isLocal, err
 	})
 	if err != nil {
-		if errors.Is(err, file.ErrNoTarget) {
+		if errors.Is(err, model.ErrNoTarget) {
 			logs.Warn("No backend found for host: %s Err: %v", r.Host, err)
 		}
 		w.WriteHeader(http.StatusBadGateway)
@@ -521,7 +523,7 @@ func restoreHeaders(h http.Header, names []string, saved http.Header) {
 // still open, since resp.Body streams from it, and closes it afterwards. The
 // tunnel connection ignores read deadlines, so the body copy is bounded by
 // closing the connection once the response timeout elapses.
-func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *file.Host, backend net.Conn) {
+func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *model.Host, backend net.Conn) {
 	defer func() { _ = backend.Close() }()
 	if s.ResponseHeaderTimeout > 0 {
 		timer := time.AfterFunc(s.ResponseHeaderTimeout, func() { _ = backend.Close() })
@@ -533,7 +535,7 @@ func (s *HttpServer) relayHandshakeRefusal(w http.ResponseWriter, resp *http.Res
 // writeHandshakeRefusal relays a backend response that did not complete an
 // upgrade or CONNECT handshake as an ordinary HTTP response and asks the
 // server to close the client connection afterwards.
-func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *file.Host) {
+func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Response, host *model.Host) {
 	if resp.StatusCode < http.StatusOK {
 		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
@@ -583,8 +585,8 @@ func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
 	//logs.Debug("DialContext: start dialing; network=%s, addr=%s, using targetAddr=%s", network, addr, targetAddr)
 	remote := ctx.Value(ctxRemoteAddr).(string)
-	h := ctx.Value(ctxHost).(*file.Host)
-	route := ctx.Value(ctxRoute).(file.Route)
+	h := ctx.Value(ctxHost).(*model.Host)
+	route := ctx.Value(ctxRoute).(model.Route)
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || h.Client.Id < 0
 	var link *conn.Link
 	var target net.Conn
@@ -599,7 +601,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		return isLocal, err
 	})
 	if err != nil {
-		if errors.Is(err, file.ErrNoTarget) {
+		if errors.Is(err, model.ErrNoTarget) {
 			logs.Warn("No backend found for h: %d Err: %v", h.Id, err)
 		}
 		return nil, err

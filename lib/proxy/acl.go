@@ -3,18 +3,27 @@ package proxy
 import (
 	"net"
 	"strconv"
+	"sync/atomic"
+
+	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logs"
 )
 
+// globalSource returns the global source lists; nil, as npc has, means none.
+var globalSource atomic.Pointer[func() *acl.Source]
+
+// SetGlobalSource sets where the global source lists come from. nps sets it
+// to its stored global settings; npc has none.
+func SetGlobalSource(f func() *acl.Source) { globalSource.Store(&f) }
+
 // sourcePolicies returns the source access lists of the global settings,
 // client and entry, a tunnel or host; missing levels allow everything.
-func sourcePolicies(client *file.Client, entry *file.SourceLists) (global, cli, ent *acl.Source) {
-	if g := file.GetDb().GetGlobal(); g != nil {
-		global = g.SourceACL()
+func sourcePolicies(client *model.Client, entry *model.SourceLists) (global, cli, ent *acl.Source) {
+	if f := globalSource.Load(); f != nil {
+		global = (*f)()
 	}
 	if client != nil {
 		cli = client.SourceACL()
@@ -28,7 +37,7 @@ func sourcePolicies(client *file.Client, entry *file.SourceLists) (global, cli, 
 // SourceDenied reports whether the access lists of the global settings, the
 // client and the entry deny the visitor addr, and logs a denial. entryName
 // names the entry in the log, for example "tunnel 3".
-func SourceDenied(addr net.Addr, client *file.Client, entry *file.SourceLists, entryName string) bool {
+func SourceDenied(addr net.Addr, client *model.Client, entry *model.SourceLists, entryName string) bool {
 	g, c, e := sourcePolicies(client, entry)
 	if !acl.Allows(addr, g, c, e) {
 		logs.Warn("Access from %v %v", addr, acl.Decide(addr, levelNames(client, entryName), g, c, e))
@@ -42,7 +51,7 @@ func SourceDenied(addr net.Addr, client *file.Client, entry *file.SourceLists, e
 }
 
 // SourceDeniedString is SourceDenied for an address given as text.
-func SourceDeniedString(addr string, client *file.Client, entry *file.SourceLists, entryName string) bool {
+func SourceDeniedString(addr string, client *model.Client, entry *model.SourceLists, entryName string) bool {
 	g, c, e := sourcePolicies(client, entry)
 	if !acl.AllowsString(addr, g, c, e) {
 		logs.Warn("Access from %s %v", addr, acl.DecideString(addr, levelNames(client, entryName), g, c, e))
@@ -57,7 +66,7 @@ func SourceDeniedString(addr string, client *file.Client, entry *file.SourceList
 
 // datagramDenied is SourceDenied for single datagrams, which are dropped
 // with a trace entry only so that a flood of them does not flood the log.
-func datagramDenied(addr net.Addr, client *file.Client, entry *file.SourceLists) bool {
+func datagramDenied(addr net.Addr, client *model.Client, entry *model.SourceLists) bool {
 	g, c, e := sourcePolicies(client, entry)
 	if acl.Allows(addr, g, c, e) && (client == nil || !registrationRequired(client, entry) || ipreg.RegisteredAddr(client.Id, addr)) {
 		return false
@@ -68,7 +77,7 @@ func datagramDenied(addr net.Addr, client *file.Client, entry *file.SourceLists)
 
 // registrationRequired reports whether the client or the entry only allows
 // visitor addresses registered for the client.
-func registrationRequired(client *file.Client, entry *file.SourceLists) bool {
+func registrationRequired(client *model.Client, entry *model.SourceLists) bool {
 	if client == nil {
 		return false
 	}
@@ -76,7 +85,7 @@ func registrationRequired(client *file.Client, entry *file.SourceLists) bool {
 }
 
 // levelNames names the levels of a decision for the log.
-func levelNames(client *file.Client, entryName string) []string {
+func levelNames(client *model.Client, entryName string) []string {
 	clientName := "client"
 	if client != nil {
 		clientName = "client " + strconv.Itoa(client.Id)
@@ -84,7 +93,7 @@ func levelNames(client *file.Client, entryName string) []string {
 	return []string{"global", clientName, entryName}
 }
 
-func taskName(t *file.Tunnel) string {
+func taskName(t *model.Tunnel) string {
 	if t == nil {
 		return "tunnel"
 	}
@@ -95,7 +104,7 @@ func taskName(t *file.Tunnel) string {
 	return "tunnel " + strconv.Itoa(t.Id)
 }
 
-func taskLists(t *file.Tunnel) *file.SourceLists {
+func taskLists(t *model.Tunnel) *model.SourceLists {
 	if t == nil {
 		return nil
 	}

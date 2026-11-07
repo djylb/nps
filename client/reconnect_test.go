@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/conn"
@@ -147,7 +149,7 @@ func TestReconnectFollowsNameToNewAddress(t *testing.T) {
 	file.Db = &file.DbUtils{JsonDb: file.NewJsonDb(root)}
 	t.Cleanup(func() { file.Db = oldDb })
 	const vkey = "reconnect-key"
-	if err := file.GetDb().NewClient(file.NewClient(vkey, true, false)); err != nil {
+	if err := file.GetDb().NewClient(model.NewClient(vkey, true, false)); err != nil {
 		t.Fatal(err)
 	}
 	b := bridge.NewTunnel(&sync.Map{}, 30)

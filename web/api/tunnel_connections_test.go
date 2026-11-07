@@ -3,6 +3,8 @@ package api
 import (
 	"testing"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/lib/file"
 )
 
@@ -11,7 +13,7 @@ func TestTunnelMaxConnInputAndLiveCount(t *testing.T) {
 	if addTunnelInput(c, nil).MaxConn != 9 || editTunnelInput(c, nil).MaxConn != 9 {
 		t.Fatal("limit input ignored")
 	}
-	task := &file.Tunnel{MaxConn: 2}
+	task := &model.Tunnel{MaxConn: 2}
 	if !task.GetConn() {
 		t.Fatal("reserve")
 	}
@@ -22,7 +24,7 @@ func TestTunnelMaxConnInputAndLiveCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	task.CutConn()
-	rows := tunnelRateRows([]*file.Tunnel{clone})
+	rows := tunnelRateRows([]*model.Tunnel{clone})
 	if rows[0].NowConn != 0 {
 		t.Fatal("API returned stale edited count")
 	}

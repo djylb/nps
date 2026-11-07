@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 // tcpPair returns the two ends of a loopback TCP connection.
@@ -90,16 +90,16 @@ func runExchange(t *testing.T, relay relayFunc, up, down int) {
 
 type flowValues struct{ inlet, export int64 }
 
-func valuesOf(f *file.Flow) flowValues {
+func valuesOf(f *model.Flow) flowValues {
 	v := f.Values()
 	return flowValues{v.InletFlow, v.ExportFlow}
 }
 
-func newRelayTask() *file.Tunnel {
-	return &file.Tunnel{
-		Flow:   &file.Flow{InletFlow: 7, ExportFlow: 11},
-		Client: &file.Client{Flow: &file.Flow{InletFlow: 3, ExportFlow: 5}},
-		Target: &file.Target{TargetStr: "127.0.0.1:80"},
+func newRelayTask() *model.Tunnel {
+	return &model.Tunnel{
+		Flow:   &model.Flow{InletFlow: 7, ExportFlow: 11},
+		Client: &model.Client{Flow: &model.Flow{InletFlow: 3, ExportFlow: 5}},
+		Target: &model.Target{TargetStr: "127.0.0.1:80"},
 	}
 }
 
@@ -122,7 +122,7 @@ func TestCopyWaitGroupAccounting(t *testing.T) {
 func TestJoinAccounting(t *testing.T) {
 	const up, down = 70_000, 130_000
 	tk := newRelayTask()
-	hostFlow := &file.Flow{InletFlow: 1, ExportFlow: 2}
+	hostFlow := &model.Flow{InletFlow: 1, ExportFlow: 2}
 	runExchange(t, func(mux, outside net.Conn) {
 		Join(outside, mux, []Flow{hostFlow, tk.Client.Flow}, tk, "192.0.2.1:1234")
 	}, up, down)
@@ -136,7 +136,7 @@ func TestJoinAccounting(t *testing.T) {
 
 // relayUntilStopped streams data from a visitor into a relay that the flows
 // are expected to stop, and returns once it has.
-func relayUntilStopped(t *testing.T, tk *file.Tunnel, flows []Flow) {
+func relayUntilStopped(t *testing.T, tk *model.Tunnel, flows []Flow) {
 	t.Helper()
 	muxNear, backend := tcpPair(t)
 	outside, visitor := tcpPair(t)
@@ -164,7 +164,7 @@ func relayUntilStopped(t *testing.T, tk *file.Tunnel, flows []Flow) {
 
 func TestCopyWaitGroupStopsAtFlowLimit(t *testing.T) {
 	tk := newRelayTask()
-	tk.Flow = &file.Flow{FlowLimit: 1}
+	tk.Flow = &model.Flow{FlowLimit: 1}
 	relayUntilStopped(t, tk, []Flow{tk.Flow, tk.Client.Flow})
 	// Every byte passed visitor to backend, counted once as inlet, up to
 	// the first byte over the 1 MiB limit.
@@ -176,7 +176,7 @@ func TestCopyWaitGroupStopsAtFlowLimit(t *testing.T) {
 
 func TestCopyWaitGroupStopsAtTimeLimit(t *testing.T) {
 	tk := newRelayTask()
-	tk.Flow = &file.Flow{TimeLimit: time.Now().Add(-time.Second)}
+	tk.Flow = &model.Flow{TimeLimit: time.Now().Add(-time.Second)}
 	before := valuesOf(tk.Client.Flow)
 	relayUntilStopped(t, tk, []Flow{tk.Flow, tk.Client.Flow})
 	// The first write stops the relay at the task flow, before the client

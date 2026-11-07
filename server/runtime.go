@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/lib/model"
+
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/file"
@@ -91,7 +93,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 		tcpCount := 0
 		file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-			tcpCount += int(value.(*file.Client).CurrentConnections())
+			tcpCount += int(value.(*model.Client).CurrentConnections())
 			return true
 		})
 
@@ -198,7 +200,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 	c := 0
 	var in, out int64
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-		v := value.(*file.Client)
+		v := value.(*model.Client)
 		if v.NoDisplay { // the public and visitor keys are not clients to show
 			data["clientCount"] = data["clientCount"].(int) - 1
 		}
@@ -216,7 +218,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 	var tcpN, udpN, secretN, socks5N, p2pN, httpN int
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		t := value.(*file.Tunnel)
+		t := value.(*model.Tunnel)
 		switch t.Mode {
 		case "tcp":
 			tcpN++
@@ -265,7 +267,7 @@ func GetDashboardData(force bool) map[string]interface{} {
 
 	tcpCount := 0
 	file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-		tcpCount += int(value.(*file.Client).CurrentConnections())
+		tcpCount += int(value.(*model.Client).CurrentConnections())
 		return true
 	})
 	data["tcpCount"] = tcpCount
