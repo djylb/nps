@@ -2,10 +2,8 @@ package conn
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
-	"net/netip"
 	"strconv"
 	"time"
 
@@ -41,121 +39,26 @@ func LinkConn(conn net.Conn, cpt, snappy bool, isServer, isLocal bool) io.ReadWr
 	}
 }
 
-// udp5HeaderRoom is the length of the longest SOCKS5 UDP header for an IP
-// source: reserved bytes, fragment number, address type, IPv6 address and
-// port. Replies are read behind this much room so that their header can be
-// written in front of them in place.
-const udp5HeaderRoom = 3 + 1 + 16 + 2
-
 // HandleUdp5 relays the SOCKS5 UDP datagrams of serverConn, one per frame,
-// through a local UDP socket: each datagram's payload goes to its
-// destination, and each datagram received goes back with its source as the
-// address.
+// through a local UDP socket bound to localIP, if it is an IP address: each
+// datagram's payload goes to its destination, and each datagram received
+// goes back with its source as the address. It returns, closing serverConn,
+// when ctx ends, either side closes or fails, or no datagram passed in
+// either direction for timeout.
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
-	// Wrap the TCP tunnel with timeout and framed I/O.
-	defer func() { _ = serverConn.Close() }()
-	timeoutConn := netx.NewTimeoutConn(serverConn, timeout)
-	defer func() { _ = timeoutConn.Close() }()
-	framed := netx.NewFramedConn(timeoutConn, netx.WithFramedDatagrams())
-
-	// Bind one local UDP socket for all outbound UDP traffic.
-	// Using nil lets the kernel pick family/port.
 	local, err := net.ListenUDP("udp", netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
+		_ = serverConn.Close()
 		logs.Error("bind local udp port error %v", err)
 		return
 	}
-	defer func() { _ = local.Close() }()
-	relayCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Internet -> tunnel: read UDP responses, prefix the SOCKS5 UDP header,
-	// send through the tunnel.
-	go func() {
-		defer cancel()
-		buf := BufPool.Get()
-		defer BufPool.Put(buf)
-
-		for {
-			select {
-			case <-relayCtx.Done():
-				return
-			default:
-			}
-
-			n, src, err := local.ReadFromUDPAddrPort(buf[udp5HeaderRoom:])
-			if err != nil {
-				if errors.Is(err, net.ErrClosed) {
-					logs.Debug("local UDP closed, exiting goroutine")
-					return
-				}
-				if netx.IsTimeout(err) {
-					logs.Debug("temporary UDP read error, retrying: %v", err)
-					continue
-				}
-				logs.Debug("read data from remote server error %v", err)
-				return
-			}
-
-			from := netx.Addr{IP: src.Addr().Unmap(), Port: src.Port()}
-			start := udp5HeaderRoom - (3 + 1 + 4 + 2)
-			if from.IP.Is6() {
-				start = 0
-			}
-			// The header fills buf[start:udp5HeaderRoom] exactly, so the
-			// payload behind it stays in place. An IP address cannot fail.
-			_, _ = socks5.AppendDatagram(buf[start:start], from, nil)
-			if _, err := framed.Write(buf[start : udp5HeaderRoom+n]); err != nil {
-				logs.Debug("write data to tunnel error %v", err)
-				return
-			}
-		}
-	}()
-
-	// Tunnel -> internet: read one datagram per frame and send its payload
-	// via the local UDP socket.
-	frameBuf := BufPool.Get()
-	defer BufPool.Put(frameBuf)
-
-	for {
-		select {
-		case <-relayCtx.Done():
-			return
-		default:
-		}
-
-		n, err := framed.Read(frameBuf)
-		if err != nil {
-			logs.Debug("read udp frame from tunnel error %v", err)
-			return
-		}
-
-		dst, hlen, err := socks5.DecodeDatagram(frameBuf[:n])
-		if err != nil {
-			// Drop malformed or fragmented packets.
-			logs.Debug("parse socks5 udp packet error %v", err)
-			continue
-		}
-		payload := frameBuf[hlen:n]
-
-		if dst.IP.IsValid() {
-			_, err = local.WriteToUDPAddrPort(payload, netip.AddrPortFrom(dst.IP, dst.Port))
-		} else {
-			var rAddr *net.UDPAddr
-			if rAddr, err = net.ResolveUDPAddr("udp", dst.String()); err != nil {
-				logs.Debug("resolve dest addr %q error %v", dst, err)
-				continue
-			}
-			_, err = local.WriteToUDP(payload, rAddr)
-		}
-		if err != nil {
-			if netx.IsTimeout(err) {
-				logs.Debug("temporary UDP write error to %v, retrying: %v", dst, err)
-				continue
-			}
-			logs.Debug("write udp to %v error %v", dst, err)
-			return
-		}
+	relay := socks5.DatagramRelay{
+		IdleTimeout: timeout,
+		OnError:     func(err error) { logs.Debug("socks5 udp: %v", err) },
+	}
+	framed := netx.NewFramedConn(serverConn, netx.WithFramedDatagrams())
+	if err := relay.Relay(ctx, framed, socks5.NewPacketConn(local)); err != nil {
+		logs.Debug("socks5 udp relay ended: %v", err)
 	}
 }
 
