@@ -9,7 +9,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/djylb/nps/internal/tunnelwire/carrier"
+	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/internal/tunnelwire/mux"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
@@ -25,7 +25,7 @@ func (muxLogger) Error(format string, v ...any)  { logs.Error(format, v...) }
 func init() { mux.SetLogger(muxLogger{}) }
 
 // Carrier is a connection to a peer carrying many streams.
-type Carrier = carrier.Carrier
+type Carrier = tunnelwire.Carrier
 
 // NewTunnel returns the carrier of a connection that a peer with caps gave
 // work chan or vstr: the QUIC connection itself where it speaks that, otherwise

@@ -19,7 +19,6 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/common"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/daemon"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logs"
@@ -44,7 +43,7 @@ var (
 )
 
 func main() {
-	daemon.WatchReload(reloadConfig)
+	watchReload(reloadConfig)
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")

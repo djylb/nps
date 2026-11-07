@@ -23,25 +23,6 @@ type BridgeEndpoint struct {
 	Port string
 }
 
-func UniqueStringsPreserveOrder(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for i := len(values) - 1; i >= 0; i-- {
-		if _, ok := seen[values[i]]; ok {
-			continue
-		}
-		seen[values[i]] = struct{}{}
-		result = append(result, values[i])
-	}
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
-	}
-	return result
-}
-
 func ValidAuthKey(configKey, md5Key string, timestamp int, nowUnix int64) bool {
 	if configKey == "" || md5Key == "" {
 		return false
@@ -110,10 +91,6 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	}
 
 	return result
-}
-
-func ClearClientStatus(client *model.Client, name string) {
-	clearClientStatus(client, name)
 }
 
 func changeTunnelStatus(id int, name, action string) error {

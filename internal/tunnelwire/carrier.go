@@ -1,6 +1,4 @@
-// Package carrier defines what the protocol needs from a connection that
-// carries streams, whatever implements the streams.
-package carrier
+package tunnelwire
 
 import (
 	"context"
