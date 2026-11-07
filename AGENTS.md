@@ -40,6 +40,16 @@ and nps forwards visitors through that connection to targets npc reaches.
   passes it to `server.New` and `routers.Init`; tests build their own with
   `file.New(dir)` (`TestStoreHasNoPackageState`).
 
+## Contracts with later major versions
+
+- `npc install` writes the connection settings to `<install dir>/conf/npc-service.json`
+  (or `conf/npc-service-launch-N.conf` for `--launch` input) and the service
+  passes `--launch=@<that file>`. Later npc versions look next to that file
+  for their migration file, so these names and locations do not change.
+- nps and npc ignore command-line arguments they do not know, with a
+  warning (`internal/cliargs`), so that a service installed by an older
+  version still starts after an update.
+
 ## Adding a tunnel or host setting
 
 1. Add the field to `lib/model` and one row to `TunnelSettings` or
