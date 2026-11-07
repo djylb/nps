@@ -363,17 +363,6 @@ func (s *DbUtils) GetTaskByMd5Password(p string) (t *model.Tunnel) {
 	return
 }
 
-func (s *DbUtils) GetTaskByMd5PasswordOld(p string) (t *model.Tunnel) {
-	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		if crypt.Md5(value.(*model.Tunnel).Password) == p {
-			t = value.(*model.Tunnel)
-			return false
-		}
-		return true
-	})
-	return
-}
-
 func (s *DbUtils) GetTask(id int) (t *model.Tunnel, err error) {
 	if v, ok := s.JsonDb.Tasks.Load(id); ok {
 		t = v.(*model.Tunnel)

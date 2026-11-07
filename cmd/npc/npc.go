@@ -376,6 +376,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
 	runenv.InitPProfByAddr(*pprofAddr)
 	if *tlsEnable {
+		logs.Warn("-tls_enable is deprecated; use -type=tls")
 		*connType = "tls"
 	}
 	if inputs := launchPayloads(); len(inputs) > 0 {
