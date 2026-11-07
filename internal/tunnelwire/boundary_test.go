@@ -12,6 +12,10 @@ import (
 
 const modulePath = "github.com/djylb/nps/internal/tunnelwire"
 
+// leakcheckPath is the one package outside the standard library that tests
+// here may use; it uses the standard library only.
+const leakcheckPath = "github.com/djylb/nps/internal/leakcheck"
+
 // allowedImporters lists the only code outside this package that may use the
 // legacy protocol, so that dropping old clients stays a matter of deleting it.
 var allowedImporters = []string{
@@ -53,7 +57,7 @@ func TestImportBoundary(t *testing.T) {
 			}
 			if inside {
 				first, _, _ := strings.Cut(imp, "/")
-				if strings.Contains(first, ".") && !strings.HasPrefix(imp, modulePath) {
+				if strings.Contains(first, ".") && !strings.HasPrefix(imp, modulePath) && !(strings.HasSuffix(rel, "_test.go") && imp == leakcheckPath) {
 					t.Errorf("%s imports %s; this package uses the standard library only", rel, imp)
 				}
 			} else if strings.HasPrefix(imp, modulePath) && !importerAllowed(rel) {

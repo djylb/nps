@@ -29,6 +29,7 @@ type FileServerManager struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	mu      sync.Mutex
+	unwatch func() bool // stops closing when the parent context ends; under mu
 	wg      sync.WaitGroup
 	servers map[string]*fileServer
 }
@@ -45,10 +46,11 @@ func NewFileServerManager(parentCtx context.Context) *FileServerManager {
 		cancel:  cancel,
 		servers: make(map[string]*fileServer),
 	}
-	go func() {
-		<-parentCtx.Done()
-		fsm.CloseAll()
-	}()
+	// mu holds back a CloseAll of a parent that has ended already until
+	// unwatch is set.
+	fsm.mu.Lock()
+	fsm.unwatch = context.AfterFunc(parentCtx, fsm.CloseAll)
+	fsm.mu.Unlock()
 	return fsm
 }
 
@@ -147,6 +149,9 @@ func (fsm *FileServerManager) GetListenerByKey(key string) (*netx.ChanListener, 
 }
 
 func (fsm *FileServerManager) CloseAll() {
+	fsm.mu.Lock()
+	fsm.unwatch()
+	fsm.mu.Unlock()
 	fsm.cancel()
 	fsm.mu.Lock()
 	entries := fsm.servers

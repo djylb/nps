@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime/pprof"
+	"strconv"
 	"time"
 
 	"github.com/djylb/nps/lib/model"
@@ -104,7 +106,12 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			client.Unlock()
 		}
 	}
-	go s.typeDeal(c, res.ClientID, res.Caps, tunnelType, true)
+	// The labels name the client in stack dumps and tracebacks of everything
+	// the connection starts.
+	labels := pprof.Labels("client", strconv.Itoa(res.ClientID), "bridge", tunnelType)
+	go pprof.Do(context.Background(), labels, func(context.Context) {
+		s.typeDeal(c, res.ClientID, res.Caps, tunnelType, true)
+	})
 }
 
 func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType string, first bool) {

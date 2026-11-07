@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -293,12 +294,13 @@ func (mgr *P2PManager) serve(name string, srv localServer) error {
 	mgr.wg.Add(1)
 	mgr.mu.Unlock()
 	logs.Info("%s started", name)
-	go func() {
+	// The label names the local server in stack dumps and tracebacks.
+	go pprof.Do(context.Background(), pprof.Labels("local", name), func(context.Context) {
 		defer mgr.wg.Done()
 		if err := srv.Start(); err != nil {
 			logs.Error("%s stopped: %v", name, err)
 		}
-	}()
+	})
 	return nil
 }
 

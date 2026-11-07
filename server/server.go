@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"runtime/pprof"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -317,14 +320,24 @@ func AddTask(t *model.Tunnel) error {
 		}
 	}
 	logs.Info("tunnel task %s start mode：%s port %d", t.Remark, t.Mode, t.Port)
-	go func() {
+	// The labels name the task in stack dumps and tracebacks of everything
+	// the server starts.
+	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", t.Mode, "client", strconv.Itoa(clientID(t)))
+	go pprof.Do(context.Background(), labels, func(context.Context) {
 		if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
 			logs.Error("taskId %d start error %v", t.Id, err)
 			RunList.CompareAndDelete(t.Id, svr)
 			_ = svr.Close()
 		}
-	}()
+	})
 	return nil
+}
+
+func clientID(t *model.Tunnel) int {
+	if t.Client == nil {
+		return 0
+	}
+	return t.Client.Id
 }
 
 // StartTask start task
