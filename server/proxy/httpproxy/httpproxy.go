@@ -165,7 +165,7 @@ func (s *HttpProxy) serve() error {
 			run("HTTPS", s.HttpsServer.Start)
 
 			if s.Http3Port > 0 {
-				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.HttpIp), Port: s.Http3Port})
+				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.Network().HTTPProxyIP), Port: s.Http3Port})
 				if err != nil {
 					return fmt.Errorf("start HTTP/3 listener: %w", err)
 				}

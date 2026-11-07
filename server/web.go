@@ -50,8 +50,8 @@ func serveWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *WebServer) Start() error {
-	ip := connection.WebIp
-	p := connection.WebPort
+	ip := connection.Network().WebIP
+	p := connection.Network().WebPort
 	handler := http.HandlerFunc(serveWeb)
 	cfg := servercfg.Current()
 

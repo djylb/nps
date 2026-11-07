@@ -67,19 +67,19 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	result := BridgeEndpoint{
 		Type: cfg.Bridge.PrimaryType,
 		IP:   bridgeIP,
-		Port: strconv.Itoa(connection.BridgePort),
+		Port: strconv.Itoa(connection.Network().BridgePort),
 	}
 	result.Addr = result.IP + ":" + result.Port
 
 	switch {
 	case cfg.Bridge.Display.TLS.Show:
 		result.Type = "tls"
-		result.Port = defaultString(cfg.Bridge.Display.TLS.Port, strconv.Itoa(connection.BridgeTlsPort))
+		result.Port = defaultString(cfg.Bridge.Display.TLS.Port, strconv.Itoa(connection.Network().BridgeTLSPort))
 		result.IP = defaultString(cfg.Bridge.Display.TLS.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port
 	case cfg.Bridge.Display.QUIC.Show:
 		result.Type = "quic"
-		result.Port = defaultString(cfg.Bridge.Display.QUIC.Port, strconv.Itoa(connection.BridgeQuicPort))
+		result.Port = defaultString(cfg.Bridge.Display.QUIC.Port, strconv.Itoa(connection.Network().BridgeQUICPort))
 		result.IP = defaultString(cfg.Bridge.Display.QUIC.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port
 		quicALPN := defaultString(cfg.Bridge.Display.QUIC.ALPN, defaultQuicALPN())
@@ -88,22 +88,22 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 		}
 	case cfg.Bridge.Display.WSS.Show:
 		result.Type = "wss"
-		result.Port = defaultString(cfg.Bridge.Display.WSS.Port, strconv.Itoa(connection.BridgeWssPort))
+		result.Port = defaultString(cfg.Bridge.Display.WSS.Port, strconv.Itoa(connection.Network().BridgeWSSPort))
 		result.IP = defaultString(cfg.Bridge.Display.WSS.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port + cfg.Bridge.Display.Path
 	case cfg.Bridge.Display.TCP.Show:
 		result.Type = "tcp"
-		result.Port = defaultString(cfg.Bridge.Display.TCP.Port, strconv.Itoa(connection.BridgeTcpPort))
+		result.Port = defaultString(cfg.Bridge.Display.TCP.Port, strconv.Itoa(connection.Network().BridgeTCPPort))
 		result.IP = defaultString(cfg.Bridge.Display.TCP.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port
 	case cfg.Bridge.Display.KCP.Show:
 		result.Type = "kcp"
-		result.Port = defaultString(cfg.Bridge.Display.KCP.Port, strconv.Itoa(connection.BridgeKcpPort))
+		result.Port = defaultString(cfg.Bridge.Display.KCP.Port, strconv.Itoa(connection.Network().BridgeKCPPort))
 		result.IP = defaultString(cfg.Bridge.Display.KCP.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port
 	case cfg.Bridge.Display.WS.Show:
 		result.Type = "ws"
-		result.Port = defaultString(cfg.Bridge.Display.WS.Port, strconv.Itoa(connection.BridgeWsPort))
+		result.Port = defaultString(cfg.Bridge.Display.WS.Port, strconv.Itoa(connection.Network().BridgeWSPort))
 		result.IP = defaultString(cfg.Bridge.Display.WS.IP, bridgeIP)
 		result.Addr = result.IP + ":" + result.Port + cfg.Bridge.Display.Path
 	}
@@ -305,8 +305,8 @@ func defaultString(value, fallback string) string {
 }
 
 func defaultQuicALPN() string {
-	if len(connection.QuicAlpn) > 0 {
-		return connection.QuicAlpn[0]
+	if len(connection.Network().QUICALPNList) > 0 {
+		return connection.Network().QUICALPNList[0]
 	}
 	return "nps"
 }

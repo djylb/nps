@@ -101,16 +101,16 @@ func (DefaultSystemService) BridgeDisplay(cfg *servercfg.Snapshot, host string) 
 	if cfg.Network.BridgePath != "" {
 		display.Path = cfg.Bridge.Display.Path
 	}
-	display.TCP = newBridgeTransport(cfg.Bridge.Display.TCP.Show, "tcp", primary.IP, cfg.Bridge.Display.TCP.IP, strconv.Itoa(connection.BridgeTcpPort), cfg.Bridge.Display.TCP.Port, "", false)
-	display.KCP = newBridgeTransport(cfg.Bridge.Display.KCP.Show, "kcp", primary.IP, cfg.Bridge.Display.KCP.IP, strconv.Itoa(connection.BridgeKcpPort), cfg.Bridge.Display.KCP.Port, "", false)
-	display.TLS = newBridgeTransport(cfg.Bridge.Display.TLS.Show, "tls", primary.IP, cfg.Bridge.Display.TLS.IP, strconv.Itoa(connection.BridgeTlsPort), cfg.Bridge.Display.TLS.Port, "", false)
-	display.QUIC = newBridgeTransport(cfg.Bridge.Display.QUIC.Show, "quic", primary.IP, cfg.Bridge.Display.QUIC.IP, strconv.Itoa(connection.BridgeQuicPort), cfg.Bridge.Display.QUIC.Port, "", false)
+	display.TCP = newBridgeTransport(cfg.Bridge.Display.TCP.Show, "tcp", primary.IP, cfg.Bridge.Display.TCP.IP, strconv.Itoa(connection.Network().BridgeTCPPort), cfg.Bridge.Display.TCP.Port, "", false)
+	display.KCP = newBridgeTransport(cfg.Bridge.Display.KCP.Show, "kcp", primary.IP, cfg.Bridge.Display.KCP.IP, strconv.Itoa(connection.Network().BridgeKCPPort), cfg.Bridge.Display.KCP.Port, "", false)
+	display.TLS = newBridgeTransport(cfg.Bridge.Display.TLS.Show, "tls", primary.IP, cfg.Bridge.Display.TLS.IP, strconv.Itoa(connection.Network().BridgeTLSPort), cfg.Bridge.Display.TLS.Port, "", false)
+	display.QUIC = newBridgeTransport(cfg.Bridge.Display.QUIC.Show, "quic", primary.IP, cfg.Bridge.Display.QUIC.IP, strconv.Itoa(connection.Network().BridgeQUICPort), cfg.Bridge.Display.QUIC.Port, "", false)
 	display.QUIC.ALPN = defaultString(cfg.Bridge.Display.QUIC.ALPN, defaultQuicALPN())
 	if display.QUIC.Enabled && display.QUIC.ALPN != "" && display.QUIC.ALPN != "nps" {
 		display.QUIC.Addr += "/" + display.QUIC.ALPN
 	}
-	display.WS = newBridgeTransport(cfg.Bridge.Display.WS.Show, "ws", primary.IP, cfg.Bridge.Display.WS.IP, strconv.Itoa(connection.BridgeWsPort), cfg.Bridge.Display.WS.Port, display.Path, true)
-	display.WSS = newBridgeTransport(cfg.Bridge.Display.WSS.Show, "wss", primary.IP, cfg.Bridge.Display.WSS.IP, strconv.Itoa(connection.BridgeWssPort), cfg.Bridge.Display.WSS.Port, display.Path, true)
+	display.WS = newBridgeTransport(cfg.Bridge.Display.WS.Show, "ws", primary.IP, cfg.Bridge.Display.WS.IP, strconv.Itoa(connection.Network().BridgeWSPort), cfg.Bridge.Display.WS.Port, display.Path, true)
+	display.WSS = newBridgeTransport(cfg.Bridge.Display.WSS.Show, "wss", primary.IP, cfg.Bridge.Display.WSS.IP, strconv.Itoa(connection.Network().BridgeWSSPort), cfg.Bridge.Display.WSS.Port, display.Path, true)
 	return display
 }
 

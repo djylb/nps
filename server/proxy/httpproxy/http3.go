@@ -67,11 +67,11 @@ func (s *Http3Server) Start() error {
 		return nil
 	}
 
-	s.http3NextProtos = append([]string{http3.NextProtoH3}, connection.QuicAlpn...)
+	s.http3NextProtos = append([]string{http3.NextProtoH3}, connection.Network().QUICALPNList...)
 	quicConfig := &quic.Config{
-		KeepAlivePeriod:    time.Duration(connection.QuicKeepAliveSec) * time.Second,
-		MaxIdleTimeout:     time.Duration(connection.QuicIdleTimeoutSec) * time.Second,
-		MaxIncomingStreams: connection.QuicMaxStreams,
+		KeepAlivePeriod:    time.Duration(connection.Network().QUICKeepAlivePeriod) * time.Second,
+		MaxIdleTimeout:     time.Duration(connection.Network().QUICMaxIdleTimeout) * time.Second,
+		MaxIncomingStreams: connection.Network().QUICMaxIncomingStreams,
 		Allow0RTT:          true,
 	}
 
@@ -151,7 +151,7 @@ func (s *Http3Server) Close() error {
 }
 
 func (s *Http3Server) HandleQUIC(qc *quic.Conn, alpn, sni string) {
-	if alpn == http3.NextProtoH3 && !strings.EqualFold(sni, connection.BridgeHost) {
+	if alpn == http3.NextProtoH3 && !strings.EqualFold(sni, connection.Network().BridgeHost) {
 		_ = s.http3Server.ServeQUICConn(qc)
 		return
 	}

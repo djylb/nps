@@ -32,24 +32,24 @@ func (s *Bridge) StartTunnel() error {
 
 	// ws
 	s.VirtualWsListener = virtualBridgeListener(ServerWsEnable, connection.GetBridgeWsListener)
-	wsLn := conn.NewWSListener(s.VirtualWsListener, connection.BridgePath, connection.BridgeTrustedIps, connection.BridgeRealIpHeader)
+	wsLn := conn.NewWSListener(s.VirtualWsListener, connection.Network().BridgePath, connection.Network().BridgeTrustedIPs, connection.Network().BridgeRealIPHeader)
 	go conn.Accept(wsLn, func(c net.Conn) {
 		s.CliProcess(conn.NewConn(c), common.ConnWS)
 	})
 
 	// wss
 	s.VirtualWssListener = virtualBridgeListener(ServerWssEnable, connection.GetBridgeWssListener)
-	wssLn := conn.NewWSSListener(s.VirtualWssListener, connection.BridgePath, crypt.GetCert(), connection.BridgeTrustedIps, connection.BridgeRealIpHeader)
+	wssLn := conn.NewWSSListener(s.VirtualWssListener, connection.Network().BridgePath, crypt.GetCert(), connection.Network().BridgeTrustedIPs, connection.Network().BridgeRealIPHeader)
 	go conn.Accept(wssLn, func(c net.Conn) {
 		s.CliProcess(conn.NewConn(c), common.ConnWSS)
 	})
 	// kcp
 	if ServerKcpEnable {
-		logs.Info("Server start, the bridge type is kcp, the bridge port is %d", connection.BridgeKcpPort)
+		logs.Info("Server start, the bridge type is kcp, the bridge port is %d", connection.Network().BridgeKCPPort)
 		go func() {
 			//bridgeKcp := *s
 			//bridgeKcp.tunnelType = "kcp"
-			err := conn.NewKcpListenerAndProcess(common.BuildAddress(connection.BridgeKcpIp, strconv.Itoa(connection.BridgeKcpPort)), func(c net.Conn) {
+			err := conn.NewKcpListenerAndProcess(common.BuildAddress(connection.Network().BridgeKCPIP, strconv.Itoa(connection.Network().BridgeKCPPort)), func(c net.Conn) {
 				s.CliProcess(conn.NewConn(c), "kcp")
 			})
 			if err != nil {
@@ -60,19 +60,19 @@ func (s *Bridge) StartTunnel() error {
 
 	// quic
 	if ServerQuicEnable {
-		logs.Info("Server start, the bridge type is quic, the bridge port is %d", connection.BridgeQuicPort)
+		logs.Info("Server start, the bridge type is quic, the bridge port is %d", connection.Network().BridgeQUICPort)
 
 		quicConfig := &quic.Config{
-			KeepAlivePeriod:    time.Duration(connection.QuicKeepAliveSec) * time.Second,
-			MaxIdleTimeout:     time.Duration(connection.QuicIdleTimeoutSec) * time.Second,
-			MaxIncomingStreams: connection.QuicMaxStreams,
+			KeepAlivePeriod:    time.Duration(connection.Network().QUICKeepAlivePeriod) * time.Second,
+			MaxIdleTimeout:     time.Duration(connection.Network().QUICMaxIdleTimeout) * time.Second,
+			MaxIncomingStreams: connection.Network().QUICMaxIncomingStreams,
 		}
 		go func() {
 			tlsCfg := &tls.Config{
 				Certificates: []tls.Certificate{crypt.GetCert()},
 			}
-			tlsCfg.NextProtos = connection.QuicAlpn
-			addr := common.BuildAddress(connection.BridgeQuicIp, strconv.Itoa(connection.BridgeQuicPort))
+			tlsCfg.NextProtos = connection.Network().QUICALPNList
+			addr := common.BuildAddress(connection.Network().BridgeQUICIP, strconv.Itoa(connection.Network().BridgeQUICPort))
 			err := conn.NewQuicListenerAndProcess(addr, tlsCfg, quicConfig, func(c net.Conn) {
 				s.CliProcess(conn.NewConn(c), "quic")
 			})

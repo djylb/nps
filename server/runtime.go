@@ -253,12 +253,12 @@ func GetDashboardData(force bool) map[string]interface{} {
 	data["httpsProxyPort"] = intStringOrEmpty(cfg.Network.HTTPSProxyPort)
 	data["registeredIps"] = ipreg.Count()
 	data["flowStoreInterval"] = intStringOrEmpty(cfg.Runtime.FlowStoreInterval)
-	data["serverIp"] = common.GetServerIp(connection.P2pIp)
+	data["serverIp"] = common.GetServerIp(connection.Network().P2PIP)
 	data["serverIpv4"] = common.GetOutboundIPv4().String()
 	data["serverIpv6"] = common.GetOutboundIPv6().String()
-	data["p2pIp"] = connection.P2pIp
-	data["p2pPort"] = connection.P2pPort
-	data["p2pAddr"] = common.BuildAddress(common.GetServerIp(connection.P2pIp), strconv.Itoa(connection.P2pPort))
+	data["p2pIp"] = connection.Network().P2PIP
+	data["p2pPort"] = connection.Network().P2PPort
+	data["p2pAddr"] = common.BuildAddress(common.GetServerIp(connection.Network().P2PIP), strconv.Itoa(connection.Network().P2PPort))
 	data["logLevel"] = cfg.Log.Level
 	data["upTime"] = common.GetRunTime()
 	data["upSecs"] = common.GetRunSecs()

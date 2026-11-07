@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
@@ -12,155 +14,120 @@ import (
 )
 
 var pMux *portMux
-var BridgeIp string
-var BridgeHost string
-var BridgeTcpIp string
-var BridgeKcpIp string
-var BridgeQuicIp string
-var BridgeTlsIp string
-var BridgeWsIp string
-var BridgeWssIp string
-var BridgePort int
-var BridgeTcpPort int
-var BridgeKcpPort int
-var BridgeQuicPort int
-var BridgeTlsPort int
-var BridgeWsPort int
-var BridgeWssPort int
-var BridgePath string
-var BridgeTrustedIps string
-var BridgeRealIpHeader string
-var HttpIp string
-var HttpPort int
-var HttpsPort int
-var Http3Port int
-var WebIp string
-var WebPort int
-var P2pIp string
-var P2pPort int
-var QuicAlpn []string
-var QuicKeepAliveSec int
-var QuicIdleTimeoutSec int
-var QuicMaxStreams int64
-var MuxPingIntervalSec int
+
+// network holds the listener settings nps started with: listeners keep
+// them until a restart, whatever a reload of the config says.
+var network atomic.Pointer[servercfg.NetworkConfig]
+
+// Network returns the listener settings nps started with.
+func Network() servercfg.NetworkConfig {
+	if n := network.Load(); n != nil {
+		return *n
+	}
+	return servercfg.NetworkConfig{}
+}
+
+// Configure sets the listener settings without opening anything.
+func Configure(n servercfg.NetworkConfig) {
+	n.QUICALPNList = slices.Clone(n.QUICALPNList)
+	network.Store(&n)
+}
 
 func InitConnectionService() {
 	cfg := servercfg.Current()
-	BridgeIp = cfg.Network.BridgeIP
-	BridgeHost = cfg.Network.BridgeHost
-	BridgeTcpIp = cfg.Network.BridgeTCPIP
-	BridgeKcpIp = cfg.Network.BridgeKCPIP
-	BridgeQuicIp = cfg.Network.BridgeQUICIP
-	BridgeTlsIp = cfg.Network.BridgeTLSIP
-	BridgeWsIp = cfg.Network.BridgeWSIP
-	BridgeWssIp = cfg.Network.BridgeWSSIP
-	BridgePort = cfg.Network.BridgePort
-	BridgeTcpPort = cfg.Network.BridgeTCPPort
-	BridgeKcpPort = cfg.Network.BridgeKCPPort
-	BridgeQuicPort = cfg.Network.BridgeQUICPort
-	BridgeTlsPort = cfg.Network.BridgeTLSPort
-	BridgeWsPort = cfg.Network.BridgeWSPort
-	BridgeWssPort = cfg.Network.BridgeWSSPort
-	BridgePath = cfg.Network.BridgePath
-	BridgeTrustedIps = cfg.Network.BridgeTrustedIPs
-	BridgeRealIpHeader = cfg.Network.BridgeRealIPHeader
-	HttpIp = cfg.Network.HTTPProxyIP
-	HttpPort = cfg.Network.HTTPProxyPort
-	HttpsPort = cfg.Network.HTTPSProxyPort
-	Http3Port = cfg.Network.HTTP3ProxyPort
-	WebIp = cfg.Network.WebIP
-	WebPort = cfg.Network.WebPort
-	P2pIp = cfg.Network.P2PIP
-	P2pPort = cfg.Network.P2PPort
-	QuicAlpn = append([]string(nil), cfg.Network.QUICALPNList...)
-	QuicKeepAliveSec = cfg.Network.QUICKeepAlivePeriod
-	QuicIdleTimeoutSec = cfg.Network.QUICMaxIdleTimeout
-	QuicMaxStreams = cfg.Network.QUICMaxIncomingStreams
-	MuxPingIntervalSec = cfg.Network.MuxPingInterval
-	legacy.SetPingInterval(time.Duration(MuxPingIntervalSec) * time.Second)
+	Configure(cfg.Network)
+	n := Network()
+	legacy.SetPingInterval(time.Duration(n.MuxPingInterval) * time.Second)
 
-	if BridgePort != 0 && (HttpPort == BridgePort || HttpsPort == BridgePort || WebPort == BridgePort || BridgeTlsPort == BridgePort) {
-		if BridgePort <= 0 || BridgePort > 65535 {
-			logs.Error("Invalid bridge port %d", BridgePort)
+	if n.BridgePort != 0 && (n.HTTPProxyPort == n.BridgePort || n.HTTPSProxyPort == n.BridgePort || n.WebPort == n.BridgePort || n.BridgeTLSPort == n.BridgePort) {
+		if n.BridgePort <= 0 || n.BridgePort > 65535 {
+			logs.Error("Invalid bridge port %d", n.BridgePort)
 			os.Exit(0)
 		}
 		var err error
-		if pMux, err = newPortMux(BridgePort, cfg.Web.Host, cfg.Network.BridgeHost); err != nil {
-			logs.Error("Port multiplexing on %d failed: %v", BridgePort, err)
+		if pMux, err = newPortMux(n.BridgePort, cfg.Web.Host, cfg.Network.BridgeHost); err != nil {
+			logs.Error("Port multiplexing on %d failed: %v", n.BridgePort, err)
 			os.Exit(1)
 		}
 	}
 }
 
 func GetBridgeTcpListener() (net.Listener, error) {
-	logs.Info("server start, the bridge type is tcp, the bridge port is %d", BridgeTcpPort)
-	if BridgeTcpPort <= 0 || BridgeTcpPort > 65535 {
-		return nil, fmt.Errorf("invalid tcp bridge port %d", BridgeTcpPort)
+	n := Network()
+	logs.Info("server start, the bridge type is tcp, the bridge port is %d", n.BridgeTCPPort)
+	if n.BridgeTCPPort <= 0 || n.BridgeTCPPort > 65535 {
+		return nil, fmt.Errorf("invalid tcp bridge port %d", n.BridgeTCPPort)
 	}
-	if pMux != nil && BridgeTcpPort == BridgePort {
+	if pMux != nil && n.BridgeTCPPort == n.BridgePort {
 		return pMux.register(kindClient)
 	}
-	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeTcpIp), Port: BridgeTcpPort})
+	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(n.BridgeTCPIP), Port: n.BridgeTCPPort})
 }
 
 func GetBridgeTlsListener() (net.Listener, error) {
-	logs.Info("server start, the bridge type is tls, the bridge port is %d", BridgeTlsPort)
-	if BridgeTlsPort <= 0 || BridgeTlsPort > 65535 {
-		return nil, fmt.Errorf("invalid tls bridge port %d", BridgeTlsPort)
+	n := Network()
+	logs.Info("server start, the bridge type is tls, the bridge port is %d", n.BridgeTLSPort)
+	if n.BridgeTLSPort <= 0 || n.BridgeTLSPort > 65535 {
+		return nil, fmt.Errorf("invalid tls bridge port %d", n.BridgeTLSPort)
 	}
-	if pMux != nil && BridgeTlsPort == BridgePort {
+	if pMux != nil && n.BridgeTLSPort == n.BridgePort {
 		return pMux.register(kindClientTls)
 	}
-	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeTlsIp), Port: BridgeTlsPort})
+	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(n.BridgeTLSIP), Port: n.BridgeTLSPort})
 }
 
 func GetBridgeWsListener() (net.Listener, error) {
-	logs.Info("server start, the bridge type is ws, the bridge port is %d, the bridge path is %s", BridgeWsPort, BridgePath)
-	if BridgeWsPort <= 0 || BridgeWsPort > 65535 {
-		return nil, fmt.Errorf("invalid ws bridge port %d", BridgeWsPort)
+	n := Network()
+	logs.Info("server start, the bridge type is ws, the bridge port is %d, the bridge path is %s", n.BridgeWSPort, n.BridgePath)
+	if n.BridgeWSPort <= 0 || n.BridgeWSPort > 65535 {
+		return nil, fmt.Errorf("invalid ws bridge port %d", n.BridgeWSPort)
 	}
-	if pMux != nil && BridgeWsPort == BridgePort {
+	if pMux != nil && n.BridgeWSPort == n.BridgePort {
 		return pMux.register(kindClientWs)
 	}
-	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeWsIp), Port: BridgeWsPort})
+	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(n.BridgeWSIP), Port: n.BridgeWSPort})
 }
 
 func GetBridgeWssListener() (net.Listener, error) {
-	logs.Info("server start, the bridge type is wss, the bridge port is %d, the bridge path is %s", BridgeWssPort, BridgePath)
-	if BridgeWssPort <= 0 || BridgeWssPort > 65535 {
-		return nil, fmt.Errorf("invalid wss bridge port %d", BridgeWssPort)
+	n := Network()
+	logs.Info("server start, the bridge type is wss, the bridge port is %d, the bridge path is %s", n.BridgeWSSPort, n.BridgePath)
+	if n.BridgeWSSPort <= 0 || n.BridgeWSSPort > 65535 {
+		return nil, fmt.Errorf("invalid wss bridge port %d", n.BridgeWSSPort)
 	}
-	if pMux != nil && BridgeWssPort == BridgePort {
+	if pMux != nil && n.BridgeWSSPort == n.BridgePort {
 		return pMux.register(kindClientWss)
 	}
-	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(BridgeWssIp), Port: BridgeWssPort})
+	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(n.BridgeWSSIP), Port: n.BridgeWSSPort})
 }
 
 func GetHttpListener() (net.Listener, error) {
-	if pMux != nil && HttpPort == BridgePort {
-		logs.Info("start http listener, port is %d", BridgePort)
+	n := Network()
+	if pMux != nil && n.HTTPProxyPort == n.BridgePort {
+		logs.Info("start http listener, port is %d", n.BridgePort)
 		return pMux.register(kindHttp)
 	}
-	logs.Info("start http listener, port is %d", HttpPort)
-	return getTcpListener(HttpIp, HttpPort)
+	logs.Info("start http listener, port is %d", n.HTTPProxyPort)
+	return getTcpListener(n.HTTPProxyIP, n.HTTPProxyPort)
 }
 
 func GetHttpsListener() (net.Listener, error) {
-	if pMux != nil && HttpsPort == BridgePort {
-		logs.Info("start https listener, port is %d", BridgePort)
+	n := Network()
+	if pMux != nil && n.HTTPSProxyPort == n.BridgePort {
+		logs.Info("start https listener, port is %d", n.BridgePort)
 		return pMux.register(kindHttps)
 	}
-	logs.Info("start https listener, port is %d", HttpsPort)
-	return getTcpListener(HttpIp, HttpsPort)
+	logs.Info("start https listener, port is %d", n.HTTPSProxyPort)
+	return getTcpListener(n.HTTPProxyIP, n.HTTPSProxyPort)
 }
 
 func GetWebManagerListener() (net.Listener, error) {
-	if pMux != nil && WebPort == BridgePort {
-		logs.Info("Web management start, access port is %d", BridgePort)
+	n := Network()
+	if pMux != nil && n.WebPort == n.BridgePort {
+		logs.Info("Web management start, access port is %d", n.BridgePort)
 		return pMux.register(kindManager)
 	}
-	logs.Info("web management start, access port is %d", WebPort)
-	return getTcpListener(WebIp, WebPort)
+	logs.Info("web management start, access port is %d", n.WebPort)
+	return getTcpListener(n.WebIP, n.WebPort)
 }
 
 func getTcpListener(ip string, port int) (net.Listener, error) {

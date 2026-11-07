@@ -72,28 +72,29 @@ mux_ping_interval = 8
 
 	InitConnectionService()
 
-	if BridgeIp != "127.0.0.2" || BridgeTcpIp != "127.0.0.3" || BridgeTlsIp != "127.0.0.6" {
+	n := Network()
+	if n.BridgeIP != "127.0.0.2" || n.BridgeTCPIP != "127.0.0.3" || n.BridgeTLSIP != "127.0.0.6" {
 		t.Fatalf("bridge ip fields not loaded correctly")
 	}
-	if BridgePath != "/bridge" || BridgeTrustedIps != "127.0.0.1" || BridgeRealIpHeader != "X-Real-IP" {
+	if n.BridgePath != "/bridge" || n.BridgeTrustedIPs != "127.0.0.1" || n.BridgeRealIPHeader != "X-Real-IP" {
 		t.Fatalf("bridge path/trusted fields not loaded correctly")
 	}
-	if BridgePort != 18080 || BridgeTcpPort != 18081 || BridgeWssPort != 18086 {
+	if n.BridgePort != 18080 || n.BridgeTCPPort != 18081 || n.BridgeWSSPort != 18086 {
 		t.Fatalf("bridge ports not loaded correctly")
 	}
-	if HttpIp != "127.0.0.9" || HttpPort != 19080 || HttpsPort != 19443 || Http3Port != 19444 {
+	if n.HTTPProxyIP != "127.0.0.9" || n.HTTPProxyPort != 19080 || n.HTTPSProxyPort != 19443 || n.HTTP3ProxyPort != 19444 {
 		t.Fatalf("http settings not loaded correctly")
 	}
-	if WebIp != "127.0.0.10" || WebPort != 18000 || P2pIp != "127.0.0.11" || P2pPort != 17000 {
+	if n.WebIP != "127.0.0.10" || n.WebPort != 18000 || n.P2PIP != "127.0.0.11" || n.P2PPort != 17000 {
 		t.Fatalf("web/p2p settings not loaded correctly")
 	}
-	if len(QuicAlpn) != 2 || QuicAlpn[0] != "nps" || QuicAlpn[1] != "test" {
-		t.Fatalf("quic alpn not split correctly: %#v", QuicAlpn)
+	if len(n.QUICALPNList) != 2 || n.QUICALPNList[0] != "nps" || n.QUICALPNList[1] != "test" {
+		t.Fatalf("quic alpn not split correctly: %#v", n.QUICALPNList)
 	}
-	if QuicKeepAliveSec != 12 || QuicIdleTimeoutSec != 34 || QuicMaxStreams != 999 {
+	if n.QUICKeepAlivePeriod != 12 || n.QUICMaxIdleTimeout != 34 || n.QUICMaxIncomingStreams != 999 {
 		t.Fatalf("quic values not loaded correctly")
 	}
-	if MuxPingIntervalSec != 8 || legacy.PingInterval() != 8*time.Second {
+	if n.MuxPingInterval != 8 || legacy.PingInterval() != 8*time.Second {
 		t.Fatalf("mux ping interval not loaded correctly")
 	}
 }
@@ -104,10 +105,10 @@ func TestGetBridgeListenersInvalidPort(t *testing.T) {
 		set  func()
 		call func() (net.Listener, error)
 	}{
-		{"tcp", func() { BridgeTcpPort = 0 }, GetBridgeTcpListener},
-		{"tls", func() { BridgeTlsPort = 70000 }, GetBridgeTlsListener},
-		{"ws", func() { BridgeWsPort = -1 }, GetBridgeWsListener},
-		{"wss", func() { BridgeWssPort = 0 }, GetBridgeWssListener},
+		{"tcp", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPPort = 0 }) }, GetBridgeTcpListener},
+		{"tls", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSPort = 70000 }) }, GetBridgeTlsListener},
+		{"ws", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSPort = -1 }) }, GetBridgeWsListener},
+		{"wss", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSPort = 0 }) }, GetBridgeWssListener},
 	}
 
 	for _, tt := range tests {
@@ -124,8 +125,8 @@ func TestGetBridgeListenersInvalidPort(t *testing.T) {
 
 func TestGetBridgeTcpListenerValid(t *testing.T) {
 	pMux = nil
-	BridgeTcpIp = "127.0.0.1"
-	BridgeTcpPort = getAvailablePort(t)
+	setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPIP = "127.0.0.1" })
+	setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPPort = getAvailablePort(t) })
 
 	l, err := GetBridgeTcpListener()
 	if err != nil {
@@ -141,18 +142,18 @@ func TestGetBridgeTlsWsWssListenersValid(t *testing.T) {
 		call func() (net.Listener, error)
 	}{
 		{"tls", func() {
-			BridgeTlsIp = "127.0.0.1"
-			BridgeTlsPort = getAvailablePort(t)
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSIP = "127.0.0.1" })
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSPort = getAvailablePort(t) })
 		}, GetBridgeTlsListener},
 		{"ws", func() {
-			BridgeWsIp = "127.0.0.1"
-			BridgeWsPort = getAvailablePort(t)
-			BridgePath = "/ws"
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSIP = "127.0.0.1" })
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSPort = getAvailablePort(t) })
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgePath = "/ws" })
 		}, GetBridgeWsListener},
 		{"wss", func() {
-			BridgeWssIp = "127.0.0.1"
-			BridgeWssPort = getAvailablePort(t)
-			BridgePath = "/wss"
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSIP = "127.0.0.1" })
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSPort = getAvailablePort(t) })
+			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgePath = "/wss" })
 		}, GetBridgeWssListener},
 	}
 
@@ -167,4 +168,14 @@ func TestGetBridgeTlsWsWssListenersValid(t *testing.T) {
 			_ = l.Close()
 		})
 	}
+}
+
+// setNet changes the listener settings for the rest of the test.
+func setNet(t *testing.T, change func(*servercfg.NetworkConfig)) {
+	t.Helper()
+	old := Network()
+	t.Cleanup(func() { Configure(old) })
+	n := old
+	change(&n)
+	Configure(n)
 }

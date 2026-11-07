@@ -245,9 +245,9 @@ func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
 		_ = AddTask(t)
 		service = NewWebServer(Bridge)
 	case "httpHostServer":
-		httpPort := connection.HttpPort
-		httpsPort := connection.HttpsPort
-		http3Port := connection.Http3Port
+		httpPort := connection.Network().HTTPProxyPort
+		httpsPort := connection.Network().HTTPSProxyPort
+		http3Port := connection.Network().HTTP3ProxyPort
 		// http cache settings are currently unused.
 		addOrigin := cfg.Proxy.AddOriginHeader
 		httpOnlyPass := cfg.Auth.HTTPOnlyPass

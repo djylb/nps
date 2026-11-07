@@ -8,11 +8,11 @@ import (
 )
 
 func TestDefaultSystemServiceBridgeDisplayHandlesEmptyQuicALPN(t *testing.T) {
-	oldALPN := append([]string(nil), connection.QuicAlpn...)
-	connection.QuicAlpn = nil
-	defer func() {
-		connection.QuicAlpn = oldALPN
-	}()
+	old := connection.Network()
+	defer connection.Configure(old)
+	n := old
+	n.QUICALPNList = nil
+	connection.Configure(n)
 
 	display := DefaultSystemService{}.BridgeDisplay(&servercfg.Snapshot{
 		Bridge: servercfg.BridgeConfig{

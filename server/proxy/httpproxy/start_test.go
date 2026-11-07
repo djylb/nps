@@ -14,6 +14,7 @@ import (
 
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
+	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/proxy"
 )
@@ -24,12 +25,11 @@ func TestServeReturnsListenerError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = taken.Close() }()
-	ip, port := connection.HttpIp, connection.HttpPort
-	defer func() { connection.HttpIp, connection.HttpPort = ip, port }()
-	connection.HttpIp = "127.0.0.1"
-	connection.HttpPort = taken.Addr().(*net.TCPAddr).Port
+	withNetwork(t, func(n *servercfg.NetworkConfig) {
+		n.HTTPProxyIP, n.HTTPProxyPort = "127.0.0.1", taken.Addr().(*net.TCPAddr).Port
+	})
 
-	s := &HttpProxy{BaseServer: proxy.NewBaseServer(nil, nil, false), HttpPort: connection.HttpPort}
+	s := &HttpProxy{BaseServer: proxy.NewBaseServer(nil, nil, false), HttpPort: connection.Network().HTTPProxyPort}
 	err = s.serve()
 	if err == nil || !strings.Contains(err.Error(), "HTTP listener") {
 		t.Fatalf("serve() = %v, want an HTTP listener error", err)
@@ -50,15 +50,15 @@ func TestServeReportsPartialBindAndCloseStopsTheRest(t *testing.T) {
 	}
 	free := probe.Addr().(*net.TCPAddr).Port
 	_ = probe.Close()
-	ip, port, tls := connection.HttpIp, connection.HttpPort, connection.HttpsPort
-	defer func() { connection.HttpIp, connection.HttpPort, connection.HttpsPort = ip, port, tls }()
-	connection.HttpIp, connection.HttpPort = "127.0.0.1", free
-	connection.HttpsPort = taken.Addr().(*net.TCPAddr).Port
+	withNetwork(t, func(n *servercfg.NetworkConfig) {
+		n.HTTPProxyIP, n.HTTPProxyPort = "127.0.0.1", free
+		n.HTTPSProxyPort = taken.Addr().(*net.TCPAddr).Port
+	})
 
 	s := &HttpProxy{
 		BaseServer:     proxy.NewBaseServer(nil, nil, false),
 		HttpPort:       free,
-		HttpsPort:      connection.HttpsPort,
+		HttpsPort:      connection.Network().HTTPSProxyPort,
 		HttpProxyCache: index.NewAnyIntIndex(),
 	}
 	if err := s.serve(); err == nil || !strings.Contains(err.Error(), "HTTPS listener") {
@@ -87,20 +87,19 @@ func TestStopErrorHidesClosing(t *testing.T) {
 // Close may run at any point of serve: serve must end either way, and a
 // server it bound must not outlive Close.
 func TestServeAndCloseConcurrently(t *testing.T) {
-	ip, port := connection.HttpIp, connection.HttpPort
-	defer func() { connection.HttpIp, connection.HttpPort = ip, port }()
-	connection.HttpIp = "127.0.0.1"
 	for range 20 {
 		probe, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		connection.HttpPort = probe.Addr().(*net.TCPAddr).Port
+		withNetwork(t, func(n *servercfg.NetworkConfig) {
+			n.HTTPProxyIP, n.HTTPProxyPort = "127.0.0.1", probe.Addr().(*net.TCPAddr).Port
+		})
 		_ = probe.Close()
 
 		s := &HttpProxy{
 			BaseServer:     proxy.NewBaseServer(nil, nil, false),
-			HttpPort:       connection.HttpPort,
+			HttpPort:       connection.Network().HTTPProxyPort,
 			HttpProxyCache: index.NewAnyIntIndex(),
 		}
 		done := make(chan error, 1)
@@ -151,4 +150,14 @@ func TestProxyProtocolConnectionsAreNotReused(t *testing.T) {
 	if n := count(0); n != 1 {
 		t.Fatalf("without PROXY header: %d backend connections, want 1", n)
 	}
+}
+
+// withNetwork changes the listener settings for the rest of the test.
+func withNetwork(t *testing.T, change func(*servercfg.NetworkConfig)) {
+	t.Helper()
+	old := connection.Network()
+	t.Cleanup(func() { connection.Configure(old) })
+	n := old
+	change(&n)
+	connection.Configure(n)
 }
