@@ -20,7 +20,7 @@ func init() { Register(&testAuth, &testLimit, &testQuiet) }
 func newBuffered(t *testing.T, level string) *Logs {
 	t.Helper()
 	l := New()
-	if err := l.Configure(Config{Output: "off", Level: level, Buffer: 1 << 16}); err != nil {
+	if err := l.Configure(Config{Output: "off", Level: level, Memory: 4096}); err != nil {
 		t.Fatal(err)
 	}
 	return l
@@ -114,7 +114,7 @@ func TestFileFallback(t *testing.T) {
 	l := New()
 	blocker := filepath.Join(t.TempDir(), "f")
 	_ = os.WriteFile(blocker, nil, 0o644)
-	if err := l.Configure(Config{Output: "file", File: Rotation{Path: filepath.Join(blocker, "x.log")}, Buffer: 4096}); err != nil {
+	if err := l.Configure(Config{Output: "file", File: Rotation{Path: filepath.Join(blocker, "x.log")}, Memory: 4096}); err != nil {
 		t.Fatal(err)
 	}
 	if got := l.TakeBuffered(); !strings.Contains(got, "event=log_fallback") {
@@ -124,13 +124,13 @@ func TestFileFallback(t *testing.T) {
 
 func TestRotation(t *testing.T) {
 	dir := t.TempDir()
-	r, err := openRotating(Rotation{Path: filepath.Join(dir, "n.log"), MaxSize: 100, MaxFiles: 2})
+	r, err := OpenRotating(Rotation{Path: filepath.Join(dir, "n.log"), MaxSize: 100, MaxFiles: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	line := []byte(strings.Repeat("x", 60) + "\n")
 	for range 8 {
-		_, _ = r.Write(line)
+		_ = r.Write(line)
 	}
 	_ = r.Close()
 	m, _ := filepath.Glob(filepath.Join(dir, "n-*.log"))

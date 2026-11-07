@@ -26,8 +26,8 @@ type Options struct {
 	Compress bool
 	// Service: a service has no console, so stdout means the file.
 	Service bool
-	// Buffer keeps the last bytes of lines in memory (npc SDK).
-	Buffer int
+	// Memory keeps the last entries in memory (npc SDK, a log viewer).
+	Memory int
 }
 
 // Config returns the obs configuration of o.
@@ -53,7 +53,7 @@ func (o Options) Config() (obs.Config, error) {
 	if o.Service && out == "stdout" && path != "" {
 		out = "file"
 	}
-	c := obs.Config{Output: out, Level: o.Level, Buffer: o.Buffer}
+	c := obs.Config{Output: out, Level: o.Level, Memory: o.Memory, Pretty: true}
 	switch strings.ToLower(o.Format) {
 	case "", "text", "logfmt":
 	case "json":

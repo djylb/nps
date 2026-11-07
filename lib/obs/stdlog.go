@@ -12,8 +12,6 @@ import (
 // TLSHandshakeFailed is a TLS handshake that net/http reported failing.
 var TLSHandshakeFailed = Def{Name: "tls_handshake_failed", Level: slog.LevelDebug, Limit: "src_ip"}
 
-func init() { Register(&TLSHandshakeFailed) }
-
 // lineWriter turns each Write of a *log.Logger into one line.
 type lineWriter struct {
 	l     *slog.Logger

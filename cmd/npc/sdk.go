@@ -17,7 +17,7 @@ import (
 var cl *client.TRPClient
 
 func init() {
-	_ = logsetup.Apply(logsetup.Options{Output: "off", Level: "trace", Buffer: 64 << 10})
+	_ = logsetup.Apply(logsetup.Options{Output: "off", Level: "trace", Memory: 1000})
 }
 
 //export StartClientByVerifyKey

@@ -355,6 +355,7 @@ func (p *Npc) run() error {
 	run(p.ctx, p.cancel)
 	<-p.exit
 	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
+	obs.Default.Flush()
 	return nil
 }
 

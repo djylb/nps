@@ -1,65 +1,98 @@
 package obs
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
 
-// Config says where and how lines are written. The zero Config writes text
-// at info level to stderr.
+// Keys of the fixed fields.
+const (
+	KeyEvent      = "event"
+	KeyModule     = "module"
+	KeySuppressed = "suppressed"
+)
+
+// Config says where and how lines go. The zero Config writes logfmt at info
+// level to stderr.
+//
+// The fields up to Routes are shorthands for the common routes: a console,
+// a file, a security file and an in-memory viewer, all but the security
+// file taking the lines the level table lets through. Routes adds any
+// others.
 type Config struct {
-	// Output is "stderr" (or "stdout"), "file", "both" (console and file)
-	// or "off".
+	// Output is "stderr", "stdout", "file", "both" (stderr and file) or
+	// "off".
 	Output string
+	// Format of the console and the files.
 	Format Format
-	// Level is a default level and per-module overrides,
-	// "info,bridge=debug,p2p=warn"; empty is info.
+	// Pretty makes the console use PrettyEncoder when it is a terminal,
+	// whatever Format says, coloured.
+	Pretty bool
+	// Level is a default level and per-module ones, "info,bridge=debug".
 	Level string
 	// File is the log file for "file" and "both".
 	File Rotation
-	// SecurityFile, when set, also receives every line of a security event
-	// (Def.Security), whatever the module levels.
+	// SecurityFile, when set, receives every security event.
 	SecurityFile Rotation
-	// Buffer, when positive, keeps the last Buffer bytes of lines in memory
-	// for TakeBuffered.
-	Buffer int
+	// Memory, when positive, keeps that many entries for Logs.Memory.
+	Memory int
+	// Async, when positive, writes files through a queue of that many
+	// lines, so a slow disk never slows the caller; lines that do not fit
+	// are dropped and counted.
+	Async int
+	// Routes are further destinations.
+	Routes []Route
+
+	// AddSource adds source=file:line to every line.
+	AddSource bool
+	// StackFrom, when set, adds the stack to lines at or above it.
+	StackFrom *slog.Level
+	// Context returns attributes a context carries, such as a request id,
+	// for lines logged with one.
+	Context func(context.Context) []slog.Attr
+	// Sample, when set, samples plain lines (not events) per module,
+	// level and message.
+	Sample *Sampling
 }
 
-// Sink receives every event defined with Def.Bus, after level filtering
-// would have applied to its line but whether or not the line is written.
-// It must not block.
+// Sink receives every bus event (Def.Bus), whatever the levels. It must not
+// block.
 type Sink func(d *Def, attrs []slog.Attr)
 
-// Logs is a process's logging. Its loggers, from Module, keep working across
-// Configure.
+// Logs is a process's logging. Its loggers keep working across Configure.
 type Logs struct {
-	st      atomic.Pointer[state]
+	levels  *Levels
+	pipe    atomic.Pointer[pipeline]
 	sink    atomic.Pointer[Sink]
-	limiter limiter
+	sampler sampler
 	mu      sync.Mutex // Configure and Close
+	taken   atomic.Uint64
 }
 
-type state struct {
-	format   Format
-	console  *output
-	file     *output
-	security *output
-	buffer   *ring
-	levels   levels
-	closers  []io.Closer
-	fallback string // why the file could not be opened
+// pipeline is one configuration, replaced whole.
+type pipeline struct {
+	routes    []Route
+	below     bool // a route sees lines below the level table
+	closers   []Output
+	memory    *Memory
+	addSource bool
+	stackFrom *slog.Level
+	ctxAttrs  func(context.Context) []slog.Attr
+	sample    *Sampling
 }
 
-// New returns Logs that write text at info level to stderr until Configure.
+// New returns Logs that write logfmt at info level to stderr until
+// Configure.
 func New() *Logs {
-	l := &Logs{}
-	l.st.Store(&state{console: &output{w: os.Stderr}, levels: levels{def: slog.LevelInfo}})
+	l := &Logs{levels: newLevels()}
+	l.pipe.Store(&pipeline{routes: []Route{{Name: "console", Output: WriterOutput(os.Stderr)}}})
 	return l
 }
 
@@ -74,78 +107,101 @@ func (l *Logs) Module(name string) *slog.Logger {
 	return slog.New(&handler{logs: l, module: name})
 }
 
-// Configure replaces how l writes. A file that cannot be opened falls back
-// to stderr with a warning line rather than failing; an invalid Level is an
-// error and changes nothing.
+// Handler returns a handler with no module, for slog.SetDefault or a
+// library that takes one.
+func (l *Logs) Handler() slog.Handler { return &handler{logs: l} }
+
+// Levels returns the level table.
+func (l *Logs) Levels() *Levels { return l.levels }
+
+// SetLevel is Levels().Set.
+func (l *Logs) SetLevel(spec string) error { return l.levels.Set(spec) }
+
+// Memory returns the in-memory entries of Config.Memory, or nil.
+func (l *Logs) Memory() *Memory { return l.pipe.Load().memory }
+
+// Configure replaces where and how l writes. A file that cannot be opened
+// falls back to stderr with a log_fallback line rather than failing; an
+// invalid Output or Level is an error and changes nothing.
 func (l *Logs) Configure(c Config) error {
 	lv, err := parseLevels(c.Level)
 	if err != nil {
 		return err
 	}
-	st := &state{format: c.Format, levels: lv}
 	out := strings.ToLower(c.Output)
 	switch out {
 	case "", "stderr", "stdout", "console", "file", "both", "off":
 	default:
 		return fmt.Errorf("unknown log output %q", c.Output)
 	}
-	wantFile := out == "file" || out == "both"
-	if wantFile && c.File.Path != "" {
-		w, err := openRotating(c.File)
+	p := &pipeline{addSource: c.AddSource, stackFrom: c.StackFrom, ctxAttrs: c.Context, sample: c.Sample}
+	var fallback []string
+	open := func(r Rotation) Output {
+		f, err := OpenRotating(r)
 		if err != nil {
-			st.fallback = err.Error()
-			wantFile = false
-		} else {
-			st.file = &output{w: w}
-			st.closers = append(st.closers, w)
+			fallback = append(fallback, err.Error())
+			return nil
 		}
-	} else if wantFile {
-		wantFile = false
+		var o Output = f
+		if c.Async > 0 {
+			o = Async(f, c.Async)
+		}
+		p.closers = append(p.closers, o)
+		return o
 	}
-	switch {
-	case out == "stdout":
-		st.console = &output{w: os.Stdout}
-	case out == "off":
-	case out == "file" && wantFile:
-	default: // stderr, console, both, or a file that could not be opened
-		st.console = &output{w: os.Stderr}
+	enc := c.Format.Encoder(false)
+	console := out == "" || out == "stderr" || out == "stdout" || out == "console" || out == "both"
+	if out == "file" || out == "both" {
+		if c.File.Path == "" {
+			console = true
+		} else if o := open(c.File); o != nil {
+			p.routes = append(p.routes, Route{Name: "file", Encoder: enc, Output: o})
+		} else {
+			console = true
+		}
+	}
+	if console {
+		w := os.Stderr
+		if out == "stdout" {
+			w = os.Stdout
+		}
+		ce := enc
+		if c.Pretty && isTerminal(w) {
+			ce = PrettyEncoder{Color: true}
+		}
+		p.routes = append(p.routes, Route{Name: "console", Encoder: ce, Output: WriterOutput(w)})
 	}
 	if c.SecurityFile.Path != "" {
-		if w, err := openRotating(c.SecurityFile); err == nil {
-			st.security = &output{w: w}
-			st.closers = append(st.closers, w)
-		} else if st.fallback == "" {
-			st.fallback = err.Error()
+		if o := open(c.SecurityFile); o != nil {
+			p.routes = append(p.routes, Route{Name: "security", Match: SecurityEvents, Encoder: enc, Output: o})
 		}
 	}
-	if c.Buffer > 0 {
-		st.buffer = newRing(c.Buffer)
+	if c.Memory > 0 {
+		p.memory = NewMemory(c.Memory)
+		p.routes = append(p.routes, Route{Name: "memory", Memory: p.memory})
+	}
+	p.routes = append(p.routes, c.Routes...)
+	for _, r := range p.routes {
+		p.below = p.below || r.Below
 	}
 	l.mu.Lock()
-	old := l.st.Swap(st)
+	l.levels.mu.Lock()
+	l.levels.base = lv
+	l.levels.publish()
+	l.levels.mu.Unlock()
+	old := l.pipe.Swap(p)
 	l.mu.Unlock()
-	for _, c := range old.closers {
-		_ = c.Close()
-	}
-	if st.fallback != "" {
-		Emit(l.Module("obs"), &LogFallback, "reason", st.fallback)
+	closeAll(old.closers)
+	for _, f := range fallback {
+		Emit(l.Module("obs"), &LogFallback, "reason", f)
 	}
 	return nil
 }
 
-// SetLevel changes the levels as Config.Level says.
-func (l *Logs) SetLevel(spec string) error {
-	lv, err := parseLevels(spec)
-	if err != nil {
-		return err
+func closeAll(os []Output) {
+	for _, o := range os {
+		_ = o.Close()
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	cur := l.st.Load()
-	n := *cur
-	n.levels = lv
-	l.st.Store(&n)
-	return nil
 }
 
 // SetSink sets the Sink of bus events; nil removes it.
@@ -157,167 +213,129 @@ func (l *Logs) SetSink(s Sink) {
 	l.sink.Store(&s)
 }
 
-// Reopen reopens the log files, for an external logrotate (SIGHUP).
+// Reopen reopens the log files, after an external rotation (SIGHUP).
 func (l *Logs) Reopen() {
-	st := l.st.Load()
-	for _, c := range st.closers {
-		if r, ok := c.(*rotating); ok {
-			r.reopen()
+	for _, o := range l.pipe.Load().closers {
+		if r, ok := o.(Reopener); ok {
+			_ = r.Reopen()
 		}
 	}
 }
 
-// TakeBuffered returns and clears the in-memory buffer.
-func (l *Logs) TakeBuffered() string {
-	if b := l.st.Load().buffer; b != nil {
-		return b.take()
+// Flush writes out what asynchronous outputs hold and syncs the files.
+func (l *Logs) Flush() {
+	for _, r := range l.pipe.Load().routes {
+		if f, ok := r.Output.(Flusher); ok {
+			_ = f.Flush()
+		}
 	}
-	return ""
 }
 
-// Close closes the files; lines after it go to stderr.
+// TakeBuffered returns the in-memory entries not taken before, as logfmt.
+func (l *Logs) TakeBuffered() string {
+	m := l.Memory()
+	if m == nil {
+		return ""
+	}
+	es := m.Query(Query{After: l.taken.Load(), AnyLevel: true})
+	if len(es) == 0 {
+		return ""
+	}
+	l.taken.Store(es[len(es)-1].Seq)
+	var b []byte
+	for _, e := range es {
+		r := Record{Time: e.Time, Level: e.Level, Module: e.Module, Event: e.Event, Msg: e.Msg}
+		for _, f := range e.Attrs {
+			r.Attrs = append(r.Attrs, slog.String(f.Key, f.Value))
+		}
+		b = TextEncoder{}.Encode(b, &r)
+	}
+	return string(b)
+}
+
+// Close flushes and closes the files; lines after it go to stderr.
 func (l *Logs) Close() {
 	l.mu.Lock()
-	old := l.st.Swap(&state{console: &output{w: os.Stderr}, levels: levels{def: slog.LevelInfo}})
+	old := l.pipe.Swap(&pipeline{routes: []Route{{Name: "console", Output: WriterOutput(os.Stderr)}}})
 	l.mu.Unlock()
-	for _, c := range old.closers {
-		_ = c.Close()
-	}
+	closeAll(old.closers)
+	l.levels.stop()
 }
 
+// enabled reports whether a line of module at lv may be written anywhere.
 func (l *Logs) enabled(module string, lv slog.Level) bool {
-	st := l.st.Load()
-	return (st.console != nil || st.file != nil || st.buffer != nil) && lv >= st.levels.of(module)
+	if l.pipe.Load().below {
+		return true
+	}
+	return lv >= l.levels.Of(module)
 }
 
-func (l *Logs) emit(ln *line) {
-	st := l.st.Load()
-	d := lookup(ln.event)
-	if d != nil && d.Limit != "" {
-		n, ok := l.limiter.allow(d, ln.attrs, ln.t)
-		if !ok {
+var bufPool = sync.Pool{New: func() any { b := make([]byte, 0, 512); return &b }}
+
+// dispatch samples r and hands it to the routes that take it.
+func (l *Logs) dispatch(p *pipeline, r *Record) {
+	if d := r.Def; d != nil {
+		if s, field, ok := d.sampling(); ok {
+			n, pass := l.sampler.allow(sampleKey(r, field), s, r.Time)
+			if !pass {
+				return
+			}
+			if n > 0 {
+				r.Attrs = append(r.Attrs, slog.Uint64(KeySuppressed, n))
+			}
+		}
+		if d.Bus {
+			if s := l.sink.Load(); s != nil {
+				(*s)(d, r.Attrs)
+			}
+		}
+	} else if p.sample != nil {
+		n, pass := l.sampler.allow(sampleKey(r, ""), *p.sample, r.Time)
+		if !pass {
 			return
 		}
 		if n > 0 {
-			ln.attrs = append(ln.attrs, slog.Uint64(KeySuppressed, n))
+			r.Attrs = append(r.Attrs, slog.Uint64(KeySuppressed, n))
 		}
 	}
-	if d != nil && d.Bus {
-		if s := l.sink.Load(); s != nil {
-			(*s)(d, ln.attrs)
+	bp := bufPool.Get().(*[]byte)
+	for i := range p.routes {
+		rt := &p.routes[i]
+		if rt.takes(r, l.levels) {
+			rt.deliver(r, bp)
 		}
-	}
-	toMain := ln.level >= st.levels.of(ln.module)
-	toSec := d != nil && d.Security && st.security != nil
-	if !toMain && !toSec {
-		return
-	}
-	bp := ln.encode(st.format)
-	if toMain {
-		if st.console != nil {
-			st.console.write(*bp)
-		}
-		if st.file != nil {
-			st.file.write(*bp)
-		}
-		if st.buffer != nil {
-			st.buffer.write(*bp)
-		}
-	}
-	if toSec {
-		st.security.write(*bp)
 	}
 	if cap(*bp) <= 64<<10 {
 		bufPool.Put(bp)
 	}
 }
 
-// levels is a default level and per-module ones.
-type levels struct {
-	def     slog.Level
-	modules map[string]slog.Level
-}
-
-func (v levels) of(module string) slog.Level {
-	if l, ok := v.modules[module]; ok {
-		return l
+func source(pc uintptr) string {
+	if pc == 0 {
+		return ""
 	}
-	return v.def
-}
-
-// ParseLevel reads one level name: trace, debug, info, warn, error, off.
-func ParseLevel(s string) (slog.Level, error) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "trace", "7":
-		return LevelTrace, nil
-	case "debug", "6":
-		return slog.LevelDebug, nil
-	case "", "info", "notice", "5":
-		return slog.LevelInfo, nil
-	case "warn", "warning", "4":
-		return slog.LevelWarn, nil
-	case "error", "fatal", "panic", "critical", "alert", "emergency", "3", "2", "1":
-		return slog.LevelError, nil
-	case "off", "disabled", "none", "0":
-		return slog.Level(1 << 20), nil
+	fs := runtime.CallersFrames([]uintptr{pc})
+	f, _ := fs.Next()
+	if f.File == "" {
+		return ""
 	}
-	return 0, fmt.Errorf("unknown log level %q", s)
-}
-
-func parseLevels(spec string) (levels, error) {
-	v := levels{def: slog.LevelInfo}
-	for part := range strings.SplitSeq(spec, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
+	file := f.File
+	if i := strings.LastIndexByte(file, '/'); i >= 0 {
+		if j := strings.LastIndexByte(file[:i], '/'); j >= 0 {
+			file = file[j+1:]
 		}
-		mod, name, ok := strings.Cut(part, "=")
-		if !ok {
-			l, err := ParseLevel(part)
-			if err != nil {
-				return levels{}, err
-			}
-			v.def = l
-			continue
-		}
-		l, err := ParseLevel(name)
-		if err != nil {
-			return levels{}, err
-		}
-		mod = strings.TrimSpace(mod)
-		if mod == "" {
-			return levels{}, errors.New("log level without a module: " + part)
-		}
-		if v.modules == nil {
-			v.modules = map[string]slog.Level{}
-		}
-		v.modules[mod] = l
 	}
-	return v, nil
+	return file + ":" + strconv.Itoa(f.Line)
 }
 
-// ring keeps the last bytes written.
-type ring struct {
-	mu  sync.Mutex
-	buf []byte
-	max int
+func stack() string {
+	buf := make([]byte, 16<<10)
+	n := runtime.Stack(buf, false)
+	return string(buf[:n])
 }
 
-func newRing(n int) *ring { return &ring{max: n} }
-
-func (r *ring) write(p []byte) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.buf = append(r.buf, p...)
-	if over := len(r.buf) - r.max; over > 0 {
-		r.buf = append(r.buf[:0], r.buf[over:]...)
-	}
-}
-
-func (r *ring) take() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	s := string(r.buf)
-	r.buf = r.buf[:0]
-	return s
+// isTerminal reports whether f is a terminal.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }

@@ -24,9 +24,9 @@ type Rotation struct {
 
 const defaultMaxSize = 64 << 20
 
-// rotating is a file that rotates itself by size: the full file is renamed
+// Rotating is an Output to a file that rotates itself by size: the full file is renamed
 // to <name>-<time><ext> and a new one is started.
-type rotating struct {
+type Rotating struct {
 	mu   sync.Mutex
 	cfg  Rotation
 	f    *os.File
@@ -34,21 +34,22 @@ type rotating struct {
 	bg   sync.WaitGroup
 }
 
-func openRotating(c Rotation) (*rotating, error) {
+// OpenRotating opens the file of c, creating its directory.
+func OpenRotating(c Rotation) (*Rotating, error) {
 	if c.MaxSize == 0 {
 		c.MaxSize = defaultMaxSize
 	}
 	if err := os.MkdirAll(filepath.Dir(c.Path), 0o755); err != nil {
 		return nil, err
 	}
-	r := &rotating{cfg: c}
+	r := &Rotating{cfg: c}
 	if err := r.open(); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
-func (r *rotating) open() error {
+func (r *Rotating) open() error {
 	f, err := os.OpenFile(r.cfg.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
@@ -62,12 +63,12 @@ func (r *rotating) open() error {
 	return nil
 }
 
-func (r *rotating) Write(p []byte) (int, error) {
+func (r *Rotating) Write(p []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.f == nil {
 		if err := r.open(); err != nil {
-			return 0, err
+			return err
 		}
 	}
 	if r.cfg.MaxSize > 0 && r.size > 0 && r.size+int64(len(p)) > r.cfg.MaxSize {
@@ -75,11 +76,11 @@ func (r *rotating) Write(p []byte) (int, error) {
 	}
 	n, err := r.f.Write(p)
 	r.size += int64(n)
-	return n, err
+	return err
 }
 
 // rotate renames the current file and starts a new one; r.mu is held.
-func (r *rotating) rotate() {
+func (r *Rotating) rotate() {
 	_ = r.f.Close()
 	r.f = nil
 	ext := filepath.Ext(r.cfg.Path)
@@ -100,18 +101,28 @@ func (r *rotating) rotate() {
 	}
 }
 
-// reopen closes and reopens the file, after an external rotation.
-func (r *rotating) reopen() {
+// Reopen closes and reopens the file, after an external rotation.
+func (r *Rotating) Reopen() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.f != nil {
 		_ = r.f.Close()
 	}
 	r.f = nil
-	_ = r.open()
+	return r.open()
 }
 
-func (r *rotating) Close() error {
+// Flush syncs the file to disk.
+func (r *Rotating) Flush() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.f != nil {
+		return r.f.Sync()
+	}
+	return nil
+}
+
+func (r *Rotating) Close() error {
 	r.mu.Lock()
 	var err error
 	if r.f != nil {
@@ -124,7 +135,7 @@ func (r *rotating) Close() error {
 }
 
 // prune removes rotated files beyond MaxFiles or older than MaxAge.
-func (r *rotating) prune(base, ext string) {
+func (r *Rotating) prune(base, ext string) {
 	if r.cfg.MaxFiles <= 0 && r.cfg.MaxAge <= 0 {
 		return
 	}

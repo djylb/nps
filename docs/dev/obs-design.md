@@ -19,6 +19,7 @@ obs 是 `log/slog` 之上的一层：提供 handler、路由、事件与运维�
 | 上下文传递 | — | `Ctx(ctx)` | 从 `context` 中提取关联字段（会话 ID、请求 ID、trace），通过 `ContextAttrs` 注入 |
 | 测试 | zaptest/observer | — | `obstest.Recorder`：在内存里记录结构化记录，可按事件或字段断言 |
 | 脱敏 | — | — | `Redacted` 类型，另可按字段名配置屏蔽表 |
+| 网页查看 | — | — | `Memory`：保存最近 N 条结构化记录，支持查询（级别、模块、事件、时间、关键字、按序号增量拉取）和订阅（订阅端慢则丢弃并计数），网页通过 SSE 或 WebSocket 接入 |
 | 固定事件 | — | — | `Def`：名字、级别、是否安全事件、是否进总线、限频规则；**一个定义同时供日志和总线使用** |
 
 ## 结构
@@ -59,6 +60,19 @@ obstest.NewRecorder()                     // 测试
 ```
 
 Config 可以用代码构建，也可以从一份简单的配置（JSON 或键值）解析，nps.conf 和新版 JSON 配置都能直接映射过来。
+
+## 格式取舍（主流方案调研）
+
+- JSON Lines（zerolog、zap 生产模式、容器日志、Loki、ES）：机器直接解析，保留类型；
+- logfmt（Heroku、Grafana 系、slog TextHandler）：人能读、grep 和 fail2ban 友好；
+- 终端美化：只给人看，不作为契约；
+- 字段命名标准：OpenTelemetry Logs 语义约定、Elastic ECS，只定字段名、不定格式。
+
+三种编码器都内置，字段完全一致，可以无损互转。终端（tty）默认用美化格式，文件和管道默认用 logfmt，`json` 可选。以后可以加 OTel 字段映射或 OTLP 输出，契约不变。
+
+## 实现状态（2026-11-08）
+
+已实现：`Record` 携带 `*Def`、三种编码器、`Output`/`Rotating`/`Async`/`WriterOutput`、`Route` 与 `Match`、`Levels`（`Set`/`Raise`/`Lower`/`ServeHTTP`）、限频与采样、`AddSource`、`StackFrom`、`Context`、`Memory`（查询与订阅）、`obstest.Recorder`、`HTTPErrorLog`、`CaptureStdLog`。
 
 ## 与 nps 的边界
 

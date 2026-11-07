@@ -205,6 +205,7 @@ func main() {
 		srv := prg.mustRun()
 		<-srv.Done()
 		log.Error("nps stopped", "err", srv.Close())
+		obs.Default.Close()
 		os.Exit(1)
 	}
 
@@ -356,6 +357,7 @@ func (p *nps) run() error {
 	}
 	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
 	_ = srv.Close()
+	obs.Default.Flush()
 	close(p.stopped)
 	return nil
 }
