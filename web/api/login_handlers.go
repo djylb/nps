@@ -4,10 +4,12 @@ import (
 	"errors"
 	"math/rand"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/djylb/netx/forwarded"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
@@ -244,18 +246,31 @@ func (a *App) doLogin(c Context, username, password, totp string) bool {
 }
 
 // VisitorIP returns the address of the visitor of a web request: the peer,
-// or the X-Real-IP header a trusted proxy sets. It is the one resolver of the
-// visitor address for the web interface; gin's own ClientIP is not used.
+// or the X-Real-IP header a trusted proxy sets, or that a request carrying
+// the HTTP-only pass sets. A header value that is not an IP address, with or
+// without a port, is ignored. It is the one resolver of the visitor address
+// for the web interface; gin's own ClientIP is not used.
 func VisitorIP(c Context, cfg *servercfg.Snapshot) string {
-	ip := requestRemoteIP(c)
-	httpOnlyPass := cfg.Auth.HTTPOnlyPass
-	if (cfg.Auth.AllowXRealIP && auth.IsTrustedProxy(cfg.Auth.TrustedProxyIPs, ip)) ||
-		(httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass) {
-		if realIP := c.RequestHeader("X-Real-IP"); realIP != "" {
-			ip = realIP
-		}
+	peer, err := netip.ParseAddrPort(c.RemoteAddr())
+	if err != nil {
+		return requestRemoteIP(c)
 	}
-	return ip
+	var trusted string
+	switch httpOnlyPass := cfg.Auth.HTTPOnlyPass; {
+	case httpOnlyPass != "" && c.RequestHeader("X-NPS-Http-Only") == httpOnlyPass:
+		trusted = "*"
+	case cfg.Auth.AllowXRealIP:
+		trusted = cfg.Auth.TrustedProxyIPs
+	}
+	if trusted == "" {
+		return peer.Addr().Unmap().String()
+	}
+	r := forwarded.Resolver{Trusted: auth.TrustedProxies(trusted), Header: forwarded.HeaderXRealIP}
+	var header map[string][]string
+	if v := c.RequestHeader("X-Real-IP"); v != "" {
+		header = map[string][]string{"X-Real-Ip": {v}}
+	}
+	return r.Resolve(peer, header).Addr.Addr().String()
 }
 
 func requestRemoteIP(c Context) string {
