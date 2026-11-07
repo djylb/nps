@@ -253,7 +253,7 @@ func dealCommon(s string) *CommonConfig {
 		case "conn_type":
 			c.Tp = item[1]
 		case "auto_reconnection":
-			c.AutoReconnection = textutil.GetBoolByStr(item[1])
+			c.AutoReconnection = parseBool(item)
 		case "basic_username":
 			c.Client.Cnf.U = item[1]
 		case "basic_password":
@@ -263,9 +263,9 @@ func dealCommon(s string) *CommonConfig {
 		case "web_username":
 			c.Client.WebUserName = item[1]
 		case "compress":
-			c.Client.Cnf.Compress = textutil.GetBoolByStr(item[1])
+			c.Client.Cnf.Compress = parseBool(item)
 		case "crypt":
-			c.Client.Cnf.Crypt = textutil.GetBoolByStr(item[1])
+			c.Client.Cnf.Crypt = parseBool(item)
 		case "proxy_url":
 			c.ProxyUrl = item[1]
 		case "local_ip":
@@ -291,7 +291,7 @@ func dealCommon(s string) *CommonConfig {
 		case "disconnect_timeout":
 			c.DisconnectTime = textutil.GetIntNoErrByStr(item[1])
 		case "tls_enable":
-			c.TlsEnable = textutil.GetBoolByStr(item[1])
+			c.TlsEnable = parseBool(item)
 		}
 	}
 	return c
@@ -334,19 +334,19 @@ func dealHost(s string) (*model.Host, error) {
 		case "key_file":
 			h.KeyFile, _ = crypt.GetCertContent(item[1], "PRIVATE")
 		case "https_just_proxy":
-			h.HttpsJustProxy = textutil.GetBoolByStr(item[1])
+			h.HttpsJustProxy = parseBool(item)
 		case "auto_ssl":
-			h.AutoSSL = textutil.GetBoolByStr(item[1])
+			h.AutoSSL = parseBool(item)
 		case "auto_https":
-			h.AutoHttps = textutil.GetBoolByStr(item[1])
+			h.AutoHttps = parseBool(item)
 		case "auto_cors":
-			h.AutoCORS = textutil.GetBoolByStr(item[1])
+			h.AutoCORS = parseBool(item)
 		case "compat_mode":
-			h.CompatMode = textutil.GetBoolByStr(item[1])
+			h.CompatMode = parseBool(item)
 		case "redirect_url":
 			h.RedirectURL = item[1]
 		case "target_is_https":
-			h.TargetIsHttps = textutil.GetBoolByStr(item[1])
+			h.TargetIsHttps = parseBool(item)
 		case "multi_account":
 			if err := loadMultiAccount(h.MultiAccount, item[1]); err != nil {
 				return nil, err
@@ -427,9 +427,9 @@ func dealTunnel(s string) (*model.Tunnel, error) {
 		case "password":
 			t.Password = item[1]
 		case "socks5_proxy":
-			t.Socks5Proxy = textutil.GetBoolByStr(item[1])
+			t.Socks5Proxy = parseBool(item)
 		case "http_proxy":
-			t.HttpProxy = textutil.GetBoolByStr(item[1])
+			t.HttpProxy = parseBool(item)
 		case "dest_acl_mode":
 			t.DestAclMode = textutil.GetIntNoErrByStr(item[1])
 		case "dest_acl_rules":
@@ -439,7 +439,7 @@ func dealTunnel(s string) (*model.Tunnel, error) {
 		case "strip_pre":
 			t.StripPre = item[1]
 		case "read_only":
-			t.ReadOnly = textutil.GetBoolByStr(item[1])
+			t.ReadOnly = parseBool(item)
 		case "multi_account":
 			if err := loadMultiAccount(t.MultiAccount, item[1]); err != nil {
 				return nil, err
@@ -493,9 +493,9 @@ func delLocalService(s string) *LocalServer {
 		case "target_type":
 			l.TargetType = item[1]
 		case "local_proxy":
-			l.LocalProxy = textutil.GetBoolByStr(item[1])
+			l.LocalProxy = parseBool(item)
 		case "fallback_secret":
-			l.Fallback = textutil.GetBoolByStr(item[1])
+			l.Fallback = parseBool(item)
 		}
 	}
 	return l
@@ -525,4 +525,14 @@ func parseEnvTemplate(str string) (string, error) {
 		return "", err
 	}
 	return w.String(), nil
+}
+
+// parseBool reads the boolean value of item, warning about one that is not a
+// boolean and so counts as false.
+func parseBool(item [2]string) bool {
+	v, err := textutil.ParseBool(item[1])
+	if err != nil {
+		logs.Warn("config %s = %q is not a boolean, using false", item[0], item[1])
+	}
+	return v
 }

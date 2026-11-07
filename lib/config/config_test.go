@@ -113,6 +113,16 @@ tls_enable=true`
 	}
 }
 
+func TestDealCommon_BoolCase(t *testing.T) {
+	c := dealCommon("vkey=abc\ntls_enable=True\ncompress=TRUE\nauto_reconnection=nope")
+	if !c.TlsEnable || !c.Client.Cnf.Compress {
+		t.Fatalf("True/TRUE not read as true: tls=%v compress=%v", c.TlsEnable, c.Client.Cnf.Compress)
+	}
+	if c.AutoReconnection {
+		t.Fatal("an invalid boolean must read as false")
+	}
+}
+
 func TestDealCommon_Defaults(t *testing.T) {
 	c := dealCommon(`vkey=abc`)
 	if c.Tp != "tcp" {

@@ -10,13 +10,12 @@ import (
 	"github.com/araddon/dateparse"
 )
 
-// GetBoolByStr get bool by str
-func GetBoolByStr(s string) bool {
-	switch s {
-	case "1", "true":
-		return true
-	}
-	return false
+// ParseBool parses a boolean config value the way strconv.ParseBool does,
+// ignoring surrounding space: 1, t, T, TRUE, true, True and their false
+// counterparts. Any other value yields false and an error for the caller to
+// report.
+func ParseBool(s string) (bool, error) {
+	return strconv.ParseBool(strings.TrimSpace(s))
 }
 
 // GetIntNoErrByStr int

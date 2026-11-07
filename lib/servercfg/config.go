@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/djylb/nps/lib/runenv"
+	"github.com/djylb/nps/lib/textutil"
 	viperini "github.com/go-viper/encoding/ini"
 	"github.com/spf13/viper"
 )
@@ -404,9 +405,9 @@ func toBool(value any) (bool, error) {
 	case bool:
 		return v, nil
 	case string:
-		return strconv.ParseBool(strings.TrimSpace(v))
+		return textutil.ParseBool(v)
 	default:
-		return strconv.ParseBool(stringifyValue(v))
+		return textutil.ParseBool(stringifyValue(v))
 	}
 }
 

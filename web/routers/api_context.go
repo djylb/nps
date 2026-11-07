@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/textutil"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	"github.com/gin-gonic/gin"
@@ -52,7 +53,7 @@ func (c *ginAPIContext) Bool(key string, def ...bool) bool {
 		}
 		return false
 	}
-	parsed, _ := strconv.ParseBool(value)
+	parsed, _ := textutil.ParseBool(value)
 	return parsed
 }
 
