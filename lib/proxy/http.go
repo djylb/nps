@@ -10,9 +10,7 @@ import (
 	"github.com/djylb/netx/httpproxy"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/netaddr"
 )
 
 // Timeouts of the HTTP proxy: the wait for the next request on a kept-alive
@@ -29,8 +27,12 @@ var httpConnectReply = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 func newHTTPProxyServer(s *TunnelModeServer) *httpproxy.Server {
 	return &httpproxy.Server{
 		Auth: []httpproxy.Authenticator{
-			httpproxy.BasicAuth{Realm: "Proxy", Check: func(_ context.Context, _ net.Conn, user, password string) (bool, error) {
-				return s.checkProxyAccount(user, password), nil
+			httpproxy.BasicAuth{Realm: "Proxy", Check: func(_ context.Context, c net.Conn, user, password string) (bool, error) {
+				if !s.checkProxyAccount(user, password) {
+					proxyAuthFailed(c.RemoteAddr(), s.Task, user)
+					return false, nil
+				}
+				return true, nil
 			}},
 			httpFallbackAuth{s},
 		},
@@ -50,7 +52,7 @@ func newHTTPProxyServer(s *TunnelModeServer) *httpproxy.Server {
 		IdleConnTimeout:       httpProxyIdleTimeout,
 		ResponseHeaderTimeout: httpProxyResponseHeaderTimeout,
 		OnError: func(c net.Conn, err error) {
-			logs.Debug("http proxy %v: %v", c.RemoteAddr(), err)
+			log.Debug("http proxy request failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		},
 	}
 }
@@ -87,6 +89,7 @@ func (a httpFallbackAuth) Authenticate(_ context.Context, req *httpproxy.Request
 	}
 	user, password, ok := auth.ParseBasicAuth(v)
 	if !ok || !a.s.checkProxyAccount(user, password) {
+		proxyAuthFailed(req.Conn.RemoteAddr(), a.s.Task, user)
 		return "", httpproxy.ErrAuthFailed
 	}
 	return user, nil
@@ -96,7 +99,7 @@ func (a httpFallbackAuth) Authenticate(_ context.Context, req *httpproxy.Request
 // task or client is over its flow or time limit.
 func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Request) error {
 	if s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(req.Dst.String()) {
-		logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, netaddr.ExtractHost(req.Dst.String()))
+		destDenied(req.Conn.RemoteAddr(), s.Task, req.Dst.String())
 		return &httpproxy.StatusError{Code: 403, Err: errProxyAccessDenied}
 	}
 	if err := conn.CheckFlowLimits(s.Task.Flow, "Task"); err != nil {

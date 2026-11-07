@@ -6,10 +6,13 @@ import (
 
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
 )
+
+var log = obs.Module("web")
 
 type RequestMetadata struct {
 	NodeID    string `json:"node_id,omitempty"`
@@ -17,28 +20,8 @@ type RequestMetadata struct {
 	Source    string `json:"source,omitempty"`
 }
 
-type Event struct {
-	Name     string                 `json:"name"`
-	Resource string                 `json:"resource,omitempty"`
-	Action   string                 `json:"action,omitempty"`
-	Actor    *Actor                 `json:"actor,omitempty"`
-	Metadata RequestMetadata        `json:"metadata"`
-	Fields   map[string]interface{} `json:"fields,omitempty"`
-}
-
-type Hooks interface {
-	OnManagementEvent(context.Context, Event) error
-}
-
-type NoopHooks struct{}
-
-func (NoopHooks) OnManagementEvent(context.Context, Event) error {
-	return nil
-}
-
 type App struct {
 	NodeID         string
-	Hooks          Hooks
 	Services       webservice.Services
 	ConfigProvider func() *servercfg.Snapshot
 	// Identity holds the key the login pages encrypt credentials to.
@@ -47,7 +30,6 @@ type App struct {
 
 type Options struct {
 	NodeID            string
-	Hooks             Hooks
 	Services          *webservice.Services
 	ConfigureServices func(*webservice.Services)
 	ConfigProvider    func() *servercfg.Snapshot
@@ -82,34 +64,16 @@ func NewWithOptions(cfg *servercfg.Snapshot, options Options) *App {
 	if options.ConfigureServices != nil {
 		options.ConfigureServices(&services)
 	}
-	hooks := options.Hooks
-	if hooks == nil {
-		hooks = NoopHooks{}
-	}
 	configProvider := options.ConfigProvider
 	if configProvider == nil {
 		configProvider = servercfg.Current
 	}
 	return &App{
 		NodeID:         nodeID,
-		Hooks:          hooks,
 		Services:       services,
 		ConfigProvider: configProvider,
 		Identity:       options.Identity,
 	}
-}
-
-func (a *App) Emit(c Context, event Event) {
-	if a == nil || a.Hooks == nil {
-		return
-	}
-	if event.Actor == nil {
-		event.Actor = c.Actor()
-	}
-	if event.Metadata == (RequestMetadata{}) {
-		event.Metadata = c.Metadata()
-	}
-	_ = a.Hooks.OnManagementEvent(c.BaseContext(), event)
 }
 
 func (a *App) currentConfig() *servercfg.Snapshot {

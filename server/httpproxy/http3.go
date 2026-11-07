@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/connection"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -58,7 +57,7 @@ func (s *Http3Server) Start() error {
 		s.setServer(srv)
 
 		if err := srv.Serve(s.http3Listener); err != nil {
-			logs.Error("HTTP/3 Serve error: %v", err)
+			proxyLog.Error("http3 server stopped", "err", err)
 			s.http3Status.Store(false)
 			return err
 		}
@@ -94,7 +93,7 @@ func (s *Http3Server) Start() error {
 	for {
 		qc, err := ln.Accept(ctx)
 		if err != nil {
-			logs.Trace("HTTP/3 Accept transient error: %v", err)
+			proxyLog.Debug("http3 accept failed", "err", err)
 			if errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, quic.ErrServerClosed) || errors.Is(err, quic.ErrTransportClosed) {
 				break
 			}
@@ -160,7 +159,7 @@ func (s *Http3Server) HandleQUIC(qc *quic.Conn, alpn, sni string) {
 func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 	stream, err := qc.AcceptStream(context.Background())
 	if err != nil {
-		logs.Trace("QUIC accept stream error: %v", err)
+		proxyLog.Debug("quic accept stream failed", "err", err)
 		_ = qc.CloseWithError(0, "closed")
 		return
 	}

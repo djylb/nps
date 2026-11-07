@@ -11,9 +11,9 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 )
 
 var errProxyAccessDenied = errors.New("proxy access denied")
@@ -198,8 +198,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	}
 	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != model.AclOff {
 		if !task.AllowsDestination(addr) {
-			logs.Warn("mixProxy dest acl deny: client=%d task=%d dest=%s",
-				client.Id, task.Id, netaddr.ExtractHost(addr))
+			destDenied(c.RemoteAddr(), task, addr)
 			return nil, nil, false, errProxyAccessDenied
 		}
 	}
@@ -212,7 +211,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	}
 	target, err := s.Bridge.Session(client.Id).OpenLink(link, taskID)
 	if err != nil {
-		logs.Warn("get connection from client Id %d  error %v", client.Id, err)
+		obs.Emit(log, &logevent.RelayFailed, "route", taskName(task), "client", client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)
 		return nil, nil, isLocal, err
 	}
 	return target, link, isLocal, nil

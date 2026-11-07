@@ -10,7 +10,6 @@ import (
 	"github.com/djylb/nps/lib/model"
 
 	"github.com/djylb/nps/lib/healthcheck"
-	"github.com/djylb/nps/lib/logs"
 )
 
 const (
@@ -189,7 +188,7 @@ func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *
 		defer ticker.Stop()
 		for {
 			if err := p.sync(id, peer, client, node); err != nil {
-				logs.Trace("send health groups to client %d: %v", id, err)
+				log.Debug("sending health groups failed", "client", id, "err", err)
 				return
 			}
 			select {
@@ -274,7 +273,7 @@ func (s *Bridge) pingClients() {
 		}
 		client, ok := value.(*Client)
 		if !ok || client == nil {
-			logs.Trace("Client %d is nil", clientID)
+			log.Debug("empty client entry removed", "client", clientID)
 			closedClients = append(closedClients, clientID)
 			return true
 		}
@@ -283,7 +282,7 @@ func (s *Bridge) pingClients() {
 		if (node == nil || node.IsOffline()) && !client.awaitingTunnel() {
 			client.retryTime++
 			if client.retryTime >= 3 {
-				logs.Trace("Stop client %d", clientID)
+				log.Debug("client unresponsive", "client", clientID)
 				closedClients = append(closedClients, clientID)
 			}
 		} else {
@@ -293,7 +292,6 @@ func (s *Bridge) pingClients() {
 	})
 
 	for _, clientId := range closedClients {
-		logs.Info("the client %d closed", clientId)
 		s.DelClient(clientId)
 	}
 }

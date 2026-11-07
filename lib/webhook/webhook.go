@@ -24,8 +24,10 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/event"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("webhook")
 
 // The headers of a delivery.
 const (
@@ -131,10 +133,10 @@ func (s *Sender) run() {
 		}
 		if err := s.deliver(e); err != nil && s.ctx.Err() == nil {
 			s.failed.Add(1)
-			logs.Warn("webhook: gave up on event %s (%s): %v", e.ID, e.Type, err)
+			log.Warn("event not delivered", "id", e.ID, "type", e.Type, "err", err)
 		}
 		if n := s.sub.Dropped(); n != dropped {
-			logs.Warn("webhook: queue full, %d events dropped", n-dropped)
+			log.Warn("queue full, events dropped", "count", n-dropped)
 			dropped = n
 		}
 	}

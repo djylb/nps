@@ -15,12 +15,14 @@ import (
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/upstream"
 )
+
+var log = obs.Module("store")
 
 // ACLMode: 0=off, 1=whitelist(deny-by-default), 2=blacklist(allow-by-default)
 const (
@@ -77,7 +79,7 @@ func (s *Flow) startLocked() {
 		s.budget.SetUsed(s.InletFlow + s.ExportFlow)
 		s.budget.SetExpiry(s.TimeLimit)
 		s.budget.OnStep(func(_ int, used int64) {
-			logs.Info("Traffic limit reached after %d bytes", used)
+			log.Info("traffic limit reached", "bytes", used)
 		})
 		s.applyLimitLocked()
 		return
@@ -407,6 +409,10 @@ func (s *Client) EnsureWebPassword() {
 }
 
 type Tunnel struct {
+	// hostRoute is the domain of the host entry a tunnel built by
+	// NewTunnelByHost serves; see LogRoute.
+	hostRoute string
+
 	RateLimits
 	MaxConn      int // concurrent connections; zero means unlimited
 	Id           int
@@ -461,7 +467,7 @@ func (t *Tunnel) compileDestACLLocked() {
 	}
 	d, err := acl.CompileDest(t.DestAclMode, t.DestAclRules, "the destination list of tunnel "+strconv.Itoa(t.Id))
 	if err != nil {
-		logs.Warn("Destination list of tunnel %d: rules skipped: %v", t.Id, err)
+		log.Warn("destination list rules skipped", "tunnel", t.Id, "err", err)
 	}
 	t.destAcl = d
 }
@@ -529,6 +535,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 		Routes:       host.Routes,
 		UserAuth:     host.UserAuth,
 		MultiAccount: host.MultiAccount,
+		hostRoute:    host.Host,
 	}
 	t.CopySourceLists(&host.SourceLists)
 	return t
@@ -871,7 +878,7 @@ func (s *Target) targetPool() *upstream.Pool[string] {
 		targets = append(targets, upstream.Target[string]{ID: addr, Weight: 1, Value: addr})
 	}
 	if err := s.pool.Sync(targets); err != nil {
-		logs.Warn("invalid target list %q: %v", s.TargetStr, err)
+		log.Warn("invalid target list", "target", s.TargetStr, "err", err)
 	}
 	_ = s.pool.SetConfig(upstream.Config{Outlier: targetOutlier, Retry: upstream.RetryConfig{Attempts: len(targets)}})
 	return s.pool
@@ -1031,4 +1038,16 @@ func trimArr(arr []string) []string {
 		}
 	}
 	return newArr
+}
+
+// LogRoute names t in log lines: "<mode>:<port>" for a tunnel, the domain for
+// one built for a host entry.
+func (t *Tunnel) LogRoute() string {
+	if t == nil {
+		return ""
+	}
+	if t.hostRoute != "" {
+		return t.hostRoute
+	}
+	return t.Mode + ":" + strconv.Itoa(t.Port)
 }

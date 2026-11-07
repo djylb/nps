@@ -11,8 +11,9 @@ import (
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/obs"
 )
 
 // newSocks5Server returns the SOCKS5 server of s. Bind sets its UDP socket.
@@ -25,7 +26,7 @@ func newSocks5Server(s *TunnelModeServer) *socks5.Server {
 		UDPQueue:       socks5UDPQueue,
 		UDPIdleTimeout: socks5UDPIdleTimeout,
 		OnError: func(c net.Conn, err error) {
-			logs.Debug("socks5 %v: %v", c.RemoteAddr(), err)
+			log.Debug("socks5 request failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		},
 	}
 }
@@ -42,7 +43,6 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	clientConn := conn.NewConn(req.Conn)
 	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
-		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
 		rep := socks5.ReplyGeneralFailure
 		if errors.Is(err, errProxyAccessDenied) {
 			rep = socks5.ReplyNotAllowed
@@ -67,10 +67,14 @@ func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
 	if !socks5NeedsAuth(s.Task) {
 		return nil
 	}
-	return []socks5.Authenticator{socks5.UserPassAuth{Check: func(_ context.Context, _ net.Conn, username, password string) (bool, error) {
+	return []socks5.Authenticator{socks5.UserPassAuth{Check: func(_ context.Context, c net.Conn, username, password string) (bool, error) {
 		user, passwd := socks5ClientCredentials(s.Task)
-		return auth.CheckAuthWithAccountMap(username, password, user, passwd,
-			model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)), nil
+		if !auth.CheckAuthWithAccountMap(username, password, user, passwd,
+			model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)) {
+			proxyAuthFailed(c.RemoteAddr(), s.Task, username)
+			return false, nil
+		}
+		return true, nil
 	}}}
 }
 
@@ -87,7 +91,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	_ = c.SetReadDeadline(time.Now().Add(socks5.DefaultHandshakeTimeout))
 	var header [2]byte
 	if _, err := io.ReadFull(c, header[:]); err != nil {
-		logs.Warn("negotiation err %v", err)
+		log.Debug("mixed proxy negotiation failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		_ = c.Close()
 		return err
 	}
@@ -95,26 +99,25 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	if header[0] != socks5.Version5 {
 		if looksLikeHTTPProxyRequest(header[:]) {
 			if !httpEnabled {
-				logs.Warn("http proxy is disable, client %d request from: %v", s.Task.Client.Id, c.RemoteAddr())
+				obs.Emit(log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "http_disabled")
 				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
 			if err := ProcessHttp(netx.NewPrefixConn(c, header[:]), s); err != nil {
-				logs.Warn("http proxy error: %v", err)
+				log.Debug("http proxy failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 				_ = c.Close()
 				return err
 			}
 			_ = c.Close()
 			return nil
 		}
-		logs.Trace("Socks5 Buf: %s", header[:])
-		logs.Warn("only support socks5 and http, request from: %v", c.RemoteAddr())
+		log.Debug("unknown proxy protocol", "src_ip", srcIP(c.RemoteAddr()), "head", header[:])
 		_ = c.Close()
 		return errors.New("unknown protocol")
 	}
 
 	if !socksEnabled {
-		logs.Warn("socks5 proxy is disable, client %d request from: %v", s.Task.Client.Id, c.RemoteAddr())
+		obs.Emit(log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "socks5_disabled")
 		_ = c.Close()
 		return errors.New("socks5 proxy is disabled")
 	}
@@ -124,11 +127,11 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	hs := &socks5.Server{Auth: s.socks5Auth()}
 	req, err := hs.Handshake(context.Background(), netx.NewPrefixConn(c, header[:]))
 	if err != nil {
-		logs.Warn("socks5 negotiation with %v failed: %v", c.RemoteAddr(), err)
+		log.Debug("socks5 negotiation failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		return err
 	}
 	if err := s.socks5.ServeRequest(context.Background(), req); err != nil {
-		logs.Debug("socks5 request from %v: %v", c.RemoteAddr(), err)
+		log.Debug("socks5 request failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 	}
 	return nil
 }

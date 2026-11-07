@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/ipreg"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
@@ -91,15 +92,16 @@ func (a *App) IPRegister(c Context) {
 	id, until, err := a.Services.Clients.RegisterVisitorIP(requestString(c, "key"), ip, requestIntValue(c, "hours"))
 	if err != nil {
 		if errors.Is(err, webservice.ErrRegisterKeyInvalid) {
+			obs.Emit(log, &logevent.AuthFailed, "src_ip", ip, "role", "visitor", "reason", "bad_key")
 			policy.RecordIPFailure(ip)
 		}
 		c.RespondJSON(200, IPRegisterResponse{Msg: "invalid registration key"})
 		return
 	}
-	owner := "client " + strconv.Itoa(id)
+	owner := strconv.Itoa(id)
 	if id == ipreg.AnyClient {
-		owner = "every client"
+		owner = "any"
 	}
-	logs.Info("Registered IP %s for %s until %s on the registration page", ip, owner, until.Format(time.DateTime))
+	log.Info("visitor ip registered", "src_ip", ip, "client", owner, "until", until)
 	c.RespondJSON(200, IPRegisterResponse{Status: 1, Msg: "ip registered", IP: ip, Until: until.Format(time.DateTime)})
 }

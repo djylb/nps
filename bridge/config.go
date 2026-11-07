@@ -9,7 +9,6 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 )
 
 // writeAddFail reports one host or task that could not be added, after which
@@ -114,7 +113,7 @@ loop:
 			}
 			hh, err := s.publishHost(h, client, uuid, caps)
 			if err != nil {
-				logs.Warn("Add host %s of client %d error: %v", h.Host, client.Id, err)
+				log.Info("host from npc config refused", "client", client.Id, "host", h.Host, "err", err)
 				if !writeAddFail(c) {
 					fail = true
 					break loop
@@ -122,7 +121,7 @@ loop:
 				continue
 			}
 			if hh != nil && !dispatch(s.OpenHost, hh) {
-				logs.Warn("Open host %s of client %d timed out", hh.Host, client.Id)
+				log.Warn("opening host timed out", "client", client.Id, "host", hh.Host)
 				if !writeAddFail(c) {
 					fail = true
 					break loop
@@ -147,7 +146,7 @@ loop:
 
 			ports, targets, ok := model.ConfigTaskPorts(t)
 			if !ok {
-				logs.Warn("Task %s of client %d has invalid ports", t.Remark, client.Id)
+				log.Info("tunnel from npc config refused", "client", client.Id, "remark", t.Remark, "reason", "invalid_ports")
 				if !writeAddFail(c) {
 					fail = true
 					break loop
@@ -166,14 +165,14 @@ loop:
 					key := legacy.FileKey(client.VerifyKey, tl)
 					err = cli.AddFile(key, uuid)
 					if err != nil {
-						logs.Error("Add file failed, error %v", err)
+						log.Warn("adding file tunnel failed", "client", client.Id, "err", err)
 					}
 					tl.Target.TargetStr = fmt.Sprintf("file://%s", key)
 				}
 
 				tt, created, err := s.publishTask(tl, client, uuid, caps)
 				if err != nil {
-					logs.Warn("Add task %s of client %d error: %v", tl.Remark, client.Id, err)
+					log.Info("tunnel from npc config refused", "client", client.Id, "remark", tl.Remark, "err", err)
 					if !writeAddFail(c) {
 						fail = true
 						break loop
@@ -181,7 +180,7 @@ loop:
 					break ports
 				}
 				if tt != nil && !dispatch(s.OpenTask, tt) {
-					logs.Warn("Open task %s of client %d timed out", tt.Remark, client.Id)
+					log.Warn("opening tunnel timed out", "client", client.Id, "tunnel", tt.Id)
 					if created {
 						_ = s.store.DelTask(tt.Id)
 					}

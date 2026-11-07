@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/lib/logs"
 )
 
 // updateRequestTimeout bounds writing an update request to a client.
@@ -54,7 +53,7 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 	}
 	switch {
 	case sent > 0:
-		logs.Info("Update requested from %d npc of client %d", sent, id)
+		log.Info("update requested", "client", id, "npc", sent)
 		return sent, nil
 	case lastErr != nil:
 		return 0, fmt.Errorf("send update request: %w", lastErr)

@@ -70,12 +70,6 @@ func (a *App) AddTunnel(c Context) {
 		return
 	}
 
-	a.Emit(c, Event{
-		Name:     "tunnel.created",
-		Resource: "tunnel",
-		Action:   "create",
-		Fields:   map[string]interface{}{"id": result.ID, "client_id": result.ClientID, "mode": result.Mode},
-	})
 	ajaxWithID(c, "add success", 1, result.ID)
 }
 
@@ -89,7 +83,7 @@ func (a *App) GetOneTunnel(c Context) {
 }
 
 func (a *App) EditTunnel(c Context) {
-	result, err := a.Services.Index.EditTunnel(tunnelInput(c, a.currentConfig()))
+	_, err := a.Services.Index.EditTunnel(tunnelInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrTunnelNotFound):
@@ -106,12 +100,6 @@ func (a *App) EditTunnel(c Context) {
 		return
 	}
 
-	a.Emit(c, Event{
-		Name:     "tunnel.updated",
-		Resource: "tunnel",
-		Action:   "update",
-		Fields:   map[string]interface{}{"id": result.ID, "client_id": result.ClientID},
-	})
 	ajax(c, "modified success", 1)
 }
 
@@ -129,12 +117,6 @@ func (a *App) DeleteTunnel(c Context) {
 		ajax(c, "delete error", 0)
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "tunnel.deleted",
-		Resource: "tunnel",
-		Action:   "delete",
-		Fields:   map[string]interface{}{"id": id},
-	})
 	ajax(c, "delete success", 1)
 }
 
@@ -203,12 +185,6 @@ func (a *App) DeleteHost(c Context) {
 		ajax(c, "delete error", 0)
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "host.deleted",
-		Resource: "host",
-		Action:   "delete",
-		Fields:   map[string]interface{}{"id": id},
-	})
 	ajax(c, "delete success", 1)
 }
 
@@ -260,17 +236,11 @@ func (a *App) AddHost(c Context) {
 		return
 	}
 
-	a.Emit(c, Event{
-		Name:     "host.created",
-		Resource: "host",
-		Action:   "create",
-		Fields:   map[string]interface{}{"id": result.ID, "client_id": result.ClientID},
-	})
 	ajaxWithID(c, "add success", 1, result.ID)
 }
 
 func (a *App) EditHost(c Context) {
-	result, err := a.Services.Index.EditHost(hostInput(c, a.currentConfig()))
+	_, err := a.Services.Index.EditHost(hostInput(c, a.currentConfig()))
 	if err != nil {
 		switch {
 		case errors.Is(err, webservice.ErrHostNotFound):
@@ -287,12 +257,6 @@ func (a *App) EditHost(c Context) {
 		return
 	}
 
-	a.Emit(c, Event{
-		Name:     "host.updated",
-		Resource: "host",
-		Action:   "update",
-		Fields:   map[string]interface{}{"id": result.ID, "client_id": result.ClientID},
-	})
 	ajax(c, "modified success", 1)
 }
 

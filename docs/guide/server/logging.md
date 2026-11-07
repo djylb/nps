@@ -49,10 +49,11 @@ time=2026-11-08T03:12:46.002Z level=INFO module=p2p peer=12 msg="punch started"
 | `cert_failed` | warn，距到期不足 7 天时为 error | `domain`、`renewal`、`remaining_s`、`reason` | | 是 |
 | `cert_revoked` | warn | `domain`、`reason` | | 是 |
 | `tls_handshake_failed` | debug | `src_ip`、`src_port`、`listener`、`reason` | | |
-| `connected` / `connect_failed` | info / warn | npc：`server`、`carrier`、`reason` | | |
+| `connected` / `connect_failed` / `disconnected` | info / warn / warn | npc：`server`、`carrier`、`reason`、`dur_ms` | | |
 | `p2p_connected` / `p2p_failed` / `p2p_path_changed` | info / info / debug | `peer`、`path`、`reason`、`rtt_ms` | | 是 |
 | `log_fallback` | warn | `reason`（日志文件打不开，已改写到 stderr） | | |
 
+- `route` 对隧道是 `模式:端口`（如 `tcp:8080`），对域名条目是域名；`client`、`tunnel` 是编号。
 - `src_ip` 是对端的真实 IP。经过受信代理时，取代理解析出的地址。
 - `reason` 的取值是固定的短词，可以直接用来做统计。
 

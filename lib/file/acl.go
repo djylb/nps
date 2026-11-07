@@ -8,7 +8,9 @@ import (
 	"github.com/djylb/geomatch"
 
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 )
 
 // GlobalDenied reports whether the global access lists, the firewall in
@@ -23,7 +25,7 @@ func (s *DbUtils) GlobalDenied(addr net.Addr, what string) bool {
 	if src == nil || acl.Allows(addr, src, nil, nil) {
 		return false
 	}
-	logs.Warn("%s access from %v %v", what, addr, acl.Decide(addr, []string{"global"}, src, nil, nil))
+	obs.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr.String()), "route", what, "reason", "acl", "rule", acl.Decide(addr, []string{"global"}, src, nil, nil))
 	return true
 }
 
@@ -37,7 +39,7 @@ func (s *DbUtils) GlobalDeniedString(addr, what string) bool {
 	if src == nil || acl.AllowsString(addr, src, nil, nil) {
 		return false
 	}
-	logs.Warn("%s access from %s %v", what, addr, acl.DecideString(addr, []string{"global"}, src, nil, nil))
+	obs.Emit(log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr), "route", what, "reason", "acl", "rule", acl.DecideString(addr, []string{"global"}, src, nil, nil))
 	return true
 }
 
@@ -60,6 +62,6 @@ func reportGeoRefresh(res geomatch.RefreshResult) {
 		if owner == "" {
 			owner = "an access list"
 		}
-		logs.Warn("Geodata update not applied to some rules of %s: %v", owner, acl.RefreshError(l))
+		log.Warn("geodata update not applied to some rules", "owner", owner, "err", acl.RefreshError(l))
 	}
 }

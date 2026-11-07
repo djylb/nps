@@ -11,7 +11,6 @@ import (
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
@@ -118,7 +117,7 @@ func (s *WebServer) Start() error {
 			})
 		}
 	} else {
-		logs.Info("web_port=0: only virtual listener is active (plain HTTP)")
+		webLog.Info("only virtual listener active", "reason", "web_port is 0")
 	}
 
 	return serveHTTPListeners(targets...)

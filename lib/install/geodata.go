@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/djylb/selfupdate"
 )
+
+var geoLog = obs.Module("geo")
 
 // geoRepo publishes the geoip.dat and geosite.dat the access lists use.
 const geoRepo = "Loyalsoldier/v2ray-rules-dat"
@@ -90,6 +94,7 @@ func UpdateGeoData(files []GeoFile) (*GeoUpdate, error) {
 	var errs []error
 	for _, f := range files {
 		if err := updateGeoFile(c, rl, f, res); err != nil {
+			obs.Emit(geoLog, &logevent.SourceFailed, "source", f.Name, "reason", "update_failed", "err", err)
 			errs = append(errs, fmt.Errorf("update %s: %w", f.Name, err))
 		}
 	}
@@ -129,7 +134,7 @@ func updateGeoFile(c *httpClient, rl *release, f GeoFile, res *GeoUpdate) error 
 		if err := replaceGeoFile(f.Path, func(staged string) error { return downloadGeoFile(c, sources, staged) }); err != nil {
 			return err
 		}
-		fmt.Println("Updated", f.Path)
+		obs.Emit(geoLog, &logevent.SourceUpdated, "source", f.Name, "path", f.Path)
 		res.Updated = append(res.Updated, f.Path)
 	}
 	if rl == nil {

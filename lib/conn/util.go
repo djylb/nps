@@ -11,10 +11,12 @@ import (
 	"github.com/djylb/netx/proxyproto"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
 )
+
+var log = obs.Module("conn")
 
 // GetConn returns LinkConn of conn limited and counted by rt and entry, as
 // rate.NewRateConn does.
@@ -51,16 +53,16 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 	local, err := net.ListenUDP("udp", netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
 		_ = serverConn.Close()
-		logs.Error("bind local udp port error %v", err)
+		log.Error("local udp port not bound", "addr", localIP, "err", err)
 		return
 	}
 	relay := socks5.DatagramRelay{
 		IdleTimeout: timeout,
-		OnError:     func(err error) { logs.Debug("socks5 udp: %v", err) },
+		OnError:     func(err error) { log.Debug("socks5 udp datagram failed", "err", err) },
 	}
 	framed := netx.NewFramedConn(serverConn, netx.WithFramedDatagrams())
 	if err := relay.Relay(ctx, framed, socks5.NewPacketConn(local)); err != nil {
-		logs.Debug("socks5 udp relay ended: %v", err)
+		log.Debug("socks5 udp relay ended", "err", err)
 	}
 }
 
@@ -81,9 +83,9 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate
 		connHandle = netx.NewFramedConn(netx.WrapConn(connHandle, conn1, netx.WithWrapParentClose()), netx.WithFramedDatagrams())
 	}
 	if proxyHeader := ProxyProtocolHeader(proxyProtocol, conn2.RemoteAddr(), conn2.LocalAddr()); proxyHeader != nil {
-		logs.Debug("Sending Proxy Protocol v%d header to backend: %v -> %v", proxyProtocol, proxyHeader.Source, proxyHeader.Destination)
+		log.Debug("proxy protocol header sent", "version", proxyProtocol, "src", proxyHeader.Source, "dst", proxyHeader.Destination)
 		if _, err := proxyHeader.WriteTo(connHandle); err != nil {
-			logs.Warn("failed to write proxy protocol header: %v", err)
+			log.Debug("proxy protocol header not written", "err", err)
 			_ = conn1.Close()
 			_ = conn2.Close()
 			return
@@ -91,7 +93,7 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate
 	}
 	if rb != nil {
 		if _, err := connHandle.Write(rb); err != nil {
-			logs.Warn("failed to write buffered pre-read data: %v", err)
+			log.Debug("pre-read data not written", "err", err)
 			_ = conn1.Close()
 			_ = conn2.Close()
 			return
@@ -124,7 +126,7 @@ func ProxyProtocolHeader(version int, client, target net.Addr) *proxyproto.Heade
 	}
 	h, err := proxyproto.NewHeader(v, client, target)
 	if err != nil {
-		logs.Debug("PROXY protocol header without addresses for %v -> %v: %v", client, target, err)
+		log.Debug("proxy protocol header without addresses", "src", client, "dst", target, "err", err)
 		return &proxyproto.Header{Version: v}
 	}
 	return h

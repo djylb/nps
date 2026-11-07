@@ -12,9 +12,12 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/timeshim"
 )
+
+var p2pLog = obs.Module("p2p")
 
 // p2pStableAfter is how long a direct path must have lived for its loss to
 // be retried at once; a path lost sooner counts as a failed attempt.
@@ -102,7 +105,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 	if p.mgr.ctx.Err() != nil || !t.suspect.CompareAndSwap(false, true) {
 		return
 	}
-	logs.Info("%s: direct path to %v failed a connection (%v), checking it", p.label, t.QUIC().RemoteAddr(), err)
+	p2pLog.Info("direct path failed a connection, checking it", "peer", p.label, "addr", t.QUIC().RemoteAddr().String(), "err", err)
 	p.mgr.wg.Go(func() {
 		var last error
 		for range p2pCheckAttempts {
@@ -112,7 +115,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 				close(p.changed)
 				p.changed = make(chan struct{})
 				p.mu.Unlock()
-				logs.Info("%s: direct path to %v answers again", p.label, t.QUIC().RemoteAddr())
+				obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_passed")
 				return
 			}
 			if !t.Alive() || p.mgr.ctx.Err() != nil {
@@ -126,7 +129,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 // lost takes a dead transport out of use and closes it, which wakes the
 // goroutine holding it to punch again.
 func (p *p2pPeer) lost(t *p2pTransport, err error) {
-	logs.Warn("%s: direct path to %v failed: %v", p.label, t.QUIC().RemoteAddr(), err)
+	obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_failed", "err", err)
 	p.uninstall(t)
 	_ = t.Close()
 }
@@ -140,9 +143,9 @@ func (p *p2pPeer) hold(t *p2pTransport) time.Duration {
 	case <-t.Done():
 		err := t.Err()
 		if errors.Is(err, quicpath.ErrIdleTimeout) {
-			logs.Warn("%s: direct path to %v went silent: %v", p.label, t.QUIC().RemoteAddr(), err)
+			obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "idle_timeout", "err", err)
 		} else {
-			logs.Info("%s: direct path to %v closed: %v", p.label, t.QUIC().RemoteAddr(), err)
+			obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "closed", "err", err)
 		}
 	case <-p.mgr.ctx.Done():
 	}
@@ -188,10 +191,10 @@ func (p *p2pPeer) run() {
 				default:
 				}
 				gaveUp = true
-				logs.Warn("%s: no direct path: %v; next attempt when a connection waits for it", p.label, err)
+				obs.EmitMsg(p2pLog, &logevent.P2PFailed, "next attempt when a connection waits for it", "peer", p.label, "reason", "punch_failed", "err", err)
 				continue
 			}
-			logs.Warn("%s: no direct path: %v; next %s attempt in %s", p.label, err, p2pModeName(background), wait.Round(time.Second))
+			obs.Emit(p2pLog, &logevent.P2PFailed, "peer", p.label, "reason", "punch_failed", "err", err, "next_mode", p2pModeName(background), "next_in_ms", wait.Milliseconds())
 			continue
 		}
 		background = false
@@ -219,25 +222,25 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	if err != nil {
 		return nil, err
 	}
-	logs.Debug("%s: punching in session %s (%s)", p.label, sessionID, p2pModeName(background))
+	p2pLog.Debug("punching", "peer", p.label, "session", sessionID, "mode", p2pModeName(background))
 	// tc is closed right below; on success the session is handed to the transport.
 	//noinspection GoResourceLeak
-	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.label+": "))
+	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.label))
 	_ = tc.Close()
 	if err != nil {
 		var herr *holepunch.Error
 		if errors.As(err, &herr) {
-			logs.Debug("%s: session %s failed, local NAT %s", p.label, sessionID, p2pNATSummary(herr.Diagnostics))
+			p2pLog.Debug("punch failed", "peer", p.label, "session", sessionID, "nat", p2pNATSummary(herr.Diagnostics))
 		}
 		return nil, err
 	}
 	diag := sess.Diagnostics()
-	logs.Info("%s: punched; local NAT %s", p.label, p2pNATSummary(&diag))
+	p2pLog.Debug("punched", "peer", p.label, "session", sessionID, "nat", p2pNATSummary(&diag))
 	t, err := dialP2PTransport(ctx, sess)
 	if err != nil {
 		return nil, err
 	}
-	logs.Info("%s: direct QUIC connection to %v established", p.label, t.QUIC().RemoteAddr())
+	obs.Emit(p2pLog, &logevent.P2PConnected, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "session", sessionID)
 	return t, nil
 }
 

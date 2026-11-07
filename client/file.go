@@ -13,7 +13,6 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"golang.org/x/net/webdav"
@@ -54,7 +53,7 @@ func NewFileServerManager(parentCtx context.Context) *FileServerManager {
 
 func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	if fsm.ctx.Err() != nil {
-		logs.Warn("file server manager already closed, skip StartFileServer")
+		log.Debug("file server manager closed, not starting file server")
 		return
 	}
 	vl := conn.NewVirtualListener(netx.HostAddr(t.ServerIp, uint16(t.Port)))
@@ -101,7 +100,6 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 			accounts[user] = pass
 		}
 	}
-	//logs.Error("%v", accounts)
 	if len(accounts) > 0 {
 		handler = basicAuth(accounts, "WebDAV", handler)
 	}
@@ -112,11 +110,11 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 		BaseContext: func(_ net.Listener) context.Context { return fsm.ctx },
 		Handler:     handler,
 	}
-	logs.Info("start WebDAV server, local path %s, strip prefix %s, remote port %s", t.LocalPath, t.StripPre, t.Ports)
+	log.Info("webdav server started", "path", t.LocalPath, "strip_prefix", t.StripPre, "ports", t.Ports)
 	fsm.mu.Lock()
 	if fsm.servers == nil {
 		fsm.mu.Unlock()
-		logs.Warn("file server manager already closed, skip StartFileServer")
+		log.Debug("file server manager closed, not starting file server")
 		return
 	}
 	fsm.servers[key] = &fileServer{
@@ -130,7 +128,7 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	go func() {
 		defer fsm.wg.Done()
 		if err := srv.Serve(vl); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logs.Error("WebDAV Serve error: %v", err)
+			log.Error("webdav server failed", "err", err)
 		}
 	}()
 }
@@ -157,7 +155,7 @@ func (fsm *FileServerManager) CloseAll() {
 	for key, e := range entries {
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := e.srv.Shutdown(ctx2); err != nil {
-			logs.Error("FileServer Shutdown error [%s]: %v", key, err)
+			log.Warn("file server shutdown failed", "key", key, "err", err)
 		}
 		cancel2()
 		_ = e.listener.Close()

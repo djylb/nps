@@ -10,7 +10,6 @@ import (
 	"github.com/djylb/netx/httpproxy"
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 )
 
@@ -134,13 +133,13 @@ func (s *TunnelModeServer) handleConn(c net.Conn) {
 	if s.Bridge.IsServer() {
 		release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
 		if err != nil {
-			logs.Warn("client Id %d, task Id %d, error %v, when tcp connection", s.Task.Client.Id, s.Task.Id, err)
+			limitExceeded(s.Task, s.Task.Client.Flow, err)
 			_ = c.Close()
 			return
 		}
 		defer release()
 	}
-	logs.Trace("new tcp connection,local port %d,client %d,remote address %v", s.Task.Port, s.Task.Client.Id, c.RemoteAddr())
+	trace("tcp connection", "client", s.Task.Client.Id, "tunnel", s.Task.Id, "src_ip", srcIP(c.RemoteAddr()))
 
 	_ = s.process(conn.NewConn(c), s)
 }
@@ -164,7 +163,7 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	}
 	if s.Task.Mode != "file" && s.Bridge.IsServer() {
 		_ = c.Close()
-		logs.Warn("tcp port %d, client Id %d, task Id %d connect error %v", s.Task.Port, s.Task.Client.Id, s.Task.Id, err)
+		relayFailed(s.Task, "", err)
 		return err
 	}
 	return s.DealClient(c, s.Task.Client, "", nil, conn.LinkTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)

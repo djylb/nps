@@ -21,8 +21,9 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/version"
@@ -34,6 +35,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
+)
+
+var (
+	log    = obs.Module("server")
+	cfgLog = obs.Module("config")
 )
 
 var (
@@ -107,17 +113,19 @@ func main() {
 		if svc, err := service.New(prg, svcConfig); err == nil {
 			s = svc
 		} else {
-			logs.Warn("service function disabled %v", err)
+			log.Warn("service manager unavailable", "err", err)
 		}
 		res, err := install.Update(context.Background(), "nps", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
+		// Update reports its own failure as update_failed.
 		if err == nil && res != nil {
-			err = install.RestartAfterUpdate(s, svcConfig.Name, res)
+			if err = install.RestartAfterUpdate(s, svcConfig.Name, res); err != nil {
+				log.Error("restart after update failed", "err", err)
+			}
 		}
 		if res != nil {
 			install.WarnOldProcesses(res.Running)
 		}
 		if err != nil {
-			logs.Error("update failed: %v", err)
 			os.Exit(1)
 		}
 		return
@@ -141,12 +149,12 @@ func main() {
 		}
 		files, err := install.PickGeoFiles(install.GeoFiles(geoIPPath, geoSitePath), name)
 		if err != nil {
-			logs.Error("update geodata failed: %v", err)
+			log.Error("update geodata failed", "err", err)
 			os.Exit(1)
 		}
+		// UpdateGeoData reports each failed file as source_failed.
 		res, err := install.UpdateGeoData(files)
 		if err != nil {
-			logs.Error("update geodata failed: %v", err)
 			os.Exit(1)
 		}
 		if len(res.Updated) == 0 {
@@ -169,7 +177,7 @@ func main() {
 
 	err := clock.SetTimezone(cfg.App.Timezone)
 	if err != nil {
-		logs.Warn("Set timezone error %v", err)
+		cfgLog.Warn("set timezone failed", "err", err)
 	}
 	netaddr.SetCustomDNS(cfg.App.DNSServer)
 	logPath := cfg.Log.Path
@@ -186,17 +194,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "log:", err)
 		os.Exit(1)
 	}
+	watchReopen()
 	warnArgs(strings.EqualFold(cfg.Log.Type, "off"))
 	for _, w := range cfg.Legacy {
-		logs.Warn("%s", w)
+		cfgLog.Warn(w)
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		logs.Error("service function disabled %v", err)
-		// run without service
+		log.Warn("service manager unavailable, running without it", "err", err)
 		srv := prg.mustRun()
 		<-srv.Done()
-		logs.Error("nps stopped: %v", srv.Close())
+		log.Error("nps stopped", "err", srv.Close())
 		os.Exit(1)
 	}
 
@@ -209,29 +217,29 @@ func main() {
 
 			binPath, err := install.NPS()
 			if err != nil {
-				logs.Error("install failed: %v", err)
+				log.Error("install failed", "err", err)
 				os.Exit(1)
 			}
 			svcConfig.Executable = binPath
 			s, err := service.New(prg, svcConfig)
 			if err != nil {
-				logs.Error("%v", err)
+				log.Error("create service failed", "err", err)
 				return
 			}
 			if err := service.Control(s, "install"); err != nil {
-				logs.Error("install service failed: %v", err)
+				log.Error("install service failed", "err", err)
 				os.Exit(1)
 			}
 			install.LinkServiceStart(svcConfig.Name)
 			return
 		case "start", "restart", "stop":
 			if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
-				logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
+				log.Error("service control failed", "action", cmd, "valid_actions", service.ControlAction, "err", err)
 			}
 			return
 		case "uninstall":
 			if err := install.UninstallService(s, svcConfig.Name); err != nil {
-				logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
+				log.Error("service control failed", "action", cmd, "err", err)
 			}
 			return
 		}
@@ -259,7 +267,7 @@ func printUsage(cmd string) {
 func (p *nps) reloadConfig() {
 	srv := p.srv.Load()
 	if srv == nil {
-		logs.Warn("Config reload ignored: nps is not running yet")
+		cfgLog.Info("config reload ignored: nps is not running yet")
 		return
 	}
 	srv.ReloadConfig()
@@ -298,7 +306,7 @@ func warnArgs(logOff bool) {
 			fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
-		logs.Warn("%s", w)
+		cfgLog.Warn(w)
 	}
 }
 
@@ -322,7 +330,7 @@ func (p *nps) Stop(s service.Service) error {
 	select {
 	case <-p.stopped:
 	case <-time.After(stopTimeout):
-		logs.Warn("nps did not stop within %v", stopTimeout)
+		log.Warn("nps did not stop in time", "dur_ms", stopTimeout.Milliseconds())
 	}
 	if service.Interactive() {
 		os.Exit(0)
@@ -336,17 +344,17 @@ func (p *nps) run() error {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			logs.Warn("nps: panic serving %v: %s", err, buf)
+			log.Error("panic", "err", err, "stack", string(buf))
 		}
 	}()
 	srv := p.mustRun()
 	select {
 	case <-p.exit:
 	case <-srv.Done():
-		logs.Error("nps stopped: %v", srv.Close())
+		log.Error("nps stopped", "err", srv.Close())
 		os.Exit(1)
 	}
-	logs.Warn("stop...")
+	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
 	_ = srv.Close()
 	close(p.stopped)
 	return nil
@@ -357,7 +365,7 @@ func (p *nps) run() error {
 func (p *nps) mustRun() *server.Server {
 	srv, err := run()
 	if err != nil {
-		logs.Error("nps failed to start: %v", err)
+		log.Error("nps failed to start", "err", err)
 		os.Exit(1)
 	}
 	p.srv.Store(srv)
@@ -374,7 +382,7 @@ func run() (*server.Server, error) {
 	}
 	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
 	if err != nil {
-		logs.Info("Using randomly generated certificate.")
+		log.Info("bridge certificate not loaded, using a generated one", "err", err)
 	}
 	identity, err := crypt.NewIdentity(cert)
 	if err != nil {
@@ -382,9 +390,9 @@ func run() (*server.Server, error) {
 	}
 	selectMode, err := bridge.ParseSelectMode(cfg.Bridge.SelectMode)
 	if err != nil {
-		logs.Warn("Invalid client select mode %v; fallback to %s(%d)", cfg.Bridge.SelectMode, selectMode, selectMode)
+		cfgLog.Warn("invalid client select mode, using default", "value", cfg.Bridge.SelectMode, "mode", selectMode.String())
 	} else {
-		logs.Info("Client select mode set to %s(%d)", selectMode, selectMode)
+		log.Debug("client select mode", "mode", selectMode.String())
 	}
 	srv := server.New(db, server.Config{
 		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
@@ -413,8 +421,7 @@ func run() (*server.Server, error) {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	logs.Info("the config path is: %s", servercfg.Path())
-	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, srv.Bridge().MinClientVersion())
+	obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
 	server.ApplyNTP(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err

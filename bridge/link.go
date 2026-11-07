@@ -11,7 +11,6 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
 )
 
@@ -135,7 +134,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		if ok {
 			tunnel = node.GetTunnel()
 		} else {
-			logs.Warn("Failed to find tunnel for host: %s", link.Host)
+			log.Debug("no node holds the file tunnel", "client", clientId)
 			err = fmt.Errorf("failed to find tunnel for host: %s", link.Host)
 			client.RemoveOfflineNodes(false)
 			return
@@ -184,7 +183,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	}
 
 	if err = legacy.WriteLink(target, link); err != nil {
-		logs.Info("new connection error, the target %s refused to connect", link.Host)
+		log.Debug("writing link failed", "client", clientId, "target", link.Host, "err", err)
 		_ = target.Close()
 		return
 	}
@@ -193,14 +192,14 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	if link.Option.NeedAck && caps.LinkAck {
 		if err := legacy.ReadAck(target, link.Option.Timeout); err != nil {
 			_ = target.Close()
-			logs.Trace("ReadACK failed: %v", err)
+			log.Debug("reading link ack failed", "client", clientId, "target", link.Host, "err", err)
 			node.CloseIfTunnelCurrent(tunnel)
 			return nil, err
 		}
 	}
 
 	if link.ConnType == conn.LinkUDP && !caps.FramedUDP {
-		logs.Warn("UDP connection needs a newer client than protocol %s.", legacy.CoreVersion(caps.Index))
+		log.Warn("udp link needs a newer npc", "client", clientId, "protocol", legacy.CoreVersion(caps.Index))
 	}
 
 	return

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
 
 func InitPProfByAddr(addr string) {
@@ -17,5 +17,5 @@ func runPProf(ipPort string) {
 	go func() {
 		_ = http.ListenAndServe(ipPort, nil)
 	}()
-	logs.Info("PProf debug listen on %s", ipPort)
+	obs.Module("runenv").Info("pprof listening", "addr", ipPort)
 }

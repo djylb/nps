@@ -6,7 +6,6 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 )
@@ -56,7 +55,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 			if lk.Host != "" {
 				host = netaddr.FormatAddress(lk.Host)
 				if s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(host) {
-					logs.Warn("secret dest acl deny: client=%d task=%d dest=%s", s.Task.Client.Id, s.Task.Id, netaddr.ExtractHost(host))
+					destDenied(src.RemoteAddr(), s.Task, host)
 					_ = c.Close()
 					return errProxyAccessDenied
 				}
@@ -100,18 +99,22 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	}
 	if err != nil {
 		_ = c.Close()
-		logs.Warn("failed to get backend connection: %v", err)
+		target := host
+		if target == "" {
+			target = route.Target.TargetStr
+		}
+		relayFailed(s.Task, target, err)
 		return err
 	}
 
 	if needAck {
 		if err := wire.WriteAck(c.Conn, link.Option.Timeout); err != nil {
-			logs.Warn("write ACK failed: %v", err)
+			log.Debug("ack not written", "src_ip", srcIP(src.RemoteAddr()), "err", err)
 			_ = c.Close()
 			_ = target.Close()
 			return err
 		}
-		logs.Trace("sent ACK before proceeding")
+		trace("ack sent", "src_ip", srcIP(src.RemoteAddr()))
 	}
 
 	// The target is the backend side: the PROXY header and the bytes read

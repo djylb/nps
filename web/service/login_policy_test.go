@@ -73,14 +73,14 @@ func TestDefaultLoginPolicyCountsFailures(t *testing.T) {
 		}
 	})
 	for i := 0; i < 2; i++ {
-		policy.RecordUserFailure("alice")
+		policy.RecordUserFailure("alice", "192.0.2.9")
 		policy.RecordIPFailure("2001:db8::1")
 	}
 	if policy.IsUserBanned("alice") || policy.IsIPBanned("2001:db8::2") {
 		t.Fatal("banned before login_max_fail_times failures")
 	}
 	policy.ClearUserFailures("alice")
-	policy.RecordUserFailure("alice")
+	policy.RecordUserFailure("alice", "192.0.2.9")
 	policy.RecordIPFailure("2001:db8::ffff")
 	if policy.IsUserBanned("alice") {
 		t.Fatal("IsUserBanned() = true, want the failures cleared by a login")

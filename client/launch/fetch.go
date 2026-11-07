@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("client")
 
 const fetchTimeout = 15 * time.Second
 
@@ -45,7 +47,7 @@ func fetch(ctx context.Context, rawURL string) (string, error) {
 		return "", &RemoteError{Err: errors.New("invalid URL")}
 	}
 	if !strings.EqualFold(req.URL.Scheme, "https") {
-		logs.Warn("launch payload is fetched over plain http; anyone on the path can read or replace it")
+		log.Warn("launch payload fetched over plain http; anyone on the path can read or replace it")
 	}
 	req.Header.Set("User-Agent", "npc-launch")
 	resp, err := httpClient.Do(req)

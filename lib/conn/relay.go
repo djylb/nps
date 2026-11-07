@@ -9,7 +9,7 @@ import (
 
 	"github.com/djylb/byterate"
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 )
 
@@ -105,11 +105,9 @@ func flowsError(flows []Flow, err error) error {
 		}
 		traffic, expired := fl.Over()
 		if traffic {
-			logs.Info("Flow limit exceeded")
 			return errFlowLimit
 		}
 		if expired {
-			logs.Info("Time limit exceeded")
 			return errTimeLimit
 		}
 	}
@@ -138,10 +136,9 @@ func detectHTTP(b []byte, task Entry, remote string) {
 		}
 	}
 	if isHTTP && string(b[:3]) != "HTT" {
-		first, rest, ok := strings.Cut(string(b), "\r\n")
+		first, _, ok := strings.Cut(string(b), "\r\n")
 		if ok {
-			second, _, _ := strings.Cut(rest, "\r\n")
-			logs.Info("HTTP Request method %s, %s, remote address %s, target %s", first, second, remote, task.RelayTarget())
+			log.Debug("http request", "request", first, "src_ip", netaddr.Host(remote), "target", task.RelayTarget())
 		}
 	}
 	task.SetIsHTTP(isHTTP)

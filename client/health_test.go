@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"io"
-	"log"
+	logger "log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -97,7 +97,7 @@ func wantReport(t *testing.T, reports <-chan string, want string, timeout time.D
 func TestHTTPSCheckAcceptsSelfSigned(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
-	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	srv.Config.ErrorLog = logger.New(io.Discard, "", 0)
 	addr := srv.Listener.Addr().String()
 	sideA, sideB := net.Pipe()
 	defer func() { _ = sideB.Close() }()

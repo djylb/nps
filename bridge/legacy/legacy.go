@@ -6,21 +6,30 @@
 package legacy
 
 import (
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/internal/tunnelwire/mux"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("bridge")
 
 type muxLogger struct{}
 
-func (muxLogger) Println(v ...any)               { logs.Println(v...) }
-func (muxLogger) Printf(format string, v ...any) { logs.Printf(format, v...) }
-func (muxLogger) Warn(format string, v ...any)   { logs.Warn(format, v...) }
-func (muxLogger) Error(format string, v ...any)  { logs.Error(format, v...) }
+// muxLogger carries the mux package's printf-style lines; their text goes
+// into the detail field, since the mux has no structured fields to give.
+func (muxLogger) Println(v ...any) { log.Debug("mux", "detail", fmt.Sprint(v...)) }
+func (muxLogger) Printf(format string, v ...any) {
+	log.Debug("mux", "detail", fmt.Sprintf(format, v...))
+}
+func (muxLogger) Warn(format string, v ...any) { log.Warn("mux", "detail", fmt.Sprintf(format, v...)) }
+func (muxLogger) Error(format string, v ...any) {
+	log.Error("mux", "detail", fmt.Sprintf(format, v...))
+}
 
 func init() { mux.SetLogger(muxLogger{}) }
 

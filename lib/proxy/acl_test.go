@@ -66,8 +66,8 @@ func TestSourceDeniedHostEntry(t *testing.T) {
 	if !SourceDenied(tcpAddr("8.8.8.8:1"), nil, h.Client, taskLists(tn), taskName(tn)) {
 		t.Fatal("host whitelist not applied to its HTTPS tunnel")
 	}
-	if taskName(tn) != "host" {
-		t.Fatalf("taskName = %q, want host", taskName(tn))
+	if taskName(tn) != "a.com" {
+		t.Fatalf("taskName = %q, want a.com", taskName(tn))
 	}
 }
 

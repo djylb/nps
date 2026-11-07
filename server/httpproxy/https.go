@@ -18,8 +18,9 @@ import (
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
@@ -72,7 +73,7 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 
 	var key [32]byte
 	if _, err := io.ReadFull(rand.Reader, key[:]); err != nil {
-		logs.Error("failed to generate session ticket key: %v", err)
+		proxyLog.Error("session ticket key generation failed", "err", err)
 		s := crypt.GetRandomString(len(key))
 		copy(key[:], s)
 	}
@@ -84,7 +85,7 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 
 	go func() {
 		if err := https.httpsServer.Serve(https.httpsServeListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logs.Error("HTTPS server exit: %v", err)
+			proxyLog.Error("https server stopped", "err", err)
 		}
 	}()
 
@@ -104,7 +105,7 @@ func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
 		IdleTimeout:   time.Duration(cfg.CacheIdle) * time.Minute,
 		CheckInterval: check,
 		OnError: func(err *tlsconn.CertError) {
-			logs.Warn("Failed to reload certificate, the previous one stays in use: %v", err)
+			obs.EmitMsg(proxyLog, &logevent.CertFailed, "certificate reload failed, the previous one stays in use", "reason", "load_failed", "err", err)
 		},
 	}
 }
@@ -137,7 +138,7 @@ func (s *HttpsServer) Start() error {
 		_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 		hello, rb, err := readClientHello(c)
 		if err != nil {
-			logs.Debug("Failed to read clientHello from %v, err=%v", c.RemoteAddr(), err)
+			proxyLog.Debug("client hello read failed", "src_ip", srcIP(c.RemoteAddr().String()), "err", err)
 			// Check if the request is an HTTP request.
 			s.checkHTTPAndRedirect(c, rb)
 			return
@@ -145,7 +146,7 @@ func (s *HttpsServer) Start() error {
 
 		serverName := hello.ServerName
 		if serverName == "" {
-			logs.Debug("IP access to HTTPS port is not allowed. Remote address: %v", c.RemoteAddr())
+			proxyLog.Debug("https request without sni dropped", "src_ip", srcIP(c.RemoteAddr().String()))
 			_ = c.Close()
 			return
 		}
@@ -156,7 +157,7 @@ func (s *HttpsServer) Start() error {
 		}
 
 		if host != nil && host.HttpsJustProxy {
-			logs.Debug("Certificate handled by backend")
+			proxyLog.Debug("certificate handled by backend", "host", host.Id, "route", host.Host)
 			_ = c.SetDeadline(time.Time{})
 			s.handleHttpsProxy(host, c, rb, serverName)
 			return
@@ -167,17 +168,17 @@ func (s *HttpsServer) Start() error {
 		case tlsConfig != nil:
 		case host == nil:
 			_ = c.Close()
-			logs.Debug("The URL %s cannot be parsed! Remote address: %v", serverName, c.RemoteAddr())
+			proxyLog.Debug("no host for sni", "sni", serverName, "src_ip", srcIP(c.RemoteAddr().String()))
 			return
 		default:
-			logs.Debug("Certificate handled by backend")
+			proxyLog.Debug("certificate handled by backend", "host", host.Id, "route", host.Host)
 			_ = c.SetDeadline(time.Time{})
 			s.handleHttpsProxy(host, c, rb, serverName)
 			return
 		}
 		handshakeTimeout := tlsHandshakeTimeout
 		if autoSSL {
-			logs.Debug("Auto SSL is enabled")
+			proxyLog.Debug("auto ssl handshake", "sni", serverName)
 			handshakeTimeout = autoSSLHandshakeTimeout
 		}
 
@@ -237,21 +238,18 @@ func (s *HttpsServer) checkHTTPAndRedirect(c net.Conn, rb []byte) {
 	_ = c.SetDeadline(time.Now().Add(tlsHandshakeTimeout))
 	defer func() { _ = c.Close() }()
 
-	logs.Debug("Pre-read rb content: %q", string(rb))
-
 	reader := bufio.NewReader(io.MultiReader(bytes.NewReader(rb), c))
 	req, err := http.ReadRequest(reader)
 	if err != nil {
-		logs.Debug("Failed to parse HTTP request from %v, err=%v", c.RemoteAddr(), err)
+		proxyLog.Debug("not an http request on https port", "src_ip", srcIP(c.RemoteAddr().String()), "bytes", len(rb), "err", err)
 		return
 	}
-	logs.Debug("HTTP Request Sent to HTTPS Port")
 	req.URL.Scheme = "https"
 	_ = c.SetDeadline(time.Time{})
 
 	_, err = s.store.GetInfoByHost(req.Host, req)
 	if err != nil {
-		logs.Debug("Host not found: %s %s %s", req.URL.Scheme, req.Host, req.RequestURI)
+		proxyLog.Debug("host not found", "route", req.Host, "path", req.RequestURI, "src_ip", srcIP(c.RemoteAddr().String()))
 		return
 	}
 
@@ -263,27 +261,27 @@ func (s *HttpsServer) checkHTTPAndRedirect(c net.Conn, rb []byte) {
 		"Connection: close\r\n\r\n"
 
 	if _, writeErr := c.Write([]byte(response)); writeErr != nil {
-		logs.Error("Failed to write redirect response to %v, err=%v", c.RemoteAddr(), writeErr)
+		proxyLog.Debug("redirect write failed", "src_ip", srcIP(c.RemoteAddr().String()), "err", writeErr)
 	} else {
-		logs.Info("Redirected HTTP request from %v to %s", c.RemoteAddr(), redirectURL)
+		proxyLog.Debug("http request redirected to https", "src_ip", srcIP(c.RemoteAddr().String()), "target", redirectURL)
 	}
 }
 
 func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, sni string) {
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
-		logs.Debug("Client id %d, host id %d, error %v during https connection", host.Client.Id, host.Id, err)
+		emitLimit(host, err)
 		_ = c.Close()
 		return
 	}
 	defer release()
 
-	logs.Info("New HTTPS connection, clientId %d, host %s, remote address %v", host.Client.Id, sni, c.RemoteAddr())
+	proxyLog.Debug("https passthrough connection", "client", host.Client.Id, "host", host.Id, "route", sni, "src_ip", srcIP(c.RemoteAddr().String()))
 	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
 	if err := s.DealTarget(conn.NewConn(c), host.Client, rb, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
-		logs.Warn("%v", err)
+		obs.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
 		_ = c.Close()
 	}
 }
@@ -291,18 +289,18 @@ func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, 
 func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni string) {
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
-		logs.Debug("Client id %d, host id %d, TLS-only check failed: %v", host.Client.Id, host.Id, err)
+		emitLimit(host, err)
 		_ = tlsConn.Close()
 		return
 	}
 	defer release()
 
-	logs.Info("New TLS offload connection, clientId %d, host %s, remote %v", host.Client.Id, sni, tlsConn.RemoteAddr())
+	proxyLog.Debug("tls offload connection", "client", host.Client.Id, "host", host.Id, "route", sni, "src_ip", srcIP(tlsConn.RemoteAddr().String()))
 	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
 	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
-		logs.Warn("%v", err)
+		obs.Emit(proxyLog, &logevent.RelayFailed, "route", host.Host, "target", host.Id, "reason", logevent.NetReason(err), "err", err)
 		_ = tlsConn.Close()
 	}
 }

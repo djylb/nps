@@ -12,7 +12,6 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/server/connection"
 	"github.com/quic-go/quic-go"
 )
@@ -58,7 +57,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	// kcp
 	if t.KCP {
-		logs.Info("Server start, the bridge type is kcp, the bridge port is %d", n.BridgeKCPPort)
+		log.Info("bridge listening", "carrier", "kcp", "addr", net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort)))
 		l, err := conn.ListenKCP(net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort)))
 		if err != nil {
 			return fmt.Errorf("kcp bridge listener: %w", err)
@@ -73,7 +72,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	// quic
 	if t.QUIC {
-		logs.Info("Server start, the bridge type is quic, the bridge port is %d", n.BridgeQUICPort)
+		log.Info("bridge listening", "carrier", "quic", "port", n.BridgeQUICPort)
 		quicConfig := &quic.Config{
 			KeepAlivePeriod:    time.Duration(n.QUICKeepAlivePeriod) * time.Second,
 			MaxIdleTimeout:     time.Duration(n.QUICMaxIdleTimeout) * time.Second,

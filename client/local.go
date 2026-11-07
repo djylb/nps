@@ -17,8 +17,9 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 )
 
@@ -57,7 +58,7 @@ type P2pBridge struct {
 func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
 	useP2P := l.Type != "secret" && !DisableP2P
 	if useP2P && !clientCaps().P2P {
-		logs.Warn("P2P needs protocol version %d or newer (running %d); local port %d relays only", legacy.P2PMinIndex, protocolIndex, l.Port)
+		p2pLog.Warn("protocol too old for p2p, relaying only", "need", legacy.P2PMinIndex, "running", protocolIndex, "port", l.Port)
 		useP2P = false
 	}
 	b := &P2pBridge{
@@ -147,7 +148,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 		if t != nil {
 			c, err := t.openLink(b.mgr.ctx, *link)
 			if err == nil {
-				logs.Trace("using the P2P direct path for %s", link.Host)
+				p2pLog.Log(context.Background(), obs.LevelTrace, "using direct path", "target", link.Host)
 				return c, nil
 			}
 			b.peer.suspect(t, err)
@@ -155,7 +156,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 				return nil, fmt.Errorf("P2P direct path: %w", err)
 			}
 			directErr = err
-			logs.Info("relaying connection to %s after the direct path failed", link.Host)
+			obs.Emit(p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
 		}
 	}
 	c, err := b.sendViaSecret(*link)
@@ -170,9 +171,9 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 	sc, err := mgr.getSecretConn()
 	if err != nil {
 		if AutoReconnect {
-			logs.Trace("getSecretConn failed, retrying: %v", err)
+			log.Debug("secret connection failed, retrying", "err", err)
 		} else {
-			logs.Trace("getSecretConn failed: %v", err)
+			log.Debug("secret connection failed", "err", err)
 			mgr.pCancel()
 		}
 		return nil, err
@@ -184,18 +185,18 @@ func (b *P2pBridge) sendViaSecret(link conn.Link) (net.Conn, error) {
 		}
 	}()
 	if _, err := sc.Write([]byte(crypt.Md5(b.local.Password))); err != nil {
-		logs.Error("secret write password failed: %v", err)
+		log.Debug("secret write password failed", "err", err)
 		return nil, err
 	}
 	// The wrapper only writes to sc, which the deferred cleanup closes on failure.
 	//noinspection GoResourceLeak
 	if err := legacy.WriteLink(sc, &link); err != nil {
-		logs.Trace("Secret SendInfo failed: %v", err)
+		log.Debug("secret send link failed", "err", err)
 		return nil, err
 	}
 	if link.Option.NeedAck {
 		if err := legacy.ReadAck(sc, b.timeout); err != nil {
-			logs.Trace("Secret ReadACK failed: %v", err)
+			log.Debug("secret read ack failed", "err", err)
 			return nil, err
 		}
 	}
@@ -286,7 +287,7 @@ type localServer interface {
 // it until the manager closes.
 func (mgr *P2PManager) serve(name string, srv localServer) error {
 	if err := srv.Bind(); err != nil {
-		logs.Error("%s failed to start: %v", name, err)
+		log.Error("local server failed to start", "server", name, "err", err)
 		_ = srv.Close()
 		return err
 	}
@@ -299,12 +300,12 @@ func (mgr *P2PManager) serve(name string, srv localServer) error {
 	mgr.proxyServers = append(mgr.proxyServers, srv)
 	mgr.wg.Add(1)
 	mgr.mu.Unlock()
-	logs.Info("%s started", name)
+	log.Info("local server started", "server", name)
 	// The label names the local server in stack dumps and tracebacks.
 	go pprof.Do(context.Background(), pprof.Labels("local", name), func(context.Context) {
 		defer mgr.wg.Done()
 		if err := srv.Start(); err != nil {
-			logs.Error("%s stopped: %v", name, err)
+			log.Error("local server stopped", "server", name, "err", err)
 		}
 	})
 	return nil
@@ -353,7 +354,7 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	//noinspection GoResourceLeak
 	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP)
 	if err != nil {
-		logs.Error("secret NewConn failed: %v", err)
+		log.Warn("secret connection to server failed", "err", err)
 		if !AutoReconnect {
 			mgr.pCancel()
 		}
@@ -370,14 +371,14 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 		return pc, server, nil
 	}
 	if err = SendType(pc, legacy.WorkVisitor, uuid); err != nil {
-		logs.Error("secret SendType failed: %v", err)
+		log.Warn("secret send type failed", "err", err)
 		_ = pc.Close()
 		return nil, serverInfo{}, err
 	}
 	tunnel := legacy.NewTunnel(pc, mgr.cfg.Tp, clientCaps(), mgr.cfg.DisconnectTime, true)
 	c, err := tunnel.OpenStream(mgr.ctx)
 	if err != nil {
-		logs.Error("secret open stream failed: %v", err)
+		log.Warn("secret open stream failed", "err", err)
 		_ = tunnel.Close()
 		_ = pc.Close()
 		return nil, serverInfo{}, err
@@ -404,7 +405,7 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 	// The wrapper only writes to c, which is closed on failure and returned otherwise.
 	//noinspection GoResourceLeak
 	if err := SendType(conn.NewConn(c), legacy.WorkSecret, mgr.getUUID()); err != nil {
-		logs.Error("secret SendType failed: %v", err)
+		log.Warn("secret send type failed", "err", err)
 		_ = c.Close()
 		return nil, err
 	}

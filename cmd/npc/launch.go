@@ -13,7 +13,8 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/clock"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/timeshim"
 	flag "github.com/spf13/pflag"
@@ -43,10 +44,10 @@ func launchPayloads() []string {
 func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string) {
 	for _, name := range []string{"server", "vkey", "type", "config", "proxy", "local_ip", "password", "target"} {
 		if f := flag.CommandLine.Lookup(name); f != nil && f.Changed {
-			logs.Warn("--%s is ignored because --launch is set", name)
+			cfgLog.Warn("flag ignored because --launch is set", "flag", name)
 		}
 	}
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
+	obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 	clock.Sync()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
 	for i, input := range inputs {
@@ -56,7 +57,7 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string
 		}
 		go func() {
 			if err := superviseLaunch(ctx, i+1, input, launch.Resolve, run); err != nil {
-				logs.Error("launch input %d stopped: %v", i+1, err)
+				log.Error("launch input stopped", "input", i+1, "err", err)
 				cancel()
 				os.Exit(1)
 			}
@@ -89,16 +90,16 @@ func superviseLaunch(
 			case !errors.As(err, &remote):
 				return err
 			case remote.Revoked:
-				logs.Warn("launch input %d was revoked, stopping it and retrying in %s", index, launchSourcePause)
+				log.Warn("launch input revoked, stopping it", "input", index, "retry_in_ms", launchSourcePause.Milliseconds())
 				good = nil
 				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourcePause)
 				continue
 			case good == nil:
-				logs.Warn("launch input %d failed, retrying in %s: %v", index, launchSourceRetry, err)
+				log.Warn("launch input failed", "input", index, "retry_in_ms", launchSourceRetry.Milliseconds(), "err", err)
 				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourceRetry)
 				continue
 			default:
-				logs.Warn("launch input %d failed, using the last good payload: %v", index, err)
+				log.Warn("launch input failed, using the last good payload", "input", index, "err", err)
 				nextResolve = time.Now().Add(launchSourceRetry)
 			}
 		}
@@ -112,7 +113,7 @@ func superviseLaunch(
 		if !launchReconnects(good) {
 			return err
 		}
-		logs.Warn("launch input %d closed, restarting in %s: %v", index, launchRelaunchWait, err)
+		log.Info("launch input closed, restarting", "input", index, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
 		_ = timeshim.Sleep(ctx, timeshim.Real, launchRelaunchWait)
 	}
 	return nil

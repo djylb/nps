@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/djylb/nps/lib/logs"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/gin-gonic/gin"
 )
@@ -92,7 +91,7 @@ func loginACLMiddleware(state *State) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := webapi.VisitorIP(newAPIContext(c), state.CurrentConfig())
 		if !state.LoginPolicy().AllowsIP(ip) {
-			logs.Warn("Login from %s refused by login_acl_rules", ip)
+			loginRefused(ip)
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

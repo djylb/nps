@@ -11,7 +11,6 @@ import (
 	"github.com/djylb/nps/lib/obs"
 
 	"github.com/djylb/nps/lib/event"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/webhook"
 )
@@ -77,7 +76,7 @@ func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
 		return
 	}
 	if cfg.Secret == "" {
-		logs.Warn("webhook_secret is empty: webhook deliveries are not signed")
+		log.Warn("webhook deliveries are not signed", "reason", "webhook_secret is empty")
 	}
 	w.bus = event.NewBus()
 	w.sender = webhook.Start(webhook.Config{

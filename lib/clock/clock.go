@@ -8,8 +8,10 @@ import (
 	_ "time/tzdata"
 
 	"github.com/beevik/ntp"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("clock")
 
 var (
 	timeOffset   time.Duration
@@ -69,7 +71,7 @@ func Sync() {
 	timeMutex.Unlock()
 	offset, err := calibrateOffset(srv)
 	if err != nil {
-		logs.Error("ntp[%s] sync failed: %v", srv, err)
+		log.Warn("ntp sync failed", "server", srv, "err", err)
 		// Keep the last successful correction when the NTP server is unavailable.
 		return
 	}
@@ -77,7 +79,7 @@ func Sync() {
 	timeOffset = offset
 	timeMutex.Unlock()
 	if offset != 0 {
-		logs.Info("ntp[%s] offset=%v", srv, offset)
+		log.Info("ntp synced", "server", srv, "offset_ms", offset.Milliseconds())
 	}
 }
 

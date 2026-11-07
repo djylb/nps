@@ -98,9 +98,31 @@ func TestStoreHasNoPackageState(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, decl := range f.Decls {
-			if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.VAR {
+			if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.VAR && !isModuleLogger(g) {
 				t.Errorf("lib/file/%s declares a package variable", name)
 			}
 		}
 	}
+}
+
+// isModuleLogger reports whether g is the package's module logger,
+// var log = obs.Module(...), which holds no store state.
+func isModuleLogger(g *ast.GenDecl) bool {
+	if len(g.Specs) != 1 {
+		return false
+	}
+	v, ok := g.Specs[0].(*ast.ValueSpec)
+	if !ok || len(v.Names) != 1 || v.Names[0].Name != "log" || len(v.Values) != 1 {
+		return false
+	}
+	call, ok := v.Values[0].(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Module" {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "obs"
 }

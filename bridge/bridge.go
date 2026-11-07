@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"crypto/tls"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,8 +16,11 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("bridge")
 
 // Options are the settings a bridge is built with.
 type Options struct {
@@ -134,7 +138,7 @@ func (s *Bridge) GlobalSource() *acl.Source {
 
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	scope := lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(anyError))
-	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { logs.Error("bridge: %v", err) }))
+	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { log.Error("connection handler failed", "err", err) }))
 	return &Bridge{
 		scope:          scope,
 		conns:          conns,
@@ -163,7 +167,7 @@ func (s *Bridge) DelClient(id int) {
 			return
 		}
 
-		s.recordConnection(id, false)
+		s.recordConnection(id, false, v.(*Client))
 		if s.store.IsPubClient(id) {
 			return
 		}
@@ -174,7 +178,7 @@ func (s *Bridge) DelClient(id int) {
 			select {
 			case s.CloseClient <- c.Id:
 			default:
-				logs.Warn("CloseClient channel is full, failed to send close signal for client %d", c.Id)
+				log.Warn("close signal dropped: queue full", "client", c.Id)
 			}
 		}
 	}
@@ -223,13 +227,38 @@ func (s *Bridge) LinkCert() *tls.Certificate { return &s.cert }
 
 // Registry mutations and their history events share a lock so rapid reconnects
 // cannot publish an offline event after a newer connection has arrived.
-func (s *Bridge) recordConnection(id int, online bool) {
+//
+// It is also where the client_online and client_offline log lines come from:
+// the store publishes the same transitions to the event bus (ClientPresence),
+// while the line here carries what only the bridge knows, the address and
+// carrier of the session and how long it lasted.
+func (s *Bridge) recordConnection(id int, online bool, session *Client) {
 	db := s.store
 	c, err := db.GetClient(id)
+	now := time.Now()
 	if err == nil {
-		c.RecordConnection(online, time.Now())
+		c.RecordConnection(online, now)
 	}
 	db.ClientPresence(id, c, online)
+	if c == nil || c.KeyKind != model.KeyControl {
+		return
+	}
+	c.RLock()
+	addr, mode, version := c.Addr, c.Mode, c.Version
+	c.RUnlock()
+	carrier := mode
+	if _, t, ok := strings.Cut(mode, ","); ok {
+		carrier = t
+	}
+	if online {
+		obs.Emit(log, &logevent.ClientOnline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version)
+		return
+	}
+	var dur int64
+	if session != nil && !session.started.IsZero() {
+		dur = now.Sub(session.started).Milliseconds()
+	}
+	obs.Emit(log, &logevent.ClientOffline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version, "duration_ms", dur)
 }
 
 func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
@@ -237,7 +266,7 @@ func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
 	defer s.presenceMu.Unlock()
 	actual, loaded := s.Client.LoadOrStore(id, client)
 	if !loaded {
-		s.recordConnection(id, true)
+		s.recordConnection(id, true, client)
 	}
 	return actual, loaded
 }
@@ -277,5 +306,5 @@ func (s *Bridge) storeClient(id int, client *Client) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()
 	s.Client.Store(id, client)
-	s.recordConnection(id, true)
+	s.recordConnection(id, true, client)
 }

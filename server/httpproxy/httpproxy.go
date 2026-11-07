@@ -15,7 +15,6 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/runenv"
@@ -164,7 +163,7 @@ func (s *HttpProxy) serve() error {
 				return fmt.Errorf("start HTTP listener: %w", err)
 			}
 			s.HttpServer = NewHttpServer(s, httpListener)
-			logs.Info("HTTP server listening on port %d", s.HttpPort)
+			proxyLog.Info("http server listening", "port", s.HttpPort)
 			run("HTTP", s.HttpServer.Start)
 		}
 
@@ -177,7 +176,7 @@ func (s *HttpProxy) serve() error {
 				s.HttpServer = NewHttpServer(s, nil)
 			}
 			s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
-			logs.Info("HTTPS server listening on port %d", s.HttpsPort)
+			proxyLog.Info("https server listening", "port", s.HttpsPort)
 			run("HTTPS", s.HttpsServer.Start)
 
 			if s.Http3Port > 0 {
@@ -185,7 +184,7 @@ func (s *HttpProxy) serve() error {
 				if err != nil {
 					return fmt.Errorf("start HTTP/3 listener: %w", err)
 				}
-				logs.Info("HTTP/3 server listening on port %d", s.Http3Port)
+				proxyLog.Info("http3 server listening", "port", s.Http3Port)
 				s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
 				run("HTTP/3", s.Http3Server.Start)
 			}
@@ -219,7 +218,7 @@ func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
 
 	content, err := os.ReadFile(runenv.ResolvePath(path))
 	if err != nil {
-		logs.Warn("Failed to load error page from %s: %v", path, err)
+		proxyLog.Error("error page load failed", "path", path, "err", err)
 		return nil
 	}
 	return content
@@ -258,7 +257,7 @@ func parseHeaderRules(text string) []httprewrite.Rule {
 	for _, line := range textutil.SplitLines(text) {
 		rs, err := httprewrite.ParseRules(html.UnescapeString(line), ruleVars)
 		if err != nil {
-			logs.Debug("header rule %q: %v", line, err)
+			proxyLog.Debug("header rule ignored", "rule", line, "err", err)
 			continue
 		}
 		rules = append(rules, rs...)

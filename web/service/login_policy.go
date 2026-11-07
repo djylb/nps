@@ -8,9 +8,12 @@ import (
 
 	"github.com/djylb/guard/failban"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 )
+
+var log = obs.Module("web")
 
 type LoginPolicySettings struct {
 	BanTime      int64
@@ -42,7 +45,9 @@ type LoginPolicyService interface {
 	IsIPBanned(ip string) bool
 	IsUserBanned(username string) bool
 	RecordIPFailure(ip string)
-	RecordUserFailure(username string)
+	// RecordUserFailure counts a failure of username from the address ip,
+	// which names the source when it leads to a ban.
+	RecordUserFailure(username, ip string)
 	// ClearUserFailures forgets the failures of a user who logged in.
 	ClearUserFailures(username string)
 	RemoveBan(key string) bool
@@ -129,37 +134,33 @@ func compileLoginACL(mode int, rules string) *acl.Source {
 	}
 	src, err := acl.CompileSource(acl.ScopeGlobal, acl.DenyFirst, black, white, "login_acl_rules")
 	if err != nil {
-		logs.Warn("login_acl_rules: %v", err)
+		log.Warn("login_acl_rules skipped", "err", err)
 	}
 	return src
 }
 
 func (s *DefaultLoginPolicy) IsIPBanned(ip string) bool {
 	prefix, ok := loginPrefix(ip)
-	if !ok || !s.limiters().ip.banned(prefix) {
-		return false
-	}
-	logs.Warn("%s has failed to log in too often, login blocked", ip)
-	return true
+	return ok && s.limiters().ip.banned(prefix)
 }
 
 func (s *DefaultLoginPolicy) IsUserBanned(username string) bool {
-	if username == "" || !s.limiters().user.banned(username) {
-		return false
-	}
-	logs.Warn("%s has failed to log in too often, login blocked", username)
-	return true
+	return username != "" && s.limiters().user.banned(username)
 }
 
 func (s *DefaultLoginPolicy) RecordIPFailure(ip string) {
 	if prefix, ok := loginPrefix(ip); ok {
-		s.limiters().ip.fail(prefix)
+		if until, started := s.limiters().ip.fail(prefix); started {
+			obs.Emit(log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "key", formatLoginPrefix(prefix), "until", until)
+		}
 	}
 }
 
-func (s *DefaultLoginPolicy) RecordUserFailure(username string) {
+func (s *DefaultLoginPolicy) RecordUserFailure(username, ip string) {
 	if username != "" {
-		s.limiters().user.fail(username)
+		if until, started := s.limiters().user.fail(username); started {
+			obs.Emit(log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "user", username, "until", until)
+		}
 	}
 }
 
@@ -177,15 +178,24 @@ func (s *DefaultLoginPolicy) RemoveBan(key string) bool {
 	}
 	l := s.limiters()
 	if prefix, ok := loginPrefix(key); ok {
-		return l.ip.unban(prefix)
+		if !l.ip.unban(prefix) {
+			return false
+		}
+		obs.Emit(log, &logevent.BanRemoved, "src_ip", formatLoginPrefix(prefix), "scope", "login")
+		return true
 	}
-	return l.user.unban(key)
+	if !l.user.unban(key) {
+		return false
+	}
+	obs.Emit(log, &logevent.BanRemoved, "scope", "login", "user", key)
+	return true
 }
 
 func (s *DefaultLoginPolicy) RemoveAllBans() {
 	l := s.limiters()
 	l.ip.reset()
 	l.user.reset()
+	log.Info("all login bans removed")
 }
 
 func (s *DefaultLoginPolicy) Clean() {
@@ -252,13 +262,13 @@ func newLoginLimiter[K comparable](delaySeconds, banSeconds int64, maxFail int, 
 	if delaySeconds > 0 {
 		l.delayTime = time.Duration(delaySeconds) * time.Second
 		if l.delay, err = failban.New[K](failban.Config{Threshold: 1, Window: l.delayTime, BanDuration: l.delayTime, Full: full}); err != nil {
-			logs.Error("Login delay of %d seconds is disabled: %v", delaySeconds, err)
+			log.Error("login delay disabled", "seconds", delaySeconds, "err", err)
 		}
 	}
 	if banSeconds > 0 {
 		l.countTime = time.Duration(banSeconds) * time.Second
 		if l.count, err = failban.New[K](failban.Config{Threshold: l.threshold, Window: l.countTime, BanDuration: l.countTime, Full: full}); err != nil {
-			logs.Error("Login ban of %d seconds is disabled: %v", banSeconds, err)
+			log.Error("login ban disabled", "seconds", banSeconds, "err", err)
 		}
 	}
 	return l
@@ -278,8 +288,18 @@ func (l *loginLimiter[K]) banned(key K) (banned bool) {
 	return banned
 }
 
-func (l *loginLimiter[K]) fail(key K) {
-	l.each(func(f *failban.Limiter[K]) { f.Fail(key) })
+// fail counts a failure of key. started reports that it started the long
+// ban, which lasts until until; the short ban after each failure is not
+// reported.
+func (l *loginLimiter[K]) fail(key K) (until time.Time, started bool) {
+	if l.delay != nil {
+		l.delay.Fail(key)
+	}
+	if l.count != nil {
+		r := l.count.Fail(key)
+		return r.Until, r.Started
+	}
+	return time.Time{}, false
 }
 
 func (l *loginLimiter[K]) succeed(key K) {

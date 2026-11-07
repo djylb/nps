@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"io"
 	"io/fs"
 	"net/http"
@@ -122,7 +124,13 @@ type UpdateResult struct {
 // the files; selfupdate does each of these, Update only chooses the files and
 // checks that the new executable runs. Restarting is left to the caller:
 // RestartAfterUpdate for the services, or UpdateSelf for the running process.
-func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateResult, error) {
+func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *UpdateResult, err error) {
+	var to string
+	defer func() {
+		if err != nil {
+			obs.Emit(log, &logevent.UpdateFailed, "from", version.VERSION, "to", to, "reason", "update_failed", "err", err)
+		}
+	}()
 	targets, err := updateTargets(bin, service)
 	if err != nil {
 		return nil, err
@@ -171,7 +179,8 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 		fmt.Println("Already up to date, current version is", version.VERSION)
 		return nil, nil
 	}
-	fmt.Println("Updating to", c.Version)
+	to = c.Version
+	obs.Emit(log, &logevent.UpdateAvailable, "from", version.VERSION, "to", c.Version)
 	running := processesRunning(targets)
 	services := servicesToRestart(service, targets, running)
 	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) && !runsVersion(p, c.Version) {
@@ -191,7 +200,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	for _, t := range targets {
 		fmt.Println("Replaced", t)
 	}
-	fmt.Println("Update completed:", c.Version)
+	obs.Emit(log, &logevent.UpdateApplied, "from", version.VERSION, "to", c.Version)
 	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running, Services: services}, nil
 }
 

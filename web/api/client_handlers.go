@@ -57,12 +57,6 @@ func (a *App) AddClient(c Context) {
 		ajax(c, err.Error(), 0)
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "client.created",
-		Resource: "client",
-		Action:   "create",
-		Fields:   map[string]interface{}{"id": id},
-	})
 	ajaxWithID(c, "add success", 1, id)
 }
 
@@ -126,12 +120,6 @@ func (a *App) EditClient(c Context) {
 		}
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "client.updated",
-		Resource: "client",
-		Action:   "update",
-		Fields:   map[string]interface{}{"id": requestIntValue(c, "id")},
-	})
 	ajax(c, "save success", 1)
 }
 
@@ -189,12 +177,6 @@ func (a *App) DeleteClient(c Context) {
 		ajax(c, "delete error", 0)
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "client.deleted",
-		Resource: "client",
-		Action:   "delete",
-		Fields:   map[string]interface{}{"id": id},
-	})
 	ajax(c, "delete success", 1)
 }
 

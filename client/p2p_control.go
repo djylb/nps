@@ -82,14 +82,14 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 // p2pOptions are the holepunch options of both sides: this side's pin as
 // transport data, the local address of local_ip, the port mapper and
 // whether this side accepts a background session; the session logs to the
-// nps log with logPrefix.
-func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, logPrefix string) holepunch.Options {
+// p2p log with the peer field set to peer.
+func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, peer string) holepunch.Options {
 	opts := holepunch.Options{
 		LocalAddr:        p2pLocalAddr(localIP),
 		TransportMode:    legacy.P2PTransportMode,
 		TransportData:    p2pLocalPin(),
 		AcceptBackground: background,
-		Logger:           legacy.NewP2PLogger(logPrefix),
+		Logger:           p2pLog.With("peer", peer),
 	}
 	if mapper != nil {
 		opts.PortMapper = mapper

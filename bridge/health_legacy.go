@@ -7,7 +7,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/healthcheck"
-	"github.com/djylb/nps/lib/logs"
 )
 
 // healthSendTimeout bounds writing one health group message.
@@ -55,13 +54,13 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 				retry++
 				continue
 			}
-			logs.Trace("GetHealthInfo error, id=%d, retry=%d, detail=%s", id, retry, netx.NetErrorDetails(err, c.Conn))
+			log.Debug("reading health report ended", "client", id, "retry", retry, "err", netx.NetErrorDetails(err, c.Conn))
 			break
 		}
 		retry = 0
 		switch {
 		case rep.Group == "":
-			logs.Debug("Ignoring health report without group, id=%d, addr=%s", id, rep.Addr)
+			log.Debug("health report without group ignored", "client", id, "target", rep.Addr)
 		case push != nil:
 			push.apply(rep)
 		}

@@ -16,8 +16,10 @@ import (
 
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/djylb/netx/tlsconn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("crypt")
 
 var (
 	SkipVerify = false
@@ -40,7 +42,7 @@ type Identity struct {
 func NewIdentity(custom tls.Certificate) (*Identity, error) {
 	id := &Identity{Cert: custom}
 	if len(custom.Certificate) > 0 {
-		logs.Info("Custom certificate loaded successfully.")
+		log.Info("custom certificate loaded")
 	} else {
 		var err error
 		if id.Cert, err = newSelfSigned(gofakeit.DomainName(), gofakeit.Company()); err != nil {
@@ -49,13 +51,13 @@ func NewIdentity(custom tls.Certificate) (*Identity, error) {
 	}
 	if key, ok := id.Cert.PrivateKey.(*rsa.PrivateKey); ok {
 		id.rsaKey = key
-		logs.Info("Using RSA private key from TLS certificate.")
+		log.Debug("using the certificate rsa key")
 	} else {
 		var err error
 		if id.rsaKey, err = rsa.GenerateKey(rand.Reader, 2048); err != nil {
 			return nil, fmt.Errorf("generate a fallback RSA key: %w", err)
 		}
-		logs.Info("Generated fallback RSA private key.")
+		log.Debug("generated a fallback rsa key")
 	}
 	return id, nil
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
 )
@@ -63,7 +63,7 @@ func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
 	stream, err := sess.AcceptStream(ctx)
 	cancel()
 	if err != nil {
-		logs.Trace("QUIC accept stream error: %v", err)
+		log.Log(context.Background(), obs.LevelTrace, "quic stream not accepted", "err", err)
 		_ = sess.CloseWithError(0, "closed")
 		return
 	}
@@ -81,7 +81,7 @@ func Accept(l net.Listener, f func(c net.Conn)) error {
 			if netx.IsClosed(err) {
 				return nil
 			}
-			logs.Error("accept error: %v", err)
+			log.Error("accept failed", "addr", l.Addr(), "err", err)
 			return err
 		}
 		go f(c)

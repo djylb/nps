@@ -21,9 +21,13 @@ import (
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/obs"
 )
+
+// p2pLog is the log of P2P sessions, shared with the hole punching library.
+var p2pLog = obs.Module("p2p")
 
 const (
 	// p2pHandshakeTimeout bounds reading a P2P request and the TLS handshake
@@ -182,7 +186,7 @@ func newP2PService(cfg P2PConfig, cert tls.Certificate) (*p2pService, error) {
 	if len(cert.Certificate) == 0 {
 		return nil, errors.New("p2p: no bridge certificate")
 	}
-	reg, probe, err := startObservers(cfg.BasePort, legacy.NewP2PLogger("P2P observers: "))
+	reg, probe, err := startObservers(cfg.BasePort, p2pLog.With("part", "observers"))
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +242,7 @@ func startObservers(basePort int, logger *slog.Logger) (*natprobe.Registry, *nat
 		}
 		if err = probe.Start(); err == nil {
 			if dualErr != nil {
-				logs.Info("P2P observers listen on IPv4 only: %v", dualErr)
+				p2pLog.Info("observers listen on ipv4 only", "err", dualErr)
 			}
 			return reg, probe, nil
 		}
@@ -289,12 +293,12 @@ func (p *p2pService) refreshSTUN(ctx context.Context, servers []string) {
 			return
 		}
 		if err != nil {
-			logs.Warn("P2P STUN servers left out: %s", strings.ReplaceAll(err.Error(), "\n", "; "))
+			p2pLog.Warn("stun servers left out", "err", strings.ReplaceAll(err.Error(), "\n", "; "))
 		}
 		if len(addrs) > 0 || p.stun.Load() == nil {
 			p.stun.Store(&addrs)
 		}
-		logs.Debug("P2P STUN servers: %v", addrs)
+		p2pLog.Debug("stun servers resolved", "addrs", addrs)
 		wait := p2pSTUNRefresh
 		if len(*p.stun.Load()) == 0 {
 			wait = p2pSTUNRetry
@@ -366,28 +370,30 @@ func (p *p2pService) onResult(r coord.Result) {
 		if r.Winner != nil {
 			family = string(r.Winner.Family)
 		}
-		logs.Info("P2P session %s of task %s connected client %s to client %s directly (%s, %d rounds, pair %s; %d connected, %d failed in total)",
-			r.SessionID, task, visitor, provider, family, len(r.Rounds), r.PairClass, n, p.failed.Load())
+		obs.Emit(p2pLog, &logevent.P2PConnected, "session", r.SessionID, "tunnel", task, "client", visitor,
+			"peer", provider, "path", "direct", "family", family, "rounds", len(r.Rounds), "pair", r.PairClass,
+			"connected_total", n, "failed_total", p.failed.Load())
 		return
 	}
 	n := p.failed.Add(1)
-	logs.Warn("P2P session %s of task %s between client %s and client %s %s: %s %s (side %q, advice %q; %d connected, %d failed in total)",
-		r.SessionID, task, visitor, provider, r.Outcome, r.Reason, r.Detail, r.FailedRole, r.Retry.Advice, p.succeeded.Load(), n)
+	obs.Emit(p2pLog, &logevent.P2PFailed, "session", r.SessionID, "tunnel", task, "client", visitor,
+		"peer", provider, "outcome", r.Outcome, "reason", r.Reason, "detail", r.Detail, "side", r.FailedRole,
+		"advice", r.Retry.Advice, "connected_total", p.succeeded.Load(), "failed_total", n)
 }
 
 // handleP2PVisitor serves a WorkP2P stream: it checks the request and
 // admits it to the visitor's budgets, then opens the session.
 func (s *Bridge) handleP2PVisitor(c *conn.Conn, id int, caps legacy.Caps, uuid, tunnelType string) {
 	if !caps.P2P {
-		logs.Error("P2P request of client %d from %v refused: npc %s (protocol %s) does not speak the P2P protocol of this server, upgrade npc to %s or newer",
-			id, c.RemoteAddr(), caps.ClientVersion, legacy.CoreVersion(caps.Index), legacy.P2PMinVersion)
+		p2pLog.Info("p2p request refused: npc too old", "client", id, "addr", c.RemoteAddr(),
+			"version", caps.ClientVersion, "protocol", legacy.CoreVersion(caps.Index), "min_version", legacy.P2PMinVersion)
 		_ = c.Close()
 		return
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
 	var req legacy.P2PRequest
 	if err := legacy.ReadP2P(c, &req); err != nil {
-		logs.Warn("P2P request of client %d from %v unreadable: %v", id, c.RemoteAddr(), err)
+		p2pLog.Debug("reading p2p request failed", "client", id, "addr", c.RemoteAddr(), "err", err)
 		_ = c.Close()
 		return
 	}
@@ -397,7 +403,7 @@ func (s *Bridge) handleP2PVisitor(c *conn.Conn, id int, caps legacy.Caps, uuid, 
 		return
 	}
 	if !svc.admit(id, uuid) {
-		logs.Debug("P2P request of client %d from %v dropped: too many requests", id, c.RemoteAddr())
+		p2pLog.Debug("p2p request dropped: too many requests", "client", id, "addr", c.RemoteAddr())
 		_ = legacy.WriteP2P(c, legacy.P2PReply{Code: legacy.P2PCodeBusy, Message: "too many P2P requests"})
 		_ = c.Close()
 		return
@@ -450,7 +456,7 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 		refuseP2P(c, id, legacy.P2PCodeBusy, "cannot open a session now: "+err.Error())
 		return false
 	}
-	logs.Debug("P2P session %s of task %d: client %d with client %d, probing %v", cs.ID(), t.Id, id, t.Client.Id, opts.InitiatorProbe.Observers)
+	p2pLog.Debug("p2p session opened", "session", cs.ID(), "tunnel", t.Id, "client", id, "peer", t.Client.Id, "observers", opts.InitiatorProbe.Observers)
 	attached := make(chan struct{})
 	go func() {
 		defer close(attached)
@@ -472,7 +478,7 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 		cs.Abort(protocol.ReasonTransportMismatch, fmt.Sprintf("client %d declined: %s", t.Client.Id, joined.decline))
 	default:
 		probe := svc.spec(joined.c, joined.serverIP, joined.trusted)
-		logs.Debug("P2P session %s: client %d joined, probing %v", cs.ID(), t.Client.Id, probe.Observers)
+		p2pLog.Debug("p2p peer joined", "session", cs.ID(), "peer", t.Client.Id, "observers", probe.Observers)
 		replyAndAttach(joined.c, cs, protocol.RoleResponder, svc.tlsCfg, probe)
 	}
 	return true
@@ -504,7 +510,7 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id int, caps legacy.Caps, tunnelTyp
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
 	var join legacy.P2PJoin
 	if err := legacy.ReadP2P(c, &join); err != nil {
-		logs.Warn("P2P join of client %d from %v unreadable: %v", id, c.RemoteAddr(), err)
+		p2pLog.Debug("reading p2p join failed", "client", id, "addr", c.RemoteAddr(), "err", err)
 		_ = c.Close()
 		return
 	}
@@ -560,7 +566,7 @@ func (s *Bridge) resolveP2PTarget(passwordMd5 string) (t *model.Tunnel, node *No
 
 // refuseP2P answers a P2P request with a refusal and closes the stream.
 func refuseP2P(c *conn.Conn, id int, code, msg string) {
-	logs.Info("P2P request of client %d from %v refused: %s", id, c.RemoteAddr(), msg)
+	p2pLog.Info("p2p request refused", "client", id, "addr", c.RemoteAddr(), "code", code, "reason", msg)
 	_ = legacy.WriteP2P(c, legacy.P2PReply{Code: code, Message: msg})
 	_ = c.Close()
 }
@@ -573,7 +579,7 @@ func refuseP2P(c *conn.Conn, id int, code, msg string) {
 func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tls.Config, probe *protocol.ProbeSpec) {
 	select {
 	case <-cs.Done():
-		logs.Debug("P2P session %s ended before the %s at %v attached", cs.ID(), role, c.RemoteAddr())
+		p2pLog.Debug("p2p session ended before attach", "session", cs.ID(), "role", role, "addr", c.RemoteAddr())
 		_ = legacy.WriteP2P(c, legacy.P2PReply{Code: legacy.P2PCodeOffline, Message: "the P2P session has ended"})
 		_ = c.Close()
 		return
@@ -581,7 +587,7 @@ func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tl
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pHandshakeTimeout))
 	if err := legacy.WriteP2P(c, legacy.P2PReply{SessionID: cs.ID()}); err != nil {
-		logs.Warn("P2P session %s: the %s at %v is gone: %v", cs.ID(), role, c.RemoteAddr(), err)
+		p2pLog.Debug("p2p peer gone", "session", cs.ID(), "role", role, "addr", c.RemoteAddr(), "err", err)
 		_ = c.Close()
 		cs.Abort(protocol.ReasonPeerOffline, "gone_"+string(role))
 		return
@@ -591,7 +597,7 @@ func replyAndAttach(c *conn.Conn, cs *coord.Session, role protocol.Role, cfg *tl
 	//noinspection GoResourceLeak
 	tc := tls.Server(c, cfg)
 	if err := cs.Attach(role, tc, coord.AttachOptions{Probe: probe}); err != nil {
-		logs.Warn("P2P session %s: attaching the %s at %v failed: %v", cs.ID(), role, c.RemoteAddr(), err)
+		p2pLog.Debug("p2p attach failed", "session", cs.ID(), "role", role, "addr", c.RemoteAddr(), "err", err)
 		_ = tc.Close()
 		cs.Abort(protocol.ReasonControlInterrupted, "attach_"+string(role))
 	}

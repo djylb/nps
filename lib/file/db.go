@@ -11,12 +11,14 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/textutil"
 )
+
+var log = obs.Module("store")
 
 type DbUtils struct {
 	JsonDb *JsonDb
@@ -294,7 +296,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 			if strict {
 				return fmt.Errorf("task password is already used by task %d", idxId)
 			}
-			logs.Warn("password of task %d is already used by task %d, a random password is used instead", t.Id, idxId)
+			log.Warn("tunnel password already used, a random one is used instead", "tunnel", t.Id, "used_by", idxId)
 			generated = true
 		}
 		password = crypt.GetRandomString(16, t.Id)
@@ -329,7 +331,7 @@ func normalizeTask(t *model.Tunnel) {
 // stays authoritative and is written again by the next store.
 func logStoreError(err error) {
 	if err != nil {
-		logs.Error("%v, changes are kept in memory only until the next successful store", err)
+		log.Error("store not written, changes are kept in memory until the next successful write", "err", err)
 	}
 }
 

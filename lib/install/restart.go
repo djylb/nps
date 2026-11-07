@@ -5,9 +5,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/selfupdate"
 )
+
+var log = obs.Module("install")
 
 // ErrRestartUnsupported is returned by UpdateSelf and RestartSelf where the
 // calling process cannot restart itself reliably (see CanRestartSelf).
@@ -66,7 +69,7 @@ func RecoverUpdate() {
 		_, err = j.Recover(context.Background())
 	}
 	if err != nil {
-		logs.Warn("Recover the last update: %v", err)
+		log.Warn("recover the last update failed", "err", err)
 	}
 }
 
@@ -77,34 +80,34 @@ func RecoverUpdate() {
 func StartUpdate() {
 	exe, err := currentExecutable()
 	if err != nil {
-		logs.Warn("Check the last update: %v", err)
+		log.Warn("check the last update failed", "err", err)
 		return
 	}
 	j := selfupdate.JournalFor(exe)
 	out, err := j.Startup(context.Background(), updateBoots)
 	if err != nil {
-		logs.Warn("Check the last update: %v", err)
+		log.Warn("check the last update failed", "err", err)
 		return
 	}
 	state := selfupdate.Updater{Executable: exe, Journal: j}
 	if err := state.RecordOutcome(context.Background(), out); err != nil {
-		logs.Warn("Remember the failed update: %v", err)
+		log.Warn("record the failed update failed", "err", err)
 	}
 	switch out.Status {
 	case selfupdate.StatusPending:
-		logs.Info("Running the update to %s; it is kept if this start stays up for %v", out.Version, updateHealthy)
+		log.Info("running a pending update; kept if this start stays up", "to", out.Version, "dur_ms", updateHealthy.Milliseconds())
 		go func() {
 			time.Sleep(updateHealthy)
 			if err := j.Commit(context.Background()); err != nil {
-				logs.Warn("Confirm the update to %s: %v", out.Version, err)
+				log.Warn("confirm the update failed", "to", out.Version, "err", err)
 				return
 			}
-			logs.Info("Update to %s confirmed", out.Version)
+			log.Info("update confirmed", "to", out.Version)
 		}()
 	case selfupdate.StatusRolledBack:
-		logs.Warn("The update to %s did not start properly and was rolled back to %s; restarting", out.Version, out.Previous)
+		obs.EmitMsg(log, &logevent.UpdateFailed, "rolled back; restarting", "from", out.Previous, "to", out.Version, "reason", "rolled_back")
 		if err := RestartSelf(exe); err != nil {
-			logs.Warn("Restart as %s failed, restart manually: %v", out.Previous, err)
+			log.Error("restart after rollback failed, restart manually", "to", out.Previous, "err", err)
 		}
 	case selfupdate.StatusIdle, selfupdate.StatusInProgress, selfupdate.StatusCleanup:
 		// No update to confirm; Startup reports the last two to Peek only.

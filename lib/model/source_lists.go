@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/logs"
 )
 
 // SourceLists are the source access lists of a level, the global settings, a
@@ -48,7 +47,7 @@ func (l *SourceLists) CopySourceLists(other *SourceLists) {
 func (l *SourceLists) CompileSourceLists(scope acl.Scope, owner string) {
 	src, err := acl.CompileSource(scope, l.IpListPriority, l.BlackIpList, l.WhiteIpList, "the access lists of "+owner)
 	if err != nil {
-		logs.Warn("Access lists of %s: rules skipped: %v", owner, err)
+		log.Warn("access list rules skipped", "owner", owner, "err", err)
 	}
 	l.sourceAcl.Store(src)
 	l.compiled.Store(true)

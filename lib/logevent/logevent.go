@@ -4,13 +4,22 @@
 // happens has one name everywhere. Names and fields only grow; a published
 // one is never renamed.
 //
+// Common fields: route is "<mode>:<port>" for a tunnel (Tunnel.LogRoute)
+// and the domain for a host entry; client and tunnel are ids; src_ip is the
+// real peer address without port; err is the error text; reason is a fixed
+// short word.
+//
 // Level rule: error needs a person; warn is a security event or a
 // degradation; info is a state change or a policy denial; debug is per
 // connection detail.
 package logevent
 
 import (
+	"errors"
+	"io"
 	"log/slog"
+	"net"
+	"strings"
 
 	"github.com/djylb/nps/lib/obs"
 )
@@ -42,8 +51,10 @@ var (
 var (
 	// ClientOnline / ClientOffline: identity (client id), src_ip, carrier
 	// (tcp, tls, kcp, quic, ws, wss), version; offline adds duration_ms.
-	ClientOnline  = obs.Def{Name: "client_online", Level: info, Bus: true}
-	ClientOffline = obs.Def{Name: "client_offline", Level: info, Bus: true}
+	// The store publishes these to the bus with the client itself, so the
+	// log lines do not go there too.
+	ClientOnline  = obs.Def{Name: "client_online", Level: info}
+	ClientOffline = obs.Def{Name: "client_offline", Level: info}
 	// SessionTakeover: the same client connected again; identity, src_ip.
 	SessionTakeover = obs.Def{Name: "session_takeover", Level: warn}
 	// LimitExceeded: identity, route, kind (flow, conn, rate, expire).
@@ -117,8 +128,10 @@ var (
 
 // npc.
 var (
-	// Connected / ConnectFailed: server, carrier, reason, attempt.
+	// Connected / ConnectFailed / Disconnected: server, carrier, reason;
+	// disconnected adds dur_ms.
 	Connected     = obs.Def{Name: "connected", Level: info}
+	Disconnected  = obs.Def{Name: "disconnected", Level: warn}
 	ConnectFailed = obs.Def{Name: "connect_failed", Level: warn, Limit: "server"}
 	// P2PConnected / P2PFailed / P2PPathChanged: peer, path (direct, relay),
 	// reason, rtt_ms.
@@ -138,8 +151,51 @@ var All = []*obs.Def{
 	&Started, &Stopping, &ConfigApplied, &ConfigFailed,
 	&UpdateAvailable, &UpdateApplied, &UpdateFailed, &SourceUpdated, &SourceFailed,
 	&CertIssued, &CertFailed, &CertRevoked,
-	&Connected, &ConnectFailed, &P2PConnected, &P2PFailed, &P2PPathChanged,
+	&Connected, &ConnectFailed, &Disconnected, &P2PConnected, &P2PFailed, &P2PPathChanged,
 	&obs.LogFallback, &obs.TLSHandshakeFailed,
 }
 
 func init() { obs.Register(All...) }
+
+// NetReason maps a dial or relay error to the short reason words of
+// relay_failed and limit_exceeded: eof, timeout, refused, reset, closed,
+// dns, tls, limit, in_use, permission, other.
+func NetReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return "eof"
+	}
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
+		return "closed"
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return "timeout"
+	}
+	var de *net.DNSError
+	if errors.As(err, &de) {
+		return "dns"
+	}
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "in use"):
+		return "in_use"
+	case strings.Contains(s, "permission") || strings.Contains(s, "access is denied"):
+		return "permission"
+	case strings.Contains(s, "refused"):
+		return "refused"
+	case strings.Contains(s, "reset"):
+		return "reset"
+	case strings.Contains(s, "tls") || strings.Contains(s, "x509") || strings.Contains(s, "certificate"):
+		return "tls"
+	case strings.Contains(s, "too many") || strings.Contains(s, "limit") || strings.Contains(s, "exceed"):
+		return "limit"
+	case strings.Contains(s, "closed"):
+		return "closed"
+	case strings.Contains(s, "eof"):
+		return "eof"
+	}
+	return "other"
+}

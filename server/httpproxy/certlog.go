@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/obszap"
 	"go.uber.org/zap"
@@ -83,3 +85,23 @@ func acmeReason(msg string) string {
 }
 
 var proxyLog = obs.Module("httpproxy")
+
+// srcIP is the IP of a remote address, without the port.
+func srcIP(addr string) string { return netaddr.Host(addr) }
+
+// emitLimit reports that host's client refused a connection: err is what
+// AcquireForwarding returned.
+func emitLimit(host *model.Host, err error) {
+	kind := "conn"
+	if traffic, expired := host.Client.Flow.Over(); expired {
+		kind = "expire"
+	} else if traffic {
+		kind = "flow"
+	}
+	obs.Emit(proxyLog, &logevent.LimitExceeded, "identity", host.Client.Id, "route", host.Host, "kind", kind, "reason", logevent.NetReason(err), "err", err)
+}
+
+// emitAuthDenied reports a request to host without valid credentials.
+func emitAuthDenied(host *model.Host, remote string) {
+	obs.Emit(proxyLog, &logevent.TunnelDenied, "src_ip", srcIP(remote), "route", host.Host, "reason", "auth")
+}

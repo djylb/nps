@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/textutil"
 )
@@ -134,7 +133,7 @@ func (a *p2pAnnouncer) resolve(ctx context.Context, host string) []netip.Addr {
 	cancel()
 	if err != nil || len(addrs) == 0 {
 		// Warned once per p2pResolveRetry: the failure is cached as long.
-		logs.Warn("P2P: cannot resolve p2p_ip %s: %v; using the last addresses found and the next address sources", host, err)
+		log.Warn("resolving p2p_ip failed, using earlier addresses", "host", host, "err", err)
 		a.mu.Lock()
 		a.cache[host] = p2pResolved{addrs: cached.addrs, at: time.Now(), failed: true}
 		a.mu.Unlock()

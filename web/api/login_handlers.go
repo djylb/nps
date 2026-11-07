@@ -13,7 +13,8 @@ import (
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -50,7 +51,11 @@ func (a *App) LoginVerify(c Context) {
 		}
 		captchaVerified = framework.VerifyCaptcha(captchaID, captchaCode)
 		if isIPBan || (!captchaVerified && totpCode == "") || (!captchaVerified && isUserBan) {
-			logs.Warn("Captcha failed for user %s from %s", username, ip)
+			reason := "bad_captcha"
+			if isIPBan {
+				reason = "banned"
+			}
+			loginFailed(ip, username, reason)
 			loginPolicy.RecordIPFailure(ip)
 			setSession(c, "login_nonce", nonce)
 			ajaxWithNonce(c, "the verification code is wrong, please get it again and try again", 0, nonce)
@@ -63,10 +68,10 @@ func (a *App) LoginVerify(c Context) {
 		powX := requestString(c, "powx")
 		bits := requestIntValue(c, "bits")
 		if bits != cfg.Security.PoWBits || !auth.ValidatePoW(cfg.Security.PoWBits, rawPassword, powX) {
-			logs.Warn("PoW failed for user %s from %s", username, ip)
+			loginFailed(ip, username, "bad_pow")
 			loginPolicy.RecordIPFailure(ip)
 			if !captchaVerified {
-				loginPolicy.RecordUserFailure(username)
+				loginPolicy.RecordUserFailure(username, ip)
 			}
 			setSession(c, "login_nonce", nonce)
 			ajaxWithNonceBits(c, "pow verification failed", 0, nonce, cfg.Security.PoWBits)
@@ -76,10 +81,10 @@ func (a *App) LoginVerify(c Context) {
 
 	payload, err := a.Identity.ParseLoginPayload(rawPassword)
 	if err != nil {
-		logs.Warn("Decrypt error for user %s from %s: %v", username, ip, err)
+		loginFailed(ip, username, "malformed", "err", err)
 		loginPolicy.RecordIPFailure(ip)
 		if !captchaVerified {
-			loginPolicy.RecordUserFailure(username)
+			loginPolicy.RecordUserFailure(username, ip)
 		}
 		cert, _ := a.Identity.RSAPublicKeyPEM()
 		ajaxWithNonceCert(c, "decrypt error", 0, nonce, cert)
@@ -88,10 +93,10 @@ func (a *App) LoginVerify(c Context) {
 
 	storedNonce, _ := stored.(string)
 	if storedNonce == "" || storedNonce != payload.Nonce {
-		logs.Warn("Invalid nonce for user %s from %s", username, ip)
+		loginFailed(ip, username, "bad_nonce")
 		loginPolicy.RecordIPFailure(ip)
 		if !captchaVerified {
-			loginPolicy.RecordUserFailure(username)
+			loginPolicy.RecordUserFailure(username, ip)
 		}
 		ajaxWithNonce(c, "invalid nonce", 0, nonce)
 		return
@@ -100,10 +105,10 @@ func (a *App) LoginVerify(c Context) {
 	if cfg.Security.SecureMode {
 		nowMillis := clock.Now().UnixMilli()
 		if payload.Timestamp < nowMillis-settings.MaxSkew || payload.Timestamp > nowMillis+settings.MaxSkew {
-			logs.Warn("Timestamp expired for user %s from %s", username, ip)
+			loginFailed(ip, username, "expired")
 			loginPolicy.RecordIPFailure(ip)
 			if !captchaVerified {
-				loginPolicy.RecordUserFailure(username)
+				loginPolicy.RecordUserFailure(username, ip)
 			}
 			ajaxWithNonceTimestamp(c, "timestamp expired", 0, nonce, nowMillis)
 			return
@@ -111,21 +116,16 @@ func (a *App) LoginVerify(c Context) {
 	}
 
 	time.Sleep(time.Millisecond * time.Duration(rand.Intn(20)))
-	if a.doLogin(c, username, payload.Password, totpCode) {
-		logs.Info("Login success for user %s from %s", username, ip)
+	reason := a.doLogin(c, username, payload.Password, totpCode)
+	if reason == "" {
+		obs.Emit(log, &logevent.LoginOK, "src_ip", ip, "user", username)
 		deleteSession(c, "login_nonce")
-		a.Emit(c, Event{
-			Name:     "session.login",
-			Resource: "session",
-			Action:   "login",
-			Fields:   map[string]interface{}{"username": username},
-		})
 		ajax(c, "login success", 1)
 		return
 	}
 
-	logs.Warn("Login failed for user %s from %s", username, ip)
-	loginPolicy.RecordUserFailure(username)
+	loginFailed(ip, username, reason)
+	loginPolicy.RecordUserFailure(username, ip)
 	ajaxWithNonce(c, "username or password incorrect", 0, nonce)
 }
 
@@ -193,33 +193,37 @@ func (a *App) RegisterUser(c Context) {
 	if len(result.ClientIDs) > 0 {
 		clientID = result.ClientIDs[0]
 	}
-	a.Emit(c, Event{
-		Name:     "client.registered",
-		Resource: "client",
-		Action:   "register",
-		Fields:   map[string]interface{}{"client_id": clientID, "username": result.Username, "subject_id": result.SubjectID},
-	})
+	log.Info("user registered", "src_ip", VisitorIP(c, cfg), "user", result.Username, "client", clientID)
 	ajax(c, "register success", 1)
 }
 
 func (a *App) LogoutRedirect(c Context) {
-	a.Emit(c, Event{
-		Name:     "session.logout",
-		Resource: "session",
-		Action:   "logout",
-	})
+	logLogout(c, a.currentConfig())
 	_ = clearSessionIdentity(c)
 	deleteSession(c, "login_nonce")
 	c.Redirect(302, joinBase(a.currentConfig().Web.BaseURL, "/login/index"))
 }
 
-func (a *App) doLogin(c Context, username, password, totp string) bool {
+// loginFailed writes the login_failed event of a login from ip as user.
+func loginFailed(ip, user, reason string, args ...any) {
+	obs.Emit(log, &logevent.LoginFailed, append([]any{"src_ip", ip, "user", user, "reason", reason}, args...)...)
+}
+
+// logLogout notes that the user of c logged out.
+func logLogout(c Context, cfg *servercfg.Snapshot) {
+	if user := actorName(c); user != "" {
+		log.Info("logout", "src_ip", VisitorIP(c, cfg), "user", user)
+	}
+}
+
+// doLogin logs the user in and returns "", or returns why the login failed.
+func (a *App) doLogin(c Context, username, password, totp string) string {
 	cfg := a.currentConfig()
 	loginPolicy := a.loginPolicy()
 	ip := VisitorIP(c, cfg)
 
 	if loginPolicy.IsIPBanned(ip) {
-		return false
+		return "banned"
 	}
 
 	identity, err := a.Services.Auth.Authenticate(webservice.AuthenticateInput{
@@ -228,21 +232,22 @@ func (a *App) doLogin(c Context, username, password, totp string) bool {
 		TOTP:     totp,
 	})
 	if err != nil {
-		if !errors.Is(err, webservice.ErrInvalidCredentials) {
-			logs.Warn("Authentication error for user %s from %s: %v", username, ip, err)
-		}
 		loginPolicy.RecordIPFailure(ip)
-		return false
+		if !errors.Is(err, webservice.ErrInvalidCredentials) {
+			log.Warn("authentication error", "src_ip", ip, "user", username, "err", err)
+			return "error"
+		}
+		return "bad_password"
 	}
 
 	if err := applySessionIdentity(c, identity); err != nil {
-		logs.Error("Login of user %s from %s succeeded but the session could not be saved: %v", username, ip, err)
-		return false
+		log.Error("login session not saved", "src_ip", ip, "user", username, "err", err)
+		return "session_failed"
 	}
 	a.system().RegisterManagementAccess(ip, identity.ClientIDs, identity.IsAdmin)
 
 	loginPolicy.ClearUserFailures(username)
-	return true
+	return ""
 }
 
 // VisitorIP returns the address of the visitor of a web request: the peer,

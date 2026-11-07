@@ -16,7 +16,6 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/runenv"
@@ -66,7 +65,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		var err error
 		post := v.(*model.Tunnel)
 		if post.Id <= 0 || post.Client == nil {
-			logs.Warn("Tunnel %d skipped: no id or client", post.Id)
+			log.Warn("tunnel skipped: no id or client", "tunnel", post.Id)
 			return
 		}
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
@@ -108,7 +107,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 			post.ConnectionHistory = new(model.ConnectionHistory)
 		}
 		if post.Id == 0 {
-			logs.Warn("Client skipped: no id")
+			log.Warn("client skipped: no id")
 			return
 		}
 		if post.Cnf == nil {
@@ -142,7 +141,7 @@ func (s *JsonDb) LoadHostFromJsonFile() error {
 		var err error
 		post := v.(*model.Host)
 		if post.Id <= 0 || post.Client == nil {
-			logs.Warn("Host %d skipped: no id or client", post.Id)
+			log.Warn("host skipped: no id or client", "host", post.Id)
 			return
 		}
 		if post.Client, err = s.GetClient(post.Client.Id); err != nil {
@@ -178,7 +177,7 @@ func (s *JsonDb) LoadGlobalFromJsonFile() error {
 			return
 		}
 		if err := json.Unmarshal([]byte(v), &post); err != nil {
-			logs.Warn("Load json file %s error: %v", s.GlobalFilePath, err)
+			log.Error("store file not readable", "path", s.GlobalFilePath, "err", err)
 			backupUnreadable(s.GlobalFilePath, []byte(v))
 			return
 		}
@@ -278,9 +277,8 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 	err = loadJsonFile(b, t, f)
 
 	if err != nil {
-		logs.Warn("Load json file %s error: %v", filePath, err)
+		log.Warn("store file not readable, loading it as the obsolete format", "path", filePath, "err", err)
 		backupUnreadable(filePath, b)
-		logs.Info("Load %s as obsolete json file", filePath)
 		// 加载新json报错，则加载旧json
 		loadObsoleteJsonFile(b, t, f)
 	}
@@ -294,10 +292,10 @@ func backupUnreadable(filePath string, content []byte) {
 		return
 	}
 	if err := os.WriteFile(filePath+".bad", content, 0o600); err != nil {
-		logs.Warn("Back up %s error: %v", filePath, err)
+		log.Error("unreadable store file not backed up", "path", filePath, "err", err)
 		return
 	}
-	logs.Warn("The content of %s was kept as %s.bad", filePath, filePath)
+	log.Warn("unreadable store file kept", "path", filePath+".bad")
 }
 
 func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {

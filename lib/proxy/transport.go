@@ -9,7 +9,6 @@ import (
 
 	"github.com/djylb/netx/transparent"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 )
 
 // errNotRedirected is returned for a connection that reached the
@@ -23,7 +22,7 @@ var errNotRedirected = errors.New("connection was not redirected to the transpar
 func listenTransparent(address string) (net.Listener, error) {
 	l, err := transparent.Listen(context.Background(), "tcp", address)
 	if errors.Is(err, fs.ErrPermission) {
-		logs.Warn("trans: %s: no privilege for transparent sockets, TPROXY rules will not reach this listener: %v", address, err)
+		log.Warn("no privilege for transparent sockets, TPROXY rules will not reach the listener", "addr", address, "err", err)
 		return net.Listen("tcp", address)
 	}
 	return l, err
@@ -35,7 +34,7 @@ func listenTransparent(address string) (net.Listener, error) {
 func HandleTrans(c *conn.Conn, s *TunnelModeServer) error {
 	addr, err := originalTarget(c.Conn)
 	if err != nil {
-		logs.Warn("trans: client %d, task %d, remote %v: %v", s.Task.Client.Id, s.Task.Id, c.RemoteAddr(), err)
+		log.Debug("transparent target unknown", "client", s.Task.Client.Id, "tunnel", s.Task.Id, "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		return err
 	}
 	return s.DealClient(c, s.Task.Client, addr, nil, conn.LinkTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)

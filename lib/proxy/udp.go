@@ -6,7 +6,6 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
 )
@@ -64,7 +63,7 @@ func (s *UdpModeServer) Start() error {
 		if err != nil {
 			return nil
 		}
-		logs.Trace("New udp packet from client %d: %v", s.Task.Client.Id, c.RemoteAddr())
+		trace("udp session", "client", s.Task.Client.Id, "tunnel", s.Task.Id, "src_ip", srcIP(c.RemoteAddr()))
 		go s.serve(c)
 	}
 }
@@ -76,12 +75,12 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	if s.Bridge.IsServer() {
 		release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
 		if err != nil {
-			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
+			limitExceeded(s.Task, s.Task.Client.Flow, err)
 			return
 		}
 		defer release()
 		if err := conn.CheckFlowLimits(s.Task.Flow, "Task"); err != nil {
-			logs.Warn("client Id %d, task Id %d flow/conn limit: %v", s.Task.Client.Id, s.Task.Id, err)
+			limitExceeded(s.Task, s.Task.Flow, err)
 			return
 		}
 	}
@@ -92,7 +91,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	link.Option.Node = route.Node
 	clientConn, err := s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 	if err != nil {
-		logs.Trace("OpenLink error: %v", err)
+		relayFailed(s.Task, route.Target.TargetStr, err)
 		return
 	}
 	target := conn.LinkConn(clientConn, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, s.Bridge.LinkCert(), isLocal)
@@ -112,11 +111,11 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		for {
 			n, err := tunnel.Read(buf)
 			if err != nil {
-				logs.Trace("back-channel read error: %v", err)
+				trace("udp back channel ended", "src_ip", srcIP(addr), "err", err)
 				return
 			}
 			if _, err := visitor.Write(buf[:n]); err != nil {
-				logs.Warn("error writing back to client: %v", err)
+				log.Debug("udp write to visitor failed", "src_ip", srcIP(addr), "err", err)
 				return
 			}
 		}
@@ -128,7 +127,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	var header []byte
 	if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {
 		if header, err = hdr.AppendBinary(nil); err != nil {
-			logs.Warn("build PROXY protocol header for %v: %v", addr, err)
+			log.Warn("proxy protocol header not built", "src_ip", srcIP(addr), "err", err)
 			header = nil
 		}
 	}
@@ -136,7 +135,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		n, err := visitor.Read(buf[len(header):])
 		if err != nil {
 			if !netx.IsClosed(err) {
-				logs.Trace("udp session %v ended: %v", addr, err)
+				log.Debug("udp session ended", "src_ip", srcIP(addr), "err", err)
 			}
 			return
 		}

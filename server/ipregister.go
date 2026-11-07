@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 )
@@ -37,7 +37,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	if cfg.App.IPRegisterCertFile != "" || cfg.App.IPRegisterKeyFile != "" {
 		cert, err := loadCertPair("ip_register", cfg.App.IPRegisterCertFile, cfg.App.IPRegisterKeyFile)
 		if err != nil {
-			logs.Error("IP registration page: %v", err)
+			log.Error("ip registration page cert failed", "err", err)
 			return
 		}
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
@@ -45,7 +45,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	addr := net.JoinHostPort(cfg.App.IPRegisterIP, strconv.Itoa(cfg.App.IPRegisterPort))
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		logs.Error("IP registration page: %v", err)
+		obs.Emit(log, &logevent.ListenFailed, "route", "ip_register", "addr", addr, "reason", logevent.NetReason(err), "err", err)
 		return
 	}
 	scheme := "http"
@@ -53,7 +53,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 		l = tls.NewListener(l, tlsConfig)
 		scheme = "https"
 	}
-	logs.Info("IP registration page listening on %s://%s", scheme, addr)
+	log.Info("ip registration page listening", "scheme", scheme, "addr", addr)
 	if !s.goWork("ip register listener", func(context.Context) { _ = hs.Serve(l) }) {
 		_ = l.Close()
 	}

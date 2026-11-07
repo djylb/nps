@@ -172,11 +172,7 @@ func (a *App) GetCert(c Context) {
 }
 
 func (a *App) Logout(c Context) {
-	a.Emit(c, Event{
-		Name:     "session.logout",
-		Resource: "session",
-		Action:   "logout",
-	})
+	logLogout(c, a.currentConfig())
 	_ = clearSessionIdentity(c)
 	_ = c.DeleteSessionValue("login_nonce")
 	ajax(c, "logout success", 1)

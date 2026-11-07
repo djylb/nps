@@ -1,11 +1,12 @@
 package server
 
 import (
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/djylb/nps/lib/clock"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
@@ -38,15 +39,18 @@ func (s *Server) ReloadConfig() servercfg.Report {
 	r := servercfg.Reload(s.ConfigAppliers()...)
 	if r.OK() {
 		for _, w := range servercfg.Current().Legacy {
-			logs.Warn("%s", w)
+			log.Warn("legacy config setting", "reason", w)
 		}
+		obs.Emit(log, &logevent.ConfigApplied, "path", r.Path, "keys", strings.Join(r.Applied, ","), "restart", strings.Join(r.Restart, ","))
 		if len(r.Restart) > 0 {
-			logs.Warn("%s", r)
-		} else {
-			logs.Info("%s", r)
+			log.Warn("config changes need a restart", "keys", strings.Join(r.Restart, ","))
 		}
 	} else {
-		logs.Error("%s", r)
+		var keys []string
+		for _, f := range r.Failed {
+			keys = append(keys, f.Settings...)
+		}
+		obs.EmitMsg(log, &logevent.ConfigFailed, r.String(), "path", r.Path, "keys", strings.Join(keys, ","), "reason", r.Error)
 	}
 	return r
 }

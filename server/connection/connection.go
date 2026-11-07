@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -101,7 +101,7 @@ func Listen(k Kind) (net.Listener, error) {
 	if !validPort(port) {
 		return nil, fmt.Errorf("invalid %v port %d", k, port)
 	}
-	logs.Info("start %v listener, port is %d", k, port)
+	log.Info("listener starting", "kind", k, "port", port)
 	if pMux != nil && port == n.BridgePort {
 		return pMux.register(k)
 	}
@@ -109,3 +109,5 @@ func Listen(k Kind) (net.Listener, error) {
 }
 
 func validPort(port int) bool { return port > 0 && port <= 65535 }
+
+var log = obs.Module("server")

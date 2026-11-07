@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -34,7 +33,7 @@ func copyServerAssets(srcDir, destDir string) error {
 			return err
 		} else if !ok {
 			if exists, _ := pathExists(dest); exists {
-				log.Printf("%s not found in %s, keep %s", it.src, srcDir, dest)
+				fmt.Printf("%s not found in %s, keep %s\n", it.src, srcDir, dest)
 				continue
 			}
 			return fmt.Errorf("%s not found in %s", it.src, srcDir)
@@ -123,7 +122,7 @@ func NPC() (string, error) {
 func NPS() (string, error) {
 	path := runenv.GetInstallPath()
 	appPath := runenv.GetAppPath()
-	log.Println("install path:" + path)
+	fmt.Println("install path:", path)
 	if exists, err := pathExists(path); err != nil {
 		return "", err
 	} else if !exists {
@@ -140,10 +139,10 @@ func NPS() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	log.Println("install ok!")
-	log.Println("Static files and configuration files in the current directory will be useless")
-	log.Println("The new configuration file is located in", path, "you can edit them")
-	log.Println("You can start with:\n" + npsUsage)
+	fmt.Println("install ok!")
+	fmt.Println("Static files and configuration files in the current directory will be useless")
+	fmt.Println("The new configuration file is located in", path, "you can edit them")
+	fmt.Println("You can start with:\n" + npsUsage)
 	chMod(runenv.GetLogPath(), 0777)
 	return binPath, nil
 }
@@ -177,7 +176,7 @@ func CopyDir(srcPath string, destPath string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		log.Println("copy file: " + path + " -> " + target)
+		fmt.Println("copy file:", path, "->", target)
 		if _, err := copyFile(path, target); err != nil {
 			return err
 		}

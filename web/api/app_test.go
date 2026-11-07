@@ -13,12 +13,10 @@ func TestNewWithOptionsUsesOverrides(t *testing.T) {
 		App: servercfg.AppConfig{Name: "cfg-node"},
 	}
 	customServices := webservice.New(file.New(t.TempDir()), nil)
-	customHooks := NoopHooks{}
 	configured := false
 
 	app := NewWithOptions(nil, Options{
 		NodeID:   "custom-node",
-		Hooks:    customHooks,
 		Services: &customServices,
 		ConfigureServices: func(services *webservice.Services) {
 			configured = true
@@ -28,9 +26,6 @@ func TestNewWithOptionsUsesOverrides(t *testing.T) {
 
 	if app.NodeID != "custom-node" {
 		t.Fatalf("NodeID = %q, want custom-node", app.NodeID)
-	}
-	if app.Hooks != customHooks {
-		t.Fatal("Hooks override was not applied")
 	}
 	if app.CurrentConfig() != providedCfg {
 		t.Fatal("CurrentConfig() did not use custom config provider")

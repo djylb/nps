@@ -22,11 +22,7 @@ func (a *App) SaveGlobal(c Context) {
 		ajax(c, err.Error(), 0)
 		return
 	}
-	a.Emit(c, Event{
-		Name:     "global.updated",
-		Resource: "global",
-		Action:   "save",
-	})
+	log.Info("global settings saved", "user", actorName(c))
 	ajax(c, "save success", 1)
 }
 
@@ -82,7 +78,6 @@ func (a *App) ReloadConfig(c Context) {
 	status := 0
 	if r.OK() {
 		status = 1
-		a.Emit(c, Event{Name: "config.reloaded", Resource: "config", Action: "reload"})
 	}
 	c.RespondJSON(200, ReloadConfigResponse{Status: status, Msg: r.String(), Report: r})
 }
@@ -102,12 +97,6 @@ func (a *App) Unban(c Context) {
 		return
 	}
 	if a.Services.Globals.Unban(key) {
-		a.Emit(c, Event{
-			Name:     "login_ban.removed",
-			Resource: "login_ban",
-			Action:   "remove",
-			Fields:   map[string]interface{}{"key": key},
-		})
 		ajax(c, "unban success", 1)
 		return
 	}
@@ -116,20 +105,18 @@ func (a *App) Unban(c Context) {
 
 func (a *App) UnbanAll(c Context) {
 	a.Services.Globals.UnbanAll()
-	a.Emit(c, Event{
-		Name:     "login_ban.cleared",
-		Resource: "login_ban",
-		Action:   "clear_all",
-	})
 	ajax(c, "all records cleared", 1)
 }
 
 func (a *App) BanClean(c Context) {
 	a.Services.Globals.CleanBans()
-	a.Emit(c, Event{
-		Name:     "login_ban.cleaned",
-		Resource: "login_ban",
-		Action:   "clean",
-	})
 	ajax(c, "operation success", 1)
+}
+
+// actorName names the user of a request for the log.
+func actorName(c Context) string {
+	if actor := c.Actor(); actor != nil {
+		return actor.Username
+	}
+	return ""
 }

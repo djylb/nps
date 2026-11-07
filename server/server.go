@@ -18,9 +18,10 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
@@ -258,7 +259,7 @@ func (s *Server) initFromDb() {
 			local.Version = version.VERSION
 			local.VerifyKey = "localproxy"
 			s.db.JsonDb.Clients.Store(local.Id, local)
-			logs.Info("Auto create local proxy client.")
+			log.Info("local proxy client created")
 		}
 	}
 
@@ -287,7 +288,7 @@ func (s *Server) addKeyClient(vkey string, kind model.KeyKind) {
 	c := model.NewClient(vkey, true, true)
 	c.KeyKind = kind
 	if err := s.db.NewClient(c); err != nil {
-		logs.Warn("public_vkey or visitor_vkey ignored, use a key of its own: %v", err)
+		log.Warn("public_vkey or visitor_vkey ignored, use a key of its own", "err", err)
 		return
 	}
 	s.tasks.Store(c.Id, nil)
@@ -315,7 +316,7 @@ func (s *Server) dealBridgeTask(ctx context.Context) {
 			if t != nil {
 				_ = s.StopTunnel(t.Id)
 				if err := s.StartTunnel(t.Id); err != nil {
-					logs.Error("StartTask(%d) error: %v", t.Id, err)
+					log.Error("tunnel start failed", "tunnel", t.Id, "err", err)
 				}
 			}
 		case t := <-b.CloseTask:
@@ -340,16 +341,16 @@ func (s *Server) dealBridgeTask(ctx context.Context) {
 }
 
 func (s *Server) handleSecret(sc *conn.Secret) {
-	logs.Trace("New secret connection, addr %v", sc.Conn.Conn.RemoteAddr())
+	log.Debug("secret connection", "addr", sc.Conn.Conn.RemoteAddr())
 	t := s.db.GetTaskByMd5Password(sc.Password)
 	if t == nil {
-		logs.Trace("This key %s cannot be processed", sc.Password)
+		log.Debug("secret connection dropped", "reason", "unknown_key")
 		_ = sc.Conn.Close()
 		return
 	}
 	if !t.Status {
 		_ = sc.Conn.Close()
-		logs.Trace("This key %s cannot be processed,status is close", sc.Password)
+		log.Debug("secret connection dropped", "tunnel", t.Id, "reason", "tunnel_stopped")
 		return
 	}
 	feature := servercfg.Current().Feature
@@ -384,7 +385,7 @@ func (s *Server) PingClient(id int, addr string) int {
 	start := time.Now()
 	target, err := s.bridge.Session(id).OpenLink(link, 0)
 	if err != nil {
-		logs.Warn("get connection from client Id %d error %v", id, err)
+		log.Warn("ping client failed", "client", id, "err", err)
 		return -1
 	}
 	rtt := int(time.Since(start).Milliseconds())
@@ -425,7 +426,7 @@ func (s *Server) StopTunnel(id int) error {
 		return err
 	} else {
 		t.Status = false
-		logs.Info("close port %d,remark %s,client id %d,task id %d", t.Port, t.Remark, t.Client.Id, t.Id)
+		log.Info("tunnel closing", "tunnel", t.Id, "client", t.Client.Id, "port", t.Port, "remark", t.Remark)
 		_ = s.db.UpdateTask(t)
 	}
 	v, ok := s.tasks.Load(id)
@@ -434,9 +435,9 @@ func (s *Server) StopTunnel(id int) error {
 	}
 	if svr, ok := v.(proxy.Service); ok {
 		if err := svr.Close(); err != nil {
-			logs.Warn("stop server id %d error %v", id, err)
+			log.Warn("tunnel stop failed", "tunnel", id, "err", err)
 		} else {
-			logs.Info("stop server id %d", id)
+			log.Info("tunnel stopped", "tunnel", id)
 		}
 	}
 	s.tasks.CompareAndDelete(id, v)
@@ -453,12 +454,12 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	default:
 	}
 	if t.Mode == "secret" || t.Mode == "p2p" {
-		logs.Info("secret task %s start ", t.Remark)
+		log.Info("tunnel started", "tunnel", t.Id, "mode", t.Mode, "remark", t.Remark)
 		s.tasks.Store(t.Id, nil)
 		return nil
 	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
-		logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
+		obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
 		return errors.New("the port open error")
 	}
 	svr := s.newMode(t)
@@ -467,7 +468,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	}
 	if b, ok := svr.(proxy.Binder); ok {
 		if err := b.Bind(); err != nil {
-			logs.Error("taskId %d start error port %d open failed: %v", t.Id, t.Port, err)
+			obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 			return err
 		}
 	}
@@ -476,14 +477,14 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 			_ = oldSvr.Close()
 		}
 	}
-	logs.Info("tunnel task %s start mode：%s port %d", t.Remark, t.Mode, t.Port)
+	log.Info("tunnel started", "tunnel", t.Id, "mode", t.Mode, "port", t.Port, "remark", t.Remark)
 	// The labels name the task in stack dumps and tracebacks of everything
 	// the server starts.
 	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", t.Mode, "client", strconv.Itoa(clientID(t)))
 	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
 		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
-				logs.Error("taskId %d start error %v", t.Id, err)
+				obs.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 				s.tasks.CompareAndDelete(t.Id, svr)
 				_ = svr.Close()
 			}
@@ -621,7 +622,7 @@ func (s *Server) dealClientData() {
 				// Add Local Client
 				if !b.Connected(v.Id) && v.Status {
 					b.Client.Store(v.Id, bridge.NewClient(v.Id, bridge.NewLocalNode("127.0.0.1", version.VERSION), bridge.Primary))
-					logs.Debug("Inserted virtual client for ID %d", v.Id)
+					log.Debug("virtual client inserted", "client", v.Id)
 				}
 			} else {
 				v.IsConnect = false
@@ -688,7 +689,12 @@ func (s *Server) storeAll() {
 	db := s.db.JsonDb
 	for _, store := range []func() error{db.StoreHostToJsonFile, db.StoreTasksToJsonFile, db.StoreClientsToJsonFile, db.StoreGlobalToJsonFile} {
 		if err := store(); err != nil {
-			logs.Error("%v", err)
+			log.Error("store write failed", "err", err)
 		}
 	}
 }
+
+var log = obs.Module("server")
+
+// tunnelRoute names tunnel t in route fields.
+func tunnelRoute(t *model.Tunnel) string { return t.LogRoute() }

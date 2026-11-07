@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"net/netip"
@@ -26,9 +25,9 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/timeshim"
 	"github.com/quic-go/quic-go"
@@ -59,7 +58,7 @@ var QuicConfig = &quic.Config{
 var localCert = sync.OnceValue(func() *tls.Certificate {
 	id, err := crypt.NewIdentity(tls.Certificate{})
 	if err != nil {
-		logs.Error("Error initializing crypto certs %v", err)
+		log.Error("create p2p certificate failed", "err", err)
 		return &tls.Certificate{}
 	}
 	return &id.Cert
@@ -118,7 +117,7 @@ func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, loc
 	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
 		return err
 	}
-	log.Printf("Successful ip registration for local public network, the validity period is %d hours.", hour)
+	log.Info("local ip registered", "server", server, "hours", hour)
 	return nil
 }
 
@@ -145,11 +144,9 @@ func StartFromFile(pCtx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("config file %s: %w", path, err)
 	}
-	logs.Info("Loading configuration file %s successfully", path)
+	log.Info("config loaded", "path", path)
 
 	netaddr.SetCustomDNS(cnf.CommonConfig.DnsServer)
-
-	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
 
 	clock.SetNtpServer(cnf.CommonConfig.NtpServer)
 	if cnf.CommonConfig.NtpInterval > 0 {
@@ -170,7 +167,7 @@ func StartFromFile(pCtx context.Context, path string) error {
 			return errSessionEnded
 		}
 		if !first {
-			logs.Info("Reconnecting...")
+			log.Info("reconnecting", "server", cnf.CommonConfig.Server)
 			if !WaitReconnect(pCtx) {
 				return nil
 			}
@@ -179,7 +176,7 @@ func StartFromFile(pCtx context.Context, path string) error {
 
 		uuid, err = RunConfigOnce(pCtx, cnf, uuid)
 		if err != nil {
-			logs.Error("%v", err)
+			log.Warn("session ended", "server", cnf.CommonConfig.Server, "err", err)
 		}
 	}
 }
@@ -215,9 +212,9 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	}
 	_ = c.Close()
 	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
-		logs.Info("web access login username:user password:%s", vkey)
+		log.Info("web access login", "user", "user", "password", obs.Redacted(vkey))
 	} else {
-		logs.Info("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUserName, cnf.CommonConfig.Client.WebPassword)
+		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", obs.Redacted(cnf.CommonConfig.Client.WebPassword))
 	}
 
 	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
@@ -287,7 +284,7 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 			return "", err
 		}
 		if !ok {
-			logs.Error("%v %s", errAdd, v.Host)
+			log.Error("server refused host", "host", v.Host, "err", errAdd)
 		}
 	}
 
@@ -301,7 +298,7 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 			return "", err
 		}
 		if !ok {
-			logs.Error("%v %s %s", errAdd, v.Ports, v.Remark)
+			log.Error("server refused tunnel", "ports", v.Ports, "remark", v.Remark, "err", errAdd)
 			continue
 		}
 		if v.Mode == "file" {
@@ -403,7 +400,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 		if err == nil {
 			return c, uuid, info, nil
 		}
-		logs.Debug("Dial %s %s failed: %v", tp, target, err)
+		log.Debug("dial server failed", "carrier", tp, "server", target, "err", err)
 	}
 	return nil, "", serverInfo{}, err
 }
@@ -570,7 +567,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 		PadLen:        HandshakeHooks.PadLen,
 		VerifyFingerprint: func(fp []byte) error {
 			if !SkipTLSVerify && isTls && !tlsVerify && !bytes.Equal(fp, tlsFp) {
-				logs.Warn("Certificate verification failed. To skip verification, please set -skip_verify=true")
+				log.Warn("server certificate verification failed; set -skip_verify=true to skip it", "server", connection.RemoteAddr().String())
 				return errors.New("validation cert incorrect")
 			}
 			crypt.AddTrustedCert(vkey, fp)
@@ -581,15 +578,15 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 		_ = c.Close()
 		switch {
 		case errors.Is(err, legacy.ErrUnauthorized):
-			logs.Error("error reading server response: %v", err)
+			log.Error("server rejected the vkey", "server", connection.RemoteAddr().String(), "err", err)
 			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
 		case errors.Is(err, legacy.ErrVersionMismatch):
-			logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(protocolIndex))
+			log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))
 		}
 		return nil, "", serverInfo{}, err
 	}
 	if res.VersionWarning {
-		logs.Warn("The client does not match the server version. The current core version of the client is %s", legacy.CoreVersion(protocolIndex))
+		log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))
 	}
 	uuid := res.ServerUUID
 	info.fingerprint = res.Fingerprint

@@ -6,7 +6,6 @@ import (
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/clock"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
 )
 
@@ -47,7 +46,7 @@ func Run(ctx context.Context, profiles []Profile, uuids map[string]string, opts 
 
 func (p Profile) run(ctx context.Context, uuid string, opts Options) (string, error) {
 	c := p.Config.CommonConfig
-	logs.Info("Start launch profile %s: server %s type %s", p.Name, c.Server, c.Tp)
+	log.Info("launch profile starting", "profile", p.Name, "server", c.Server, "carrier", c.Tp)
 	if p.Direct {
 		disconnect := c.DisconnectTime
 		if disconnect == 0 {

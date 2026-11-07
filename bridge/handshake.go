@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"runtime/pprof"
 	"strconv"
@@ -14,9 +15,10 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/ipreg"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -37,12 +39,12 @@ func allowsFlag(kind model.KeyKind, flag string) bool {
 
 func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	if c.Conn == nil || c.Conn.RemoteAddr() == nil {
-		logs.Warn("Invalid connection")
+		log.Debug("connection without a remote address")
 		_ = c.Close()
 		return
 	}
 	remote := c.Conn.RemoteAddr()
-	if s.store.GlobalDenied(remote, "Bridge") {
+	if s.store.GlobalDenied(remote, "bridge") {
 		_ = c.Close()
 		return
 	}
@@ -75,15 +77,16 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		NewUUID:     s.newUUID,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, legacy.ErrProbe):
-			logs.Trace("The client %v connect error: %v", remote, err)
-		case errors.Is(err, legacy.ErrVersion):
-			logs.Warn("Client %v: %v", remote, err)
-		case errors.Is(err, legacy.ErrDisabled):
-			logs.Info("Client %v: %v", remote, err)
-		default:
-			logs.Error("Handshake with client %v failed: %v", remote, err)
+		ip, port := srcIPPort(remote)
+		if reason := authFailReason(err); reason == "" {
+			log.Debug("handshake ended", "src_ip", ip, "src_port", port, "carrier", tunnelType, "err", err)
+		} else if reason == "bad_key" {
+			// the error names the key digest, which is as good as the key
+			obs.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+				"carrier", tunnelType, "reason", reason)
+		} else {
+			obs.Emit(log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+				"carrier", tunnelType, "reason", reason, "err", err)
 		}
 		_ = c.Close()
 		return
@@ -114,14 +117,14 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 	addr := c.RemoteAddr()
 	flag, uuid, err := legacy.ReadWork(c, caps, addr.String())
 	if err != nil {
-		logs.Warn("Failed to read the work request from %v: %v", addr, err)
+		log.Debug("reading work request failed", "client", id, "addr", addr, "err", err)
 		_ = c.Close()
 		return
 	}
 	c.SetAlive()
 	keyClient, err := s.store.GetClient(id)
 	if err != nil || !allowsFlag(keyClient.KeyKind, flag) {
-		logs.Warn("Workflow %q of client %d from %v refused", flag, id, addr)
+		log.Warn("workflow refused", "client", id, "addr", addr, "flag", flag)
 		_ = c.Close()
 		return
 	}
@@ -140,11 +143,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		node.AddSignal(c)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddSignal(c) })
 		s.spawn(c, func() { s.GetHealthFromClient(id, c, client, node) })
-		logs.Info("ClientId %d connection succeeded, address:%v ", id, addr)
+		log.Debug("signal connection joined", "client", id, "addr", addr, "node", uuid)
 
 	case legacy.WorkChan:
 		if !first {
-			logs.Error("Can not create mux more than once")
+			log.Warn("nested tunnel refused", "client", id, "addr", addr, "flag", flag)
 			_ = c.Close()
 			return
 		}
@@ -156,23 +159,11 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 			s.spawn(c, func() {
 				defer func() {
 					reason := tunnel.Reason()
-					if reason != "" {
-						logs.Trace("Tunnel connection closed, client %d, remote %v, reason: %s", id, addr, reason)
-					} else {
-						logs.Trace("Tunnel connection closed, client %d, remote %v", id, addr)
-					}
 					_ = c.Close()
 					node.CloseIfTunnelCurrent(tunnel)
 					removed := client.RemoveOfflineNodes(false)
-					logs.Warn(
-						"Disconnect summary event=disconnect_summary role=server client=%d uuid=%s remote=%v removed=%d remaining=%d reason=%q",
-						id,
-						uuid,
-						addr,
-						removed,
-						client.NodeCount(),
-						reason,
-					)
+					log.Debug("tunnel connection closed", "client", id, "node", uuid, "addr", addr,
+						"reason", reason, "removed", removed, "remaining", client.NodeCount())
 				}()
 				serveStreams(tunnel, func(stream net.Conn) {
 					if p, ok := stream.(interface{ SetPriority() }); ok {
@@ -199,7 +190,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 
 	case legacy.WorkVisitor:
 		if !first {
-			logs.Error("Can not create mux more than once")
+			log.Warn("nested tunnel refused", "client", id, "addr", addr, "flag", flag)
 			_ = c.Close()
 			return
 		}
@@ -207,7 +198,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		s.spawn(c, func() {
 			idle := NewIdleTimer(30*time.Second, func() { _ = c.Close() })
 			defer func() {
-				logs.Trace("Visitor connection closed, client %d, remote %v", id, addr)
+				log.Debug("visitor connection closed", "client", id, "addr", addr)
 				idle.Stop()
 				_ = c.Close()
 			}()
@@ -224,19 +215,19 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		c.SetReadTimeout(bridgeHandshakeReadTimeout)
 		b, err := legacy.ReadExact(c, 32)
 		if err != nil {
-			logs.Error("secret error, failed to match the key successfully")
+			log.Debug("reading secret key failed", "client", id, "addr", addr, "err", err)
 			_ = c.Close()
 			return
 		}
 		c.SetAlive()
 		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c, legacy.SecretWire)) {
-			logs.Warn("secret connection from %v dropped: server busy", addr)
+			log.Warn("secret connection dropped: queue full", "client", id, "addr", addr)
 			_ = c.Close()
 			return
 		}
 
 	case legacy.WorkFile:
-		logs.Warn("clientId %d not support file", id)
+		log.Info("file workflow refused", "client", id, "addr", addr, "reason", "unsupported")
 		_ = c.Close()
 		return
 		//muxConn := mux.NewMux(c.Conn, s.tunnelType, s.disconnectTime, false)
@@ -267,7 +258,7 @@ func serveStreams(tunnel legacy.Carrier, handle func(net.Conn)) {
 	for {
 		stream, err := tunnel.AcceptStream(context.Background())
 		if err != nil {
-			logs.Trace("Tunnel accept stream error: %v", err)
+			log.Debug("accepting stream ended", "err", err)
 			return
 		}
 		handle(stream)
@@ -287,10 +278,10 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 				id = ipreg.AnyClient
 			}
 			until := ipreg.Register(id, ip, time.Hour*time.Duration(hour))
-			logs.Info("Registered IP %s for client %d until %s", ip, id, until.Format("2006-01-02 15:04:05"))
+			log.Info("ip registered", "client", id, "src_ip", ip, "until", until.Format(time.DateTime))
 		}
 	} else {
-		logs.Warn("Failed to register IP: %v", err)
+		log.Debug("reading ip registration failed", "client", id, "err", err)
 	}
 	_ = c.Close()
 }
@@ -301,3 +292,36 @@ func (s *Bridge) MinClientVersion() string { return legacy.MinCoreVersion(s.secu
 // NewLocalNode returns the node of the client that nps runs itself, which
 // speaks the latest protocol.
 func NewLocalNode(uuid, version string) *Node { return NewNode(uuid, version, legacy.LatestIndex) }
+
+// authFailReason is the auth_failed reason of a failed handshake, or "" when
+// the peer only went away: closing before the version, or a broken
+// connection, is not an attempt to authenticate.
+func authFailReason(err error) string {
+	var ne net.Error
+	switch {
+	case errors.Is(err, legacy.ErrProbe),
+		errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, net.ErrClosed):
+		return ""
+	case errors.Is(err, legacy.ErrVersion), errors.Is(err, legacy.ErrVersionMismatch):
+		return "version"
+	case errors.Is(err, legacy.ErrUnauthorized):
+		return "bad_key"
+	case errors.Is(err, legacy.ErrDisabled):
+		return "disabled"
+	case errors.As(err, &ne) && ne.Timeout():
+		return "timeout"
+	}
+	return "malformed"
+}
+
+// srcIPPort is the IP, without zone brackets, and port of a peer address.
+func srcIPPort(a net.Addr) (string, string) {
+	if a == nil {
+		return "", ""
+	}
+	host, port, err := net.SplitHostPort(a.String())
+	if err != nil {
+		return a.String(), ""
+	}
+	return host, port
+}

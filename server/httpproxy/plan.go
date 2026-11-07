@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/djylb/netx/httprewrite"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/servercfg"
@@ -197,7 +196,7 @@ func compileRedirectURL(setting string) *redirectURL {
 	}
 	t, err := httprewrite.Compile(val, ruleVars)
 	if err != nil {
-		logs.Debug("redirect URL %q: %v", val, err)
+		proxyLog.Debug("redirect url used literally", "url", val, "err", err)
 		return u
 	}
 	u.tmpl = t

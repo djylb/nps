@@ -2,8 +2,6 @@ package config
 
 import (
 	"strings"
-
-	"github.com/djylb/nps/lib/logs"
 )
 
 // This file is the one place npc.conf keys and sections of earlier versions
@@ -35,7 +33,7 @@ func (l *legacyCommon) apply(c *CommonConfig) {
 		return
 	}
 	if !strings.EqualFold(c.Tp, "tls") {
-		logs.Warn("npc.conf: tls_enable=true is the old spelling of conn_type=tls; connecting with tls, not %s", c.Tp)
+		log.Warn("npc.conf: tls_enable=true is the old spelling of conn_type=tls; connecting with tls", "conn_type", c.Tp)
 	}
 	c.Tp = "tls"
 }

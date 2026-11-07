@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/healthcheck"
-	"github.com/djylb/nps/lib/logs"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/upstream"
 	"github.com/djylb/upstream/health"
@@ -111,7 +110,7 @@ func healthProbe(typ, path string) health.Probe {
 // are shared; a group that joins one learns its verdict at once.
 func (hc *HealthChecker) setGroup(m healthcheck.Group) {
 	if m.Name == "" || m.Interval <= 0 || m.Timeout <= 0 || m.Fall <= 0 {
-		logs.Warn("Ignoring invalid health group %q", m.Name)
+		log.Warn("invalid health group ignored", "group", m.Name)
 		return
 	}
 	spec := healthSpec{typ: m.Type, path: m.Path, interval: m.Interval, timeout: m.Timeout, fall: m.Fall}
@@ -301,7 +300,7 @@ func (r *healthReporter) run() {
 				break
 			}
 			if err := r.sink.ReportHealth(healthcheck.Report{Group: key.group, Addr: key.addr, Up: status == "1"}); err != nil {
-				logs.Trace("send health info of %s: %v", key.addr, err)
+				log.Debug("send health info failed", "target", key.addr, "err", err)
 				return
 			}
 			select {

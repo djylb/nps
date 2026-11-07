@@ -16,9 +16,12 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 )
+
+var log = obs.Module("client")
 
 type TRPClient struct {
 	svrAddr        string
@@ -71,7 +74,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if !clientCaps().TunnelStreams {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
-			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
+			obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
 			return
 		}
 		if s.uuid == "" {
@@ -79,11 +82,11 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		err = SendType(c, legacy.WorkMain, s.uuid)
 		if err != nil {
-			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
+			obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 			_ = c.Close()
 			return
 		}
-		logs.Info("Successful connection with server %s", s.svrAddr)
+		obs.Emit(log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
 		s.signal.Store(c)
 	}
 	//start a channel connection
@@ -91,12 +94,12 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if clientCaps().TunnelStreams {
 		//c, err = NewConn(s.bridgeConnType, s.vKey, s.svrAddr, legacy.WorkMain, s.proxyUrl)
 		if tunnel == nil {
-			logs.Error("The tunnel is not connected")
+			log.Debug("tunnel not connected", "server", s.svrAddr)
 			return
 		}
 		stream, err := tunnel.OpenStream(s.ctx)
 		if err != nil {
-			logs.Error("Failed to open the signal stream, possible version mismatch: %v", err)
+			obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "signal_stream", "err", err)
 			s.Close()
 			return
 		}
@@ -106,12 +109,12 @@ func (s *TRPClient) Start(ctx context.Context) {
 		stream = conn.SignalStream(stream)
 		c := conn.NewConn(stream)
 		if err = SendType(c, legacy.WorkMain, s.uuid); err != nil {
-			logs.Error("The connection server failed and will be reconnected in five seconds, error %v", err)
+			obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 			_ = stream.Close()
 			return
 		}
 		s.signal.Store(c)
-		logs.Info("Successful connection with server %s", s.svrAddr)
+		obs.Emit(log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
 	}
 	//monitor the connection
 	go s.ping()
@@ -136,39 +139,39 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 		flags, err := legacy.ReadFlag(signal)
 		if err != nil {
 			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, signal.Conn).String())
-			logs.Error("Accept server data error %s, end this service", netx.NetErrorDetails(err, signal.Conn))
+			log.Warn("signal connection lost", "server", s.svrAddr, "err", netx.NetErrorDetails(err, signal.Conn).String())
 			return
 		}
 		switch flags {
 		case legacy.P2PPunchStart:
 			raw, err := legacy.ReadFrame(signal)
 			if err != nil {
-				logs.Warn("%v", err)
+				log.Warn("read p2p invite failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			var invite legacy.P2PInvite
 			if err := json.Unmarshal(raw, &invite); err != nil {
-				logs.Warn("decode p2p invite failed: %v", err)
+				log.Warn("decode p2p invite failed", "server", s.svrAddr, "err", err)
 				continue
 			}
 			go s.serveP2P(tunnel, invite)
 		case legacy.UpdateRequest:
 			if _, err := legacy.ReadFrame(signal); err != nil {
-				logs.Warn("%v", err)
+				log.Warn("read update request failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			handleUpdateRequest()
 		case legacy.HealthSet:
 			group, err := legacy.ReadHealthSet(signal)
 			if err != nil {
-				logs.Warn("%v", err)
+				log.Warn("read health group failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			s.healthChecker.Load().setGroup(group)
 		case legacy.HealthDel:
 			group, err := legacy.ReadHealthDel(signal)
 			if err != nil {
-				logs.Warn("%v", err)
+				log.Warn("read health group removal failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			s.healthChecker.Load().delGroup(group)
@@ -176,7 +179,7 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 			// The bridge sends nothing else here: an unknown flag means the
 			// stream is out of step, and reconnecting is the only way back.
 			s.noteCloseReason("unexpected signal message " + strconv.Quote(flags))
-			logs.Error("Unexpected message %q on the signal connection, reconnecting", flags)
+			log.Warn("unexpected signal message, reconnecting", "server", s.svrAddr, "flag", flags)
 			return
 		}
 	}
@@ -186,12 +189,11 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 func (s *TRPClient) newChan() legacy.Carrier {
 	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
-		logs.Error("Failed to connect to server %s error: %v", s.svrAddr, err)
-		logs.Warn("The connection server failed and will be reconnected in five seconds.")
+		obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
 		return nil
 	}
 	if tunnel == nil {
-		logs.Error("NewConn returned nil tunnel without error (server=%s tp=%s)", s.svrAddr, s.bridgeConnType)
+		obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "no_tunnel")
 		return nil
 	}
 	if s.uuid == "" {
@@ -200,8 +202,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 	s.server = server
 	err = SendType(tunnel, legacy.WorkChan, s.uuid)
 	if err != nil {
-		logs.Error("Failed to send type to server %s error: %v", s.svrAddr, err)
-		logs.Warn("The connection server failed and will be reconnected in five seconds.")
+		obs.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 		_ = tunnel.Close()
 		return nil
 	}
@@ -219,7 +220,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 			src, err := tun.AcceptStream(s.ctx)
 			if err != nil {
 				s.noteCloseReason("tunnel accept failed: " + err.Error())
-				logs.Warn("Accept error on mux: %v", err)
+				log.Warn("tunnel lost", "server", s.svrAddr, "carrier", s.bridgeConnType, "err", err)
 				s.Close()
 				return
 			}
@@ -235,21 +236,21 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	lk, err := legacy.ReadLink(src)
 	if err != nil || lk == nil {
 		_ = src.Close()
-		logs.Error("get connection info from server error %v", err)
+		log.Debug("read link failed", "err", err)
 		return
 	}
 	//ack
 	if lk.Option.NeedAck {
 		if err := legacy.WriteAck(src, lk.Option.Timeout); err != nil {
-			logs.Warn("write ACK failed: %v", err)
+			log.Debug("write ack failed", "err", err)
 			_ = src.Close()
 			return
 		}
-		logs.Trace("sent ACK before proceeding")
+		log.Log(context.Background(), obs.LevelTrace, "ack sent")
 	}
 	//socks5 udp
 	if lk.ConnType == conn.LinkUDP5 {
-		logs.Trace("new %s connection of udp5, remote address:%s", lk.ConnType, lk.RemoteAddr)
+		log.Debug("new link", "type", lk.ConnType, "addr", lk.RemoteAddr)
 		if LocalIPForward {
 			conn.HandleUdp5(s.ctx, src, lk.Option.Timeout, s.localIP)
 		} else {
@@ -262,7 +263,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		key := strings.TrimPrefix(strings.TrimSpace(lk.Host), "file://")
 		vl, ok := s.fsm.GetListenerByKey(key)
 		if !ok {
-			logs.Warn("Fail to find file server: %s", key)
+			log.Info("file server not found", "key", key)
 			_ = src.Close()
 			return
 		}
@@ -275,7 +276,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	}
 	//host for target processing
 	if lk.Host == "" {
-		logs.Trace("new %s connection, remote address:%s", lk.ConnType, lk.RemoteAddr)
+		log.Debug("link without target", "type", lk.ConnType, "addr", lk.RemoteAddr)
 		_ = src.Close()
 		return
 	}
@@ -297,7 +298,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	}
 	hc := s.healthChecker.Load()
 	if err != nil {
-		logs.Warn("connect to %s error %v", lk.Host, err)
+		log.Debug("dial target failed", "target", lk.Host, "err", err)
 		if hc != nil {
 			hc.dialFailed(lk.Host)
 		}
@@ -307,9 +308,8 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		if hc != nil && lk.ConnType != conn.LinkUDP {
 			hc.touch(lk.Host)
 		}
-		logs.Trace("new %s connection with the goal of %s, remote address:%s", lk.ConnType, lk.Host, lk.RemoteAddr)
+		log.Debug("new link", "type", lk.ConnType, "target", lk.Host, "addr", lk.RemoteAddr)
 		isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
-		//logs.Debug("%t", isFramed)
 		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, nil, 0, nil, nil, false, isFramed)
 	}
 }
@@ -422,15 +422,14 @@ func (s *TRPClient) logDisconnectSummary() {
 	}
 	tunnelUp := !s.isTunnelClosed()
 	signalUp := signal != nil && !signal.IsClosed()
-	logs.Warn(
-		"Disconnect summary event=disconnect_summary role=client server=%s bridge=%s uuid=%s uptime=%s tunnel_up=%t signal_up=%t reason=%q",
-		s.svrAddr,
-		s.bridgeConnType,
-		s.uuid,
-		uptime,
-		tunnelUp,
-		signalUp,
-		reason,
+	obs.Emit(log, &logevent.Disconnected,
+		"server", s.svrAddr,
+		"carrier", s.bridgeConnType,
+		"uuid", s.uuid,
+		"dur_ms", uptime.Milliseconds(),
+		"tunnel_up", tunnelUp,
+		"signal_up", signalUp,
+		"reason", reason,
 	)
 }
 

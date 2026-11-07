@@ -7,11 +7,13 @@ import (
 	"sync"
 
 	"github.com/djylb/nps/lib/instancekey"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )
+
+var log = obs.Module("web")
 
 const sessionName = "nps_session"
 
@@ -67,7 +69,7 @@ func newSessionState(w http.ResponseWriter, r *http.Request, cfg *servercfg.Snap
 
 	session, err := store.Get(r, sessionName)
 	if err != nil {
-		logs.Warn("Invalid web session cookie, resetting session: %v", err)
+		log.Debug("invalid session cookie reset", "err", err)
 		_ = clearSessionCookie(store, w, r)
 		session = newBlankSession(store)
 	}
@@ -158,7 +160,7 @@ func (s *sessionState) save() error {
 func saveSessionCookie(session *sessions.Session, r *http.Request, w http.ResponseWriter) error {
 	rec := cookieRecorder{header: http.Header{}}
 	if err := session.Save(r, rec); err != nil {
-		logs.Warn("Save web session: %v", err)
+		log.Warn("session not saved", "err", err)
 		return err
 	}
 	h := w.Header()

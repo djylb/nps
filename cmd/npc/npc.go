@@ -22,14 +22,20 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/install"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/lib/version"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
+)
+
+var (
+	log    = obs.Module("client")
+	cfgLog = obs.Module("config")
 )
 
 // Config
@@ -123,11 +129,12 @@ func main() {
 
 	// Timezone
 	if err := clock.SetTimezone(*timezone); err != nil {
-		logs.Warn("Set timezone error %v", err)
+		cfgLog.Warn("set timezone failed", "err", err)
 	}
 
 	// Log
 	configureLogging()
+	watchReopen()
 
 	// DNS
 	netaddr.SetCustomDNS(*dnsServer)
@@ -157,17 +164,17 @@ func main() {
 	if !*disableRemote {
 		client.RemoteUpdate = func() error {
 			if !install.CanRestartSelf() {
-				logs.Info("Remote update ignored: on Windows only npc installed as a service updates itself")
+				log.Info("remote update ignored: on Windows only npc installed as a service updates itself")
 				return nil
 			}
 			u, err := install.UpdateSelf("npc", svcConfig.Name)
 			if u == nil {
 				if err == nil {
-					logs.Info("Remote update finished: npc is already the latest version")
+					log.Info("remote update: already the latest version")
 				}
 				return err
 			}
-			logs.Info("Remote update to %s finished, restarting", u.Version)
+			log.Info("remote update installed, restarting", "to", u.Version)
 			return u.Restart()
 		}
 	}
@@ -179,24 +186,26 @@ func main() {
 	s, err := service.New(prg, svcConfig)
 	if cmd == "update" || cmd == "update-force" {
 		if err != nil {
-			logs.Warn("service function disabled %v", err)
+			log.Warn("service manager unavailable", "err", err)
 			s = nil
 		}
 		res, err := install.Update(context.Background(), "npc", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
+		// Update reports its own failure as update_failed.
 		if err == nil && res != nil {
-			err = install.RestartAfterUpdate(s, svcConfig.Name, res)
+			if err = install.RestartAfterUpdate(s, svcConfig.Name, res); err != nil {
+				log.Error("restart after update failed", "err", err)
+			}
 		}
 		if res != nil {
 			install.WarnOldProcesses(res.Running)
 		}
 		if err != nil {
-			logs.Error("update failed: %v", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if err != nil {
-		logs.Error("service function disabled %v", err)
+		log.Warn("service manager unavailable, running without it", "err", err)
 		run(ctx, cancel)
 		// run without service
 		wg := sync.WaitGroup{}
@@ -209,19 +218,19 @@ func main() {
 	switch cmd {
 	case "status":
 		if err := client.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP); err != nil {
-			logs.Error("status: %v", err)
+			log.Error("status failed", "err", err)
 			os.Exit(1)
 		}
 		return
 	case "register":
 		if err := client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime); err != nil {
-			logs.Error("register: %v", err)
+			log.Error("register failed", "err", err)
 			os.Exit(1)
 		}
 		return
 	case "start", "stop", "restart":
 		if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
-			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
+			log.Error("service control failed", "action", cmd, "valid_actions", service.ControlAction, "err", err)
 		}
 		return
 	case "install":
@@ -229,7 +238,7 @@ func main() {
 		_ = install.UninstallService(s, svcConfig.Name)
 		binPath, err := install.NPC()
 		if err != nil {
-			logs.Error("install failed: %v", err)
+			log.Error("install failed", "err", err)
 			os.Exit(1)
 		}
 		svcConfig.Executable = binPath
@@ -239,23 +248,23 @@ func main() {
 			err = writeServiceFiles(confDir, files)
 		}
 		if err != nil {
-			logs.Error("install failed: %v", err)
+			log.Error("install failed", "err", err)
 			os.Exit(1)
 		}
 		svcConfig.Arguments = svcArgs
 		if s, err = service.New(prg, svcConfig); err != nil {
-			logs.Error("%v", err)
+			log.Error("create service failed", "err", err)
 			return
 		}
 		if err := service.Control(s, "install"); err != nil {
-			logs.Error("install service failed: %v", err)
+			log.Error("install service failed", "err", err)
 			os.Exit(1)
 		}
 		install.LinkServiceStart(svcConfig.Name)
 		return
 	case "uninstall":
 		if err := install.UninstallService(s, svcConfig.Name); err != nil {
-			logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
+			log.Error("service control failed", "action", cmd, "err", err)
 		}
 		return
 	}
@@ -276,7 +285,7 @@ func warnArgs(logOff bool) {
 			fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
-		logs.Warn("%s", w)
+		cfgLog.Warn(w)
 	}
 }
 
@@ -340,12 +349,12 @@ func (p *Npc) run() error {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			logs.Warn("npc: panic serving %v: %s", err, buf)
+			log.Error("panic", "err", err, "stack", string(buf))
 		}
 	}()
 	run(p.ctx, p.cancel)
 	<-p.exit
-	logs.Warn("stop...")
+	obs.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
 	return nil
 }
 
@@ -359,7 +368,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	//p2p or secret command
 	if *password != "" {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
+		obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
@@ -405,11 +414,11 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	hasCommand, err := commandLineMode(*serverAddr, *verifyKey)
 	if err != nil {
-		logs.Error("%v", err)
+		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
 	}
 	if hasCommand {
-		logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, legacy.CoreVersion(legacy.LatestIndex))
+		obs.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
@@ -432,7 +441,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 		if len(serverAddrs) == 0 || len(verifyKeys) == 0 || serverAddrs[0] == "" || verifyKeys[0] == "" {
-			logs.Error("serverAddr or verifyKey cannot be empty")
+			cfgLog.Error("server and vkey must not be empty")
 			os.Exit(1)
 		}
 
@@ -446,15 +455,15 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
-					logs.Info("Start server: %s vkey: %s type: %s local_ip: %s", serverAddr, verifyKey, connType, localIP)
+					log.Info("connecting", "server", serverAddr, "vkey", obs.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
-						logs.Info("Client closed! It will be reconnected in five seconds")
+						log.Info("client closed, reconnecting", "server", serverAddr)
 						if !client.WaitReconnect(ctx) {
 							return
 						}
 					} else {
-						logs.Info("Client closed!")
+						log.Info("client closed", "server", serverAddr)
 						cancel()
 						os.Exit(1)
 						return
@@ -485,7 +494,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 // fail stops every client of this process and exits with a non-zero code.
 func fail(cancel context.CancelFunc, err error) {
-	logs.Error("npc stopped: %v", err)
+	log.Error("npc stopped", "err", err)
 	cancel()
 	os.Exit(1)
 }

@@ -12,7 +12,8 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/logs"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/obs"
 	"github.com/djylb/upstream"
 )
 
@@ -228,6 +229,11 @@ func (n *Node) AddSignal(signal *conn.Conn) {
 
 func (n *Node) addSignal(signal *conn.Conn) {
 	if n.signal != nil && n.signal != signal {
+		if n.Client != nil {
+			ip, _ := srcIPPort(signal.RemoteAddr())
+			obs.Emit(log, &logevent.SessionTakeover, "identity", n.Client.Id, "src_ip", ip,
+				"node", n.UUID, "prev_addr", n.signal.RemoteAddr())
+		}
 		_ = n.signal.Close()
 	}
 	n.signal = signal
@@ -375,6 +381,7 @@ type Client struct {
 	files           sync.Map   // map[fileUUID]nodeUUID
 	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
 	lastConnectNano atomic.Int64
+	started         time.Time // when the session began, for client_offline
 }
 
 // errNodeOffline marks a node that is offline within a grace window, so that
@@ -397,6 +404,7 @@ func NewClient(id int, n *Node, mode SelectMode) *Client {
 		Id:       id,
 		LastUUID: n.UUID,
 		mode:     mode,
+		started:  time.Now(),
 		nodePool: upstream.New[*Node](nodePoolConfig(mode)),
 	}
 	c.MarkConnectedNow()
@@ -548,7 +556,7 @@ func (c *Client) selectNode(sticky bool) *Node {
 		l, err := req.Next()
 		if err != nil {
 			if c.nodePool.Len() == 0 {
-				logs.Warn("Client %d has no nodes to switch to", c.Id)
+				log.Debug("client has no nodes", "client", c.Id)
 			}
 			return nil
 		}
@@ -561,7 +569,7 @@ func (c *Client) selectNode(sticky bool) *Node {
 		c.LastUUID = b.ID()
 		c.mu.Unlock()
 		if sticky && last != "" && last != b.ID() {
-			logs.Info("Client %d switched to backup node %s", c.Id, b.ID())
+			log.Info("client switched node", "client", c.Id, "node", b.ID())
 		}
 		return b.Value()
 	}
@@ -587,7 +595,7 @@ func (c *Client) usable(b *upstream.Backend[*Node]) bool {
 	// If the entry changed or came back online meanwhile, the next pick
 	// re-evaluates it.
 	if c.closeAndRemoveNodeIfCurrent(b.ID(), node, (*Node).IsOffline) {
-		logs.Info("Client %d removed node %s", c.Id, b.ID())
+		log.Debug("node removed", "client", c.Id, "node", b.ID())
 	}
 	return false
 }
@@ -637,11 +645,10 @@ func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGra
 		}
 		if c.closeAndRemoveNodeIfCurrent(node.UUID, node, (*Node).IsOffline) {
 			removed++
-			logs.Info("Client %d removed offline node %s", c.Id, node.UUID)
 		}
 	}
 	if removed > 0 {
-		logs.Info("Client %d pruned %d offline node(s)", c.Id, removed)
+		log.Debug("offline nodes removed", "client", c.Id, "removed", removed)
 	}
 	return removed
 }
