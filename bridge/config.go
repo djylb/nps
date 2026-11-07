@@ -10,7 +10,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/server/ports"
 )
 
 // writeAddFail reports one host or task that could not be added, after which
@@ -308,7 +307,7 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 	s.cancelClose(client.Id)
 	tt, ok := s.store.ClientTunnel(client, tl)
 	if !ok {
-		if b := ports.TestTunnelPort(tl); !b && tl.Mode != "secret" && tl.Mode != "p2p" && tl.Port > 0 {
+		if b := s.ports.TestTunnelPort(tl); !b && tl.Mode != "secret" && tl.Mode != "p2p" && tl.Port > 0 {
 			return nil, false, fmt.Errorf("port %d is not available", tl.Port)
 		}
 		tl.Routes = s.newRoutes(client.Id)

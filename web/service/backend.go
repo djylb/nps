@@ -283,6 +283,7 @@ func (r storeRepository) ClientOwnsHost(clientID, hostID int) bool {
 
 // offlineRuntime is the runtime while no server runs: no client is
 // connected, no task runs and none can be started.
+// Without a server there is no allow list: every port is allowed.
 type offlineRuntime struct{ db *file.DbUtils }
 
 func (offlineRuntime) DashboardData(bool) map[string]interface{} { return map[string]interface{}{} }
@@ -302,11 +303,11 @@ func (offlineRuntime) RequestClientUpdate(int) (int, error) { return 0, ErrClien
 func (offlineRuntime) DeleteClientResources(int) {}
 
 func (offlineRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
-	return ports.GenerateTunnelPort(tunnel)
+	return ports.Allowed{}.GenerateTunnelPort(tunnel)
 }
 
 func (offlineRuntime) TunnelPortAvailable(tunnel *model.Tunnel) bool {
-	return ports.TestTunnelPort(tunnel)
+	return ports.Allowed{}.TestTunnelPort(tunnel)
 }
 
 func (offlineRuntime) ListTunnels(int, int, string, int, string, string, string) ([]*model.Tunnel, int) {

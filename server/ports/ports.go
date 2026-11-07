@@ -8,52 +8,54 @@ import (
 
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/servercfg"
 )
 
-var (
-	ports   []int
-	portSet map[int]struct{}
-)
-
-func InitAllowPort() {
-	p := servercfg.Current().Feature.AllowPorts
-	ports = netaddr.GetPorts(p)
-	buildAllowPortSet()
+// Allowed is the set of ports tunnels may listen on. The zero value allows
+// every port.
+type Allowed struct {
+	ports []int
+	set   map[int]struct{}
 }
 
-func buildAllowPortSet() {
+// ParseAllowed returns the ports of spec, the allow_ports setting: ports and
+// ranges such as "8000-9000,9999". An empty spec allows every port.
+func ParseAllowed(spec string) Allowed {
+	return newAllowed(netaddr.GetPorts(spec))
+}
+
+func newAllowed(ports []int) Allowed {
 	if len(ports) == 0 {
-		portSet = nil
-		return
+		return Allowed{}
 	}
 	set := make(map[int]struct{}, len(ports))
 	for _, p := range ports {
 		set[p] = struct{}{}
 	}
-	portSet = set
+	return Allowed{ports: ports, set: set}
 }
 
-func TestServerPort(p int, m string) (b bool) {
-	return testPortUsage(p, m, m == "udp")
+// TestServerPort reports whether a listener of mode m can open on port p.
+func (a Allowed) TestServerPort(p int, m string) (b bool) {
+	return a.testPortUsage(p, m, m == "udp")
 }
 
-func TestTunnelPort(t *model.Tunnel) bool {
+// TestTunnelPort reports whether the listeners of t can open on its port.
+func (a Allowed) TestTunnelPort(t *model.Tunnel) bool {
 	if t == nil {
 		return false
 	}
-	return testPortUsage(t.Port, t.Mode, tunnelNeedsUDP(t))
+	return a.testPortUsage(t.Port, t.Mode, tunnelNeedsUDP(t))
 }
 
-func testPortUsage(p int, m string, needUDP bool) (b bool) {
+func (a Allowed) testPortUsage(p int, m string, needUDP bool) (b bool) {
 	if m == "p2p" || m == "secret" {
 		return true
 	}
 	if p > 65535 || p < 0 {
 		return false
 	}
-	if len(portSet) != 0 {
-		if _, ok := portSet[p]; !ok {
+	if len(a.set) != 0 {
+		if _, ok := a.set[p]; !ok {
 			return false
 		}
 	}
@@ -81,26 +83,28 @@ func tunnelNeedsUDP(t *model.Tunnel) bool {
 	}
 }
 
-func GenerateServerPort(m string) int {
-	if len(ports) > 0 {
-		for _, idx := range rand.Perm(len(ports)) {
-			p := ports[idx]
+// GenerateServerPort picks a free allowed port for a listener of mode m, or
+// 0 when there is none.
+func (a Allowed) GenerateServerPort(m string) int {
+	if len(a.ports) > 0 {
+		for _, idx := range rand.Perm(len(a.ports)) {
+			p := a.ports[idx]
 			if p == 0 {
 				continue
 			}
-			if TestServerPort(p, m) {
+			if a.TestServerPort(p, m) {
 				return p
 			}
 		}
 	} else {
 		for attempt := 0; attempt < 1000; attempt++ {
 			serverPort := rand.Intn(65535-1024+1) + 1024 // [1024, 65535]
-			if TestServerPort(serverPort, m) {
+			if a.TestServerPort(serverPort, m) {
 				return serverPort
 			}
 		}
 		for p := 1024; p <= 65535; p++ {
-			if TestServerPort(p, m) {
+			if a.TestServerPort(p, m) {
 				return p
 			}
 		}
@@ -108,7 +112,9 @@ func GenerateServerPort(m string) int {
 	return 0
 }
 
-func GenerateTunnelPort(t *model.Tunnel) int {
+// GenerateTunnelPort picks a free allowed port for the listeners of t, or 0
+// when there is none.
+func (a Allowed) GenerateTunnelPort(t *model.Tunnel) int {
 	if t == nil {
 		return 0
 	}
@@ -116,14 +122,14 @@ func GenerateTunnelPort(t *model.Tunnel) int {
 		Mode:        t.Mode,
 		Socks5Proxy: t.Socks5Proxy,
 	}
-	if len(ports) > 0 {
-		for _, idx := range rand.Perm(len(ports)) {
-			p := ports[idx]
+	if len(a.ports) > 0 {
+		for _, idx := range rand.Perm(len(a.ports)) {
+			p := a.ports[idx]
 			if p == 0 {
 				continue
 			}
 			probe.Port = p
-			if TestTunnelPort(probe) {
+			if a.TestTunnelPort(probe) {
 				return p
 			}
 		}
@@ -131,13 +137,13 @@ func GenerateTunnelPort(t *model.Tunnel) int {
 		for attempt := 0; attempt < 1000; attempt++ {
 			serverPort := rand.Intn(65535-1024+1) + 1024
 			probe.Port = serverPort
-			if TestTunnelPort(probe) {
+			if a.TestTunnelPort(probe) {
 				return serverPort
 			}
 		}
 		for p := 1024; p <= 65535; p++ {
 			probe.Port = p
-			if TestTunnelPort(probe) {
+			if a.TestTunnelPort(probe) {
 				return p
 			}
 		}

@@ -438,6 +438,7 @@ func run() (*server.Server, error) {
 		SecureMode:          cfg.Security.SecureMode,
 		SelectMode:          selectMode,
 		DisableRemoteUpdate: *noUpdate,
+		AllowedPorts:        ports.ParseAllowed(cfg.Feature.AllowPorts),
 		Transports: bridge.Transports{
 			TCP:  cfg.Bridge.ServerTCPEnabled,
 			TLS:  cfg.Bridge.ServerTLSEnabled,
@@ -470,7 +471,6 @@ func run() (*server.Server, error) {
 		logs.Info("Using randomly generated certificate.")
 	}
 	crypt.InitTls(cert)
-	ports.InitAllowPort()
 	stats.StartSystemInfo()
 	go file.WatchAccessLists(context.Background(), time.Minute)
 	if err := srv.Start(context.Background()); err != nil {

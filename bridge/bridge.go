@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/server/ports"
 
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/netx"
@@ -25,6 +26,9 @@ type Options struct {
 	// SelectMode is how a client with several nodes picks the node of a
 	// new link.
 	SelectMode SelectMode
+	// AllowedPorts are the ports the tunnels npc publishes may listen on;
+	// the zero value allows every port.
+	AllowedPorts ports.Allowed
 }
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
@@ -68,6 +72,7 @@ type Bridge struct {
 	disconnectTime     int
 	secureMode         bool
 	selectMode         SelectMode
+	ports              ports.Allowed
 	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
@@ -93,6 +98,7 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.store = store
 	b.secureMode = opts.SecureMode
 	b.selectMode = opts.SelectMode
+	b.ports = opts.AllowedPorts
 	return b
 }
 

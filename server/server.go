@@ -54,6 +54,9 @@ type Config struct {
 	SelectMode bridge.SelectMode
 	// DisableRemoteUpdate keeps the web interface from updating the server.
 	DisableRemoteUpdate bool
+	// AllowedPorts are the ports tunnels may listen on; the zero value
+	// allows every port.
+	AllowedPorts ports.Allowed
 }
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
@@ -65,6 +68,7 @@ type Server struct {
 	tasks      sync.Map // task id -> proxy.Service, or nil for a task without a listener
 	hostCache  *index.AnyIntIndex
 	transports bridge.Transports
+	ports      ports.Allowed
 	noUpdate   bool        // remote update is disabled
 	updating   atomic.Bool // an update runs
 
@@ -88,6 +92,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		db:         db,
 		hostCache:  index.NewAnyIntIndex(),
 		transports: cfg.Transports,
+		ports:      cfg.AllowedPorts,
 		noUpdate:   cfg.DisableRemoteUpdate,
 		// Once the server stops, its work may end with any error.
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
@@ -96,6 +101,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		DisconnectTime: cfg.DisconnectTimeout,
 		SecureMode:     cfg.SecureMode,
 		SelectMode:     cfg.SelectMode,
+		AllowedPorts:   cfg.AllowedPorts,
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
@@ -441,7 +447,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		s.tasks.Store(t.Id, nil)
 		return nil
 	}
-	if b := ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
+	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
 		logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
 		return errors.New("the port open error")
 	}
@@ -573,10 +579,10 @@ func (s *Server) DisconnectClient(clientId int) { s.bridge.DelClient(clientId) }
 func (s *Server) ClientConnected(id int) bool { return s.bridge.Connected(id) }
 
 // GenerateTunnelPort picks a free port for t.
-func (s *Server) GenerateTunnelPort(t *model.Tunnel) int { return ports.GenerateTunnelPort(t) }
+func (s *Server) GenerateTunnelPort(t *model.Tunnel) int { return s.ports.GenerateTunnelPort(t) }
 
 // TunnelPortAvailable reports whether t may listen on its port.
-func (s *Server) TunnelPortAvailable(t *model.Tunnel) bool { return ports.TestTunnelPort(t) }
+func (s *Server) TunnelPortAvailable(t *model.Tunnel) bool { return s.ports.TestTunnelPort(t) }
 
 func (s *Server) dealClientData() {
 	b := s.bridge
