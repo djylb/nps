@@ -167,7 +167,7 @@ func TestReconnectFollowsNameToNewAddress(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		StartFromFile(ctx, cancel, path)
+		_ = StartFromFile(ctx, path)
 	}()
 	t.Cleanup(func() {
 		cancel()

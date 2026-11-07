@@ -68,7 +68,9 @@ mux_ping_interval = 8
 	}
 	pMux = nil
 
-	InitConnectionService()
+	if err := InitConnectionService(); err != nil {
+		t.Fatal(err)
+	}
 
 	n := Network()
 	if n.BridgeIP != "127.0.0.2" || n.BridgeTCPIP != "127.0.0.3" || n.BridgeTLSIP != "127.0.0.6" {
@@ -97,16 +99,16 @@ mux_ping_interval = 8
 	}
 }
 
-func TestGetBridgeListenersInvalidPort(t *testing.T) {
+func TestListenBridgeInvalidPort(t *testing.T) {
 	tests := []struct {
 		name string
 		set  func()
 		call func() (net.Listener, error)
 	}{
-		{"tcp", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPPort = 0 }) }, GetBridgeTcpListener},
-		{"tls", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSPort = 70000 }) }, GetBridgeTlsListener},
-		{"ws", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSPort = -1 }) }, GetBridgeWsListener},
-		{"wss", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSPort = 0 }) }, GetBridgeWssListener},
+		{"tcp", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPPort = 0 }) }, listenFn(KindBridgeTCP)},
+		{"tls", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSPort = 70000 }) }, listenFn(KindBridgeTLS)},
+		{"ws", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSPort = -1 }) }, listenFn(KindBridgeWS)},
+		{"wss", func() { setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSPort = 0 }) }, listenFn(KindBridgeWSS)},
 	}
 
 	for _, tt := range tests {
@@ -121,19 +123,19 @@ func TestGetBridgeListenersInvalidPort(t *testing.T) {
 	}
 }
 
-func TestGetBridgeTcpListenerValid(t *testing.T) {
+func TestListenBridgeTCP(t *testing.T) {
 	pMux = nil
 	setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPIP = "127.0.0.1" })
 	setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTCPPort = getAvailablePort(t) })
 
-	l, err := GetBridgeTcpListener()
+	l, err := Listen(KindBridgeTCP)
 	if err != nil {
-		t.Fatalf("GetBridgeTcpListener() error = %v", err)
+		t.Fatalf("Listen(KindBridgeTCP) error = %v", err)
 	}
 	_ = l.Close()
 }
 
-func TestGetBridgeTlsWsWssListenersValid(t *testing.T) {
+func TestListenBridgeTLSWSWSS(t *testing.T) {
 	tests := []struct {
 		name string
 		set  func()
@@ -142,17 +144,17 @@ func TestGetBridgeTlsWsWssListenersValid(t *testing.T) {
 		{"tls", func() {
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSIP = "127.0.0.1" })
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeTLSPort = getAvailablePort(t) })
-		}, GetBridgeTlsListener},
+		}, listenFn(KindBridgeTLS)},
 		{"ws", func() {
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSIP = "127.0.0.1" })
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSPort = getAvailablePort(t) })
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgePath = "/ws" })
-		}, GetBridgeWsListener},
+		}, listenFn(KindBridgeWS)},
 		{"wss", func() {
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSIP = "127.0.0.1" })
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgeWSSPort = getAvailablePort(t) })
 			setNet(t, func(n *servercfg.NetworkConfig) { n.BridgePath = "/wss" })
-		}, GetBridgeWssListener},
+		}, listenFn(KindBridgeWSS)},
 	}
 
 	for _, tt := range tests {
@@ -176,4 +178,18 @@ func setNet(t *testing.T, change func(*servercfg.NetworkConfig)) {
 	n := old
 	change(&n)
 	Configure(n)
+}
+
+func listenFn(k Kind) func() (net.Listener, error) {
+	return func() (net.Listener, error) { return Listen(k) }
+}
+
+func TestListenInvalidPortReturnsError(t *testing.T) {
+	pMux = nil
+	setNet(t, func(n *servercfg.NetworkConfig) { n.HTTPProxyPort = 0; n.WebPort = 70000 })
+	for _, k := range []Kind{KindHTTP, KindWeb, Kind(99)} {
+		if l, err := Listen(k); err == nil || l != nil {
+			t.Fatalf("Listen(%v): listener=%v err=%v, want error", k, l, err)
+		}
+	}
 }

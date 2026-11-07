@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"net"
 	"net/netip"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -55,30 +54,31 @@ func init() {
 	crypt.InitTls(tls.Certificate{})
 }
 
-func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) {
+// GetTaskStatus prints the tunnels and hosts the server runs for vKey.
+func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) error {
 	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		return fmt.Errorf("Failed to connect: %w", err)
 	}
 	//defer c.Close()
 	err = SendType(c, legacy.WorkConfig, uuid)
 	if err != nil {
-		log.Fatalf("Failed to send type: %v", err)
+		return fmt.Errorf("Failed to send type: %w", err)
 	}
 	if _, err := c.BufferWrite([]byte(legacy.WorkStatus)); err != nil {
-		log.Fatalf("Failed to write WorkStatus: %v", err)
+		return fmt.Errorf("Failed to write WorkStatus: %w", err)
 	}
 	if _, err := c.Write([]byte(legacy.KeyDigest(vKey))); err != nil {
-		log.Fatalf("Failed to write auth key: %v", err)
+		return fmt.Errorf("Failed to write auth key: %w", err)
 	}
 	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 	var isPub bool
 	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
-		log.Fatalf("Failed to read status: %v", err)
+		return fmt.Errorf("Failed to read status: %w", err)
 	}
 	parts, err := legacy.ReadStatusList(c)
 	if err != nil {
-		log.Fatalf("Failed to read status list: %v", err)
+		return fmt.Errorf("Failed to read status list: %w", err)
 	}
 	fmt.Println("===== Active Tunnels/Hosts =====")
 	fmt.Printf("Total active: %d\n", len(parts))
@@ -89,24 +89,26 @@ func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, local
 		}
 		fmt.Printf("  %d. %s\n", i+1, display)
 	}
-	os.Exit(0)
+	return nil
 }
 
-func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, localIP string, hour int) {
+// RegisterLocalIp registers the public address of this host with the server
+// for hour hours.
+func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, localIP string, hour int) error {
 	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	//defer c.Close()
 	err = SendType(c, legacy.WorkRegister, uuid)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	log.Printf("Successful ip registration for local public network, the validity period is %d hours.", hour)
-	os.Exit(0)
+	return nil
 }
 
 var errAdd = errors.New("the server returned an error, which port or host may have been occupied or not allowed to open")
@@ -124,11 +126,20 @@ func WaitReconnect(ctx context.Context) bool {
 	}
 }
 
-func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string) {
+// errSessionEnded is returned once the connection to the server ended and
+// reconnecting is turned off.
+var errSessionEnded = errors.New("the connection to the server ended and auto reconnection is off")
+
+// StartFromFile runs the client configured in path until pCtx ends, and then
+// returns nil. It returns an error when the config cannot be loaded or when
+// the session ended and reconnecting is turned off.
+func StartFromFile(pCtx context.Context, path string) error {
 	cnf, err := config.NewConfig(path)
-	if err != nil || cnf.CommonConfig == nil {
-		logs.Error("Config file %s loading error %v", path, err)
-		os.Exit(1)
+	if err == nil && cnf.CommonConfig == nil {
+		err = errors.New("no common section")
+	}
+	if err != nil {
+		return fmt.Errorf("config file %s: %w", path, err)
 	}
 	logs.Info("Loading configuration file %s successfully", path)
 
@@ -148,18 +159,16 @@ func StartFromFile(pCtx context.Context, pCancel context.CancelFunc, path string
 	for {
 		select {
 		case <-pCtx.Done():
-			return
+			return nil
 		default:
 		}
 		if !first && (!cnf.CommonConfig.AutoReconnection || !AutoReconnect) {
-			pCancel()
-			os.Exit(1)
-			return
+			return errSessionEnded
 		}
 		if !first {
 			logs.Info("Reconnecting...")
 			if !WaitReconnect(pCtx) {
-				return
+				return nil
 			}
 		}
 		first = false

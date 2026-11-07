@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"net"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -172,17 +172,32 @@ func DealBridgeTask() {
 	}
 }
 
-// StartNewServer start a new server
-func StartNewServer(cnf *model.Tunnel, bridgeDisconnect int) {
+// failures carries the error of a listener that stopped after nps started:
+// the first one is kept for the process to act on, later ones are dropped.
+var failures = make(chan error, 1)
+
+func reportFailure(err error) {
+	select {
+	case failures <- err:
+	default:
+		logs.Error("%v", err)
+	}
+}
+
+// Failed reports the first listener that stops on an error after
+// StartNewServer has returned; nps cannot serve as configured after that.
+func Failed() <-chan error { return failures }
+
+// StartNewServer opens the bridge listeners and starts the web manager
+// described by cnf. It returns the first error that keeps nps from starting;
+// failures after that are reported through Failed.
+func StartNewServer(cnf *model.Tunnel, bridgeDisconnect int) error {
 	cfg := servercfg.Current()
 	Bridge = bridge.NewTunnel(&RunList, bridgeDisconnect)
 	startP2P(Bridge, cfg)
-	go func() {
-		if err := Bridge.StartTunnel(); err != nil {
-			logs.Error("start server bridge error %v", err)
-			os.Exit(1)
-		}
-	}()
+	if err := Bridge.StartTunnel(reportFailure); err != nil {
+		return fmt.Errorf("start bridge: %w", err)
+	}
 	go DealBridgeTask()
 	ApplyWebhook(cfg.Webhook)
 	go dealClientFlow()
@@ -192,15 +207,17 @@ func StartNewServer(cnf *model.Tunnel, bridgeDisconnect int) {
 	InitDashboardData()
 	// RunList owns the server; stopping the task closes it.
 	//noinspection GoResourceLeak
-	if svr := NewMode(Bridge, cnf); svr != nil {
-		if err := svr.Start(); err != nil {
-			logs.Error("%v", err)
+	svr := NewMode(Bridge, cnf)
+	if svr == nil {
+		return fmt.Errorf("incorrect startup mode %s", cnf.Mode)
+	}
+	go func() {
+		if err := svr.Start(); err != nil && !errors.Is(err, net.ErrClosed) {
+			reportFailure(fmt.Errorf("%s: %w", cnf.Mode, err))
 		}
 		RunList.Store(cnf.Id, svr)
-		//RunList[cnf.Id] = svr
-	} else {
-		logs.Error("Incorrect startup mode %s", cnf.Mode)
-	}
+	}()
+	return nil
 }
 
 func dealClientFlow() {

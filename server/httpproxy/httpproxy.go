@@ -147,7 +147,7 @@ func (s *HttpProxy) serve() error {
 
 	err := s.BindLocked(func() error {
 		if s.HttpPort > 0 {
-			httpListener, err := connection.GetHttpListener()
+			httpListener, err := connection.Listen(connection.KindHTTP)
 			if err != nil {
 				return fmt.Errorf("start HTTP listener: %w", err)
 			}
@@ -157,7 +157,7 @@ func (s *HttpProxy) serve() error {
 		}
 
 		if s.HttpsPort > 0 {
-			httpsListener, err := connection.GetHttpsListener()
+			httpsListener, err := connection.Listen(connection.KindHTTPS)
 			if err != nil {
 				return fmt.Errorf("start HTTPS listener: %w", err)
 			}

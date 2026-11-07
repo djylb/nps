@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/djylb/nps/bridge"
@@ -199,12 +198,11 @@ func main() {
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		logs.Error("service function disabled %v", err)
-		run()
 		// run without service
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		wg.Wait()
-		return
+		mustRun()
+		err := <-server.Failed()
+		logs.Error("nps stopped: %v", err)
+		os.Exit(1)
 	}
 
 	if cmd != "" && cmd != "service" {
@@ -385,18 +383,35 @@ func (p *nps) run() error {
 			logs.Warn("nps: panic serving %v: %s", err, buf)
 		}
 	}()
-	run()
-	<-p.exit
+	mustRun()
+	select {
+	case <-p.exit:
+	case err := <-server.Failed():
+		logs.Error("nps stopped: %v", err)
+		os.Exit(1)
+	}
 	logs.Warn("stop...")
 	return nil
 }
 
-func run() {
+// mustRun starts nps and ends the process with a non-zero code when that
+// fails: nothing is served then.
+func mustRun() {
+	if err := run(); err != nil {
+		logs.Error("nps failed to start: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	install.StartUpdate()
 	cfg := servercfg.Current()
+	if _, err := file.LoadDb(); err != nil {
+		return err
+	}
 	handler, err := routers.Init()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	server.SetWebHandler(handler)
 	server.StartIPRegisterServer(routers.InitIPRegister())
@@ -414,7 +429,9 @@ func run() {
 	logs.Info("the version of server is %s, allow client core version to be %s", version.VERSION, bridge.MinClientVersion())
 	_ = bridge.SetClientSelectMode(cfg.Bridge.SelectMode)
 	applyNtp(cfg)
-	connection.InitConnectionService()
+	if err := connection.InitConnectionService(); err != nil {
+		return err
+	}
 	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
 	//crypt.InitTls(filepath.Join(runenv.GetRunPath(), "conf", "server.pem"), filepath.Join(runenv.GetRunPath(), "conf", "server.key"))
 	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
@@ -432,5 +449,5 @@ func run() {
 	bridge.ServerWsEnable = cfg.Bridge.ServerWSEnabled
 	bridge.ServerWssEnable = cfg.Bridge.ServerWSSEnabled
 	go file.WatchAccessLists(context.Background(), time.Minute)
-	go server.StartNewServer(task, timeout)
+	return server.StartNewServer(task, timeout)
 }

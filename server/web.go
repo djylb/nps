@@ -77,26 +77,27 @@ func (s *WebServer) Start() error {
 	}}
 
 	if p > 0 {
-		if l, err := connection.GetWebManagerListener(); err == nil {
-			s.tcpListener = l
-			if tlsConfig != nil {
-				targets = append(targets, httpServeTarget{
-					listener: l,
-					serve: func(l net.Listener) error {
-						srv := &http.Server{Handler: handler, TLSConfig: tlsConfig}
-						return srv.ServeTLS(l, "", "")
-					},
-				})
-			} else {
-				targets = append(targets, httpServeTarget{
-					listener: l,
-					serve: func(l net.Listener) error {
-						return http.Serve(l, handler)
-					},
-				})
-			}
+		l, err := connection.Listen(connection.KindWeb)
+		if err != nil {
+			_ = bridge.WebServerListener.Close()
+			return err
+		}
+		s.tcpListener = l
+		if tlsConfig != nil {
+			targets = append(targets, httpServeTarget{
+				listener: l,
+				serve: func(l net.Listener) error {
+					srv := &http.Server{Handler: handler, TLSConfig: tlsConfig}
+					return srv.ServeTLS(l, "", "")
+				},
+			})
 		} else {
-			logs.Error("%v", err)
+			targets = append(targets, httpServeTarget{
+				listener: l,
+				serve: func(l net.Listener) error {
+					return http.Serve(l, handler)
+				},
+			})
 		}
 	} else {
 		logs.Info("web_port=0: only virtual listener is active (plain HTTP)")

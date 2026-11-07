@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -282,4 +283,10 @@ func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
 			t.Fatal("exchangeConfig = nil, want an error for the missing task status")
 		}
 	})
+}
+
+func TestStartFromFileReturnsConfigError(t *testing.T) {
+	if err := StartFromFile(context.Background(), filepath.Join(t.TempDir(), "missing.conf")); err == nil {
+		t.Fatal("StartFromFile with a missing config returned nil")
+	}
 }

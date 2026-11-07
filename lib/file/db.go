@@ -28,30 +28,48 @@ type DbUtils struct {
 var (
 	db                atomic.Pointer[DbUtils]
 	loadMu            sync.Mutex
+	loadErr           error // set once under loadMu, before db
 	HostIndex         = index.NewDomainIndex()
 	Blake2bVkeyIndex  = index.NewStringIDIndex()
 	TaskPasswordIndex = index.NewStringIDIndex()
 )
 
 // GetDb returns the store, loading it from the files of the run path on
-// first use.
+// first use. When that load fails the store starts empty; LoadDb reports
+// the error.
 func GetDb() *DbUtils {
+	d, _ := LoadDb()
+	return d
+}
+
+// LoadDb loads the store from the files of the run path unless it is loaded
+// already, and returns it with the error of that load.
+func LoadDb() (*DbUtils, error) {
 	if d := db.Load(); d != nil {
-		return d
+		return d, loadErr
 	}
 	loadMu.Lock()
 	defer loadMu.Unlock()
 	if d := db.Load(); d != nil {
-		return d
+		return d, loadErr
 	}
 	jsonDb := NewJsonDb(runenv.GetRunPath())
-	jsonDb.LoadClientFromJsonFile()
-	jsonDb.LoadTaskFromJsonFile()
-	jsonDb.LoadHostFromJsonFile()
-	jsonDb.LoadGlobalFromJsonFile()
+	for _, load := range []func() error{
+		jsonDb.LoadClientFromJsonFile,
+		jsonDb.LoadTaskFromJsonFile,
+		jsonDb.LoadHostFromJsonFile,
+		jsonDb.LoadGlobalFromJsonFile,
+	} {
+		if err := load(); err != nil {
+			loadErr = fmt.Errorf("load database: %w", err)
+			logs.Error("%v", loadErr)
+			jsonDb = NewJsonDb(runenv.GetRunPath())
+			break
+		}
+	}
 	d := &DbUtils{JsonDb: jsonDb}
 	db.Store(d)
-	return d
+	return d, loadErr
 }
 
 // ReplaceDb makes d the store until the returned function puts back the one

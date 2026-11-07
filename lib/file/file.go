@@ -47,9 +47,9 @@ type JsonDb struct {
 	GlobalFilePath   string //global file path
 }
 
-func (s *JsonDb) LoadTaskFromJsonFile() {
+func (s *JsonDb) LoadTaskFromJsonFile() error {
 	resetTaskPasswords()
-	loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v interface{}) {
 		var err error
 		post := v.(*model.Tunnel)
 		if post.Id <= 0 || post.Client == nil {
@@ -87,9 +87,9 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 	})
 }
 
-func (s *JsonDb) LoadClientFromJsonFile() {
+func (s *JsonDb) LoadClientFromJsonFile() error {
 	Blake2bVkeyIndex.Clear()
-	loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v interface{}) {
 		post := v.(*model.Client)
 		if post.ConnectionHistory == nil {
 			post.ConnectionHistory = new(model.ConnectionHistory)
@@ -123,9 +123,9 @@ func (s *JsonDb) LoadClientFromJsonFile() {
 	})
 }
 
-func (s *JsonDb) LoadHostFromJsonFile() {
+func (s *JsonDb) LoadHostFromJsonFile() error {
 	HostIndex.Destroy()
-	loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v interface{}) {
 		var err error
 		post := v.(*model.Host)
 		if post.Id <= 0 || post.Client == nil {
@@ -157,8 +157,8 @@ func (s *JsonDb) LoadHostFromJsonFile() {
 	})
 }
 
-func (s *JsonDb) LoadGlobalFromJsonFile() {
-	loadSyncMapFromFileWithSingleJson(s.GlobalFilePath, func(v string) {
+func (s *JsonDb) LoadGlobalFromJsonFile() error {
+	err := loadSyncMapFromFileWithSingleJson(s.GlobalFilePath, func(v string) {
 		post := new(model.Glob)
 		// "null", as older versions stored empty settings, leaves post nil
 		if strings.TrimSpace(v) == "" {
@@ -182,6 +182,7 @@ func (s *JsonDb) LoadGlobalFromJsonFile() {
 		g.CompileSourceLists(acl.ScopeGlobal, "the global settings")
 		s.Global = g
 	}
+	return err
 }
 
 func clientOwner(c *model.Client) string { return "client " + strconv.Itoa(c.Id) }
@@ -256,18 +257,18 @@ func (s *JsonDb) GetHostId() int32 {
 	return atomic.AddInt32(&s.HostIncreaseId, 1)
 }
 
-func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{})) {
+func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{})) error {
 	// 如果文件不存在，则创建空文件
 	if !runenv.FileExists(filePath) {
 		if err := createEmptyFile(filePath); err != nil {
-			panic(err)
+			return err
 		}
 	}
 
 	// 读取文件内容
 	b, err := os.ReadFile(filePath)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// 加载新的json文件，是一个正常的json数组文件
@@ -280,6 +281,7 @@ func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{
 		// 加载新json报错，则加载旧json
 		loadObsoleteJsonFile(b, t, f)
 	}
+	return nil
 }
 
 // backupUnreadable keeps the content of a file that failed to parse as
@@ -377,20 +379,18 @@ func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
 	return nil
 }
 
-func loadSyncMapFromFileWithSingleJson(filePath string, f func(value string)) {
+func loadSyncMapFromFileWithSingleJson(filePath string, f func(value string)) error {
 	if !runenv.FileExists(filePath) {
-		if err := createEmptyFile(filePath); err != nil {
-			panic(err)
-		}
-		return
+		return createEmptyFile(filePath)
 	}
 
 	b, err := os.ReadFile(filePath)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	f(string(b))
+	return nil
 }
 
 // 创建空文件的辅助函数

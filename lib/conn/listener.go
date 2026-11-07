@@ -18,18 +18,20 @@ import (
 // its first stream or protocol upgrade before it is dropped.
 const HandshakeTimeout = 10 * time.Second
 
-func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
-	kcpListener, err := kcp.ListenWithOptions(addr, nil, 10, 3)
-	if err != nil {
-		logs.Error("KCP listen error: %v", err)
-		return err
-	}
+// ListenKCP opens the KCP listener of the bridge on addr.
+func ListenKCP(addr string) (*kcp.Listener, error) {
+	return kcp.ListenWithOptions(addr, nil, 10, 3)
+}
+
+// ServeKCP hands every session l accepts to f. It returns once l fails or
+// is closed, and closes l.
+func ServeKCP(l *kcp.Listener, f func(c net.Conn)) error {
+	defer func() { _ = l.Close() }()
 	// Without a deadline AcceptKCP fails only once the listener is closed or
 	// its socket has failed, and keeps failing after that.
 	for {
-		c, err := kcpListener.AcceptKCP()
+		c, err := l.AcceptKCP()
 		if err != nil {
-			_ = kcpListener.Close()
 			return err
 		}
 		SetUdpSession(c)
@@ -37,17 +39,19 @@ func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
 	}
 }
 
-func NewQuicListenerAndProcess(addr string, tlsConfig *tls.Config, quicConfig *quic.Config, f func(c net.Conn)) error {
-	listener, err := quic.ListenAddr(addr, tlsConfig, quicConfig)
-	if err != nil {
-		logs.Error("QUIC listen error: %v", err)
-		return err
-	}
+// ListenQUIC opens the QUIC listener of the bridge on addr.
+func ListenQUIC(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (*quic.Listener, error) {
+	return quic.ListenAddr(addr, tlsConfig, quicConfig)
+}
+
+// ServeQUIC hands the first stream of every connection l accepts to f. It
+// returns once l is closed, and closes l.
+func ServeQUIC(l *quic.Listener, f func(c net.Conn)) error {
+	defer func() { _ = l.Close() }()
 	for {
 		// Accept fails only once the listener is closed.
-		sess, err := listener.Accept(context.Background())
+		sess, err := l.Accept(context.Background())
 		if err != nil {
-			_ = listener.Close()
 			return err
 		}
 		go acceptQuicStream(sess, f)
@@ -68,14 +72,17 @@ func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
 
 // Accept serves l until it is closed or fails; netx.Accept retries
 // transient errors with a backoff.
-func Accept(l net.Listener, f func(c net.Conn)) {
+// Accept hands every connection l accepts to f until l fails or is closed.
+// It returns nil once l is closed and the accept error otherwise.
+func Accept(l net.Listener, f func(c net.Conn)) error {
 	for {
 		c, err := netx.Accept(context.Background(), l)
 		if err != nil {
-			if !netx.IsClosed(err) {
-				logs.Error("accept error: %v", err)
+			if netx.IsClosed(err) {
+				return nil
 			}
-			return
+			logs.Error("accept error: %v", err)
+			return err
 		}
 		go f(c)
 	}

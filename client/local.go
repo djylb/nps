@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -71,6 +70,9 @@ func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
 	return b
 }
 
+// NewP2PManager runs local servers until pCtx ends. With AutoReconnect off it
+// gives up on the first failed server connection by calling pCancel; the
+// owner of pCtx decides what follows.
 func NewP2PManager(pCtx context.Context, pCancel context.CancelFunc, cfg *config.CommonConfig) *P2PManager {
 	ctx, cancel := context.WithCancel(pCtx)
 	mgr := &P2PManager{
@@ -84,9 +86,6 @@ func NewP2PManager(pCtx context.Context, pCancel context.CancelFunc, cfg *config
 	go func() {
 		<-pCtx.Done()
 		mgr.Close()
-		if !AutoReconnect {
-			os.Exit(1)
-		}
 	}()
 	return mgr
 }

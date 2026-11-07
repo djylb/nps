@@ -28,62 +28,21 @@ var (
 	appConfig        *store
 	appConfigPath    string
 	preferredPath    string
-	parsers          = make(map[string]parserFunc)
-	extensionFormats = make(map[string]string)
-	extensionOrder   []string
 	errConfigMissing = errors.New("server config not loaded")
 )
 
-func init() {
-	mustRegisterViperFormat("ini", ".conf", ".ini")
-	mustRegisterViperFormat("yaml", ".yaml", ".yml")
-	mustRegisterViperFormat("json", ".json")
-}
-
-func mustRegisterViperFormat(format string, extensions ...string) {
-	if err := RegisterViperFormat(format, extensions...); err != nil {
-		panic(err)
+// extensionOrder lists the config file extensions in the order a config
+// file is looked for; extensionFormats maps each to its Viper format.
+var (
+	extensionOrder   = []string{".conf", ".ini", ".yaml", ".yml", ".json"}
+	extensionFormats = map[string]string{
+		".conf": "ini",
+		".ini":  "ini",
+		".yaml": "yaml",
+		".yml":  "yaml",
+		".json": "json",
 	}
-}
-
-// RegisterViperFormat registers a new config format backed by Viper.
-func RegisterViperFormat(format string, extensions ...string) error {
-	return RegisterFormat(format, newViperParser(format), extensions...)
-}
-
-// RegisterFormat registers a parser for one or more file extensions.
-func RegisterFormat(format string, parser parserFunc, extensions ...string) error {
-	format = strings.TrimSpace(strings.ToLower(format))
-	if format == "" {
-		return fmt.Errorf("config format cannot be empty")
-	}
-	if parser == nil {
-		return fmt.Errorf("config parser for %q cannot be nil", format)
-	}
-	if len(extensions) == 0 {
-		return fmt.Errorf("config format %q must declare at least one extension", format)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := parsers[format]; exists {
-		return fmt.Errorf("config format %q already registered", format)
-	}
-	parsers[format] = parser
-	for _, ext := range extensions {
-		normalized := normalizeExt(ext)
-		if normalized == "" {
-			return fmt.Errorf("config format %q has invalid extension %q", format, ext)
-		}
-		if owner, exists := extensionFormats[normalized]; exists {
-			return fmt.Errorf("config extension %q already registered by %q", normalized, owner)
-		}
-		extensionFormats[normalized] = format
-		extensionOrder = append(extensionOrder, normalized)
-	}
-	return nil
-}
+)
 
 func newViperParser(format string) parserFunc {
 	return func(path string) (map[string]any, error) {
@@ -161,17 +120,13 @@ func DefaultPaths() []string {
 	return dedupePaths(candidates...)
 }
 
-// SupportedExtensions returns all registered config file extensions.
+// SupportedExtensions returns all supported config file extensions.
 func SupportedExtensions() []string {
-	mu.RLock()
-	defer mu.RUnlock()
 	return slices.Clone(extensionOrder)
 }
 
-// IsSupportedConfigPath reports whether the file extension maps to a registered parser.
+// IsSupportedConfigPath reports whether the file extension maps to a parser.
 func IsSupportedConfigPath(path string) bool {
-	mu.RLock()
-	defer mu.RUnlock()
 	_, ok := extensionFormats[normalizeExt(filepath.Ext(path))]
 	return ok
 }
@@ -275,13 +230,8 @@ func Reload() error {
 func parserForPath(path string) (parserFunc, string, error) {
 	ext := normalizeExt(filepath.Ext(path))
 
-	mu.RLock()
-	format, ok := extensionFormats[ext]
-	parser := parsers[format]
-	mu.RUnlock()
-
-	if ok && parser != nil {
-		return parser, format, nil
+	if format, ok := extensionFormats[ext]; ok {
+		return newViperParser(format), format, nil
 	}
 	if ext == "" {
 		return nil, "", fmt.Errorf("config path %s has no extension", path)

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	goflag "flag"
 	"fmt"
 	"os"
@@ -218,10 +219,16 @@ func main() {
 	// 处理服务命令
 	switch cmd {
 	case "status":
-		client.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP)
+		if err := client.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP); err != nil {
+			logs.Error("status: %v", err)
+			os.Exit(1)
+		}
 		return
 	case "register":
-		client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime)
+		if err := client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime); err != nil {
+			logs.Error("register: %v", err)
+			os.Exit(1)
+		}
 		return
 	case "start", "stop", "restart":
 		if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
@@ -395,8 +402,17 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		commonConfig.Client = new(model.Client)
 		commonConfig.Client.Cnf = new(model.Config)
 		commonConfig.DisconnectTime = *p2pTime
-		p2pm := client.NewP2PManager(ctx, cancel, commonConfig)
+		// The manager cancels p2pCtx when it gives up, which only happens
+		// with auto reconnection off.
+		p2pCtx, p2pCancel := context.WithCancel(ctx)
+		p2pm := client.NewP2PManager(p2pCtx, p2pCancel, commonConfig)
 		go func() { _ = p2pm.StartLocalServer(localServer) }()
+		go func() {
+			<-p2pCtx.Done()
+			if ctx.Err() == nil {
+				fail(cancel, errors.New("the connection to the server ended and auto reconnection is off"))
+			}
+		}()
 		return
 	}
 	env := runenv.GetEnvMap()
@@ -479,7 +495,18 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 		for _, path := range configPaths {
-			go client.StartFromFile(ctx, cancel, path)
+			go func() {
+				if err := client.StartFromFile(ctx, path); err != nil {
+					fail(cancel, err)
+				}
+			}()
 		}
 	}
+}
+
+// fail stops every client of this process and exits with a non-zero code.
+func fail(cancel context.CancelFunc, err error) {
+	logs.Error("npc stopped: %v", err)
+	cancel()
+	os.Exit(1)
 }

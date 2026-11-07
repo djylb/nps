@@ -17,16 +17,17 @@ import (
 // the wait for the target listener to accept it.
 const muxAcceptTimeout = 10 * time.Second
 
-type muxKind int
+// Kind names one of the listeners nps opens on its configured ports.
+type Kind int
 
 const (
-	kindClient muxKind = iota
-	kindClientTls
-	kindClientWs
-	kindClientWss
-	kindHttp
-	kindHttps
-	kindManager
+	KindBridgeTCP Kind = iota
+	KindBridgeTLS
+	KindBridgeWS
+	KindBridgeWSS
+	KindHTTP
+	KindHTTPS
+	KindWeb
 	kindCount
 )
 
@@ -91,12 +92,12 @@ func (p *portMux) Close() error {
 // The new route, the removal of the old one and the changed matchers are
 // applied in one batch, so connections never see a partial configuration
 // and a failure changes nothing.
-func (p *portMux) register(kind muxKind) (net.Listener, error) {
+func (p *portMux) register(kind Kind) (net.Listener, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	routes := p.routes
 	routes[kind] = nil
-	rules := p.rules(func(k muxKind) bool { return k == kind || routes[k] != nil })
+	rules := p.rules(func(k Kind) bool { return k == kind || routes[k] != nil })
 	for {
 		// Closed listeners keep their slot but are no longer routes of
 		// the mux, so they are left out of the batch.
@@ -110,7 +111,7 @@ func (p *portMux) register(kind muxKind) (net.Listener, error) {
 				if !live[k] {
 					continue
 				}
-				if muxKind(k) == kind {
+				if Kind(k) == kind {
 					if err := b.Remove(r); err != nil {
 						return err
 					}
@@ -152,7 +153,7 @@ type routeRule struct {
 }
 
 // rules computes the route of every listener for which has reports true.
-func (p *portMux) rules(has func(muxKind) bool) [kindCount]routeRule {
+func (p *portMux) rules(has func(Kind) bool) [kindCount]routeRule {
 	var out [kindCount]routeRule
 	methods := portmux.Prefix(httpMethodPrefixes...)
 	// The catch-all route is an explicit Not(Prefix(...)) rather than a
@@ -162,10 +163,10 @@ func (p *portMux) rules(has func(muxKind) bool) [kindCount]routeRule {
 	// send them to the HTTPS proxy instead of dropping them.
 	other := portmux.Not(portmux.Prefix(append([]string{legacy.Magic}, httpMethodPrefixes...)...))
 
-	out[kindClient] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(legacy.Magic)}}
+	out[KindBridgeTCP] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(legacy.Magic)}}
 
 	n := 0
-	for _, k := range []muxKind{kindHttp, kindManager, kindClientWs} {
+	for _, k := range []Kind{KindHTTP, KindWeb, KindBridgeWS} {
 		if has(k) {
 			n++
 		}
@@ -173,30 +174,30 @@ func (p *portMux) rules(has func(muxKind) bool) [kindCount]routeRule {
 	switch {
 	case n > 1:
 		if p.managerHost != "" {
-			out[kindManager] = routeRule{priority: 2, matchers: []portmux.Matcher{portmux.And(methods, portmux.HTTP1(portmux.Host(p.managerHost)))}}
+			out[KindWeb] = routeRule{priority: 2, matchers: []portmux.Matcher{portmux.And(methods, portmux.HTTP1(portmux.Host(p.managerHost)))}}
 		}
 		if p.clientHost != "" {
-			out[kindClientWs] = routeRule{priority: 1, matchers: []portmux.Matcher{portmux.And(methods, portmux.HTTP1(portmux.Host(p.clientHost)))}}
+			out[KindBridgeWS] = routeRule{priority: 1, matchers: []portmux.Matcher{portmux.And(methods, portmux.HTTP1(portmux.Host(p.clientHost)))}}
 		}
-		out[kindHttp] = routeRule{matchers: []portmux.Matcher{methods}}
-	case has(kindHttp):
-		out[kindHttp] = routeRule{matchers: []portmux.Matcher{methods}}
-	case has(kindManager):
-		out[kindManager] = routeRule{matchers: []portmux.Matcher{methods}}
+		out[KindHTTP] = routeRule{matchers: []portmux.Matcher{methods}}
+	case has(KindHTTP):
+		out[KindHTTP] = routeRule{matchers: []portmux.Matcher{methods}}
+	case has(KindWeb):
+		out[KindWeb] = routeRule{matchers: []portmux.Matcher{methods}}
 	default:
-		out[kindClientWs] = routeRule{matchers: []portmux.Matcher{methods}}
+		out[KindBridgeWS] = routeRule{matchers: []portmux.Matcher{methods}}
 	}
 
 	switch {
-	case has(kindHttps) && has(kindClientTls):
-		out[kindClientTls] = routeRule{priority: 1, matchers: []portmux.Matcher{portmux.TLS(portmux.SNI("", p.clientHost))}}
-		out[kindHttps] = routeRule{matchers: []portmux.Matcher{other}}
-	case has(kindHttps):
-		out[kindHttps] = routeRule{matchers: []portmux.Matcher{other}}
-	case has(kindClientTls):
-		out[kindClientTls] = routeRule{matchers: []portmux.Matcher{other}}
+	case has(KindHTTPS) && has(KindBridgeTLS):
+		out[KindBridgeTLS] = routeRule{priority: 1, matchers: []portmux.Matcher{portmux.TLS(portmux.SNI("", p.clientHost))}}
+		out[KindHTTPS] = routeRule{matchers: []portmux.Matcher{other}}
+	case has(KindHTTPS):
+		out[KindHTTPS] = routeRule{matchers: []portmux.Matcher{other}}
+	case has(KindBridgeTLS):
+		out[KindBridgeTLS] = routeRule{matchers: []portmux.Matcher{other}}
 	default:
-		out[kindClientWss] = routeRule{matchers: []portmux.Matcher{other}}
+		out[KindBridgeWSS] = routeRule{matchers: []portmux.Matcher{other}}
 	}
 	return out
 }
