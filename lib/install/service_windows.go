@@ -3,7 +3,6 @@
 package install
 
 import (
-	"os/exec"
 	"time"
 
 	"github.com/kardianos/service"
@@ -28,11 +27,21 @@ func serviceStatus(string) (running, known bool) { return false, false }
 // serviceExecutable returns the executable the installed service runs, or ""
 // when the service manager does not tell.
 func serviceExecutable(name string) string {
-	out, err := exec.Command("sc", "qc", name).Output()
+	out, err := host.output("sc", "qc", name)
 	if err != nil {
 		return ""
 	}
 	return parseScBinaryPath(string(out))
+}
+
+// serviceOfProcess returns the service whose process is pid, or "" when the
+// service manager lists none.
+func serviceOfProcess(pid int) string {
+	out, err := host.output("sc", "queryex", "type=", "service", "state=", "active", "bufsize=", "1048576")
+	if err != nil {
+		return ""
+	}
+	return parseScQueryex(string(out), pid)
 }
 
 // ConfigureService sets the platform specific settings of c; Windows has none.
@@ -42,3 +51,5 @@ func ConfigureService(*service.Config) {}
 func serviceFiles(string) []string { return nil }
 
 func serviceFilesRemoved() {}
+
+func usesRcLinks() bool { return false }

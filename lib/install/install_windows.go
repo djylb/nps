@@ -26,9 +26,6 @@ func installExecutable(_, bin string) (string, error) {
 	return exe, nil
 }
 
-// installedCopies returns nothing: install places no copies on Windows.
-func installedCopies(string) []string { return nil }
-
 func executableName(bin string) string { return bin + ".exe" }
 
 // isExecutableName reports whether name is the file name of the executable of

@@ -1,4 +1,4 @@
-//go:build !linux && !windows
+//go:build !linux && !windows && !darwin
 
 package install
 
@@ -14,6 +14,10 @@ func serviceStatus(string) (running, known bool) { return false, false }
 // executable a service runs.
 func serviceExecutable(string) string { return "" }
 
+// serviceOfProcess returns "": the service managers here do not tell which
+// service runs a process.
+func serviceOfProcess(int) string { return "" }
+
 // ConfigureService sets the platform specific settings of c; there are none.
 func ConfigureService(*service.Config) {}
 
@@ -21,3 +25,5 @@ func ConfigureService(*service.Config) {}
 func serviceFiles(string) []string { return nil }
 
 func serviceFilesRemoved() {}
+
+func usesRcLinks() bool { return false }

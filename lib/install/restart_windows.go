@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/kardianos/service"
@@ -25,7 +27,7 @@ func RestartSelf(exe string) error {
 	if !CanRestartSelf() {
 		return ErrRestartUnsupported
 	}
-	return restartDetached(exe)
+	return restartDetached(exe, serviceOfProcess(os.Getpid()))
 }
 
 // restartService restarts the service name, which runs exe, after an update.
@@ -33,7 +35,7 @@ func RestartSelf(exe string) error {
 // the service process itself cannot wait for a restart that ends it.
 func restartService(s service.Service, name, exe string) (bool, error) {
 	if !service.Interactive() {
-		return true, restartDetached(exe)
+		return true, restartDetached(exe, name)
 	}
 	return false, ControlService(s, name, "restart")
 }
@@ -66,13 +68,27 @@ func startWithFlags(exe string, args []string, flags uint32) (*os.Process, error
 	return cmd.Process, nil
 }
 
-// restartDetached restarts the service that runs exe without waiting for the
-// restart. The service process itself may call it: stopping the service ends
-// the caller, so exe is run detached to stop and start the service again.
-func restartDetached(exe string) error {
-	p, err := startDetached(exe, "restart")
+// restartDetached restarts the service svc, which runs exe, without waiting
+// for the restart. The service process itself may call it: stopping the
+// service ends the caller, so the restart runs detached. The default
+// services are restarted by "exe restart"; a service under another name,
+// which that command does not know, by PowerShell.
+func restartDetached(exe, svc string) error {
+	name, args := restartCommand(exe, svc)
+	p, err := startDetached(name, args...)
 	if err != nil {
 		return err
 	}
 	return p.Release()
+}
+
+// restartCommand returns the command that restarts the service svc, which
+// runs exe; "" for svc means the default service of exe.
+func restartCommand(exe, svc string) (string, []string) {
+	if svc == "" || strings.EqualFold(svc, "Npc") || strings.EqualFold(svc, "Nps") {
+		return exe, []string{"restart"}
+	}
+	ps := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	return ps, []string{"-NoProfile", "-NonInteractive", "-Command",
+		"Restart-Service -Force -Name '" + strings.ReplaceAll(svc, "'", "''") + "'"}
 }

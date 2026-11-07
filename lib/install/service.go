@@ -1,6 +1,7 @@
 package install
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -36,34 +37,73 @@ func restartWithTimeout(s service.Service, name string, timeout time.Duration) e
 	return s.Start()
 }
 
-// RestartAfterUpdate restarts the service so it runs the replaced executables.
-// Only an installed and running service is restarted; otherwise the new
-// version takes effect on the next start. When the service is known to run an
-// executable outside replaced it is left alone, since a restart would not
-// pick up the update. A nil s means the service manager is unavailable.
-func RestartAfterUpdate(s service.Service, name string, replaced []string) error {
-	if s == nil || !serviceRunning(s, name) {
-		fmt.Println("Service", name, "is not running; the new version takes effect on its next start")
+// RestartAfterUpdate restarts the services that ran the executables res
+// replaced (see UpdateResult.Services), so they run the new version. s is the
+// service name, the default service of the program, or nil when the service
+// manager is unavailable; the other services are reached by their names. A
+// service that is not running takes the new version on its next start.
+func RestartAfterUpdate(s service.Service, name string, res *UpdateResult) error {
+	if len(res.Services) == 0 {
+		fmt.Println("No service runs the updated executable; the new version takes effect on the next start")
 		return nil
 	}
-	exe := serviceExecutable(name)
-	if exe != "" && !containsFile(replaced, exe) {
-		fmt.Printf("WARNING: service %s runs %s, which this update did not replace; run install again to point the service at the updated executable\n", name, exe)
-		return nil
+	var errs []error
+	for _, svc := range res.Services {
+		target := s
+		if svc != name || s == nil {
+			var err error
+			if target, err = namedService(svc); err != nil {
+				errs = append(errs, fmt.Errorf("executables replaced, but restarting service %s failed: %w", svc, err))
+				continue
+			}
+		}
+		if !serviceRunning(target, svc) {
+			fmt.Println("Service", svc, "is not running; the new version takes effect on its next start")
+			continue
+		}
+		exe := serviceExecutable(svc)
+		if exe == "" {
+			exe = res.Replaced[0]
+		}
+		requested, err := restartService(target, svc, exe)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("executables replaced, but restarting service %s failed: %w", svc, err))
+			continue
+		}
+		if requested {
+			fmt.Println("Service", svc, "restart requested")
+		} else {
+			fmt.Println("Service", svc, "restarted")
+		}
 	}
-	if exe == "" {
-		exe = replaced[0]
+	return errors.Join(errs...)
+}
+
+// nopProgram is the program of a service that is only controlled, not run.
+type nopProgram struct{}
+
+func (nopProgram) Start(service.Service) error { return nil }
+func (nopProgram) Stop(service.Service) error  { return nil }
+
+// namedService returns a handle to control the installed service name.
+func namedService(name string) (service.Service, error) {
+	return service.New(nopProgram{}, &service.Config{Name: name})
+}
+
+// LinkServiceStart creates the start and stop links of the System V init
+// script of name in /etc/rc.d, which BusyBox based systems such as OpenWrt
+// read and the service library does not create. The names match those of
+// procd, so that a later install on either removes them.
+func LinkServiceStart(name string) {
+	if host.platform() != "unix-systemv" {
+		return
 	}
-	requested, err := restartService(s, name, exe)
-	if err != nil {
-		return fmt.Errorf("executables replaced, but restarting service %s failed: %w", name, err)
+	if fi, err := os.Stat("/etc/rc.d"); err != nil || !fi.IsDir() {
+		return
 	}
-	if requested {
-		fmt.Println("Service", name, "restart requested")
-	} else {
-		fmt.Println("Service", name, "restarted")
-	}
-	return nil
+	script := "/etc/init.d/" + name
+	_ = os.Symlink(script, "/etc/rc.d/S50"+name)
+	_ = os.Symlink(script, "/etc/rc.d/K02"+name)
 }
 
 // serviceRunning reports whether the service s is running.
@@ -78,8 +118,13 @@ func serviceRunning(s service.Service, name string) bool {
 // UninstallService uninstalls s, the system service name. systemd refuses to
 // disable a unit whose file is empty, and procd runs the init script, which
 // an empty or foreign script fails; the files of the service are then deleted
-// directly so that a later install does not find them in place.
+// directly so that a later install does not find them in place. The start
+// and stop links of the init script, which installs of this and older
+// versions named differently, are removed as well.
 func UninstallService(s service.Service, name string) error {
+	if usesRcLinks() {
+		defer removeRcLinks(name)
+	}
 	err := service.Control(s, "uninstall")
 	if err == nil {
 		return nil

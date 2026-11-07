@@ -112,7 +112,7 @@ func main() {
 		}
 		res, err := install.Update(context.Background(), "nps", svcConfig.Name, install.UpdateOptions{Force: cmd == "update-force"})
 		if err == nil && res != nil {
-			err = install.RestartAfterUpdate(s, svcConfig.Name, res.Replaced)
+			err = install.RestartAfterUpdate(s, svcConfig.Name, res)
 		}
 		if res != nil {
 			install.WarnOldProcesses(res.Running)
@@ -232,12 +232,7 @@ func main() {
 				logs.Error("install service failed: %v", err)
 				os.Exit(1)
 			}
-			if service.Platform() == "unix-systemv" {
-				logs.Info("unix-systemv service")
-				confPath := "/etc/init.d/" + svcConfig.Name
-				_ = os.Symlink(confPath, "/etc/rc.d/S90"+svcConfig.Name)
-				_ = os.Symlink(confPath, "/etc/rc.d/K02"+svcConfig.Name)
-			}
+			install.LinkServiceStart(svcConfig.Name)
 			return
 		case "start", "restart", "stop":
 			if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
@@ -247,11 +242,6 @@ func main() {
 		case "uninstall":
 			if err := install.UninstallService(s, svcConfig.Name); err != nil {
 				logs.Error("Valid actions: %q error: %v", service.ControlAction, err)
-			}
-			if service.Platform() == "unix-systemv" {
-				logs.Info("unix-systemv service")
-				_ = os.Remove("/etc/rc.d/S90" + svcConfig.Name)
-				_ = os.Remove("/etc/rc.d/K02" + svcConfig.Name)
 			}
 			return
 		}

@@ -103,20 +103,25 @@ type UpdateResult struct {
 	// Running are the other processes that ran a replaced executable when it
 	// was replaced; they keep running the old version until restarted.
 	Running []int32
+	// Services are the services other than the one of the calling process
+	// that ran a replaced executable, to be restarted by RestartAfterUpdate.
+	Services []string
 }
 
 // Update replaces the executables of bin ("nps" or "npc") with the latest
-// release: the running one, on Unix the copies install placed in the system
-// bin directories, and the one the system service runs. For nps the web
-// assets and the reference config of the run directory are replaced along
-// with them. All files are replaced as one set, so an interrupted update is
-// undone on the next start. A nil result with a nil error means the running
-// version is already the latest.
+// release: the running one and, when the calling process runs as a service
+// whose executable is another file, that file (see updateTargets). Other
+// copies and other instances are left alone: each one updates itself, so its
+// update journal stays next to it. For nps the web assets and the reference
+// config of the run directory are replaced along with them. All files are
+// replaced as one set, so an interrupted update is undone on the next start.
+// A nil result with a nil error means the running version is already the
+// latest. service is the default service name of bin.
 //
 // Update fetches the signed manifest, picks the release, verifies and replaces
 // the files; selfupdate does each of these, Update only chooses the files and
 // checks that the new executable runs. Restarting is left to the caller:
-// RestartAfterUpdate for the service, or UpdateSelf for the running process.
+// RestartAfterUpdate for the services, or UpdateSelf for the running process.
 func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateResult, error) {
 	targets, err := updateTargets(bin, service)
 	if err != nil {
@@ -126,14 +131,11 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	if err != nil {
 		return nil, err
 	}
-	// The journal sits next to the executable the service runs, if any, as
-	// that is the process that confirms or rolls back a pending update.
-	primary := targets[0]
-	if p := serviceExecutable(service); p != "" && containsFile(targets, p) {
-		primary = p
-	}
-	u.Executable = primary
-	u.Journal = selfupdate.JournalFor(primary)
+	// The journal sits next to the running executable: this process, or
+	// the one it restarts as, confirms or rolls back a pending update, and
+	// looks for the journal next to itself (StartUpdate).
+	u.Executable = targets[0]
+	u.Journal = selfupdate.JournalFor(targets[0])
 	u.Files = updateFiles(bin, targets)
 	u.Verify = func(ctx context.Context, c *selfupdate.Candidate, paths []string, artifact io.ReaderAt) error {
 		// Running the new executable proves it starts on this system, for
@@ -171,6 +173,10 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 	}
 	fmt.Println("Updating to", c.Version)
 	running := processesRunning(targets)
+	services := servicesToRestart(service, targets, running)
+	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) {
+		fmt.Printf("NOTE: service %s runs %s, which this update leaves alone; run \"%s update\" to update it\n", service, p, p)
+	}
 	if o.Pending {
 		err = u.Apply(ctx, c)
 	} else {
@@ -186,7 +192,7 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (*UpdateR
 		fmt.Println("Replaced", t)
 	}
 	fmt.Println("Update completed:", c.Version)
-	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running}, nil
+	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running, Services: services}, nil
 }
 
 // updateFiles lists the files an update of bin replaces as one set: the
@@ -331,24 +337,48 @@ func executableVersion(path string) (string, error) {
 // updateTargets is executableTargets; tests replace it.
 var updateTargets = executableTargets
 
-// executableTargets returns the running executable, on Unix the copies
-// install placed in the system bin directories, and the executable the
-// installed service runs.
-func executableTargets(bin, service string) ([]string, error) {
+// executableTargets returns the executables an update of the calling
+// process replaces, the running one first; see selectTargets.
+func executableTargets(bin, _ string) ([]string, error) {
 	exe, err := currentExecutable()
 	if err != nil {
 		return nil, err
 	}
+	own := serviceOfProcess(os.Getpid())
+	ownExe := ""
+	if own != "" {
+		ownExe = serviceExecutable(own)
+	}
+	return selectTargets(bin, exe, ownExe), nil
+}
+
+// selectTargets returns the running executable exe and, when the calling
+// process runs as a service whose configured executable ownExe is another
+// file (a link resolved differently, or a copy the service manager starts),
+// that file as well, so the service starts the new version too. Nothing
+// else is replaced: copies in the system bin directories and the
+// executables of other services, the default one included, belong to other
+// instances, which update themselves. From the command line, outside a
+// service, that leaves exe alone; the default service is updated with it
+// exactly when it runs exe.
+func selectTargets(bin, exe, ownExe string) []string {
 	targets := []string{exe}
-	for _, p := range installedCopies(bin) {
-		if !containsFile(targets, p) {
-			targets = append(targets, p)
-		}
+	if ownExe != "" && !containsFile(targets, ownExe) && isOwnExecutable(ownExe, exe, bin) {
+		targets = append(targets, ownExe)
 	}
-	if p := serviceExecutable(service); p != "" && isExecutableOf(p, bin) && !containsFile(targets, p) {
-		targets = append(targets, p)
+	return targets
+}
+
+// isOwnExecutable reports whether p, the executable of the service of the
+// calling process, is a file that an update of exe may replace: a regular
+// file named like exe or like the executable of bin, not, say, a shell the
+// service runs exe with.
+func isOwnExecutable(p, exe, bin string) bool {
+	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
+		return false
 	}
-	return targets, nil
+	name := filepath.Base(p)
+	return name == filepath.Base(exe) || isExecutableName(name, bin)
 }
 
 // isExecutableOf reports whether p is an existing file named like the
@@ -358,4 +388,31 @@ func isExecutableOf(p, bin string) bool {
 		return false
 	}
 	return isExecutableName(filepath.Base(p), bin)
+}
+
+// servicesToRestart returns the services that run one of the processes
+// running (which run a replaced executable), and the default service when
+// the executable it runs is one of targets, in that order and without the
+// service of the calling process, which restarts itself.
+func servicesToRestart(defaultService string, targets []string, running []int32) []string {
+	own := serviceOfProcess(os.Getpid())
+	var services []string
+	add := func(name string) {
+		if name != "" && name != own && !slices.Contains(services, name) {
+			services = append(services, name)
+		}
+	}
+	for _, pid := range running {
+		add(serviceOfProcess(int(pid)))
+	}
+	if defaultService != "" {
+		// Where this package cannot ask the service manager for the
+		// executable, the default service is assumed to run the updated
+		// one, as install sets it up.
+		p := serviceExecutable(defaultService)
+		if (p == "" && !locatesServices()) || (p != "" && containsFile(targets, p)) {
+			add(defaultService)
+		}
+	}
+	return services
 }

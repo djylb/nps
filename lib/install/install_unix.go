@@ -46,18 +46,6 @@ func installExecutable(srcDir, bin string) (string, error) {
 	return "", errors.Join(errs...)
 }
 
-// installedCopies returns the executables of bin that install placed in the
-// system bin directories.
-func installedCopies(bin string) []string {
-	var paths []string
-	for _, dir := range systemBinDirs {
-		if p, err := filepath.EvalSymlinks(filepath.Join(dir, bin)); err == nil {
-			paths = append(paths, p)
-		}
-	}
-	return paths
-}
-
 func executableName(bin string) string { return bin }
 
 // isExecutableName reports whether name is the file name of the executable of
