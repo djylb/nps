@@ -95,6 +95,12 @@ const nodeJoinGraceProtectWindow = 3 * time.Second
 // publishes again, which starts the grace anew.
 const nodeTunnelGrace = 2 * time.Minute
 
+// A Node is one npc process of a client. It joins with its signal
+// connection, or with its tunnel, and is online once it has both (or, for
+// a protocol whose signal travels on the tunnel, once the tunnel is up).
+// After joining, and while it waits for a new tunnel (awaitTunnel), it is
+// protected: an offline node is then skipped but kept. Outside protection
+// an offline node is removed from its client and closed.
 type Node struct {
 	mu        sync.RWMutex
 	sendMu    sync.Mutex // serializes bridge-initiated writes on the signal connection
@@ -187,6 +193,12 @@ func (n *Node) awaitingTunnel() bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return time.Now().Before(n.tunnelDeadline)
+}
+
+// protected reports whether the node is within its join grace window or
+// awaits its tunnel, so that being offline does not remove it.
+func (n *Node) protected() bool {
+	return n.InJoinGraceWindow(nodeJoinGraceProtectWindow) || n.awaitingTunnel()
 }
 
 func (n *Node) AddNode(node *Node) {
@@ -351,15 +363,17 @@ func (n *Node) closeTunnel() {
 }
 
 type Client struct {
-	mu              sync.RWMutex
-	Id              int
-	LastUUID        string
-	nodes           sync.Map // map[nodeUUID]*Node
+	// mu serializes changes of the node set (putNode, removeNode, Close)
+	// and guards LastUUID.
+	mu       sync.RWMutex
+	Id       int
+	LastUUID string
+	// nodePool is the node set, keyed by node UUID; it is closed when the
+	// client is. Members are read through node and nodeList.
 	nodePool        *upstream.Pool[*Node]
 	mode            SelectMode // how nodes are chosen
 	files           sync.Map   // map[fileUUID]nodeUUID
 	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
-	closed          uint32
 	lastConnectNano atomic.Int64
 }
 
@@ -386,14 +400,42 @@ func NewClient(id int, n *Node, mode SelectMode) *Client {
 		nodePool: upstream.New[*Node](nodePoolConfig(mode)),
 	}
 	c.MarkConnectedNow()
-	n.Client = c
-	c.nodes.Store(n.UUID, n)
 	c.putNode(n)
 	return c
 }
 
+// putNode adds n to the node set; a closed client refuses it and n is
+// closed. Callers hold c.mu, except NewClient.
 func (c *Client) putNode(n *Node) {
-	_ = c.nodePool.Put(upstream.Target[*Node]{ID: n.UUID, Weight: 1, Value: n})
+	n.Client = c
+	if c.nodePool.Put(upstream.Target[*Node]{ID: n.UUID, Weight: 1, Value: n}) != nil {
+		_ = n.Close()
+	}
+}
+
+// node returns the node of uuid.
+func (c *Client) node(uuid string) (*Node, bool) {
+	if c.IsClosed() {
+		return nil, false
+	}
+	b, ok := c.nodePool.Backend(uuid)
+	if !ok {
+		return nil, false
+	}
+	return b.Value(), true
+}
+
+// nodeList returns the nodes in pool order.
+func (c *Client) nodeList() []*Node {
+	if c.IsClosed() {
+		return nil
+	}
+	bs := c.nodePool.Backends()
+	nodes := make([]*Node, len(bs))
+	for i, b := range bs {
+		nodes[i] = b.Value()
+	}
+	return nodes
 }
 
 // markOnline lets a node that connected again take connections.
@@ -412,8 +454,7 @@ func (c *Client) AddNode(n *Node) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if v, ok := c.nodes.Load(n.UUID); ok {
-		existing := v.(*Node)
+	if existing, ok := c.node(n.UUID); ok {
 		if existing.IsOnline() && !n.caps.NodeID {
 			_ = n.Close()
 			return
@@ -422,8 +463,6 @@ func (c *Client) AddNode(n *Node) {
 		c.LastUUID = n.UUID
 		return
 	}
-	n.Client = c
-	c.nodes.Store(n.UUID, n)
 	c.putNode(n)
 	c.LastUUID = n.UUID
 }
@@ -446,7 +485,7 @@ func (c *Client) InConnectGraceWindow(window time.Duration) bool {
 func (c *Client) AddFile(key, uuid string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, ok := c.nodes.Load(uuid); !ok {
+	if _, ok := c.node(uuid); !ok {
 		return fmt.Errorf("uuid %q not found", uuid)
 	}
 	c.files.Store(key, uuid)
@@ -470,22 +509,17 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 	if !ok {
 		return nil, false
 	}
-	c.mu.RLock()
-	n, ok := c.nodes.Load(uuid)
-	c.mu.RUnlock()
+	node, ok := c.node(uuid)
 	if !ok {
 		return nil, false
 	}
-	node, ok := n.(*Node)
-	if ok {
-		if node.IsOnline() {
-			return node, true
-		}
-		if c.InConnectGraceWindow(connectGraceProtectWindow) || node.awaitingTunnel() {
-			return nil, false
-		}
-		c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
+	if node.IsOnline() {
+		return node, true
 	}
+	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.awaitingTunnel() {
+		return nil, false
+	}
+	c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
 	return nil, false
 }
 
@@ -541,7 +575,7 @@ func (c *Client) usable(b *upstream.Backend[*Node]) bool {
 	if !node.IsOffline() {
 		return true
 	}
-	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.InJoinGraceWindow(nodeJoinGraceProtectWindow) || node.awaitingTunnel() {
+	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.protected() {
 		c.nodePool.MarkOffline(b, errNodeOffline)
 		// It may have connected again meanwhile.
 		if !node.IsOffline() {
@@ -566,31 +600,17 @@ func (c *Client) usableNode(uuid string) bool {
 
 // awaitingTunnel reports whether a node of the client awaits its tunnel.
 func (c *Client) awaitingTunnel() bool {
-	found := false
-	c.nodes.Range(func(_, value any) bool {
-		found = value.(*Node).awaitingTunnel()
-		return !found
-	})
-	return found
-}
-
-func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	raw, ok := c.nodes.Load(uuid)
-	if !ok {
-		return nil, false
+	for _, n := range c.nodeList() {
+		if n.awaitingTunnel() {
+			return true
+		}
 	}
-	node, ok := raw.(*Node)
-	return node, ok
+	return false
 }
 
-func (c *Client) NodeCount() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.nodePool.Len()
-}
+func (c *Client) GetNodeByUUID(uuid string) (*Node, bool) { return c.node(uuid) }
+
+func (c *Client) NodeCount() int { return len(c.nodeList()) }
 
 func (c *Client) RemoveOfflineNodes(ignoreClientGrace bool) (removed int) {
 	return c.removeOfflineNodes("", false, ignoreClientGrace)
@@ -601,37 +621,23 @@ func (c *Client) RemoveOfflineNodesExcept(keepUUID string, ignoreClientGrace boo
 }
 
 func (c *Client) removeOfflineNodes(keepUUID string, force bool, ignoreClientGrace bool) (removed int) {
-	if c.nodePool.Len() == 0 {
+	nodes := c.nodeList()
+	if len(nodes) == 0 {
 		return 0
 	}
 	if !force && !ignoreClientGrace && c.InConnectGraceWindow(connectGraceProtectWindow) {
 		return 0
 	}
-	type pair struct {
-		uuid string
-		node *Node
-	}
-	var toRemove []pair
-	c.nodes.Range(func(key, value any) bool {
-		uuid, ok1 := key.(string)
-		node, ok2 := value.(*Node)
-		if !ok1 || !ok2 || uuid == keepUUID {
-			return true
+	for _, node := range nodes {
+		if node.UUID == keepUUID || node.protected() || !node.IsOffline() {
+			continue
 		}
-		if node.InJoinGraceWindow(nodeJoinGraceProtectWindow) || node.awaitingTunnel() {
-			return true
+		if !force && node.Retry() {
+			continue
 		}
-		if node.IsOffline() {
-			if force || !node.Retry() {
-				toRemove = append(toRemove, pair{uuid: uuid, node: node})
-			}
-		}
-		return true
-	})
-	for _, it := range toRemove {
-		if c.closeAndRemoveNodeIfCurrent(it.uuid, it.node, (*Node).IsOffline) {
+		if c.closeAndRemoveNodeIfCurrent(node.UUID, node, (*Node).IsOffline) {
 			removed++
-			logs.Info("Client %d removed offline node %s", c.Id, it.uuid)
+			logs.Info("Client %d removed offline node %s", c.Id, node.UUID)
 		}
 	}
 	if removed > 0 {
@@ -644,12 +650,11 @@ func nodeNotOnline(n *Node) bool { return !n.IsOnline() }
 
 // closeAndRemoveNodeIfCurrent removes uuid only while it still maps to node
 // and dead(node) still holds, both checked under the client lock, and closes
-// node after the lock is released. A nil node removes a uuid whose entry is
-// missing or invalid, which keeps the node list in sync with the node map.
+// node after the lock is released. A nil node removes a uuid that has no
+// node.
 func (c *Client) closeAndRemoveNodeIfCurrent(uuid string, node *Node, dead func(*Node) bool) bool {
 	c.mu.Lock()
-	raw, _ := c.nodes.Load(uuid)
-	current, _ := raw.(*Node)
+	current, _ := c.node(uuid)
 	if node != nil {
 		if current != node || !dead(node) {
 			c.mu.Unlock()
@@ -667,8 +672,8 @@ func (c *Client) closeAndRemoveNodeIfCurrent(uuid string, node *Node, dead func(
 	return true
 }
 
+// removeNode takes uuid out of the node set; callers hold c.mu.
 func (c *Client) removeNode(uuid string) {
-	c.nodes.Delete(uuid)
 	c.nodePool.Remove(uuid)
 	if c.LastUUID == uuid {
 		c.LastUUID = ""
@@ -684,24 +689,29 @@ func (c *Client) removeNode(uuid string) {
 	})
 }
 
+// IsClosed reports whether Close was called; the node pool records it.
 func (c *Client) IsClosed() bool {
-	return atomic.LoadUint32(&c.closed) == 1
+	select {
+	case <-c.nodePool.Done():
+		return true
+	default:
+		return false
+	}
 }
 
+// Close closes the client and every node of it.
 func (c *Client) Close() error {
-	if !atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+	c.mu.Lock()
+	if c.IsClosed() {
+		c.mu.Unlock()
 		return nil
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.nodes.Range(func(key, value interface{}) bool {
-		if n, ok := value.(*Node); ok {
-			_ = n.Close()
-		}
-		return true
-	})
+	nodes := c.nodeList()
 	c.nodePool.Close()
-	c.nodes.Clear()
 	c.files.Clear()
+	c.mu.Unlock()
+	for _, n := range nodes {
+		_ = n.Close()
+	}
 	return nil
 }

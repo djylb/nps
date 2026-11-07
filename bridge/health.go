@@ -158,13 +158,11 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 // share: the first in order that can, or "" if none can.
 func (c *Client) healthNode() string {
 	var first string
-	c.nodes.Range(func(_, value any) bool {
-		n, ok := value.(*Node)
-		if ok && n.healthKick.Load() != nil && !n.IsOffline() && (first == "" || n.UUID < first) {
+	for _, n := range c.nodeList() {
+		if n.healthKick.Load() != nil && !n.IsOffline() && (first == "" || n.UUID < first) {
 			first = n.UUID
 		}
-		return true
-	})
+	}
 	return first
 }
 
@@ -242,17 +240,14 @@ func (s *Bridge) kickHealth() {
 }
 
 func kickClientHealth(c *Client) {
-	c.nodes.Range(func(_, value any) bool {
-		if n, ok := value.(*Node); ok {
-			if kick := n.healthKick.Load(); kick != nil {
-				select {
-				case *kick <- struct{}{}:
-				default:
-				}
+	for _, n := range c.nodeList() {
+		if kick := n.healthKick.Load(); kick != nil {
+			select {
+			case *kick <- struct{}{}:
+			default:
 			}
 		}
-		return true
-	})
+	}
 }
 
 func (s *Bridge) ping() {

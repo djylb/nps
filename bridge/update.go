@@ -38,22 +38,20 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 	c := v.(*Client)
 	var sent, unsupported int
 	var lastErr error
-	c.nodes.Range(func(_, value any) bool {
-		node, ok := value.(*Node)
-		if !ok || node.GetSignal() == nil {
-			return true
+	for _, node := range c.nodeList() {
+		if node.GetSignal() == nil {
+			continue
 		}
 		if !node.Caps().RemoteUpdate {
 			unsupported++
-			return true
+			continue
 		}
 		if err := node.sendSignal(legacy.UpdateRequest, updateRequest{}, updateRequestTimeout); err != nil {
 			lastErr = err
-			return true
+			continue
 		}
 		sent++
-		return true
-	})
+	}
 	switch {
 	case sent > 0:
 		logs.Info("Update requested from %d npc of client %d", sent, id)
