@@ -314,9 +314,7 @@ func normalizeTask(t *model.Tunnel) {
 		t.HttpProxy = true
 		t.Socks5Proxy = false
 	}
-	if t.TargetType != model.ConnTCP && t.TargetType != model.ConnUDP {
-		t.TargetType = model.ConnAll
-	}
+	t.TargetType = model.NormalizeTargetType(t.TargetType)
 	t.CompileDestACL()
 	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))
 }

@@ -525,7 +525,7 @@ func (s *Bridge) handleP2PJoin(c *conn.Conn, id int, caps legacy.Caps, tunnelTyp
 // bridge directly, so that the server address its client reports is the
 // bridge's own: a WebSocket bridge may sit behind a reverse proxy or CDN.
 func p2pDirect(tunnelType string) bool {
-	return tunnelType != model.ConnWS && tunnelType != model.ConnWSS
+	return tunnelType != conn.TransportWS && tunnelType != conn.TransportWSS
 }
 
 // resolveP2PTarget finds the P2P task of a password and its provider's

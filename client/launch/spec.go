@@ -405,7 +405,7 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 			return nil, errors.New("a local server requires a password")
 		}
 		if l.TargetType == "" {
-			l.TargetType = model.ConnAll
+			l.TargetType = model.TargetAll
 		}
 	}
 	if name == "" {

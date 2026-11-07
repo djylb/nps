@@ -83,7 +83,7 @@ func TestDialTargets(t *testing.T) {
 		t.Fatalf("kcp targets of an IP = %v", got)
 	}
 	want := []string{"192.0.2.1:8024", "192.0.2.2:8024", "[::1]:8024"}
-	for _, tp := range []string{"kcp", model.ConnQUIC} {
+	for _, tp := range []string{conn.TransportKCP, conn.TransportQUIC} {
 		got := dialTargets(tp, name)
 		slices.Sort(got)
 		if !slices.Equal(got, want) {

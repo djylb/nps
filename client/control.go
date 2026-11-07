@@ -403,7 +403,7 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 // the handshake tells whether it is alive, so UDP transports try each in turn.
 func dialTargets(tp, server string) []string {
 	switch tp {
-	case "tcp", model.ConnTLS, model.ConnWS, model.ConnWSS:
+	case conn.TransportTCP, conn.TransportTLS, conn.TransportWS, conn.TransportWSS:
 		return []string{server}
 	}
 	host, port, err := net.SplitHostPort(server)
@@ -493,7 +493,7 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 			return nil, "", serverInfo{}, err
 		}
 		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
-	case "quic":
+	case conn.TransportQUIC:
 		isTls = true
 		tlsCfg := &tls.Config{
 			InsecureSkipVerify: true,
@@ -583,7 +583,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 	}
 	uuid := res.ServerUUID
 	info.fingerprint = res.Fingerprint
-	if proxyUrl == "" && tp != model.ConnWS && tp != model.ConnWSS {
+	if proxyUrl == "" && tp != conn.TransportWS && tp != conn.TransportWSS {
 		if ap, perr := netip.ParseAddrPort(connection.RemoteAddr().String()); perr == nil {
 			info.ip = ap.Addr().Unmap().String()
 		}

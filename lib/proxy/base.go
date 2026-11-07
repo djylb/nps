@@ -211,7 +211,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 }
 
 func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Link, client *model.Client, flows []conn.Flow, proxyProtocol int, rb []byte, task *model.Tunnel, isLocal bool, tp string) {
-	isFramed := tp == model.ConnUDP
+	isFramed := tp == conn.LinkUDP
 	var entry conn.Entry
 	if task != nil {
 		entry = task

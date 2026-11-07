@@ -1022,18 +1022,21 @@ func (s *Tunnel) SetIsHTTP(isHTTP bool) {
 	s.Unlock()
 }
 
-// Names of connection and target types: bridge transports, link types and
-// the TargetType of a tunnel.
+// Target types of a tunnel: what it forwards to its target.
 const (
-	ConnAll  = "all"
-	ConnTCP  = "tcp"
-	ConnUDP  = "udp"
-	ConnTLS  = "tls"
-	ConnQUIC = "quic"
-	ConnWeb  = "web"
-	ConnWS   = "ws"
-	ConnWSS  = "wss"
+	TargetTCP = "tcp"
+	TargetUDP = "udp"
+	TargetAll = "all" // both
 )
+
+// NormalizeTargetType returns the target type t names, TargetAll for any
+// value other than TargetTCP and TargetUDP.
+func NormalizeTargetType(t string) string {
+	if t == TargetTCP || t == TargetUDP {
+		return t
+	}
+	return TargetAll
+}
 
 // totpSeq separates the web password from its TOTP secret.
 const totpSeq = "totp:"

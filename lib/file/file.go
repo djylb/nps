@@ -77,9 +77,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() {
 			post.HttpProxy = true
 			post.Socks5Proxy = false
 		}
-		if post.TargetType != model.ConnTCP && post.TargetType != model.ConnUDP {
-			post.TargetType = model.ConnAll
-		}
+		post.TargetType = model.NormalizeTargetType(post.TargetType)
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))
 		s.Tasks.Store(post.Id, post)

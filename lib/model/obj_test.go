@@ -438,3 +438,11 @@ func awaitAvailable(t *testing.T, target *Target, n int) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+func TestNormalizeTargetType(t *testing.T) {
+	for in, want := range map[string]string{"tcp": TargetTCP, "udp": TargetUDP, "all": TargetAll, "": TargetAll, "TCP": TargetAll, "both": TargetAll} {
+		if got := NormalizeTargetType(in); got != want {
+			t.Errorf("NormalizeTargetType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

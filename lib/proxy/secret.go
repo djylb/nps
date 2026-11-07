@@ -33,7 +33,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	}
 	defer release()
 
-	connType := model.ConnTCP
+	connType := conn.LinkTCP
 	host := ""
 	localProxy := false
 	needAck := false
@@ -67,12 +67,12 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 				localProxy = s.Task.Target.LocalProxy
 			}
 		} else {
-			if s.Task.TargetType == model.ConnAll {
+			if s.Task.TargetType == model.TargetAll {
 				switch lk.ConnType {
-				case model.ConnUDP:
-					connType = model.ConnUDP
+				case conn.LinkUDP:
+					connType = conn.LinkUDP
 				default:
-					connType = model.ConnTCP
+					connType = conn.LinkTCP
 				}
 			} else {
 				connType = s.Task.TargetType
@@ -120,7 +120,7 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	// for local ones.
 	proxyProtocol := route.Target.ProxyProtocol
 	visitor := c.Conn
-	if connType == model.ConnUDP {
+	if connType == conn.LinkUDP {
 		// The visitor stream carries length-framed datagrams, where a single
 		// stream-level PROXY header would be taken for a frame.
 		proxyProtocol = 0

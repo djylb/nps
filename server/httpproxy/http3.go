@@ -168,7 +168,7 @@ func (s *Http3Server) serveBridgeQUIC(qc *quic.Conn) {
 	c := conn.NewQuicAutoCloseConn(stream, qc)
 	// CliProcess owns the connection.
 	//noinspection GoResourceLeak
-	s.Bridge.CliProcess(conn.NewConn(c), "quic")
+	s.Bridge.CliProcess(conn.NewConn(c), conn.TransportQUIC)
 }
 
 func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config, error) {

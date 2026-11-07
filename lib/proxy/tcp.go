@@ -158,7 +158,7 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 // ProcessTunnel tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	flows := []conn.Flow{s.Task.Flow, s.Task.Client.Flow}
-	err := s.DealTarget(c, s.Task.Client, nil, model.ConnTCP, nil, flows, s.Task)
+	err := s.DealTarget(c, s.Task.Client, nil, conn.LinkTCP, nil, flows, s.Task)
 	if !errors.Is(err, model.ErrNoTarget) {
 		return err
 	}
@@ -167,5 +167,5 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 		logs.Warn("tcp port %d, client Id %d, task Id %d connect error %v", s.Task.Port, s.Task.Client.Id, s.Task.Id, err)
 		return err
 	}
-	return s.DealClient(c, s.Task.Client, "", nil, model.ConnTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	return s.DealClient(c, s.Task.Client, "", nil, conn.LinkTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 }

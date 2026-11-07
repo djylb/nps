@@ -78,7 +78,7 @@ func (s *TunnelModeServer) dialSocks5Packet(_ context.Context, req *socks5.Reque
 		return nil, err
 	}
 	link := conn.NewLink(
-		"udp5",
+		conn.LinkUDP5,
 		"",
 		task.Client.Cnf.Crypt,
 		task.Client.Cnf.Compress,

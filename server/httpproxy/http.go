@@ -327,7 +327,7 @@ func (s *HttpServer) handleWebsocket(w http.ResponseWriter, r *http.Request, hos
 	var targetConn net.Conn
 	err := route.Target.Dial(func(addr string) (bool, error) {
 		logs.Info("%s websocket request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, r.RemoteAddr, addr)
-		link = conn.NewLink("tcp", addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
+		link = conn.NewLink(conn.LinkTCP, addr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, isLocal)
 		link.Option.Node = route.Node
 		var err error
 		targetConn, err = s.Bridge.Session(host.Client.Id).OpenLink(link, 0)
@@ -590,7 +590,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	var link *conn.Link
 	var target net.Conn
 	err := route.Target.Dial(func(addr string) (bool, error) {
-		link = conn.NewLink("tcp", addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
+		link = conn.NewLink(conn.LinkTCP, addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, remote, isLocal)
 		link.Option.Node = route.Node
 		var err error
 		target, err = s.Bridge.Session(h.Client.Id).OpenLink(link, 0)

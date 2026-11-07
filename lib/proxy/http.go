@@ -111,7 +111,7 @@ func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Requ
 // openHTTPLink opens a link to the destination of req through the client
 // tunnel.
 func (s *TunnelModeServer) openHTTPLink(c *conn.Conn, req *httpproxy.Request) (net.Conn, *conn.Link, bool, error) {
-	target, link, isLocal, err := s.openClientLink(c, s.Task.Client, req.Dst.String(), model.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLink(c, s.Task.Client, req.Dst.String(), conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if errors.Is(err, errProxyAccessDenied) {
 		err = &httpproxy.StatusError{Code: 403, Err: err}
 	} else if err == nil && (target == nil || link == nil) {
@@ -135,7 +135,7 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 		return true, err
 	}
 	clientConn := conn.NewConn(req.Conn)
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, model.ConnTCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, conn.LinkTCP)
 	return true, nil
 }
 

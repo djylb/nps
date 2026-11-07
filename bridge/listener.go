@@ -11,7 +11,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/connection"
 	"github.com/quic-go/quic-go"
 )
@@ -21,27 +20,27 @@ func (s *Bridge) StartTunnel() error {
 	// tcp
 	s.VirtualTcpListener = virtualBridgeListener(ServerTcpEnable, connection.GetBridgeTcpListener)
 	go conn.Accept(s.VirtualTcpListener, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), model.ConnTCP)
+		s.CliProcess(conn.NewConn(c), conn.TransportTCP)
 	})
 
 	// tls
 	s.VirtualTlsListener = virtualBridgeListener(ServerTlsEnable, connection.GetBridgeTlsListener)
 	go conn.Accept(s.VirtualTlsListener, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{crypt.GetCert()}})), model.ConnTLS)
+		s.CliProcess(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{crypt.GetCert()}})), conn.TransportTLS)
 	})
 
 	// ws
 	s.VirtualWsListener = virtualBridgeListener(ServerWsEnable, connection.GetBridgeWsListener)
 	wsLn := conn.NewWSListener(s.VirtualWsListener, connection.Network().BridgePath, connection.Network().BridgeTrustedIPs, connection.Network().BridgeRealIPHeader)
 	go conn.Accept(wsLn, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), model.ConnWS)
+		s.CliProcess(conn.NewConn(c), conn.TransportWS)
 	})
 
 	// wss
 	s.VirtualWssListener = virtualBridgeListener(ServerWssEnable, connection.GetBridgeWssListener)
 	wssLn := conn.NewWSSListener(s.VirtualWssListener, connection.Network().BridgePath, crypt.GetCert(), connection.Network().BridgeTrustedIPs, connection.Network().BridgeRealIPHeader)
 	go conn.Accept(wssLn, func(c net.Conn) {
-		s.CliProcess(conn.NewConn(c), model.ConnWSS)
+		s.CliProcess(conn.NewConn(c), conn.TransportWSS)
 	})
 	// kcp
 	if ServerKcpEnable {
@@ -50,7 +49,7 @@ func (s *Bridge) StartTunnel() error {
 			//bridgeKcp := *s
 			//bridgeKcp.tunnelType = "kcp"
 			err := conn.NewKcpListenerAndProcess(net.JoinHostPort(connection.Network().BridgeKCPIP, strconv.Itoa(connection.Network().BridgeKCPPort)), func(c net.Conn) {
-				s.CliProcess(conn.NewConn(c), "kcp")
+				s.CliProcess(conn.NewConn(c), conn.TransportKCP)
 			})
 			if err != nil {
 				logs.Error("KCP listener error: %v", err)
@@ -74,7 +73,7 @@ func (s *Bridge) StartTunnel() error {
 			tlsCfg.NextProtos = connection.Network().QUICALPNList
 			addr := net.JoinHostPort(connection.Network().BridgeQUICIP, strconv.Itoa(connection.Network().BridgeQUICPort))
 			err := conn.NewQuicListenerAndProcess(addr, tlsCfg, quicConfig, func(c net.Conn) {
-				s.CliProcess(conn.NewConn(c), "quic")
+				s.CliProcess(conn.NewConn(c), conn.TransportQUIC)
 			})
 			if err != nil {
 				logs.Error("QUIC listener error: %v", err)

@@ -40,7 +40,7 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	// clientConn wraps req.Conn only, which every path below closes or relays.
 	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(req.Conn)
-	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, model.ConnTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
 		logs.Warn("open socks5 connect tunnel failed: client=%d task=%d dest=%s err=%v", s.Task.Client.Id, s.Task.Id, targetAddr, err)
 		rep := socks5.ReplyGeneralFailure
@@ -57,7 +57,7 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 		_ = target.Close()
 		return true, err
 	}
-	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, model.ConnTCP)
+	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, conn.LinkTCP)
 	return true, nil
 }
 

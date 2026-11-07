@@ -215,7 +215,7 @@ func PingClient(id int, addr string) int {
 	if id <= 0 {
 		return 0
 	}
-	link := conn.NewLink("ping", "", false, false, addr, false)
+	link := conn.NewLink(conn.LinkPing, "", false, false, addr, false)
 	link.Option.NeedAck = true
 	link.Option.Timeout = pingTimeout
 	start := time.Now()

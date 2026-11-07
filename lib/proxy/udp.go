@@ -88,7 +88,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 	addr := visitor.RemoteAddr()
 	route := s.Task.Route()
 	isLocal := s.AllowLocalProxy && route.Target.LocalProxy || s.Task.Client.Id < 0
-	link := conn.NewLink(model.ConnUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
+	link := conn.NewLink(conn.LinkUDP, route.Target.TargetStr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, addr.String(), isLocal)
 	link.Option.Node = route.Node
 	clientConn, err := s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 	if err != nil {

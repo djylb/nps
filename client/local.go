@@ -254,12 +254,12 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 	}
 
 	var errs []error
-	if l.TargetType == model.ConnAll || l.TargetType == model.ConnTCP {
+	if l.TargetType == model.TargetAll || l.TargetType == model.TargetTCP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local tcp listener on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)))
 	}
-	if l.TargetType == model.ConnAll || l.TargetType == model.ConnUDP {
+	if l.TargetType == model.TargetAll || l.TargetType == model.TargetUDP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
 		errs = append(errs, mgr.serve(fmt.Sprintf("local udp listener on port %d", l.Port), proxy.NewUdpModeServer(pb, task, true)))

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/index"
@@ -1195,7 +1196,7 @@ func createTestTunnel(t *testing.T, id int, client *model.Client, port int) *mod
 		Mode:       "tcp",
 		Status:     true,
 		Client:     client,
-		TargetType: model.ConnTCP,
+		TargetType: conn.LinkTCP,
 		Target: &model.Target{
 			TargetStr: "127.0.0.1:80",
 		},

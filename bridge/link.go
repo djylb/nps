@@ -12,7 +12,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 )
 
@@ -57,7 +56,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 
 	// if the proxy type is local
 	if link.LocalProxy || clientId < 0 {
-		if link.ConnType == "udp5" {
+		if link.ConnType == conn.LinkUDP5 {
 			serverSide, handlerSide := net.Pipe()
 			go conn.HandleUdp5(context.Background(), handlerSide, link.Option.Timeout, "")
 			return serverSide, nil
@@ -87,17 +86,17 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
 				defer cancel()
 				switch strings.ToLower(targetStr) {
-				case model.ConnTCP:
+				case conn.TransportTCP:
 					return conn.DialVirtual(ctx, s.VirtualTcpListener, link.RemoteAddr)
-				case model.ConnTLS:
+				case conn.TransportTLS:
 					return conn.DialVirtual(ctx, s.VirtualTlsListener, link.RemoteAddr)
-				case model.ConnWS:
+				case conn.TransportWS:
 					return conn.DialVirtual(ctx, s.VirtualWsListener, link.RemoteAddr)
-				case model.ConnWSS:
+				case conn.TransportWSS:
 					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
-				case model.ConnWeb:
+				case bridgeTargetWeb:
 					return GetWebServerConn(ctx, link.RemoteAddr)
-				case "ipreg":
+				case bridgeTargetIPReg:
 					return GetIPRegisterConn(ctx, link.RemoteAddr)
 				default:
 					return nil, fmt.Errorf("invalid bridge target %q in %q", targetStr, raw)
@@ -107,7 +106,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			}
 		}
 		network := "tcp"
-		if link.ConnType == model.ConnUDP {
+		if link.ConnType == conn.LinkUDP {
 			network = "udp"
 		}
 		target, err = net.DialTimeout(network, netaddr.FormatAddress(link.Host), linkOpenTimeout(link))
@@ -200,9 +199,15 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		}
 	}
 
-	if link.ConnType == "udp" && !caps.FramedUDP {
+	if link.ConnType == conn.LinkUDP && !caps.FramedUDP {
 		logs.Warn("UDP connection needs a newer client than protocol %s.", legacy.CoreVersion(caps.Index))
 	}
 
 	return
 }
+
+// Local targets of bridge:// addresses besides the bridge transports.
+const (
+	bridgeTargetWeb   = "web"
+	bridgeTargetIPReg = "ipreg"
+)

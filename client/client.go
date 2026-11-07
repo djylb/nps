@@ -248,7 +248,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		logs.Trace("sent ACK before proceeding")
 	}
 	//socks5 udp
-	if lk.ConnType == "udp5" {
+	if lk.ConnType == conn.LinkUDP5 {
 		logs.Trace("new %s connection of udp5, remote address:%s", lk.ConnType, lk.RemoteAddr)
 		if LocalIPForward {
 			conn.HandleUdp5(s.ctx, src, lk.Option.Timeout, s.localIP)
@@ -258,7 +258,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		return
 	}
 	//file mode
-	if lk.ConnType == "file" && s.fsm != nil {
+	if lk.ConnType == conn.LinkFile && s.fsm != nil {
 		key := strings.TrimPrefix(strings.TrimSpace(lk.Host), "file://")
 		vl, ok := s.fsm.GetListenerByKey(key)
 		if !ok {
@@ -284,7 +284,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	var targetConn net.Conn
 	if LocalIPForward && s.localIP != "" && netaddr.IsPublicHost(lk.Host) {
 		dialer := net.Dialer{Timeout: lk.Option.Timeout}
-		if lk.ConnType == "udp" {
+		if lk.ConnType == conn.LinkUDP {
 			dialer.LocalAddr = netaddr.BuildUDPBindAddr(s.localIP)
 		} else {
 			dialer.LocalAddr = netaddr.BuildTCPBindAddr(s.localIP)
@@ -304,11 +304,11 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		_ = src.Close()
 	} else {
 		// A UDP dial reaches nothing, so it says nothing about the target.
-		if hc != nil && lk.ConnType != "udp" {
+		if hc != nil && lk.ConnType != conn.LinkUDP {
 			hc.touch(lk.Host)
 		}
 		logs.Trace("new %s connection with the goal of %s, remote address:%s", lk.ConnType, lk.Host, lk.RemoteAddr)
-		isFramed := lk.ConnType == "udp" && clientCaps().FramedUDP
+		isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
 		//logs.Debug("%t", isFramed)
 		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, false, 0, nil, nil, false, isFramed)
 	}

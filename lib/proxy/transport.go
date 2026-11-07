@@ -10,7 +10,6 @@ import (
 	"github.com/djylb/netx/transparent"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logs"
-	"github.com/djylb/nps/lib/model"
 )
 
 // errNotRedirected is returned for a connection that reached the
@@ -39,7 +38,7 @@ func HandleTrans(c *conn.Conn, s *TunnelModeServer) error {
 		logs.Warn("trans: client %d, task %d, remote %v: %v", s.Task.Client.Id, s.Task.Id, c.RemoteAddr(), err)
 		return err
 	}
-	return s.DealClient(c, s.Task.Client, addr, nil, model.ConnTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	return s.DealClient(c, s.Task.Client, addr, nil, conn.LinkTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
 }
 
 // originalTarget returns the original destination of a redirected
