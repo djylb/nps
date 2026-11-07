@@ -189,7 +189,7 @@ func resolveUDPBindTarget(addr string) (*net.UDPAddr, string, string, bool, erro
 	if err != nil {
 		return nil, "", "", false, err
 	}
-	host := netaddr.GetIpByAddr(addr)
+	host := netaddr.Host(addr)
 	if host == "" {
 		return udpAddr, "", "", false, nil
 	}

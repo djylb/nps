@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,8 +57,7 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 		logs.Warn("file server manager already closed, skip StartFileServer")
 		return
 	}
-	addr := net.JoinHostPort(t.ServerIp, strconv.Itoa(t.Port))
-	vl := conn.NewVirtualListener(conn.ParseAddr(addr))
+	vl := conn.NewVirtualListener(netx.HostAddr(t.ServerIp, uint16(t.Port)))
 	if t.MultiAccount == nil {
 		t.MultiAccount = new(model.MultiAccount)
 	}

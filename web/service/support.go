@@ -41,7 +41,7 @@ func BestBridge(cfg *servercfg.Snapshot, host string) BridgeEndpoint {
 	if cfg == nil {
 		cfg = servercfg.Current()
 	}
-	bridgeIP := netaddr.GetIpByAddr(defaultString(cfg.Bridge.Addr, host))
+	bridgeIP := netaddr.Host(defaultString(cfg.Bridge.Addr, host))
 	if strings.IndexByte(bridgeIP, ':') >= 0 && (!strings.HasPrefix(bridgeIP, "[") || !strings.HasSuffix(bridgeIP, "]")) {
 		bridgeIP = "[" + bridgeIP + "]"
 	}

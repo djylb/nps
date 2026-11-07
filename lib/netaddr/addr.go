@@ -60,82 +60,56 @@ func ExtractHost(input string) string {
 	return input
 }
 
-// RemovePortFromHost
-// return "[2001:db8::1]"
-func RemovePortFromHost(host string) string {
-	if len(host) == 0 {
-		return host
-	}
-	var idx int
-	// IPv6
-	if host[0] == '[' {
-		if idx = strings.IndexByte(host, ']'); idx != -1 {
-			return host[:idx+1]
-		}
-		return ""
-	}
-	// IPv4 or Domain
-	if idx = strings.LastIndexByte(host, ':'); idx != -1 && idx == strings.IndexByte(host, ':') {
-		return host[:idx]
-	}
+// Host returns the host of s, an address given as "host", "host:port",
+// "[ipv6]" or "[ipv6]:port", without brackets and with any zone kept. A bare
+// IPv6 address such as "2001:db8::1" is a host without a port. The port is
+// not checked. It returns "" for an empty host or an unclosed or trailing
+// bracket, such as "[::1" or "[::1]x".
+func Host(s string) string {
+	host, _ := splitHost(s)
 	return host
 }
 
-// GetIpByAddr
-// return "2001:db8::1"
-func GetIpByAddr(host string) string {
-	if len(host) == 0 {
-		return host
+// Port returns the port of s, given as for Host, or 0 when s has no port in
+// 1-65535.
+func Port(s string) int {
+	_, port := splitHost(s)
+	p, ok := parsePortString(port)
+	if !ok {
+		return 0
 	}
-	var idx int
-	// IPv6
-	if host[0] == '[' {
-		if idx = strings.IndexByte(host, ']'); idx != -1 {
-			return host[1:idx]
+	return p
+}
+
+// splitHost splits s as described at Host, returning the port text as given.
+func splitHost(s string) (host, port string) {
+	if h, p, err := net.SplitHostPort(s); err == nil {
+		return h, p
+	}
+	if strings.HasPrefix(s, "[") {
+		if strings.HasSuffix(s, "]") && strings.IndexByte(s, ']') == len(s)-1 {
+			return s[1 : len(s)-1], ""
 		}
-		return ""
+		return "", ""
 	}
-	// IPv4 or Domain
-	if idx = strings.LastIndexByte(host, ':'); idx != -1 && idx == strings.IndexByte(host, ':') {
-		return host[:idx]
+	return s, ""
+}
+
+// ParseIP reads an IP address given alone or as host:port, with IPv6 in
+// brackets and a port in 0-65535. A zone and an IPv4-mapped IPv6 form are
+// kept.
+func ParseIP(s string) (netip.Addr, bool) {
+	if ap, err := netip.ParseAddrPort(s); err == nil {
+		return ap.Addr(), true
 	}
-	return host
+	if ip, err := netip.ParseAddr(s); err == nil {
+		return ip, true
+	}
+	return netip.Addr{}, false
 }
 
 func isDomain(s string) bool {
 	return net.ParseIP(s) == nil
-}
-
-// GetPortByAddr
-// return int or 0
-func getPortByAddr(addr string) int {
-	if len(addr) == 0 {
-		return 0
-	}
-	// IPv6
-	if addr[0] == '[' {
-		if end := strings.IndexByte(addr, ']'); end != -1 && end+1 < len(addr) && addr[end+1] == ':' {
-			if port, ok := parsePortString(addr[end+2:]); ok {
-				return port
-			}
-		}
-		return 0
-	}
-	// Other
-	if idx := strings.LastIndexByte(addr, ':'); idx != -1 {
-		if port, ok := parsePortString(addr[idx+1:]); ok {
-			return port
-		}
-	}
-	return 0
-}
-
-func GetPortStrByAddr(addr string) string {
-	port := getPortByAddr(addr)
-	if port == 0 {
-		return ""
-	}
-	return strconv.Itoa(port)
 }
 
 func SplitServerAndPath(s string) (server, path string) {
@@ -161,7 +135,7 @@ func SplitAddrAndHost(s string) (addr, host, sni string) {
 }
 
 func getSni(host string) string {
-	sni := GetIpByAddr(host)
+	sni := Host(host)
 	if !isDomain(sni) {
 		return ""
 	}
@@ -323,22 +297,6 @@ func GetServerIp(ip string) string {
 	return GetOutboundIP().String()
 }
 
-// ParseIPFromAddr parses IP from an "ip:port" (supports "[v6]:port").
-// Returns nil if cannot parse.
-func ParseIPFromAddr(addr string) net.IP {
-	if addr == "" {
-		return nil
-	}
-	ipStr := GetIpByAddr(addr)
-	if ipStr == "" {
-		return nil
-	}
-	if i := strings.LastIndexByte(ipStr, '%'); i != -1 { // fe80::1%eth0
-		ipStr = ipStr[:i]
-	}
-	return net.ParseIP(ipStr)
-}
-
 func BuildTCPBindAddr(localIP string) net.Addr {
 	ip := net.ParseIP(strings.TrimSpace(localIP))
 	if ip == nil {
@@ -356,7 +314,7 @@ func BuildUDPBindAddr(localIP string) *net.UDPAddr {
 }
 
 func IsPublicHost(addr string) bool {
-	host := GetIpByAddr(addr)
+	host := Host(addr)
 	if host == "" {
 		return false
 	}

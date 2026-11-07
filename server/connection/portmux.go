@@ -76,7 +76,7 @@ func newPortMux(port int, managerHost, clientHost string) (*portMux, error) {
 // hostPattern returns host as an exact host pattern, or "" when it cannot
 // be one.
 func hostPattern(host string) string {
-	host = netaddr.GetIpByAddr(host)
+	host = netaddr.Host(host)
 	if host == "" || host == "*" || host[0] == '*' || host[0] == '.' || hostmatch.CheckPattern(host) != nil {
 		return ""
 	}

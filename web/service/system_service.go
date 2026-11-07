@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/ipreg"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/connection"
@@ -167,7 +168,7 @@ func (s DefaultSystemService) UpdateGeoData(name string) (GeoDataStatus, error) 
 const managementRegisterTTL = 2 * time.Hour
 
 func (DefaultSystemService) RegisterManagementAccess(remoteAddr string, clientIDs []int, isAdmin bool) {
-	ip, ok := ipreg.ParseIP(strings.TrimSpace(remoteAddr))
+	ip, ok := netaddr.ParseIP(strings.TrimSpace(remoteAddr))
 	if !ok {
 		return
 	}

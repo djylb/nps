@@ -56,7 +56,10 @@ func (c *sourceFilterPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 }
 
 func (s *TunnelModeServer) socks5UDPAddr(req *socks5.Request, socket net.Addr) netx.Addr {
-	clientIP := netaddr.NormalizeIP(netaddr.ParseIPFromAddr(req.Conn.RemoteAddr().String()))
+	var clientIP net.IP
+	if ip, ok := netaddr.ParseIP(req.Conn.RemoteAddr().String()); ok {
+		clientIP = netaddr.NormalizeIP(ip.WithZone("").AsSlice())
+	}
 	return socks5UDPReplyAddr(s.Task, req.Conn, socket, clientIP)
 }
 

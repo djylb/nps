@@ -263,7 +263,7 @@ func (s *HttpProxy) changeHostAndHeader(out, in *http.Request, host string, head
 		if out.Header.Get("X-Forwarded-Host") == "" && host == "" {
 			out.Header.Set("X-Forwarded-Host", in.Host)
 		}
-		out.Header.Set("X-Real-IP", netaddr.GetIpByAddr(in.RemoteAddr))
+		out.Header.Set("X-Real-IP", netaddr.Host(in.RemoteAddr))
 	}
 
 	if header == "" {

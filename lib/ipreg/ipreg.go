@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // AnyClient registers an address for every client, as an administrator's
@@ -79,7 +81,7 @@ func RegisteredAddr(client int, addr net.Addr) bool {
 // RegisteredString is Registered for an address given as text, an IP or
 // host:port.
 func RegisteredString(client int, addr string) bool {
-	ip, ok := ParseIP(addr)
+	ip, ok := netaddr.ParseIP(addr)
 	return ok && Registered(client, ip)
 }
 
@@ -132,16 +134,5 @@ func addrIP(addr net.Addr) (netip.Addr, bool) {
 		}
 		return a.AddrPort().Addr(), true
 	}
-	return ParseIP(addr.String())
-}
-
-// ParseIP reads an IP address given alone or as host:port.
-func ParseIP(s string) (netip.Addr, bool) {
-	if ap, err := netip.ParseAddrPort(s); err == nil {
-		return ap.Addr(), true
-	}
-	if ip, err := netip.ParseAddr(s); err == nil {
-		return ip, true
-	}
-	return netip.Addr{}, false
+	return netaddr.ParseIP(addr.String())
 }

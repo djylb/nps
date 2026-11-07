@@ -101,7 +101,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			}
 			// Several connections of one client may shake hands at once.
 			client.Lock()
-			client.Addr, client.LocalAddr, client.Mode = netaddr.GetIpByAddr(c.RemoteAddr().String()), res.LocalIP.String(), mode
+			client.Addr, client.LocalAddr, client.Mode = netaddr.Host(c.RemoteAddr().String()), res.LocalIP.String(), mode
 			client.Unlock()
 		}
 	}
@@ -281,7 +281,7 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	var hour int32
 	if err := binary.Read(c, binary.LittleEndian, &hour); err == nil {
-		if ip, ok := ipreg.ParseIP(c.RemoteAddr().String()); ok && hour > 0 {
+		if ip, ok := netaddr.ParseIP(c.RemoteAddr().String()); ok && hour > 0 {
 			// the public key is an administrator's key: it registers for
 			// every client
 			if file.GetDb().IsPubClient(id) {

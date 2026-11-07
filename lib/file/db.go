@@ -155,8 +155,8 @@ func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(s
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*model.Client)
 		if hashFunc(v.VerifyKey) == vKey && v.Status && v.Id > 0 {
-			v.Addr = netaddr.GetIpByAddr(addr)
-			v.LocalAddr = netaddr.GetIpByAddr(localAddr)
+			v.Addr = netaddr.Host(addr)
+			v.LocalAddr = netaddr.Host(localAddr)
 			id = v.Id
 			exist = true
 			return false
@@ -662,7 +662,7 @@ func (s *DbUtils) GetHostById(id int) (h *model.Host, err error) {
 
 // GetInfoByHost get key by host from x
 func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *model.Host, err error) {
-	host = strings.TrimSuffix(strings.ToLower(netaddr.GetIpByAddr(host)), ".")
+	host = strings.TrimSuffix(strings.ToLower(netaddr.Host(host)), ".")
 	hostLength := len(host)
 
 	requestPath := r.RequestURI
@@ -767,7 +767,7 @@ func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*model
 }
 
 func (s *DbUtils) findCertHost(host string, accept func(*model.Host) bool) (*model.Host, error) {
-	host = strings.TrimSuffix(strings.ToLower(netaddr.GetIpByAddr(host)), ".")
+	host = strings.TrimSuffix(strings.ToLower(netaddr.Host(host)), ".")
 	if host == "" {
 		return nil, errors.New("invalid Host")
 	}

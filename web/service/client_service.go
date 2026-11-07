@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/textutil"
@@ -323,7 +324,7 @@ func (s DefaultClientService) Delete(id int) error {
 }
 
 func (s DefaultClientService) RegisterVisitorIP(key, ip string, hours int) (int, time.Time, error) {
-	addr, ok := ipreg.ParseIP(strings.TrimSpace(ip))
+	addr, ok := netaddr.ParseIP(strings.TrimSpace(ip))
 	if !ok {
 		return 0, time.Time{}, ErrRegisterKeyInvalid
 	}

@@ -29,18 +29,17 @@ func TestSplitServerAndPath(t *testing.T) {
 
 func TestHostAndPortHelpers(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		extract    string
-		removePort string
-		ip         string
-		port       int
+		name    string
+		input   string
+		extract string
+		ip      string
+		port    int
 	}{
-		{name: "domain with path", input: "example.com:8080/path", extract: "example.com:8080", removePort: "example.com", ip: "example.com", port: 8080},
-		{name: "url with domain", input: "https://example.com:8443/api", extract: "example.com:8443", removePort: "example.com", ip: "example.com", port: 8443},
-		{name: "ipv6 address", input: "[2001:db8::1]:443", extract: "[2001:db8::1]:443", removePort: "[2001:db8::1]", ip: "2001:db8::1", port: 443},
-		{name: "invalid ipv6", input: "[2001:db8::1", extract: "[2001:db8::1", removePort: "", ip: "", port: 0},
-		{name: "without port", input: "localhost", extract: "localhost", removePort: "localhost", ip: "localhost", port: 0},
+		{name: "domain with path", input: "example.com:8080/path", extract: "example.com:8080", ip: "example.com", port: 8080},
+		{name: "url with domain", input: "https://example.com:8443/api", extract: "example.com:8443", ip: "example.com", port: 8443},
+		{name: "ipv6 address", input: "[2001:db8::1]:443", extract: "[2001:db8::1]:443", ip: "2001:db8::1", port: 443},
+		{name: "invalid ipv6", input: "[2001:db8::1", extract: "[2001:db8::1", ip: "", port: 0},
+		{name: "without port", input: "localhost", extract: "localhost", ip: "localhost", port: 0},
 	}
 
 	for _, tc := range tests {
@@ -48,14 +47,11 @@ func TestHostAndPortHelpers(t *testing.T) {
 			if got := ExtractHost(tc.input); got != tc.extract {
 				t.Fatalf("ExtractHost(%q) = %q, want %q", tc.input, got, tc.extract)
 			}
-			if got := RemovePortFromHost(tc.extract); got != tc.removePort {
-				t.Fatalf("RemovePortFromHost(%q) = %q, want %q", tc.extract, got, tc.removePort)
+			if got := Host(tc.extract); got != tc.ip {
+				t.Fatalf("Host(%q) = %q, want %q", tc.extract, got, tc.ip)
 			}
-			if got := GetIpByAddr(tc.extract); got != tc.ip {
-				t.Fatalf("GetIpByAddr(%q) = %q, want %q", tc.extract, got, tc.ip)
-			}
-			if got := getPortByAddr(tc.extract); got != tc.port {
-				t.Fatalf("GetPortByAddr(%q) = %d, want %d", tc.extract, got, tc.port)
+			if got := Port(tc.extract); got != tc.port {
+				t.Fatalf("Port(%q) = %d, want %d", tc.extract, got, tc.port)
 			}
 		})
 	}
@@ -63,16 +59,16 @@ func TestHostAndPortHelpers(t *testing.T) {
 
 func TestSplitAddrAndHost(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        string
-		wantAddr     string
-		wantHost     string
-		wantSNI      string
-		wantPortText string
+		name     string
+		input    string
+		wantAddr string
+		wantHost string
+		wantSNI  string
+		wantPort int
 	}{
-		{name: "no separator", input: "example.com:443", wantAddr: "example.com:443", wantHost: "example.com:443", wantSNI: "example.com", wantPortText: "443"},
-		{name: "explicit host", input: "127.0.0.1:8080@example.com:443", wantAddr: "127.0.0.1:8080", wantHost: "example.com:443", wantSNI: "example.com", wantPortText: "443"},
-		{name: "empty host fallback", input: "127.0.0.1:8080@", wantAddr: "127.0.0.1:8080", wantHost: "127.0.0.1:8080", wantSNI: "", wantPortText: "8080"},
+		{name: "no separator", input: "example.com:443", wantAddr: "example.com:443", wantHost: "example.com:443", wantSNI: "example.com", wantPort: 443},
+		{name: "explicit host", input: "127.0.0.1:8080@example.com:443", wantAddr: "127.0.0.1:8080", wantHost: "example.com:443", wantSNI: "example.com", wantPort: 443},
+		{name: "empty host fallback", input: "127.0.0.1:8080@", wantAddr: "127.0.0.1:8080", wantHost: "127.0.0.1:8080", wantSNI: "", wantPort: 8080},
 	}
 
 	for _, tc := range tests {
@@ -81,8 +77,8 @@ func TestSplitAddrAndHost(t *testing.T) {
 			if addr != tc.wantAddr || host != tc.wantHost || sni != tc.wantSNI {
 				t.Fatalf("SplitAddrAndHost(%q) = (%q, %q, %q), want (%q, %q, %q)", tc.input, addr, host, sni, tc.wantAddr, tc.wantHost, tc.wantSNI)
 			}
-			if got := GetPortStrByAddr(host); got != tc.wantPortText {
-				t.Fatalf("GetPortStrByAddr(%q) = %q, want %q", host, got, tc.wantPortText)
+			if got := Port(host); got != tc.wantPort {
+				t.Fatalf("Port(%q) = %d, want %d", host, got, tc.wantPort)
 			}
 		})
 	}
@@ -122,11 +118,8 @@ func TestIPAndBindHelpers(t *testing.T) {
 		t.Fatalf("IsZeroIP() returned unexpected result")
 	}
 
-	if ip := ParseIPFromAddr("[fe80::1%eth0]:8080"); ip == nil || ip.String() != "fe80::1" {
-		t.Fatalf("ParseIPFromAddr(v6 with zone) = %v, want fe80::1", ip)
-	}
-	if ip := ParseIPFromAddr("not-an-addr"); ip != nil {
-		t.Fatalf("ParseIPFromAddr(invalid) = %v, want nil", ip)
+	if ip, ok := ParseIP("not-an-addr"); ok {
+		t.Fatalf("ParseIP(invalid) = %v, want none", ip)
 	}
 
 	if got := BuildTCPBindAddr("127.0.0.1"); got == nil {

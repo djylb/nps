@@ -140,9 +140,11 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	// Auto 301 to HTTPS
 	if !isHttpOnlyRequest && host.AutoHttps && r.TLS == nil {
-		redirectHost := netaddr.RemovePortFromHost(r.Host)
+		redirectHost := netaddr.Host(r.Host)
 		if s.HttpsPort != 443 {
-			redirectHost += ":" + s.HttpsPortStr
+			redirectHost = net.JoinHostPort(redirectHost, s.HttpsPortStr)
+		} else if strings.IndexByte(redirectHost, ':') >= 0 {
+			redirectHost = "[" + redirectHost + "]"
 		}
 		http.Redirect(w, r, "https://"+redirectHost+r.RequestURI, http.StatusMovedPermanently)
 		return
@@ -644,5 +646,5 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 // backendTLSConfig is the TLS client configuration for a backend reached
 // with the SNI of the client request.
 func backendTLSConfig(sni string) *tls.Config {
-	return &tls.Config{InsecureSkipVerify: true, ServerName: netaddr.RemovePortFromHost(sni)}
+	return &tls.Config{InsecureSkipVerify: true, ServerName: netaddr.Host(sni)}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/djylb/netx"
@@ -102,22 +101,6 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate
 	relay(connHandle, conn2, flows, task, remote)
 	_ = conn1.Close()
 	_ = conn2.Close()
-}
-
-func ParseAddr(addr string) net.Addr {
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return &net.TCPAddr{IP: net.ParseIP(addr), Port: 0}
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		ip = net.IPv4zero
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		port = 0
-	}
-	return &net.TCPAddr{IP: ip, Port: port}
 }
 
 // ProxyProtocolHeader returns the PROXY protocol header of version 1 or 2
