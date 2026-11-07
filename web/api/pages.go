@@ -137,3 +137,39 @@ func pageBuildParams(c Context, spec PageSpec) map[string]string {
 	}
 	return params
 }
+
+func (a *App) ManagementShell(c Context) {
+	cfg := a.currentConfig()
+	assets := a.managementShellAssets(cfg)
+	metadata := a.managementShellMetadata(cfg)
+	html, err := ui.RenderManagementShellWithAssets(a.bootstrapPayloadWithShellAssets(c, assets), metadata, assets)
+	if err != nil {
+		respondEmpty(c, 500)
+		return
+	}
+	c.RespondData(200, "text/html; charset=utf-8", []byte(html))
+}
+
+type PageModelResponse struct {
+	Controller string                 `json:"controller"`
+	Action     string                 `json:"action"`
+	TplName    string                 `json:"tpl_name"`
+	Layout     string                 `json:"layout,omitempty"`
+	Data       map[string]interface{} `json:"data"`
+	Page       PageEntry              `json:"page"`
+}
+
+func newPageModelResponse(baseURL string, spec PageSpec, page *ui.Page) *PageModelResponse {
+	model := ui.PageModel(page)
+	if model == nil {
+		return nil
+	}
+	return &PageModelResponse{
+		Controller: model.Controller,
+		Action:     model.Action,
+		TplName:    model.TplName,
+		Layout:     model.Layout,
+		Data:       model.Data,
+		Page:       pageEntryFromSpec(baseURL, spec),
+	}
+}

@@ -666,3 +666,11 @@ func sortCurrentRates[T interface{ CurrentRates() (int64, int64) }](rows []T, fi
 		rows[i] = entry.row
 	}
 }
+
+// ClientConnected reads live bridge membership without refreshing or sorting lists.
+func ClientConnected(id int) bool {
+	if Bridge == nil || Bridge.Client == nil {
+		return false
+	}
+	return Bridge.Connected(id)
+}
