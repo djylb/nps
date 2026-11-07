@@ -125,12 +125,10 @@ type handshakeVector struct {
 func fixHandshake(t *testing.T) {
 	t.Helper()
 	hooks := HandshakeHooks
-	mk := bridge.NewServerUUID
-	t.Cleanup(func() { HandshakeHooks = hooks; bridge.NewServerUUID = mk })
+	t.Cleanup(func() { HandshakeHooks = hooks })
 	HandshakeHooks.Timestamp = func() int64 { return goldenTimestamp }
 	HandshakeHooks.OutboundIP = func() net.IP { return net.ParseIP("192.0.2.1") }
 	HandshakeHooks.PadLen = func() int { return 3 }
-	bridge.NewServerUUID = func() string { return goldenUUID }
 }
 
 func goldenCert(t *testing.T) tls.Certificate {
@@ -171,7 +169,7 @@ func recordHandshake(t *testing.T, db *file.DbUtils, cert tls.Certificate, index
 	cs, ss := net.Pipe()
 	defer func() { _ = cs.Close() }()
 	rec := &recordConn{Conn: ss, remote: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 40000}}
-	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, Cert: cert})
+	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, Cert: cert, NewUUID: func() string { return goldenUUID }})
 	go b.CliProcess(conn.NewConn(rec), "tcp")
 
 	c, uuid, _, err := handshakeConn(cs, "tcp", goldenKey, false, false, nil, "")

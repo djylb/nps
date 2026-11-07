@@ -31,6 +31,9 @@ type Options struct {
 	// Cert is the certificate of the TLS, WSS and P2P listeners and of the
 	// encrypted links; npc pins it by the fingerprint the handshake sends.
 	Cert tls.Certificate
+	// NewUUID makes the server UUID a handshake sends; nil means a random
+	// one (crypt.GetUUID).
+	NewUUID func() string
 	// AllowedPorts are the ports the tunnels npc publishes may listen on;
 	// the zero value allows every port.
 	AllowedPorts ports.Allowed
@@ -79,7 +82,8 @@ type Bridge struct {
 	selectMode         SelectMode
 	ports              ports.Allowed
 	cert               tls.Certificate
-	fingerprint        []byte                     // of cert
+	fingerprint        []byte // of cert
+	newUUID            func() string
 	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
@@ -108,6 +112,9 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.ports = opts.AllowedPorts
 	b.cert = opts.Cert
 	b.fingerprint = crypt.GetCertFingerprint(opts.Cert)
+	if opts.NewUUID != nil {
+		b.newUUID = opts.NewUUID
+	}
 	return b
 }
 
@@ -131,6 +138,7 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	return &Bridge{
 		scope:          scope,
 		conns:          conns,
+		newUUID:        func() string { return crypt.GetUUID().String() },
 		Client:         &sync.Map{},
 		OpenHost:       make(chan *model.Host, 100),
 		OpenTask:       make(chan *model.Tunnel, 100),

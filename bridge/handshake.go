@@ -35,10 +35,6 @@ func allowsFlag(kind model.KeyKind, flag string) bool {
 	return false
 }
 
-// NewServerUUID makes the server UUID a handshake sends; tests that record
-// the handshake fix it.
-var NewServerUUID = func() string { return crypt.GetUUID().String() }
-
 func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 	if c.Conn == nil || c.Conn.RemoteAddr() == nil {
 		logs.Warn("Invalid connection")
@@ -76,7 +72,7 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 		CheckTime:   func(ts int64) error { return authReplays.checkTime(ts, window) },
 		CheckReplay: func(ts int64, mac []byte) error { return authReplays.check(ts, mac, window) },
 		Fingerprint: func() []byte { return s.fingerprint },
-		NewUUID:     NewServerUUID,
+		NewUUID:     s.newUUID,
 	})
 	if err != nil {
 		switch {
