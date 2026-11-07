@@ -34,7 +34,7 @@ and nps forwards visitors through that connection to targets npc reaches.
   `bridge/legacy`; only `bridge/legacy` and a few listed files import
   `internal/tunnelwire` (their `boundary_test.go`).
 - Every package with tests has `main_test.go` with
-  `func TestMain(m *testing.M) { leakcheck.Main(m) }`, which fails the
+  `func TestMain(m *testing.M) { lifecycletest.VerifyMain(m) }`, which fails the
   package when tests leave goroutines blocked for good.
 - The store has no package state: `cmd/nps` opens it (`file.Open`) and
   passes it to `server.New` and `routers.Init`; tests build their own with

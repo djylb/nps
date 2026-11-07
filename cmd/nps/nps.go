@@ -47,7 +47,7 @@ var (
 
 func main() {
 	prg := &nps{exit: make(chan struct{}), stopped: make(chan struct{})}
-	watchReload(prg.reloadConfig)
+	defer watchReload(prg.reloadConfig)()
 	flag.CommandLine.SetNormalizeFunc(func(f *flag.FlagSet, name string) flag.NormalizedName {
 		name = strings.ReplaceAll(name, "-", "_")
 		name = strings.ReplaceAll(name, ".", "_")

@@ -43,6 +43,7 @@ type HttpProxy struct {
 	TimeLimitErrorContent []byte
 	FlowLimitErrorContent []byte
 	Magic                 *certmagic.Config
+	certCache             *certmagic.Cache // of Magic; Close stops it
 	Acme                  *certmagic.ACMEIssuer
 	ResponseHeaderTimeout time.Duration
 	AddOrigin             bool
@@ -88,31 +89,16 @@ func (s *HttpProxy) Start() error {
 
 	s.ForceAutoSsl = cfg.Proxy.ForceAutoSSL
 
-	certmagic.Default.Logger = logs.ZapLogger
-	certmagic.DefaultACME.Agreed = true
-	certmagic.DefaultACME.Email = cfg.Proxy.SSL.Email
+	ca := certmagic.LetsEncryptStagingCA
 	switch strings.ToLower(cfg.Proxy.SSL.CA) {
 	case "letsencrypt", "le", "prod", "production":
-		certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
+		ca = certmagic.LetsEncryptProductionCA
 	case "zerossl", "zero", "zs":
-		certmagic.DefaultACME.CA = certmagic.ZeroSSLProductionCA
+		ca = certmagic.ZeroSSLProductionCA
 	case "googletrust", "google", "goog":
-		certmagic.DefaultACME.CA = certmagic.GoogleTrustProductionCA
-	default:
-		certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+		ca = certmagic.GoogleTrustProductionCA
 	}
-	certmagic.Default.Storage = &certmagic.FileStorage{
-		Path: runenv.ResolvePath(cfg.Proxy.SSL.Path),
-	}
-	s.Magic = certmagic.NewDefault()
-	if certmagic.DefaultACME.CA == certmagic.ZeroSSLProductionCA {
-		s.Magic.Issuers = []certmagic.Issuer{
-			&certmagic.ZeroSSLIssuer{
-				APIKey: cfg.Proxy.SSL.ZeroSSLAPI,
-			},
-		}
-	}
-	s.Magic.OnDemand = &certmagic.OnDemandConfig{
+	onDemand := &certmagic.OnDemandConfig{
 		DecisionFunc: func(ctx context.Context, name string) error {
 			h, err := s.store.FindCertByHost(name)
 			if err != nil {
@@ -124,7 +110,33 @@ func (s *HttpProxy) Start() error {
 			return nil
 		},
 	}
-	s.Acme = certmagic.NewACMEIssuer(s.Magic, certmagic.DefaultACME)
+	// The proxy has a certificate cache of its own, stopped by Close, rather
+	// than the process-wide default of certmagic.
+	var magic *certmagic.Config
+	cache := certmagic.NewCache(certmagic.CacheOptions{
+		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) { return magic, nil },
+		Logger:           logs.ZapLogger,
+	})
+	magic = certmagic.New(cache, certmagic.Config{
+		Storage:  &certmagic.FileStorage{Path: runenv.ResolvePath(cfg.Proxy.SSL.Path)},
+		Logger:   logs.ZapLogger,
+		OnDemand: onDemand,
+	})
+	acme := certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
+		CA:     ca,
+		Email:  cfg.Proxy.SSL.Email,
+		Agreed: true,
+		Logger: logs.ZapLogger,
+	})
+	magic.Issuers = []certmagic.Issuer{acme}
+	if ca == certmagic.ZeroSSLProductionCA {
+		magic.Issuers = []certmagic.Issuer{&certmagic.ZeroSSLIssuer{APIKey: cfg.Proxy.SSL.ZeroSSLAPI}}
+	}
+	s.Magic, s.Acme = magic, acme
+	if err := s.BindLocked(func() error { s.certCache = cache; return nil }); err != nil {
+		cache.Stop()
+		return err
+	}
 
 	s.ResponseHeaderTimeout = time.Duration(cfg.Proxy.ResponseTimeout) * time.Second
 
@@ -218,8 +230,10 @@ func (s *HttpProxy) Close() error {
 	var httpServer *HttpServer
 	var httpsServer *HttpsServer
 	var http3Server *Http3Server
+	var certCache *certmagic.Cache
 	s.MarkClosed(func() {
 		httpServer, httpsServer, http3Server = s.HttpServer, s.HttpsServer, s.Http3Server
+		certCache, s.certCache = s.certCache, nil
 	})
 	if httpServer != nil {
 		_ = httpServer.Close()
@@ -229,6 +243,9 @@ func (s *HttpProxy) Close() error {
 	}
 	if http3Server != nil {
 		_ = http3Server.Close()
+	}
+	if certCache != nil {
+		certCache.Stop()
 	}
 	s.HttpProxyCache.Clear()
 	return nil

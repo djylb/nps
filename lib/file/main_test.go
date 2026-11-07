@@ -3,7 +3,7 @@ package file
 import (
 	"testing"
 
-	"github.com/djylb/nps/internal/leakcheck"
+	"github.com/djylb/lifecycle/lifecycletest"
 )
 
-func TestMain(m *testing.M) { leakcheck.Main(m) }
+func TestMain(m *testing.M) { lifecycletest.VerifyMain(m) }

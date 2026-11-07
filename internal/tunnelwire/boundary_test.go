@@ -14,7 +14,7 @@ const modulePath = "github.com/djylb/nps/internal/tunnelwire"
 
 // leakcheckPath is the one package outside the standard library that tests
 // here may use; it uses the standard library only.
-const leakcheckPath = "github.com/djylb/nps/internal/leakcheck"
+const leakcheckPath = "github.com/djylb/lifecycle/lifecycletest"
 
 // allowedImporters lists the only code outside this package that may use the
 // legacy protocol, so that dropping old clients stays a matter of deleting it.
