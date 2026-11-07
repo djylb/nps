@@ -134,21 +134,10 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 		_ = target.Close()
 		return true, err
 	}
-	// Request.Conn records its use on every read and write, unsynchronised,
-	// so the relay writes to the connection itself; the reply above has
-	// marked the request as served.
-	clientConn := conn.NewConn(splitWriteConn{Conn: req.Conn, w: req.Conn.(interface{ NetConn() net.Conn }).NetConn()})
+	clientConn := conn.NewConn(req.Conn)
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, common.ConnTCP)
 	return true, nil
 }
-
-// splitWriteConn reads from Conn and writes to w.
-type splitWriteConn struct {
-	net.Conn
-	w net.Conn
-}
-
-func (c splitWriteConn) Write(b []byte) (int, error) { return c.w.Write(b) }
 
 // dialHTTPProxy connects to the target of a forwarded request through the
 // client tunnel, with the client's encryption, compression, rates and flows.

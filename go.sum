@@ -38,8 +38,8 @@ github.com/djylb/holepunch v0.0.0-20261102213915-36a108640e1d h1:mCMj56oiB0sVgvo
 github.com/djylb/holepunch v0.0.0-20261102213915-36a108640e1d/go.mod h1:ryNOOf7OH8I1iPxbGMBMJfxz0P1+rAn8PQUWnAlRV68=
 github.com/djylb/holepunch/quicpath v0.0.0-20261102215033-b889feff2dec h1:phP5I0iHdoFJtm3ZiBRbbMcJQe0FF0Mj9aLK6dCEbnU=
 github.com/djylb/holepunch/quicpath v0.0.0-20261102215033-b889feff2dec/go.mod h1:zXWUpxNgxfcAUoEnr+mub3Q2Uy5P4eD8oq0A59elGFY=
-github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4 h1:WvCD4rcuN2hOuS9keOcwG9Az54DfDU7ilAAcrSOGEBY=
-github.com/djylb/netx v0.0.0-20261101155122-97a785ec6da4/go.mod h1:8qOo/AF1/Xs8lttgM9zAeDNSPK+vtoMDppEbH6sQabY=
+github.com/djylb/netx v0.0.0-20261107102209-6050d7bdd3ea h1:Is3A41OaimTtWnQ4d/KIkC0FrNyomlSyuOf7EGnDGvc=
+github.com/djylb/netx v0.0.0-20261107102209-6050d7bdd3ea/go.mod h1:8qOo/AF1/Xs8lttgM9zAeDNSPK+vtoMDppEbH6sQabY=
 github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7 h1:RlrcLVrdx5A1s+jglR7oPNMfXkAuQEhoH4Qp+9Wf1Wo=
 github.com/djylb/portmux v0.0.0-20261101045516-d2f8c24ae7e7/go.mod h1:dmnQT0n+7tiC1U029orhJva9QiH5H7+PNReU93B3tTA=
 github.com/djylb/selfupdate v0.0.0-20261106171920-1acfc03061b9 h1:7EGzuo5Xyn7QY3zAL+KIn1asUMC3Hq67K1nd7jBpljM=
