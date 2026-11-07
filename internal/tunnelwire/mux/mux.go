@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -703,12 +704,12 @@ type Bandwidth struct {
 	readBandwidth uint64 // store in bits, but it's float64; first for 64-bit atomic alignment on 32-bit platforms
 	readStart     time.Time
 	lastReadStart time.Time
-	fd            *os.File
+	fd            syscall.RawConn // nil when the socket buffer cannot be read
 	bufLength     uint32
 	calcThreshold uint32
 }
 
-func NewBandwidth(fd *os.File) *Bandwidth {
+func NewBandwidth(fd syscall.RawConn) *Bandwidth {
 	return &Bandwidth{fd: fd}
 }
 
@@ -757,12 +758,8 @@ func (Self *Bandwidth) Get() (bw float64) {
 	return
 }
 
-func (Self *Bandwidth) Close() error {
-	if Self.fd == nil {
-		return nil
-	}
-	return Self.fd.Close()
-}
+// Close releases nothing: the socket belongs to the connection.
+func (Self *Bandwidth) Close() error { return nil }
 
 const counterBits = 4
 const counterMask = 1<<counterBits - 1

@@ -4,10 +4,10 @@ package mux
 
 import (
 	"net"
-	"os"
+	"syscall"
 )
 
-func sysGetSock(fd *os.File) (bufferSize int, err error) {
+func sysGetSock(syscall.RawConn) (bufferSize int, err error) {
 	// https://github.com/golang/sys/blob/master/windows/syscall_windows.go#L1184
 	// not support, WTF???
 	// Todo
@@ -16,6 +16,6 @@ func sysGetSock(fd *os.File) (bufferSize int, err error) {
 	return
 }
 
-func getConnFd(net.Conn) (fd *os.File, err error) {
+func getConnFd(net.Conn) (syscall.RawConn, error) {
 	return nil, nil
 }

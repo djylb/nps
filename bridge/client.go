@@ -711,7 +711,7 @@ func (c *Client) Close() error {
 		return true
 	})
 	c.nodePool.Close()
-	c.nodes = sync.Map{}
-	c.files = sync.Map{}
+	c.nodes.Clear()
+	c.files.Clear()
 	return nil
 }
