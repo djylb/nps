@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/wire"
+	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/quic-go/quic-go"
 )
 
@@ -149,6 +150,24 @@ type Session interface {
 	Suspended() bool
 	// Close ends the session; npc may come back at once.
 	Close() error
+	// CanHealth reports whether npc runs health checks (§2.3).
+	CanHealth() bool
+	// SetHealth makes groups, complete, what npc checks (§5.3).
+	SetHealth(groups []healthcheck.Group)
+}
+
+// HealthSink takes the reports of a session's checks. Its call returns within
+// a bounded time; after an error it is not called again.
+type HealthSink interface {
+	ReportHealth(healthcheck.Report) error
+}
+
+// HealthRunner runs the checks of one session on npc.
+type HealthRunner interface {
+	// Set makes groups, complete, the checks that run.
+	Set(groups []healthcheck.Group)
+	// Stop ends the checks.
+	Stop()
 }
 
 // LinkResolve is the request of a LINK.
@@ -227,6 +246,8 @@ type Hooks struct {
 	// (0.35 transition, removed in the next major version): it returns what
 	// serves the stream, or nil to refuse. nil here refuses all.
 	ConfigUpload func(Session) func(net.Conn)
+	// Health takes one report of a session's checks; it returns promptly.
+	Health func(s Session, r healthcheck.Report)
 	// Services takes a session's complete snapshot of its virtual services
 	// (§8); calls for one session do not overlap. It returns promptly.
 	Services func(s Session, list []ServiceInfo)

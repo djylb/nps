@@ -481,11 +481,12 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 }
 
 // snapshotOf is a client's CONFIG: the record rule of §3.2, its default
-// compression, and the session options. record, compress and the options are
-// its only dependencies so far; listener and health arrive with their
-// features.
+// compression, the session options and the health checks.
 func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 	snap := &wire.Snapshot{Session: a.sessionOpts}
+	if s.CanHealth() {
+		snap.Health = s.healthGroups()
+	}
 	if e := a.table.get(s.t.client); e != nil {
 		if !e.Crypt {
 			snap.Record = wire.RecordTrusted
@@ -612,6 +613,9 @@ type serverSession struct {
 	// suspended is true between EventSessionSuspended and
 	// EventSessionResumed; only watch writes it.
 	suspended atomic.Bool
+
+	healthMu sync.Mutex
+	health   []wire.HealthGroup
 
 	serviceMu  sync.Mutex
 	serviceSeq uint64 // of the applied SERVICE snapshot

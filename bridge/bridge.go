@@ -99,6 +99,7 @@ type Bridge struct {
 	lookup             atomic.Pointer[TunnelLookup]
 	core               coreapi.Entry // nil: old protocol only
 	fallback           atomic.Pointer[Fallback]
+	corePushes         sync.Map // coreapi.Session -> *healthPush
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
 

@@ -129,6 +129,8 @@ type Snapshot struct {
 	// false when absent: npc then keeps its local one.
 	SchedulerUp    uint64
 	HasSchedulerUp bool
+	// Health are the checks the client runs (§5.3).
+	Health []HealthGroup
 }
 
 // AppendSnapshot appends the fields of s, default values omitted.
@@ -148,6 +150,9 @@ func AppendSnapshot(b []byte, s *Snapshot) []byte {
 	}
 	if s.HasSchedulerUp {
 		b = AppendUint(b, keyCfgSchedulerUp, s.SchedulerUp)
+	}
+	for i := range s.Health {
+		b = appendHealthGroup(b, &s.Health[i])
 	}
 	if s.Record != RecordDefault {
 		b = AppendUint(b, keyCfgRecord, s.Record)
@@ -175,6 +180,14 @@ func ParseSnapshot(b []byte) (Snapshot, error) {
 		case keyCfgCompress:
 			if KnownCompress(f.Value) {
 				s.Compress = f.Value
+			}
+		case keyCfgHealth:
+			g, ok, err := parseHealthGroup(f.Data)
+			if err != nil {
+				return err
+			}
+			if ok {
+				s.Health = append(s.Health, g)
 			}
 		case keyCfgSessionOptions:
 			return sessionOptionsSchema.Decode(f.Data, func(o Field) error {

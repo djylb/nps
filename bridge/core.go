@@ -6,8 +6,10 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/slogx"
@@ -27,7 +30,8 @@ import (
 func (s *Bridge) coreHooks() coreapi.Hooks {
 	return coreapi.Hooks{
 		Online:     s.coreOnline,
-		Takeover:   coreTakeover,
+		Takeover:   s.coreTakeover,
+		Health:     s.coreHealth,
 		Offline:    s.coreOffline,
 		AuthFailed: coreAuthFailed,
 		SuspendChanged: func(cs coreapi.Session) {
@@ -68,7 +72,10 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 	uuid := coreNodeUUID(cs)
 	node := NewNode(uuid, agentVersion(cs.Agent()), legacy.LatestIndex)
 	node.AddCore(cs)
-	s.joinNode(id, uuid, node, func(n *Node) { n.AddCore(cs) })
+	client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddCore(cs) })
+	if cs.CanHealth() {
+		s.corePushes.Store(cs, s.startHealthPush(id, &coreHealthPeer{s: cs, groups: map[string]healthcheck.Group{}}, client, node))
+	}
 	s.coreChanged(id)
 }
 
@@ -96,7 +103,48 @@ func (s *Bridge) coreChanged(id int) {
 	}
 }
 
-func coreTakeover(cs, old coreapi.Session) {
+// coreHealthPeer keeps the groups of one session; every change is a new
+// complete snapshot. Its calls are made from one goroutine.
+type coreHealthPeer struct {
+	s      coreapi.Session
+	groups map[string]healthcheck.Group
+}
+
+func (p *coreHealthPeer) publish() {
+	p.s.SetHealth(slices.Collect(maps.Values(p.groups)))
+}
+
+func (p *coreHealthPeer) SetHealthGroup(g healthcheck.Group) error {
+	p.groups[g.Name] = g
+	p.publish()
+	return nil
+}
+
+func (p *coreHealthPeer) DelHealthGroup(name string) error {
+	delete(p.groups, name)
+	p.publish()
+	return nil
+}
+
+// coreHealth applies a report of cs's checks; healthPush ignores what it did
+// not give this session (§4.6).
+func (s *Bridge) coreHealth(cs coreapi.Session, r healthcheck.Report) {
+	if v, ok := s.corePushes.Load(cs); ok {
+		v.(*healthPush).apply(r)
+	}
+}
+
+// stopCorePush ends the health push of cs, if it has one.
+func (s *Bridge) stopCorePush(cs coreapi.Session) {
+	if v, ok := s.corePushes.LoadAndDelete(cs); ok {
+		v.(*healthPush).stop()
+	}
+}
+
+func (s *Bridge) coreTakeover(cs, old coreapi.Session) {
+	// Before the new session's push starts: what the old one's checks took
+	// out goes back, and the new checks decide.
+	s.stopCorePush(old)
 	slogx.Emit(context.Background(), log, &logevent.SessionTakeover, "client", cs.ClientID(), "src_ip", cs.Source().Addr().Unmap().String(), "addr", old.Source().String())
 }
 
@@ -106,12 +154,14 @@ func coreTakeover(cs, old coreapi.Session) {
 // protocol.
 func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
 	id := cs.ClientID()
+	s.stopCorePush(cs)
 	if v, ok := s.Client.Load(id); ok {
 		client := v.(*Client)
 		if n, ok := client.GetNodeByUUID(coreNodeUUID(cs)); ok && n.CloseIfCoreCurrent(cs) {
 			client.RemoveOfflineNodes(false)
 		}
 		client.notifyChange()
+		kickClientHealth(client) // who checks shared targets may have changed
 	}
 	if reason == "deleted" {
 		s.delClient(id, "deleted")

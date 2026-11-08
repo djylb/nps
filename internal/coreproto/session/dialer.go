@@ -70,6 +70,8 @@ type DialConfig struct {
 	Puncher coreapi.Puncher
 	// CompressLimits are the receive limits of compressed streams (§7.4).
 	CompressLimits CompressLimits
+	// Health makes the runner of a session's checks (§5.3); nil runs none.
+	Health func(coreapi.HealthSink) coreapi.HealthRunner
 	// MaxConfig bounds a CONFIG snapshot; 0 is 16 MiB (§4.3).
 	MaxConfig int
 	// ResumeTimeout is how long a session that lost all its pipes waits for
@@ -417,6 +419,8 @@ type clientSession struct {
 	configured     chan struct{} // closed by the first snapshot
 	configuredOnce sync.Once
 
+	healthRunner coreapi.HealthRunner // made by the first snapshot with checks; under mu
+
 	wg *sync.WaitGroup
 
 	// The redial of the session's only pipe. redialMu is held alone.
@@ -453,6 +457,10 @@ func (s *clientSession) start(boot connprofile.Candidate) {
 		s.err = s.zc.Wait()
 		cancel()
 		s.wg.Wait()
+		// nothing applies snapshots any more
+		if s.healthRunner != nil {
+			s.healthRunner.Stop()
+		}
 		s.ended()
 		close(s.done)
 	}()
@@ -532,6 +540,7 @@ func (s *clientSession) apply(seq uint64, snap wire.Snapshot) {
 	s.d.setRecord(snap.Record)
 	s.d.setResumeMs(snap.Session.ResumeMs)
 	s.applySessionOptions(snap.Session)
+	s.applyHealth(snap.Health)
 	if snap.HasSchedulerUp {
 		s.zc.SetScheduler(schedulerNamed(connprofile.Schedulers[snap.SchedulerUp]))
 	}

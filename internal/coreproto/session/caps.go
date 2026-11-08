@@ -2,12 +2,10 @@ package session
 
 import "github.com/djylb/nps/internal/coreproto/wire"
 
-// serverCaps and clientCaps are what Hello advertises: only what is
-// implemented at this point of the move to the core protocol. link, health
-// and update (§2.3) join these lists with the steps that bring them.
+// serverCaps and clientCaps are what Hello advertises (§2.3).
 var (
-	serverCaps []uint64
-	clientCaps []uint64
+	serverCaps = []uint64{wire.CapLink}
+	clientCaps = []uint64{wire.CapLink, wire.CapHealth}
 )
 
 // compressAlgs is what Hello lists as decompressible (§7.2: must include
