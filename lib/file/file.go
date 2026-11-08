@@ -61,6 +61,13 @@ type JsonDb struct {
 
 func (s *JsonDb) LoadTaskFromJsonFile() error {
 	s.taskPasswords.reset()
+	converted := false
+	defer func() {
+		if converted {
+			// write the converted tunnels back, so the conversion is done once
+			logStoreError(s.StoreTasksToJsonFile())
+		}
+	}()
 	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v any) {
 		var err error
 		post := v.(*model.Tunnel)
@@ -80,7 +87,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		}
 		_ = s.taskPasswords.reserve(post, false)
 		post.NowConn = 0
-		legacyTask(post)
+		converted = legacyTask(post) || converted
 		post.TargetType = model.NormalizeTargetType(post.TargetType)
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))

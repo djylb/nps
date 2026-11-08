@@ -8,7 +8,8 @@ import "github.com/djylb/nps/lib/model"
 // legacyTask converts the mode of a tunnel of an earlier version: socks5 and
 // httpProxy are mixProxy, p2p is secret (point-to-point access) with the
 // same password, so existing visitors keep working.
-func legacyTask(t *model.Tunnel) {
+// It reports whether t was converted.
+func legacyTask(t *model.Tunnel) bool {
 	switch t.Mode {
 	case "socks5":
 		t.Mode = "mixProxy"
@@ -21,5 +22,8 @@ func legacyTask(t *model.Tunnel) {
 	case "p2p":
 		log.Warn("p2p tunnel converted to secret (point-to-point access)", "tunnel", t.Id)
 		t.Mode = "secret"
+	default:
+		return false
 	}
+	return true
 }

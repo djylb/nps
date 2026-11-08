@@ -1,6 +1,9 @@
 package file
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/djylb/nps/lib/model"
@@ -23,5 +26,12 @@ func TestLoadConvertsLegacyTaskModes(t *testing.T) {
 	v, _ = db.Tasks.Load(2)
 	if task := v.(*model.Tunnel); task.Mode != "mixProxy" || !task.Socks5Proxy {
 		t.Fatalf("socks5 task = %+v", task)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "conf", "tasks.json"))
+	if err != nil {
+		b, err = os.ReadFile(filepath.Join(dir, "tasks.json"))
+	}
+	if err != nil || strings.Contains(string(b), `"p2p"`) || strings.Contains(string(b), `"socks5"`) {
+		t.Fatalf("converted tunnels not written back (%v): %s", err, b)
 	}
 }

@@ -329,7 +329,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 }
 
 func normalizeTask(t *model.Tunnel) {
-	legacyTask(t)
+	_ = legacyTask(t)
 	t.TargetType = model.NormalizeTargetType(t.TargetType)
 	t.CompileDestACL()
 	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))

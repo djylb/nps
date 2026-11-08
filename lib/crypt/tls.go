@@ -46,7 +46,7 @@ func NewIdentity(custom tls.Certificate) (*Identity, error) {
 		if id.Cert, err = newSelfSigned(gofakeit.DomainName(), gofakeit.Company()); err != nil {
 			return nil, fmt.Errorf("create a self-signed certificate: %w", err)
 		}
-		log.Info("self-signed certificate generated")
+		log.Debug("self-signed certificate generated")
 	}
 	if key, ok := id.Cert.PrivateKey.(*rsa.PrivateKey); ok {
 		id.rsaKey = key
