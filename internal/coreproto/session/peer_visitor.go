@@ -238,7 +238,21 @@ func (v *Visitor) OpenLink(ctx context.Context, r coreapi.LinkRequest) (net.Conn
 		r.LinkID = l.id
 		return openLink(ctx, l.exitSession.zc, r, nil, l.exitSession.d.limits)
 	}
-	return openLink(ctx, l.zc, r, nil, v.cfg.Outer.d.limits)
+	return openLink(ctx, l.zc, r, l.peerAlgs, v.cfg.Outer.d.limits)
+}
+
+// peerCompressAlgs reads compress_alg of the provider's Hello (§9.3).
+func peerCompressAlgs(q zmux.PipeIO) []uint64 {
+	peer, ok := seal.PeerOf(q)
+	if !ok {
+		return nil
+	}
+	for _, d := range peer.AppData {
+		if h, err := wire.ParseHello(d.Data); err == nil {
+			return h.CompressAlgs
+		}
+	}
+	return nil
 }
 
 // visitorLink is a live link: the nested session and its paths.
@@ -256,6 +270,8 @@ type visitorLink struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	peerAlgs []uint64 // what the provider decompresses (§7.2), set once
 
 	mu       sync.Mutex
 	punching bool
@@ -358,11 +374,18 @@ func (l *visitorLink) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk})
+	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk, MaxAppData: wire.MaxHelloRecv,
+		AppData: func(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
+			if r.Message == 3 {
+				return wire.AppendHello(nil, &wire.Hello{CompressAlgs: compressAlgs}), nil
+			}
+			return nil, nil
+		}})
 	if err != nil {
 		l.closeDirect()
 		return err
 	}
+	l.peerAlgs = peerCompressAlgs(q)
 	cfg := nestedConfig(l.v.cfg.Outer.d.cfg.MaxLanes)
 	cfg.Redial = l.redial
 	zc, err := zmux.Start(ctx, q, zmux.RoleClient, cfg)

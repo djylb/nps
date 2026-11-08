@@ -203,7 +203,7 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	}
 	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: nestedConfig(s.d.cfg.MaxLanes), WrapPipe: &seal.ServerConfig{
 		Gate: &linkGate{handle: handle, psk: psk}, Key: key, ClientAnchor: acceptAnyClient{},
-		AllowRecordMode: allowNestedMode,
+		AllowRecordMode: allowNestedMode, MaxAppData: wire.MaxHelloRecv, AppData: nestedProviderHello,
 	}})
 	if err != nil {
 		return nil, err
@@ -211,6 +211,15 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	lctx, cancel := context.WithCancel(ctx)
 	pctx, pcancel := context.WithCancel(context.WithoutCancel(ctx))
 	return &providerLink{s: s, id: id, zl: zl, exit: exit, ctx: lctx, cancel: cancel, pctx: pctx, pcancel: pcancel}, nil
+}
+
+// nestedProviderHello is msg2 of a nested handshake: what the provider can
+// decompress (§7.2, §9.3).
+func nestedProviderHello(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
+	if r.Message == 2 {
+		return wire.AppendHello(nil, &wire.Hello{CompressAlgs: compressAlgs}), nil
+	}
+	return nil, nil
 }
 
 func (p *providerLink) close() {

@@ -319,11 +319,22 @@ func TestConfigUploadPublicKey(t *testing.T) {
 	serveOpened(t, f)
 	echo := echoListener(t)
 	port := freeLocalPort(t)
-	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey=public-key\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey=public-key\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\ncompress=true\n"+
 		"[echo]\nmode=tcp\ntarget_addr="+echo+"\nserver_port="+strconv.Itoa(port)+"\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
 	waitEcho(t, "tunnel of the issued key", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if v, ok := f.b.Client.Load(pub.Id); ok && v.(*Client).NodeCount() != 0 {
 		t.Fatal("the public key became a node")
+	}
+	// [common] compress is the issued client's default compression (§7.1).
+	var compressed bool
+	f.db.JsonDb.Clients.Range(func(_, v any) bool {
+		if c := v.(*model.Client); c.NoStore && c.KeyKind == model.KeyControl {
+			compressed = len(c.Cnf.CompressList()) == 1 && c.Cnf.CompressList()[0] == "snappy"
+		}
+		return true
+	})
+	if !compressed {
+		t.Fatal("[common] compress not mapped to the client's default")
 	}
 }

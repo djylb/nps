@@ -560,3 +560,26 @@ func TestPeerRelayRefusesBound(t *testing.T) {
 		t.Fatal("record mode allowed")
 	}
 }
+
+// The nested Hello tells the visitor what the provider decompresses (§9.3).
+func TestPeerNestedCompression(t *testing.T) {
+	p := startPeer(t, false)
+	v := p.visitor(t, wire.ConnRelay, 0)
+	ctx := peerCtx(t)
+	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true, Compress: []string{"flate"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if _, ok := c.(*linkConn); ok {
+		t.Fatal("stream was not compressed")
+	}
+	if _, err := c.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	b := make([]byte, 5)
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.ReadFull(c, b); err != nil || string(b) != "hello" {
+		t.Fatalf("%q, %v", b, err)
+	}
+}

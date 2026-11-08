@@ -243,6 +243,9 @@ func runLocalServers(ctx context.Context, cnf *config.Config) error {
 		if err := mgr.UseCore(); err != nil {
 			return err
 		}
+		if cnf.CommonConfig.Client.Cnf.Compress {
+			log.Warn("config setting has no effect here", "keys", "compress", "detail", "the server decides compression; local sections have nothing it delivers")
+		}
 	}
 	for _, l := range cnf.LocalServer {
 		if err := mgr.StartLocalServer(l); err != nil {
