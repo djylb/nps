@@ -318,7 +318,12 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: v.cfg.Access, ConnMode: v.cfg.Mode})
+	// The key never goes on the wire: its proof is bound to this session (§9.1).
+	ekm, err := s.zc.ExportKeyingMaterial(wire.AccessExportLabel, nil, wire.AccessExportLen)
+	if err != nil {
+		return nil, err
+	}
+	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess(v.cfg.Access, ekm), ConnMode: v.cfg.Mode})
 	if err != nil {
 		return nil, err
 	}
