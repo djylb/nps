@@ -138,6 +138,10 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	applyTunnelForm(tunnel, form, input, input.ClientID, "", destRules)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
+	if form.Mode == "file" {
+		// A virtual backend comes from npc; a tunnel with a port reaches it.
+		return TunnelMutation{}, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, form.Mode)
+	}
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
 		return TunnelMutation{}, err
 	}
@@ -211,6 +215,11 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	if probe.Port <= 0 {
 		probe.Port = tunnel.Port
 	}
+	backend := tunnel.IsVirtualBackend()
+	if backend {
+		// Its identifier and the absence of a port are not to be edited.
+		probe = &model.Tunnel{Mode: tunnel.Mode}
+	}
 	if probe.Port != tunnel.Port || probe.Mode != tunnel.Mode || probe.Socks5Proxy != tunnel.Socks5Proxy {
 		if _, err := s.resolveTunnelPort(probe); err != nil {
 			return TunnelMutation{}, err
@@ -223,8 +232,11 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	}
 
 	tunnel.Port = probe.Port
-	tunnel.Mode = desiredMode
+	tunnel.Mode = probe.Mode
 	applyTunnelForm(tunnel, form, input, client.Id, targetFallback, destRules)
+	if backend {
+		tunnel.Target = &model.Target{TargetStr: targetFallback}
+	}
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Flow.SetLimits(formFlowLimits(form.Flow))
 

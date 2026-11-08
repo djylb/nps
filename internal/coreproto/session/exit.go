@@ -61,6 +61,10 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		failLink(lc, o.WantReply, code)
 		return
 	}
+	if len(o.Service) > 0 {
+		s.serveService(ctx, lc, &o)
+		return
+	}
 	s.serveLink(ctx, lc, &o)
 }
 
@@ -74,10 +78,7 @@ func (s *clientSession) checkOpen(o *wire.StreamOpen) uint64 {
 	if o.Compress != 0 && !localCompress(o.Compress) {
 		return wire.CodeUnsupported
 	}
-	if len(o.Service) > 0 {
-		return wire.CodeServiceUnavailable
-	}
-	if s.d.cfg.Exit == nil {
+	if len(o.Service) == 0 && s.d.cfg.Exit == nil {
 		return wire.CodeTunnelOffline
 	}
 	return wire.CodeOK

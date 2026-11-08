@@ -212,6 +212,8 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		s.servePath(ctx, lc, op, fields)
 	case wire.OpTCP, wire.OpUDP:
 		s.serveExitStream(ctx, lc, op, fields)
+	case wire.OpService:
+		s.serveServices(lc, fields)
 	case wire.OpConfigUpload:
 		s.serveConfigUpload(lc)
 	default:

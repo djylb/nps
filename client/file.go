@@ -13,6 +13,7 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -66,7 +67,10 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 		ports = append(ports, 0)
 	}
 	t.Port = ports[0]
-	key := legacy.FileKey(vkey, t)
+	key := t.ServiceName
+	if key == "" {
+		key = legacy.FileKey(vkey, t)
+	}
 	registered := false
 	defer func() {
 		if !registered {
@@ -126,6 +130,20 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 			log.Error("webdav server failed", "err", err)
 		}
 	})
+}
+
+// Services are the file servers running, as virtual services (§8): a file
+// tunnel is a virtual listener named by its key.
+func (fsm *FileServerManager) Services() []coreapi.LocalService {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	list := make([]coreapi.LocalService, 0, len(fsm.servers))
+	for key, e := range fsm.servers {
+		l := e.listener
+		list = append(list, coreapi.LocalService{Kind: coreapi.ServiceKindFile, Name: key,
+			Serve: func(_ context.Context, c net.Conn) { conn.ServeVirtual(l, c) }})
+	}
+	return list
 }
 
 func (fsm *FileServerManager) GetListenerByKey(key string) (*netx.ChanListener, bool) {

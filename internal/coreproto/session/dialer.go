@@ -425,10 +425,12 @@ type clientSession struct {
 	redialMode  zmux.RecordMode // its mode (Config.RecordPolicy)
 	redialBound map[string]bool // candidate|network of Bound tries of unknown result
 
-	mu       sync.Mutex
-	provided map[uint64]*providerLink    // links this client provides, by id
-	applied  uint64                      // seq of the applied snapshot
-	onApply  func(uint64, wire.Snapshot) // tests
+	mu         sync.Mutex
+	provided   map[uint64]*providerLink        // links this client provides, by id
+	applied    uint64                          // seq of the applied snapshot
+	services   map[string]coreapi.LocalService // what this session offers, by id
+	serviceSeq uint64                          // seq of the last SERVICE snapshot
+	onApply    func(uint64, wire.Snapshot)     // tests
 }
 
 func (s *clientSession) start(boot connprofile.Candidate) {

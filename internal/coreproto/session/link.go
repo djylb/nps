@@ -76,7 +76,7 @@ func linkError(code uint64) *coreapi.LinkError {
 // openLink opens the TCP or UDP stream of r on zc, on the side that is the
 // entry (§4.4, §4.5). peerAlgs is what the other side decompresses.
 func openLink(ctx context.Context, zc *zmux.Conn, r coreapi.LinkRequest, peerAlgs []uint64, limits CompressLimits) (net.Conn, error) {
-	o := wire.StreamOpen{Op: wire.OpTCP, WantReply: r.WantReply, LinkID: r.LinkID}
+	o := wire.StreamOpen{Op: wire.OpTCP, WantReply: r.WantReply, LinkID: r.LinkID, Service: r.Service}
 	if r.Network == coreapi.NetworkUDP {
 		o.Op = wire.OpUDP
 	} else {
@@ -88,7 +88,7 @@ func openLink(ctx context.Context, zc *zmux.Conn, r coreapi.LinkRequest, peerAlg
 			return nil, linkError(wire.CodeMalformed)
 		}
 		o.Target = &a
-	} else if o.Op == wire.OpTCP && !r.ProviderTarget {
+	} else if o.Op == wire.OpTCP && !r.ProviderTarget && len(r.Service) == 0 {
 		return nil, linkError(wire.CodeMalformed)
 	}
 	o.ProviderTarget = r.ProviderTarget

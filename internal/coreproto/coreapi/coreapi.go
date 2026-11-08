@@ -61,6 +61,42 @@ type LinkRequest struct {
 	ProviderTarget bool
 	// LinkID names a server-exit LINK (§4.6).
 	LinkID uint64
+	// Service names the virtual service to reach instead of a target (§8),
+	// from ServiceID.
+	Service []byte
+}
+
+// ServiceKindFile is the kind of a file service.
+const ServiceKindFile = "file"
+
+// ServiceIDLen is the length of a service id.
+const ServiceIDLen = wire.ServiceIDLen
+
+// ServiceID is the id of the virtual service of kind and name (§8).
+func ServiceID(kind, name string) []byte { return wire.ServiceID(kind, name) }
+
+// ServiceInfo is one virtual service a session reported (§8).
+type ServiceInfo struct {
+	Kind, Name string
+	Meta       string
+}
+
+// LocalService is a virtual service npc offers on a session (§8). Its
+// settings stay on npc.
+type LocalService struct {
+	Kind, Name string
+	Meta       string // for display only
+	// Serve takes over c, one connection to the service; it returns promptly
+	// or when c ended.
+	Serve func(ctx context.Context, c net.Conn)
+}
+
+// ServiceHost is implemented by an established session that can offer virtual
+// services.
+type ServiceHost interface {
+	// PublishServices makes list what this session offers: the complete
+	// snapshot, replacing any before it.
+	PublishServices(ctx context.Context, list []LocalService) error
 }
 
 // LinkError is a link the exit refused or could not make.
@@ -191,6 +227,9 @@ type Hooks struct {
 	// (0.35 transition, removed in the next major version): it returns what
 	// serves the stream, or nil to refuse. nil here refuses all.
 	ConfigUpload func(Session) func(net.Conn)
+	// Services takes a session's complete snapshot of its virtual services
+	// (§8); calls for one session do not overlap. It returns promptly.
+	Services func(s Session, list []ServiceInfo)
 	// Fallback serves a carrier that is not ours (the domain proxy), every
 	// byte replayed; state is its TLS when this process terminated it. It
 	// returns false, leaving c to the caller, when there is no target.

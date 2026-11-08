@@ -507,6 +507,11 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 		return nil
 	}
+	if t.IsVirtualBackend() {
+		// npc serves it; other tunnels reach it through their targets.
+		s.tasks.Store(t.Id, nil)
+		return nil
+	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
 		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "port", t.Port, "reason", "in_use")
 		return errors.New("the port open error")
@@ -596,7 +601,23 @@ func (s *Server) DeleteTunnel(id int) error {
 	}
 	err := s.db.DelTask(id)
 	s.bridge.RevokeSecretTunnel(id)
+	s.deleteGeneratedTunnels(id)
 	return err
+}
+
+// deleteGeneratedTunnels removes the tunnels generated for backend id, which
+// have no reason to listen without it.
+func (s *Server) deleteGeneratedTunnels(id int) {
+	var ids []int
+	s.db.JsonDb.Tasks.Range(func(_, value any) bool {
+		if v := value.(*model.Tunnel); v.BackendOf == id {
+			ids = append(ids, v.Id)
+		}
+		return true
+	})
+	for _, g := range ids {
+		_ = s.DeleteTunnel(g)
+	}
 }
 
 // DeleteClientResources removes all tasks and domain entries of client id.

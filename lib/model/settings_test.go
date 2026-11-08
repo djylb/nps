@@ -20,7 +20,7 @@ var (
 	// read by lib/config.
 	accounts = []string{"UserAuth.AccountMap", "MultiAccount.Content", "MultiAccount.AccountMap"}
 
-	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "Compress"})
+	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "Compress", "ServiceName", "BackendOf"})
 	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash", "Compress"})
 )
 
@@ -124,7 +124,7 @@ func TestCloneCopiesFields(t *testing.T) {
 func TestUpdateCopiesFields(t *testing.T) {
 	kept := map[string][]string{
 		"Tunnel": {"Id", "Port", "Status", "RunStatus", "Client", "Ports", "Flow", "NowConn", "TargetAddr",
-			"NoStore", "IsHttp", "Routes", "UserAuth", "HealthConfig", "Compress"},
+			"NoStore", "IsHttp", "Routes", "UserAuth", "HealthConfig", "Compress", "ServiceName", "BackendOf"},
 		"Host": {"Id", "Host", "Location", "Scheme", "TlsOffload", "CertType", "CertHash", "NoStore", "IsClose",
 			"Flow", "NowConn", "Client", "Routes", "UserAuth", "HealthConfig", "Compress"},
 	}

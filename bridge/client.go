@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -591,6 +592,26 @@ func (c *Client) AddFile(key, uuid string) error {
 		return fmt.Errorf("uuid %q not found", uuid)
 	}
 	c.files.Store(key, uuid)
+	return nil
+}
+
+// setNodeFiles makes keys the file services of node uuid: those it no longer
+// lists are dropped.
+func (c *Client) setNodeFiles(uuid string, keys []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.node(uuid); !ok {
+		return fmt.Errorf("uuid %q not found", uuid)
+	}
+	c.files.Range(func(k, v any) bool {
+		if v == uuid && !slices.Contains(keys, k.(string)) {
+			c.files.Delete(k)
+		}
+		return true
+	})
+	for _, k := range keys {
+		c.files.Store(k, uuid)
+	}
 	return nil
 }
 

@@ -211,13 +211,15 @@
                 field: 'Port', //域值
                 title: '<span langtag="word-port"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: {{ if and .type (eq .type "file") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
+                    var generated = row.BackendOf || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
                     return '<span onclick="oCopy(this)">' + value + '</span>'
+                        + (generated ? ' <span class="badge badge-secondary" langtag="word-generatedtunnel"></span>' : '')
                 }
             },
-            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") }}
+            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") (eq .type "file") }}
             {
                 field: 'Target.TargetStr', //域值
                 title: '<span langtag="word-target"></span>', //标题

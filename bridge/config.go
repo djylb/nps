@@ -163,11 +163,10 @@ loop:
 				if caps.NodeID {
 					join(client.Id)
 				}
-				if tl.Mode == "file" {
+				if tl.Mode == "file" && !tl.IsVirtualBackend() {
 					cli, _ := s.joinNode(client.Id, uuid, newNode(uuid, caps), func(*Node) {})
 					key := legacy.FileKey(client.VerifyKey, tl)
-					err = cli.AddFile(key, uuid)
-					if err != nil {
+					if err = cli.AddFile(key, uuid); err != nil {
 						log.Warn("adding file tunnel failed", "client", client.Id, "err", err)
 					}
 					tl.Target.TargetStr = fmt.Sprintf("file://%s", key)
@@ -226,7 +225,7 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 	tl := t.Clone()
 	tl.Id, tl.Port, tl.Client, tl.Status, tl.NoStore = id, ports[i], client, true, true
 	tl.Flow = new(model.Flow)
-	tl.RunStatus, tl.NowConn, tl.IsHttp, tl.Routes = false, 0, false, nil
+	tl.RunStatus, tl.NowConn, tl.IsHttp, tl.Routes, tl.BackendOf = false, 0, false, nil, 0
 	tl.Ports, tl.TargetAddr = "", "" // what the ports and targets of the entry were made of
 	tl.CopySourceLists(new(model.SourceLists))
 	tl.UserAuth, tl.HealthConfig = nil, nil

@@ -1009,9 +1009,13 @@
 		<zh-CN>随便填，自动识别（支持时间戳、注意系统时区），留空关闭。例如：2025-01-01（指定东八时区：2025-01-01 00:00:00 +0800 CST）</zh-CN>
 		<en-US>Fill freely, automatically recognized. Leave empty to disable. For example: 2025-01-01 or 2025-01-01 00:00:00 +0800 CST</en-US>
 	</lang>
+	<lang id="word-generatedtunnel">
+		<zh-CN>自动生成</zh-CN>
+		<en-US>Auto-generated</en-US>
+	</lang>
 	<lang id="info-casefile">
-		<zh-CN>通提供一个公网可访问的本地文件服务，此模式仅客户端使用配置文件模式方可启动。</zh-CN>
-		<en-US>Provide a local file service accessible to the public network, which can only be started by the client using the profile mode.</en-US>
+		<zh-CN>客户端配置文件声明的本地文件服务（虚拟后端）。复制这里的目标（service://…），填到其他隧道或域名的目标里，就可以对外访问。</zh-CN>
+		<en-US>A local file service declared in the client's config file (a virtual backend). Copy its target (service://…) into the target of another tunnel or host to expose it.</en-US>
 	</lang>
 	<lang id="info-casehttpproxy">
 		<zh-CN>将公网服务器1.1.1.1的8004端口作为HTTP代理，访问内网网站。</zh-CN>

@@ -1,6 +1,9 @@
 package file
 
-import "github.com/djylb/nps/lib/model"
+import (
+	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/model"
+)
 
 // This file is the one place stored tunnels of earlier versions are
 // converted. Remove it, and its calls, in the next major version.
@@ -26,4 +29,19 @@ func legacyTask(t *model.Tunnel) bool {
 		return false
 	}
 	return true
+}
+
+// addFileCompanions stores the tunnels of a converted file tunnel under new
+// ids, once every stored tunnel is known, and reports whether there were any.
+func (s *JsonDb) addFileCompanions(list []*model.Tunnel) bool {
+	for _, c := range list {
+		c.Id = int(s.TaskIncreaseId) + 1
+		s.TaskIncreaseId = int32(c.Id)
+		c.Flow.SetOwner(tunnelOwnerArgs(c)...)
+		c.TargetType = model.NormalizeTargetType(c.TargetType)
+		c.CompileDestACL()
+		c.CompileSourceLists(acl.ScopeUser, taskOwner(c))
+		s.Tasks.Store(c.Id, c)
+	}
+	return len(list) > 0
 }

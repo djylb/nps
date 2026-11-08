@@ -36,6 +36,7 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
 		},
+		Services:     s.coreServices,
 		Fallback:     s.coreFallback,
 		ResolveLink:  s.coreResolveLink,
 		Coordinate:   s.coreCoordinate,
@@ -69,6 +70,23 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 	node.AddCore(cs)
 	s.joinNode(id, uuid, node, func(n *Node) { n.AddCore(cs) })
 	s.coreChanged(id)
+}
+
+// coreServices binds the virtual services the session reported to its node
+// (§8), by the id a target names them with.
+func (s *Bridge) coreServices(cs coreapi.Session, list []coreapi.ServiceInfo) {
+	id := cs.ClientID()
+	v, ok := s.Client.Load(id)
+	if !ok {
+		return
+	}
+	keys := make([]string, 0, len(list))
+	for _, e := range list {
+		keys = append(keys, hex.EncodeToString(coreapi.ServiceID(e.Kind, e.Name)))
+	}
+	if err := v.(*Client).setNodeFiles(coreNodeUUID(cs), keys); err != nil {
+		log.Debug("virtual services not bound", "client", id, "err", err)
+	}
 }
 
 // coreChanged wakes what waits for a session of client id (awaitPath).

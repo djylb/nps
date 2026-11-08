@@ -62,11 +62,16 @@ type JsonDb struct {
 func (s *JsonDb) LoadTaskFromJsonFile() error {
 	s.taskPasswords.reset()
 	converted := false
+	var companions []*model.Tunnel
 	defer func() {
 		if converted {
 			// write the converted tunnels back, so the conversion is done once
 			logStoreError(s.StoreTasksToJsonFile())
 		}
+	}()
+	defer func() {
+		// after the load: the new ids follow every stored one
+		converted = s.addFileCompanions(companions) || converted
 	}()
 	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v any) {
 		var err error
@@ -88,6 +93,10 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		_ = s.taskPasswords.reserve(post, false)
 		post.NowConn = 0
 		converted = legacyTask(post) || converted
+		if cs, ok := model.ConvertFileTunnel(post); ok {
+			log.Warn("file tunnel converted to a virtual backend", "tunnel", post.Id, "target", post.Target.TargetStr, "tunnels", len(cs))
+			companions, converted = append(companions, cs...), true
+		}
 		post.TargetType = model.NormalizeTargetType(post.TargetType)
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))

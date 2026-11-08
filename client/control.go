@@ -324,8 +324,7 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 		}
 		accepted = append(accepted, v.Mode+":"+v.Ports)
 		if v.Mode == "file" {
-			//start local file server
-			go fsm.StartFileServer(v, vkey)
+			fsm.StartFileServer(v, vkey)
 		}
 	}
 	log.Info("server accepted config", "server", cnf.CommonConfig.Server, "count", len(accepted), "routes", strings.Join(accepted, ","))

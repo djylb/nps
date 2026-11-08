@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 )
 
@@ -121,9 +122,9 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	var node *Node
 	// pick is the choice below again, for a request that has to wait.
 	pick := client.GetNode
-	isFile := strings.Contains(link.Host, "file://")
+	isFile := strings.Contains(link.Host, "file://") || strings.HasPrefix(strings.TrimSpace(link.Host), model.ServiceScheme)
 	if isFile {
-		link.ConnType = "file"
+		link.ConnType = conn.LinkFile
 	}
 	if link.Option.Node != "" {
 		// The route chose the node; its absence says nothing about the others.
@@ -138,7 +139,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			return nil, fmt.Errorf("node %s of client %d is not connected", link.Option.Node, clientId)
 		}
 	} else if isFile {
-		key := strings.TrimPrefix(strings.TrimSpace(link.Host), "file://")
+		key := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(link.Host), "file://"), model.ServiceScheme)
 		pick = func() *Node {
 			n, _ := client.GetNodeByFile(key)
 			return n
@@ -288,6 +289,12 @@ func (p corePath) open(clientId int, link *conn.Link) (net.Conn, error) {
 		req.Network, req.Target = coreapi.NetworkUDP, netaddr.FormatAddress(link.Host)
 	case conn.LinkUDP5:
 		req.Network = coreapi.NetworkUDP
+	case conn.LinkFile:
+		id, ok := model.ParseServiceTarget(link.Host)
+		if !ok {
+			return nil, fmt.Errorf("the client %d cannot serve target %s", clientId, link.Host)
+		}
+		req.Network, req.Service = coreapi.NetworkTCP, id
 	default:
 		return nil, fmt.Errorf("the client %d cannot serve a %s link", clientId, link.ConnType)
 	}

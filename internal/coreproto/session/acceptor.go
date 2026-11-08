@@ -612,6 +612,9 @@ type serverSession struct {
 	// suspended is true between EventSessionSuspended and
 	// EventSessionResumed; only watch writes it.
 	suspended atomic.Bool
+
+	serviceMu  sync.Mutex
+	serviceSeq uint64 // of the applied SERVICE snapshot
 }
 
 func (s *serverSession) ClientID() int          { return s.t.client }

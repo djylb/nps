@@ -170,3 +170,19 @@ func legacyTunnelMode(t *model.Tunnel) bool {
 // settings of an earlier version, which were converted. Launch payloads,
 // never released with them, refuse such a config.
 func (c *Config) UsesLegacyPointToPoint() bool { return c.legacy }
+
+// convertFileTunnels applies model.ConvertFileTunnel to the tunnels of c:
+// a file tunnel with a listening port becomes a virtual backend and a tcp
+// tunnel to it.
+func convertFileTunnels(c *Config) {
+	var out []*model.Tunnel
+	for _, t := range c.Tasks {
+		cs, ok := model.ConvertFileTunnel(t)
+		out = append(out, t)
+		if ok && len(cs) > 0 {
+			log.Warn("legacy config setting", "keys", "server_port", "remark", t.Remark, "detail", "file tunnel converted to a virtual backend and a tcp tunnel to it")
+		}
+		out = append(out, cs...)
+	}
+	c.Tasks = out
+}

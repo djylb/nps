@@ -32,4 +32,6 @@ multi_account=/etc/npc/file_users.conf
 - `<server-ip>` 是 **nps 服务端** 的地址（公网 IP 或域名），端口 `server_port` 由 nps 服务端监听；
 - 它不是 npc 本机的 `127.0.0.1`，也不是 `[file]` 段里的 `server_ip`（那只是服务端监听的绑定地址）。
 
+文件服务是一个虚拟后端，由 npc 上报给服务端。写了 `server_port` 时，会自动生成一条监听该端口、目标为这个虚拟后端的 tcp 隧道（网页上标“自动生成”），删除虚拟后端时一起删除。不写 `server_port` 时只声明虚拟后端，名称取段名；需要对外访问时，在网页的文件访问列表复制它的 `service://` 目标，填到其他隧道或域名的目标里。
+
 可以从其他隧道嵌套转发到文件隧道，见[代理与嵌套转发](/reference/features-transport.md)。

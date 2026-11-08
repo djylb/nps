@@ -2,7 +2,11 @@ package bridge
 
 import (
 	"context"
+	"io"
 	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -29,6 +33,9 @@ func serveOpened(t *testing.T, f *coreFixture) {
 				return
 			case <-f.b.OpenHost:
 			case task := <-f.b.OpenTask:
+				if task.IsVirtualBackend() {
+					continue // listens on nothing
+				}
 				if old := servers[task.Id]; old != nil {
 					_ = old.Close()
 				}
@@ -106,6 +113,75 @@ func TestConfigUploadOnNewProtocol(t *testing.T) {
 	if tasks, hosts := countStored(f); tasks != 1 || hosts != 1 {
 		t.Fatalf("after reconnect: %d tunnels, %d hosts", tasks, hosts)
 	}
+}
+
+// A file tunnel of npc.conf is a virtual service of the session: the upload
+// creates the tunnel, SERVICE binds it, and visitors reach the local files.
+func TestFileTunnelIsVirtualService(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	connect.Install()
+	t.Cleanup(func() { client.CoreOuter = nil })
+	f := newCoreFixture(t, 0, model.Config{})
+	f.client.ConfigConnAllow = true
+	serveOpened(t, f)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("file service"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	port := freeLocalPort(t)
+	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
+		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"[files]\nmode=file\nserver_port="+strconv.Itoa(port)+"\nlocal_path="+dir+"\nstrip_pre=/\n")
+	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
+	waitStored(t, f, 2, 0)
+	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/hello.txt"
+	hc := http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	get := func(url string) {
+		t.Helper()
+		var last string
+		for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
+			r, err := hc.Get(url)
+			if err != nil {
+				last = err.Error()
+				continue
+			}
+			b, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			if string(b) == "file service" {
+				return
+			}
+			last = r.Status
+		}
+		t.Fatalf("file not served at %s: %s", url, last)
+	}
+	get(url)
+
+	// Another tunnel with the backend's identifier as its target.
+	var backend *model.Tunnel
+	f.db.JsonDb.Tasks.Range(func(_, v any) bool {
+		if tl := v.(*model.Tunnel); tl.IsVirtualBackend() {
+			backend = tl
+		}
+		return true
+	})
+	if backend == nil || backend.Port != 0 || backend.Target.TargetStr != model.ServiceTarget(model.FileServiceKind, "port-"+strconv.Itoa(port)) {
+		t.Fatalf("backend %+v", backend)
+	}
+	// A short reconnect uploads again: nothing doubles, the port still works.
+	f.a.Kick(f.client.Id, false)
+	time.Sleep(300 * time.Millisecond)
+	waitStored(t, f, 2, 0)
+	get(url)
+	other := freeLocalPort(t)
+	tl := &model.Tunnel{Mode: "tcp", Port: other, Status: true, Client: f.client, Flow: new(model.Flow),
+		Target: &model.Target{TargetStr: backend.Target.TargetStr}, Id: f.db.NextTunnelID()}
+	if err := f.db.NewTask(tl); err != nil {
+		t.Fatal(err)
+	}
+	f.b.OpenTask <- tl
+	get("http://127.0.0.1:" + strconv.Itoa(other) + "/hello.txt")
 }
 
 // An upload the old protocol would not take is refused on a session too, and

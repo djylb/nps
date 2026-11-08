@@ -131,3 +131,26 @@ func TestDeriveAnyShape(t *testing.T) {
 		}
 	}
 }
+
+func TestServiceRoundTrip(t *testing.T) {
+	in := []Service{{ID: ServiceID("file", "a"), Kind: "file", Name: "a", Meta: "m"}, {ID: ServiceID("x", ""), Kind: "x"}}
+	got, err := ParseServices(AppendServices(nil, in))
+	if err != nil || len(got) != 2 || got[0].Name != "a" || got[0].Meta != "m" || got[1].Kind != "x" {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if len(ServiceID("file", "a")) != ServiceIDLen {
+		t.Fatal("id length")
+	}
+	// kind and name are length-prefixed: moving the boundary changes the id
+	if string(ServiceID("ab", "c")) == string(ServiceID("a", "bc")) {
+		t.Fatal("ambiguous id")
+	}
+	bad := []Service{{ID: ServiceID("file", "b"), Kind: "file", Name: "a"}}
+	if _, err := ParseServices(AppendServices(nil, bad)); err != ErrMalformed {
+		t.Fatalf("wrong id: %v", err)
+	}
+	seq, err := ParseServiceOpen(AppendServiceOpen(7)[1:])
+	if err != nil || seq != 7 {
+		t.Fatalf("seq %d, %v", seq, err)
+	}
+}

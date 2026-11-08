@@ -197,6 +197,9 @@ func buildConfig(content string, sections []section) (*Config, error) {
 	if c.CommonConfig == nil {
 		return nil, errors.New("missing [common] section")
 	}
+	if c.CommonConfig.NewProtocol {
+		convertFileTunnels(c)
+	}
 	if err := c.CommonConfig.checkConnection(); err != nil {
 		return nil, fmt.Errorf("[common]: %w", err)
 	}
