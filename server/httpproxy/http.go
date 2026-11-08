@@ -164,8 +164,6 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, p.redirect.expand(r), http.StatusTemporaryRedirect)
 		return
 	}
-	slogx.Emit(context.Background(), proxyLog, &logevent.HTTPAccess, "route", host.Host, "src_ip", srcIP(r.RemoteAddr), "method", r.Method, "host", r.Host, "path", r.URL.Path)
-
 	// upstream
 	req.route = host.Route()
 	req.sni = r.Host
@@ -179,7 +177,51 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		s.forwardTunnel(w, r, req)
 		return
 	}
-	p.proxy.ServeHTTP(w, r)
+	if !proxyLog.Enabled(r.Context(), logevent.HTTPAccess.Level) {
+		p.proxy.ServeHTTP(w, r)
+		return
+	}
+	start := time.Now()
+	aw := &accessWriter{ResponseWriter: w}
+	p.proxy.ServeHTTP(aw, r)
+	if aw.status == 0 {
+		aw.status = http.StatusOK
+	}
+	slogx.Emit(r.Context(), proxyLog, &logevent.HTTPAccess, "route", host.Host, "src_ip", srcIP(r.RemoteAddr),
+		"method", r.Method, "host", r.Host, "path", r.URL.Path, "status", aw.status, "bytes", aw.bytes,
+		"dur_ms", time.Since(start).Milliseconds())
+}
+
+// accessWriter records the status and size of a response for http_access.
+// Unwrap lets http.ResponseController reach the flusher and hijacker of the
+// writer it wraps.
+type accessWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *accessWriter) WriteHeader(code int) {
+	if w.status == 0 && code >= 200 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *accessWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.bytes += int64(n)
+	return n, err
+}
+
+func (w *accessWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush keeps streamed responses streaming through the wrapper.
+func (w *accessWriter) Flush() {
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 // httpsURL is the HTTPS URL of r, on the HTTPS port of the proxy.

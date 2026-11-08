@@ -11,6 +11,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
@@ -490,6 +491,7 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*model.Ho
 func (s *DbUtils) DelClient(id int) error {
 	if v, ok := s.JsonDb.Clients.Load(id); ok {
 		c := v.(*model.Client)
+		defer s.clientChanged(logevent.ClientDeleted.Name, c)
 		if c.Id > 0 {
 			s.JsonDb.vkeyIndex.Remove(crypt.Blake2b(c.VerifyKey))
 		}
@@ -541,6 +543,7 @@ reset:
 		s.JsonDb.vkeyIndex.Add(crypt.Blake2b(c.VerifyKey), c.Id)
 	}
 	logStoreError(s.JsonDb.StoreClientsToJsonFile())
+	s.clientChanged(logevent.ClientCreated.Name, c)
 	return nil
 }
 
@@ -607,6 +610,7 @@ func (s *DbUtils) UpdateClient(t *model.Client) error {
 		t.Rate = rate.NewRate(limit)
 		t.Rate.Start()
 	}
+	s.clientChanged(logevent.ClientUpdated.Name, t)
 	return nil
 }
 

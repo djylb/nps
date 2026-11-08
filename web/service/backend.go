@@ -176,8 +176,10 @@ func (r storeRepository) GetClient(id int) (*model.Client, error) {
 	return r.db.GetClient(id)
 }
 
-func (r storeRepository) SaveClient(_ *model.Client) error {
-	return r.db.JsonDb.StoreClientsToJsonFile()
+func (r storeRepository) SaveClient(c *model.Client) error {
+	err := r.db.JsonDb.StoreClientsToJsonFile()
+	r.db.ClientChanged(c)
+	return err
 }
 
 func (r storeRepository) PersistClients() error {

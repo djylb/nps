@@ -74,7 +74,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if !clientCaps().TunnelStreams {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
-			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
+			s.connectFailed("dial", err)
 			return
 		}
 		if s.uuid == "" {
@@ -82,11 +82,11 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		err = SendType(c, legacy.WorkMain, s.uuid)
 		if err != nil {
-			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+			s.connectFailed("send_type", err)
 			_ = c.Close()
 			return
 		}
-		slogx.Emit(context.Background(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
+		s.connected()
 		s.signal.Store(c)
 	}
 	//start a channel connection
@@ -99,7 +99,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		stream, err := tunnel.OpenStream(s.ctx)
 		if err != nil {
-			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "signal_stream", "err", err)
+			s.connectFailed("signal_stream", err)
 			s.Close()
 			return
 		}
@@ -109,12 +109,12 @@ func (s *TRPClient) Start(ctx context.Context) {
 		stream = conn.SignalStream(stream)
 		c := conn.NewConn(stream)
 		if err = SendType(c, legacy.WorkMain, s.uuid); err != nil {
-			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+			s.connectFailed("send_type", err)
 			_ = stream.Close()
 			return
 		}
 		s.signal.Store(c)
-		slogx.Emit(context.Background(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
+		s.connected()
 	}
 	//monitor the connection
 	go s.ping()
@@ -189,11 +189,11 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 func (s *TRPClient) newChan() legacy.Carrier {
 	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
-		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
+		s.connectFailed("dial", err)
 		return nil
 	}
 	if tunnel == nil {
-		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "no_tunnel")
+		s.connectFailed("no_tunnel", nil)
 		return nil
 	}
 	if s.uuid == "" {
@@ -202,7 +202,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 	s.server = server
 	err = SendType(tunnel, legacy.WorkChan, s.uuid)
 	if err != nil {
-		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+		s.connectFailed("send_type", err)
 		_ = tunnel.Close()
 		return nil
 	}
@@ -437,4 +437,36 @@ func (s *TRPClient) closeTunnel() {
 	if p := s.tunnel.Swap(nil); p != nil {
 		_ = (*p).Close()
 	}
+}
+
+// connectAttempts counts the failed connection attempts in a row per server
+// and connection type, across the clients the reconnect loop creates.
+var connectAttempts sync.Map // string -> *atomic.Int64
+
+func (s *TRPClient) attempts() *atomic.Int64 {
+	v, _ := connectAttempts.LoadOrStore(s.bridgeConnType+"://"+s.svrAddr, new(atomic.Int64))
+	return v.(*atomic.Int64)
+}
+
+// connectFailed writes connect_failed with how many attempts in a row have
+// failed, this one included.
+func (s *TRPClient) connectFailed(reason string, err error) {
+	args := []any{"server", s.svrAddr, "carrier", s.bridgeConnType, "reason", reason, "attempt", s.attempts().Add(1)}
+	if err != nil {
+		args = append(args, "err", err)
+	}
+	slogx.Emit(s.ctxOrBackground(), log, &logevent.ConnectFailed, args...)
+}
+
+// connected writes connected, with the attempts it took, and resets them.
+func (s *TRPClient) connected() {
+	n := s.attempts().Swap(0)
+	slogx.Emit(s.ctxOrBackground(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType, "attempts", n+1)
+}
+
+func (s *TRPClient) ctxOrBackground() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }

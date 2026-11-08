@@ -63,6 +63,16 @@ func changeType(seen *sync.Map, id int, enabled bool, updated, started, stopped 
 	}
 }
 
+// clientChanged publishes a change of a client an administrator manages.
+func (s *DbUtils) clientChanged(name string, c *model.Client) {
+	if bus := s.events.bus.Load(); bus != nil && c != nil && c.Id > 0 && c.KeyKind == model.KeyControl {
+		bus.Publish(name, model.ClientInfo{ID: c.Id, Remark: c.Remark, Addr: c.Addr, Version: c.Version})
+	}
+}
+
+// ClientChanged reports that the client c was changed in place.
+func (s *DbUtils) ClientChanged(c *model.Client) { s.clientChanged(logevent.ClientUpdated.Name, c) }
+
 func (s *DbUtils) tunnelCreated(t *model.Tunnel) {
 	if bus := s.events.bus.Load(); bus != nil {
 		s.events.tunnels.Store(t.Id, t.Status)

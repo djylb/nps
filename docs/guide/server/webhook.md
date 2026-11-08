@@ -25,6 +25,7 @@ webhook_secret=换成随机字符串
 | 类型 | 时机 | `data` |
 | --- | --- | --- |
 | `client_online`、`client_offline` | 客户端上下线 | 客户端 |
+| `client_created`、`client_updated`、`client_deleted` | 客户端增删改（管理的客户端，不含公共和访客密钥） | 客户端 |
 | `tunnel_created`、`tunnel_updated`、`tunnel_started`、`tunnel_stopped`、`tunnel_deleted` | 隧道变更 | 隧道 |
 | `host_created`、`host_updated`、`host_started`、`host_stopped`、`host_deleted` | 域名变更 | 域名 |
 | `tunnels_report` | 周期全量上报 | `tunnels` 和 `hosts` 列表 |

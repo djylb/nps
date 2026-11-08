@@ -70,13 +70,17 @@ var (
 	// reason.
 	RelayFailed = slogx.Def{Name: "relay_failed", Level: info, Limit: "target"}
 	// HTTPAccess: a request through the domain proxy; route, src_ip,
-	// method, host, path, status, bytes, dur_ms.
+	// method, host, path, status, bytes, dur_ms; an upgrade or CONNECT
+	// request is written when its link opens, with target and no status.
 	HTTPAccess = slogx.Def{Name: "http_access", Level: debug}
 )
 
 // Entries: tunnels and domain entries, as the store reports them. The bus
 // carries the entry itself.
 var (
+	ClientCreated = slogx.Def{Name: "client_created", Level: info}
+	ClientUpdated = slogx.Def{Name: "client_updated", Level: info}
+	ClientDeleted = slogx.Def{Name: "client_deleted", Level: info}
 	TunnelCreated = slogx.Def{Name: "tunnel_created", Level: info}
 	TunnelUpdated = slogx.Def{Name: "tunnel_updated", Level: info}
 	TunnelStarted = slogx.Def{Name: "tunnel_started", Level: info}
@@ -145,6 +149,7 @@ var All = []*slogx.Def{
 	&AuthFailed, &LoginFailed, &LoginOK, &BanAdded, &BanRemoved,
 	&ClientOnline, &ClientOffline, &SessionTakeover, &LimitExceeded,
 	&TunnelDenied, &RelayFailed, &HTTPAccess,
+	&ClientCreated, &ClientUpdated, &ClientDeleted,
 	&TunnelCreated, &TunnelUpdated, &TunnelStarted, &TunnelStopped, &TunnelDeleted,
 	&HostCreated, &HostUpdated, &HostStarted, &HostStopped, &HostDeleted,
 	&TunnelsReport, &ListenFailed,

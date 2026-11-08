@@ -249,10 +249,10 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 		}
 	}
 	want := []string{
-		"tunnel_created", "host_created",
+		"client_created", "tunnel_created", "host_created",
 		"tunnel_stopped", "tunnel_started", "tunnel_updated",
 		"host_stopped", "host_started", "host_updated",
-		"tunnel_stopped", "tunnel_deleted", "host_deleted",
+		"client_deleted", "tunnel_stopped", "tunnel_deleted", "host_deleted",
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
