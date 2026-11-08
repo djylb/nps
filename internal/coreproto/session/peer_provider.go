@@ -13,6 +13,7 @@ import (
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/seal"
@@ -152,7 +153,7 @@ func (s *clientSession) serveProviderLink(ctx context.Context, lc *linkConn, fie
 	exit, err := s.d.cfg.PeerExit(policyOfBody(&body))
 	if err != nil {
 		code := wire.CodeUnsupported
-		if errors.Is(err, wire.ErrMalformed) {
+		if errors.Is(err, acl.ErrMalformedScope) {
 			code = wire.CodeMalformed
 		}
 		failLink(lc, true, code)

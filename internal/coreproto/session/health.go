@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -100,7 +99,10 @@ func (h *healthSink) ReportHealth(r healthcheck.Report) error {
 	}
 	_ = h.lc.SetWriteDeadline(time.Now().Add(healthWriteTimeout))
 	if _, err := h.lc.Write(wire.AppendHealthReport(nil, wire.HealthReport{Name: r.Group, Addr: r.Addr, Up: r.Up})); err != nil {
-		return errors.Join(err, h.lc.Close())
+		// Part of a record may be out: the next report needs a new stream.
+		h.lc.abort(wire.CodeInternal)
+		h.lc = nil
+		return err
 	}
 	return nil
 }

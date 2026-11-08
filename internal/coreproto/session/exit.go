@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/zmuxio/zmux-go"
 )
@@ -108,8 +110,14 @@ func failLink(lc *linkConn, wantReply bool, code uint64) {
 	lc.abort(code)
 }
 
+// udp5Admitter is an exit whose policy can refuse addressed UDP as a whole.
+type udp5Admitter interface{ AdmitUDP5() error }
+
 // dialError maps a dial failure to its code (§10).
 func dialError(err error) uint64 {
+	if errors.Is(err, acl.ErrScopeDenied) {
+		return wire.CodeScopeDenied
+	}
 	switch logevent.NetReason(err) {
 	case "refused":
 		return wire.CodeConnectionRefused
@@ -142,7 +150,14 @@ func serveExitLink(ctx context.Context, exit coreapi.Exit, zc *zmux.Conn, limits
 		network = coreapi.NetworkUDP
 	}
 	if o.Target == nil && !o.ProviderTarget {
-		// Addressed UDP: no dial, the exit relays each datagram (§4.5).
+		// Addressed UDP: no dial, the exit relays each datagram (§4.5). The
+		// policy has its say before the reply says the link is up.
+		if a, ok := exit.(udp5Admitter); ok {
+			if err := a.AdmitUDP5(); err != nil {
+				failLink(lc, o.WantReply, dialError(err))
+				return
+			}
+		}
 		if !ackLink(lc, o) {
 			return
 		}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/wire"
@@ -31,7 +32,9 @@ const (
 	// open stream holds one on both sides.
 	zstdSendWindow = 1 << 20
 	// compressFinishTimeout bounds writing the end of a compressed stream.
-	compressFinishTimeout = time.Second
+	// A session may be suspended for its resume timeout meanwhile, default
+	// 30 s: the bound is for a peer that stopped reading, above that.
+	compressFinishTimeout = 2 * time.Minute
 )
 
 // CompressLimits are the receive limits of §7.4.
@@ -151,6 +154,8 @@ type compressConn struct {
 	bw   *bufio.Writer
 	wfin bool
 	werr error
+	// abandon tells a Write in progress that Close gave up on the stream.
+	abandon atomic.Bool
 
 	src     *countReader
 	br      *bufio.Reader
@@ -270,7 +275,8 @@ func (c *compressConn) fail(err error) error {
 func (c *compressConn) Write(p []byte) (int, error) {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
-	if c.wfin {
+	if c.wfin || c.abandon.Load() {
+		c.dropEncoder()
 		return 0, net.ErrClosed
 	}
 	if c.werr != nil {
@@ -282,8 +288,21 @@ func (c *compressConn) Write(p []byte) (int, error) {
 	}
 	if err != nil {
 		c.werr = err
+		c.dropEncoder()
+	} else if c.abandon.Load() {
+		c.dropEncoder()
 	}
 	return n, err
+}
+
+// dropEncoder ends an encoder in an unknown state, stopping what it runs
+// (snappy keeps a goroutine until then): it does not go back in the pool. The
+// caller holds wmu.
+func (c *compressConn) dropEncoder() {
+	if c.enc != nil {
+		c.enc.Reset(nil)
+		c.enc = nil
+	}
 }
 
 func (c *compressConn) flush() error {
@@ -308,6 +327,7 @@ func (c *compressConn) finishWrite() error {
 	}
 	c.wfin = true
 	if c.werr != nil {
+		c.dropEncoder()
 		return c.werr
 	}
 	_ = c.c.SetWriteDeadline(time.Now().Add(compressFinishTimeout))
@@ -317,6 +337,7 @@ func (c *compressConn) finishWrite() error {
 	}
 	if err != nil {
 		c.werr = err
+		c.dropEncoder()
 		return err
 	}
 	putEncoder(c.alg, c.enc)
@@ -328,12 +349,20 @@ func (c *compressConn) finishWrite() error {
 // that does not read, and then the stream is reset rather than finished.
 func (c *compressConn) Close() error {
 	if !c.wmu.TryLock() {
+		c.abandon.Store(true)
 		c.c.abort(uint64(streamCancelled))
+		// The Write may have ended before it could see abandon.
+		if c.wmu.TryLock() {
+			c.wfin = true
+			c.dropEncoder()
+			c.wmu.Unlock()
+		}
 		return nil
 	}
 	defer c.wmu.Unlock()
 	if c.werr != nil {
 		c.wfin = true
+		c.dropEncoder()
 		c.c.abort(uint64(streamCancelled))
 		return c.werr
 	}

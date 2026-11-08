@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -265,6 +266,7 @@ type visitorLink struct {
 	// server_exit only: the LINK stream that keeps the link and its session.
 	exit        *linkConn
 	exitSession *clientSession
+	exitDone    chan struct{} // closed when the LINK stream ended
 
 	zc     *zmux.Conn
 	ctx    context.Context
@@ -276,14 +278,20 @@ type visitorLink struct {
 	mu       sync.Mutex
 	punching bool
 	direct   *coreapi.DirectPath
-	upSince  time.Time // the direct path up, continuously
+	upSince  time.Time           // the direct path up, continuously
+	upPath   *coreapi.DirectPath // the path that was up
 	backoff  time.Duration
 	nextTry  time.Time
 }
 
 func (l *visitorLink) ended() bool {
 	if l.exit != nil {
-		return l.exit.Context().Err() != nil
+		select {
+		case <-l.exitDone:
+			return true
+		default:
+			return false
+		}
 	}
 	return l.zc.Context().Err() != nil
 }
@@ -344,6 +352,13 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 	l := &visitorLink{v: v, id: r.LinkID, mode: r.ConnMode, key: r.LinkKey}
 	if r.ServerExit {
 		l.exit, l.exitSession = lc, s
+		l.exitDone = make(chan struct{})
+		go func() {
+			// The stream's end is the revocation; its Context is the session's.
+			_, _ = io.Copy(io.Discard, lc)
+			close(l.exitDone)
+			v.linkOver(l)
+		}()
 		return l, nil
 	}
 	_ = lc.Close()
@@ -458,10 +473,24 @@ func (l *visitorLink) punch(ctx context.Context, background bool) (zmux.PipeIO, 
 	return p, nil
 }
 
+// closeUpPath closes the path that went down: not one punched since, which
+// has not joined yet.
+func (l *visitorLink) closeUpPath() {
+	l.mu.Lock()
+	d := l.direct
+	if d == nil || d != l.upPath {
+		l.mu.Unlock()
+		return
+	}
+	l.direct, l.upPath = nil, nil
+	l.mu.Unlock()
+	d.Close()
+}
+
 func (l *visitorLink) closeDirect() {
 	l.mu.Lock()
 	d := l.direct
-	l.direct = nil
+	l.direct, l.upPath = nil, nil
 	l.upSince = time.Time{}
 	l.mu.Unlock()
 	if d != nil {
@@ -486,8 +515,35 @@ func usable(p zmux.PipeStats) bool {
 // isDirectPipe tells a direct QUIC pipe from a relay PIPE.
 func isDirectPipe(p zmux.PipeStats) bool { return p.Carrier == zmux.CarrierQUIC }
 
+// directActive reports whether a direct pipe is carrying data: one still
+// joining or draining does not replace the relay.
+func directActive(stats []zmux.PipeStats) bool {
+	for _, p := range stats {
+		if isDirectPipe(p) && p.Outbound == zmux.OutboundActive {
+			return true
+		}
+	}
+	return false
+}
+
+// linkOver gives up the need of l, which ended, unless a successor owns it:
+// one being made (make held) or made (cur moved on).
+func (v *Visitor) linkOver(l *visitorLink) {
+	if !v.make.TryLock() {
+		return
+	}
+	defer v.make.Unlock()
+	v.mu.Lock()
+	replaced := v.cur != nil && v.cur != l
+	v.mu.Unlock()
+	if !replaced {
+		v.cfg.Outer.setNeed(v, false)
+	}
+}
+
 // run keeps the paths (§9.4a) until the session ends.
 func (l *visitorLink) run() {
+	defer l.v.linkOver(l)
 	defer l.closeDirect()
 	defer l.cancel()
 	t := time.NewTicker(l.v.cfg.Tick)
@@ -506,14 +562,10 @@ func (l *visitorLink) run() {
 
 func (l *visitorLink) step() {
 	var relay *zmux.PipeStats
-	directUp := false
-	for _, p := range l.zc.PipeStats() {
-		if !usable(p) {
-			continue
-		}
-		if isDirectPipe(p) {
-			directUp = true
-		} else {
+	stats := l.zc.PipeStats()
+	directUp := directActive(stats)
+	for _, p := range stats {
+		if usable(p) && !isDirectPipe(p) {
 			relay = &p
 		}
 	}
@@ -525,16 +577,16 @@ func (l *visitorLink) step() {
 	l.mu.Lock()
 	wasUp := !l.upSince.IsZero()
 	if directUp && !wasUp {
-		l.upSince = now
+		l.upSince, l.upPath = now, l.direct
 		l.backoff, l.nextTry = 0, time.Time{}
 	}
 	if !directUp {
 		l.upSince = time.Time{}
 	}
-	upSince, punching, direct := l.upSince, l.punching, l.direct
+	upSince, punching := l.upSince, l.punching
 	l.mu.Unlock()
-	if !directUp && wasUp && direct != nil {
-		l.closeDirect()
+	if !directUp && wasUp {
+		l.closeUpPath()
 	}
 	if directUp && relay != nil {
 		if p, ok := l.zc.Pipe(relay.Pipe); ok {
@@ -542,7 +594,7 @@ func (l *visitorLink) step() {
 				_ = p.SetSendStandby(true)
 				_ = p.SetReceiveStandby(true)
 			}
-			if now.Sub(upSince) >= l.v.cfg.RelayIdle {
+			if now.Sub(upSince) >= l.v.cfg.RelayIdle && directActive(l.zc.PipeStats()) {
 				_ = p.Close()
 				relay = nil
 			}
