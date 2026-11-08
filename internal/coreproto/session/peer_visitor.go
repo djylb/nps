@@ -319,7 +319,9 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 func (l *visitorLink) start(ctx context.Context) error {
 	var pipe zmux.PipeIO
 	var err error
+	mode := zmux.Sealed
 	if l.mode == wire.ConnDirect {
+		mode = zmux.Bound
 		pipe, err = l.punch(ctx, false)
 	} else {
 		pipe, err = l.openRelay(ctx)
@@ -331,7 +333,7 @@ func (l *visitorLink) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Sealed, Handle: handle, PSK: psk})
+	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk})
 	if err != nil {
 		l.closeDirect()
 		return err
@@ -535,7 +537,7 @@ func (l *visitorLink) joinDirect(background bool) error {
 	if err != nil {
 		return err
 	}
-	mode := zmux.Sealed
+	mode := zmux.Bound
 	if _, err := l.zc.AddPipe(ctx, pipe, zmux.PipeOptions{Mode: &mode}); err != nil {
 		l.closeDirect()
 		return err

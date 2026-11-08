@@ -56,9 +56,9 @@ type LinkRequest struct {
 	// Compress is the compression of a TCP link, algorithms in order of
 	// preference; nil for none. UDP is not compressed.
 	Compress []string
-	// Fixed leaves the choice of target to the provider, Target empty
-	// (§9.3).
-	Fixed bool
+	// ProviderTarget leaves the choice of target to the provider, Target
+	// empty, in a nested session (§9.3).
+	ProviderTarget bool
 	// LinkID names a server-exit LINK (§4.6).
 	LinkID uint64
 }

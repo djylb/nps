@@ -79,10 +79,10 @@ func openLink(ctx context.Context, zc *zmux.Conn, r coreapi.LinkRequest, peerAlg
 			return nil, linkError(wire.CodeMalformed)
 		}
 		o.Target = &a
-	} else if o.Op == wire.OpTCP && !r.Fixed {
+	} else if o.Op == wire.OpTCP && !r.ProviderTarget {
 		return nil, linkError(wire.CodeMalformed)
 	}
-	o.Fixed = r.Fixed
+	o.ProviderTarget = r.ProviderTarget
 	if a, err := wire.ParseHostPort(r.Source); err == nil {
 		o.Source = &a
 	}
@@ -147,7 +147,7 @@ func replyReadError(err error) error {
 // decoded, or UDP packets as the frames the tunnel code reads.
 func wrapLink(lc *linkConn, o wire.StreamOpen, zc *zmux.Conn, limits CompressLimits) (net.Conn, error) {
 	if o.Op == wire.OpUDP {
-		return newUDPConn(lc, o.Target == nil && !o.Fixed, zc), nil
+		return newUDPConn(lc, o.Target == nil && !o.ProviderTarget, zc), nil
 	}
 	if o.Compress != 0 {
 		c, err := newCompressConn(lc, o.Compress, limits)

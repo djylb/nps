@@ -29,7 +29,7 @@ func coreRequest(link *conn.Link) coreapi.LinkRequest {
 		r.Network, r.Target = coreapi.NetworkUDP, ""
 		return r
 	}
-	r.Fixed = r.Target == ""
+	r.ProviderTarget = r.Target == ""
 	return r
 }
 

@@ -415,6 +415,11 @@ func (s *serverSession) serveExitStream(ctx context.Context, lc *linkConn, op wi
 		lc.abort(wire.ErrorCode(err))
 		return
 	}
+	if o.ProviderTarget || o.Target == nil && o.Op == wire.OpTCP {
+		// Only a provider picks a target; a service has no server exit yet.
+		failLink(lc, o.WantReply, wire.CodeMalformed)
+		return
+	}
 	l := s.checkLink(o.LinkID)
 	if o.LinkID == 0 || l == nil || !l.grant.ServerExit || l.grant.ServeExit == nil {
 		failLink(lc, o.WantReply, wire.CodeNotAllowed)
@@ -439,14 +444,10 @@ func (s *serverSession) serveExitStream(ctx context.Context, lc *linkConn, op wi
 // streamNetwork is the network and target of a stream, as coreapi names them.
 func streamNetwork(o *wire.StreamOpen) (string, string) {
 	switch {
-	case o.Op == wire.OpTCP && o.Target != nil:
-		return coreapi.NetworkTCP, o.Target.String()
 	case o.Op == wire.OpTCP:
-		return coreapi.NetworkTCP, ""
+		return coreapi.NetworkTCP, o.Target.String()
 	case o.Target != nil:
 		return coreapi.NetworkUDP, o.Target.String()
-	case o.Fixed:
-		return coreapi.NetworkUDP, ""
 	}
 	return coreapi.NetworkUDP5, ""
 }

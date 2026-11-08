@@ -31,7 +31,7 @@ const (
 // nestedConfig is the zmux configuration both ends of a link use (§9.3).
 func nestedConfig(maxLanes int) *zmux.Config {
 	return &zmux.Config{EnableDatagrams: true, MaxPipes: nestedMaxPipes, ResumeTimeout: nestedResume, Scheduler: zmux.SpreadETA(),
-		AllowRecordMode: sealedOnly, MaxLanes: maxLanesOf(maxLanes)}
+		AllowRecordMode: allowNestedMode, RecordPolicy: nestedMode, MaxLanes: maxLanesOf(maxLanes)}
 }
 
 // DefaultMaxLanes is the lanes accepted per pipe: more bring next to nothing.
@@ -45,10 +45,24 @@ func maxLanesOf(n int) int {
 	return n
 }
 
-func sealedOnly(_ zmux.CarrierInfo, m zmux.RecordMode, _ any) bool { return m == zmux.Sealed }
+// allowNestedMode is Sealed, or Bound on a carrier that secures itself end to
+// end: never on a relay, whose server must not see the records (§9.3).
+func allowNestedMode(info zmux.CarrierInfo, m zmux.RecordMode, _ any) bool {
+	return m == zmux.Sealed || m == zmux.Bound && info.Secure
+}
+
+// nestedMode is the mode a nested pipe asks for: Bound on a direct QUIC path
+// (which also gives it lanes), Sealed otherwise.
+func nestedMode(info zmux.CarrierInfo) zmux.RecordMode {
+	if info.Secure {
+		return zmux.Bound
+	}
+	return zmux.Sealed
+}
 
 // relayPipe hides the lanes of an outer stream: an extra lane would be a
-// stream the server cannot route (§9.3).
+// stream the server cannot route (§9.3). It must never declare CarrierSecure:
+// the server is on the path of a relay.
 func relayPipe(p zmux.PipeIO) zmux.PipeIO {
 	p.W = &relayWriter{w: p.W}
 	return p
@@ -189,7 +203,7 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	}
 	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: nestedConfig(s.d.cfg.MaxLanes), WrapPipe: &seal.ServerConfig{
 		Gate: &linkGate{handle: handle, psk: psk}, Key: key, ClientAnchor: acceptAnyClient{},
-		AllowRecordMode: sealedOnly,
+		AllowRecordMode: allowNestedMode,
 	}})
 	if err != nil {
 		return nil, err

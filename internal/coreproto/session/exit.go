@@ -66,7 +66,7 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 
 // checkOpen is what the exit decides before it dials (§7.2, §8).
 func (s *clientSession) checkOpen(o *wire.StreamOpen) uint64 {
-	if o.Op == wire.OpTCP && o.LinkID != 0 || o.Fixed {
+	if o.Op == wire.OpTCP && o.LinkID != 0 || o.ProviderTarget {
 		// Only the side that made a server-exit LINK takes link ids (§4.6),
 		// and only a provider picks a target (§9.3).
 		return wire.CodeMalformed
@@ -137,7 +137,7 @@ func serveExitLink(ctx context.Context, exit coreapi.Exit, zc *zmux.Conn, limits
 	if o.Op == wire.OpUDP {
 		network = coreapi.NetworkUDP
 	}
-	if o.Target == nil && !o.Fixed {
+	if o.Target == nil && !o.ProviderTarget {
 		// Addressed UDP: no dial, the exit relays each datagram (§4.5).
 		if !ackLink(lc, o) {
 			return

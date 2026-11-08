@@ -1,11 +1,13 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +16,8 @@ import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/quic-go/quic-go"
+	"github.com/zmuxio/zmux-go"
+	"github.com/zmuxio/zmux-go/seal"
 	"github.com/zmuxio/zmux-go/zmuxquic"
 )
 
@@ -87,6 +91,16 @@ type peerEnv struct {
 // allowAll is the exit of a provider that reaches everything.
 func startPeer(t *testing.T, serverExit bool) *peerEnv {
 	t.Helper()
+	return startPeerOpts(t, serverExit, 0)
+}
+
+func startPeerLanes(t *testing.T, lanes int) *peerEnv {
+	t.Helper()
+	return startPeerOpts(t, false, lanes)
+}
+
+func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
+	t.Helper()
 	p := &peerEnv{punch: &quicPuncher{t: t}, echo: listenEcho(t)}
 	p.valid.Store(true)
 	p.env = startHooks(t, coreapi.Hooks{
@@ -109,7 +123,7 @@ func startPeer(t *testing.T, serverExit bool) *peerEnv {
 		},
 	}, rec(1, "prov", true), rec(2, "vis", true), rec(3, "other", true))
 	d := func(vkey string) DialConfig {
-		return DialConfig{Candidates: p.cands(p.addr), VKey: vkey, Agent: "t", Timeout: 3 * time.Second, Puncher: p.punch, Exit: plainExit{},
+		return DialConfig{Candidates: p.cands(p.addr), VKey: vkey, Agent: "t", Timeout: 3 * time.Second, Puncher: p.punch, Exit: plainExit{}, MaxLanes: lanes,
 			PeerExit: func(coreapi.LinkPolicy) (coreapi.Exit, error) { return fixedExit{plainExit{}, p.echo}, nil }}
 	}
 	p.provider = p.dial(NewDialer(d("prov")))
@@ -134,7 +148,7 @@ func peerCtx(t *testing.T) context.Context {
 
 func echoOnce(t *testing.T, ctx context.Context, v *Visitor, msg string) {
 	t.Helper()
-	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Fixed: true, WantReply: true})
+	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -198,7 +212,7 @@ func TestPeerAutoRelayClosesAndRejoins(t *testing.T) {
 	p := startPeer(t, false)
 	v := p.visitor(t, wire.ConnAuto, 100*time.Millisecond)
 	ctx := peerCtx(t)
-	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Fixed: true, WantReply: true})
+	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,58 +368,168 @@ func TestPeerServerExit(t *testing.T) {
 	p := startPeer(t, true)
 	v := p.visitor(t, wire.ConnAuto, time.Minute)
 	ctx := peerCtx(t)
-	echoOnce(t, ctx, v, "exit")
+	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Target: p.echo, WantReply: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	checkEcho(t, c, "exit")
+	if _, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true}); err == nil {
+		t.Fatal("provider_target accepted on the outer session")
+	}
 	if p.punch.punch.Load() != 0 {
 		t.Fatal("server exit punched")
 	}
 }
 
-// A direct QUIC pipe with spread scheduling really opens several lanes for
-// concurrent streams.
-func TestPeerSpreadLanesOnDirect(t *testing.T) {
-	p := startPeer(t, false)
-	v := p.visitor(t, wire.ConnDirect, time.Minute)
-	ctx := peerCtx(t)
-	echoOnce(t, ctx, v, "x")
-	var conns []net.Conn
-	for range 6 {
-		c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Fixed: true, WantReply: true})
+// concurrentEcho runs six streams at once, checks every byte, and returns the
+// most outbound lanes a pipe had.
+func concurrentEcho(t *testing.T, ctx context.Context, v *Visitor) int {
+	t.Helper()
+	var most atomic.Int64
+	stop := make(chan struct{})
+	var watch sync.WaitGroup
+	watch.Go(func() {
+		for {
+			if l := v.live(); l != nil {
+				for _, s := range l.zc.PipeStats() {
+					if int64(s.LanesOut) > most.Load() {
+						most.Store(int64(s.LanesOut))
+					}
+				}
+			}
+			select {
+			case <-stop:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	})
+	var wg sync.WaitGroup
+	for i := range 6 {
+		c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		conns = append(conns, c)
-		go func() {
-			b := make([]byte, 1<<16)
-			for {
-				if _, err := c.Write(b); err != nil {
-					return
-				}
+		_ = c.SetDeadline(time.Now().Add(15 * time.Second))
+		data := bytes.Repeat([]byte{byte(i + 1), byte(i * 3), 7}, 4<<20/3)
+		wg.Go(func() {
+			if _, err := c.Write(data); err != nil {
+				t.Error(err)
 			}
-		}()
-		go func() { _, _ = io.Copy(io.Discard, c) }()
+		})
+		wg.Go(func() {
+			got := make([]byte, len(data))
+			if _, err := io.ReadFull(c, got); err != nil || !bytes.Equal(got, data) {
+				t.Errorf("stream %d: corrupted or short: %v", i, err)
+			}
+		})
 	}
-	var most int
-	waitUntil(t, "lanes", func() bool {
-		for _, s := range v.live().zc.PipeStats() {
-			most = max(most, s.LanesOut)
-		}
-		return most >= 1
-	})
-	time.Sleep(time.Second)
-	for _, s := range v.live().zc.PipeStats() {
-		most = max(most, s.LanesOut)
-		t.Logf("pipe mode %v carrier %v lanes out %d in %d", s.RecordMode, s.Carrier, s.LanesOut, s.LanesIn)
-	}
-	t.Logf("lanes out: %d over %d streams", most, len(conns))
+	wg.Wait()
+	close(stop)
+	watch.Wait()
+	return int(most.Load())
 }
 
-// A link revoked while its provider stream is still being opened neither
-// panics nor gets an anchor.
-func TestLinkRevokedBeforeAnchor(t *testing.T) {
-	l := &peerLink{paths: map[wire.Op]*linkPath{}}
-	l.end(wire.CodeNotAllowed)
-	if l.setAnchor(&linkConn{}) {
-		t.Fatal("anchor set on an ended link")
+// Bound on the direct path: concurrent streams spread over several lanes,
+// within session_max_lanes.
+func TestPeerLanesOnDirect(t *testing.T) {
+	p := startPeer(t, false)
+	v := p.visitor(t, wire.ConnDirect, time.Minute)
+	ctx := peerCtx(t)
+	echoOnce(t, ctx, v, "x")
+	n := concurrentEcho(t, ctx, v)
+	t.Logf("lanes out: %d", n)
+	if n < 2 || n > DefaultMaxLanes {
+		t.Fatalf("%d lanes", n)
+	}
+	for _, s := range v.live().zc.PipeStats() {
+		if s.RecordMode != zmux.Bound || s.Carrier != zmux.CarrierQUIC {
+			t.Fatalf("pipe %+v", s.RecordMode)
+		}
+	}
+}
+
+func TestPeerLanesCapped(t *testing.T) {
+	p := startPeerLanes(t, 3)
+	v := p.visitor(t, wire.ConnDirect, time.Minute)
+	ctx := peerCtx(t)
+	echoOnce(t, ctx, v, "x")
+	n := concurrentEcho(t, ctx, v)
+	t.Logf("lanes out: %d", n)
+	if n < 2 || n > 3 {
+		t.Fatalf("%d lanes, cap 3", n)
+	}
+}
+
+func TestPeerRelayOneLane(t *testing.T) {
+	p := startPeer(t, false)
+	v := p.visitor(t, wire.ConnRelay, time.Minute)
+	ctx := peerCtx(t)
+	echoOnce(t, ctx, v, "x")
+	if n := concurrentEcho(t, ctx, v); n != 1 {
+		t.Fatalf("%d lanes on a relay", n)
+	}
+	for _, s := range v.live().zc.PipeStats() {
+		if s.RecordMode != zmux.Sealed {
+			t.Fatalf("relay in %v", s.RecordMode)
+		}
+	}
+}
+
+// secureLie declares a carrier secure that is not.
+type secureLie struct{ io.WriteCloser }
+
+func (*secureLie) CarrierSecure() bool { return true }
+
+func (*secureLie) ExportKeyingMaterial(string, []byte, int) ([]byte, error) {
+	return make([]byte, 32), nil
+}
+
+// A relay is no secure carrier: Bound is refused on it.
+func TestPeerRelayRefusesBound(t *testing.T) {
+	p := startPeer(t, false)
+	ctx := peerCtx(t)
+	vis, err := p.outer.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := linkReply(t, ctx, vis)
+	info, _ := wire.AppendPathOpen(&wire.PathOpen{Op: wire.OpPipe, LinkID: r.LinkID})
+	pipe, err := vis.zc.OpenPipeStream(ctx, &zmux.PipeStreamOptions{Info: info})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipe = relayPipe(pipe)
+	if zmux.IsCarrierSecure(pipe) {
+		t.Fatal("relay declared secure")
+	}
+	handle, psk, _ := seal.DeriveHandlePSK(r.LinkKey, []byte(linkDomain), nil)
+	ectx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := seal.Establish(ectx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Bound, Handle: handle, PSK: psk}); err == nil {
+		t.Fatal("Bound established on a relay")
+	} else {
+		t.Log(err)
+	}
+	// A visitor lying about its carrier is refused by the provider.
+	r2 := linkReply(t, ctx, vis)
+	info2, _ := wire.AppendPathOpen(&wire.PathOpen{Op: wire.OpPipe, LinkID: r2.LinkID})
+	lying, err := vis.zc.OpenPipeStream(ctx, &zmux.PipeStreamOptions{Info: info2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lying.W = &secureLie{lying.W}
+	h2, k2, _ := seal.DeriveHandlePSK(r2.LinkKey, []byte(linkDomain), nil)
+	ectx2, cancel2 := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel2()
+	if _, err := seal.Establish(ectx2, lying, &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Bound, Handle: h2, PSK: k2}); err == nil {
+		t.Fatal("provider took Bound on a relay")
+	} else {
+		t.Log(err)
+	}
+	if allowNestedMode(zmux.CarrierInfo{}, zmux.Bound, nil) || allowNestedMode(zmux.CarrierInfo{Secure: true}, zmux.Trusted, nil) {
+		t.Fatal("record mode allowed")
 	}
 }

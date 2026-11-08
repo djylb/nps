@@ -223,9 +223,9 @@ type StreamOpen struct {
 	Compress  uint64
 	Service   []byte
 	LinkID    uint64
-	// Fixed asks the provider to pick the target of a nested stream that
-	// names none (target_type on the OPEN_INFO, §9.3).
-	Fixed bool
+	// ProviderTarget leaves the target to the provider, on a stream of a
+	// nested session only (§9.3).
+	ProviderTarget bool
 }
 
 // AppendStreamOpen encodes o in id order; the result is at most MaxOpenInfo
@@ -261,8 +261,8 @@ func AppendStreamOpen(o *StreamOpen) ([]byte, error) {
 	if o.LinkID != 0 {
 		b = AppendUint(b, KeyLinkID, o.LinkID)
 	}
-	if o.Fixed {
-		b = AppendUint(b, KeyTargetType, TargetAll)
+	if o.ProviderTarget {
+		b = AppendUint(b, KeyProviderTarget, 1)
 	}
 	if len(b) > MaxOpenInfo {
 		return nil, ErrMalformed
@@ -304,8 +304,11 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 			o.Service = f.Data
 		case KeyLinkID:
 			o.LinkID = f.Value
-		case KeyTargetType:
-			o.Fixed = true
+		case KeyProviderTarget:
+			if f.Value != 1 {
+				return ErrMalformed
+			}
+			o.ProviderTarget = true
 		}
 		return err
 	})
@@ -317,11 +320,11 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 	}
 	switch op {
 	case OpTCP:
-		if (o.Target == nil && !o.Fixed) == (len(o.Service) == 0) || o.Target != nil && o.Fixed {
+		if !exactlyOne(o.Target != nil, len(o.Service) > 0, o.ProviderTarget) {
 			return o, ErrMalformed
 		}
 	case OpUDP:
-		if o.Compress != 0 || len(o.Service) > 0 {
+		if o.Compress != 0 || len(o.Service) > 0 || o.Target != nil && o.ProviderTarget {
 			return o, ErrMalformed
 		}
 	}
@@ -372,3 +375,13 @@ func ParseUDPBody(b []byte) (Address, []byte, error) {
 
 // ReadVarintFrom reads one varint from r.
 func ReadVarintFrom(r io.Reader) (uint64, error) { return readVarintFrom(r) }
+
+func exactlyOne(a, b, c bool) bool {
+	n := 0
+	for _, v := range []bool{a, b, c} {
+		if v {
+			n++
+		}
+	}
+	return n == 1
+}

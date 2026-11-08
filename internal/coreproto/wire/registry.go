@@ -31,29 +31,30 @@ func (o Op) FromClient() bool { return o.Known() && o != OpConfig && o != OpUpda
 
 // Common fields (§2.2), shared by Hello, OPEN_INFO and reply heads.
 var (
-	KeyTarget      = key(1, true, true)
-	KeySource      = key(2, false, true)
-	KeyWantReply   = key(3, true, false)
-	KeyCompress    = key(4, true, false)
-	KeyService     = key(5, true, true)
-	KeyLinkID      = key(6, true, false)
-	KeyCap         = key(7, false, false)
-	KeyLabel       = key(8, false, true)
-	KeyAgent       = key(9, false, true)
-	KeyCode        = key(10, true, false)
-	KeyReason      = key(11, false, true)
-	KeySeq         = key(12, true, false)
-	KeyTunnel      = key(13, true, false)
-	KeyAccess      = key(14, true, true)
-	KeyLinkKey     = key(16, true, true)
-	KeyConnMode    = key(17, true, false)
-	KeyScope       = key(18, true, true)
-	KeyNameDest    = key(19, true, false)
-	KeyCompressAlg = key(20, false, false)
-	KeyServerExit  = key(21, true, false)
-	KeyBackground  = key(22, false, false)
-	KeyServerAddr  = key(23, false, true)
-	KeyTargetType  = key(24, true, false)
+	KeyTarget         = key(1, true, true)
+	KeySource         = key(2, false, true)
+	KeyWantReply      = key(3, true, false)
+	KeyCompress       = key(4, true, false)
+	KeyService        = key(5, true, true)
+	KeyLinkID         = key(6, true, false)
+	KeyCap            = key(7, false, false)
+	KeyLabel          = key(8, false, true)
+	KeyAgent          = key(9, false, true)
+	KeyCode           = key(10, true, false)
+	KeyReason         = key(11, false, true)
+	KeySeq            = key(12, true, false)
+	KeyTunnel         = key(13, true, false)
+	KeyAccess         = key(14, true, true)
+	KeyLinkKey        = key(16, true, true)
+	KeyConnMode       = key(17, true, false)
+	KeyScope          = key(18, true, true)
+	KeyNameDest       = key(19, true, false)
+	KeyCompressAlg    = key(20, false, false)
+	KeyServerExit     = key(21, true, false)
+	KeyBackground     = key(22, false, false)
+	KeyServerAddr     = key(23, false, true)
+	KeyTargetType     = key(24, true, false)
+	KeyProviderTarget = key(25, true, false)
 )
 
 // Common is the table of the common fields.
@@ -62,7 +63,7 @@ var Common = newSchema(
 	one(KeyLinkID), many(KeyCap), one(KeyLabel), one(KeyAgent), one(KeyCode), one(KeyReason),
 	one(KeySeq), one(KeyTunnel), one(KeyAccess), one(KeyLinkKey), one(KeyConnMode), one(KeyScope),
 	one(KeyNameDest), many(KeyCompressAlg), one(KeyServerExit), one(KeyBackground),
-	one(KeyServerAddr), one(KeyTargetType),
+	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget),
 )
 
 // Capabilities (§2.3).
