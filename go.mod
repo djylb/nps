@@ -17,7 +17,7 @@ require (
 	github.com/djylb/netx v0.0.0-20261107123044-7640ba4c50af
 	github.com/djylb/portmux v0.0.0-20261107123354-f41f4037a2df
 	github.com/djylb/selfupdate v0.0.0-20261107123055-ab0fadbc217e
-	github.com/djylb/slogx v0.0.0-20261108022707-deaefc1b99c5
+	github.com/djylb/slogx v0.0.0-20261108032512-cf6c6460be74
 	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f
 	github.com/djylb/upstream v0.0.0-20261107123048-8c51fc7b4a41
 	github.com/gin-gonic/gin v1.12.0

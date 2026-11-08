@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 )
 
@@ -30,7 +29,7 @@ type Options struct {
 	// Memory keeps the last entries in memory (npc SDK, a log viewer).
 	Memory int
 	// Secrets writes keys and passwords in lines, for development
-	// (logevent.Secret).
+	// (slogx.Config.LogSecrets).
 	Secrets bool
 }
 
@@ -57,7 +56,7 @@ func (o Options) Config() (slogx.Config, error) {
 	if o.Service && out == "stdout" && path != "" {
 		out = "file"
 	}
-	c := slogx.Config{Console: slogx.ConsoleStdout, Level: o.Level, Memory: o.Memory}
+	c := slogx.Config{Console: slogx.ConsoleStdout, Level: o.Level, Memory: o.Memory, LogSecrets: o.Secrets}
 	if out == "file" || out == "off" {
 		c.Console = slogx.ConsoleOff
 	}
@@ -102,6 +101,5 @@ func Apply(o Options) error {
 		return err
 	}
 	slogx.CaptureStdLog(slogx.Module("lib"), slog.LevelWarn)
-	logevent.SetShowSecrets(o.Secrets)
 	return nil
 }

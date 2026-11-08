@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/slogx"
+
 	"github.com/djylb/netx"
 	"github.com/djylb/netx/proxydial"
 	"github.com/djylb/netx/tlsconn"
@@ -25,7 +27,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
-	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/version"
@@ -212,9 +213,9 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	}
 	_ = c.Close()
 	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
-		log.Info("web access login", "user", "user", "password", logevent.Secret(vkey))
+		log.Info("web access login", "user", "user", "password", slogx.Redacted(vkey))
 	} else {
-		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", logevent.Secret(cnf.CommonConfig.Client.WebPassword))
+		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", slogx.Redacted(cnf.CommonConfig.Client.WebPassword))
 	}
 
 	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
@@ -578,10 +579,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 		_ = c.Close()
 		switch {
 		case errors.Is(err, legacy.ErrUnauthorized):
-			log.Error("server rejected the vkey", "server", connection.RemoteAddr().String(), "err", err)
-			if logevent.SecretsShown() {
-				return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
-			}
+			log.Error("server rejected the vkey", "server", connection.RemoteAddr().String(), "vkey", slogx.Redacted(vkey), "err", err)
 			return nil, "", serverInfo{}, errors.New("validation key incorrect")
 		case errors.Is(err, legacy.ErrVersionMismatch):
 			log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))

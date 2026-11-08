@@ -459,7 +459,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
-					log.Info("connecting", "server", serverAddr, "vkey", logevent.Secret(verifyKey), "carrier", connType, "local_ip", localIP)
+					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
 						log.Info("client closed, reconnecting", "server", serverAddr)

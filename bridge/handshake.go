@@ -82,11 +82,8 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 			log.Debug("handshake ended", "src_ip", ip, "src_port", port, "carrier", tunnelType, "err", err)
 		} else if reason == "bad_key" {
 			// the error names the key digest, which is as good as the key
-			args := []any{"src_ip", ip, "src_port", port, "role", "client", "carrier", tunnelType, "reason", reason}
-			if logevent.SecretsShown() {
-				args = append(args, "err", err)
-			}
-			slogx.Emit(context.Background(), log, &logevent.AuthFailed, args...)
+			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+				"carrier", tunnelType, "reason", reason, "err", slogx.Redacted(err.Error()))
 		} else {
 			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
 				"carrier", tunnelType, "reason", reason, "err", err)
