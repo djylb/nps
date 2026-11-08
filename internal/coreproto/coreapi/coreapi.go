@@ -129,10 +129,6 @@ type Hooks struct {
 	// Legacy takes over a carrier of the old protocol, every byte replayed.
 	// It owns c from then on.
 	Legacy func(c net.Conn, carrier string)
-	// LegacyQUIC takes over a QUIC connection of the old protocol: c is its
-	// first stream, every byte replayed. It returns once the connection is
-	// handed over; qc stays open until it ends.
-	LegacyQUIC func(c net.Conn, qc *quic.Conn)
 	// Fallback serves a carrier that is not ours (the domain proxy), every
 	// byte replayed; state is its TLS when this process terminated it. It
 	// returns false, leaving c to the caller, when there is no target.
@@ -155,10 +151,9 @@ type Entry interface {
 	ServeMixed(ctx context.Context, c net.Conn, carrier string, other func(c net.Conn, state *tls.ConnectionState) bool)
 	// QUICConfig returns base with what QUIC carriers of this entry need.
 	QUICConfig(base *quic.Config) *quic.Config
-	// ServeQUIC runs one QUIC connection until it ends. With legacy, a
-	// connection whose first stream starts with the old protocol's magic
-	// goes to Hooks.LegacyQUIC; ALPN plays no part (§12).
-	ServeQUIC(ctx context.Context, qc *quic.Conn, legacy bool)
+	// ServeQUIC runs one QUIC connection of the core protocol until it ends;
+	// the caller chose it by ALPN (§12).
+	ServeQUIC(ctx context.Context, qc *quic.Conn)
 	// WebSocket returns the handler of the WebSocket bridge path: requests
 	// of the core protocol go to it, every other request to legacy.
 	WebSocket(legacy http.Handler) (http.Handler, error)

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/connprofile"
@@ -306,7 +307,7 @@ func countListener(t *testing.T) *counted {
 	return c
 }
 
-func quicServer(t *testing.T, e *env, legacy bool) string {
+func quicServer(t *testing.T, e *env) string {
 	t.Helper()
 	l, err := quic.ListenAddr("127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{testCert(t)}, NextProtos: []string{"h3", "nps"}}, e.a.QUICConfig(nil))
 	if err != nil {
@@ -320,7 +321,7 @@ func quicServer(t *testing.T, e *env, legacy bool) string {
 				return
 			}
 			wg.Go(func() {
-				e.a.ServeQUIC(e.ctx, qc, legacy)
+				e.a.ServeQUIC(e.ctx, qc)
 				_ = qc.CloseWithError(0, "")
 			})
 		}
@@ -332,7 +333,7 @@ func quicServer(t *testing.T, e *env, legacy bool) string {
 // A session on QUIC is Bound by default, with ALPN h3.
 func TestQUICSession(t *testing.T) {
 	e := start(t, "tcp", rec(1, "key", true))
-	addr := quicServer(t, e, true)
+	addr := quicServer(t, e)
 	c, err := connprofile.Parse("quic://"+addr, "tcp")
 	if err != nil {
 		t.Fatal(err)
@@ -348,49 +349,29 @@ func TestQUICSession(t *testing.T) {
 	}
 }
 
-// The first stream decides, not the ALPN: TST is the old protocol under
-// either ALPN; other bytes end the connection.
-func TestQUICOldProtocolRouting(t *testing.T) {
-	for _, alpn := range []string{"h3", "nps"} {
-		t.Run(alpn, func(t *testing.T) {
-			e := start(t, "tcp", rec(1, "key", true))
-			got := make(chan string, 1)
-			h := *e.a.hooks.Load()
-			h.LegacyQUIC = func(c net.Conn, qc *quic.Conn) {
-				go func() {
-					b := make([]byte, 5)
-					_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
-					n, _ := io.ReadFull(c, b)
-					got <- string(b[:n])
-					_ = c.Close()
-					_ = qc.CloseWithError(0, "")
-				}()
-			}
-			e.a.hooks.Store(&h)
-			addr := quicServer(t, e, true)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			qc, err := quic.DialAddr(ctx, addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{alpn}}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer qc.CloseWithError(0, "")
-			st, err := qc.OpenStreamSync(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := st.Write([]byte("TST12")); err != nil {
-				t.Fatal(err)
-			}
-			select {
-			case s := <-got:
-				if s != "TST12" {
-					t.Fatalf("legacy got %q", s)
-				}
-			case <-ctx.Done():
-				t.Fatal("old protocol not routed")
-			}
-		})
+// A QUIC connection whose first stream is no carrier just ends: the old
+// protocol is told apart by ALPN before the connection gets here (§12).
+func TestQUICNonCarrierStreamEnds(t *testing.T) {
+	e := start(t, "tcp", rec(1, "key", true))
+	addr := quicServer(t, e)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	qc, err := quic.DialAddr(ctx, addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h3"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer qc.CloseWithError(0, "")
+	st, err := qc.OpenStreamSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write([]byte("TST12")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-qc.Context().Done():
+	case <-ctx.Done():
+		t.Fatal("connection not ended")
 	}
 }
 
@@ -440,8 +421,38 @@ func TestPipesOf(t *testing.T) {
 // Further pipes join over QUIC connections of their own.
 func TestQUICJoin(t *testing.T) {
 	e := start(t, "tcp", rec(1, "key", true))
-	addr := quicServer(t, e, true)
+	addr := quicServer(t, e)
 	cs := e.dial(e.multi("key", "quic://"+addr+"?count=2&alpn=h3"))
 	s := e.waitOnline()
 	waitUntil(t, "two pipes over quic", func() bool { return len(cs.zc.Pipes()) == 2 && sumPipes(s) == 2 })
+}
+
+// UDP crosses a QUIC session as QUIC datagrams and as stream packets.
+func TestUDPOverQUIC(t *testing.T) {
+	e := start(t, "tcp", rec(1, "key", true))
+	addr := quicServer(t, e)
+	c, err := connprofile.Parse("quic://"+addr, "tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connprofile.UseCoreDefaults(c)
+	e.dial(NewDialer(DialConfig{Candidates: c, VKey: "key", Agent: "t", Timeout: 5 * time.Second, Exit: plainExit{}}))
+	s := e.waitOnline()
+	target := listenUDPEcho(t)
+	for _, datagrams := range []bool{false, true} {
+		lc, err := s.OpenLink(bg(t), coreapi.LinkRequest{Network: coreapi.NetworkUDP, Target: target, WantReply: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("negotiated=%v", lc.(*udpConn).datagrams)
+		lc.(*udpConn).datagrams = datagrams
+		f := netx.NewFramedConn(lc, netx.WithFramedDatagrams())
+		udpExchange(t, f, []byte("ping"), func(b []byte) {
+			if string(b) != "ping" {
+				t.Fatalf("echo %q", b)
+			}
+		})
+		t.Logf("datagrams=%v ok, sent=%d", datagrams, datagramsSent(lc))
+		_ = f.Close()
+	}
 }

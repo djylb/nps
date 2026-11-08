@@ -36,9 +36,6 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
 		},
-		LegacyQUIC: func(c net.Conn, qc *quic.Conn) {
-			s.serve(conn.NewConn(conn.NewQuicFirstConn(c, qc)), conn.TransportQUIC)
-		},
 		Fallback: s.coreFallback,
 	}
 }
@@ -130,9 +127,8 @@ type Fallback interface {
 	// bridge's own.
 	FallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 	// ServeHTTP3 serves qc as HTTP/3 through the domain proxy until it
-	// ends; first is its control stream, already accepted. It returns false
-	// when there is no HTTP/3 engine.
-	ServeHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool
+	// ends. It returns false when there is no HTTP/3 engine.
+	ServeHTTP3(qc *quic.Conn) bool
 }
 
 func (s *Bridge) coreFallback(c net.Conn, state *tls.ConnectionState) bool {

@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -35,6 +36,9 @@ type mixEntry struct {
 	kind   mixKind
 	plain  bool // plaintext carriers (tcp, ws)
 	legacy bool // the old protocol, where the first bytes tell it
+	// http3: the UDP side serves HTTP/3 too, so ALPN h3 is HTTP/3's and the
+	// QUIC carrier answers only to the quic_alpn list (§13).
+	http3 bool
 	// The HTTP engines of its connections, without and with TLS terminated
 	// here: WebSocket carriers by the route of the entry, the rest to the
 	// domain proxy.
@@ -46,7 +50,7 @@ func (s *Bridge) newMixEntry(kind mixKind) *mixEntry {
 	e := &mixEntry{kind: kind}
 	switch kind {
 	case mixPort:
-		e.plain, e.legacy = n.MixPlain, n.MixLegacy
+		e.plain, e.legacy, e.http3 = n.MixPlain, n.MixLegacy, n.MixHTTP3()
 	case mixVirtual:
 		e.plain, e.legacy = true, n.MixLegacy
 	case mixGeneric:
@@ -251,32 +255,50 @@ func (s *Bridge) stall(ctx context.Context, c net.Conn) {
 	_ = c.Close()
 }
 
-// http3Detect is how long a connection with ALPN h3 gets to open its HTTP/3
-// control stream. npc opens no unidirectional stream before its first
-// bidirectional one, and ALPN cannot tell the two apart (§12).
-const http3Detect = 100 * time.Millisecond
-
 // listenQUIC opens a QUIC listener: the bridge's own (mix nil), where only
 // carriers arrive, or the UDP side of the mixed port.
 func (s *Bridge) listenQUIC(addr, route string, mix *mixEntry) error {
+	return s.serveQUICOn(addr, route, mix, nil)
+}
+
+// serveQUICOn is listenQUIC on pc, or on addr when pc is nil.
+func (s *Bridge) serveQUICOn(addr, route string, mix *mixEntry, pc net.PacketConn) error {
 	n := connection.Network()
 	cfg := &quic.Config{
 		KeepAlivePeriod:    time.Duration(n.QUICKeepAlivePeriod) * time.Second,
 		MaxIdleTimeout:     time.Duration(n.QUICMaxIdleTimeout) * time.Second,
 		MaxIncomingStreams: n.QUICMaxIncomingStreams,
 	}
-	tlsCfg := &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: n.QUICALPNList}
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: slices.Clone(n.QUICALPNList)}
 	if s.core != nil {
 		cfg = s.core.QUICConfig(cfg)
 	}
-	if s.core != nil || mix != nil {
-		// nodes accept h3 and the quic_alpn list (§12)
-		tlsCfg.NextProtos = append([]string{"h3"}, slices.DeleteFunc(slices.Clone(n.QUICALPNList), func(a string) bool { return a == "h3" })...)
+	http3 := mix != nil && mix.http3
+	if err := n.CheckQUICALPN(s.core != nil, http3); err != nil {
+		return fmt.Errorf("quic listener %s: %w", addr, err)
+	}
+	// ALPN alone tells the protocols apart (§12, §13): quic_alpn names are
+	// the old protocol's, new_protocol_quic_alpn the new one's, h3 HTTP/3's
+	// where it shares the port.
+	if s.core != nil {
+		tlsCfg.NextProtos = slices.Clone(n.NewProtocolQUICALPN)
+		if mix == nil || mix.legacy {
+			tlsCfg.NextProtos = append(tlsCfg.NextProtos, n.QUICALPNList...)
+		}
+	}
+	if http3 {
+		tlsCfg.NextProtos = append(tlsCfg.NextProtos, "h3")
 	}
 	if mix != nil {
 		tlsCfg.GetCertificate = s.fallbackCert
 	}
-	l, err := conn.ListenQUIC(addr, tlsCfg, cfg)
+	var l *quic.Listener
+	var err error
+	if pc != nil {
+		l, err = quic.Listen(pc, tlsCfg, cfg)
+	} else {
+		l, err = conn.ListenQUIC(addr, tlsCfg, cfg)
+	}
 	if err != nil {
 		return err
 	}
@@ -304,27 +326,28 @@ func (s *Bridge) serveQUIC(qc *quic.Conn, mix *mixEntry) {
 		// The connection ends with the bridge.
 		stop := context.AfterFunc(ctx, func() { _ = qc.CloseWithError(0, "") })
 		defer stop()
-		if mix != nil && s.serveHTTP3(ctx, qc) {
-			return nil
-		}
-		if s.core != nil {
-			s.core.ServeQUIC(ctx, qc, mix == nil || mix.legacy)
-			return nil
-		}
-		if mix != nil && !mix.legacy {
-			return nil
-		}
-		// With the new protocol off the first stream is the old one's; the
-		// handshake rejects anything else.
-		done := make(chan struct{})
-		conn.AcceptQuicStream(qc, func(c net.Conn) {
-			s.serve(conn.NewConn(c), conn.TransportQUIC)
-			close(done)
-		})
-		select {
-		case <-done:
-			<-qc.Context().Done()
+		alpn := qc.ConnectionState().TLS.NegotiatedProtocol
+		n := connection.Network()
+		switch {
+		case mix != nil && mix.http3 && alpn == "h3":
+			s.serveHTTP3(qc)
+		case s.core != nil && !slices.Contains(n.QUICALPNList, alpn):
+			s.core.ServeQUIC(ctx, qc)
+		case mix != nil && !mix.legacy:
+			// the old protocol is off on this port
 		default:
+			// The first stream is the old protocol's; the handshake
+			// rejects anything else.
+			done := make(chan struct{})
+			conn.AcceptQuicStream(qc, func(c net.Conn) {
+				s.serve(conn.NewConn(c), conn.TransportQUIC)
+				close(done)
+			})
+			select {
+			case <-done:
+				<-qc.Context().Done()
+			default:
+			}
 		}
 		return nil
 	}) != nil {
@@ -332,19 +355,10 @@ func (s *Bridge) serveQUIC(qc *quic.Conn, mix *mixEntry) {
 	}
 }
 
-// serveHTTP3 serves qc as HTTP/3 if it is: ALPN h3 and a unidirectional stream
-// at once. It reports whether it took qc.
-func (s *Bridge) serveHTTP3(ctx context.Context, qc *quic.Conn) bool {
-	f := s.fallback.Load()
-	if f == nil || qc.ConnectionState().TLS.NegotiatedProtocol != "h3" {
-		return false
+// serveHTTP3 serves qc as HTTP/3 until it ends; without an engine qc just
+// ends.
+func (s *Bridge) serveHTTP3(qc *quic.Conn) {
+	if f := s.fallback.Load(); f != nil {
+		(*f).ServeHTTP3(qc)
 	}
-	dctx, cancel := context.WithTimeout(ctx, http3Detect)
-	defer cancel()
-	first, err := qc.AcceptUniStream(dctx)
-	if err != nil {
-		return false
-	}
-	(*f).ServeHTTP3(qc, first) // without an engine qc just ends
-	return true
 }

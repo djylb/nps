@@ -1,6 +1,7 @@
 package servercfg
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -198,6 +199,11 @@ type NetworkConfig struct {
 	// NewProtocolTLSALPN is the ALPN list of the TLS bridge with NewProtocol
 	// (nps.conf new_protocol_tls_alpn, comma-separated); empty selects none.
 	NewProtocolTLSALPN []string
+	// NewProtocolQUICALPN is the ALPN list of the core protocol's QUIC
+	// carrier (nps.conf new_protocol_quic_alpn, default h3). It must not
+	// share a name with QUICALPNList, whose names are the old protocol's
+	// (§12), nor contain h3 where HTTP/3 uses the port (MixHTTP3).
+	NewProtocolQUICALPN []string
 	// NewProtocolWSPaths are the WebSocket paths whose requests go to the
 	// core protocol whatever their subprotocol (nps.conf
 	// new_protocol_ws_paths, comma-separated, default none). On BridgePath
@@ -218,6 +224,9 @@ type NetworkConfig struct {
 	// BridgeGeneric: the config names only the generic bridge_port, which
 	// is then a full mixed port (see legacy.go).
 	BridgeGeneric bool
+	// BridgeKCPQUIC: the config names only bridge_port with bridge_type=kcp,
+	// which is then one UDP port for the old KCP and QUIC (conn.UDPSplit).
+	BridgeKCPQUIC bool
 	// CompressMaxWindow and CompressMaxRatio are the receive limits of
 	// compressed links on the core protocol (nps.conf compress_max_window
 	// in bytes, compress_max_ratio; 0 is the default, a negative ratio
@@ -243,6 +252,34 @@ type NetworkConfig struct {
 	QUICMaxIdleTimeout     int
 	QUICMaxIncomingStreams int64
 	MuxPingInterval        int
+}
+
+// MixHTTP3 reports whether the UDP side of the mixed port serves HTTP/3 too:
+// the HTTP/3 port of the domain proxy is the mixed port. Then ALPN h3 is
+// HTTP/3's and the QUIC carrier uses the quic_alpn names (§13).
+func (n NetworkConfig) MixHTTP3() bool { return n.MixPort != 0 && n.HTTP3ProxyPort == n.MixPort }
+
+// CheckQUICALPN reports a QUIC ALPN configuration that cannot tell the
+// protocols apart: a name in both quic_alpn (old protocol) and
+// new_protocol_quic_alpn, or h3 in either where HTTP/3 uses the same UDP
+// port. ALPN alone decides (§13).
+func (n NetworkConfig) CheckQUICALPN(withNew, http3 bool) error {
+	if withNew {
+		for _, a := range n.NewProtocolQUICALPN {
+			if slices.Contains(n.QUICALPNList, a) {
+				return fmt.Errorf("ALPN %q is in both quic_alpn (old protocol) and new_protocol_quic_alpn (new protocol): the two lists must not overlap", a)
+			}
+		}
+	}
+	if http3 {
+		if slices.Contains(n.QUICALPNList, "h3") {
+			return errors.New("quic_alpn contains h3, which HTTP/3 uses on the same UDP port: set it to other names")
+		}
+		if withNew && slices.Contains(n.NewProtocolQUICALPN, "h3") {
+			return errors.New("new_protocol_quic_alpn contains h3, which HTTP/3 uses on the same UDP port: set it to other names")
+		}
+	}
+	return nil
 }
 
 type BridgeConfig struct {
@@ -501,6 +538,10 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		if v = strings.TrimSpace(v); v != "" {
 			cfg.Network.NewProtocolTLSALPN = append(cfg.Network.NewProtocolTLSALPN, v)
 		}
+	}
+	cfg.Network.NewProtocolQUICALPN = splitAndTrimCSV(r.stringDefault("h3", "new_protocol_quic_alpn"))
+	if len(cfg.Network.NewProtocolQUICALPN) == 0 {
+		cfg.Network.NewProtocolQUICALPN = []string{"h3"}
 	}
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_ws_paths"), ",") {
 		if v = strings.TrimSpace(v); v != "" {

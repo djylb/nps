@@ -2,6 +2,7 @@ package servercfg
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -27,7 +28,10 @@ func TestGenericBridgePortRule(t *testing.T) {
 		tcp     bool
 	}{
 		{"only bridge_port", map[string]any{"bridge_port": "8024"}, true, true},
-		{"ignores bridge_type", map[string]any{"bridge_port": "8024", "bridge_type": "kcp"}, true, true},
+		{"tls type is tcp class", map[string]any{"bridge_port": "8024", "bridge_type": "tls"}, true, true},
+		{"kcp type shares the UDP port", map[string]any{"bridge_port": "8024", "bridge_type": "kcp"}, false, false},
+		{"udp type is quic only", map[string]any{"bridge_port": "8024", "bridge_type": "udp"}, false, false},
+		{"quic type is quic only", map[string]any{"bridge_port": "8024", "bridge_type": "quic"}, false, false},
 		{"tls port set", map[string]any{"bridge_port": "8024", "bridge_tls_port": "8025"}, false, true},
 		{"old tls key", map[string]any{"bridge_port": "8024", "tls_bridge_port": "8025"}, false, true},
 		{"tcp port set", map[string]any{"bridge_port": "8024", "bridge_tcp_port": "8024"}, false, true},
@@ -50,5 +54,57 @@ func TestMixDefaults(t *testing.T) {
 	}
 	if s = buildSnapshot(map[string]any{"disconnect_timeout": "7"}); s.Runtime.DeadS != 7 {
 		t.Fatalf("dead_s %d", s.Runtime.DeadS)
+	}
+}
+
+func TestGenericBridgePortUDPClass(t *testing.T) {
+	for _, typ := range []string{"kcp", "udp", "quic"} {
+		s := buildSnapshot(map[string]any{"bridge_port": "8024", "bridge_type": typ})
+		shared := typ == "kcp"
+		if s.Network.BridgeQUICPort != 8024 || !s.Bridge.ServerQUICEnabled || s.Bridge.ServerKCPEnabled != shared || s.Network.BridgeKCPQUIC != shared ||
+			s.Bridge.ServerTCPEnabled || s.Bridge.ServerTLSEnabled || s.Bridge.ServerWSEnabled {
+			t.Errorf("%s: %+v", typ, s.Bridge)
+		}
+		warned := slices.ContainsFunc(s.Legacy, func(w string) bool { return strings.Contains(w, "QUIC only") })
+		if warned != (typ == "udp") {
+			t.Errorf("%s: warnings %v", typ, s.Legacy)
+		}
+	}
+	// ports written one by one stay as they are
+	s := buildSnapshot(map[string]any{"bridge_port": "8024", "bridge_type": "kcp", "bridge_kcp_port": "8024"})
+	if s.Network.BridgeQUICPort != 0 || !s.Bridge.ServerKCPEnabled || s.Network.BridgeKCPQUIC {
+		t.Errorf("explicit kcp port: %+v", s.Bridge)
+	}
+	s = buildSnapshot(map[string]any{"bridge_port": "8024"})
+	if len(s.Legacy) != 0 {
+		t.Errorf("warned: %v", s.Legacy)
+	}
+}
+
+func TestCheckQUICALPN(t *testing.T) {
+	n := buildSnapshot(nil).Network
+	if !slices.Equal(n.NewProtocolQUICALPN, []string{"h3"}) || !slices.Equal(n.QUICALPNList, []string{"nps"}) {
+		t.Fatalf("defaults %v %v", n.NewProtocolQUICALPN, n.QUICALPNList)
+	}
+	if err := n.CheckQUICALPN(true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.CheckQUICALPN(true, true); err == nil {
+		t.Error("h3 new protocol ALPN with HTTP/3 on the port")
+	}
+	n.NewProtocolQUICALPN = []string{"x"}
+	if err := n.CheckQUICALPN(true, true); err != nil {
+		t.Error(err)
+	}
+	n.QUICALPNList = []string{"h3"}
+	if err := n.CheckQUICALPN(true, true); err == nil {
+		t.Error("h3 old protocol ALPN with HTTP/3 on the port")
+	}
+	n.QUICALPNList = []string{"x", "y"}
+	if err := n.CheckQUICALPN(true, false); err == nil {
+		t.Error("overlap")
+	}
+	if err := n.CheckQUICALPN(false, false); err != nil {
+		t.Error("overlap only matters with the new protocol", err)
 	}
 }

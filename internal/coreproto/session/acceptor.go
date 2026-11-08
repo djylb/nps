@@ -47,9 +47,6 @@ const (
 	// policy (client_max_pipes is), only what zmux sizes its join replay
 	// window by.
 	sessionMaxPipes = 1024
-	// quicDetectPeek bounds the read of the first bytes of a QUIC stream
-	// that the admission passed on with fewer.
-	quicDetectPeek = 200 * time.Millisecond
 	// defaultResumeTimeout is the grace of a session that lost its pipes
 	// (§3.8) on both sides.
 	defaultResumeTimeout = 30 * time.Second
@@ -267,33 +264,12 @@ func (a *Acceptor) ServeMixed(ctx context.Context, c net.Conn, carrier string, o
 // QUICConfig implements coreapi.Entry.
 func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.QUICConfig(base) }
 
-// ServeQUIC implements coreapi.Entry.
-func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn, legacy bool) {
-	_ = zmuxquic.ServeConn(ctx, qc, a.zl, func(ctx context.Context, qc *quic.Conn, p zmux.PipeIO) {
-		a.quicFallback(ctx, qc, p, legacy)
+// ServeQUIC implements coreapi.Entry. ALPN told the new protocol from the old
+// before this (§12), so a first stream that is no carrier just ends.
+func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn) {
+	_ = zmuxquic.ServeConn(ctx, qc, a.zl, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
+		_ = zmux.PipeConn(p).Close()
 	})
-}
-
-// quicFallback takes a QUIC connection whose first stream is no carrier: the
-// old protocol's magic goes to the old bridge, and the connection lasts as
-// long as that session. Anything else ends it. It returns only when qc may be
-// closed, which zmuxquic does next.
-func (a *Acceptor) quicFallback(ctx context.Context, qc *quic.Conn, p zmux.PipeIO, legacy bool) {
-	c := zmux.PipeConn(p)
-	head := make([]byte, len(legacyMagic))
-	_ = c.SetReadDeadline(time.Now().Add(quicDetectPeek))
-	n, _ := io.ReadFull(c, head)
-	_ = c.SetReadDeadline(time.Time{})
-	h := a.hooks.Load()
-	if !legacy || h == nil || h.LegacyQUIC == nil || n != len(head) || string(head) != legacyMagic {
-		_ = c.Close()
-		return
-	}
-	h.LegacyQUIC(zmux.PrefixedConn(c, head), qc)
-	select {
-	case <-qc.Context().Done():
-	case <-ctx.Done():
-	}
 }
 
 func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {

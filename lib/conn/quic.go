@@ -142,39 +142,6 @@ func CarrierOf(c net.Conn) (*QuicCarrier, bool) {
 	return NewQuicCarrier(qc.GetSession()), true
 }
 
-// QuicFirstConn is the first stream of a QUIC connection as another layer
-// shows it: closing it ends the connection, as QuicAutoCloseConn.
-type QuicFirstConn struct {
-	net.Conn
-	sess *quic.Conn
-	once sync.Once
-}
-
-// NewQuicFirstConn returns c, the first stream of sess.
-func NewQuicFirstConn(c net.Conn, sess *quic.Conn) *QuicFirstConn {
-	return &QuicFirstConn{Conn: c, sess: sess}
-}
-
-// GetSession returns the QUIC connection.
-func (q *QuicFirstConn) GetSession() *quic.Conn { return q.sess }
-
-// Close closes the stream and, after quicCloseDrain, the connection.
-func (q *QuicFirstConn) Close() error {
-	q.once.Do(func() {
-		_ = q.Conn.Close()
-		go func() {
-			t := time.NewTimer(quicCloseDrain)
-			defer t.Stop()
-			select {
-			case <-q.sess.Context().Done():
-			case <-t.C:
-			}
-			_ = q.sess.CloseWithError(0, "close")
-		}()
-	})
-	return nil
-}
-
 // SignalStream makes a stream opened for a signal connection end its whole
 // connection when it closes, as a signal connection's end means the end of the
 // connection; other streams are returned as they are.

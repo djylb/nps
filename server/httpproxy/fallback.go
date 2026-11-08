@@ -48,19 +48,18 @@ func (s *HttpProxy) ServeFallback(c net.Conn, state *tls.ConnectionState) bool {
 	return hs.serveFallback(c, state)
 }
 
-// ServeHTTP3 serves qc as HTTP/3 through the domain proxy, with first its
-// control stream, already accepted, until qc ends. It returns false when the
-// proxy has no HTTP engine.
-func (s *HttpProxy) ServeHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool {
+// ServeHTTP3 serves qc as HTTP/3 through the domain proxy until qc ends. It
+// returns false when the proxy has no HTTP engine.
+func (s *HttpProxy) ServeHTTP3(qc *quic.Conn) bool {
 	var hs *HttpServer
 	_ = s.BindLocked(func() error { hs = s.HttpServer; return nil })
 	if hs == nil {
 		return false
 	}
-	return hs.serveHTTP3(qc, first)
+	return hs.serveHTTP3(qc)
 }
 
-func (s *HttpServer) serveHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool {
+func (s *HttpServer) serveHTTP3(qc *quic.Conn) bool {
 	srv := &http3.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Scheme = "https"
 		s.handleProxy(w, r.WithContext(context.WithValue(r.Context(), fallbackKey{}, true)))
@@ -69,7 +68,6 @@ func (s *HttpServer) serveHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool {
 	if err != nil {
 		return false
 	}
-	go raw.HandleUnidirectionalStream(first)
 	go func() {
 		for {
 			st, err := qc.AcceptUniStream(qc.Context())

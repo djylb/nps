@@ -23,6 +23,11 @@ func ListenKCP(addr string) (*kcp.Listener, error) {
 	return kcp.ListenWithOptions(addr, nil, 10, 3)
 }
 
+// ListenKCPOn is ListenKCP on pc, which the caller closes.
+func ListenKCPOn(pc net.PacketConn) (*kcp.Listener, error) {
+	return kcp.ServeConn(nil, 10, 3, pc)
+}
+
 // ServeKCP hands every session l accepts to f. It returns once l fails or
 // is closed, and closes l.
 func ServeKCP(l *kcp.Listener, f func(c net.Conn)) error {

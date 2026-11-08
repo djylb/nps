@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -56,6 +57,9 @@ func mixOn(t *testing.T, kind mixKind, core bool, n servercfg.NetworkConfig) *mi
 	n.QUICKeepAlivePeriod, n.QUICMaxIdleTimeout, n.QUICMaxIncomingStreams = 10, 30, 1000
 	if len(n.QUICALPNList) == 0 {
 		n.QUICALPNList = []string{"nps"}
+	}
+	if len(n.NewProtocolQUICALPN) == 0 {
+		n.NewProtocolQUICALPN = []string{"h3"}
 	}
 	old := connection.Network()
 	connection.Configure(n)
@@ -312,10 +316,43 @@ func TestBridgeQUICBothProtocols(t *testing.T) {
 		f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
 	})
 	t.Run("mix old", func(t *testing.T) { boot(t, true).dialOld(t, "quic", true) })
-	t.Run("mix http3", func(t *testing.T) {
-		f := boot(t, true)
+}
+
+// Without HTTP/3 on the port, ALPN h3 is the carrier's even when the node has
+// a domain proxy that could serve it.
+func TestMixQUICH3IsCarrierWithoutHTTP3(t *testing.T) {
+	f := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true, MixPort: 9443, HTTP3ProxyPort: 8443})
+	f.addr = freeUDP(t)
+	got := make(chan struct{}, 1)
+	f.b.SetFallback(h3Stub{got: got})
+	if err := f.b.listenQUIC(f.addr, "mix", f.b.newMixEntry(mixPort)); err != nil {
+		t.Fatal(err)
+	}
+	f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
+	select {
+	case <-got:
+		t.Fatal("taken as HTTP/3")
+	default:
+	}
+}
+
+// With HTTP/3 on the port, h3 is HTTP/3 whatever the connection does or does
+// not open; the new protocol's carrier needs another name, and a
+// configuration that leaves h3 to the carrier is refused at start.
+func TestMixQUICHTTP3ByALPN(t *testing.T) {
+	cfg := servercfg.NetworkConfig{MixLegacy: true, MixPort: 9443, HTTP3ProxyPort: 9443, NewProtocolQUICALPN: []string{"core"}}
+	boot := func(t *testing.T) (*mixFixture, chan struct{}) {
+		f := mixOn(t, mixPort, true, cfg)
+		f.addr = freeUDP(t)
 		got := make(chan struct{}, 1)
 		f.b.SetFallback(h3Stub{got: got})
+		if err := f.b.listenQUIC(f.addr, "mix", f.b.newMixEntry(mixPort)); err != nil {
+			t.Fatal(err)
+		}
+		return f, got
+	}
+	t.Run("h3 is HTTP/3 at once", func(t *testing.T) {
+		f, got := boot(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		qc, err := quic.DialAddr(ctx, f.addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h3"}}, nil)
@@ -323,17 +360,94 @@ func TestBridgeQUICBothProtocols(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer func() { _ = qc.CloseWithError(0, "") }()
-		st, err := qc.OpenUniStream()
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, _ = st.Write([]byte{0})
-		select {
+		select { // no stream is opened
 		case <-got:
 		case <-ctx.Done():
 			t.Fatal("not taken as HTTP/3")
 		}
 	})
+	t.Run("carriers on their own ALPN", func(t *testing.T) {
+		f, got := boot(t)
+		f.dialCore(t, "quic://"+f.addr+"?alpn=core", true)
+		f.dialOld(t, "quic", true)
+		select {
+		case <-got:
+			t.Fatal("carrier taken as HTTP/3")
+		default:
+		}
+	})
+	t.Run("new protocol on h3 is HTTP/3", func(t *testing.T) {
+		f, _ := boot(t)
+		f.dialCore(t, "quic://"+f.addr+"?alpn=h3", false)
+	})
+	t.Run("new protocol ALPN h3 is a configuration error", func(t *testing.T) {
+		c := cfg
+		c.NewProtocolQUICALPN = []string{"h3"}
+		f := mixOn(t, mixPort, true, c)
+		err := f.b.listenQUIC(freeUDP(t), "mix", f.b.newMixEntry(mixPort))
+		if err == nil || !strings.Contains(err.Error(), "new_protocol_quic_alpn") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("quic_alpn h3 is a configuration error", func(t *testing.T) {
+		c := cfg
+		c.QUICALPN, c.QUICALPNList = "nps,h3", []string{"nps", "h3"}
+		f := mixOn(t, mixPort, true, c)
+		err := f.b.listenQUIC(freeUDP(t), "mix", f.b.newMixEntry(mixPort))
+		if err == nil || !strings.Contains(err.Error(), "quic_alpn") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+// ALPN tells the protocols apart on a QUIC port: quic_alpn is the old
+// protocol's, new_protocol_quic_alpn the new one's, and a name in both is a
+// configuration error.
+func TestQUICProtocolByALPN(t *testing.T) {
+	boot := func(t *testing.T, mix bool, n servercfg.NetworkConfig) *mixFixture {
+		f := mixOn(t, mixPort, true, n)
+		f.addr = freeUDP(t)
+		var e *mixEntry
+		if mix {
+			e = f.b.newMixEntry(mixPort)
+		}
+		if err := f.b.listenQUIC(f.addr, "quic", e); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	for _, mix := range []bool{false, true} {
+		t.Run(fmt.Sprint("mix ", mix), func(t *testing.T) {
+			f := boot(t, mix, servercfg.NetworkConfig{MixLegacy: true, NewProtocolQUICALPN: []string{"h3", "core"}})
+			f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
+			f.dialCore(t, "quic://"+f.addr+"?alpn=core", true)
+			f.dialCore(t, "quic://"+f.addr+"?alpn=nps", false) // the old protocol's name
+			f.dialOld(t, "quic", true)
+		})
+	}
+	t.Run("old protocol off on the mixed port", func(t *testing.T) {
+		f := boot(t, true, servercfg.NetworkConfig{})
+		f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
+		f.dialOld(t, "quic", false)
+	})
+	t.Run("overlap", func(t *testing.T) {
+		f := mixOn(t, mixPort, true, servercfg.NetworkConfig{NewProtocolQUICALPN: []string{"h3", "nps"}})
+		err := f.b.listenQUIC(freeUDP(t), "quic", nil)
+		if err == nil || !strings.Contains(err.Error(), "must not overlap") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+func TestMixHTTP3Setting(t *testing.T) {
+	for _, c := range []struct {
+		mix, h3 int
+		want    bool
+	}{{0, 0, false}, {9443, 0, false}, {9443, 8443, false}, {9443, 9443, true}} {
+		if got := (servercfg.NetworkConfig{MixPort: c.mix, HTTP3ProxyPort: c.h3}).MixHTTP3(); got != c.want {
+			t.Errorf("mix %d http3 %d: %v", c.mix, c.h3, got)
+		}
+	}
 }
 
 type h3Stub struct {
@@ -341,8 +455,11 @@ type h3Stub struct {
 	got chan struct{}
 }
 
-func (h h3Stub) ServeHTTP3(*quic.Conn, *quic.ReceiveStream) bool {
-	h.got <- struct{}{}
+func (h h3Stub) ServeHTTP3(*quic.Conn) bool {
+	select {
+	case h.got <- struct{}{}:
+	default:
+	}
 	return true
 }
 
@@ -353,4 +470,23 @@ func TestBridgeQUICSwitchOffOldProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.dialOld(t, "quic", true)
+}
+
+// One UDP port takes the old KCP and QUIC (a config with only bridge_port and
+// bridge_type=kcp), and closing the bridge ends both listeners.
+func TestBridgeKCPAndQUICSharePort(t *testing.T) {
+	boot := func(t *testing.T) *mixFixture {
+		f := mixOn(t, mixPort, true, servercfg.NetworkConfig{})
+		f.addr = freeUDP(t)
+		if err := f.b.listenKCPQUIC(f.addr); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	t.Run("kcp", func(t *testing.T) { boot(t).dialOld(t, "kcp", true) })
+	t.Run("quic new", func(t *testing.T) {
+		f := boot(t)
+		f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
+	})
+	t.Run("quic old", func(t *testing.T) { boot(t).dialOld(t, "quic", true) })
 }

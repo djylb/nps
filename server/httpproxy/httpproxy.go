@@ -186,7 +186,8 @@ func (s *HttpProxy) serve() error {
 			s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
 			run("HTTPS", s.HttpsServer.Start)
 
-			if s.Http3Port > 0 {
+			// On the mixed port the bridge serves HTTP/3 itself (ALPN h3).
+			if s.Http3Port > 0 && !connection.Network().MixHTTP3() {
 				ip := connection.Network().HTTPProxyIP
 				listen := net.JoinHostPort(ip, strconv.Itoa(s.Http3Port))
 				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(ip), Port: s.Http3Port})
