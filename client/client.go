@@ -38,6 +38,7 @@ type TRPClient struct {
 	tunnel         atomic.Pointer[legacy.Carrier]
 	signal         atomic.Pointer[conn.Conn]
 	fsm            *FileServerManager
+	directs        directGrants // direct paths served as provider, by grant
 	cnf            *config.Config
 	disconnectTime int
 	ctx            context.Context
@@ -157,6 +158,18 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 				continue
 			}
 			go s.serveSecretDirect(tunnel, invite)
+		case legacy.P2PRevokeGrant:
+			raw, err := legacy.ReadFrame(signal)
+			if err != nil {
+				log.Debug("read grant revocation failed", "server", s.svrAddr, "err", err)
+				return
+			}
+			var rv legacy.P2PRevoke
+			if err := json.Unmarshal(raw, &rv); err != nil {
+				log.Debug("decode grant revocation failed", "server", s.svrAddr, "err", err)
+				continue
+			}
+			s.directs.revoke(rv.Grant)
 		case legacy.UpdateRequest:
 			if _, err := legacy.ReadFrame(signal); err != nil {
 				log.Debug("read update request failed", "server", s.svrAddr, "err", err)

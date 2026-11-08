@@ -1049,6 +1049,10 @@
 		<zh-CN>名单对 HTTP、SOCKS5 TCP 以及 SOCKS5 UDP 的每个数据报生效，被拒绝的 UDP 数据报直接丢弃。</zh-CN>
 		<en-US>The lists apply to HTTP, SOCKS5 TCP and every SOCKS5 UDP datagram; denied datagrams are dropped.</en-US>
 	</lang>
+	<lang id="info-destaclsecret">
+		<zh-CN>访问端的访问范围。关闭时访问端只能连到本隧道的目标，自己指定的其他目标被拒绝；开启白名单或黑名单后，访问端可以自己指定目标（混合代理、透明代理及 -target），只能连到名单允许的目标。</zh-CN>
+		<en-US>What visitors may reach. Off: only this tunnel's targets; a destination the visitor names otherwise is refused. With a whitelist or blacklist the visitor may name destinations (mixed and transparent visitors, -target), limited to those the list allows.</en-US>
+	</lang>
 	<lang id="info-destaclrules">
 		<zh-CN>每行一条：IP、CIDR、full:example.com（精确匹配）、*.example.com（仅子域名）、*example.com 或 domain:example.com（含自身和子域名）、keyword:（不带前缀的域名也按关键字匹配）、regexp:、geosite:cn、geoip:cn，# 开头为注释。</zh-CN>
 		<en-US>One per line: IP, CIDR, full:example.com (exact match), *.example.com (subdomains only), *example.com or domain:example.com (the domain and its subdomains), keyword: (a host name without prefix is a keyword too), regexp:, geosite:cn, geoip:cn. Lines starting with # are comments.</en-US>

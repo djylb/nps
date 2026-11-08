@@ -20,7 +20,7 @@ func newTestDb(t *testing.T) *DbUtils {
 }
 
 func passwordOwner(db *DbUtils, pwd string) (int, bool) {
-	return db.JsonDb.taskPasswords.lookup(crypt.Md5(pwd))
+	return db.JsonDb.taskPasswords.lookup(crypt.SecretIndex(pwd))
 }
 
 func TestTaskPasswordConflicts(t *testing.T) {

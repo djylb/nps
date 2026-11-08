@@ -80,7 +80,6 @@ func (a *App) bootstrapPayloadWithShellAssets(c Context, shellAssets ui.Manageme
 			AllowTunnelNumLimit:     cfg.Feature.AllowTunnelNumLimit,
 			AllowLocalProxy:         cfg.Feature.AllowLocalProxy,
 			AllowUserLocal:          cfg.Feature.AllowUserLocal,
-			AllowSecretLink:         cfg.Feature.AllowSecretLink,
 			AllowUserChangeUsername: cfg.Feature.AllowUserChangeUsername,
 			SystemInfoDisplay:       cfg.Feature.SystemInfoDisplay,
 			OpenCaptcha:             cfg.Feature.OpenCaptcha,

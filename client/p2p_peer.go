@@ -11,7 +11,6 @@ import (
 	"github.com/djylb/holepunch/quicpath"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 	"github.com/djylb/timeshim"
@@ -223,6 +222,15 @@ func (p *directPath) run() {
 // over the punched path.
 func (p *directPath) punch(ctx context.Context, background bool) (*p2pTransport, error) {
 	mgr := p.mgr
+	g, err := p.link.grant()
+	if err != nil {
+		return nil, err
+	}
+	p.tunnel.Store(int64(g.Tunnel))
+	p.peer.Store(int64(g.Peer))
+	if !g.Direct {
+		return nil, &legacy.P2PRefusedError{Code: legacy.P2PCodeRefused, Message: errDirectLocalProxy.Error()}
+	}
 	rc, server, err := mgr.openTunnelConn()
 	if err != nil {
 		return nil, err
@@ -230,8 +238,12 @@ func (p *directPath) punch(ctx context.Context, background bool) (*p2pTransport,
 	// openP2PControl owns the stream and closes it on failure.
 	//noinspection GoResourceLeak
 	tc, reply, err := openP2PControl(ctx, conn.NewConn(rc), legacy.WorkP2P, mgr.getUUID(), server.fingerprint,
-		legacy.P2PRequest{Password: crypt.Md5(p.link.password), Background: background, ServerIP: server.ip})
+		legacy.P2PRequest{Grant: g.Grant, Background: background, ServerIP: server.ip})
 	if err != nil {
+		if refused, ok := errors.AsType[*legacy.P2PRefusedError](err); ok && refused.Code == legacy.P2PCodeRefused && !g.alive() {
+			// The grant ended meanwhile: the next attempt attaches again.
+			return nil, &legacy.P2PRefusedError{Code: legacy.P2PCodeOffline, Message: refused.Message}
+		}
 		return nil, err
 	}
 	sessionID := reply.SessionID

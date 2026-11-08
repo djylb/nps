@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/djylb/holepunch"
@@ -12,6 +14,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/slogx"
 )
@@ -28,7 +31,70 @@ type directAccess struct {
 	policy  *proxy.SecretPolicy
 	targets *model.Target
 	tunnel  int
+	route   string
 	visitor int
+}
+
+// directGrantsRevokedFor is how long a revocation is remembered for direct
+// paths of the grant still being set up.
+const directGrantsRevokedFor = 10 * time.Minute
+
+// directGrants are the direct connections a provider serves, by the grant
+// nps issued the visitor: nps revoking the grant closes them.
+type directGrants struct {
+	mu      sync.Mutex
+	conns   map[string]map[io.Closer]struct{}
+	revoked map[string]time.Time
+}
+
+// add registers c of grant; false when the grant was revoked already.
+func (d *directGrants) add(grant string, c io.Closer) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	now := time.Now()
+	for g, at := range d.revoked {
+		if now.Sub(at) > directGrantsRevokedFor {
+			delete(d.revoked, g)
+		}
+	}
+	if _, ok := d.revoked[grant]; ok {
+		return false
+	}
+	if d.conns == nil {
+		d.conns = make(map[string]map[io.Closer]struct{})
+	}
+	if d.conns[grant] == nil {
+		d.conns[grant] = make(map[io.Closer]struct{})
+	}
+	d.conns[grant][c] = struct{}{}
+	return true
+}
+
+func (d *directGrants) remove(grant string, c io.Closer) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.conns[grant], c)
+	if len(d.conns[grant]) == 0 {
+		delete(d.conns, grant)
+	}
+}
+
+// revoke closes the connections of grant and refuses new ones.
+func (d *directGrants) revoke(grant string) {
+	d.mu.Lock()
+	conns := d.conns[grant]
+	delete(d.conns, grant)
+	if d.revoked == nil {
+		d.revoked = make(map[string]time.Time)
+	}
+	d.revoked[grant] = time.Now()
+	d.mu.Unlock()
+	for c := range conns {
+		_ = c.Close()
+	}
+	if len(conns) > 0 {
+		p2pLog.Debug("direct paths closed", "role", "provider", "reason", "revoked", "count", len(conns))
+	}
 }
 
 func newDirectAccess(invite legacy.P2PInvite) (*directAccess, error) {
@@ -42,7 +108,7 @@ func newDirectAccess(invite legacy.P2PInvite) (*directAccess, error) {
 	if err := p.Compile(); err != nil {
 		return nil, err
 	}
-	return &directAccess{policy: p, targets: &model.Target{TargetStr: p.Targets}, tunnel: invite.Tunnel, visitor: invite.Visitor}, nil
+	return &directAccess{policy: p, targets: &model.Target{TargetStr: p.Targets}, tunnel: invite.Tunnel, route: invite.Route, visitor: invite.Visitor}, nil
 }
 
 // serveSecretDirect answers an invitation as the provider: it joins the
@@ -97,6 +163,11 @@ func (s *TRPClient) serveSecretDirect(tunnel legacy.Carrier, invite legacy.P2PIn
 		return
 	}
 	defer func() { _ = pc.Close() }()
+	if !s.directs.add(invite.Grant, pc) {
+		fail("revoked", errors.New("the visitor's grant was revoked"))
+		return
+	}
+	defer s.directs.remove(invite.Grant, pc)
 	qc := pc.QUIC()
 	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "role", "provider", "session", invite.SessionID,
 		"tunnel", invite.Tunnel, "peer", invite.Visitor, "via", "direct", "addr", qc.RemoteAddr().String())
@@ -115,13 +186,19 @@ func (s *TRPClient) serveSecretDirect(tunnel legacy.Carrier, invite legacy.P2PIn
 }
 
 // serveDirectLink serves a link the visitor sent over the direct path, by
-// the policy nps would apply to it on the relay.
+// the policy nps would apply to it on the relay; the link is acknowledged
+// once admitted.
 func (s *TRPClient) serveDirectLink(src net.Conn, a *directAccess) {
-	lk := readLink(src)
-	if lk == nil {
+	lk, err := legacy.ReadLink(src)
+	if err != nil || lk == nil {
+		log.Debug("read link failed", "err", err)
+		_ = src.Close()
 		return
 	}
 	if lk.ConnType == linkCheck {
+		if lk.Option.NeedAck {
+			_ = legacy.WriteAck(src, lk.Option.Timeout)
+		}
 		_ = src.Close()
 		return
 	}
@@ -130,10 +207,22 @@ func (s *TRPClient) serveDirectLink(src net.Conn, a *directAccess) {
 		err = errDirectLocalProxy
 	}
 	if err != nil {
-		p2pLog.Info("link refused", "role", "provider", "tunnel", a.tunnel, "peer", a.visitor, "via", "direct",
-			"network", lk.ConnType, "target", lk.Host, "err", err)
+		if errors.Is(err, proxy.ErrSecretDestDenied) {
+			slogx.Emit(context.Background(), p2pLog, &logevent.TunnelDenied, "src_ip", netaddr.Host(src.RemoteAddr().String()),
+				"route", a.route, "tunnel", a.tunnel, "peer", a.visitor, "target", g.Host, "reason", "dest_acl", "via", "direct")
+		} else {
+			p2pLog.Info("link refused", "role", "provider", "tunnel", a.tunnel, "peer", a.visitor, "via", "direct",
+				"network", lk.ConnType, "target", lk.Host, "err", err)
+		}
 		_ = src.Close()
 		return
+	}
+	if lk.Option.NeedAck {
+		if err := legacy.WriteAck(src, lk.Option.Timeout); err != nil {
+			log.Debug("write ack failed", "err", err)
+			_ = src.Close()
+			return
+		}
 	}
 	lk.ConnType, lk.Host, lk.LocalProxy = g.ConnType, g.Host, false
 	s.serveLink(src, lk, a.targets)

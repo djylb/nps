@@ -495,7 +495,7 @@ func TestWireGoldenFrames(t *testing.T) {
 	add("link/zero", frameOf(t, &conn.Link{}, ""))
 	add("signal/p2p-invite", frameOf(t, legacy.P2PInvite{SessionID: "s", Token: "t"}, legacy.P2PPunchStart))
 	add("signal/update", frameOf(t, struct{}{}, legacy.UpdateRequest))
-	add("p2p/request", rawFrame(mustJSON(legacy.P2PRequest{Password: "p", Background: true, ServerIP: "192.0.2.1"})))
+	add("p2p/request", rawFrame(mustJSON(legacy.P2PRequest{Grant: "g", Background: true, ServerIP: "192.0.2.1"})))
 	add("p2p/join", rawFrame(mustJSON(legacy.P2PJoin{SessionID: "s", Token: "t", ServerIP: "192.0.2.1", Decline: "d"})))
 	add("p2p/reply", rawFrame(mustJSON(legacy.P2PReply{Code: legacy.P2PCodeBusy, Message: "m", SessionID: "s"})))
 	add("p2p/empty", rawFrame(mustJSON(legacy.P2PReply{})))

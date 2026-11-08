@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
@@ -35,6 +36,43 @@ type peerLink struct {
 	mu     sync.Mutex
 	direct *directPath // nil while no section wants a direct path
 	via    string      // the path the last link took: direct, relay or ""
+
+	grantMu sync.Mutex    // serializes attaching
+	granted *visitorGrant // the current grant, nil before the first attach
+}
+
+// visitorGrant is the visitor's grant of a task from nps: proven once,
+// named by every relayed link and P2P request until nps revokes it or the
+// visitor tunnel ends, which closes its attach stream.
+type visitorGrant struct {
+	legacy.SecretGranted
+	stream net.Conn
+	done   chan struct{} // closed when the attach stream has ended
+}
+
+func (g *visitorGrant) alive() bool {
+	select {
+	case <-g.done:
+		return false
+	default:
+		return true
+	}
+}
+
+// grant returns the live grant of the task, attaching first when there is
+// none.
+func (p *peerLink) grant() (*visitorGrant, error) {
+	p.grantMu.Lock()
+	defer p.grantMu.Unlock()
+	if g := p.granted; g != nil && g.alive() {
+		return g, nil
+	}
+	g, err := p.mgr.attach(p.password)
+	if err != nil {
+		return nil, err
+	}
+	p.granted = g
+	return g, nil
 }
 
 func newPeerLink(mgr *SecretManager, password, route string) *peerLink {
@@ -78,6 +116,12 @@ func (p *peerLink) OpenLink(ctx context.Context, link *conn.Link, mode string) (
 		return nil, errors.New("link is nil")
 	}
 	d := p.directPath()
+	if mode != config.ConnRelay && d != nil && !link.LocalProxy {
+		if g, err := p.grant(); err == nil && !g.Direct {
+			// nps reaches the task's target itself.
+			d = nil
+		}
+	}
 	if mode == config.ConnRelay || d == nil || link.LocalProxy {
 		if mode == config.ConnDirect {
 			return nil, errDirectLocalProxy
@@ -118,8 +162,19 @@ func (p *peerLink) OpenLink(ctx context.Context, link *conn.Link, mode string) (
 	return c, err
 }
 
+// viaRelay relays link under the task's grant; a link refused because
+// the grant ended meanwhile is tried once more under a new one.
 func (p *peerLink) viaRelay(link conn.Link, reason string) (net.Conn, error) {
-	c, err := p.mgr.relay(p.password, link, p.timeout)
+	g, err := p.grant()
+	if err != nil {
+		return nil, err
+	}
+	c, err := p.mgr.relay(g, link, p.timeout)
+	if err != nil && !g.alive() {
+		if g, err = p.grant(); err == nil {
+			c, err = p.mgr.relay(g, link, p.timeout)
+		}
+	}
 	if err == nil && reason != "" {
 		p.used("relay", reason, nil)
 	}

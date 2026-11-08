@@ -10,7 +10,7 @@ type LocalServer struct {
 	Port       int
 	Ip         string // listen address; empty for all
 	Password   string
-	Target     string // the target the visitor asks for, when nps allows it (allow_secret_link)
+	Target     string // the target the visitor names: within the tunnel's destination list, or one of its targets
 	LocalProxy bool
 }
 

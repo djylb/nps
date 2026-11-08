@@ -27,7 +27,7 @@ func allowsFlag(kind model.KeyKind, flag string) bool {
 	switch flag {
 	case legacy.WorkRegister, legacy.WorkConfig:
 		return kind != model.KeyVisitor
-	case legacy.WorkVisitor, legacy.WorkSecret, legacy.WorkP2P:
+	case legacy.WorkVisitor, legacy.WorkSecret, legacy.WorkSecretAttach, legacy.WorkSecretLink, legacy.WorkP2P:
 		return true
 	case legacy.WorkMain:
 		return kind == model.KeyControl
@@ -215,21 +215,20 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 			})
 		})
 
+	case legacy.WorkSecretAttach:
+		s.handleSecretAttach(c, id, uuid)
+		return
+
+	case legacy.WorkSecretLink:
+		s.handleSecretLink(c, id, uuid)
+		return
+
 	case legacy.WorkSecret:
-		c.SetReadTimeout(bridgeHandshakeReadTimeout)
-		b, err := legacy.ReadExact(c, 32)
-		if err != nil {
-			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "secret",
-				"client", id, "carrier", tunnelType, "reason", secretReadReason(err), "err", err)
-			_ = c.Close()
-			return
-		}
-		c.SetAlive()
-		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c, legacy.SecretWire)) {
-			log.Warn("secret connection dropped", "client", id, "src_ip", ip, "src_port", port, "reason", "queue_full")
-			_ = c.Close()
-			return
-		}
+		// npc before 0.35: point-to-point access changed with it.
+		log.Info("secret connection refused", "client", id, "src_ip", ip, "src_port", port, "reason", "version",
+			"version", caps.ClientVersion, "min_version", legacy.P2PMinVersion)
+		_ = c.Close()
+		return
 
 	case legacy.WorkFile:
 		log.Info("file workflow refused", "client", id, "src_ip", ip, "src_port", port, "reason", "unsupported")

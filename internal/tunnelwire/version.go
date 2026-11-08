@@ -33,7 +33,7 @@ const LatestIndex = len(versions) - 1
 const (
 	// P2PMinVersion is the oldest client release that speaks the current P2P
 	// protocol.
-	P2PMinVersion = "0.34.8"
+	P2PMinVersion = "0.35.0"
 	// P2PMinIndex is the lowest protocol index a P2P client may use: the
 	// provider opens its P2P control streams on the tunnel.
 	P2PMinIndex = 5

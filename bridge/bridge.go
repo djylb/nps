@@ -15,7 +15,6 @@ import (
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 )
@@ -78,7 +77,6 @@ type Bridge struct {
 	OpenTask           chan *model.Tunnel
 	CloseTask          chan *model.Tunnel
 	CloseClient        chan int
-	SecretChan         chan *conn.Secret
 	runList            *sync.Map //map[int]interface{}
 	store              Store
 	disconnectTime     int
@@ -92,6 +90,7 @@ type Bridge struct {
 	closingMu          sync.Mutex                 // guards closing
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
+	secrets            *secretGrants              // grants of point-to-point access
 	lookup             atomic.Pointer[TunnelLookup]
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
@@ -148,7 +147,7 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 		OpenTask:       make(chan *model.Tunnel, 100),
 		CloseTask:      make(chan *model.Tunnel, 100),
 		CloseClient:    make(chan int, 100),
-		SecretChan:     make(chan *conn.Secret, 100),
+		secrets:        newSecretGrants(),
 		runList:        runList,
 		disconnectTime: disconnectTime,
 		closing:        make(map[int]struct{}),
@@ -174,6 +173,7 @@ func (s *Bridge) delClient(id int, reason string) {
 		}
 
 		s.recordConnection(id, false, v.(*Client), reason)
+		s.revokeSecretClient(id)
 		if s.store.IsPubClient(id) {
 			return
 		}

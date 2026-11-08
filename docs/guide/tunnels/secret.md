@@ -46,9 +46,18 @@ ssh -p 2000 root@127.0.0.1
 
 配置文件写法见 [npc.conf](/reference/npc-config.md)。
 
-## 指定目标
+## 访问范围
 
-允许访问端自己指定目标：服务端设置 `allow_secret_link=true`，访问端加 `-target=ip:port`。此时连接遵守目标名单。`allow_secret_local=true` 允许访问端用 `-local_proxy=true` 连到服务端本地。
+隧道的目标访问控制（`dest_acl_mode`、`dest_acl_rules`）就是访问端的访问范围，中转和直连都按它检查：
+
+- 关闭（默认）：访问端只能连到隧道的目标。访问端用 `-target` 指定隧道目标之外的地址时，连接被拒绝。
+- 白名单或黑名单：访问端可以自己指定目标和网络（`-target=ip:port`，以及 `mixed`、`transparent` 访问端连接的地址），只能连到名单允许的目标；网络受隧道 `target_type` 限制。不指定目标时连到隧道的目标。
+
+被拒绝的连接不会改连到隧道目标，日志记 `tunnel_denied`（`reason=dest_acl`）：中转时在 nps，直连时在提供端 npc。
+
+`allow_secret_local=true`（同时需要 `allow_local_proxy=true`）允许指定目标的访问端用 `-local_proxy=true` 由服务端自己连接目标，只走中转。
+
+访问端每个隧道密钥只向 nps 证明一次（挑战应答，线路上不传可重放的密钥摘要），得到的授权供之后的中转连接和直连共用。隧道停用、修改或删除，服务端相关配置重载，访问端或提供端下线时，授权失效，经它中转的连接和直连随之关闭，访问端下次连接时重新授权。
 
 ## NAT 类型与排查
 
@@ -77,5 +86,9 @@ P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filteri
 | `local_type=p2pt` | `local_type=transparent` |
 | `fallback_secret=false` | `conn_mode=direct` |
 | `-disable_p2p` | `-conn_mode=relay` |
+
+`nps.conf` 中的 `allow_secret_link` 已弃用：设为 `true` 时，没有目标访问控制的点对点访问隧道允许访问端指定任意目标，启动时告警。请给这些隧道设置目标访问控制名单后删除该键。
+
+0.35 起点对点访问的协议不兼容旧版 npc：访问端和提供端都需要 0.35 或更新的 npc。
 
 显式写出的新键优先于换算结果。既没有 `local_type` 也没有 `conn_mode` 的 `[secret...]` 节是旧写法，保持原来的中转（`relay`）并告警；写上 `conn_mode=auto` 即可尝试直连。新写法只要给出 `local_type` 或 `conn_mode`，默认就是 `auto`。`--launch` 只接受新写法。Web 和 API 不再接受 `mode=p2p`。

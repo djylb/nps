@@ -40,7 +40,9 @@ type Store interface {
 	ReserveTaskPassword(t *model.Tunnel) error
 	// TunnelChanged reports that the stored t was changed in place.
 	TunnelChanged(t *model.Tunnel)
-	GetTaskByMd5Password(p string) *model.Tunnel
+	// GetTaskBySecretIndex finds the task whose password has index p
+	// (crypt.SecretIndex).
+	GetTaskBySecretIndex(p string) *model.Tunnel
 
 	// ClientHost finds the stored host of c that matches h.
 	ClientHost(c *model.Client, h *model.Host) (*model.Host, bool)

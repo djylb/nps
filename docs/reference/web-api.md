@@ -135,7 +135,7 @@ curl -X POST \
   | `auth` | 多用户认证信息（多行 `账号:密码`） |
   | `enable_http` | 是否启用 HTTP 代理能力（`0/1` 或 `true/false`） |
   | `enable_socks5` | 是否启用 SOCKS5 代理能力（`0/1` 或 `true/false`） |
-  | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单） |
+  | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单）；Secret 隧道上是访问端的访问范围，`0` 时只能连到隧道目标 |
   | `dest_acl_rules` | 出站 ACL 规则（多行，语法见[混合代理](/guide/tunnels/mixed-proxy.md)） |
   | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
   | `blackiplist` | 来源 IP 黑名单（多行，语法见[访问控制](/guide/server/access-control.md)） |

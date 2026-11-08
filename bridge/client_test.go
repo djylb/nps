@@ -168,16 +168,18 @@ func TestAllowsFlag(t *testing.T) {
 		vis = 1 << model.KeyVisitor
 	)
 	want := map[string]int{
-		legacy.WorkMain:       ctl,
-		legacy.WorkChan:       ctl | pub,
-		legacy.WorkFile:       ctl | pub,
-		legacy.WorkP2PSession: ctl | pub,
-		legacy.WorkConfig:     ctl | pub,
-		legacy.WorkRegister:   ctl | pub,
-		legacy.WorkVisitor:    ctl | pub | vis,
-		legacy.WorkSecret:     ctl | pub | vis,
-		legacy.WorkP2P:        ctl | pub | vis,
-		"none":                0,
+		legacy.WorkMain:         ctl,
+		legacy.WorkChan:         ctl | pub,
+		legacy.WorkFile:         ctl | pub,
+		legacy.WorkP2PSession:   ctl | pub,
+		legacy.WorkConfig:       ctl | pub,
+		legacy.WorkRegister:     ctl | pub,
+		legacy.WorkVisitor:      ctl | pub | vis,
+		legacy.WorkSecret:       ctl | pub | vis,
+		legacy.WorkSecretAttach: ctl | pub | vis,
+		legacy.WorkSecretLink:   ctl | pub | vis,
+		legacy.WorkP2P:          ctl | pub | vis,
+		"none":                  0,
 	}
 	for flag, mask := range want {
 		for _, kind := range []model.KeyKind{model.KeyControl, model.KeyPublic, model.KeyVisitor} {

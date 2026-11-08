@@ -337,33 +337,7 @@ func (s *Server) dealBridgeTask(ctx context.Context) {
 					}
 				}
 			})
-		case sc := <-b.SecretChan:
-			if sc != nil {
-				s.handleSecret(sc)
-			}
 		}
-	}
-}
-
-func (s *Server) handleSecret(sc *conn.Secret) {
-	remote := sc.Conn.Conn.RemoteAddr()
-	log.Debug("secret connection", "src_ip", netaddr.Host(remote.String()))
-	t := s.db.GetTaskByMd5Password(sc.Password)
-	if t == nil || t.Mode != "secret" {
-		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", netaddr.Host(remote.String()), "role", "secret", "reason", "bad_key")
-		_ = sc.Conn.Close()
-		return
-	}
-	if !t.Status {
-		_ = sc.Conn.Close()
-		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", netaddr.Host(remote.String()), "role", "secret", "tunnel", t.Id, "client", clientID(t), "route", tunnelRoute(t), "reason", "disabled")
-		return
-	}
-	feature := servercfg.Current().Feature
-	if !s.goWork("secret", func(context.Context) {
-		_ = proxy.NewSecretServer(s.bridge, t, feature.AllowLocalProxy, feature.AllowSecretLink, feature.AllowSecretLocal).HandleSecret(sc.Conn, sc.Wire)
-	}) {
-		_ = sc.Conn.Close()
 	}
 }
 
@@ -435,6 +409,7 @@ func (s *Server) StopTunnel(id int) error {
 	} else {
 		t.Status = false
 		_ = s.db.UpdateTask(t)
+		s.bridge.RevokeSecretTunnel(id)
 		v, ok := s.tasks.Load(id)
 		if !ok {
 			return errTaskNotRunning
@@ -463,6 +438,9 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	default:
 	}
 	if t.Mode == "secret" {
+		// The bridge serves secret tasks; grants resolved under the
+		// task's earlier settings end.
+		s.bridge.RevokeSecretTunnel(t.Id)
 		s.tasks.Store(t.Id, nil)
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 		return nil
@@ -554,7 +532,9 @@ func (s *Server) DeleteTunnel(id int) error {
 	if _, ok := s.tasks.Load(id); ok {
 		_ = s.StopTunnel(id)
 	}
-	return s.db.DelTask(id)
+	err := s.db.DelTask(id)
+	s.bridge.RevokeSecretTunnel(id)
+	return err
 }
 
 // DeleteClientResources removes all tasks and domain entries of client id.

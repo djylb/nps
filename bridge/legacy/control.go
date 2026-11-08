@@ -443,6 +443,3 @@ func ReadStatusList(r io.Reader) ([]string, error) {
 	}
 	return parts, nil
 }
-
-// SecretWire is this protocol's side of a secret connection.
-var SecretWire = conn.SecretWire{ReadLink: ReadLink, WriteAck: WriteAck}

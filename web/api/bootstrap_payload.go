@@ -49,7 +49,6 @@ type BootstrapFeatures struct {
 	AllowTunnelNumLimit     bool `json:"allow_tunnel_num_limit"`
 	AllowLocalProxy         bool `json:"allow_local_proxy"`
 	AllowUserLocal          bool `json:"allow_user_local"`
-	AllowSecretLink         bool `json:"allow_secret_link"`
 	AllowUserChangeUsername bool `json:"allow_user_change_username"`
 	SystemInfoDisplay       bool `json:"system_info_display"`
 	OpenCaptcha             bool `json:"open_captcha"`

@@ -259,7 +259,7 @@ const maxP2PMessage = 4 << 10
 
 // P2PRequest opens a session as the visitor.
 type P2PRequest struct {
-	Password   string `json:"password"`             // MD5 of the task password
+	Grant      string `json:"grant"`                // the visitor's grant of the task (SecretGranted)
 	Background bool   `json:"background,omitempty"` // the visitor relays meanwhile; nobody waits for the session
 	ServerIP   string `json:"server_ip,omitempty"`  // the server address the client's connection reached, when known
 }
@@ -271,9 +271,64 @@ type P2PInvite struct {
 	// Policy is what the visitor may reach over the direct path, a JSON
 	// proxy.SecretPolicy: the provider applies it to every link arriving
 	// on that path, as nps does to relayed ones.
-	Policy  json.RawMessage `json:"policy"`
-	Tunnel  int             `json:"tunnel,omitempty"`  // the secret task, for logs
-	Visitor int             `json:"visitor,omitempty"` // the visitor's client id, for logs
+	Policy json.RawMessage `json:"policy"`
+	// Grant is the visitor's grant the session serves: a P2PRevoke naming
+	// it ends the session's direct path.
+	Grant   string `json:"grant"`
+	Tunnel  int    `json:"tunnel,omitempty"`  // the secret task, for logs
+	Route   string `json:"route,omitempty"`   // the secret task's route, for logs
+	Visitor int    `json:"visitor,omitempty"` // the visitor's client id, for logs
+}
+
+// P2PRevoke tells the provider on its signal connection that a grant ended:
+// the direct paths serving it close.
+type P2PRevoke struct {
+	Grant string `json:"grant"`
+}
+
+// The messages of point-to-point access on the relay. A visitor opens a
+// stream with WorkSecretAttach; the bridge sends a SecretChallenge, the
+// visitor a SecretAttach, and the bridge answers with SecretGranted. The
+// stream then stays open, carrying nothing, for as long as the grant lives:
+// the bridge closes it when it revokes the grant, the visitor when it no
+// longer needs it. Each relayed link is a stream opened with WorkSecretLink
+// carrying a SecretOpen and the link, as the provider's links are.
+
+// SecretChallenge is the bridge's nonce of one attach.
+type SecretChallenge struct {
+	Nonce []byte `json:"nonce"`
+}
+
+// SecretAttach asks for a grant: Index names the task (crypt.SecretIndex
+// of its password) and Proof shows the password (crypt.SecretProof over
+// the challenge's nonce and the visitor's node).
+type SecretAttach struct {
+	Index string `json:"index"`
+	Proof []byte `json:"proof"`
+}
+
+// SecretGranted answers a SecretAttach. An empty Code grants: Grant names
+// the grant for the links and the P2P requests of this visitor, and the
+// flags summarize the task's policy for the visitor.
+type SecretGranted struct {
+	Code    string `json:"code,omitempty"` // a P2PCode* refusal
+	Message string `json:"message,omitempty"`
+	Grant   string `json:"grant,omitempty"`
+	Tunnel  int    `json:"tunnel,omitempty"` // the secret task, for logs
+	Peer    int    `json:"peer,omitempty"`   // the provider's client id, for logs
+	// NameDest: the visitor may name destinations (within the task's
+	// destination list); otherwise it reaches the task's targets only.
+	NameDest bool `json:"name_dest,omitempty"`
+	// AllowLocal: a visitor naming a destination may have nps reach it.
+	AllowLocal bool `json:"allow_local,omitempty"`
+	// Direct: a direct path can serve the task's links; false when nps
+	// reaches the task's target itself.
+	Direct bool `json:"direct,omitempty"`
+}
+
+// SecretOpen starts a relayed link under a grant; the link follows.
+type SecretOpen struct {
+	Grant string `json:"grant"`
 }
 
 // P2PJoin answers an invitation.

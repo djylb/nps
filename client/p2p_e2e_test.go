@@ -26,7 +26,6 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -147,34 +146,144 @@ func TestSecretAutoSwitchesPaths(t *testing.T) {
 	}
 }
 
-// The visitor reaches only what the task allows, on both paths: without
-// allow_secret_link its own target is replaced by the task's, with it a
-// destination the task's list denies is refused.
+// The visitor reaches only what the task's access scope allows, on both
+// paths: without a destination list the task's target alone (a named
+// destination is refused, never replaced), with one the destinations it
+// allows; the legacy allow_secret_link lifts the limit of tasks without a
+// list.
 func TestSecretDirectPathPolicy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end")
 	}
 	allowed := serveTCP(t, func(c net.Conn) { defer func() { _ = c.Close() }(); _, _ = io.WriteString(c, "task") })
 	other := serveTCP(t, func(c net.Conn) { defer func() { _ = c.Close() }(); _, _ = io.WriteString(c, "other") })
-	for _, allowLink := range []bool{false, true} {
-		t.Run(fmt.Sprintf("allow_secret_link=%t", allowLink), func(t *testing.T) {
-			useServerConfig(t, fmt.Sprintf("allow_secret_link=%t\n", allowLink))
+	for _, tc := range []struct {
+		name  string
+		conf  string
+		list  bool
+		named string // the destination the visitor names
+		want  string
+	}{
+		{name: "no list, none named", want: "task"},
+		{name: "no list, task target named", named: allowed, want: "task"},
+		{name: "no list, other named", named: other, want: ""},
+		{name: "list, denied named", list: true, named: other, want: ""},
+		{name: "list, allowed named", list: true, named: allowed, want: "task"},
+		{name: "legacy any, other named", conf: "allow_secret_link=true\n", named: other, want: "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			useServerConfig(t, tc.conf)
 			env := startP2PTestEnv(t, false, allowed)
-			env.task.DestAclMode, env.task.DestAclRules = model.AclBlacklist, other
+			if tc.list {
+				env.task.DestAclMode, env.task.DestAclRules = model.AclBlacklist, other
+			}
 			for _, mode := range []string{config.ConnRelay, config.ConnDirect} {
-				addr, link := env.visitor(t, &config.LocalServer{Type: config.LocalTCP, ConnMode: mode, Ip: "127.0.0.1", Target: other})
+				addr, link := env.visitor(t, &config.LocalServer{Type: config.LocalTCP, ConnMode: mode, Ip: "127.0.0.1", Target: tc.named})
 				if mode == config.ConnDirect {
 					waitDirect(t, env.ctx, link)
 				}
-				got := readAll(t, addr)
-				switch {
-				case !allowLink && got != "task":
-					t.Fatalf("%s: visitor reached %q, want the task's target", mode, got)
-				case allowLink && got != "":
-					t.Fatalf("%s: visitor reached the denied destination (%q)", mode, got)
+				if got := readAll(t, addr); got != tc.want {
+					t.Fatalf("%s: visitor reached %q, want %q", mode, got, tc.want)
 				}
 			}
 		})
+	}
+}
+
+// A mixed (HTTP and SOCKS5) visitor names every destination: the task's
+// destination list bounds it, on both paths.
+func TestSecretMixedVisitorScope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	inside := serveTCP(t, echoConn)
+	outside := serveTCP(t, echoConn)
+	for _, mode := range []string{config.ConnRelay, config.ConnDirect} {
+		t.Run(mode, func(t *testing.T) {
+			env := startP2PTestEnv(t, false, inside)
+			env.task.DestAclMode, env.task.DestAclRules = model.AclWhitelist, inside
+			addr, link := env.visitor(t, &config.LocalServer{Type: config.LocalMixed, ConnMode: mode, Ip: "127.0.0.1"})
+			if mode == config.ConnDirect {
+				waitDirect(t, env.ctx, link)
+			}
+			checkSocks5Echo(t, addr, inside)
+			if socks5Reaches(t, addr, outside) {
+				t.Fatal("visitor reached a destination outside the list")
+			}
+		})
+	}
+}
+
+// A visitor proves the password once: its links are relayed under the
+// grant without looking the task up again, and the flow nps counts is the
+// bytes relayed.
+func TestSecretAttachOnceManyLinks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	env := startP2PTestEnv(t, false, serveTCP(t, echoConn))
+	addr, _ := env.visitor(t, &config.LocalServer{Type: config.LocalTCP, ConnMode: config.ConnRelay, Ip: "127.0.0.1"})
+	const links, size = 20, 64 << 10
+	for range links {
+		checkTCPEcho(t, addr, size)
+	}
+	if n := env.store.lookups.Load(); n != 1 {
+		t.Fatalf("%d task lookups for %d links, want 1", n, links)
+	}
+	if n := env.relayed.Load(); n != links {
+		t.Fatalf("%d links relayed, want %d", n, links)
+	}
+	// Each link counts once it has ended on the server.
+	waitFor(t, 5*time.Second, "flow counted", func() bool {
+		out, in := env.task.Flow.Traffic().Total()
+		return in == links*size && out == links*size
+	})
+}
+
+// Stopping the task revokes its grant: the links relayed under it close,
+// and the visitor attaches again for new links.
+func TestSecretRevokeClosesLinks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	env := startP2PTestEnv(t, false, serveTCP(t, echoConn))
+	addr, _ := env.visitor(t, &config.LocalServer{Type: config.LocalTCP, ConnMode: config.ConnRelay, Ip: "127.0.0.1"})
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	assertEcho(t, c, "before")
+	env.task.Status = false
+	env.bridge.RevokeSecretTunnel(env.task.Id)
+	if _, err := c.Read(make([]byte, 1)); err == nil {
+		t.Fatal("relayed link open after the revocation")
+	}
+	if readAll(t, addr) != "" {
+		t.Fatal("disabled task relayed a link")
+	}
+	env.task.Status = true
+	checkTCPEcho(t, addr, 1024)
+	if n := env.store.lookups.Load(); n < 2 {
+		t.Fatalf("%d lookups: the visitor did not attach again", n)
+	}
+}
+
+// Revoking a grant ends the direct paths serving it: nps tells the
+// provider, which closes them.
+func TestSecretRevokeClosesDirectPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	env := startP2PTestEnv(t, false, serveTCP(t, echoConn))
+	_, link := env.visitor(t, &config.LocalServer{Type: config.LocalTCP, ConnMode: config.ConnDirect, Ip: "127.0.0.1"})
+	tr := waitDirect(t, env.ctx, link)
+	env.bridge.RevokeSecretTunnel(env.task.Id)
+	select {
+	case <-tr.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("direct path open after the revocation")
 	}
 }
 
@@ -213,7 +322,24 @@ type p2pTestEnv struct {
 	cancel     context.CancelFunc
 	bridgeAddr string
 	task       *model.Tunnel
-	relayed    *atomic.Int32 // links nps relayed
+	relayed    relayCount // links nps relayed
+	bridge     *bridge.Bridge
+	store      *countingStore
+}
+
+type relayCount struct{ b *bridge.Bridge }
+
+func (r relayCount) Load() int64 { return r.b.RelayedSecretLinks() }
+
+// countingStore counts the lookups of tasks by password.
+type countingStore struct {
+	*file.DbUtils
+	lookups atomic.Int64
+}
+
+func (s *countingStore) GetTaskBySecretIndex(p string) *model.Tunnel {
+	s.lookups.Add(1)
+	return s.DbUtils.GetTaskBySecretIndex(p)
 }
 
 // setTarget replaces the task's target.
@@ -224,7 +350,7 @@ func (env p2pTestEnv) setTarget(target string) {
 // startP2PTestEnv runs a bridge with its P2P service on loopback, the relay
 // of the server, a provider client registered on it and the secret task of
 // p2pTestPassword reaching target; secure runs the bridge in secure mode.
-func startP2PTestEnv(t *testing.T, secure bool, target string) p2pTestEnv {
+func startP2PTestEnv(t testing.TB, secure bool, target string) p2pTestEnv {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
@@ -249,7 +375,8 @@ func startP2PTestEnv(t *testing.T, secure bool, target string) p2pTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := bridge.NewTunnel(db, &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure, Cert: id.Cert})
+	store := &countingStore{DbUtils: db}
+	b := bridge.NewTunnel(store, &sync.Map{}, bridge.Options{DisconnectTime: 30, SecureMode: secure, Cert: id.Cert})
 	if err := b.StartP2P(bridge.P2PConfig{IP: "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -258,27 +385,6 @@ func startP2PTestEnv(t *testing.T, secure bool, target string) p2pTestEnv {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	// The relay, as the server runs it (Server.handleSecret).
-	relayed := new(atomic.Int32)
-	go func() {
-		for {
-			select {
-			case sc := <-b.SecretChan:
-				tk := db.GetTaskByMd5Password(sc.Password)
-				if tk == nil {
-					_ = sc.Conn.Close()
-					continue
-				}
-				relayed.Add(1)
-				f := servercfg.Current().Feature
-				go func() {
-					_ = proxy.NewSecretServer(b, tk, f.AllowLocalProxy, f.AllowSecretLink, f.AllowSecretLocal).HandleSecret(sc.Conn, sc.Wire)
-				}()
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 	rp := NewRPClient(bridgeAddr, p2pTestProviderKey, "tcp", "", "", "", nil, 30, nil)
 	rpDone := make(chan struct{})
 	go func() {
@@ -302,12 +408,12 @@ func startP2PTestEnv(t *testing.T, secure bool, target string) p2pTestEnv {
 		v, ok := b.Client.Load(provider.Id)
 		return ok && v.(*bridge.Client).GetNode() != nil && v.(*bridge.Client).GetNode().GetSignal() != nil
 	})
-	return p2pTestEnv{ctx: ctx, cancel: cancel, bridgeAddr: bridgeAddr, task: task, relayed: relayed}
+	return p2pTestEnv{ctx: ctx, cancel: cancel, bridgeAddr: bridgeAddr, task: task, relayed: relayCount{b}, bridge: b, store: store}
 }
 
 // visitor starts a visitor manager with section l of the test task on a
 // free port and returns the port's address and the section's peer link.
-func (env p2pTestEnv) visitor(t *testing.T, l *config.LocalServer) (string, *peerLink) {
+func (env p2pTestEnv) visitor(t testing.TB, l *config.LocalServer) (string, *peerLink) {
 	t.Helper()
 	mgr := NewSecretManager(env.ctx, env.cancel, &config.CommonConfig{
 		Server: env.bridgeAddr, VKey: p2pTestVisitorKey, Tp: "tcp", DisconnectTime: 30,
@@ -442,6 +548,41 @@ func checkSocks5Echo(t *testing.T, addr, target string) {
 	assertEcho(t, c, "socks")
 }
 
+// socks5Reaches reports whether a SOCKS5 CONNECT to target through addr
+// succeeds.
+func socks5Reaches(t *testing.T, addr, target string) bool {
+	t.Helper()
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = c.Write([]byte{5, 1, 0})
+	reply := make([]byte, 2)
+	if _, err := io.ReadFull(c, reply); err != nil || reply[1] != 0 {
+		t.Fatalf("socks5 method reply %v, %v", reply, err)
+	}
+	ap, err := netip.ParseAddrPort(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip := ap.Addr().As4()
+	req := append([]byte{5, 1, 0, 1}, ip[:]...)
+	req = append(req, byte(ap.Port()>>8), byte(ap.Port()))
+	_, _ = c.Write(req)
+	connect := make([]byte, 10)
+	if _, err := io.ReadFull(c, connect); err != nil || connect[1] != 0 {
+		return false
+	}
+	// The proxy answers before the link is open: an echo shows it is.
+	if _, err := c.Write([]byte("x")); err != nil {
+		return false
+	}
+	_, err = io.ReadFull(c, make([]byte, 1))
+	return err == nil
+}
+
 // readAll returns what a connection to addr reads until it ends.
 func readAll(t *testing.T, addr string) string {
 	t.Helper()
@@ -456,7 +597,7 @@ func readAll(t *testing.T, addr string) string {
 }
 
 // useServerConfig makes conf the server configuration for the test.
-func useServerConfig(t *testing.T, conf string) {
+func useServerConfig(t testing.TB, conf string) {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nps.conf")
@@ -475,7 +616,7 @@ func useServerConfig(t *testing.T, conf string) {
 
 // serveTCP serves every connection of a new loopback listener with handle
 // and returns its address.
-func serveTCP(t *testing.T, handle func(net.Conn)) string {
+func serveTCP(t testing.TB, handle func(net.Conn)) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -494,7 +635,7 @@ func serveTCP(t *testing.T, handle func(net.Conn)) string {
 	return ln.Addr().String()
 }
 
-func freePort(t *testing.T) int {
+func freePort(t testing.TB) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -504,7 +645,7 @@ func freePort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
-func waitFor(t *testing.T, timeout time.Duration, what string, ok func() bool) {
+func waitFor(t testing.TB, timeout time.Duration, what string, ok func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for !ok() {

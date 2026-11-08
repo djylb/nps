@@ -29,25 +29,28 @@ func MinCoreVersion(secure bool) string { return tunnelwire.MinVersion(secure) }
 
 // Flags of the protocol.
 const (
-	Magic          = tunnelwire.Magic
-	WorkMain       = tunnelwire.WorkMain
-	WorkChan       = tunnelwire.WorkChan
-	WorkVisitor    = tunnelwire.WorkVisitor
-	WorkConfig     = tunnelwire.WorkConfig
-	WorkRegister   = tunnelwire.WorkRegister
-	WorkSecret     = tunnelwire.WorkSecret
-	WorkFile       = tunnelwire.WorkFile
-	WorkP2P        = tunnelwire.WorkP2P
-	WorkP2PSession = tunnelwire.WorkP2PSession
-	WorkStatus     = tunnelwire.WorkStatus
-	ResClose       = tunnelwire.ResClose
-	P2PPunchStart  = tunnelwire.P2PPunchStart
-	UpdateRequest  = tunnelwire.UpdateRequest
-	HealthSet      = tunnelwire.HealthSet
-	HealthDel      = tunnelwire.HealthDel
-	FlagNewTask    = tunnelwire.FlagNewTask
-	FlagNewConf    = tunnelwire.FlagNewConf
-	FlagNewHost    = tunnelwire.FlagNewHost
+	Magic            = tunnelwire.Magic
+	WorkMain         = tunnelwire.WorkMain
+	WorkChan         = tunnelwire.WorkChan
+	WorkVisitor      = tunnelwire.WorkVisitor
+	WorkConfig       = tunnelwire.WorkConfig
+	WorkRegister     = tunnelwire.WorkRegister
+	WorkSecret       = tunnelwire.WorkSecret
+	WorkSecretAttach = tunnelwire.WorkSecretAttach
+	WorkSecretLink   = tunnelwire.WorkSecretLink
+	WorkFile         = tunnelwire.WorkFile
+	WorkP2P          = tunnelwire.WorkP2P
+	WorkP2PSession   = tunnelwire.WorkP2PSession
+	WorkStatus       = tunnelwire.WorkStatus
+	ResClose         = tunnelwire.ResClose
+	P2PPunchStart    = tunnelwire.P2PPunchStart
+	P2PRevokeGrant   = tunnelwire.P2PRevokeGrant
+	UpdateRequest    = tunnelwire.UpdateRequest
+	HealthSet        = tunnelwire.HealthSet
+	HealthDel        = tunnelwire.HealthDel
+	FlagNewTask      = tunnelwire.FlagNewTask
+	FlagNewConf      = tunnelwire.FlagNewConf
+	FlagNewHost      = tunnelwire.FlagNewHost
 )
 
 // Handshake errors.

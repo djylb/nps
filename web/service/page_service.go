@@ -238,7 +238,6 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 			"allow_tunnel_num_limit":     cfg.Feature.AllowTunnelNumLimit,
 			"allow_local_proxy":          cfg.Feature.AllowLocalProxy,
 			"allow_user_local":           cfg.Feature.AllowUserLocal,
-			"allow_secret_link":          cfg.Feature.AllowSecretLink,
 			"allow_user_change_username": cfg.Feature.AllowUserChangeUsername,
 			"system_info_display":        cfg.Feature.SystemInfoDisplay,
 		},

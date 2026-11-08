@@ -24,7 +24,7 @@
 | `-conn_mode` | 点对点访问的连接方式：`auto`、`relay`、`direct` | `auto` |
 | `-local_port` | 访问端本地端口 | `2000` |
 | `-password` | 点对点访问隧道的唯一密钥 | 无 |
-| `-target` | 点对点访问的目标，如 `10.2.50.2:22`（需服务端 `allow_secret_link`） | 无 |
+| `-target` | 点对点访问的目标，如 `10.2.50.2:22`（隧道目标之外的地址需隧道设置目标访问控制） | 无 |
 | `-local_proxy` | 点对点访问连到服务端本地 | `false` |
 | `-p2p_timeout` | 打洞超时（秒） | `5` |
 | `-disable_remote_update` | 忽略服务端下发的远程更新 | `false` |

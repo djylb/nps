@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -68,7 +69,7 @@ func tcpConnPair(t *testing.T) (net.Conn, net.Conn) {
 
 func (*localDialBridge) LinkCert() *tls.Certificate { return &tls.Certificate{} }
 
-func TestSecretLocalProxySendsProxyHeaderAndPreReadToBackend(t *testing.T) {
+func TestSecretLocalProxySendsProxyHeaderToBackend(t *testing.T) {
 	backend, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -114,17 +115,16 @@ func TestSecretLocalProxySendsProxyHeaderAndPreReadToBackend(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.Addr().String(), LocalProxy: true, ProxyProtocol: 1},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, true, false, false)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false, false), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
 	go func() {
-		_ = s.HandleSecret(src, legacy.SecretWire)
+		// A link without information: the task's target.
+		_ = s.Serve(src, nil, legacy.WriteAck)
 		close(done)
 	}()
 
-	// A visitor that does not send link information: its first bytes are
-	// consumed while probing and must still reach the backend.
 	request := []byte("GET / HTTP/1.0\r\n\r\n")
 	if _, err := visitor.Write(request); err != nil {
 		t.Fatal(err)
@@ -186,19 +186,15 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.LocalAddr().String(), ProxyProtocol: 2},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, true, false, false)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false, false), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
+	lk := conn.NewLink("udp", "", false, false, visitor.LocalAddr().String(), false)
 	go func() {
-		_ = s.HandleSecret(src, legacy.SecretWire)
+		_ = s.Serve(src, lk, legacy.WriteAck)
 		close(done)
 	}()
-
-	lk := conn.NewLink("udp", "", false, false, visitor.LocalAddr().String(), false)
-	if err := legacy.WriteLink(visitor, lk); err != nil {
-		t.Fatal(err)
-	}
 	if link := <-bridge.links; link.ConnType != "udp" || !link.LocalProxy {
 		t.Fatalf("unexpected link %+v", link)
 	}
@@ -227,13 +223,10 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 func TestSecretLinkDestinationDenied(t *testing.T) {
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
 	task := &model.Tunnel{Client: &model.Client{Id: 1, Cnf: &model.Config{}, Flow: &model.Flow{}}, Flow: &model.Flow{}, Target: &model.Target{}, DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
-	s := NewSecretServer(bridge, task, true, true, true)
-	visitor, srv := tcpConnPair(t)
-	go func() {
-		_ = legacy.WriteLink(visitor, conn.NewLink("tcp", "denied.example:80", false, false, "", false))
-	}()
-	if err := s.HandleSecret(srv, legacy.SecretWire); err == nil {
-		t.Fatal("link to a denied destination was served")
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, true, false), true)
+	_, srv := tcpConnPair(t)
+	if err := s.Serve(srv, conn.NewLink("tcp", "denied.example:80", false, false, "", false), legacy.WriteAck); !errors.Is(err, ErrSecretDestDenied) {
+		t.Fatalf("link to a denied destination: %v", err)
 	}
 	select {
 	case <-bridge.links:
@@ -243,28 +236,38 @@ func TestSecretLinkDestinationDenied(t *testing.T) {
 }
 
 // The policy decides the same after a trip over the wire, as the provider
-// applies it on the direct path.
+// applies it on the direct path. The task's destination list is the
+// visitor's scope: without one only the task's targets, with one the
+// destinations it allows; a refused destination is never replaced.
 func TestSecretPolicyAdmit(t *testing.T) {
-	task := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "tcp", DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
-	target := &model.Target{TargetStr: "127.0.0.1:80"}
+	listed := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "all", DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
+	unlisted := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "tcp"}
+	tcpOnly := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "tcp", DestAclMode: model.AclWhitelist, DestAclRules: "a"}
+	target := &model.Target{TargetStr: "127.0.0.1:80\n127.0.0.1:81"}
 	link := func(typ, host string, local bool) *conn.Link { return conn.NewLink(typ, host, false, false, "", local) }
 	for _, tc := range []struct {
-		name                          string
-		allowLocalProxy, allow, local bool
-		lk                            *conn.Link
-		want                          SecretGrant
-		refused                       bool
+		name                            string
+		task                            *model.Tunnel
+		allowLocalProxy, local, anyDest bool
+		lk                              *conn.Link
+		want                            SecretRoute
+		denied, refused                 bool
 	}{
-		{name: "fixed target ignores host", lk: link("udp", "other:1", false), want: SecretGrant{ConnType: "tcp"}},
-		{name: "no link info", lk: nil, want: SecretGrant{ConnType: "tcp"}},
-		{name: "link host", allow: true, lk: link("udp", "other:1", false), want: SecretGrant{ConnType: "udp", Host: "other:1"}},
-		{name: "denied host", allow: true, lk: link("tcp", "denied.example:80", false), refused: true},
-		{name: "file link", allow: true, lk: link(conn.LinkFile, "file://x", false), refused: true},
-		{name: "local not allowed", allowLocalProxy: true, allow: true, lk: link("tcp", "a:1", true), want: SecretGrant{ConnType: "tcp", Host: "a:1"}},
-		{name: "local allowed", allowLocalProxy: true, allow: true, local: true, lk: link("tcp", "a:1", true), want: SecretGrant{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
+		{name: "no list: no link info", task: unlisted, lk: nil, want: SecretRoute{ConnType: "tcp"}},
+		{name: "no list: no host", task: unlisted, lk: link("udp", "", false), want: SecretRoute{ConnType: "tcp"}},
+		{name: "no list: a target", task: unlisted, lk: link("tcp", "127.0.0.1:81", false), want: SecretRoute{ConnType: "tcp", Host: "127.0.0.1:81"}},
+		{name: "no list: other host", task: unlisted, lk: link("tcp", "other:1", false), denied: true},
+		{name: "no list, legacy any", task: unlisted, anyDest: true, lk: link("tcp", "other:1", false), want: SecretRoute{ConnType: "tcp", Host: "other:1"}},
+		{name: "list: host", task: listed, lk: link("udp", "other:1", false), want: SecretRoute{ConnType: "udp", Host: "other:1"}},
+		{name: "list: denied host", task: listed, lk: link("tcp", "denied.example:80", false), denied: true},
+		{name: "list: network outside", task: tcpOnly, lk: link("udp", "a:1", false), denied: true},
+		{name: "list: network inside", task: tcpOnly, lk: link("tcp", "a:1", false), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "file link", task: listed, lk: link(conn.LinkFile, "file://x", false), refused: true},
+		{name: "local not allowed", task: listed, allowLocalProxy: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "local allowed", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := NewSecretPolicy(task, target, tc.allowLocalProxy, tc.allow, tc.local)
+			p := NewSecretPolicy(tc.task, target, tc.allowLocalProxy, tc.local, tc.anyDest)
 			b, err := json.Marshal(p)
 			if err != nil {
 				t.Fatal(err)
@@ -278,8 +281,11 @@ func TestSecretPolicyAdmit(t *testing.T) {
 			}
 			for side, p := range map[string]*SecretPolicy{"nps": p, "provider": &wire} {
 				g, err := p.Admit(tc.lk)
-				if (err != nil) != tc.refused || err == nil && g != tc.want {
-					t.Fatalf("%s: Admit = %+v, %v; want %+v, refused %t", side, g, err, tc.want, tc.refused)
+				switch {
+				case tc.denied && !errors.Is(err, ErrSecretDestDenied),
+					tc.refused && err == nil,
+					!tc.denied && !tc.refused && (err != nil || g != tc.want):
+					t.Fatalf("%s: Admit = %+v, %v; want %+v, denied %t, refused %t", side, g, err, tc.want, tc.denied, tc.refused)
 				}
 			}
 			if wire.Targets != target.TargetStr {

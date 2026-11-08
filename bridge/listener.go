@@ -192,6 +192,7 @@ func (s *Bridge) Close() error {
 	s.closeOnce.Do(func() {
 		s.scope.Close(nil)
 		s.closeClients()
+		s.RevokeSecretGrants()
 		s.StopP2P()
 		_ = s.scope.Wait(context.Background())
 		// a handshake that ended while closing may have added a client

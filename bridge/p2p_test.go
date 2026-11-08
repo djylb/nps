@@ -74,6 +74,7 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (
 	return reply, err
 }
 
+// A disabled task grants nothing, and a P2P request needs a live grant.
 func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	db := useTestDb(t)
 	b := newTestP2PBridge(t, db)
@@ -81,37 +82,47 @@ func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	if err := db.NewTask(task); err != nil {
 		t.Fatal(err)
 	}
-	reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Password: crypt.Md5("secret")})
+	granted, _ := attachTest(t, b, "secret", "node-1", nil)
+	if granted.Code != legacy.P2PCodeRefused || !strings.Contains(granted.Message, "disabled") {
+		t.Fatalf("attach = %+v, want a refusal for the disabled task", granted)
+	}
+	reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Grant: "unknown"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.Code != legacy.P2PCodeRefused || !strings.Contains(reply.Message, "disabled") {
-		t.Fatalf("reply = %+v, want a refusal for the disabled task", reply)
+	if reply.Code != legacy.P2PCodeRefused || !strings.Contains(reply.Message, "grant") {
+		t.Fatalf("reply = %+v, want a refusal of the unknown grant", reply)
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {
 		t.Fatalf("%d sessions created for a disabled task", n)
 	}
 }
 
-// A task that is not a secret task, and one whose target the server reaches
-// itself, get no direct path: the visitor relays.
+// A task that is not a secret task grants nothing; one whose target the
+// server reaches itself gets no direct path: the visitor relays.
 func TestP2PVisitorRefusedWithoutDirectAccess(t *testing.T) {
 	db := useTestDb(t)
 	b := newTestP2PBridge(t, db)
-	for _, task := range []*model.Tunnel{
-		{Id: 8, Mode: "tcp", Port: 1, Password: "tcp-task", Status: true, Client: &model.Client{Id: 2}, Target: &model.Target{TargetStr: "127.0.0.1:1"}},
-		{Id: 9, Mode: "secret", Password: "own-client", Status: true, Client: &model.Client{Id: -1}, Target: &model.Target{TargetStr: "127.0.0.1:1"}},
-	} {
+	tcp := &model.Tunnel{Id: 8, Mode: "tcp", Port: 1, Password: "tcp-task", Status: true, Client: &model.Client{Id: 2}, Target: &model.Target{TargetStr: "127.0.0.1:1"}}
+	own := &model.Tunnel{Id: 9, Mode: "secret", Password: "own-client", Status: true, Client: &model.Client{Id: -1}, Target: &model.Target{TargetStr: "127.0.0.1:1"}}
+	for _, task := range []*model.Tunnel{tcp, own} {
 		if err := db.NewTask(task); err != nil {
 			t.Fatal(err)
 		}
-		reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Password: crypt.Md5(task.Password)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if reply.Code != legacy.P2PCodeRefused {
-			t.Fatalf("task %d: reply = %+v, want a refusal", task.Id, reply)
-		}
+	}
+	if granted, _ := attachTest(t, b, tcp.Password, "node-1", nil); granted.Code != legacy.P2PCodeRefused {
+		t.Fatalf("tcp task: attach = %+v, want a refusal", granted)
+	}
+	granted, _ := attachTest(t, b, own.Password, "node-1", nil)
+	if granted.Grant == "" || granted.Direct {
+		t.Fatalf("own client: attach = %+v, want a relay-only grant", granted)
+	}
+	reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Grant: granted.Grant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply.Code != legacy.P2PCodeRefused || !strings.Contains(reply.Message, "relay only") {
+		t.Fatalf("reply = %+v, want a refusal", reply)
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {
 		t.Fatalf("%d sessions created", n)
@@ -121,7 +132,7 @@ func TestP2PVisitorRefusedWithoutDirectAccess(t *testing.T) {
 func TestP2PVisitorWithOldNpcIsClosed(t *testing.T) {
 	db := file.New(t.TempDir())
 	b := newTestP2PBridge(t, db)
-	if _, err := visitorRequest(t, b, "0.34.7", legacy.P2PRequest{}); err == nil {
+	if _, err := visitorRequest(t, b, "0.34.10", legacy.P2PRequest{}); err == nil {
 		t.Fatal("old npc got a reply")
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {

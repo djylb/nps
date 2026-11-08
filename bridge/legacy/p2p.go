@@ -23,6 +23,11 @@ type (
 	P2PJoin         = control.P2PJoin
 	P2PReply        = control.P2PReply
 	P2PRefusedError = control.P2PRefusedError
+	P2PRevoke       = control.P2PRevoke
+	SecretChallenge = control.SecretChallenge
+	SecretAttach    = control.SecretAttach
+	SecretGranted   = control.SecretGranted
+	SecretOpen      = control.SecretOpen
 )
 
 const (

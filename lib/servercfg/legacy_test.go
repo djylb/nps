@@ -54,3 +54,16 @@ func TestLegacyKeysKnown(t *testing.T) {
 		}
 	}
 }
+
+// allow_secret_link=true lifts the limit of secret tunnels without a
+// destination list, with a warning; false is the default and silent.
+func TestLegacySecretLink(t *testing.T) {
+	s := buildSnapshot(map[string]any{"allow_secret_link": "true"})
+	if !s.Feature.LegacySecretLink || len(s.Legacy) != 1 || !strings.Contains(s.Legacy[0], "destination list") {
+		t.Fatalf("true: %t, warnings %q", s.Feature.LegacySecretLink, s.Legacy)
+	}
+	s = buildSnapshot(map[string]any{"allow_secret_link": "false"})
+	if s.Feature.LegacySecretLink || len(s.Legacy) != 0 {
+		t.Fatalf("false: %t, warnings %q", s.Feature.LegacySecretLink, s.Legacy)
+	}
+}

@@ -15,22 +15,27 @@ const (
 	VerifyFailed  = "vkey" // index 0: the key is wrong
 	VerifySuccess = "sucs" // index 0: the key is right
 
-	WorkMain       = "main"
-	WorkChan       = "chan"
-	WorkVisitor    = "vstr"
-	WorkConfig     = "conf"
-	WorkRegister   = "rgst"
-	WorkSecret     = "sert"
-	WorkFile       = "file"
-	WorkP2P        = "p2pm"
-	WorkP2PSession = "p2sj"
-	WorkStatus     = "stus"
+	WorkMain     = "main"
+	WorkChan     = "chan"
+	WorkVisitor  = "vstr"
+	WorkConfig   = "conf"
+	WorkRegister = "rgst"
+	WorkSecret   = "sert" // point-to-point access of npc before 0.35, refused
+	// WorkSecretAttach proves a secret task's password once and holds the
+	// grant it gets; WorkSecretLink is one relayed link under a grant.
+	WorkSecretAttach = "seca"
+	WorkSecretLink   = "secl"
+	WorkFile         = "file"
+	WorkP2P          = "p2pm"
+	WorkP2PSession   = "p2sj"
+	WorkStatus       = "stus"
 
-	ResClose      = "clse"
-	P2PPunchStart = "p2st" // a P2P invitation on the signal connection
-	UpdateRequest = "updt" // an update request on the signal connection
-	HealthSet     = "hset" // targets added to a health group on the signal connection
-	HealthDel     = "hdel" // a health group removed on the signal connection
+	ResClose       = "clse"
+	P2PPunchStart  = "p2st" // a P2P invitation on the signal connection
+	P2PRevokeGrant = "p2rv" // a grant's direct paths end, on the signal connection
+	UpdateRequest  = "updt" // an update request on the signal connection
+	HealthSet      = "hset" // targets added to a health group on the signal connection
+	HealthDel      = "hdel" // a health group removed on the signal connection
 
 	FlagNewTask = "task"
 	FlagNewConf = "conf"

@@ -252,7 +252,7 @@ func (s *DbUtils) ReserveTaskPassword(t *model.Tunnel) error {
 // can never claim the same password.
 type taskPasswords struct {
 	mu     sync.Mutex
-	index  *index.StringIDIndex // password hash -> task id
+	index  *index.StringIDIndex // crypt.SecretIndex of the password -> task id
 	claims map[int]string       // task id -> the password hash it holds in index
 }
 
@@ -283,7 +283,8 @@ func (p *taskPasswords) releaseLocked(id int) {
 	}
 }
 
-// lookup returns the task id that claims the password of md5 hash.
+// lookup returns the task id that claims the password of index
+// crypt.SecretIndex.
 func (p *taskPasswords) lookup(hash string) (int, bool) { return p.index.Get(hash) }
 
 // reserve makes t.Password the password claimed by t.Id and releases the
@@ -305,7 +306,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 		return nil
 	}
 	for {
-		idxId, ok := p.index.Get(crypt.Md5(password))
+		idxId, ok := p.index.Get(crypt.SecretIndex(password))
 		if !ok || idxId == t.Id {
 			break
 		}
@@ -319,7 +320,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 		password = crypt.GetRandomString(16, t.Id)
 	}
 	t.Password = password
-	hash := crypt.Md5(password)
+	hash := crypt.SecretIndex(password)
 	if p.claims[t.Id] != hash {
 		p.releaseLocked(t.Id)
 	}
@@ -361,8 +362,9 @@ func (s *DbUtils) DelTask(id int) error {
 	return nil
 }
 
-// GetTaskByMd5Password md5 password
-func (s *DbUtils) GetTaskByMd5Password(p string) (t *model.Tunnel) {
+// GetTaskBySecretIndex returns the task whose password has index p
+// (crypt.SecretIndex), nil if none has.
+func (s *DbUtils) GetTaskBySecretIndex(p string) (t *model.Tunnel) {
 	id, ok := s.JsonDb.taskPasswords.lookup(p)
 	if ok {
 		if v, ok := s.JsonDb.Tasks.Load(id); ok {

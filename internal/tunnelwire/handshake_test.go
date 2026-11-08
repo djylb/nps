@@ -87,10 +87,10 @@ func TestCompareVersions(t *testing.T) {
 }
 
 func TestCapsThresholds(t *testing.T) {
-	if c := Caps(5, "0.34.8"); !c.P2P || c.NodeID || c.LinkAck {
+	if c := Caps(5, "0.35.0"); !c.P2P || c.NodeID || c.LinkAck {
 		t.Fatalf("%+v", c)
 	}
-	if c := Caps(8, "0.34.7"); c.P2P || c.RemoteUpdate || !c.FramedUDP {
+	if c := Caps(8, "0.34.10"); c.P2P || !c.RemoteUpdate || !c.FramedUDP {
 		t.Fatalf("%+v", c)
 	}
 	if c := Caps(4, "0.35.0"); c.P2P || c.TunnelStreams || !c.RemoteUpdate {

@@ -68,10 +68,10 @@ func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
 		t.Fatal("initial reservation")
 	}
 	defer task.CutConn()
-	s := NewSecretServer(&localDialBridge{}, task, false, false, false)
+	s := NewSecretServer(&localDialBridge{}, task, NewSecretPolicy(task, nil, false, false, false), false)
 	a, b := net.Pipe()
 	defer func() { _ = a.Close(); _ = b.Close() }()
-	if err := s.HandleSecret(a, legacy.SecretWire); err == nil {
+	if err := s.Serve(a, nil, legacy.WriteAck); err == nil {
 		t.Fatal("secret bypassed tunnel limit")
 	}
 	if task.CurrentConnections() != 1 || task.Client.CurrentConnections() != 1 {

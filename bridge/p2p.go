@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,9 +22,6 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/proxy"
-	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/slogx"
 )
 
@@ -426,9 +422,19 @@ func (s *Bridge) handleP2PVisitor(c *conn.Conn, id int, caps legacy.Caps, uuid, 
 // server address it reports then. It reports whether a session was opened,
 // which releases the request in onResult.
 func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tunnelType string, req legacy.P2PRequest) bool {
-	t, node, policy, code, msg := s.resolveSecretTarget(req.Password)
+	g := s.secrets.get(req.Grant, id, uuid)
+	if g == nil {
+		refuseP2P(c, id, legacy.P2PCodeRefused, "unknown or revoked grant: attach again")
+		return false
+	}
+	t := g.tunnel
+	node, code, msg := s.secretProvider(g)
 	if code != "" {
 		refuseP2P(c, id, code, msg)
+		return false
+	}
+	if !g.invited(node) {
+		refuseP2P(c, id, legacy.P2PCodeRefused, "the grant was revoked")
 		return false
 	}
 	inviteID, token, inv, drop, err := svc.invite(t.Client.Id)
@@ -437,7 +443,8 @@ func (s *Bridge) openP2PSession(svc *p2pService, c *conn.Conn, id int, uuid, tun
 		return false
 	}
 	defer drop()
-	if err := node.sendSignal(legacy.P2PPunchStart, legacy.P2PInvite{SessionID: inviteID, Token: token, Policy: policy, Tunnel: t.Id, Visitor: id}, p2pHandshakeTimeout); err != nil {
+	invite := legacy.P2PInvite{SessionID: inviteID, Token: token, Policy: g.wire, Grant: g.id, Tunnel: t.Id, Route: t.LogRoute(), Visitor: id}
+	if err := node.sendSignal(legacy.P2PPunchStart, invite, p2pHandshakeTimeout); err != nil {
 		refuseP2P(c, id, legacy.P2PCodeOffline, fmt.Sprintf("client %d unreachable: %v", t.Client.Id, err))
 		return false
 	}
@@ -538,34 +545,17 @@ func p2pDirect(tunnelType string) bool {
 	return tunnelType != conn.TransportWS && tunnelType != conn.TransportWSS
 }
 
-// resolveSecretTarget finds the secret task of a password, its provider's
-// node and the policy the provider applies to the visitor's links on the
-// direct path; code is empty when the request may proceed.
-func (s *Bridge) resolveSecretTarget(passwordMd5 string) (t *model.Tunnel, node *Node, policy []byte, code, msg string) {
-	t = s.store.GetTaskByMd5Password(passwordMd5)
-	switch {
-	case t == nil:
-		return nil, nil, nil, legacy.P2PCodeRefused, "no task has this password"
-	case t.Mode != "secret":
-		return nil, nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is a %s task, not a secret task", t.Id, t.Mode)
-	case !t.Status:
-		return nil, nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is disabled", t.Id)
-	case t.Client == nil:
-		return nil, nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d has no client", t.Id)
+// secretProvider finds the provider node that serves direct paths of
+// grant g; code is empty when the request may proceed.
+func (s *Bridge) secretProvider(g *secretGrant) (node *Node, code, msg string) {
+	t := g.tunnel
+	if !g.policy.Direct() {
+		return nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is reached by the server itself (local proxy): relay only", t.Id)
 	}
 	route := t.Route()
-	feature := servercfg.Current().Feature
-	p := proxy.NewSecretPolicy(t, route.Target, feature.AllowLocalProxy, feature.AllowSecretLink, feature.AllowSecretLocal)
-	if !p.Direct() {
-		return nil, nil, nil, legacy.P2PCodeRefused, fmt.Sprintf("task %d is reached by the server itself (local proxy): relay only", t.Id)
-	}
-	policy, err := json.Marshal(p)
-	if err != nil {
-		return nil, nil, nil, legacy.P2PCodeRefused, err.Error()
-	}
 	v, ok := s.Client.Load(t.Client.Id)
 	if !ok {
-		return nil, nil, nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
+		return nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
 	if route.Node != "" {
 		node, _ = v.(*Client).GetNodeByUUID(route.Node)
@@ -573,13 +563,13 @@ func (s *Bridge) resolveSecretTarget(passwordMd5 string) (t *model.Tunnel, node 
 		node = v.(*Client).GetNode()
 	}
 	if node == nil || node.GetSignal() == nil {
-		return nil, nil, nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
+		return nil, legacy.P2PCodeOffline, fmt.Sprintf("client %d is offline", t.Client.Id)
 	}
 	if _, vs := node.versions(); !node.Caps().P2P {
-		return nil, nil, nil, legacy.P2PCodeUnsupported, fmt.Sprintf("npc %s of client %d does not speak the P2P protocol of this server, upgrade it to %s or newer",
+		return nil, legacy.P2PCodeUnsupported, fmt.Sprintf("npc %s of client %d does not speak the P2P protocol of this server, upgrade it to %s or newer",
 			vs, t.Client.Id, legacy.P2PMinVersion)
 	}
-	return t, node, policy, "", ""
+	return node, "", ""
 }
 
 // refuseP2P answers a P2P request with a refusal and closes the stream.

@@ -98,7 +98,7 @@ func TestImportAddsUnderNewIDs(t *testing.T) {
 	if err != nil || id == 1 {
 		t.Fatalf("imported client id %d: %v", id, err)
 	}
-	found := db.GetTaskByMd5Password(crypt.Md5("pw-b"))
+	found := db.GetTaskBySecretIndex(crypt.SecretIndex("pw-b"))
 	if found == nil || found.Client.Id != id {
 		t.Fatalf("imported tunnel %+v does not belong to client %d", found, id)
 	}
@@ -144,7 +144,7 @@ func TestImportRefusalLeavesNothing(t *testing.T) {
 	if _, err := db.GetClientIdByBlake2bVkey(crypt.Blake2b("vkey-b")); err == nil {
 		t.Error("the taken back client still has its vkey index entry")
 	}
-	if db.GetTaskByMd5Password(crypt.Md5("pw-a")) == nil {
+	if db.GetTaskBySecretIndex(crypt.SecretIndex("pw-a")) == nil {
 		t.Error("the refused import took the password of the existing tunnel")
 	}
 }
@@ -231,7 +231,7 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 	defer srv.ApplyWebhook(servercfg.WebhookConfig{})
 
 	clients, indexes := seedConfigOn(t, db, srv)
-	tunnel := db.GetTaskByMd5Password(crypt.Md5("pw-a"))
+	tunnel := db.GetTaskBySecretIndex(crypt.SecretIndex("pw-a"))
 	for _, step := range []func() error{
 		func() error { return indexes.StopTunnel(tunnel.Id, "") },
 		func() error { return indexes.StartTunnel(tunnel.Id, "") },

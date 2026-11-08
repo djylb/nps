@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"runtime/pprof"
 	"strconv"
@@ -311,17 +313,49 @@ func (mgr *SecretManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	return c, server, nil
 }
 
-// relay opens a link to the task of password over nps, which applies the
-// task's policy to it.
-func (mgr *SecretManager) relay(password string, link conn.Link, timeout time.Duration) (net.Conn, error) {
-	sc, err := mgr.getSecretConn()
+// attach proves password to nps on a new stream of the visitor tunnel and
+// returns the grant it answers with; the stream holds the grant until it
+// ends.
+func (mgr *SecretManager) attach(password string) (*visitorGrant, error) {
+	c, err := mgr.workStream(legacy.WorkSecretAttach)
 	if err != nil {
-		if AutoReconnect {
-			log.Debug("secret connection failed, retrying", "err", err)
-		} else {
-			log.Debug("secret connection failed", "err", err)
-			mgr.pCancel()
-		}
+		return nil, err
+	}
+	_ = c.SetDeadline(time.Now().Add(p2pControlTimeout))
+	var ch legacy.SecretChallenge
+	if err := legacy.ReadP2P(c, &ch); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("secret attach: %w", err)
+	}
+	req := legacy.SecretAttach{Index: crypt.SecretIndex(password), Proof: crypt.SecretProof(password, ch.Nonce, mgr.getUUID())}
+	var granted legacy.SecretGranted
+	if err := legacy.WriteP2P(c, req); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("secret attach: %w", err)
+	}
+	if err := legacy.ReadP2P(c, &granted); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("secret attach: %w", err)
+	}
+	if granted.Code != "" || granted.Grant == "" {
+		_ = c.Close()
+		return nil, &legacy.P2PRefusedError{Code: granted.Code, Message: granted.Message}
+	}
+	_ = c.SetDeadline(time.Time{})
+	g := &visitorGrant{SecretGranted: granted, stream: c, done: make(chan struct{})}
+	go func() {
+		defer close(g.done)
+		_, _ = io.Copy(io.Discard, c)
+		_ = c.Close()
+	}()
+	return g, nil
+}
+
+// relay opens a link under grant g over nps, which applies the task's
+// policy to it.
+func (mgr *SecretManager) relay(g *visitorGrant, link conn.Link, timeout time.Duration) (net.Conn, error) {
+	sc, err := mgr.workStream(legacy.WorkSecretLink)
+	if err != nil {
 		return nil, err
 	}
 	sendOK := false
@@ -330,8 +364,8 @@ func (mgr *SecretManager) relay(password string, link conn.Link, timeout time.Du
 			_ = sc.Close()
 		}
 	}()
-	if _, err := sc.Write([]byte(crypt.Md5(password))); err != nil {
-		log.Debug("secret write password failed", "err", err)
+	if err := legacy.WriteP2P(sc, legacy.SecretOpen{Grant: g.Grant}); err != nil {
+		log.Debug("secret open failed", "err", err)
 		return nil, err
 	}
 	// The wrapper only writes to sc, which the deferred cleanup closes on failure.
@@ -350,15 +384,21 @@ func (mgr *SecretManager) relay(password string, link conn.Link, timeout time.Du
 	return sc, nil
 }
 
-// getSecretConn opens a relay (secret) connection.
-func (mgr *SecretManager) getSecretConn() (net.Conn, error) {
+// workStream opens a stream of workType on the visitor tunnel.
+func (mgr *SecretManager) workStream(workType string) (net.Conn, error) {
 	c, _, err := mgr.openTunnelConn()
 	if err != nil {
+		if AutoReconnect {
+			log.Debug("secret connection failed, retrying", "err", err)
+		} else {
+			log.Debug("secret connection failed", "err", err)
+			mgr.pCancel()
+		}
 		return nil, err
 	}
 	// The wrapper only writes to c, which is closed on failure and returned otherwise.
 	//noinspection GoResourceLeak
-	if err := SendType(conn.NewConn(c), legacy.WorkSecret, mgr.getUUID()); err != nil {
+	if err := SendType(conn.NewConn(c), workType, mgr.getUUID()); err != nil {
 		log.Debug("secret send type failed", "err", err)
 		_ = c.Close()
 		return nil, err

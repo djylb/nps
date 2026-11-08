@@ -171,7 +171,8 @@
                                         <option langtag="word-whitelist" value="1"></option>
                                         <option langtag="word-blacklist" value="2"></option>
                                     </select>
-                                    <span class="help-block m-b-none" langtag="info-destacl"></span>
+                                    <span class="help-block m-b-none destacl-hint" langtag="info-destacl"></span>
+                                    <span class="help-block m-b-none secret-destacl-hint" langtag="info-destaclsecret" style="display:none"></span>
                                 </div>
                             </div>
                             <div class="form-group" id="dest_acl_rules">
@@ -325,7 +326,7 @@
     arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
-    arr["secret"] = ["health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
+    arr["secret"] = ["health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "dest_acl_mode", "dest_acl_rules"]
     arr["file"] = ["port", "local_path", "strip_pre", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 
     function resetForm() {
@@ -334,6 +335,8 @@
         o = $("#type").val();
         $('#case' + o).css("display", "inline")
         $('.p2p-rate-hint').toggle(o === 'secret');
+        $('.secret-destacl-hint').toggle(o === 'secret');
+        $('.destacl-hint').toggle(o !== 'secret');
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }
@@ -342,7 +345,7 @@
     }
 
     function toggleDestAclRules() {
-        if ($("#type").val() != "mixProxy") {
+        if ($("#type").val() != "mixProxy" && $("#type").val() != "secret") {
             $("#dest_acl_rules").css("display", "none")
             return
         }

@@ -111,8 +111,15 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		// read by the tunnels and the bridge where they are used; tunnels
 		// started before keep the local proxy setting they started with
 		{Name: "tunnels", Settings: []string{
-			"allow_local_proxy", "allow_secret_link", "allow_secret_local",
 			"http_add_origin_header", "auth_time_window",
+		}},
+		// read where used as above, and the grants of point-to-point access
+		// hold the policy resolved under these: visitors attach again
+		{Name: "tunnels and secret grants", Settings: []string{
+			"allow_local_proxy", "allow_secret_link", "allow_secret_local",
+		}, Apply: func(_, _ *servercfg.Snapshot) error {
+			s.bridge.RevokeSecretGrants()
+			return nil
 		}},
 		{Name: "bridge listeners", Settings: []string{
 			"bridge_ip", "bridge_host", "bridge_path", "bridge_port",

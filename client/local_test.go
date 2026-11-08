@@ -55,12 +55,30 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*Secre
 			go func() {
 				c := conn.NewConn(mc)
 				defer func() { _ = c.Close() }()
-				if flag, err := legacy.ReadFlag(c); err != nil || flag != legacy.WorkSecret {
+				flag, err := legacy.ReadFlag(c)
+				if err != nil {
 					return
 				}
 				_, _ = legacy.ReadFrame(c) // uuid
 				_, _ = legacy.ReadFrame(c) // padding
-				if _, err := legacy.ReadExact(c, 32); err != nil {
+				switch flag {
+				case legacy.WorkSecretAttach:
+					// Grants whatever proof it gets, and holds the grant.
+					var req legacy.SecretAttach
+					if legacy.WriteP2P(c, legacy.SecretChallenge{Nonce: []byte("nonce")}) != nil || legacy.ReadP2P(c, &req) != nil {
+						return
+					}
+					if legacy.WriteP2P(c, legacy.SecretGranted{Grant: "g", Direct: true}) != nil {
+						return
+					}
+					_, _ = io.Copy(io.Discard, c)
+					return
+				case legacy.WorkSecretLink:
+				default:
+					return
+				}
+				var open legacy.SecretOpen
+				if err := legacy.ReadP2P(c, &open); err != nil || open.Grant != "g" {
 					return
 				}
 				lk, err := legacy.ReadLink(c)
