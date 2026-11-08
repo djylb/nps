@@ -415,8 +415,9 @@ func (s *serverSession) serveExitStream(ctx context.Context, lc *linkConn, op wi
 		lc.abort(wire.ErrorCode(err))
 		return
 	}
-	if o.ProviderTarget || o.Target == nil && o.Op == wire.OpTCP {
-		// Only a provider picks a target; a service has no server exit yet.
+	if o.ProviderTarget && o.LinkID == 0 || o.Op == wire.OpTCP && o.Target == nil && !o.ProviderTarget {
+		// provider_target needs a server-exit LINK, whose policy picks the
+		// target (§9.1); a service has no server exit yet.
 		failLink(lc, o.WantReply, wire.CodeMalformed)
 		return
 	}
@@ -444,10 +445,14 @@ func (s *serverSession) serveExitStream(ctx context.Context, lc *linkConn, op wi
 // streamNetwork is the network and target of a stream, as coreapi names them.
 func streamNetwork(o *wire.StreamOpen) (string, string) {
 	switch {
+	case o.Op == wire.OpTCP && o.Target == nil:
+		return coreapi.NetworkTCP, "" // provider_target: the grant's policy picks
 	case o.Op == wire.OpTCP:
 		return coreapi.NetworkTCP, o.Target.String()
 	case o.Target != nil:
 		return coreapi.NetworkUDP, o.Target.String()
+	case o.ProviderTarget:
+		return coreapi.NetworkUDP, ""
 	}
 	return coreapi.NetworkUDP5, ""
 }

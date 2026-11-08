@@ -85,7 +85,9 @@ type peerEnv struct {
 	provider *clientSession
 	outer    *OuterSessions
 	valid    atomic.Bool
-	echo     string
+	// exitTarget is the target the last server-exit stream named.
+	exitTarget atomic.Pointer[string]
+	echo       string
 }
 
 // allowAll is the exit of a provider that reaches everything.
@@ -111,7 +113,8 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 			return &coreapi.LinkGrant{Tunnel: 7, Provider: 1, ServerExit: serverExit,
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
-				ServeExit: func(ctx context.Context, c net.Conn, _, _ string) {
+				ServeExit: func(ctx context.Context, c net.Conn, _, target string) {
+					p.exitTarget.Store(&target)
 					u, err := net.Dial("tcp", p.echo)
 					if err == nil {
 						_, _, _ = netx.Relay(ctx, c, u, netx.WithRelayHalfClose())
@@ -374,9 +377,30 @@ func TestPeerServerExit(t *testing.T) {
 	}
 	defer c.Close()
 	checkEcho(t, c, "exit")
-	if _, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true}); err == nil {
-		t.Fatal("provider_target accepted on the outer session")
+	c2, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer c2.Close()
+	checkEcho(t, c2, "no target")
+	if got := p.exitTarget.Load(); got == nil || *got != "" {
+		t.Fatalf("server exit got target %v", got)
+	}
+	s, err := p.outer.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := wire.AppendStreamOpen(&wire.StreamOpen{Op: wire.OpTCP, ProviderTarget: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.zc.OpenStreamSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.SetPreamble(info)
+	_ = st.Flush()
+	wantReset(t, st, wire.CodeMalformed)
 	if p.punch.punch.Load() != 0 {
 		t.Fatal("server exit punched")
 	}
