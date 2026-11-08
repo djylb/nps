@@ -313,6 +313,7 @@ func (s *Bridge) pingClients() {
 	})
 
 	for _, clientId := range closedClients {
-		s.delClient(clientId, "unresponsive")
+		// its connections closed and it did not come back within three checks
+		s.delClient(clientId, "closed")
 	}
 }

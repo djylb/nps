@@ -9,6 +9,7 @@ import (
 
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/runenv"
 
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/slogx"
@@ -135,7 +136,7 @@ func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
 	}
 	cert, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
 	if err != nil {
-		slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, slogx.KeyMsg, "default certificate load failed", "route", "https", "domain", sni, "file", s.defaultCertFile, "reason", "load_failed", "err", err)
+		slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, slogx.KeyMsg, "default certificate load failed", "route", "https", "domain", sni, "file", runenv.GetPath(s.defaultCertFile), "reason", "load_failed", "err", err)
 		return nil
 	}
 	if certCovers(cert, sni) == matchNone {

@@ -67,7 +67,7 @@ time=2026-11-08T03:12:46.002Z level=INFO module=p2p peer=12 msg="punch started"
 | `login_failed` / `login_ok` | warn / info | `src_ip`、`user`、`reason`（`bad_password`、`bad_captcha`、`bad_pow`、`bad_nonce`、`expired`、`malformed`、`banned`、`acl`） | 失败的写 | 是 |
 | `ban_added` / `ban_removed` | warn / info | `src_ip`（或 IPv6 的 `prefix`、`user`）、`scope`、`until` | 添加的写 | 是 |
 | `admin_action` | info | `src_ip`、`user`、`action`（如 `client_update`、`tunnel_delete`、`config_export`）、`client`/`tunnel`/`host`、`result`、`reason` | | 是 |
-| `client_online` / `client_offline` | info | `client`、`src_ip`、`carrier`、`version`；下线另有 `dur_ms`、`reason`（`closed`、`unresponsive`、`deleted`） | | 是（存储层发） |
+| `client_online` / `client_offline` | info | `client`、`src_ip`、`carrier`、`version`；下线另有 `dur_ms`、`reason`（`closed`：连接断开且约 15 秒内没有重连；`deleted`：被管理员踢下线、停用或删除） | | 是（存储层发） |
 | `session_takeover` | warn | `client`、`src_ip`、`addr` | | |
 | `limit_exceeded` / `quota_reached` | warn | `client`、`route`、`kind`（`flow`、`conn`、`rate`、`expire`）；后者是额度用尽这一状态变化 | | 是 |
 | `tunnel_denied` | info | `src_ip`、`route`、`reason`（`acl`、`dest_acl`、`not_registered`、`http_disabled`、`socks5_disabled`、`client_offline`） | | |

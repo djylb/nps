@@ -99,8 +99,9 @@ var (
 // Clients and sessions.
 var (
 	// ClientOnline / ClientOffline: client, src_ip, carrier, version;
-	// offline adds dur_ms and reason (closed, unresponsive, deleted: the
-	// manager kicked, disabled or deleted the client). The store publishes these to the bus with the client
+	// offline adds dur_ms and reason (closed: its connections closed and it
+	// did not come back within three health checks; deleted: the manager
+	// kicked, disabled or deleted the client). The store publishes these to the bus with the client
 	// itself, so the log lines do not go there too.
 	ClientOnline  = slogx.Def{Name: "client_online", Level: info}
 	ClientOffline = slogx.Def{Name: "client_offline", Level: info}

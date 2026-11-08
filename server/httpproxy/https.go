@@ -67,7 +67,7 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 		cert, err := https.loadCert(https.defaultCertFile, https.defaultKeyFile, "file")
 		https.hasDefaultCert = err == nil
 		if err != nil {
-			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, "route", "https", "file", https.defaultCertFile, "reason", "load_failed", "err", err)
+			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, "route", "https", "file", runenv.GetPath(https.defaultCertFile), "reason", "load_failed", "err", err)
 		} else {
 			LogCertLoaded("https", "", https.defaultCertFile, cert)
 		}

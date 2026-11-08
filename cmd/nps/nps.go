@@ -204,7 +204,7 @@ func main() {
 		log.Warn("service manager unavailable, running without it", "err", err)
 		srv := prg.mustRun()
 		<-srv.Done()
-		if err := srv.Close(); err != nil {
+		if err := closeServer(srv); err != nil {
 			log.Error("nps stopped", "err", err)
 		}
 		slogx.Default.Close()
@@ -354,14 +354,14 @@ func (p *nps) run() error {
 	select {
 	case <-p.exit:
 	case <-srv.Done():
-		if err := srv.Close(); err != nil {
+		if err := closeServer(srv); err != nil {
 			log.Error("nps stopped", "err", err)
 		}
 		slogx.Default.Flush()
 		os.Exit(1)
 	}
 	slogx.Emit(context.Background(), log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
-	_ = srv.Close()
+	_ = closeServer(srv)
 	slogx.Default.Flush()
 	close(p.stopped)
 	return nil
@@ -401,11 +401,11 @@ func run() (*server.Server, error) {
 	} else {
 		log.Info("client select mode", "mode", selectMode.String())
 	}
-	accessLog, closeAccessLog, err := openAccessLog(cfg.Log)
+	accessLog, closeLog, err := openAccessLog(cfg.Log)
 	if err != nil {
 		cfgLog.Error("access log not opened", "file", cfg.Log.Access, "err", err)
 	}
-	defer closeAccessLog()
+	closeAccessLog = closeLog
 	srv := server.New(db, server.Config{
 		AccessLog:           accessLog,
 		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
@@ -444,8 +444,18 @@ func run() (*server.Server, error) {
 	file.ReportGeoData()
 	go file.WatchAccessLists(context.Background(), time.Minute)
 	if err := srv.Start(context.Background()); err != nil {
-		_ = srv.Close()
+		_ = closeServer(srv)
 		return nil, err
 	}
 	return srv, nil
+}
+
+// closeAccessLog closes the access_log file of the running server.
+var closeAccessLog = func() {}
+
+// closeServer closes srv, then the access log it writes to.
+func closeServer(srv *server.Server) error {
+	err := srv.Close()
+	closeAccessLog()
+	return err
 }

@@ -160,7 +160,7 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 func (s *Bridge) DelClient(id int) { s.delClient(id, "deleted") }
 
 // delClient ends the session of client id; reason is the client_offline
-// reason word (closed, unresponsive, deleted).
+// reason word (closed, deleted).
 func (s *Bridge) delClient(id int, reason string) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()
