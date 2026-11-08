@@ -161,7 +161,7 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	if !errors.Is(err, model.ErrNoTarget) {
 		return err
 	}
-	if s.Task.Mode != "file" && s.Bridge.IsServer() {
+	if s.Bridge.IsServer() {
 		_ = c.Close()
 		relayFailed(s.Task, "", err)
 		return err

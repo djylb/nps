@@ -43,11 +43,11 @@ func TestClientGetNodeByFileRespectsGraceThenPrunesOfflineNode(t *testing.T) {
 	node := NewNode("n1", "", 6)
 	client := NewClient(1, node, Primary)
 
-	if err := client.AddFile("file-key", "n1"); err != nil {
-		t.Fatalf("AddFile returned error: %v", err)
+	if err := client.setNodeServices("n1", []string{"file-key"}); err != nil {
+		t.Fatalf("setNodeServices returned error: %v", err)
 	}
 
-	if got, ok := client.GetNodeByFile("file-key"); ok || got != nil {
+	if got, ok := client.nodeOfService("file-key"); ok || got != nil {
 		t.Fatalf("expected no node during grace window, got ok=%v node=%v", ok, got)
 	}
 	if count := client.NodeCount(); count != 1 {
@@ -55,7 +55,7 @@ func TestClientGetNodeByFileRespectsGraceThenPrunesOfflineNode(t *testing.T) {
 	}
 
 	client.lastConnectNano.Store(time.Now().Add(-10 * time.Second).UnixNano())
-	if got, ok := client.GetNodeByFile("file-key"); ok || got != nil {
+	if got, ok := client.nodeOfService("file-key"); ok || got != nil {
 		t.Fatalf("expected no node after grace window, got ok=%v node=%v", ok, got)
 	}
 	if count := client.NodeCount(); count != 0 {
@@ -67,10 +67,10 @@ func TestClientGetNodeByFileReturnsOnlineNodeWithoutExternalDependency(t *testin
 	node := NewNode("n2", "", 6)
 	client := NewClient(-1, node, Primary)
 
-	if err := client.AddFile("f2", "n2"); err != nil {
-		t.Fatalf("AddFile returned error: %v", err)
+	if err := client.setNodeServices("n2", []string{"f2"}); err != nil {
+		t.Fatalf("setNodeServices returned error: %v", err)
 	}
-	got, ok := client.GetNodeByFile("f2")
+	got, ok := client.nodeOfService("f2")
 	if !ok || got != node {
 		t.Fatalf("expected online node by file mapping, ok=%v got=%v", ok, got)
 	}

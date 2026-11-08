@@ -11,6 +11,9 @@ import (
 
 // ListTunnels returns a page of the tasks that match, and how many match.
 func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, search string, sortField string, order string) ([]*model.Tunnel, int) {
+	if typeVal == model.ModeService {
+		return s.listServices(start, length, clientId)
+	}
 	allList := make([]*model.Tunnel, 0) //store all Tunnel
 	list := make([]*model.Tunnel, 0)
 	originLength := length
@@ -665,4 +668,28 @@ func sortCurrentRates[T interface{ CurrentRates() (int64, int64) }](rows []T, fi
 	for i, entry := range values {
 		rows[i] = entry.row
 	}
+}
+
+// listServices shows what the connected clients report as rows of the tunnel
+// table: built here each time, stored nowhere.
+func (s *Server) listServices(start, length, clientId int) ([]*model.Tunnel, int) {
+	var rows []*model.Tunnel
+	for _, v := range s.bridge.VirtualServices() {
+		if clientId != 0 && v.Client != clientId {
+			continue
+		}
+		c, err := s.db.GetClient(v.Client)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, &model.Tunnel{Mode: model.ModeService, ServiceKind: v.Kind, ServiceName: v.Name, TargetType: v.Network,
+			Client: c, Flow: new(model.Flow), Remark: v.Name, Target: &model.Target{TargetStr: v.Target}})
+	}
+	total := len(rows)
+	start = min(max(start, 0), total)
+	end := total
+	if length > 0 {
+		end = min(start+length, total)
+	}
+	return rows[start:end], total
 }

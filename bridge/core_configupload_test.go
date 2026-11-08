@@ -33,9 +33,6 @@ func serveOpened(t *testing.T, f *coreFixture) {
 				return
 			case <-f.b.OpenHost:
 			case task := <-f.b.OpenTask:
-				if task.IsVirtualBackend() {
-					continue // listens on nothing
-				}
 				if old := servers[task.Id]; old != nil {
 					_ = old.Close()
 				}
@@ -135,7 +132,7 @@ func TestFileTunnelIsVirtualService(t *testing.T) {
 		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
 		"[files]\nmode=file\nserver_port="+strconv.Itoa(port)+"\nlocal_path="+dir+"\nstrip_pre=/\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
-	waitStored(t, f, 2, 0)
+	waitStored(t, f, 1, 0)
 	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/hello.txt"
 	hc := http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	get := func(url string) {
@@ -158,25 +155,28 @@ func TestFileTunnelIsVirtualService(t *testing.T) {
 	}
 	get(url)
 
-	// Another tunnel with the backend's identifier as its target.
-	var backend *model.Tunnel
-	f.db.JsonDb.Tasks.Range(func(_, v any) bool {
-		if tl := v.(*model.Tunnel); tl.IsVirtualBackend() {
-			backend = tl
+	target := model.ServiceTarget(model.FileServiceKind, "port-"+strconv.Itoa(port))
+	listed := func() int {
+		n := 0
+		for _, v := range f.b.VirtualServices() {
+			if v.Target == target && v.Kind == model.FileServiceKind && v.Network == "tcp" {
+				n++
+			}
 		}
-		return true
-	})
-	if backend == nil || backend.Port != 0 || backend.Target.TargetStr != model.ServiceTarget(model.FileServiceKind, "port-"+strconv.Itoa(port)) {
-		t.Fatalf("backend %+v", backend)
+		return n
 	}
+	if listed() != 1 {
+		t.Fatalf("listed %+v", f.b.VirtualServices())
+	}
+
 	// A short reconnect uploads again: nothing doubles, the port still works.
 	f.a.Kick(f.client.Id, false)
 	time.Sleep(300 * time.Millisecond)
-	waitStored(t, f, 2, 0)
+	waitStored(t, f, 1, 0)
 	get(url)
 	other := freeLocalPort(t)
 	tl := &model.Tunnel{Mode: "tcp", Port: other, Status: true, Client: f.client, Flow: new(model.Flow),
-		Target: &model.Target{TargetStr: backend.Target.TargetStr}, Id: f.db.NextTunnelID()}
+		Target: &model.Target{TargetStr: target}, Id: f.db.NextTunnelID()}
 	if err := f.db.NewTask(tl); err != nil {
 		t.Fatal(err)
 	}
@@ -212,5 +212,84 @@ func TestConfigUploadRefused(t *testing.T) {
 				t.Fatalf("%d tunnels, %d hosts registered", tasks, hosts)
 			}
 		})
+	}
+}
+
+// A generated tunnel whose port is in use is left out without a failure: the
+// backend is listed and the rest of the file is taken.
+func TestFileTunnelPortTaken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	connect.Install()
+	t.Cleanup(func() { client.CoreOuter = nil })
+	f := newCoreFixture(t, 0, model.Config{})
+	f.client.ConfigConnAllow = true
+	serveOpened(t, f)
+	held, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	port := held.Addr().(*net.TCPAddr).Port
+	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
+		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"[files]\nmode=file\nserver_port="+strconv.Itoa(port)+"\nlocal_path="+t.TempDir()+"\nstrip_pre=/\n")
+	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
+	for end := time.Now().Add(10 * time.Second); len(f.b.VirtualServices()) != 1; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("service not listed")
+		}
+	}
+	if tasks, _ := countStored(f); tasks != 0 {
+		t.Fatalf("%d tunnels stored", tasks)
+	}
+}
+
+// A service answers on the network it reported, and only that one.
+func TestServiceNetwork(t *testing.T) {
+	f := newCoreFixture(t, 0, model.Config{})
+	s := f.joinCore(t, client.NewCoreExit("", 0))
+	served := make(chan struct{}, 1)
+	svc := coreapi.LocalService{Kind: "x", Name: "u", Network: coreapi.NetworkUDP, Serve: func(_ context.Context, c net.Conn) {
+		served <- struct{}{}
+		_ = c.Close()
+	}}
+	if err := s.(coreapi.ServiceHost).PublishServices(context.Background(), []coreapi.LocalService{svc}); err != nil {
+		t.Fatal(err)
+	}
+	f.waitConnected(t)
+	v, _ := f.b.Client.Load(f.client.Id)
+	cs := v.(*Client).GetNode().coreSession()
+	id := coreapi.ServiceID("x", "u")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := cs.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Service: id, WantReply: true}); err == nil {
+		t.Fatal("tcp reached a udp service")
+	}
+	c, err := cs.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkUDP, Service: id, WantReply: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	<-served
+	for end := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if l := f.b.VirtualServices(); len(l) == 1 && l[0].Kind == "x" && l[0].Network == "udp" {
+			break
+		}
+		if time.Now().After(end) {
+			t.Fatalf("listed %+v", f.b.VirtualServices())
+		}
+	}
+	// The report ends with its session and leaves nothing behind.
+	_ = s.Close()
+	<-s.Done()
+	for end := time.Now().Add(3 * time.Second); len(f.b.VirtualServices()) != 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("still listed after the session ended")
+		}
+	}
+	if tasks, _ := countStored(f); tasks != 0 {
+		t.Fatalf("%d tunnels stored", tasks)
 	}
 }

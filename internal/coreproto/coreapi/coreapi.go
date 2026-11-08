@@ -41,6 +41,8 @@ type ClientRecord struct {
 const (
 	NetworkTCP = "tcp"
 	NetworkUDP = "udp"
+	// NetworkAll is a virtual service of both networks.
+	NetworkAll = "all"
 	// NetworkUDP5 is addressed UDP on a server-exit link.
 	NetworkUDP5 = "udp5"
 )
@@ -81,6 +83,7 @@ func ServiceID(kind, name string) []byte { return wire.ServiceID(kind, name) }
 type ServiceInfo struct {
 	Kind, Name string
 	Meta       string
+	Network    string // NetworkTCP, NetworkUDP or NetworkAll
 }
 
 // LocalService is a virtual service npc offers on a session (§8). Its
@@ -88,6 +91,7 @@ type ServiceInfo struct {
 type LocalService struct {
 	Kind, Name string
 	Meta       string // for display only
+	Network    string // NetworkTCP (or empty), NetworkUDP or NetworkAll
 	// Serve takes over c, one connection to the service; it returns promptly
 	// or when c ended.
 	Serve func(ctx context.Context, c net.Conn)
@@ -119,6 +123,12 @@ func TunnelOffline() *LinkError {
 func IsNotAllowed(err error) bool {
 	var e *LinkError
 	return errors.As(err, &e) && e.Code == wire.CodeNotAllowed
+}
+
+// ServiceUnavailable is the refusal of a link to a service nobody reports
+// (NPS_SERVICE_UNAVAILABLE).
+func ServiceUnavailable() *LinkError {
+	return &LinkError{Code: wire.CodeServiceUnavailable, Reason: "other"}
 }
 
 // LinkNotAllowed is the refusal of a link its visitor may not make.

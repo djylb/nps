@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	npsbridge "github.com/djylb/nps/bridge"
 	"testing"
 
 	"github.com/djylb/nps/lib/model"
@@ -45,9 +46,10 @@ type virtualClientRuntime struct {
 	disconnected []int
 }
 
-func (r *virtualClientRuntime) RequestClientUpdate(int) (int, error) { r.updateCalls++; return 1, nil }
-func (r *virtualClientRuntime) ClientConnected(int) bool             { return false }
-func (r *virtualClientRuntime) DisconnectClient(id int)              { r.disconnected = append(r.disconnected, id) }
+func (r *virtualClientRuntime) RequestClientUpdate(int) (int, error)        { r.updateCalls++; return 1, nil }
+func (r *virtualClientRuntime) VirtualServices() []npsbridge.VirtualService { return nil }
+func (r *virtualClientRuntime) ClientConnected(int) bool                    { return false }
+func (r *virtualClientRuntime) DisconnectClient(id int)                     { r.disconnected = append(r.disconnected, id) }
 
 func TestVirtualClientManagementAndRemoteGuards(t *testing.T) {
 	client := &model.Client{Id: -1, Status: true, VerifyKey: "virtual-key", Cnf: &model.Config{}, Flow: &model.Flow{}}

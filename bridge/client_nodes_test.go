@@ -48,7 +48,7 @@ func TestClientRemoveNodeUpdatesLastAndFiles(t *testing.T) {
 	a, b := NewNode("a", "", 6), NewNode("b", "", 6)
 	client := NewClient(4, a, Primary)
 	client.AddNode(b)
-	if err := client.AddFile("f", "b"); err != nil {
+	if err := client.setNodeServices("b", []string{"f"}); err != nil {
 		t.Fatal(err)
 	}
 	if client.LastUUID != "b" {
@@ -63,11 +63,11 @@ func TestClientRemoveNodeUpdatesLastAndFiles(t *testing.T) {
 	if _, ok := client.GetNodeByUUID("b"); ok || client.NodeCount() != 1 {
 		t.Fatalf("removed node still listed, count %d", client.NodeCount())
 	}
-	if _, ok := client.files.Load("f"); ok {
+	if _, ok := client.services.Load("f"); ok {
 		t.Fatal("file of removed node kept")
 	}
-	if err := client.AddFile("g", "b"); err == nil {
-		t.Fatal("AddFile accepted a removed node")
+	if err := client.setNodeServices("b", []string{"g"}); err == nil {
+		t.Fatal("setNodeServices accepted a removed node")
 	}
 	if b.Retry() {
 		t.Fatal("removed node not closed")

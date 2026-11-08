@@ -53,7 +53,13 @@ func (a *App) GetTunnel(c Context) {
 		Sort:     requestEscapedString(c, "sort"),
 		Order:    requestEscapedString(c, "order"),
 	})
-	respondTable(c, tunnelRateRows(rows), count)
+	out := tunnelRateRows(rows)
+	for _, r := range out {
+		if r != nil && r.Client != nil && r.Target != nil && r.Mode != model.ModeService {
+			r.ServiceDown = !a.Services.Index.ServiceAvailable(r.Client.Id, r.Target.TargetStr)
+		}
+	}
+	respondTable(c, out, count)
 }
 
 func (a *App) AddTunnel(c Context) {
@@ -318,6 +324,8 @@ type tunnelRateRow struct {
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
+	// ServiceDown marks a target naming a virtual service nobody reports.
+	ServiceDown bool `json:",omitempty"`
 }
 
 type hostRateRow struct {

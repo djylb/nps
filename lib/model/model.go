@@ -544,12 +544,13 @@ type Tunnel struct {
 	sync.RWMutex
 	// Compress overrides the client's compression (Compress* constants).
 	Compress string `json:",omitempty"`
-	// ServiceName is the name npc reports the virtual backend under (§8).
-	// Only npc needs it: the server knows a backend by its Target.
-	ServiceName string `json:"-"`
-	// BackendOf is the id of the stored virtual backend this tunnel was
-	// generated for; it is deleted with the backend. 0 on every other tunnel.
-	BackendOf int `json:",omitempty"`
+	// ServiceKind and ServiceName are what npc reports a virtual backend
+	// under (§8). The server shows them and treats them as opaque; together
+	// they decide the identifier in Target, so neither is ever edited.
+	ServiceKind string `json:",omitempty"`
+	ServiceName string `json:",omitempty"`
+	// Generated marks a tunnel converted from a file tunnel with a port.
+	Generated bool `json:",omitempty"`
 }
 
 // CompileDestACL compiles the destination list. Rules that cannot be used
@@ -659,8 +660,9 @@ func (t *Tunnel) Clone() *Tunnel {
 		ServerIp:     t.ServerIp,
 		Mode:         t.Mode,
 		Compress:     t.Compress,
+		ServiceKind:  t.ServiceKind,
 		ServiceName:  t.ServiceName,
-		BackendOf:    t.BackendOf,
+		Generated:    t.Generated,
 		Status:       t.Status,
 		RunStatus:    t.RunStatus,
 		Client:       t.Client,

@@ -165,11 +165,11 @@ func ProtectedPageSpecs() []PageSpec {
 		},
 		{
 			Controller: "index",
-			Action:     "file",
+			Action:     "service",
 			Permission: webservice.PermissionTunnelsRead,
 			Protected:  true,
 			Section:    "tunnels",
-			Menu:       "file",
+			Menu:       "service",
 			Template:   "index/list.html",
 			Navigation: true,
 			Params:     []PageParam{{Name: "type", In: "query", Type: "string", Required: false}},

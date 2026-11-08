@@ -94,8 +94,10 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		post.NowConn = 0
 		converted = legacyTask(post) || converted
 		if cs, ok := model.ConvertFileTunnel(post); ok {
-			log.Warn("file tunnel converted to a virtual backend", "tunnel", post.Id, "target", post.Target.TargetStr, "tunnels", len(cs))
+			// Replaced: a virtual service is what npc reports, never a record.
+			log.Warn("file tunnel converted to a tcp tunnel to its virtual service", "tunnel", post.Id, "target", post.Target.TargetStr, "tunnels", len(cs))
 			companions, converted = append(companions, cs...), true
+			return
 		}
 		post.TargetType = model.NormalizeTargetType(post.TargetType)
 		post.CompileDestACL()

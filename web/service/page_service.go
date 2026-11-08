@@ -75,9 +75,9 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 	case "mix":
 		data["name"] = "mix proxy"
 		data["type"] = "mixProxy"
-	case "file":
-		data["name"] = "file server"
-		data["type"] = "file"
+	case "service":
+		data["name"] = "virtual backend"
+		data["type"] = "service"
 	case "secret":
 		data["name"] = "secret"
 		data["type"] = "secret"

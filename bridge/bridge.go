@@ -100,6 +100,7 @@ type Bridge struct {
 	core               coreapi.Entry // nil: old protocol only
 	fallback           atomic.Pointer[Fallback]
 	corePushes         sync.Map // coreapi.Session -> *healthPush
+	coreServicesOf     sync.Map // coreapi.Session -> []coreapi.ServiceInfo
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
 

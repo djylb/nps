@@ -57,6 +57,7 @@ type Runtime interface {
 	DisconnectClient(int)
 	ClientConnected(int) bool
 	RequestClientUpdate(int) (int, error)
+	VirtualServices() []bridge.VirtualService
 	DeleteClientResources(int)
 	GenerateTunnelPort(*model.Tunnel) int
 	TunnelPortAvailable(*model.Tunnel) bool
@@ -303,7 +304,8 @@ func (offlineRuntime) DisconnectClient(int) {}
 
 func (offlineRuntime) ClientConnected(int) bool { return false }
 
-func (offlineRuntime) RequestClientUpdate(int) (int, error) { return 0, ErrClientOffline }
+func (offlineRuntime) RequestClientUpdate(int) (int, error)     { return 0, ErrClientOffline }
+func (offlineRuntime) VirtualServices() []bridge.VirtualService { return nil }
 
 func (offlineRuntime) DeleteClientResources(int) {}
 

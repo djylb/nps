@@ -18,6 +18,7 @@ type IndexService interface {
 	DashboardData(force bool) map[string]any
 	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
 	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
+	ServiceAvailable(client int, target string) bool
 	AddTunnel(TunnelInput) (TunnelMutation, error)
 	GetTunnel(id int) (*model.Tunnel, error)
 	EditTunnel(TunnelInput) (TunnelMutation, error)
@@ -138,9 +139,8 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	applyTunnelForm(tunnel, form, input, input.ClientID, "", destRules)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
-	if form.Mode == "file" {
-		// A virtual backend comes from npc; a tunnel with a port reaches it.
-		return TunnelMutation{}, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, form.Mode)
+	if err := s.checkServiceTarget(tunnel); err != nil {
+		return TunnelMutation{}, err
 	}
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
 		return TunnelMutation{}, err
@@ -215,11 +215,6 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	if probe.Port <= 0 {
 		probe.Port = tunnel.Port
 	}
-	backend := tunnel.IsVirtualBackend()
-	if backend {
-		// Its identifier and the absence of a port are not to be edited.
-		probe = &model.Tunnel{Mode: tunnel.Mode}
-	}
 	if probe.Port != tunnel.Port || probe.Mode != tunnel.Mode || probe.Socks5Proxy != tunnel.Socks5Proxy {
 		if _, err := s.resolveTunnelPort(probe); err != nil {
 			return TunnelMutation{}, err
@@ -232,10 +227,10 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	}
 
 	tunnel.Port = probe.Port
-	tunnel.Mode = probe.Mode
+	tunnel.Mode = desiredMode
 	applyTunnelForm(tunnel, form, input, client.Id, targetFallback, destRules)
-	if backend {
-		tunnel.Target = &model.Target{TargetStr: targetFallback}
+	if err := s.checkServiceTarget(tunnel); err != nil {
+		return TunnelMutation{}, err
 	}
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
 	tunnel.Flow.SetLimits(formFlowLimits(form.Flow))
@@ -633,10 +628,44 @@ func (s DefaultIndexService) resolveTunnelPort(tunnel *model.Tunnel) (int, error
 	return tunnel.Port, nil
 }
 
+// checkServiceTarget refuses a tcp or udp tunnel whose target is a reported
+// service of another network; a service not reported now is not judged.
+func (s DefaultIndexService) checkServiceTarget(t *model.Tunnel) error {
+	if t.Mode != "tcp" && t.Mode != "udp" || t.Target == nil {
+		return nil
+	}
+	for _, target := range strings.Split(t.Target.TargetStr, "\n") {
+		target = strings.TrimSpace(target)
+		if _, ok := model.ParseServiceTarget(target); !ok {
+			continue
+		}
+		for _, v := range s.Backend.Runtime.VirtualServices() {
+			if v.Target == target && v.Network != model.TargetAll && v.Network != t.Mode {
+				return fmt.Errorf("%w: %s does not serve %s", ErrTunnelModeInvalid, target, t.Mode)
+			}
+		}
+	}
+	return nil
+}
+
+// ServiceAvailable reports whether a target that names a service is reported
+// now by client; any other target is available.
+func (s DefaultIndexService) ServiceAvailable(client int, target string) bool {
+	if _, ok := model.ParseServiceTarget(target); !ok {
+		return true
+	}
+	for _, v := range s.Backend.Runtime.VirtualServices() {
+		if v.Client == client && v.Target == strings.TrimSpace(target) {
+			return true
+		}
+	}
+	return false
+}
+
 // webTunnelMode reports whether the web may create or edit a tunnel of mode;
 // an empty mode is left to the form defaults.
 func webTunnelMode(mode string) bool {
-	if mode == "" || mode == "file" {
+	if mode == "" {
 		return true
 	}
 	_, _, ok := importableMode(mode)

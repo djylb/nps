@@ -16,7 +16,7 @@
                 <div class="content">
                     <div class="table-responsive">
                         <div id="toolbar">
-                            {{ if or (not .type) (ne .type "file") }}
+                            {{ if or (not .type) (ne .type "service") }}
                             <a class="btn btn-primary dim" href="{{.web_base_url}}/index/add?type={{.type}}&client_id={{.client_id}}">
                                 <i class="fa fa-fw fa-lg fa-plus"></i>
                                 <span langtag="word-add"></span>
@@ -132,10 +132,10 @@
                     + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
                     ) + resourceDetailSection('section-destination', destAclInfo)
             }
-            if (row.Mode == "file") {
+            if (row.Mode == "service") {
                 return tmp + resourceDetailSection('section-target', ''
-                    + '<b langtag="word-localpath"></b>: ' + row.LocalPath + '&emsp;'
-                    + '<b langtag="word-stripprefix"></b>: ' + row.StripPre + '&emsp;<br/><br>'
+                    + '<b langtag="word-servicekind"></b>: ' + row.ServiceKind + '&emsp;'
+                    + '<b langtag="word-servicename"></b>: ' + row.ServiceName + '&emsp;<br/><br>'
                     + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;')
             }
             if (row.Mode == "secret") {
@@ -211,15 +211,16 @@
                 field: 'Port', //域值
                 title: '<span langtag="word-port"></span>', //标题
                 halign: 'center',
-                visible: {{ if and .type (eq .type "file") }}false{{ else }}true{{ end }}, //false表示不显示
+                visible: {{ if and .type (eq .type "service") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    var generated = row.BackendOf || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
+                    var generated = row.Generated || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
                     return '<span onclick="oCopy(this)">' + value + '</span>'
+                        + (row.ServiceDown ? ' <span class="badge badge-danger" langtag="word-servicedown"></span>' : '')
                         + (generated ? ' <span class="badge badge-secondary" langtag="word-generatedtunnel"></span>' : '')
                 }
             },
-            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") (eq .type "file") }}
+            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") (eq .type "service") }}
             {
                 field: 'Target.TargetStr', //域值
                 title: '<span langtag="word-target"></span>', //标题
@@ -231,7 +232,7 @@
                 }
             },
             {{ end }}
-            {{ if or (not .type) (eq .type "secret") }}
+            {{ if or (not .type) (eq .type "secret") (eq .type "service") }}
             {
                 field: 'TargetType', //域值
                 title: '<span langtag="word-targettype"></span>', //标题
@@ -253,16 +254,16 @@
                 }
             },
             {{ end }}
-            {{ if and .type (eq .type "file") }}
+            {{ if and .type (eq .type "service") }}
             {
-                field: 'LocalPath', //域值
-                title: '<span langtag="word-localpath"></span>', //标题
+                field: 'ServiceKind', //域值
+                title: '<span langtag="word-servicekind"></span>', //标题
                 halign: 'center',
                 visible: true //false表示不显示
             },
             {
-                field: 'StripPre', //域值
-                title: '<span langtag="word-stripprefix"></span>', //标题
+                field: 'ServiceName', //域值
+                title: '<span langtag="word-servicename"></span>', //标题
                 halign: 'center',
                 visible: true //false表示不显示
             },
@@ -493,6 +494,9 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
+                    if (row.Mode === "service") {
+                        return '<span class="badge badge-primary" langtag="word-online"></span>'
+                    }
                     if (value) {
                         if (row.Mode && row.Mode == "tcp") {
                             return '<a href="' + 'http://{{.ip}}:' + row.Port + '" target="_blank"><span class="badge badge-primary" langtag="word-open"></span></a>'
@@ -540,7 +544,7 @@
                     }
                     btn_group += "<a onclick=\"submitform('delete', '{{.web_base_url}}/index/del', {'id':" + row.Id
                     btn_group += '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>'
-                    if (row.Mode && row.Mode !== "file") {
+                    if (row.Mode) {
                         btn_group += '<a href="{{.web_base_url}}/index/edit?id=' + row.Id + '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a>'
                     }
                     btn_group += '</div>'

@@ -147,6 +147,14 @@ loop:
 				break loop
 			}
 
+			if t.Mode == "file" {
+				log.Info("tunnel from npc config refused", "client", client.Id, "remark", t.Remark, "reason", "file_mode_unsupported")
+				if !writeAddFail(c) {
+					fail = true
+					break loop
+				}
+				continue
+			}
 			ports, targets, ok := model.ConfigTaskPorts(t)
 			if !ok {
 				log.Info("tunnel from npc config refused", "client", client.Id, "remark", t.Remark, "reason", "invalid_ports")
@@ -163,15 +171,15 @@ loop:
 				if caps.NodeID {
 					join(client.Id)
 				}
-				if tl.Mode == "file" && !tl.IsVirtualBackend() {
-					cli, _ := s.joinNode(client.Id, uuid, newNode(uuid, caps), func(*Node) {})
-					key := legacy.FileKey(client.VerifyKey, tl)
-					if err = cli.AddFile(key, uuid); err != nil {
-						log.Warn("adding file tunnel failed", "client", client.Id, "err", err)
+				if s.generatedPortTaken(tl, client) {
+					// The backend stays listed; a tunnel to it can be made by hand.
+					log.Debug("generated tunnel not opened", "client", client.Id, "port", tl.Port, "reason", "port_in_use")
+					if legacy.WriteStatus(c, true) != nil {
+						fail = true
+						break loop
 					}
-					tl.Target.TargetStr = fmt.Sprintf("file://%s", key)
+					continue
 				}
-
 				tt, created, err := s.publishTask(tl, client, uuid, caps)
 				if err != nil {
 					log.Info("tunnel from npc config refused", "client", client.Id, "remark", tl.Remark, "err", err)
@@ -225,7 +233,8 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 	tl := t.Clone()
 	tl.Id, tl.Port, tl.Client, tl.Status, tl.NoStore = id, ports[i], client, true, true
 	tl.Flow = new(model.Flow)
-	tl.RunStatus, tl.NowConn, tl.IsHttp, tl.Routes, tl.BackendOf = false, 0, false, nil, 0
+	tl.RunStatus, tl.NowConn, tl.IsHttp, tl.Routes, tl.Generated = false, 0, false, nil, false
+	tl.ServiceKind, tl.ServiceName = "", ""
 	tl.Ports, tl.TargetAddr = "", "" // what the ports and targets of the entry were made of
 	tl.CopySourceLists(new(model.SourceLists))
 	tl.UserAuth, tl.HealthConfig = nil, nil
@@ -310,6 +319,21 @@ func (s *Bridge) publishHost(h *model.Host, client *model.Client, uuid string, c
 // is new. It returns the entry whose service has to be restarted, if any, and
 // whether it was created. Another instance joining a running entry does not
 // restart it, which would cut the traffic of the instances already there.
+// generatedPortTaken reports whether tl, a tunnel an npc sent for one of its
+// virtual backends, is new and its port is in use: such a tunnel is skipped,
+// which is no failure.
+func (s *Bridge) generatedPortTaken(tl *model.Tunnel, client *model.Client) bool {
+	if _, ok := model.ParseServiceTarget(tl.Target.TargetStr); !ok || tl.Port <= 0 {
+		return false
+	}
+	s.routeMu.Lock()
+	defer s.routeMu.Unlock()
+	if _, exists := s.store.ClientTunnel(client, tl); exists {
+		return false
+	}
+	return !s.ports.TestTunnelPort(tl)
+}
+
 func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string, caps legacy.Caps) (*model.Tunnel, bool, error) {
 	s.routeMu.Lock()
 	defer s.routeMu.Unlock()

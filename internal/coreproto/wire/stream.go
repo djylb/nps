@@ -337,7 +337,7 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 			return o, ErrMalformed
 		}
 	case OpUDP:
-		if o.Compress != 0 || len(o.Service) > 0 || o.Target != nil && o.ProviderTarget {
+		if o.Compress != 0 || atMostOneViolated(o.Target != nil, len(o.Service) > 0, o.ProviderTarget) {
 			return o, ErrMalformed
 		}
 	}
@@ -388,6 +388,8 @@ func ParseUDPBody(b []byte) (Address, []byte, error) {
 
 // ReadVarintFrom reads one varint from r.
 func ReadVarintFrom(r io.Reader) (uint64, error) { return readVarintFrom(r) }
+
+func atMostOneViolated(a, b, c bool) bool { return a && b || a && c || b && c }
 
 func exactlyOne(a, b, c bool) bool {
 	n := 0

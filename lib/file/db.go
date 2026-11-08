@@ -866,7 +866,7 @@ func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*model.Host) bool) 
 func (s *DbUtils) ClientTunnel(c *model.Client, t *model.Tunnel) (tt *model.Tunnel, exist bool) {
 	s.JsonDb.Tasks.Range(func(key, value any) bool {
 		v := value.(*model.Tunnel)
-		if v.Client.Id == c.Id && ((v.Port == t.Port && t.Port != 0) || (v.Password == t.Password && t.Password != "") || (t.IsVirtualBackend() && v.IsVirtualBackend() && v.Target.TargetStr == t.Target.TargetStr)) {
+		if v.Client.Id == c.Id && ((v.Port == t.Port && t.Port != 0) || (v.Password == t.Password && t.Password != "")) {
 			exist = true
 			tt = v
 			return false

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/djylb/nps/bridge"
 	"testing"
 
 	"github.com/djylb/nps/lib/model"
@@ -105,11 +106,12 @@ func (s stubRuntime) DashboardData(force bool) map[string]any {
 func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*model.Client, int) {
 	return nil, 0
 }
-func (stubRuntime) PingClient(int, string) int           { return 0 }
-func (stubRuntime) DisconnectClient(int)                 {}
-func (stubRuntime) ClientConnected(int) bool             { return false }
-func (stubRuntime) RequestClientUpdate(int) (int, error) { return 0, nil }
-func (stubRuntime) DeleteClientResources(int)            {}
+func (stubRuntime) PingClient(int, string) int               { return 0 }
+func (stubRuntime) DisconnectClient(int)                     {}
+func (stubRuntime) ClientConnected(int) bool                 { return false }
+func (stubRuntime) RequestClientUpdate(int) (int, error)     { return 0, nil }
+func (stubRuntime) VirtualServices() []bridge.VirtualService { return nil }
+func (stubRuntime) DeleteClientResources(int)                {}
 func (s stubRuntime) GenerateTunnelPort(tunnel *model.Tunnel) int {
 	if s.generatePort != nil {
 		return s.generatePort(tunnel)

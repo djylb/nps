@@ -84,10 +84,10 @@
                     <i class="fa fa-low-vision fa-lg fa-fw"></i>
                     <span class="nav-label" langtag="scheme-secret"></span></a>
                 </li>
-                <li class="{{if eq "file" .menu}}active{{end}}">
-                    <a href="{{.web_base_url}}/index/file" class="d-flex align-items-center">
+                <li class="{{if eq "service" .menu}}active{{end}}">
+                    <a href="{{.web_base_url}}/index/service" class="d-flex align-items-center">
                     <i class="fa fa-briefcase fa-lg fa-fw"></i>
-                    <span class="nav-label" langtag="scheme-file"></span></a>
+                    <span class="nav-label" langtag="scheme-service"></span></a>
                 </li>
                 {{if eq true .isAdmin}}
                 <li class="{{if eq "global" .menu}}active{{end}}">

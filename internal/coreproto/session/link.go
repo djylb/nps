@@ -156,7 +156,7 @@ func replyReadError(err error) error {
 // decoded, or UDP packets as the frames the tunnel code reads.
 func wrapLink(lc *linkConn, o wire.StreamOpen, zc *zmux.Conn, limits CompressLimits) (net.Conn, error) {
 	if o.Op == wire.OpUDP {
-		return newUDPConn(lc, o.Target == nil && !o.ProviderTarget, zc), nil
+		return newUDPConn(lc, o.Target == nil && !o.ProviderTarget && len(o.Service) == 0, zc), nil
 	}
 	if o.Compress != 0 {
 		c, err := newCompressConn(lc, o.Compress, limits)

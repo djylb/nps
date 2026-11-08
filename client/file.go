@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
@@ -68,9 +67,6 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	}
 	t.Port = ports[0]
 	key := t.ServiceName
-	if key == "" {
-		key = legacy.FileKey(vkey, t)
-	}
 	registered := false
 	defer func() {
 		if !registered {

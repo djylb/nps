@@ -26,7 +26,6 @@
                                         <span id="casesocks5" langtag="info-casesocks5"></span>
                                         <span id="casemixProxy" langtag="info-casemixproxy"></span>
                                         <span id="casesecret" langtag="info-casesecret"></span>
-                                        <span id="casefile" langtag="info-casefile"></span>
                                     </span>
                                     <select class="form-control selectpicker" id="type" name="type">
                                         <option value="tcp" langtag="scheme-tcp"></option>
@@ -35,7 +34,7 @@
                                         {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
                                         {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
                                         <option value="secret" langtag="scheme-secret"></option>
-                                        {{/*<option value="file" langtag="scheme-file"></option>*/}}
+                                        
                                     </select>
                                 </div>
                             </div>
@@ -327,7 +326,6 @@
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     arr["secret"] = ["health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "dest_acl_mode", "dest_acl_rules"]
-    arr["file"] = ["client_id", "local_path", "strip_pre"]
 
     function resetForm() {
         $(".form-group[id]").css("display", "none");

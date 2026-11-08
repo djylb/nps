@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 )
@@ -52,7 +53,7 @@ func (s *serverSession) serveServices(lc *linkConn, fields []byte) {
 	}
 	out := make([]coreapi.ServiceInfo, len(list))
 	for i, e := range list {
-		out[i] = coreapi.ServiceInfo{Kind: e.Kind, Name: e.Name, Meta: e.Meta}
+		out[i] = coreapi.ServiceInfo{Kind: e.Kind, Name: e.Name, Meta: e.Meta, Network: networkName(e.Network)}
 	}
 	h.Services(s, out)
 }
@@ -65,7 +66,7 @@ func (s *clientSession) PublishServices(ctx context.Context, list []coreapi.Loca
 	byID := make(map[string]coreapi.LocalService, len(list))
 	for i, l := range list {
 		id := wire.ServiceID(l.Kind, l.Name)
-		entries[i] = wire.Service{ID: id, Kind: l.Kind, Name: l.Name, Meta: l.Meta}
+		entries[i] = wire.Service{ID: id, Kind: l.Kind, Name: l.Name, Meta: l.Meta, Network: networkID(l.Network)}
 		byID[string(id)] = l
 	}
 	// In place before the server can learn of them.
@@ -106,7 +107,7 @@ func (s *clientSession) serveService(ctx context.Context, lc *linkConn, o *wire.
 	s.mu.Lock()
 	svc, ok := s.services[string(o.Service)]
 	s.mu.Unlock()
-	if !ok {
+	if !ok || !networkMatches(svc.Network, o.Op) {
 		failLink(lc, o.WantReply, wire.CodeServiceUnavailable)
 		return
 	}
@@ -117,6 +118,9 @@ func (s *clientSession) serveService(ctx context.Context, lc *linkConn, o *wire.
 	c, err := wrapLink(lc, *o, s.zc, s.d.limits)
 	if err != nil {
 		return
+	}
+	if o.Op == wire.OpUDP {
+		c = netx.NewFramedConn(c, netx.WithFramedDatagrams())
 	}
 	if o.Source != nil {
 		c = sourceConn{Conn: c, remote: o.Source}
@@ -136,3 +140,33 @@ type wireAddr struct{ a *wire.Address }
 
 func (wireAddr) Network() string  { return "tcp" }
 func (w wireAddr) String() string { return w.a.String() }
+
+func networkName(n uint64) string {
+	switch n {
+	case wire.ServiceUDP:
+		return coreapi.NetworkUDP
+	case wire.ServiceAll:
+		return coreapi.NetworkAll
+	}
+	return coreapi.NetworkTCP
+}
+
+func networkID(n string) uint64 {
+	switch n {
+	case coreapi.NetworkUDP:
+		return wire.ServiceUDP
+	case coreapi.NetworkAll:
+		return wire.ServiceAll
+	}
+	return wire.ServiceTCP
+}
+
+func networkMatches(n string, op wire.Op) bool {
+	switch n {
+	case coreapi.NetworkAll:
+		return true
+	case coreapi.NetworkUDP:
+		return op == wire.OpUDP
+	}
+	return op == wire.OpTCP
+}

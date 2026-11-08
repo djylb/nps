@@ -451,7 +451,7 @@ type Client struct {
 	// client is. Members are read through node and nodeList.
 	nodePool        *upstream.Pool[*Node]
 	mode            SelectMode // how nodes are chosen
-	files           sync.Map   // map[fileUUID]nodeUUID
+	services        sync.Map   // map[service id in hex]nodeUUID
 	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
 	lastConnectNano atomic.Int64
 	started         time.Time // when the session began, for client_offline
@@ -592,45 +592,29 @@ func (c *Client) lastUUID() string {
 	return c.LastUUID
 }
 
-func (c *Client) AddFile(key, uuid string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.node(uuid); !ok {
-		return fmt.Errorf("uuid %q not found", uuid)
-	}
-	c.files.Store(key, uuid)
-	return nil
-}
-
-// setNodeFiles makes keys the file services of node uuid: those it no longer
+// setNodeServices makes keys the services of node uuid: those it no longer
 // lists are dropped.
-func (c *Client) setNodeFiles(uuid string, keys []string) error {
+func (c *Client) setNodeServices(uuid string, keys []string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.node(uuid); !ok {
 		return fmt.Errorf("uuid %q not found", uuid)
 	}
-	c.files.Range(func(k, v any) bool {
+	c.services.Range(func(k, v any) bool {
 		if v == uuid && !slices.Contains(keys, k.(string)) {
-			c.files.Delete(k)
+			c.services.Delete(k)
 		}
 		return true
 	})
 	for _, k := range keys {
-		c.files.Store(k, uuid)
+		c.services.Store(k, uuid)
 	}
 	return nil
 }
 
-func (c *Client) RemoveFile(key string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.files.Delete(key)
-}
-
-func (c *Client) GetNodeByFile(key string) (*Node, bool) {
+func (c *Client) nodeOfService(key string) (*Node, bool) {
 	c.mu.RLock()
-	v, ok := c.files.Load(key)
+	v, ok := c.services.Load(key)
 	c.mu.RUnlock()
 	if !ok {
 		return nil, false
@@ -821,9 +805,9 @@ func (c *Client) removeNode(uuid string) {
 			c.LastUUID = bs[0].ID()
 		}
 	}
-	c.files.Range(func(key, value any) bool {
+	c.services.Range(func(key, value any) bool {
 		if v, ok := value.(string); ok && v == uuid {
-			c.files.Delete(key)
+			c.services.Delete(key)
 		}
 		return true
 	})
@@ -848,7 +832,7 @@ func (c *Client) Close() error {
 	}
 	nodes := c.nodeList()
 	c.nodePool.Close()
-	c.files.Clear()
+	c.services.Clear()
 	c.mu.Unlock()
 	for _, n := range nodes {
 		_ = n.Close()

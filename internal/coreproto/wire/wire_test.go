@@ -167,3 +167,25 @@ func TestHealthRoundTrip(t *testing.T) {
 		t.Fatalf("%+v, %v", r, err)
 	}
 }
+
+func TestServiceNetworkAndUDPOpen(t *testing.T) {
+	in := []Service{{ID: ServiceID("a", "b"), Kind: "a", Name: "b", Network: ServiceUDP}, {ID: ServiceID("c", "d"), Kind: "c", Name: "d"}}
+	got, err := ParseServices(AppendServices(nil, in))
+	if err != nil || got[0].Network != ServiceUDP || got[1].Network != ServiceTCP {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if _, err := ParseServices(AppendServices(nil, []Service{{ID: ServiceID("a", "b"), Kind: "a", Name: "b", Network: 9}})); err != ErrUnsupported {
+		t.Fatalf("unknown network: %v", err)
+	}
+	id := ServiceID("a", "b")
+	if b, err := AppendStreamOpen(&StreamOpen{Op: OpUDP, Service: id}); err != nil {
+		t.Fatal(err)
+	} else if o, err := ParseStreamOpen(OpUDP, b[1:]); err != nil || len(o.Service) == 0 {
+		t.Fatalf("%+v, %v", o, err)
+	}
+	a, _ := ParseHostPort("1.2.3.4:5")
+	b, _ := AppendStreamOpen(&StreamOpen{Op: OpUDP, Service: id, Target: &a})
+	if _, err := ParseStreamOpen(OpUDP, b[1:]); err != ErrMalformed {
+		t.Fatalf("service and target: %v", err)
+	}
+}

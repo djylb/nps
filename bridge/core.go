@@ -19,6 +19,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/healthcheck"
 	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
@@ -79,8 +80,8 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 	s.coreChanged(id)
 }
 
-// coreServices binds the virtual services the session reported to its node
-// (§8), by the id a target names them with.
+// coreServices replaces what the session offers (§8): in memory only, by the
+// id a target names a service with.
 func (s *Bridge) coreServices(cs coreapi.Session, list []coreapi.ServiceInfo) {
 	id := cs.ClientID()
 	v, ok := s.Client.Load(id)
@@ -91,9 +92,32 @@ func (s *Bridge) coreServices(cs coreapi.Session, list []coreapi.ServiceInfo) {
 	for _, e := range list {
 		keys = append(keys, hex.EncodeToString(coreapi.ServiceID(e.Kind, e.Name)))
 	}
-	if err := v.(*Client).setNodeFiles(coreNodeUUID(cs), keys); err != nil {
+	if err := v.(*Client).setNodeServices(coreNodeUUID(cs), keys); err != nil {
 		log.Debug("virtual services not bound", "client", id, "err", err)
+		return
 	}
+	s.coreServicesOf.Store(cs, list)
+}
+
+// VirtualService is a service a connected npc reports.
+type VirtualService struct {
+	Client              int
+	Kind, Name, Network string
+	Target              string // what a tunnel's target names it with
+}
+
+// VirtualServices lists what the sessions report now.
+func (s *Bridge) VirtualServices() []VirtualService {
+	var out []VirtualService
+	s.coreServicesOf.Range(func(k, v any) bool {
+		cs := k.(coreapi.Session)
+		for _, e := range v.([]coreapi.ServiceInfo) {
+			out = append(out, VirtualService{Client: cs.ClientID(), Kind: e.Kind, Name: e.Name, Network: e.Network,
+				Target: model.ServiceTarget(e.Kind, e.Name)})
+		}
+		return true
+	})
+	return out
 }
 
 // coreChanged wakes what waits for a session of client id (awaitPath).
@@ -155,6 +179,7 @@ func (s *Bridge) coreTakeover(cs, old coreapi.Session) {
 func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
 	id := cs.ClientID()
 	s.stopCorePush(cs)
+	s.coreServicesOf.Delete(cs)
 	if v, ok := s.Client.Load(id); ok {
 		client := v.(*Client)
 		if n, ok := client.GetNodeByUUID(coreNodeUUID(cs)); ok && n.CloseIfCoreCurrent(cs) {

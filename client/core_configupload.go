@@ -9,6 +9,7 @@ import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/model"
 )
 
 // The config upload on the new protocol is a 0.35 transition: the tunnels and
@@ -40,13 +41,23 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 	if !ok {
 		return errors.New("config upload is not available on this session")
 	}
+	// A virtual backend is local: the session reports it, it is not uploaded.
+	send := *cnf
+	send.Tasks = nil
+	for _, t := range cnf.Tasks {
+		if !t.IsVirtualBackend() {
+			send.Tasks = append(send.Tasks, t)
+		} else if t.ServiceKind == model.FileServiceKind {
+			fsm.StartFileServer(t, cnf.CommonConfig.VKey)
+		}
+	}
 	nc, err := up.OpenConfigUpload(ctx)
 	if err != nil {
 		return fmt.Errorf("config upload failed: %w", err)
 	}
 	c := conn.NewConn(nc)
 	defer c.Close()
-	vkey, err := exchangeConfig(c, cnf, fsm, time.Now().Add(configExchangeTimeout(cnf)))
+	vkey, err := exchangeConfig(c, &send, fsm, time.Now().Add(configExchangeTimeout(&send)))
 	if err != nil {
 		return fmt.Errorf("config exchange failed: %w", err)
 	}

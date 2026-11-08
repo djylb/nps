@@ -34,7 +34,15 @@ func legacyTask(t *model.Tunnel) bool {
 // addFileCompanions stores the tunnels of a converted file tunnel under new
 // ids, once every stored tunnel is known, and reports whether there were any.
 func (s *JsonDb) addFileCompanions(list []*model.Tunnel) bool {
+	added := false
 	for _, c := range list {
+		if s.portTaken(c) {
+			// The backend stays; a tunnel to it can be made by hand. The
+			// conversion is done, so this is said only once.
+			log.Warn("generated tunnel of a file backend not created", "port", c.Port, "reason", "port_in_use", "target", c.Target.TargetStr)
+			continue
+		}
+		added = true
 		c.Id = int(s.TaskIncreaseId) + 1
 		s.TaskIncreaseId = int32(c.Id)
 		c.Flow.SetOwner(tunnelOwnerArgs(c)...)
@@ -43,5 +51,15 @@ func (s *JsonDb) addFileCompanions(list []*model.Tunnel) bool {
 		c.CompileSourceLists(acl.ScopeUser, taskOwner(c))
 		s.Tasks.Store(c.Id, c)
 	}
-	return len(list) > 0
+	return added
+}
+
+// portTaken reports whether a stored tunnel already listens on t's port.
+func (s *JsonDb) portTaken(t *model.Tunnel) (taken bool) {
+	s.Tasks.Range(func(_, v any) bool {
+		o := v.(*model.Tunnel)
+		taken = o.Port == t.Port && o.Id != t.Id
+		return !taken
+	})
+	return taken
 }

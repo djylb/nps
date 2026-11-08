@@ -51,9 +51,9 @@
 		<zh-CN>点对点访问</zh-CN>
 		<en-US>Point-to-point access</en-US>
 	</lang>
-	<lang id="scheme-file">
-		<zh-CN>文件访问</zh-CN>
-		<en-US>File Server</en-US>
+	<lang id="scheme-service">
+		<zh-CN>虚拟后端</zh-CN>
+		<en-US>Virtual Backends</en-US>
 	</lang>
 
 	<lang id="page-clientlist">
@@ -1009,13 +1009,25 @@
 		<zh-CN>随便填，自动识别（支持时间戳、注意系统时区），留空关闭。例如：2025-01-01（指定东八时区：2025-01-01 00:00:00 +0800 CST）</zh-CN>
 		<en-US>Fill freely, automatically recognized. Leave empty to disable. For example: 2025-01-01 or 2025-01-01 00:00:00 +0800 CST</en-US>
 	</lang>
+	<lang id="word-servicedown">
+		<zh-CN>目标服务不可用</zh-CN>
+		<en-US>Target service unavailable</en-US>
+	</lang>
 	<lang id="word-generatedtunnel">
 		<zh-CN>自动生成</zh-CN>
 		<en-US>Auto-generated</en-US>
 	</lang>
-	<lang id="info-casefile">
-		<zh-CN>客户端配置文件声明的本地文件服务（虚拟后端）。复制这里的目标（service://…），填到其他隧道或域名的目标里，就可以对外访问。</zh-CN>
-		<en-US>A local file service declared in the client's config file (a virtual backend). Copy its target (service://…) into the target of another tunnel or host to expose it.</en-US>
+	<lang id="info-caseservice">
+		<zh-CN>客户端上报的虚拟后端。复制目标（service://…）填到其他隧道或域名的目标里，就可以对外访问。</zh-CN>
+		<en-US>Virtual backends reported by clients. Copy the target (service://…) into the target of another tunnel or host to expose it.</en-US>
+	</lang>
+	<lang id="word-servicekind">
+		<zh-CN>种类</zh-CN>
+		<en-US>Kind</en-US>
+	</lang>
+	<lang id="word-servicename">
+		<zh-CN>名称</zh-CN>
+		<en-US>Name</en-US>
 	</lang>
 	<lang id="info-casehttpproxy">
 		<zh-CN>将公网服务器1.1.1.1的8004端口作为HTTP代理，访问内网网站。</zh-CN>

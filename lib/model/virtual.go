@@ -11,9 +11,6 @@ import (
 // service id in hex (§8), which depends on nothing a rename changes.
 const ServiceScheme = "service://"
 
-// FileServiceKind is the kind of a file service.
-const FileServiceKind = "file"
-
 // ServiceTarget is the target that reaches the service of kind and name.
 func ServiceTarget(kind, name string) string {
 	return ServiceScheme + hex.EncodeToString(coreapi.ServiceID(kind, name))
@@ -33,12 +30,9 @@ func ParseServiceTarget(target string) (id []byte, ok bool) {
 	return id, true
 }
 
-// IsVirtualBackend reports whether t is a virtual backend: served by npc,
-// reached through the target of another tunnel, listening on nothing.
-func (t *Tunnel) IsVirtualBackend() bool {
-	if t.Mode != "file" || t.Target == nil {
-		return false
-	}
-	_, ok := ParseServiceTarget(t.Target.TargetStr)
-	return ok
-}
+// ModeService is the mode of a virtual backend.
+const ModeService = "service"
+
+// IsVirtualBackend reports whether t describes a virtual service of npc, which
+// is never stored: the server only ever sees what a session reports.
+func (t *Tunnel) IsVirtualBackend() bool { return t.Mode == ModeService }

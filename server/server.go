@@ -442,7 +442,7 @@ func (s *Server) newMode(c *model.Tunnel) proxy.Service {
 	allowLocalProxy := cfg.Feature.AllowLocalProxy
 	b := s.bridge
 	switch c.Mode {
-	case "tcp", "file":
+	case "tcp":
 		service = proxy.NewTunnelModeServer(proxy.ProcessTunnel, b, c, allowLocalProxy)
 	case "mixProxy", "socks5", "httpProxy":
 		service = proxy.NewTunnelModeServer(proxy.ProcessMix, b, c, allowLocalProxy)
@@ -505,11 +505,6 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		s.bridge.RevokeSecretTunnel(t.Id)
 		s.tasks.Store(t.Id, nil)
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
-		return nil
-	}
-	if t.IsVirtualBackend() {
-		// npc serves it; other tunnels reach it through their targets.
-		s.tasks.Store(t.Id, nil)
 		return nil
 	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
@@ -601,23 +596,7 @@ func (s *Server) DeleteTunnel(id int) error {
 	}
 	err := s.db.DelTask(id)
 	s.bridge.RevokeSecretTunnel(id)
-	s.deleteGeneratedTunnels(id)
 	return err
-}
-
-// deleteGeneratedTunnels removes the tunnels generated for backend id, which
-// have no reason to listen without it.
-func (s *Server) deleteGeneratedTunnels(id int) {
-	var ids []int
-	s.db.JsonDb.Tasks.Range(func(_, value any) bool {
-		if v := value.(*model.Tunnel); v.BackendOf == id {
-			ids = append(ids, v.Id)
-		}
-		return true
-	})
-	for _, g := range ids {
-		_ = s.DeleteTunnel(g)
-	}
 }
 
 // DeleteClientResources removes all tasks and domain entries of client id.
@@ -663,6 +642,9 @@ func (s *Server) delHost(id int) {
 
 // RemoveHostCache drops what the HTTP proxy cached of domain entry id.
 func (s *Server) RemoveHostCache(id int) { s.hostCache.Remove(id) }
+
+// VirtualServices lists the services connected clients report.
+func (s *Server) VirtualServices() []bridge.VirtualService { return s.bridge.VirtualServices() }
 
 // RequestClientUpdate asks the connected npc of client clientId to update
 // themselves; it returns how many were asked.

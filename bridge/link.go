@@ -122,10 +122,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	var node *Node
 	// pick is the choice below again, for a request that has to wait.
 	pick := client.GetNode
-	isFile := strings.Contains(link.Host, "file://") || strings.HasPrefix(strings.TrimSpace(link.Host), model.ServiceScheme)
-	if isFile {
-		link.ConnType = conn.LinkFile
-	}
+	serviceKey, isService := strings.CutPrefix(strings.TrimSpace(link.Host), model.ServiceScheme)
 	if link.Option.Node != "" {
 		// The route chose the node; its absence says nothing about the others.
 		pick = func() *Node {
@@ -138,18 +135,17 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		if path == nil {
 			return nil, fmt.Errorf("node %s of client %d is not connected", link.Option.Node, clientId)
 		}
-	} else if isFile {
-		key := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(link.Host), "file://"), model.ServiceScheme)
+	} else if isService {
 		pick = func() *Node {
-			n, _ := client.GetNodeByFile(key)
+			n, _ := client.nodeOfService(serviceKey)
 			return n
 		}
-		node, ok = client.GetNodeByFile(key)
+		node, ok = client.nodeOfService(serviceKey)
 		if ok {
 			path = node.path()
 		} else {
-			log.Debug("no node holds the file tunnel", "client", clientId)
-			err = fmt.Errorf("failed to find tunnel for host: %s", link.Host)
+			log.Debug("no node reports the service", "client", clientId)
+			err = coreapi.ServiceUnavailable()
 			client.RemoveOfflineNodes(false)
 			return
 		}
@@ -277,6 +273,14 @@ func (p corePath) open(clientId int, link *conn.Link) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
 	defer cancel()
 	req := coreapi.LinkRequest{Source: link.RemoteAddr, WantReply: link.Option.NeedAck, Compress: link.Option.Compress}
+	if id, ok := model.ParseServiceTarget(link.Host); ok {
+		req.Service = id
+		req.Network = coreapi.NetworkTCP
+		if link.ConnType == conn.LinkUDP {
+			req.Network = coreapi.NetworkUDP
+		}
+		return p.finish(ctx, clientId, link, req)
+	}
 	switch link.ConnType {
 	case conn.LinkPing:
 		if _, err := p.s.Ping(ctx); err != nil {
@@ -289,15 +293,13 @@ func (p corePath) open(clientId int, link *conn.Link) (net.Conn, error) {
 		req.Network, req.Target = coreapi.NetworkUDP, netaddr.FormatAddress(link.Host)
 	case conn.LinkUDP5:
 		req.Network = coreapi.NetworkUDP
-	case conn.LinkFile:
-		id, ok := model.ParseServiceTarget(link.Host)
-		if !ok {
-			return nil, fmt.Errorf("the client %d cannot serve target %s", clientId, link.Host)
-		}
-		req.Network, req.Service = coreapi.NetworkTCP, id
 	default:
 		return nil, fmt.Errorf("the client %d cannot serve a %s link", clientId, link.ConnType)
 	}
+	return p.finish(ctx, clientId, link, req)
+}
+
+func (p corePath) finish(ctx context.Context, clientId int, link *conn.Link, req coreapi.LinkRequest) (net.Conn, error) {
 	target, err := p.s.OpenLink(ctx, req)
 	if err != nil {
 		log.Debug("opening link failed", "client", clientId, "target", link.Host, "err", err)

@@ -10,16 +10,20 @@ import (
 // versions wrote it, becomes a virtual backend. Remove it, and its calls, in
 // the next major version.
 
-// ConvertFileTunnel makes the file tunnel t a virtual backend, in place, and
-// returns one tcp tunnel per port of t that listens there and targets the
-// backend; a tunnel with no port gets none. It reports false, changing
+// FileServiceKind is the kind npc reports its file services under.
+const FileServiceKind = "file"
+
+// ConvertFileTunnel makes the file tunnel t the description of a local virtual
+// service, in place, and returns one tcp tunnel per port of t that listens
+// there and targets the service; a tunnel with no port gets none. npc serves
+// what t describes; the server keeps only the returned tunnels. It reports false, changing
 // nothing, for what is no file tunnel or is a backend already, so applying
 // it twice is applying it once. The returned tunnels have no Id.
 //
 // The service is named by the first port, or by the remark without one, so
 // that its identifier stays the same across restarts and renames.
 func ConvertFileTunnel(t *Tunnel) ([]*Tunnel, bool) {
-	if t == nil || t.Mode != "file" || t.IsVirtualBackend() {
+	if t == nil || t.Mode != "file" {
 		return nil, false
 	}
 	var ports []int
@@ -42,12 +46,14 @@ func ConvertFileTunnel(t *Tunnel) ([]*Tunnel, bool) {
 		c.Id, c.Mode, c.Port, c.Ports = 0, "tcp", p, strconv.Itoa(p)
 		c.LocalPath, c.StripPre, c.ReadOnly, c.TargetAddr = "", "", false, ""
 		c.Target = &Target{TargetStr: target}
+		c.TargetType = TargetTCP
 		c.Flow = new(Flow)
-		c.BackendOf = t.Id // 0 for a tunnel of npc.conf, which has no id yet
+		c.Generated = true
 		companions = append(companions, c)
 	}
-	t.ServiceName = name
+	t.Mode, t.ServiceKind, t.ServiceName = ModeService, FileServiceKind, name
 	t.Port, t.Ports = 0, ""
 	t.Target = &Target{TargetStr: target}
+	t.TargetType = TargetTCP // a file service is tcp
 	return companions, true
 }
