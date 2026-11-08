@@ -3,11 +3,13 @@ package connection
 import (
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/portmux"
 	"github.com/djylb/portmux/hostmatch"
@@ -51,6 +53,7 @@ type portMux struct {
 	mux         *portmux.Mux
 	managerHost string
 	clientHost  string
+	coreBytes   []string // first bytes of the new protocol, when it is on
 
 	mu     sync.Mutex
 	routes [kindCount]*portmux.Route
@@ -61,7 +64,12 @@ func newPortMux(port int, managerHost, clientHost string) (*portMux, error) {
 	if err != nil {
 		return nil, err
 	}
+	var coreBytes []string
+	if Network().NewProtocol {
+		coreBytes = coreapi.FirstBytes
+	}
 	p := &portMux{
+		coreBytes: coreBytes,
 		mux: portmux.New(
 			portmux.WithSniffTimeout(muxAcceptTimeout),
 			portmux.WithDispatchTimeout(muxAcceptTimeout),
@@ -161,9 +169,10 @@ func (p *portMux) rules(has func(Kind) bool) [kindCount]routeRule {
 	// was closed and those other matchers ruled out (e.g. an HTTP request
 	// for an unknown host when the HTTP proxy slot is closed), which would
 	// send them to the HTTPS proxy instead of dropping them.
-	other := portmux.Not(portmux.Prefix(append([]string{legacy.Magic}, httpMethodPrefixes...)...))
+	bridgePrefixes := append([]string{legacy.Magic}, p.coreBytes...)
+	other := portmux.Not(portmux.Prefix(append(slices.Clone(bridgePrefixes), httpMethodPrefixes...)...))
 
-	out[KindBridgeTCP] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(legacy.Magic)}}
+	out[KindBridgeTCP] = routeRule{matchers: []portmux.Matcher{portmux.Prefix(bridgePrefixes...)}}
 
 	n := 0
 	for _, k := range []Kind{KindHTTP, KindWeb, KindBridgeWS} {

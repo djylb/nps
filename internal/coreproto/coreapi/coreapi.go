@@ -1,0 +1,104 @@
+// Package coreapi is the boundary between the core protocol and the code
+// that uses it: the bridge and the client see only these interfaces, with
+// no zmux or wire type, as they see the old protocol only through
+// bridge/legacy. internal/coreproto/session implements it; cmd/nps and
+// cmd/npc connect the two.
+package coreapi
+
+import (
+	"context"
+	"crypto/tls"
+	"net"
+	"net/http"
+	"net/netip"
+	"time"
+)
+
+// FirstBytes are the first bytes of a core protocol carrier on a port shared
+// with the old protocol: Establish Profiles 1 and 3, and Join.
+var FirstBytes = []string{"\x01", "\x02", "\x03"}
+
+// ClientRecord is what the entry reads of a stored client.
+type ClientRecord struct {
+	ID      int
+	VKey    string
+	Enabled bool
+	Crypt   bool
+}
+
+// Session is one authenticated core protocol session on the server.
+type Session interface {
+	ClientID() int
+	Instance() string // identifies the npc process; opaque
+	Source() netip.AddrPort
+	Carrier() string
+	Agent() string
+	Since() time.Time
+}
+
+// AuthFailure is a failed authentication of an identified client.
+type AuthFailure struct {
+	Source  netip.AddrPort
+	Carrier string
+	Client  int
+	Reason  string // bad_key, malformed, disabled, forbidden
+	Flag    string // forbidden: what was refused
+}
+
+// Hooks are what the entry calls in the bridge.
+type Hooks struct {
+	// Online runs once a session is established; it returns promptly.
+	Online func(Session)
+	// Takeover runs when s replaces old, the same npc instance.
+	Takeover func(s, old Session)
+	// Offline runs when the session ended; reason is a word of the
+	// client_offline event.
+	Offline func(s Session, reason string)
+	// AuthFailed reports a failed authentication of an identified client.
+	AuthFailed func(AuthFailure)
+	// Legacy takes over a carrier of the old protocol, every byte replayed.
+	// It owns c from then on.
+	Legacy func(c net.Conn, carrier string)
+	// Fallback serves a carrier that is not ours (the domain proxy), every
+	// byte replayed; state is its TLS when this process terminated it. It
+	// returns false, leaving c to the caller, when there is no target.
+	Fallback func(c net.Conn, state *tls.ConnectionState) bool
+}
+
+// Entry is the core protocol on the server's shared bridge ports.
+type Entry interface {
+	// Start starts accepting sessions. It must return before the listeners
+	// open.
+	Start(ctx context.Context, h Hooks) error
+	// Serve runs one accepted carrier of a shared port, a net.Conn or a
+	// *tls.Conn before its handshake. It blocks while the carrier is
+	// admitted, so it runs on a goroutine the caller waits for.
+	Serve(ctx context.Context, c net.Conn, carrier string)
+	// WebSocket returns the handler of the WebSocket bridge path: requests
+	// of the core protocol go to it, every other request to legacy.
+	WebSocket(legacy http.Handler) (http.Handler, error)
+	// ClientChanged tells the entry the state of a client after a change.
+	ClientChanged(ClientRecord)
+	// ClientRemoved tells the entry that a client no longer exists.
+	ClientRemoved(id int)
+	// Kick closes the sessions of a client, which may come back at once.
+	Kick(id int)
+	Close() error
+}
+
+// ClientSession is an established session on npc.
+type ClientSession interface {
+	// Carrier names the carrier in use: tcp, tls, ws or wss.
+	Carrier() string
+	// Done is closed when the session ended; Err then says why.
+	Done() <-chan struct{}
+	Err() error
+	Close() error
+}
+
+// Dialer establishes sessions of one server profile of npc.
+type Dialer interface {
+	Dial(ctx context.Context) (ClientSession, error)
+	// Server names the profile for log lines.
+	Server() string
+}

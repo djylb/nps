@@ -39,6 +39,9 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	default:
 	}
 	n := connection.Network()
+	if err := s.startCore(); err != nil {
+		return err
+	}
 	var err error
 	// tcp
 	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP, connection.KindBridgeTCP); err != nil {
@@ -98,17 +101,17 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	_ = s.scope.Go("ping", func(context.Context) error { s.ping(); return nil })
 	s.acceptOn(s.VirtualTcpListener, func(c net.Conn) {
-		s.serve(conn.NewConn(c), conn.TransportTCP)
+		s.serveCarrier(c, conn.TransportTCP)
 	})
 	s.acceptOn(s.VirtualTlsListener, func(c net.Conn) {
-		s.serve(conn.NewConn(tls.Server(c, &tls.Config{Certificates: []tls.Certificate{s.cert}})), conn.TransportTLS)
+		s.serveCarrier(tls.Server(c, s.tlsConfig()), conn.TransportTLS)
 	})
-	wsLn := conn.NewWSListener(s.VirtualWsListener, n.BridgePath, n.BridgeTrustedIPs, n.BridgeRealIPHeader)
+	wsLn := conn.NewWSListener(s.VirtualWsListener, n.BridgePath, n.BridgeTrustedIPs, n.BridgeRealIPHeader, s.coreWS())
 	s.addCloser(wsLn)
 	s.acceptOn(wsLn, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportWS)
 	})
-	wssLn := conn.NewWSSListener(s.VirtualWssListener, n.BridgePath, s.cert, n.BridgeTrustedIPs, n.BridgeRealIPHeader)
+	wssLn := conn.NewWSSListener(s.VirtualWssListener, n.BridgePath, s.cert, n.BridgeTrustedIPs, n.BridgeRealIPHeader, s.coreWS())
 	s.addCloser(wssLn)
 	s.acceptOn(wssLn, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportWSS)

@@ -3,11 +3,13 @@ package bridge
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/ports"
@@ -40,6 +42,9 @@ type Options struct {
 	// AllowedPorts are the ports the tunnels npc publishes may listen on;
 	// the zero value allows every port.
 	AllowedPorts ports.Allowed
+	// CoreEntry is the new protocol on the tcp and tls bridge ports; nil
+	// (the default, see new_protocol) leaves them to the old protocol.
+	CoreEntry coreapi.Entry
 }
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
@@ -92,6 +97,8 @@ type Bridge struct {
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 	secrets            *secretGrants              // grants of point-to-point access
 	lookup             atomic.Pointer[TunnelLookup]
+	core               coreapi.Entry // nil: old protocol only
+	fallback           atomic.Pointer[func(net.Conn, *tls.ConnectionState) bool]
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
 
@@ -114,6 +121,7 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.selectMode = opts.SelectMode
 	b.ports = opts.AllowedPorts
 	b.cert = opts.Cert
+	b.core = opts.CoreEntry
 	b.fingerprint = crypt.GetCertFingerprint(opts.Cert)
 	if opts.NewUUID != nil {
 		b.newUUID = opts.NewUUID
@@ -156,7 +164,12 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 
 // DelClient ends the session of client id on behalf of the manager (kick,
 // disable, delete); its client_offline line says reason=deleted.
-func (s *Bridge) DelClient(id int) { s.delClient(id, "deleted") }
+func (s *Bridge) DelClient(id int) {
+	s.delClient(id, "deleted")
+	if s.core != nil {
+		s.core.Kick(id)
+	}
+}
 
 // delClient ends the session of client id; reason is the client_offline
 // reason word (closed, deleted).

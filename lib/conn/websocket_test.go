@@ -17,7 +17,7 @@ func TestWSListenerRoundTripAndRealIP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln := NewWSListener(base, "/ws", "127.0.0.1", "X-Real-IP")
+	ln := NewWSListener(base, "/ws", "127.0.0.1", "X-Real-IP", nil)
 	defer func() { _ = ln.Close() }()
 
 	done := make(chan error, 1)

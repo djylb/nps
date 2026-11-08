@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/djylb/lifecycle"
 	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
@@ -65,6 +67,9 @@ type Config struct {
 	// AccessLog, if set, is called with every request to the domain proxy
 	// when it ends, whatever the log level (httpproxy.HttpProxy.AccessLog).
 	AccessLog func(httpproxy.AccessRecord)
+	// CoreEntry is the new protocol on the bridge ports, nil while
+	// new_protocol is off.
+	CoreEntry coreapi.Entry
 }
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
@@ -116,14 +121,30 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		SelectMode:     cfg.SelectMode,
 		AllowedPorts:   cfg.AllowedPorts,
 		Cert:           cfg.Identity.TLSCert(),
+		CoreEntry:      cfg.CoreEntry,
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
+	s.bridge.SetFallback(s.domainFallback)
 	// registered first, so closed last
 	_, _ = s.scope.Add(closerFunc(func() { s.ApplyWebhook(servercfg.WebhookConfig{}) }))
 	s.own(s.bridge)
 	_, _ = s.scope.Add(closerFunc(s.closeTasks))
 	return s
+}
+
+// domainFallback hands a bridge connection that is neither protocol's to the
+// running domain proxy; false when none runs.
+func (s *Server) domainFallback(c net.Conn, state *tls.ConnectionState) bool {
+	served := false
+	s.tasks.Range(func(_, v any) bool {
+		if hp, ok := v.(*httpproxy.HttpProxy); ok {
+			served = hp.ServeFallback(c, state)
+			return false
+		}
+		return true
+	})
+	return served
 }
 
 // Store returns the store of the entries the server serves.

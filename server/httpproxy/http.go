@@ -34,6 +34,7 @@ type HttpServer struct {
 	httpStatus   atomic.Bool
 	httpListener net.Listener
 	httpServer   *http.Server
+	fallback     fallbackServer
 }
 
 func NewHttpServer(httpProxy *HttpProxy, l net.Listener) *HttpServer {
@@ -58,6 +59,7 @@ func (s *HttpServer) Start() error {
 }
 
 func (s *HttpServer) Close() error {
+	s.closeFallback()
 	if s.httpServer != nil {
 		_ = s.httpServer.Close()
 	}

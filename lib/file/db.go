@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
@@ -22,8 +23,9 @@ import (
 var log = slogx.Module("store")
 
 type DbUtils struct {
-	JsonDb *JsonDb
-	events entryEvents
+	clientHook atomic.Pointer[func(*model.Client, bool)] // see OnClientChanged
+	JsonDb     *JsonDb
+	events     entryEvents
 }
 
 // New returns an empty store kept in the conf directory of runPath.

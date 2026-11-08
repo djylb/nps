@@ -28,26 +28,25 @@ type httpListener struct {
 
 // NewWSListener serves WebSocket bridge connections on path over base. The
 // client address is taken from realIpHeader as written by the proxies in
-// trustedIps; see wsResolver.
-func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string) net.Listener {
-	return newWSListener(base, base, path, trustedIps, realIpHeader)
+// trustedIps; see wsResolver. route, when set, wraps the handler of path.
+func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
+	return newWSListener(base, base, path, trustedIps, realIpHeader, route)
 }
 
 // NewWSSListener is NewWSListener over TLS with cert.
-func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string) net.Listener {
+func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
 	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
-	return newWSListener(base, tls.NewListener(base, tlsConfig), path, trustedIps, realIpHeader)
+	return newWSListener(base, tls.NewListener(base, tlsConfig), path, trustedIps, realIpHeader, route)
 }
 
-func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string) net.Listener {
+func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
 	hl := &httpListener{acceptCh: make(chan net.Conn, 16), closeCh: make(chan struct{}), addr: base.Addr()}
 	resolvers := wsResolvers(trustedIps, realIpHeader)
 	opts := &wsconn.ServerOptions{Options: wsOptions, CheckOrigin: wsconn.AnyOrigin}
 	if path == "" {
 		path = "/"
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-hl.closeCh:
 			return
@@ -67,6 +66,11 @@ func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string)
 			_ = c.Close()
 		}
 	})
+	if route != nil {
+		handler = route(handler)
+	}
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: HandshakeTimeout}
 	go func() { _ = srv.Serve(ln) }()
 	go func() {

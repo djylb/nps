@@ -99,7 +99,7 @@ var (
 // Clients and sessions.
 var (
 	// ClientOnline / ClientOffline: client, src_ip, carrier, version;
-	// offline adds dur_ms and reason (closed: its connections closed and it
+	// offline adds dur_ms and reason (replaced: a newer session took over; closed: its connections closed and it
 	// did not come back within three health checks; deleted: the manager
 	// kicked, disabled or deleted the client). The store publishes these to the bus with the client
 	// itself, so the log lines do not go there too.
@@ -208,7 +208,7 @@ var (
 var (
 	// Connected / ConnectFailed / Disconnected: server, carrier, attempt
 	// (failed attempts in a row) or attempts, reason (connect_failed: dial,
-	// send_type, signal_stream, no_tunnel; disconnected: lost, closed), err;
+	// send_type, signal_stream, no_tunnel, establish; disconnected: lost, closed), err;
 	// disconnected adds dur_ms.
 	Connected     = slogx.Def{Name: "connected", Level: info}
 	Disconnected  = slogx.Def{Name: "disconnected", Level: warn}

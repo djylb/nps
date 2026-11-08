@@ -183,6 +183,13 @@ type NetworkConfig struct {
 	BridgePath         string
 	BridgeTrustedIPs   string
 	BridgeRealIPHeader string
+	// NewProtocol turns on the core protocol on the tcp, tls, ws and wss
+	// bridge ports (nps.conf new_protocol), off by default. Temporary:
+	// removed once npc has moved to the core protocol.
+	NewProtocol bool
+	// NewProtocolTLSALPN is the ALPN list of the TLS bridge with NewProtocol
+	// (nps.conf new_protocol_tls_alpn, comma-separated); empty selects none.
+	NewProtocolTLSALPN []string
 	HTTPProxyIP        string
 	HTTPProxyPort      int
 	HTTPSProxyPort     int
@@ -444,6 +451,12 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Network.BridgeIP = r.stringDefault(r.stringDefault("0.0.0.0", "bridge_tcp_ip"), "bridge_ip")
 	cfg.Network.BridgeHost = r.stringValue("bridge_host")
+	cfg.Network.NewProtocol = r.boolDefault(false, "new_protocol")
+	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			cfg.Network.NewProtocolTLSALPN = append(cfg.Network.NewProtocolTLSALPN, v)
+		}
+	}
 	cfg.Network.BridgeTCPIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_tcp_ip")
 	cfg.Network.BridgeKCPIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_kcp_ip")
 	cfg.Network.BridgeQUICIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_quic_ip")

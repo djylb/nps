@@ -85,6 +85,9 @@ var (
 	genTOTP        = flag.Bool("gen2fa", false, "Generate TOTP Secret")
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 	autoReconnect  = flag.Bool("auto_reconnect", true, "Auto Reconnect")
+	// Temporary, until npc has moved to the core protocol: off by default.
+	newProtocol    = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss; no tunnels yet)")
+	newProtocolPin = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
 	launchInputs   = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
 )
 
@@ -469,6 +472,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			connType = strings.ToLower(connType)
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
+				if *newProtocol {
+					runCoreProfile(ctx, serverAddr, verifyKey, connType)
+					return
+				}
 				for {
 					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)

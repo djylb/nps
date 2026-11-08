@@ -65,10 +65,18 @@ func changeType(seen *sync.Map, id int, enabled bool, updated, started, stopped 
 
 // clientChanged publishes a change of a client an administrator manages.
 func (s *DbUtils) clientChanged(name string, c *model.Client) {
+	if f := s.clientHook.Load(); f != nil && c != nil {
+		(*f)(c, name == logevent.ClientDeleted.Name)
+	}
 	if bus := s.events.bus.Load(); bus != nil && c != nil && c.Id > 0 && c.KeyKind == model.KeyControl {
 		bus.Publish(name, model.ClientInfo{ID: c.Id, Remark: c.Remark, Addr: c.Addr, Version: c.Version})
 	}
 }
+
+// OnClientChanged makes f called after a client was created, changed or
+// deleted (deleted true). It runs on the changing goroutine and returns
+// promptly.
+func (s *DbUtils) OnClientChanged(f func(c *model.Client, deleted bool)) { s.clientHook.Store(&f) }
 
 // ClientChanged reports that the client c was changed in place.
 func (s *DbUtils) ClientChanged(c *model.Client) { s.clientChanged(logevent.ClientUpdated.Name, c) }

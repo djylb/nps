@@ -32,6 +32,9 @@ require (
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
 	github.com/xtaci/kcp-go/v5 v5.7.4
+	github.com/zmuxio/zmux-go v1.4.2
+	github.com/zmuxio/zmux-go/seal v1.4.2
+	github.com/zmuxio/zmux-go/zmuxws v1.4.2
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.58.0

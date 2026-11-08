@@ -407,7 +407,12 @@ func run() (*server.Server, error) {
 		cfgLog.Error("access log not opened", "file", cfg.Log.Access, "err", err)
 	}
 	closeAccessLog = closeLog
+	coreEntry, err := newCoreEntry(db, cfg)
+	if err != nil {
+		return nil, err
+	}
 	srv := server.New(db, server.Config{
+		CoreEntry:           coreEntry,
 		AccessLog:           accessLog,
 		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
 		SecureMode:          cfg.Security.SecureMode,
