@@ -119,12 +119,18 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 
 	var path linkPath
 	var node *Node
+	// pick is the choice below again, for a request that has to wait.
+	pick := client.GetNode
 	isFile := strings.Contains(link.Host, "file://")
 	if isFile {
 		link.ConnType = "file"
 	}
 	if link.Option.Node != "" {
 		// The route chose the node; its absence says nothing about the others.
+		pick = func() *Node {
+			n, _ := client.GetNodeByUUID(link.Option.Node)
+			return n
+		}
 		if node, ok = client.GetNodeByUUID(link.Option.Node); ok {
 			path = node.path()
 		}
@@ -133,6 +139,10 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		}
 	} else if isFile {
 		key := strings.TrimPrefix(strings.TrimSpace(link.Host), "file://")
+		pick = func() *Node {
+			n, _ := client.GetNodeByFile(key)
+			return n
+		}
 		node, ok = client.GetNodeByFile(key)
 		if ok {
 			path = node.path()
@@ -178,7 +188,43 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		return
 	}
 
+	if node.suspended() {
+		if path, err = s.awaitPath(client, pick, linkOpenTimeout(link)); err != nil {
+			return nil, err
+		}
+	}
 	return path.open(clientId, link)
+}
+
+// awaitPath waits, up to timeout, for a way to the client that is not on a
+// suspended session (§3.8): pick may find another session, or the one it
+// finds resumes. It holds no lock and starts nothing: it sleeps on the
+// client's change channel, which every session change closes. It fails at
+// once when no session is left to wait for.
+func (s *Bridge) awaitPath(client *Client, pick func() *Node, timeout time.Duration) (linkPath, error) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	for {
+		changed := client.changes()
+		node := pick()
+		if node == nil {
+			return nil, coreapi.TunnelOffline()
+		}
+		path := node.path()
+		if path == nil {
+			return nil, coreapi.TunnelOffline()
+		}
+		if !node.suspended() {
+			return path, nil
+		}
+		select {
+		case <-changed:
+		case <-t.C:
+			return nil, coreapi.TunnelOffline()
+		case <-s.scope.Done():
+			return nil, coreapi.TunnelOffline()
+		}
+	}
 }
 
 // linkPath is how links reach one node, whichever protocol it speaks.

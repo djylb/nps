@@ -30,6 +30,9 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		Takeover:   coreTakeover,
 		Offline:    s.coreOffline,
 		AuthFailed: coreAuthFailed,
+		SuspendChanged: func(cs coreapi.Session) {
+			s.coreChanged(cs.ClientID())
+		},
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
 		},
@@ -65,6 +68,14 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 	node := NewNode(uuid, agentVersion(cs.Agent()), legacy.LatestIndex)
 	node.AddCore(cs)
 	s.joinNode(id, uuid, node, func(n *Node) { n.AddCore(cs) })
+	s.coreChanged(id)
+}
+
+// coreChanged wakes what waits for a session of client id (awaitPath).
+func (s *Bridge) coreChanged(id int) {
+	if v, ok := s.Client.Load(id); ok {
+		v.(*Client).notifyChange()
+	}
 }
 
 func coreTakeover(cs, old coreapi.Session) {
@@ -82,6 +93,7 @@ func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
 		if n, ok := client.GetNodeByUUID(coreNodeUUID(cs)); ok && n.CloseIfCoreCurrent(cs) {
 			client.RemoveOfflineNodes(false)
 		}
+		client.notifyChange()
 	}
 	if reason == "deleted" {
 		s.delClient(id, "deleted")

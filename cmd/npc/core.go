@@ -55,5 +55,6 @@ func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) 
 		},
 		Exit:           client.NewCoreExit(localIP, time.Duration(*udp5IdleTimeout)*time.Second),
 		CompressLimits: session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio},
+		ResumeTimeout:  time.Duration(*sessionResumeTimeout) * time.Second,
 	}), *autoReconnect)
 }

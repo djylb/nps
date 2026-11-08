@@ -108,6 +108,12 @@ var (
 	// SessionTakeover: the same npc connected again; client, src_ip, addr
 	// (the old connection).
 	SessionTakeover = slogx.Def{Name: "session_takeover", Level: warn}
+	// SessionSuspended / SessionResumed: a core protocol session lost all
+	// its pipes and waits for one, or got one back; it stays online
+	// meanwhile. Both sides: client, src_ip, carrier on nps, server, carrier
+	// on npc; resumed adds dur_ms.
+	SessionSuspended = slogx.Def{Name: "session_suspended", Level: debug}
+	SessionResumed   = slogx.Def{Name: "session_resumed", Level: debug}
 	// LimitExceeded: a connection refused by a limit; client, route, kind
 	// (flow, conn, rate, expire, pipes).
 	LimitExceeded = slogx.Def{Name: "limit_exceeded", Level: warn, Bus: true, Limit: "client"}
@@ -223,7 +229,7 @@ var (
 // All is every event of the table.
 var All = []*slogx.Def{
 	&AuthFailed, &LoginFailed, &LoginOK, &BanAdded, &BanRemoved, &AdminAction,
-	&ClientOnline, &ClientOffline, &SessionTakeover, &LimitExceeded, &QuotaReached,
+	&ClientOnline, &ClientOffline, &SessionTakeover, &SessionSuspended, &SessionResumed, &LimitExceeded, &QuotaReached,
 	&TunnelDenied, &RelayFailed, &HTTPAccess, &ConnClosed, &TargetDown, &TargetUp,
 	&ClientCreated, &ClientUpdated, &ClientDeleted,
 	&TunnelCreated, &TunnelUpdated, &TunnelStarted, &TunnelStopped, &TunnelDeleted,

@@ -280,6 +280,14 @@ func (n *Node) addCore(cs coreapi.Session) {
 	}
 }
 
+// suspended reports whether the node's session waits for its pipes (§3.8):
+// the node is online, but a link has to wait or go elsewhere.
+func (n *Node) suspended() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.core != nil && n.core.Suspended()
+}
+
 // path returns how links reach the node; nil when it has no way yet.
 func (n *Node) path() linkPath {
 	n.mu.RLock()
@@ -439,6 +447,29 @@ type Client struct {
 	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
 	lastConnectNano atomic.Int64
 	started         time.Time // when the session began, for client_offline
+	// changed is closed and dropped by notifyChange; nil while nobody waits.
+	changeMu sync.Mutex
+	changed  chan struct{}
+}
+
+// changes returns a channel closed by the next change of the sessions of the
+// client. Take it before looking at them: then no change is missed.
+func (c *Client) changes() <-chan struct{} {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
+	if c.changed == nil {
+		c.changed = make(chan struct{})
+	}
+	return c.changed
+}
+
+func (c *Client) notifyChange() {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
+	if c.changed != nil {
+		close(c.changed)
+		c.changed = nil
+	}
 }
 
 // errNodeOffline marks a node that is offline within a grace window, so that
@@ -597,8 +628,9 @@ func (c *Client) GetNodeByFile(key string) (*Node, bool) {
 // CheckNode returns the current node: in Primary mode the last node used
 // while it is online, otherwise, as in every mode, the next online node
 // chosen by the mode, which becomes the current one. Offline nodes are
-// skipped; outside the grace windows they are removed. CheckNode returns
-// nil if no node is online.
+// skipped; outside the grace windows they are removed. A node whose session
+// is suspended is chosen only when no other is usable, and does not become
+// the current one. CheckNode returns nil if no node is online.
 func (c *Client) CheckNode() *Node { return c.selectNode(true) }
 
 // GetNode is CheckNode, except that the RoundRobin and Random modes choose
@@ -609,9 +641,13 @@ func (c *Client) selectNode(sticky bool) *Node {
 	c.mu.RLock()
 	last := c.LastUUID
 	c.mu.RUnlock()
+	var waiting *Node
 	if sticky && last != "" {
 		if b, ok := c.nodePool.Backend(last); ok && c.usable(b) {
-			return b.Value()
+			if !b.Value().suspended() {
+				return b.Value()
+			}
+			waiting = b.Value()
 		}
 	}
 	req := c.nodePool.Request("")
@@ -621,11 +657,17 @@ func (c *Client) selectNode(sticky bool) *Node {
 			if c.nodePool.Len() == 0 {
 				log.Debug("client has no nodes", "client", c.Id)
 			}
-			return nil
+			return waiting
 		}
 		b := l.Backend()
 		l.Release(upstream.Neutral)
 		if !c.usable(b) {
+			continue
+		}
+		if b.Value().suspended() {
+			if waiting == nil {
+				waiting = b.Value()
+			}
 			continue
 		}
 		c.mu.Lock()
@@ -783,5 +825,6 @@ func (c *Client) Close() error {
 	for _, n := range nodes {
 		_ = n.Close()
 	}
+	c.notifyChange()
 	return nil
 }

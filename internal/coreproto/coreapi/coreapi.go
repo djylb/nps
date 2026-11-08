@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/quic-go/quic-go"
 )
 
@@ -63,6 +64,12 @@ type LinkError struct {
 
 func (e *LinkError) Error() string { return "link refused: " + e.Reason }
 
+// TunnelOffline is the refusal of a link whose client has no session to
+// carry it (NPS_TUNNEL_OFFLINE).
+func TunnelOffline() *LinkError {
+	return &LinkError{Code: wire.CodeTunnelOffline, Reason: "client_offline"}
+}
+
 // NetReason gives the word to logevent.NetReason.
 func (e *LinkError) NetReason() string { return e.Reason }
 
@@ -88,6 +95,10 @@ type Session interface {
 	Ping(ctx context.Context) (time.Duration, error)
 	// Closed reports whether the session ended.
 	Closed() bool
+	// Suspended reports whether the session lost all its pipes and waits
+	// for one within its resume timeout (§3.8). A session that ended is
+	// not suspended. A suspended session is still online.
+	Suspended() bool
 	// Close ends the session; npc may come back at once.
 	Close() error
 }
@@ -110,6 +121,9 @@ type Hooks struct {
 	// Offline runs when the session ended; reason is a word of the
 	// client_offline event.
 	Offline func(s Session, reason string)
+	// SuspendChanged runs after Session.Suspended of s changed, between
+	// Online and Offline of s; it returns promptly.
+	SuspendChanged func(s Session)
 	// AuthFailed reports a failed authentication of an identified client.
 	AuthFailed func(AuthFailure)
 	// Legacy takes over a carrier of the old protocol, every byte replayed.

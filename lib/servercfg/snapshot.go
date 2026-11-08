@@ -153,8 +153,12 @@ type RuntimeConfig struct {
 	// DeadS and IdleS are dead_s and idle_s of the new protocol's sessions
 	// (§5, 0: not set): idle from session_idle_s, dead only from a
 	// disconnect_timeout the config names.
-	DeadS, IdleS      int
-	FlowStoreInterval int
+	DeadS, IdleS int
+	// SessionResumeTimeout is how long a new protocol session that lost its
+	// pipes waits for one, in seconds (session_resume_timeout, 0: 30,
+	// negative: no resume).
+	SessionResumeTimeout int
+	FlowStoreInterval    int
 }
 
 // WebhookConfig configures the webhook; an empty URL turns it off.
@@ -490,6 +494,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		cfg.Runtime.DeadS = max(cfg.Runtime.DisconnectTimeout, 0)
 	}
 	cfg.Runtime.IdleS = max(r.intDefault(0, "session_idle_s"), 0)
+	cfg.Runtime.SessionResumeTimeout = r.intDefault(0, "session_resume_timeout")
 	cfg.Network.CompressMaxWindow = uint64(max(r.intDefault(0, "compress_max_window"), 0))
 	cfg.Network.CompressMaxRatio = int64(r.intDefault(0, "compress_max_ratio"))
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {

@@ -5,10 +5,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/connprofile"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/zmuxquic"
@@ -20,14 +23,119 @@ const firstConfigWait = 3 * time.Second
 
 func (d *Dialer) multi() bool { return d.cfg.Pipes == connprofile.PipesMulti }
 
-// sessionConfig is the zmux configuration of a session. Multi-pipe sessions
-// have MaintainPipes as their redial source, which resume (§3.8) needs.
-func (d *Dialer) sessionConfig() *zmux.Config {
-	cfg := &zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks, Scheduler: schedulerNamed(d.cfg.Scheduler)}
-	if d.multi() {
+// sessionConfig is the zmux configuration of session s. Resume (§3.8) needs a
+// redial source: multi-pipe sessions have MaintainPipes, the others Redial.
+func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
+	cfg := &zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks, Scheduler: schedulerNamed(d.cfg.Scheduler),
+		ResumeTimeout: d.resumeTimeout()}
+	switch {
+	case d.multi():
 		cfg.MaxPipes = max(pipesOf(connprofile.MultiMembers(d.cfg.Candidates)), 2)
+	case cfg.ResumeTimeout > 0:
+		cfg.Redial, cfg.RecordPolicy = s.redial, s.redialRecord
 	}
 	return cfg
+}
+
+// redial gives zmux a new carrier for the only pipe of a session, the
+// candidates in the order of Dial. zmux joins it right away with the mode of
+// redialRecord, and calls again when that fails: a carrier that connected but
+// did not join makes way for the candidate after it.
+func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.PipeIO, error) {
+	d := s.d
+	d.mu.Lock()
+	cands := connprofile.Order(d.cfg.Candidates, d.last)
+	d.mu.Unlock()
+	s.redialMu.Lock()
+	tried := s.redialKey
+	s.redialMu.Unlock()
+	if i := slices.IndexFunc(cands, func(c connprofile.Candidate) bool { return c.Key() == tried }); i >= 0 {
+		cands = append(cands[i+1:], cands[:i+1]...)
+	}
+	errs := []error{errors.New("no candidate can carry a pipe")}
+	for _, c := range cands {
+		if !c.Starts() {
+			continue
+		}
+		dctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
+		ca, err := d.dialCarrier(dctx, c)
+		cancel()
+		if err == nil {
+			s.planRedial(c, ca)
+			return ca.pipe, nil
+		}
+		errs = append(errs, err)
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return zmux.PipeIO{}, errors.Join(errs...)
+}
+
+// planRedial picks the mode of §3.2 for a carrier about to be joined. A join
+// shows its result only by zmux calling redial again, so an attempt in Bound
+// that may fall back is followed, on that candidate and network, by one in
+// Sealed.
+func (s *clientSession) planRedial(c connprofile.Candidate, ca carrier) {
+	key := c.Key() + "|" + ca.network
+	s.redialMu.Lock()
+	failed := s.redialBound[key]
+	s.redialMu.Unlock()
+	d := s.d
+	d.mu.Lock()
+	p := choose(d.record, ca.secure, failed || d.boundFailedLocked(key))
+	d.mu.Unlock()
+	s.redialMu.Lock()
+	defer s.redialMu.Unlock()
+	s.redialKey, s.redialMode = c.Key(), p.mode
+	if p.mode == zmux.Bound && p.fallback {
+		if s.redialBound == nil {
+			s.redialBound = map[string]bool{}
+		}
+		s.redialBound[key] = true
+	} else {
+		delete(s.redialBound, key)
+	}
+}
+
+// redialRecord is zmux.Config.RecordPolicy of a session that redials.
+func (s *clientSession) redialRecord(zmux.CarrierInfo) zmux.RecordMode {
+	s.redialMu.Lock()
+	defer s.redialMu.Unlock()
+	return s.redialMode
+}
+
+// redialDone is the end of a suspension: the candidate of the carrier that
+// resumed the session is the last good one.
+func (s *clientSession) redialDone() {
+	s.redialMu.Lock()
+	key := s.redialKey
+	s.redialKey, s.redialBound = "", nil
+	s.redialMu.Unlock()
+	if key != "" {
+		s.d.mu.Lock()
+		s.d.last = key
+		s.d.mu.Unlock()
+	}
+}
+
+// watch reports the suspensions of the session from its events until it ends.
+func (s *clientSession) watch(ctx context.Context) {
+	var since time.Time
+	for {
+		ev, err := s.zc.NextEvent(ctx)
+		if err != nil {
+			return
+		}
+		switch ev.Kind {
+		case zmux.EventSessionSuspended:
+			since = time.Now()
+			slogx.Emit(ctx, log, &logevent.SessionSuspended, "server", s.d.Server(), "carrier", s.carrier)
+		case zmux.EventSessionResumed:
+			s.redialDone()
+			slogx.Emit(ctx, log, &logevent.SessionResumed, "server", s.d.Server(), "carrier", s.carrier, "dur_ms", time.Since(since).Milliseconds())
+		}
+	}
 }
 
 // pipesOf is how many pipes the members ask for together.

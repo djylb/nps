@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/internal/coreproto/wire"
@@ -35,10 +37,13 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 	if !cfg.Network.NewProtocol {
 		return nil, nil
 	}
+	resumeS := cfg.Runtime.SessionResumeTimeout
 	a, err := session.NewAcceptor(coreStore{db}, session.Options{
-		Session:  wire.SessionOptions{DeadS: uint64(cfg.Runtime.DeadS), IdleS: uint64(cfg.Runtime.IdleS)},
-		Compress: session.CompressLimits{MaxWindow: cfg.Network.CompressMaxWindow, MaxRatio: cfg.Network.CompressMaxRatio},
-		MaxPipes: cfg.Network.ClientMaxPipes,
+		// Told to npc only when configured: the default leaves it its own.
+		Session:       wire.SessionOptions{ResumeMs: uint64(max(resumeS, 0)) * 1000, DeadS: uint64(cfg.Runtime.DeadS), IdleS: uint64(cfg.Runtime.IdleS)},
+		ResumeTimeout: time.Duration(resumeS) * time.Second,
+		Compress:      session.CompressLimits{MaxWindow: cfg.Network.CompressMaxWindow, MaxRatio: cfg.Network.CompressMaxRatio},
+		MaxPipes:      cfg.Network.ClientMaxPipes,
 	})
 	if err != nil {
 		return nil, err

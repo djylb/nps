@@ -20,6 +20,7 @@ import (
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
@@ -49,7 +50,25 @@ const (
 	// quicDetectPeek bounds the read of the first bytes of a QUIC stream
 	// that the admission passed on with fewer.
 	quicDetectPeek = 200 * time.Millisecond
+	// defaultResumeTimeout is the grace of a session that lost its pipes
+	// (§3.8) on both sides.
+	defaultResumeTimeout = 30 * time.Second
+	// maxSuspended is no policy: the memory budget of the listener is what
+	// bounds suspended sessions, and a network failure of the server may
+	// suspend every client at once.
+	maxSuspended = 1 << 30
 )
+
+// resumeTimeoutOf is a configured grace: 0 is the default, negative no resume.
+func resumeTimeoutOf(d time.Duration) time.Duration {
+	switch {
+	case d == 0:
+		return defaultResumeTimeout
+	case d < 0:
+		return 0
+	}
+	return d
+}
 
 type carrierKey struct{}
 
@@ -89,6 +108,9 @@ type Options struct {
 	// MaxPipes limits the pipes of one client over all its sessions
 	// (client_max_pipes); 0 is no limit.
 	MaxPipes int
+	// ResumeTimeout is how long a session that lost all its pipes waits for
+	// one (§3.8); 0 is 30 s, negative is no resume.
+	ResumeTimeout time.Duration
 }
 
 // NewAcceptor builds the entry over store, with a key of this process
@@ -102,7 +124,8 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
 		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin,
-			EnableDatagrams: true, MaxPipes: sessionMaxPipes},
+			EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)},
+		MaxSuspended:        maxSuspended,
 		MaxPending:          maxPending,
 		MaxPendingPerSource: maxPendingPerSource,
 		Admission: &zmux.Admission{
@@ -453,11 +476,19 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	} else if e.Crypt && s.mode == zmux.Trusted {
 		a.drain(s)
 	}
+	watched := make(chan struct{})
+	a.wg.Go(func() {
+		defer close(watched)
+		s.watch(ctx, h)
+	})
 	a.wg.Go(func() { rejectUniStreams(ctx, zc, wire.Op.FromClient) })
 	a.wg.Go(func() { rejectStreams(ctx, zc, wire.Op.FromClient) })
 	a.wg.Go(func() { s.pushLoop(ctx) })
 	s.kick()
 	_ = zc.Wait()
+	// The last SuspendChanged has run: Offline is the end of the session's
+	// hooks.
+	<-watched
 	a.unregister(s)
 	if h != nil && h.Offline != nil {
 		reason, _ := s.closing.Load().(string)
@@ -523,9 +554,15 @@ func (a *Acceptor) sessionsOf(id int) []*serverSession {
 	return append([]*serverSession(nil), a.sess[id]...)
 }
 
-// drain ends s with NPS_DRAIN in the background.
+// drain ends s with NPS_DRAIN in the background. A suspended session has no
+// pipe to say it on, and the takeover or the kick that drains it must not wait
+// for its grace period.
 func (a *Acceptor) drain(s *serverSession) {
 	a.wg.Go(func() {
+		if s.Suspended() {
+			_ = s.zc.CloseWithError(zmux.ApplicationErrorCode(wire.CodeDrain), "")
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 		defer cancel()
 		_ = s.zc.Shutdown(ctx, zmux.ApplicationErrorCode(wire.CodeDrain), "")
@@ -591,6 +628,9 @@ type serverSession struct {
 	seq     atomic.Uint64
 	kicked  chan struct{} // a newer snapshot wants pushing
 	closing atomic.Value  // string: reason of a close this side made
+	// suspended is true between EventSessionSuspended and
+	// EventSessionResumed; only watch writes it.
+	suspended atomic.Bool
 }
 
 func (s *serverSession) ClientID() int          { return s.t.client }
@@ -609,6 +649,38 @@ func (s *serverSession) Close() error {
 func (s *serverSession) closeAuth(reason string) {
 	s.closing.Store(reason)
 	_ = s.zc.CloseWithError(zmux.ApplicationErrorCode(wire.CodeAuth), "")
+}
+
+// Suspended implements coreapi.Session.
+func (s *serverSession) Suspended() bool { return s.suspended.Load() && !s.Closed() }
+
+// watch follows the state of the session from its events until it ends.
+func (s *serverSession) watch(ctx context.Context, h *coreapi.Hooks) {
+	var since time.Time
+	for {
+		ev, err := s.zc.NextEvent(ctx)
+		if err != nil {
+			return
+		}
+		switch ev.Kind {
+		case zmux.EventSessionSuspended:
+			since = time.Now()
+			s.suspended.Store(true)
+			slogx.Emit(ctx, log, &logevent.SessionSuspended, s.logFields()...)
+		case zmux.EventSessionResumed:
+			s.suspended.Store(false)
+			slogx.Emit(ctx, log, &logevent.SessionResumed, append(s.logFields(), "dur_ms", time.Since(since).Milliseconds())...)
+		default:
+			continue
+		}
+		if h != nil && h.SuspendChanged != nil {
+			h.SuspendChanged(s)
+		}
+	}
+}
+
+func (s *serverSession) logFields() []any {
+	return []any{"client", s.t.client, "src_ip", s.t.src.Addr().Unmap().String(), "carrier", s.t.carrier}
 }
 
 // kick asks for a new snapshot; concurrent changes coalesce into one push of

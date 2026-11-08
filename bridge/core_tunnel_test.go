@@ -51,6 +51,11 @@ type coreFixture struct {
 
 func newCoreFixture(tb testing.TB, mode SelectMode, cnf model.Config) *coreFixture {
 	tb.Helper()
+	return newCoreFixtureOpts(tb, mode, cnf, session.Options{})
+}
+
+func newCoreFixtureOpts(tb testing.TB, mode SelectMode, cnf model.Config, opts session.Options) *coreFixture {
+	tb.Helper()
 	root := tb.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
 		tb.Fatal(err)
@@ -62,7 +67,7 @@ func newCoreFixture(tb testing.TB, mode SelectMode, cnf model.Config) *coreFixtu
 		tb.Fatal(err)
 	}
 	c.Cnf.Crypt, c.Cnf.Compress, c.Cnf.CompressAlg = cnf.Crypt, cnf.Compress, cnf.CompressAlg
-	a, err := session.NewAcceptor(dbClients{db}, session.Options{})
+	a, err := session.NewAcceptor(dbClients{db}, opts)
 	if err != nil {
 		tb.Fatal(err)
 	}

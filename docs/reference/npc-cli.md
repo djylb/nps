@@ -29,6 +29,7 @@
 | `-local_proxy` | 点对点访问连到服务端本地 | `false` |
 | `-p2p_timeout` | 打洞超时（秒） | `5` |
 | `-disable_remote_update` | 忽略服务端下发的远程更新 | `false` |
+| `-session_resume_timeout` | 核心协议：会话失去所有连接后等待恢复的秒数，`0` 为 30 秒，负数不恢复；服务端配置了 `session_resume_timeout` 时以服务端为准（下次会话生效） | `0` |
 | `-auto_reconnect` | 断线自动重连 | `true` |
 | `-disconnect_timeout` | 连接超时（秒） | `30` |
 | `-keepalive` | 保活周期（秒），`0` 用默认 | `0` |

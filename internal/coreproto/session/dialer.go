@@ -65,6 +65,10 @@ type DialConfig struct {
 	CompressLimits CompressLimits
 	// MaxConfig bounds a CONFIG snapshot; 0 is 16 MiB (§4.3).
 	MaxConfig int
+	// ResumeTimeout is how long a session that lost all its pipes waits for
+	// one (§3.8); 0 is 30 s, negative is no resume. A resume_timeout_ms of
+	// CONFIG replaces it from the next session on (§5).
+	ResumeTimeout time.Duration
 }
 
 // Dialer establishes the sessions of a profile.
@@ -73,6 +77,7 @@ type Dialer struct {
 
 	mu          sync.Mutex
 	record      uint64               // last CONFIG record
+	resumeMs    uint64               // last CONFIG resume_timeout_ms, 0 for none
 	boundFailed map[string]time.Time // (candidate, network) where Bound failed and Sealed worked, when
 	last        string               // candidate that connected last
 	now         func() time.Time     // tests
@@ -373,11 +378,10 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	if err != nil {
 		return nil, err
 	}
-	zc, err := zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig())
-	if err != nil {
+	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
+	if s.zc, err = zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig(s)); err != nil {
 		return nil, err
 	}
-	s := &clientSession{d: d, zc: zc, mode: mode, carrier: c.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
 	s.start(c)
 	return s, nil
 }
@@ -408,6 +412,12 @@ type clientSession struct {
 
 	wg *sync.WaitGroup
 
+	// The redial of the session's only pipe. redialMu is held alone.
+	redialMu    sync.Mutex
+	redialKey   string          // candidate of the carrier given to zmux last
+	redialMode  zmux.RecordMode // its mode (Config.RecordPolicy)
+	redialBound map[string]bool // candidate|network of Bound tries of unknown result
+
 	mu      sync.Mutex
 	applied uint64                      // seq of the applied snapshot
 	onApply func(uint64, wire.Snapshot) // tests
@@ -416,6 +426,7 @@ type clientSession struct {
 func (s *clientSession) start(boot connprofile.Candidate) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.wg.Go(func() { s.serveStreams(ctx) })
+	s.wg.Go(func() { s.watch(ctx) })
 	if s.d.multi() {
 		s.wg.Go(func() { s.maintain(ctx, boot) })
 	}
@@ -448,9 +459,26 @@ func (s *clientSession) ended() {
 	}
 }
 
+// resumeTimeout is the grace of the next session.
+func (d *Dialer) resumeTimeout() time.Duration {
+	d.mu.Lock()
+	ms := d.resumeMs
+	d.mu.Unlock()
+	if ms > 0 {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return resumeTimeoutOf(d.cfg.ResumeTimeout)
+}
+
 func (d *Dialer) setRecord(r uint64) {
 	d.mu.Lock()
 	d.record = r
+	d.mu.Unlock()
+}
+
+func (d *Dialer) setResumeMs(ms uint64) {
+	d.mu.Lock()
+	d.resumeMs = ms
 	d.mu.Unlock()
 }
 
@@ -492,6 +520,7 @@ func (s *clientSession) apply(seq uint64, snap wire.Snapshot) {
 	}
 	s.applied = seq
 	s.d.setRecord(snap.Record)
+	s.d.setResumeMs(snap.Session.ResumeMs)
 	s.applySessionOptions(snap.Session)
 	if snap.HasSchedulerUp {
 		s.zc.SetScheduler(schedulerNamed(connprofile.Schedulers[snap.SchedulerUp]))
