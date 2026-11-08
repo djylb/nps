@@ -18,42 +18,56 @@ import (
 // file keeps working when only the binary is upgraded. It is removed in the
 // next major version, with this file and wire.OpConfigUpload.
 
+// errKeyIssued ends the session of the public key: the server made a client,
+// and the session of that client's own key does the rest.
+var errKeyIssued = errors.New("client key issued")
+
 // runCoreConfig hosts cnf's profile on the new protocol and, when the file
 // defines tunnels or hosts, uploads them on every session it makes; a failed
 // upload ends the session and is the error, as a failed exchange is on the
-// old protocol. Like RunConfigOnce it returns when the session ends.
-func runCoreConfig(ctx context.Context, cnf *config.Config) error {
+// old protocol. Like RunConfigOnce it returns when the session ends. issued
+// is the key the server gave for the public key in an earlier run: it is used
+// instead of that key, which would make another client. The key to pass to
+// the next run is returned.
+func runCoreConfig(ctx context.Context, cnf *config.Config, issued string) (string, error) {
 	cnf.ConvertFileTunnels()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	fsm := NewFileServerManager(ctx)
 	defer fsm.CloseAll()
 	if len(cnf.Tasks)+len(cnf.Hosts) == 0 {
-		return runCoreProfile(ctx, cnf.CommonConfig, false, nil)
+		return issued, runCoreProfile(ctx, cnf.CommonConfig, false, nil)
 	}
-	var issued string
-	err := runCoreProfile(ctx, cnf.CommonConfig, false, func(ctx context.Context, s coreapi.ClientSession) error {
+	withKey := func(key string) *config.Config {
+		run, common := *cnf, *cnf.CommonConfig
+		common.VKey, run.CommonConfig = key, &common
+		return &run
+	}
+	if issued != "" {
+		cnf = withKey(issued)
+	}
+	publish := func(ctx context.Context, s coreapi.ClientSession, h *coreHost) error {
+		return h.publish(ctx, s, fsm.Services())
+	}
+	var got string
+	err := runCoreProfile(ctx, cnf.CommonConfig, false, func(ctx context.Context, s coreapi.ClientSession, h *coreHost) error {
 		vkey, err := uploadConfig(ctx, s, cnf, fsm)
 		if err != nil {
 			return err
 		}
 		if vkey != cnf.CommonConfig.VKey {
-			// The public key: the server made a client with this key, and
-			// the session of the public key has done its work.
-			issued = vkey
-			_ = s.Close()
-			return nil
+			got = vkey
+			return errKeyIssued
 		}
-		return publishFiles(ctx, s, fsm)
+		return publish(ctx, s, h)
 	})
-	if err != nil || issued == "" || ctx.Err() != nil {
-		return err
+	if got == "" {
+		return issued, err
 	}
-	run := *cnf.CommonConfig
-	run.VKey = issued
-	return runCoreProfile(ctx, &run, false, func(ctx context.Context, s coreapi.ClientSession) error {
-		return publishFiles(ctx, s, fsm)
-	})
+	if ctx.Err() != nil {
+		return got, nil
+	}
+	return got, runCoreProfile(ctx, withKey(got).CommonConfig, false, publish)
 }
 
 // uploadConfig sends the tunnels and hosts of cnf on a new stream of s, and
@@ -85,20 +99,4 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 	}
 	logWebAccess(cnf, vkey)
 	return vkey, nil
-}
-
-// publishFiles reports the file servers as the session's virtual services.
-func publishFiles(ctx context.Context, s coreapi.ClientSession, fsm *FileServerManager) error {
-	services := fsm.Services()
-	if len(services) == 0 {
-		return nil
-	}
-	host, ok := s.(coreapi.ServiceHost)
-	if !ok {
-		return errors.New("virtual services are not available on this session")
-	}
-	if err := host.PublishServices(ctx, services); err != nil {
-		return fmt.Errorf("reporting virtual services failed: %w", err)
-	}
-	return nil
 }

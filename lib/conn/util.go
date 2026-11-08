@@ -3,8 +3,13 @@ package conn
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"io"
 	"net"
+	"net/netip"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/djylb/netx"
@@ -50,6 +55,18 @@ func LinkConn(conn net.Conn, cpt, snappy bool, cert *tls.Certificate, isLocal bo
 // when ctx ends, either side closes or fails, or no datagram passed in
 // either direction for timeout.
 func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string) {
+	HandleUdp5Policy(ctx, serverConn, timeout, localIP, nil)
+}
+
+// UDP5Policy decides the destination of a datagram, addr being host:port. It
+// is called with ips nil for a name not yet resolved, where it refuses what
+// the name alone refuses, and again with the addresses the name resolved to;
+// an IP destination comes with itself as ips.
+type UDP5Policy func(addr string, ips []netip.Addr) bool
+
+// HandleUdp5Policy is HandleUdp5 dropping the datagrams allow refuses; nil
+// allows all. A name is sent to the address it was judged by.
+func HandleUdp5Policy(ctx context.Context, serverConn net.Conn, timeout time.Duration, localIP string, allow UDP5Policy) {
 	local, err := net.ListenUDP("udp", netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
 		_ = serverConn.Close()
@@ -60,10 +77,94 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 		IdleTimeout: timeout,
 		OnError:     func(err error) { log.Debug("socks5 udp datagram failed", "err", err) },
 	}
+	pc := socks5.NewPacketConn(local)
+	if allow != nil {
+		relay.Allow = func(dst netx.Addr) bool {
+			if dst.IP.IsValid() {
+				return allow(netip.AddrPortFrom(dst.IP, dst.Port).String(), []netip.Addr{dst.IP})
+			}
+			return allow(dstAddr(dst), nil)
+		}
+		pc = &judgedPacketConn{PacketConn: pc, allow: allow, resolver: net.DefaultResolver}
+	}
 	framed := netx.NewFramedConn(serverConn, netx.WithFramedDatagrams())
-	if err := relay.Relay(ctx, framed, socks5.NewPacketConn(local)); err != nil {
+	if err := relay.Relay(ctx, framed, pc); err != nil {
 		log.Debug("socks5 udp relay ended", "err", err)
 	}
+}
+
+func dstAddr(dst netx.Addr) string {
+	return net.JoinHostPort(dst.Name, strconv.Itoa(int(dst.Port)))
+}
+
+const (
+	udp5LookupTimeout = 3 * time.Second
+	udp5NameTTL       = 30 * time.Second
+	// udp5NameCache bounds the names one association remembers.
+	udp5NameCache = 4096
+)
+
+var errUDP5Refused = errors.New("socks5 udp destination refused")
+
+type udp5Name struct {
+	ip      netip.Addr // invalid: refused or unresolved
+	expires time.Time
+}
+
+// judgedPacketConn resolves names itself, so that a datagram goes to an
+// address the policy has seen and a later answer of the DNS cannot change it.
+type judgedPacketConn struct {
+	socks5.PacketConn
+	allow    UDP5Policy
+	resolver interface {
+		LookupNetIP(context.Context, string, string) ([]netip.Addr, error)
+	}
+	mu    sync.Mutex
+	names map[string]udp5Name
+}
+
+func (c *judgedPacketConn) WriteTo(p []byte, dst netx.Addr) (int, error) {
+	if dst.IP.IsValid() || dst.Name == "" {
+		return c.PacketConn.WriteTo(p, dst)
+	}
+	ip := c.judge(dst)
+	if !ip.IsValid() {
+		return 0, fmt.Errorf("%w: %s", errUDP5Refused, dst.Name)
+	}
+	return c.PacketConn.WriteTo(p, netx.Addr{IP: ip, Port: dst.Port})
+}
+
+// judge returns the address to send to, invalid if there is none. The rules
+// may name ports, so a name is remembered per host:port.
+func (c *judgedPacketConn) judge(dst netx.Addr) netip.Addr {
+	addr := dstAddr(dst)
+	now := time.Now()
+	c.mu.Lock()
+	n, ok := c.names[addr]
+	c.mu.Unlock()
+	if ok && now.Before(n.expires) {
+		return n.ip
+	}
+	n = udp5Name{expires: now.Add(udp5NameTTL)}
+	ctx, cancel := context.WithTimeout(context.Background(), udp5LookupTimeout)
+	ips, err := c.resolver.LookupNetIP(ctx, "ip", dst.Name)
+	cancel()
+	if err == nil && len(ips) > 0 && c.allow(addr, ips) {
+		n.ip = ips[0]
+		for _, ip := range ips {
+			if ip.Unmap().Is4() { // reachable from every socket family
+				n.ip = ip.Unmap()
+				break
+			}
+		}
+	}
+	c.mu.Lock()
+	if c.names == nil || len(c.names) >= udp5NameCache {
+		c.names = make(map[string]udp5Name)
+	}
+	c.names[addr] = n
+	c.mu.Unlock()
+	return n.ip
 }
 
 // CopyWaitGroup relays between conn1, a link to an npc, and conn2. cert is

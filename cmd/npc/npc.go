@@ -490,7 +490,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			connType = strings.ToLower(connType)
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
-				runCoreProfile(ctx, serverAddr, verifyKey, connType, localIP)
+				runCoreProfile(ctx, cancel, serverAddr, verifyKey, connType, localIP)
 			}(serverAddr, verifyKey, connType, localIP)
 		}
 	}

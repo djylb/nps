@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/netip"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/holepunch/quicpath"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
@@ -41,49 +44,29 @@ func NewCorePeerExit(base coreapi.Exit) func(coreapi.LinkPolicy) (coreapi.Exit, 
 		if p.TargetType == "" {
 			p.TargetType = model.TargetAll
 		}
-		p.DestAclMode, p.DestAclRules = aclOfScope(lp.Scope)
-		if err := p.Compile(); err != nil {
+		scope, err := acl.CompileScope(lp.Scope, "link scope")
+		if err != nil {
 			return nil, err
 		}
-		return &peerExit{base: base, policy: p, targets: &model.Target{TargetStr: p.Targets}}, nil
+		return &peerExit{base: base, policy: p, scope: scope, targets: &model.Target{TargetStr: p.Targets},
+			resolve: net.DefaultResolver.LookupNetIP}, nil
 	}
 }
 
-// aclOfScope reads rule text (§9.5) as a task's destination list: all deny
-// lines are a denylist, otherwise the lines are an allowlist.
-func aclOfScope(scope string) (int, string) {
-	if scope == "" {
-		return model.AclOff, ""
-	}
-	var rules []string
-	deny := true
-	for line := range strings.Lines(scope) {
-		r := strings.TrimSpace(line)
-		if r == "" || strings.HasPrefix(r, "#") {
-			continue
-		}
-		if rest, ok := strings.CutPrefix(r, "deny "); ok {
-			r = strings.TrimSpace(rest)
-		} else {
-			deny = false
-			r = strings.TrimSpace(strings.TrimPrefix(r, "allow "))
-		}
-		rules = append(rules, r)
-	}
-	if deny {
-		return model.AclBlacklist, strings.Join(rules, "\n")
-	}
-	return model.AclWhitelist, strings.Join(rules, "\n")
-}
-
-// peerExit checks each link against the policy before it dials.
+// peerExit checks each link against the policy before it dials: policy has
+// the targets and the network, scope the rule text (§9.5).
 type peerExit struct {
 	base    coreapi.Exit
 	policy  *proxy.SecretPolicy
+	scope   *acl.Dest
 	targets *model.Target
+	resolve func(ctx context.Context, network, host string) ([]netip.Addr, error)
 }
 
-var errPeerDenied = &net.OpError{Op: "dial", Err: fmt.Errorf("%w: outside the access scope", syscall.EACCES)}
+var (
+	errPeerDenied  = &net.OpError{Op: "dial", Err: fmt.Errorf("%w: outside the access scope", syscall.EACCES)}
+	errScopeDenied = &net.OpError{Op: "dial", Err: acl.ErrScopeDenied}
+)
 
 func (e *peerExit) Dial(ctx context.Context, network, target string) (net.Conn, error) {
 	lk := &conn.Link{ConnType: network, Host: target}
@@ -92,7 +75,7 @@ func (e *peerExit) Dial(ctx context.Context, network, target string) (net.Conn, 
 		return nil, errPeerDenied
 	}
 	if g.Host != "" {
-		return e.base.Dial(ctx, g.ConnType, g.Host)
+		return e.dialScoped(ctx, g.ConnType, g.Host)
 	}
 	var c net.Conn
 	err = e.targets.Dial(func(addr string) (bool, error) {
@@ -103,12 +86,81 @@ func (e *peerExit) Dial(ctx context.Context, network, target string) (net.Conn, 
 	return c, err
 }
 
-func (e *peerExit) ServeUDP5(ctx context.Context, c net.Conn) {
+// dialScoped dials target, naming a destination the visitor chose, on the
+// addresses the scope judged, so that a later DNS answer cannot change them.
+func (e *peerExit) dialScoped(ctx context.Context, network, target string) (net.Conn, error) {
+	if e.scope == nil {
+		return e.base.Dial(ctx, network, target)
+	}
+	if e.scope.DeniesName(target) {
+		return nil, errScopeDenied
+	}
+	host, p, err := net.SplitHostPort(target)
+	if err != nil {
+		return nil, err
+	}
+	port, err := strconv.ParseUint(p, 10, 16)
+	if err != nil {
+		return nil, err
+	}
+	var ips []netip.Addr
+	if ip, perr := netip.ParseAddr(host); perr == nil {
+		ips = []netip.Addr{ip}
+	} else if ips, err = e.resolve(ctx, "ip", host); err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, &net.DNSError{Err: "no address", Name: host, IsNotFound: true}
+	}
+	if !e.scope.AllowsResolved(target, ips) {
+		return nil, errScopeDenied
+	}
+	var derr error
+	for _, ip := range ips {
+		var c net.Conn
+		if c, derr = e.base.Dial(ctx, network, netip.AddrPortFrom(ip.Unmap(), uint16(port)).String()); derr == nil {
+			return c, nil
+		}
+	}
+	return nil, derr
+}
+
+// AdmitUDP5 is the policy's answer to addressed UDP, before the link is up.
+func (e *peerExit) AdmitUDP5() error {
 	if _, err := e.policy.Admit(&conn.Link{ConnType: conn.LinkUDP5}); err != nil {
-		_ = c.Close()
+		return errPeerDenied
+	}
+	return nil
+}
+
+// udp5Policy is the check of each datagram's destination, nil without scope.
+func (e *peerExit) udp5Policy() conn.UDP5Policy {
+	if e.scope == nil {
+		return nil
+	}
+	return func(addr string, ips []netip.Addr) bool {
+		if ips == nil {
+			return !e.scope.DeniesName(addr)
+		}
+		return e.scope.AllowsResolved(addr, ips)
+	}
+}
+
+func (e *peerExit) ServeUDP5(ctx context.Context, c net.Conn) {
+	if f, ok := e.base.(policyUDP5); ok {
+		f.ServeUDP5Policy(ctx, c, e.udp5Policy())
+		return
+	}
+	if e.scope != nil {
+		_ = c.Close() // no way to apply the scope
 		return
 	}
 	e.base.ServeUDP5(ctx, c)
+}
+
+// policyUDP5 is an exit that can apply a policy to each datagram.
+type policyUDP5 interface {
+	ServeUDP5Policy(ctx context.Context, c net.Conn, allow conn.UDP5Policy)
 }
 
 // corePuncher makes direct paths with holepunch and QUIC.

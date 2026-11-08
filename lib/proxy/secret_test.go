@@ -254,7 +254,9 @@ func TestSecretPolicyAdmit(t *testing.T) {
 		denied, refused                 bool
 	}{
 		{name: "no list: no link info", task: unlisted, lk: nil, want: SecretRoute{ConnType: "tcp"}},
-		{name: "no list: no host", task: unlisted, lk: link("udp", "", false), want: SecretRoute{ConnType: "tcp"}},
+		{name: "no list: no host", task: unlisted, lk: link("tcp", "", false), want: SecretRoute{ConnType: "tcp"}},
+		{name: "no list: network outside", task: unlisted, lk: link("udp", "", false), denied: true},
+		{name: "no list: addressed udp", task: unlisted, lk: link(conn.LinkUDP5, "", false), denied: true},
 		{name: "no list: a target", task: unlisted, lk: link("tcp", "127.0.0.1:81", false), want: SecretRoute{ConnType: "tcp", Host: "127.0.0.1:81"}},
 		{name: "no list: other host", task: unlisted, lk: link("tcp", "other:1", false), denied: true},
 		{name: "no list, legacy any", task: unlisted, anyDest: true, lk: link("tcp", "other:1", false), want: SecretRoute{ConnType: "tcp", Host: "other:1"}},

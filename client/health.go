@@ -15,13 +15,17 @@ import (
 	"github.com/djylb/upstream/uphttp"
 )
 
-// healthSink is how reports reach the server. Its call returns within a bounded
-// time; after an error it is not called again.
+// healthSink is how reports reach the server. Its call returns within a
+// bounded time; an error is a report not delivered, the next call starts over.
 type healthSink interface {
 	ReportHealth(healthcheck.Report) error
 }
 
 // healthKey identifies one check: groups asking for the same check share it.
+// healthRetryDelay separates the attempts at a report not delivered; only
+// the end of the session stops them.
+var healthRetryDelay = time.Second
+
 type healthKey struct {
 	spec healthSpec
 	addr string
@@ -286,6 +290,18 @@ func (r *healthReporter) next() (healthReportKey, string, bool) {
 	return key, status, true
 }
 
+// requeue puts back a report not delivered, first in line, unless a newer one
+// for its key arrived.
+func (r *healthReporter) requeue(key healthReportKey, status string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, newer := r.pending[key]; newer {
+		return
+	}
+	r.pending[key] = status
+	r.order = append([]healthReportKey{key}, r.order...)
+}
+
 func (r *healthReporter) run() {
 	defer close(r.done)
 	for {
@@ -301,7 +317,13 @@ func (r *healthReporter) run() {
 			}
 			if err := r.sink.ReportHealth(healthcheck.Report{Group: key.group, Addr: key.addr, Up: status == "1"}); err != nil {
 				log.Debug("send health info failed", "target", key.addr, "err", err)
-				return
+				r.requeue(key, status)
+				select {
+				case <-r.quit:
+					return
+				case <-time.After(healthRetryDelay):
+				}
+				continue
 			}
 			select {
 			case <-r.quit:

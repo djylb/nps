@@ -22,7 +22,7 @@ import (
 type Closer interface{ Close() error }
 
 // SecretManager runs the point-to-point access sections of a visitor: their
-// listeners and one visitor per secret task (password), which the sections of that task share.
+// listeners and one visitor per secret task (password) and conn_mode, which the sections with both share.
 type SecretManager struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -33,7 +33,7 @@ type SecretManager struct {
 	// coreVisitor makes the access of a password.
 	coreVisitor  func(password, mode string) coreapi.Visitor
 	coreRelease  func()                     // gives back the shared session of coreVisitor
-	visitors     map[string]coreapi.Visitor // by task password
+	visitors     map[string]coreapi.Visitor // by task password and conn_mode
 	proxyServers []Closer
 }
 
@@ -58,14 +58,16 @@ func NewSecretManager(pCtx context.Context, pCancel context.CancelFunc, cfg *con
 func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Visitor {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
-	if v, ok := mgr.visitors[l.Password]; ok {
+	// A link has one conn_mode: sections differing in it have their own.
+	key := l.Password + "\x00" + mode
+	if v, ok := mgr.visitors[key]; ok {
 		return v
 	}
 	if mgr.visitors == nil {
 		mgr.visitors = make(map[string]coreapi.Visitor)
 	}
 	v := mgr.coreVisitor(l.Password, mode)
-	mgr.visitors[l.Password] = v
+	mgr.visitors[key] = v
 	return v
 }
 

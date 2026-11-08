@@ -38,24 +38,31 @@ func (e coreExit) Dial(ctx context.Context, network, target string) (net.Conn, e
 
 // ServeUDP5 implements coreapi.Exit.
 func (e coreExit) ServeUDP5(ctx context.Context, c net.Conn) {
+	e.ServeUDP5Policy(ctx, c, nil)
+}
+
+// ServeUDP5Policy is ServeUDP5 under a policy for each datagram.
+func (e coreExit) ServeUDP5Policy(ctx context.Context, c net.Conn, allow conn.UDP5Policy) {
 	localIP := ""
 	if LocalIPForward {
 		localIP = e.localIP
 	}
-	conn.HandleUdp5(ctx, c, e.udpIdle, localIP)
+	conn.HandleUdp5Policy(ctx, c, e.udpIdle, localIP, allow)
 }
 
 // RunCore keeps a core protocol session of one server profile until ctx ends
 // (or, without autoReconnect, until the first one ends). The tunnels are run
 // by the session, through the Exit of the dialer.
 func RunCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool) {
-	_ = runCore(ctx, d, autoReconnect, nil)
+	_ = runCore(ctx, d, autoReconnect, nil, nil)
 }
 
 // runCore is RunCore with after, which runs on each session once it is up
 // (the config upload). A session after fails ends, and the error is returned
-// when no reconnect follows.
-func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after func(context.Context, coreapi.ClientSession) error) error {
+// when no reconnect follows. shared is the entry of a session others may be
+// using, nil for a session of this run alone: the entry's users decide when
+// a shared one closes.
+func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after func(context.Context, coreapi.ClientSession) error, shared *coreEntry) error {
 	attempt := 0
 	for ctx.Err() == nil {
 		var failed error
@@ -69,6 +76,13 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 			slogx.Emit(ctx, log, &logevent.Connected, "server", d.Server(), "carrier", s.Carrier())
 			if after != nil {
 				if failed = after(ctx, s); failed != nil {
+					if shared != nil && !shared.sole() {
+						// The others keep the session; only this run ends.
+						if !autoReconnect || !WaitReconnect(ctx) {
+							return failed
+						}
+						continue
+					}
 					_ = s.Close()
 				}
 			}
@@ -77,6 +91,9 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 				NowStatus.Store(0)
 				slogx.Emit(ctx, log, &logevent.Disconnected, "server", d.Server(), "carrier", s.Carrier(), "reason", "lost", "err", s.Err())
 			case <-ctx.Done():
+				if shared != nil {
+					return nil
+				}
 				_ = s.Close()
 				<-s.Done()
 				return nil

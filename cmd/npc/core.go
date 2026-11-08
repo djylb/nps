@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,11 +37,25 @@ func setCoreDefaults() {
 
 // runCoreProfile hosts one server profile of the command line on the new
 // protocol.
-func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) {
+func runCoreProfile(ctx context.Context, cancel context.CancelFunc, server, vkey, carrier, localIP string) {
 	cfg := config.NewCommonConfig()
 	cfg.Server, cfg.VKey, cfg.Tp, cfg.LocalIP = server, vkey, strings.ToLower(carrier), localIP
 	cfg.ProxyUrl = *proxyUrl
-	if err := client.RunCoreProfile(ctx, cfg, *autoReconnect); err != nil {
-		log.Error("invalid server", "err", err)
+	if err := coreProfileEnd(ctx, client.RunCoreProfile(ctx, cfg, *autoReconnect), *autoReconnect); err != nil {
+		fail(cancel, err)
 	}
+}
+
+// coreProfileEnd is why npc must stop when a profile returned, nil when it
+// was stopped or goes on: err is a profile that cannot be made.
+func coreProfileEnd(ctx context.Context, err error, autoReconnect bool) error {
+	switch {
+	case ctx.Err() != nil:
+		return nil
+	case err != nil:
+		return fmt.Errorf("invalid server: %w", err)
+	case !autoReconnect:
+		return errors.New("the connection to the server ended and auto reconnection is off")
+	}
+	return nil
 }

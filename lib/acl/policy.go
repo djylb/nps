@@ -2,12 +2,20 @@ package acl
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
+	"net/netip"
+	"strconv"
+	"strings"
 	"sync/atomic"
+	"unicode"
 
 	"github.com/djylb/geomatch"
+	"github.com/djylb/slogx"
 )
+
+var log = slogx.Module("acl")
 
 // Priorities of a source level that has both lists.
 const (
@@ -81,10 +89,22 @@ func (s *Source) Policy() geomatch.Policy {
 // Dest is the compiled destination access policy of a tunnel. A nil Dest
 // allows every destination.
 type Dest struct {
-	rules     *geomatch.Live
-	policy    geomatch.Policy
-	allowlist bool
-	opened    openCheck
+	deny, allow *geomatch.Live
+	policy      geomatch.Policy
+	opened      openCheck
+}
+
+// newDest is the Dest of the lists that are not nil: a deny hit refuses,
+// then an allow list admits only what it has.
+func newDest(deny, allow *geomatch.Live) *Dest {
+	d := &Dest{deny: deny, allow: allow, policy: geomatch.Policy{Priority: geomatch.DenyFirst}}
+	if deny != nil {
+		d.policy.Deny = deny
+	}
+	if allow != nil {
+		d.policy.Allow = allow
+	}
+	return d
 }
 
 // CompileDest compiles a destination list in mode AclOff, AclWhitelist or
@@ -98,7 +118,150 @@ func CompileDest(mode int, rules string, owner any) (*Dest, error) {
 	}
 	l, err := geomatch.NewLive(destCompiler(), geomatch.SplitLines(rules))
 	l.SetTag(owner)
-	return &Dest{rules: l, policy: m.Policy(l), allowlist: m == geomatch.ModeAllowlist}, ruleError(err)
+	if m == geomatch.ModeAllowlist {
+		return newDest(nil, l), ruleError(err)
+	}
+	return newDest(l, nil), ruleError(err)
+}
+
+var (
+	// ErrMalformedScope is rule text (a scope) with a syntax error or no rule.
+	ErrMalformedScope = errors.New("malformed scope")
+	// ErrScopeDenied is a destination the scope does not admit.
+	ErrScopeDenied = errors.New("destination outside the scope")
+)
+
+// anyTargetRule is what the scope rule * compiles to: every address, by port.
+const anyTargetRule = "*:0-65535"
+
+var geoMissingWarned atomic.Bool
+
+// CompileScope compiles rule text: lines of [allow|deny whitespace] rule,
+// default allow, ignoring blank lines and those starting with #. Empty text
+// is no limit, and nil is returned. Text with no rule or a syntax error is
+// ErrMalformedScope. A rule whose geodata is unavailable does not fail: it
+// is skipped, a deny that matches nothing and, when the file is missing, an
+// allow list that admits everything; this is warned about once.
+func CompileScope(text string, owner any) (*Dest, error) {
+	if text == "" {
+		return nil, nil
+	}
+	var deny, allow []string
+	for line := range strings.Lines(text) {
+		s := strings.TrimLeftFunc(strings.TrimRight(line, "\r\n"), unicode.IsSpace)
+		if s == "" || s[0] == '#' {
+			continue
+		}
+		list := &allow
+		if i := strings.IndexFunc(s, unicode.IsSpace); i > 0 && (s[:i] == "allow" || s[:i] == "deny") {
+			if s[:i] == "deny" {
+				list = &deny
+			}
+			s = s[i:]
+		}
+		rule := strings.TrimSpace(s)
+		switch {
+		case rule == "":
+			return nil, fmt.Errorf("%w: a verb without a rule", ErrMalformedScope)
+		case rule == "*":
+			rule = anyTargetRule
+		case rule[0] == '*' && !strings.HasPrefix(rule, "*:"):
+			return nil, fmt.Errorf("%w: %q: wildcards are not accepted", ErrMalformedScope, rule)
+		}
+		*list = append(*list, rule)
+	}
+	if len(deny)+len(allow) == 0 {
+		return nil, fmt.Errorf("%w: no rule", ErrMalformedScope)
+	}
+	compile := func(rules []string) (*geomatch.Live, error) {
+		if len(rules) == 0 {
+			return nil, nil
+		}
+		l, err := geomatch.NewLive(destCompiler(), rules)
+		l.SetTag(owner)
+		return l, scopeRuleError(err)
+	}
+	d, err := compile(deny)
+	if err != nil {
+		return nil, err
+	}
+	a, err := compile(allow)
+	if err != nil {
+		return nil, err
+	}
+	return newDest(d, a), nil
+}
+
+// scopeRuleError is ErrMalformedScope for rejected rules, nil when the only
+// fault is unavailable geodata.
+func scopeRuleError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errs, ok := errors.AsType[geomatch.RuleErrors](err); ok {
+		bad := false
+		for _, re := range errs {
+			bad = bad || !errors.Is(re.Err, geomatch.ErrGeoData)
+		}
+		if !bad {
+			if geoMissingWarned.CompareAndSwap(false, true) {
+				log.Warn("scope rules without geodata are ignored", "err", ruleError(err))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %v", ErrMalformedScope, ruleError(err))
+}
+
+// DeniesName reports whether a deny rule matches addr, a host:port, as it
+// is: what can be refused before resolving it.
+func (d *Dest) DeniesName(addr string) bool {
+	return d != nil && d.deny != nil && d.deny.Matcher().Match(addr)
+}
+
+// AllowsResolved decides addr, a host:port, whose host is or resolved to
+// ips: a deny of the name or of any IP refuses; then it needs no allow rules
+// or an allow of the name or of every IP.
+func (d *Dest) AllowsResolved(addr string, ips []netip.Addr) bool {
+	if d == nil {
+		return true
+	}
+	_, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	n, err := strconv.ParseUint(p, 10, 16)
+	if err != nil {
+		return false
+	}
+	port := uint16(n)
+	if d.DeniesName(addr) {
+		return false
+	}
+	if d.deny != nil {
+		m := d.deny.Matcher()
+		for _, ip := range ips {
+			if m.MatchAddrPort(netip.AddrPortFrom(ip.Unmap(), port)) {
+				return false
+			}
+		}
+	}
+	if d.allow == nil || d.opened.open(d.allow) {
+		return true
+	}
+	m := d.allow.Matcher()
+	if m.Match(addr) {
+		return true
+	}
+	if len(ips) == 0 {
+		return false
+	}
+	for _, ip := range ips {
+		if !m.MatchAddrPort(netip.AddrPortFrom(ip.Unmap(), port)) {
+			return false
+		}
+	}
+	return true
 }
 
 // Allows reports whether the destination addr, a host or host:port, may be
@@ -107,8 +270,8 @@ func (d *Dest) Allows(addr string) bool {
 	if d == nil {
 		return true
 	}
-	if d.allowlist && d.opened.open(d.rules) {
-		return true
+	if d.allow != nil && d.opened.open(d.allow) {
+		return !d.DeniesName(addr)
 	}
 	return d.policy.Allows(addr)
 }

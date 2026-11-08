@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -128,17 +129,11 @@ func (p *SecretPolicy) Admit(lk *conn.Link) (SecretRoute, error) {
 		g.Host = netaddr.FormatAddress(lk.Host)
 	}
 	if !p.NameDest {
-		if g.Host != "" && !p.isTarget(g.Host) {
+		// Addressed UDP names every destination itself.
+		if lk.ConnType == conn.LinkUDP5 || !p.networkAllowed(lk.ConnType) || g.Host != "" && !p.isTarget(g.Host) {
 			return g, ErrSecretDestDenied
 		}
-		switch p.TargetType {
-		case model.TargetAll, "":
-			if lk.ConnType == conn.LinkUDP {
-				g.ConnType = conn.LinkUDP
-			}
-		default:
-			g.ConnType = p.TargetType
-		}
+		g.ConnType = lk.ConnType
 		return g, nil
 	}
 	g.ConnType = lk.ConnType
@@ -149,6 +144,33 @@ func (p *SecretPolicy) Admit(lk *conn.Link) (SecretRoute, error) {
 		g.LocalProxy = lk.LocalProxy
 	}
 	return g, nil
+}
+
+// udp5Policy is the check of each destination of an addressed UDP link
+// under the task's destination list, nil without one: a deny of the name or
+// any address refuses, an allowlist needs the name or every address.
+func (p *SecretPolicy) udp5Policy() conn.UDP5Policy {
+	if p.allows == nil {
+		return nil
+	}
+	return func(addr string, ips []netip.Addr) bool {
+		if ips == nil {
+			return true // judged with its addresses
+		}
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return false
+		}
+		named := p.allows(addr)
+		every := true
+		for _, ip := range ips {
+			every = every && p.allows(net.JoinHostPort(ip.String(), port))
+		}
+		if p.DestAclMode == model.AclWhitelist {
+			return named || every
+		}
+		return named && every
+	}
 }
 
 // isTarget reports whether host is one of the task's targets.
@@ -220,6 +242,13 @@ func (s *SecretServer) Serve(src net.Conn, lk *conn.Link, ack func(net.Conn, tim
 		link.Option.Node = route.Node
 		var err error
 		link.Option.Compress = model.ResolveCompress(s.Task.Client, s.Task.Compress)
+		if allow := s.policy.udp5Policy(); allow != nil && connType == conn.LinkUDP5 && localProxy {
+			// Served here: only the policy knows the destination list.
+			near, far := net.Pipe()
+			go conn.HandleUdp5Policy(context.Background(), far, link.Option.Timeout, "", allow)
+			target = near
+			return true, nil
+		}
 		target, err = s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 		return localProxy, err
 	}

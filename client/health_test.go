@@ -2,11 +2,13 @@ package client
 
 import (
 	"context"
+	"errors"
 	"io"
 	logger "log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -165,4 +167,44 @@ type legacyHealthSink struct{ signal *conn.Conn }
 
 func (s legacyHealthSink) ReportHealth(rep healthcheck.Report) error {
 	return legacy.WriteGroupHealth(s.signal, rep)
+}
+
+type flakySink struct {
+	mu   sync.Mutex
+	fail int
+	got  []healthcheck.Report
+}
+
+func (s *flakySink) ReportHealth(r healthcheck.Report) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail > 0 {
+		s.fail--
+		return errors.New("suspended")
+	}
+	s.got = append(s.got, r)
+	return nil
+}
+
+// A report that failed, as during a long suspension, is retried: only the
+// end of the session stops the reporter.
+func TestHealthReporterSurvivesFailedReport(t *testing.T) {
+	old := healthRetryDelay
+	healthRetryDelay = time.Millisecond
+	defer func() { healthRetryDelay = old }()
+	sink := &flakySink{fail: 3}
+	r := newHealthReporter(sink)
+	defer r.stop()
+	r.report("g", "a:1", "0")
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		sink.mu.Lock()
+		n := len(sink.got)
+		sink.mu.Unlock()
+		if n == 1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("report never delivered")
 }

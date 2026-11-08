@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,78 @@ type coreEntry struct {
 	users int          // guarded by coreOuters.mu
 	stop  context.CancelFunc
 	done  chan struct{}
+
+	// pub serializes reports of the session's services, which replace each
+	// other; services is what each host of the entry offers.
+	pub      sync.Mutex
+	services map[*coreHost][]coreapi.LocalService
+}
+
+// coreHost is one run hosting a profile on an entry.
+type coreHost struct {
+	e *coreEntry
+	s coreapi.ClientSession // last published on
+}
+
+// sole reports whether nothing else uses the entry.
+func (e *coreEntry) sole() bool {
+	coreOuters.mu.Lock()
+	defer coreOuters.mu.Unlock()
+	return e.users == 1
+}
+
+// publish reports h's services together with those of the entry's other
+// hosts: a report replaces all the session had.
+func (h *coreHost) publish(ctx context.Context, s coreapi.ClientSession, list []coreapi.LocalService) error {
+	h.e.pub.Lock()
+	defer h.e.pub.Unlock()
+	if _, had := h.e.services[h]; !had && len(list) == 0 {
+		return nil
+	}
+	if h.e.services == nil {
+		h.e.services = make(map[*coreHost][]coreapi.LocalService)
+	}
+	h.e.services[h], h.s = list, s
+	return h.e.report(ctx, s)
+}
+
+// report sends the union of the hosts' services; the caller holds pub.
+func (e *coreEntry) report(ctx context.Context, s coreapi.ClientSession) error {
+	host, ok := s.(coreapi.ServiceHost)
+	if !ok {
+		return errors.New("virtual services are not available on this session")
+	}
+	var all []coreapi.LocalService
+	for _, list := range e.services {
+		all = append(all, list...)
+	}
+	if err := host.PublishServices(ctx, all); err != nil {
+		return fmt.Errorf("reporting virtual services failed: %w", err)
+	}
+	return nil
+}
+
+// withdraw takes h's services back from a session others go on using.
+func (h *coreHost) withdraw() {
+	h.e.pub.Lock()
+	defer h.e.pub.Unlock()
+	if _, had := h.e.services[h]; !had {
+		return
+	}
+	delete(h.e.services, h)
+	if h.e.sole() {
+		return // the session closes with this host
+	}
+	select {
+	case <-h.s.Done():
+		return
+	default:
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.e.report(ctx, h.s); err != nil {
+		log.Debug("virtual services not withdrawn", "err", err)
+	}
 }
 
 var coreOuters struct {
@@ -125,7 +198,7 @@ func RunCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect
 
 // runCoreProfile is RunCoreProfile with after, see runCore; its error is that
 // of the last session's after.
-func runCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect bool, after func(context.Context, coreapi.ClientSession) error) error {
+func runCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect bool, after func(context.Context, coreapi.ClientSession, *coreHost) error) error {
 	e, err := acquireCore(cfg, cfg.Server)
 	if err != nil {
 		return err
@@ -133,7 +206,13 @@ func runCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect
 	defer e.release()
 	e.hosts.Add(1)
 	defer e.hosts.Add(-1)
-	return runCore(ctx, e.outer, autoReconnect, after)
+	h := &coreHost{e: e}
+	defer h.withdraw()
+	var run func(context.Context, coreapi.ClientSession) error
+	if after != nil {
+		run = func(ctx context.Context, s coreapi.ClientSession) error { return after(ctx, s, h) }
+	}
+	return runCore(ctx, e.outer, autoReconnect, run, e)
 }
 
 // UseCore makes the local sections of the manager reach their tasks over the

@@ -55,7 +55,8 @@ func StartFromFile(pCtx context.Context, path string) error {
 	}
 	clock.Sync()
 
-	var uuid string
+	// The key the server issued for a public key, kept across runs.
+	var issued string
 
 	first := true
 	for {
@@ -75,7 +76,7 @@ func StartFromFile(pCtx context.Context, path string) error {
 		}
 		first = false
 
-		uuid, err = RunConfigOnce(pCtx, cnf, uuid)
+		issued, err = RunConfigOnce(pCtx, cnf, issued)
 		if err != nil {
 			log.Warn("session ended", "server", cnf.CommonConfig.Server, "err", err)
 		}
@@ -83,13 +84,13 @@ func StartFromFile(pCtx context.Context, path string) error {
 }
 
 // RunConfigOnce runs cnf until the session closes or ctx ends and returns the
-// client uuid to pass to the next run. Local servers run until ctx ends or one
+// issued key to pass to the next run, for a public key once the server gave one. Local servers run until ctx ends or one
 // of them fails to start.
-func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string, error) {
+func RunConfigOnce(ctx context.Context, cnf *config.Config, issued string) (string, error) {
 	if len(cnf.LocalServer) > 0 {
-		return uuid, runLocalServers(ctx, cnf)
+		return issued, runLocalServers(ctx, cnf)
 	}
-	return uuid, runCoreConfig(ctx, cnf)
+	return runCoreConfig(ctx, cnf, issued)
 }
 
 // logWebAccess logs the web login of the client cnf describes, whose key is

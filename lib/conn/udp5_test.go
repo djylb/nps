@@ -3,6 +3,7 @@ package conn
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"testing"
@@ -200,5 +201,44 @@ func TestHandleUdp5ContextCancel(t *testing.T) {
 	_ = peer.SetDeadline(time.Now().Add(time.Second))
 	if _, err := peer.Read(make([]byte, 1)); err == nil {
 		t.Fatal("tunnel still open after HandleUdp5 returned")
+	}
+}
+
+type fakeNames map[string][]netip.Addr
+
+func (f fakeNames) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+	return f[host], nil
+}
+
+type recordPC struct {
+	socks5.PacketConn
+	sent []netx.Addr
+}
+
+func (r *recordPC) WriteTo(p []byte, dst netx.Addr) (int, error) {
+	r.sent = append(r.sent, dst)
+	return len(p), nil
+}
+
+func TestJudgedPacketConnJudgesResolvedAddress(t *testing.T) {
+	ip := netip.MustParseAddr("10.0.0.1")
+	names := fakeNames{"in.example": {ip}, "out.example": {netip.MustParseAddr("8.8.8.8")}}
+	rec := &recordPC{}
+	c := &judgedPacketConn{PacketConn: rec, resolver: names, allow: func(_ string, ips []netip.Addr) bool {
+		return ips[0] == ip
+	}}
+	if _, err := c.WriteTo([]byte("x"), netx.Addr{Name: "out.example", Port: 53}); !errors.Is(err, errUDP5Refused) {
+		t.Fatalf("refused name: %v", err)
+	}
+	if _, err := c.WriteTo([]byte("x"), netx.Addr{Name: "in.example", Port: 53}); err != nil {
+		t.Fatal(err)
+	}
+	// The answer changing does not move what was judged.
+	names["in.example"] = []netip.Addr{netip.MustParseAddr("8.8.8.8")}
+	if _, err := c.WriteTo([]byte("x"), netx.Addr{Name: "in.example", Port: 53}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.sent) != 2 || rec.sent[0].IP != ip || rec.sent[1].IP != ip || rec.sent[0].Name != "" {
+		t.Fatalf("sent %+v", rec.sent)
 	}
 }
