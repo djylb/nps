@@ -75,7 +75,7 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			return slogx.Default.Levels().Set(cur.Log.Level)
 		}},
-		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress"}, Apply: restart},
+		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress", "log_memory"}, Apply: restart},
 		{Name: "ntp", Settings: []string{"ntp_server", "ntp_interval"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			ApplyNTP(cur)
 			return nil

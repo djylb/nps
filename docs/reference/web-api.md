@@ -351,3 +351,18 @@ curl -X POST \
 **接口：** `POST /live/status`。参数 `resource=client|tunnel|host` 和 `items`（JSON 数组，例如 `[{"id":1,"fields":["Speed","NowConn"]}]`，每次最多 500 项）。逐项按资源归属和读取权限过滤，只返回 ID 和允许且请求的运行字段，不返回配置、密钥或名单内容。全局流量仅管理员可请求。
 
 事件推送见 [Webhook](/guide/server/webhook.md)。
+
+## 日志（仅管理员）
+
+内存中保留最近 `log_memory` 条日志（默认 1000），格式见[日志](/guide/server/logging.md)。
+
+- **查询日志：** `GET /api/v1/logs/entries`，参数均可选：
+  - `after`：只返回序号大于它的条目；
+  - `level`：最低级别（`trace`、`debug`、`info`、`warn`、`error`）；
+  - `module`、`event`：逗号分隔的模块名、事件名；
+  - `text`：消息或字段中包含的文字，不区分大小写；
+  - `limit`：最多返回多少条，默认和上限都是 1000。
+
+  返回 `{"enabled":true,"entries":[{"seq":..,"time":..,"level":"WARN","module":..,"event":..,"msg":..,"attrs":[{"key":..,"value":..}]}],"seq":..,"size":..}`。把返回的 `seq` 作为下次的 `after` 反复查询，即可持续跟随新日志；`log_memory=0` 时 `enabled` 为 `false`。
+- **查看级别：** `GET /api/v1/logs/levels`，返回 `{"level":"info,p2p=debug"}`，即当前 `log_level`。
+- **临时调级：** `POST /api/v1/logs/override`，参数 `module`（留空表示所有模块）、`level`、`ttl`（秒）。在 `ttl` 秒内让该模块输出到指定级别，到期自动恢复，不修改 nps.conf；`ttl=0` 立即结束。

@@ -71,6 +71,7 @@ type LogConfig struct {
 	MaxDays  int
 	MaxSize  int // MB
 	Compress bool
+	Memory   int // entries kept for the log viewer of the web manager; 0 for none
 }
 
 type WebConfig struct {
@@ -335,6 +336,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		MaxDays:  r.intDefault(30, "log_max_days"),
 		MaxSize:  r.intDefault(5, "log_max_size"),
 		Compress: r.boolDefault(false, "log_compress"),
+		Memory:   r.intDefault(1000, "log_memory"),
 	}
 
 	cfg.Web = WebConfig{

@@ -67,6 +67,9 @@ func ProtectedActionCatalog(app *App) []ActionSpec {
 		return nil
 	}
 	return []ActionSpec{
+		{Controller: "logs", Name: "entries", Method: http.MethodGet, APIPath: "/api/v1/logs/entries", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogEntries},
+		{Controller: "logs", Name: "levels", Method: http.MethodGet, APIPath: "/api/v1/logs/levels", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogLevels},
+		{Controller: "logs", Name: "override", Method: http.MethodPost, APIPath: "/api/v1/logs/override", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogOverride},
 		{Controller: "live", Name: "status", Method: http.MethodPost, APIPath: "/api/v1/live/status", LegacyPath: "/live/status", Protected: true, Handler: app.LiveStatus},
 		{Controller: "index", Name: "stats", Method: http.MethodGet, APIPath: "/api/v1/index/stats", LegacyPath: "/index/stats", Protected: true, Handler: app.DashboardStats},
 		{Controller: "index", Name: "updateserver", Method: http.MethodPost, APIPath: "/api/v1/index/updateserver", LegacyPath: "/index/updateserver", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateServer},

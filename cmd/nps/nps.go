@@ -187,7 +187,7 @@ func main() {
 	logOpts := logsetup.Options{
 		Output: cfg.Log.Type, Format: cfg.Log.Format, Level: cfg.Log.Level,
 		Path: logPath, Security: cfg.Log.Security, Dir: runenv.GetRunPath(),
-		MaxSize: cfg.Log.MaxSize, MaxFiles: cfg.Log.MaxFiles, MaxDays: cfg.Log.MaxDays, Compress: cfg.Log.Compress,
+		MaxSize: cfg.Log.MaxSize, MaxFiles: cfg.Log.MaxFiles, MaxDays: cfg.Log.MaxDays, Compress: cfg.Log.Compress, Memory: cfg.Log.Memory,
 		Service: len(os.Args) > 1 && os.Args[1] == "service",
 	}
 	if err := logsetup.Apply(logOpts); err != nil {

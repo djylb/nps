@@ -181,6 +181,7 @@ nps.exe -conf_path=D:\test\nps
 | `log_format` | `auto` | `json` | `auto`（终端上彩色，写文件或重定向时 logfmt）、`text`（总是 logfmt）或 `json`，见[日志](../guide/server/logging.md) |
 | `security_log` | 空 | `/var/log/nps/security.log` | 另写一份只含安全事件的文件，供 fail2ban 使用；轮转设置同上 |
 | `log_path` | 系统默认 | `conf/nps.log` | 路径、`off`、`docker`；系统默认为 Windows 程序目录 `nps.log`，其他 `/var/log/nps.log` |
+| `log_memory` | `1000` | `5000` | 内存中保留的最近日志条数，供管理面板查看日志（`/api/v1/logs/entries`）；`0` 关闭 |
 | `log_compress` | `false` | `false` | 压缩日志 |
 | `log_max_files` | `30` | `10` | 日志文件数上限 |
 | `log_max_days` | `30` | `7` | 保留天数 |
