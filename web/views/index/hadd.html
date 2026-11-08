@@ -191,6 +191,24 @@
                         </div>
                     </details>
                     <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="compress_alg">
+                                <label class="control-label font-bold" langtag="word-compressalg"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="compress">
+                                        <option value="" langtag="word-compressinherit"></option>
+                                        <option value="snappy">snappy</option>
+                                        <option value="zstd">zstd</option>
+                                        <option value="flate">flate</option>
+                                        <option value="off" langtag="word-compressoff"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-compressalg"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    <details class="resource-section resource-advanced">
                         <summary><span langtag="section-access"></span></summary>
                         <div class="resource-section-body">
                             <div class="form-group" id="auth">

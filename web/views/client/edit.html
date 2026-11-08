@@ -66,6 +66,19 @@
                                     </select>
                                 </div>
                             </div>
+                            <details class="form-group" id="advanced_compress_alg">
+                                <summary class="control-label font-bold" langtag="word-advanced"></summary>
+                                <label class="control-label font-bold" langtag="word-compressalg"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="compress_alg">
+                                        <option {{if eq "" .c.Cnf.CompressAlg}}selected {{end}}value="" langtag="word-compressdefault"></option>
+                                        <option {{if eq "snappy" .c.Cnf.CompressAlg}}selected {{end}}value="snappy">snappy</option>
+                                        <option {{if eq "zstd" .c.Cnf.CompressAlg}}selected {{end}}value="zstd">zstd</option>
+                                        <option {{if eq "flate" .c.Cnf.CompressAlg}}selected {{end}}value="flate">flate</option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-compressclientalg"></span>
+                                </div>
+                            </details>
                             <details class="form-group" id="advanced_shaping">
                                 <summary class="control-label font-bold" langtag="word-advanced"></summary>
                                 <label class="control-label font-bold" langtag="word-shaping"></label>

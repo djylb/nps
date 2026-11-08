@@ -63,6 +63,19 @@
                                     </select>
                                 </div>
                             </div>
+                            <details class="form-group" id="advanced_compress_alg">
+                                <summary class="control-label font-bold" langtag="word-advanced"></summary>
+                                <label class="control-label font-bold" langtag="word-compressalg"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control" name="compress_alg">
+                                        <option value="" langtag="word-compressdefault"></option>
+                                        <option value="snappy">snappy</option>
+                                        <option value="zstd">zstd</option>
+                                        <option value="flate">flate</option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-compressclientalg"></span>
+                                </div>
+                            </details>
                             <details class="form-group" id="advanced_shaping">
                                 <summary class="control-label font-bold" langtag="word-advanced"></summary>
                                 <label class="control-label font-bold" langtag="word-shaping"></label>

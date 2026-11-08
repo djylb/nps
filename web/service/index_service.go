@@ -139,7 +139,7 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	applyTunnelForm(tunnel, form, input, input.ClientID, "", destRules)
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
-	if err := s.checkServiceTarget(tunnel); err != nil {
+	if err := s.checkServiceTarget(tunnel, input.ClientID); err != nil {
 		return TunnelMutation{}, err
 	}
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
@@ -229,7 +229,7 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	tunnel.Port = probe.Port
 	tunnel.Mode = desiredMode
 	applyTunnelForm(tunnel, form, input, client.Id, targetFallback, destRules)
-	if err := s.checkServiceTarget(tunnel); err != nil {
+	if err := s.checkServiceTarget(tunnel, client.Id); err != nil {
 		return TunnelMutation{}, err
 	}
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(tunnel.Id))
@@ -258,6 +258,7 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 // destination list.
 func applyTunnelForm(tunnel, form *model.Tunnel, input TunnelInput, clientID int, fallback, destRules string) {
 	model.CopyFormSettings(model.TunnelSettings, tunnel, form)
+	tunnel.Compress = model.NormalizeCompress(form.Compress)
 	tunnel.Target = formTarget(form.Target, input.IsAdmin, input.AllowUserLocal, clientID, fallback)
 	tunnel.UserAuth = formAccounts(form.UserAuth)
 	tunnel.DestAclMode = normalizeACLMode(form.DestAclMode)
@@ -271,6 +272,7 @@ func applyTunnelForm(tunnel, form *model.Tunnel, input TunnelInput, clientID int
 // its target and flow limits, which adding and editing set differently.
 func applyHostForm(host, form *model.Host) {
 	model.CopyFormSettings(model.HostSettings, host, form)
+	host.Compress = model.NormalizeCompress(form.Compress)
 	host.Scheme = normalizeScheme(form.Scheme)
 	host.UserAuth = formAccounts(form.UserAuth)
 	host.SetHealthCheck(formHealthCheck(form.HealthConfig))
@@ -629,8 +631,9 @@ func (s DefaultIndexService) resolveTunnelPort(tunnel *model.Tunnel) (int, error
 }
 
 // checkServiceTarget refuses a tcp or udp tunnel whose target is a reported
-// service of another network; a service not reported now is not judged.
-func (s DefaultIndexService) checkServiceTarget(t *model.Tunnel) error {
+// service of another network; a service not reported now by that client is
+// not judged.
+func (s DefaultIndexService) checkServiceTarget(t *model.Tunnel, clientID int) error {
 	if t.Mode != "tcp" && t.Mode != "udp" || t.Target == nil {
 		return nil
 	}
@@ -640,7 +643,7 @@ func (s DefaultIndexService) checkServiceTarget(t *model.Tunnel) error {
 			continue
 		}
 		for _, v := range s.Backend.Runtime.VirtualServices() {
-			if v.Target == target && v.Network != model.TargetAll && v.Network != t.Mode {
+			if v.Client == clientID && v.Target == target && v.Network != model.TargetAll && v.Network != t.Mode {
 				return fmt.Errorf("%w: %s does not serve %s", ErrTunnelModeInvalid, target, t.Mode)
 			}
 		}
@@ -648,18 +651,28 @@ func (s DefaultIndexService) checkServiceTarget(t *model.Tunnel) error {
 	return nil
 }
 
-// ServiceAvailable reports whether a target that names a service is reported
-// now by client; any other target is available.
+// ServiceAvailable reports whether every target in target, one per line, that
+// names a service is reported now by client; any other target is available.
 func (s DefaultIndexService) ServiceAvailable(client int, target string) bool {
-	if _, ok := model.ParseServiceTarget(target); !ok {
-		return true
-	}
-	for _, v := range s.Backend.Runtime.VirtualServices() {
-		if v.Client == client && v.Target == strings.TrimSpace(target) {
-			return true
+	var reported map[string]bool
+	for _, line := range strings.Split(target, "\n") {
+		line = strings.TrimSpace(line)
+		if _, ok := model.ParseServiceTarget(line); !ok {
+			continue
+		}
+		if reported == nil {
+			reported = make(map[string]bool)
+			for _, v := range s.Backend.Runtime.VirtualServices() {
+				if v.Client == client {
+					reported[v.Target] = true
+				}
+			}
+		}
+		if !reported[line] {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // webTunnelMode reports whether the web may create or edit a tunnel of mode;

@@ -20,8 +20,8 @@ var (
 	// read by lib/config.
 	accounts = []string{"UserAuth.AccountMap", "MultiAccount.Content", "MultiAccount.AccountMap"}
 
-	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "Compress", "ServiceKind", "ServiceName", "Generated"})
-	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash", "Compress"})
+	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "ServiceKind", "ServiceName", "Generated"})
+	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash"})
 )
 
 // TestEntrySettingsCoverModel fails for a field added to Tunnel or Host

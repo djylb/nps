@@ -129,7 +129,7 @@ func storedHost(c *model.Client) *model.Host {
 }
 
 var commonFormFull = map[string]string{
-	"client_id": "1", "id": "1",
+	"client_id": "1", "id": "1", "compress": "ZSTD ",
 	"target": " 127.0.0.1:80\r\n127.0.0.1:81 ", "proxy_protocol": "2", "local_proxy": "true",
 	"health_check": "true", "health_check_type": "http", "health_check_path": "/h&x<y>",
 	"health_check_interval": "5", "health_check_timeout": "3", "health_check_max_fail": "2",

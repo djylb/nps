@@ -590,6 +590,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	if len(cfg.Network.QUICALPNList) == 0 {
 		cfg.Network.QUICALPNList = []string{"nps"}
 	}
+	legacyQUICALPN(r, cfg)
 	cfg.Network.QUICKeepAlivePeriod = r.intDefault(10, "quic_keep_alive_period")
 	cfg.Network.QUICMaxIdleTimeout = r.intDefault(30, "quic_max_idle_timeout")
 	cfg.Network.QUICMaxIncomingStreams = r.int64Default(100000, "quic_max_incoming_streams")

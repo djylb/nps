@@ -86,7 +86,7 @@ curl -X POST \
 | `/index/socks5` | Socks5 隧道         |
 | `/index/http`   | HTTP 代理           |
 | `/index/mix`    | 混合代理（HTTP+SOCKS5） |
-| `/index/file`   | 文件服务              |
+| `/index/service` | 虚拟后端（客户端上报，只读） |
 | `/index/secret` | 点对点访问            |
 | `/index/host`   | 域名解析              |
 | `/index/all`    | 按客户端展示            |
@@ -142,9 +142,8 @@ curl -X POST \
   | `whiteiplist` | 来源 IP 白名单（多行） |
   | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
   | `remark` | 隧道备注（字符串） |
+  | `compress` | 核心协议下这条隧道的压缩算法：空跟随客户端，`snappy`、`zstd`、`flate`，`off` 不压缩 |
   | `password` | 访问隧道的密码（字符串） |
-  | `local_path` | 本地路径（适用于文件服务） |
-  | `strip_pre` | URL 前缀转换（字符串） |
   | `id` | 隧道 ID（修改时必填） |
 
 ### 单个隧道操作
@@ -193,6 +192,7 @@ curl -X POST \
   | `auth` | 多用户认证信息（多行 `账号:密码`） |
   | `hostchange` | 修改的 `Host` 值（字符串） |
   | `remark` | 备注信息（字符串） |
+  | `compress` | 核心协议下这条域名转发的压缩算法，取值同隧道的 `compress` |
   | `location` | URL 路由（字符串，空则不限制） |
   | `path_rewrite` | 路径重写规则（字符串） |
   | `redirect_url` | 重定向 URL（字符串） |
@@ -249,6 +249,8 @@ curl -X POST \
   | `vkey` | 客户端验证密钥（字符串） |
   | `config_conn_allow` | 是否允许客户端以配置文件模式连接（`0` 否，`1` 是） |
   | `compress` | 是否启用数据压缩（`0` 否，`1` 是） |
+  | `compress_alg` | 压缩开启时 npc 使用的算法：空（snappy）、`snappy`、`zstd`、`flate`；隧道和域名的 `compress` 可单独覆盖 |
+  | `shaping` | 是否对该客户端启用流量整形（`0` 否，`1` 是）；服务端配置了整形来源（`shaping_url` 等）才生效 |
   | `scheduler_down` | 核心协议下 nps 向该客户端发送的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
   | `crypt` | 是否启用加密（`0` 否，`1` 是） |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |

@@ -72,6 +72,7 @@ type AddClientInput struct {
 	User             string
 	Password         string
 	Compress         bool
+	CompressAlg      string
 	SchedulerDown    string
 	Shaping          bool
 	Crypt            bool
@@ -110,6 +111,7 @@ type EditClientInput struct {
 	IsAdmin                 bool
 	AllowUserChangeUsername bool
 	Compress                bool
+	CompressAlg             string
 	SchedulerDown           string
 	Shaping                 bool
 	Crypt                   bool
@@ -156,6 +158,7 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 			U:             input.User,
 			P:             input.Password,
 			Compress:      input.Compress,
+			CompressAlg:   model.NormalizeClientCompress(input.CompressAlg),
 			SchedulerDown: input.SchedulerDown,
 			Shaping:       input.Shaping,
 			Crypt:         input.Crypt,
@@ -248,6 +251,7 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.Cnf.U = input.User
 	client.Cnf.P = input.Password
 	client.Cnf.Compress = input.Compress
+	client.Cnf.CompressAlg = model.NormalizeClientCompress(input.CompressAlg)
 	client.Cnf.SchedulerDown = input.SchedulerDown
 	client.Cnf.Shaping = input.Shaping
 	client.Cnf.Crypt = input.Crypt

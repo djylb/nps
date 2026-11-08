@@ -1,5 +1,10 @@
 package servercfg
 
+import (
+	"slices"
+	"strings"
+)
+
 // This file is the one place nps.conf keys of earlier versions are handled,
 // so that a config written for an earlier nps keeps working, or says what to
 // do instead, after an update.
@@ -112,4 +117,42 @@ func legacyWarnings(values map[string]any) []string {
 		out = append(out, l.note)
 	}
 	return out
+}
+
+// legacyQUICALPN keeps a config of earlier versions starting when its
+// quic_alpn shares a name with the core protocol's default
+// new_protocol_quic_alpn (h3): the name goes to the core protocol and is
+// dropped from the old list, with a warning. An empty old list falls back to
+// the old default. A new_protocol_quic_alpn written in the config is the
+// administrator's choice and an overlap with it stays an error
+// (NetworkConfig.CheckQUICALPN). It goes with the next major version.
+func legacyQUICALPN(r *valueReader, cfg *Snapshot) {
+	n := &cfg.Network
+	if r.stringValue("new_protocol_quic_alpn") != "" {
+		return
+	}
+	var dropped []string
+	n.QUICALPNList = slices.DeleteFunc(n.QUICALPNList, func(a string) bool {
+		if slices.Contains(n.NewProtocolQUICALPN, a) {
+			dropped = append(dropped, a)
+			return true
+		}
+		return false
+	})
+	if len(dropped) == 0 {
+		return
+	}
+	msg := "quic_alpn names used by the core protocol (new_protocol_quic_alpn default) were dropped from it: "
+	for i, a := range dropped {
+		if i > 0 {
+			msg += ","
+		}
+		msg += a
+	}
+	if len(n.QUICALPNList) == 0 {
+		n.QUICALPNList = []string{"nps"}
+		msg += "; quic_alpn is now nps, so old clients need that ALPN"
+	}
+	n.QUICALPN = strings.Join(n.QUICALPNList, ",")
+	cfg.Legacy = append(cfg.Legacy, msg)
 }

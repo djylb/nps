@@ -104,20 +104,26 @@
                                     <span class="help-block m-b-none" langtag="word-enablesocks5proxy"></span>
                                 </div>
                             </div>
-                            <div class="form-group" id="local_path">
-                                <label class="control-label font-bold" langtag="word-localpath"></label>
+                        </div>
+                    </section>
+                    <details class="resource-section resource-advanced">
+                        <summary><span langtag="section-transport"></span></summary>
+                        <div class="resource-section-body">
+                            <div class="form-group" id="compress_alg">
+                                <label class="control-label font-bold" langtag="word-compressalg"></label>
                                 <div class="col-sm-12">
-                                    <input class="form-control" langtag="info-suchaslocalpath" name="local_path" placeholder="" type="text">
-                                </div>
-                            </div>
-                            <div class="form-group" id="strip_pre">
-                                <label class="control-label font-bold" langtag="word-stripprefix"></label>
-                                <div class="col-sm-12">
-                                    <input class="form-control" langtag="info-suchasstripprefix" name="strip_pre" placeholder="" type="text">
+                                    <select class="form-control" name="compress">
+                                        <option value="" langtag="word-compressinherit"></option>
+                                        <option value="snappy">snappy</option>
+                                        <option value="zstd">zstd</option>
+                                        <option value="flate">flate</option>
+                                        <option value="off" langtag="word-compressoff"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-compressalg"></span>
                                 </div>
                             </div>
                         </div>
-                    </section>
+                    </details>
                     <details class="resource-section resource-advanced">
                         <summary><span langtag="section-access"></span></summary>
                         <div class="resource-section-body">
@@ -319,13 +325,13 @@
 </script>
 <script>
     var arr = []
-    arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "local_path", "strip_pre", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["tcp"] = ["health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["udp"] = ["port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["mixProxy"] = ["auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["tcp"] = ["compress_alg", "health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["compress_alg", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["mixProxy"] = ["compress_alg", "auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
-    arr["secret"] = ["health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "dest_acl_mode", "dest_acl_rules"]
+    arr["secret"] = ["compress_alg", "health_check", "target_type", "target", "password", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "dest_acl_mode", "dest_acl_rules"]
 
     function resetForm() {
         $(".form-group[id]").css("display", "none");

@@ -27,9 +27,6 @@ type ConfigBundle struct {
 	Clients    []*model.Client `json:"clients"`
 	Tunnels    []*model.Tunnel `json:"tunnels"`
 	Hosts      []*model.Host   `json:"hosts"`
-	// SkippedFileTunnels counts file mode tunnels, which the web cannot
-	// create and which an import would refuse.
-	SkippedFileTunnels int `json:"skipped_file_tunnels,omitempty"`
 }
 
 // ImportResult counts what an import added.
@@ -77,8 +74,6 @@ func (s DefaultConfigTransferService) Export() ([]byte, error) {
 	repo.RangeTunnels(func(t *model.Tunnel) bool {
 		switch {
 		case t.NoStore || !ownerExported(t.Client):
-		case t.Mode == "file":
-			bundle.SkippedFileTunnels++
 		default:
 			bundle.Tunnels = append(bundle.Tunnels, t)
 		}

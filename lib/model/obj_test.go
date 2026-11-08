@@ -288,7 +288,7 @@ func TestConfigTaskPorts(t *testing.T) {
 		{"multi httpProxy", &Tunnel{Mode: "httpProxy", Ports: "8000,8001", Target: &Target{}}, []int{8000, 8001}, true},
 		{"secret", &Tunnel{Mode: "secret", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{0}, true},
 		{"secret with port", &Tunnel{Mode: "secret", Ports: "9000", Target: &Target{TargetStr: "127.0.0.1:22"}}, []int{9000, 0}, true},
-		{"file", &Tunnel{Mode: "file", Target: &Target{}}, []int{0}, true},
+		{"file without port", &Tunnel{Mode: "file", Target: &Target{}}, nil, false},
 		{"no port", &Tunnel{Mode: "tcp", Target: &Target{TargetStr: "80"}}, nil, false},
 		{"no target", &Tunnel{Mode: "tcp", Ports: "8000"}, nil, false},
 	}
@@ -442,5 +442,23 @@ func TestNormalizeTargetType(t *testing.T) {
 		if got := NormalizeTargetType(in); got != want {
 			t.Errorf("NormalizeTargetType(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestNormalizeCompress(t *testing.T) {
+	for in, want := range map[string]string{"": "", "snappy": "snappy", " ZSTD ": "zstd", "flate": "flate", "off": "off", "none": "", "gzip": ""} {
+		if got := NormalizeCompress(in); got != want {
+			t.Errorf("NormalizeCompress(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if NormalizeClientCompress("off") != "" || NormalizeClientCompress("zstd") != "zstd" {
+		t.Error("NormalizeClientCompress")
+	}
+	// the override reaches the stream the way ResolveCompress reads it
+	if got := ResolveCompress(&Client{Cnf: &Config{Compress: true}}, NormalizeCompress("flate")); len(got) != 1 || got[0] != "flate" {
+		t.Errorf("ResolveCompress = %v", got)
+	}
+	if got := ResolveCompress(&Client{Cnf: &Config{Compress: true}}, NormalizeCompress("off")); got != nil {
+		t.Errorf("off = %v", got)
 	}
 }

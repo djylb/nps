@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -311,6 +312,25 @@ var (
 	compressOnlySnappy = []string{CompressSnappy}
 )
 
+// NormalizeCompress returns alg when it is a compression override (the
+// Compress* constants, "" following the client) and "" otherwise.
+func NormalizeCompress(alg string) string {
+	switch alg = strings.ToLower(strings.TrimSpace(alg)); alg {
+	case CompressOff, CompressFlate, CompressZstd, CompressSnappy:
+		return alg
+	}
+	return CompressDefault
+}
+
+// NormalizeClientCompress returns alg when it is an algorithm of a client's
+// Compress, "" (snappy) otherwise.
+func NormalizeClientCompress(alg string) string {
+	if alg = NormalizeCompress(alg); alg == CompressOff {
+		return CompressDefault
+	}
+	return alg
+}
+
 func compressOf(alg string) []string {
 	switch alg {
 	case CompressFlate:
@@ -615,9 +635,6 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && len(ports) != len(targets) {
 		return nil, nil, false
 	} else if t.Mode == "secret" {
-		ports = append(ports, 0)
-	}
-	if t.Mode == "file" && len(ports) == 0 {
 		ports = append(ports, 0)
 	}
 	if len(ports) == 0 {
@@ -1163,4 +1180,39 @@ func (t *Tunnel) LogRoute() string {
 		return t.hostRoute
 	}
 	return t.Mode + ":" + strconv.Itoa(t.Port)
+}
+
+// ListenKinds reports the protocols t listens on at its port: TCP unless the
+// mode is udp, and UDP for udp, socks5 and a mixed proxy with SOCKS5. A
+// secret tunnel listens nowhere.
+func (t *Tunnel) ListenKinds() (tcp, udp bool) {
+	switch t.Mode {
+	case "secret", ModeService:
+		return false, false
+	case "udp":
+		return false, true
+	case "socks5":
+		return true, true
+	case "mixProxy":
+		return true, t.Socks5Proxy
+	}
+	return true, false
+}
+
+// ListenIPsOverlap reports whether two listen addresses can accept the same
+// connection: equal, or either is the wildcard (empty, 0.0.0.0 or ::).
+func ListenIPsOverlap(a, b string) bool {
+	wild := func(s string) bool {
+		ip, err := netip.ParseAddr(strings.TrimSpace(s))
+		return strings.TrimSpace(s) == "" || err == nil && ip.IsUnspecified()
+	}
+	if wild(a) || wild(b) {
+		return true
+	}
+	x, ex := netip.ParseAddr(strings.TrimSpace(a))
+	y, ey := netip.ParseAddr(strings.TrimSpace(b))
+	if ex == nil && ey == nil {
+		return x.Unmap() == y.Unmap()
+	}
+	return strings.EqualFold(a, b)
 }

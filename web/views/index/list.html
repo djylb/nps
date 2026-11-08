@@ -51,6 +51,21 @@
         return '<span role="button" tabindex="0" style="cursor:pointer" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'download_limit\'})" onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }">' + value + '</span>';
     }
 
+    // Everything a client reports (kind, name, target) is shown escaped.
+    function copyKeys() {
+        return 'onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }"';
+    }
+
+    function copyable(v) {
+        return '<span role="button" tabindex="0" style="cursor:pointer" onclick="oCopy(this)" ' + copyKeys() + '>' + escapeHtml(v == null ? '' : v) + '</span>';
+    }
+
+    // actionBtn is a button of the option column that mouse, touch and keyboard can use.
+    function actionBtn(cls, icon, onclick, href) {
+        return '<a role="button" tabindex="0" ' + (href ? 'href="' + href + '" ' : '') + (onclick ? 'onclick="' + onclick + '" ' : '')
+            + 'onkeydown="if (event.key === \'Enter\' || event.key === \' \') { event.preventDefault(); this.click(); }" class="btn btn-outline ' + cls + '"><i class="fa ' + icon + '"></i></a>';
+    }
+
     var clientScoped = new URLSearchParams(location.search).has('client_id')
 
     $('#table').bootstrapTable({
@@ -127,21 +142,21 @@
                 }
                 var destAclInfo = '<b langtag="word-destacl"></b>: ' + modeSpan + '&emsp;'
                 return tmp + resourceDetailSection('section-access', access
-                    + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
-                    + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
-                    + '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
+                    + '<b langtag="word-basicusername"></b>: ' + escapeHtml(row.Client.Cnf.U) + '&emsp;'
+                    + '<b langtag="word-basicpassword"></b>: ' + escapeHtml(row.Client.Cnf.P) + '&emsp;<br/><br>'
+                    + '<b langtag="word-auth"></b>: ' + escapeHtml(row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
                     ) + resourceDetailSection('section-destination', destAclInfo)
             }
             if (row.Mode == "service") {
                 return tmp + resourceDetailSection('section-target', ''
-                    + '<b langtag="word-servicekind"></b>: ' + row.ServiceKind + '&emsp;'
-                    + '<b langtag="word-servicename"></b>: ' + row.ServiceName + '&emsp;<br/><br>'
-                    + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;')
+                    + '<b langtag="word-servicekind"></b>: ' + escapeHtml(row.ServiceKind) + '&emsp;'
+                    + '<b langtag="word-servicename"></b>: ' + escapeHtml(row.ServiceName) + '&emsp;<br/><br>'
+                    + '<b langtag="word-target"></b>: ' + copyable(row.Target.TargetStr) + '&emsp;')
             }
             if (row.Mode == "secret") {
                 var cmd = function (localType) {
-                    return '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
-                        + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"" + localType + "\" -conn_mode=\"auto\"</code>"
+                    return '<code tabindex="0" onclick="oCopy(this)" ' + copyKeys() + '>' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + escapeHtml({{.visitor_vkey}} || row.Client.VerifyKey)
+                        + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + escapeHtml(row.Password) + "\" -local_type=\"" + localType + "\" -conn_mode=\"auto\"</code>"
                 }
                 return tmp + resourceDetailSection('section-commands', ''
                     + '<b langtag="word-commandaccessp2p"></b>: ' + cmd("tcp_udp") + "<br/><br>"
@@ -161,7 +176,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {
@@ -172,7 +187,7 @@
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
-                    return '<span onclick="copyText(\'' + row.Client.VerifyKey + '\')">' + text + '</span>'
+                    return '<span role="button" tabindex="0" style="cursor:pointer" data-copy="' + escapeHtml(row.Client.VerifyKey) + '" onclick="copyText(this.dataset.copy)" ' + copyKeys() + '>' + escapeHtml(text) + '</span>'
                 }
             },
             {
@@ -182,7 +197,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {
@@ -192,7 +207,7 @@
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {{ if not .type }}
@@ -215,7 +230,7 @@
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var generated = row.Generated || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                         + (row.ServiceDown ? ' <span class="badge badge-danger" langtag="word-servicedown"></span>' : '')
                         + (generated ? ' <span class="badge badge-secondary" langtag="word-generatedtunnel"></span>' : '')
                 }
@@ -228,7 +243,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {{ end }}
@@ -240,7 +255,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + String(value).toUpperCase() + '</span>'
+                    return copyable(String(value).toUpperCase())
                 }
             },
             {
@@ -250,7 +265,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {{ end }}
@@ -259,13 +274,15 @@
                 field: 'ServiceKind', //域值
                 title: '<span langtag="word-servicekind"></span>', //标题
                 halign: 'center',
-                visible: true //false表示不显示
+                visible: true, //false表示不显示
+                formatter: function (value) { return escapeHtml(value == null ? '' : value) }
             },
             {
                 field: 'ServiceName', //域值
                 title: '<span langtag="word-servicename"></span>', //标题
                 halign: 'center',
-                visible: true //false表示不显示
+                visible: true, //false表示不显示
+                formatter: function (value) { return escapeHtml(value == null ? '' : value) }
             },
             {{ end }}
             {{ if and .type (eq .type "mixProxy") }}
@@ -277,11 +294,11 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    btn_group = '<div class="btn-group">'
+                    var btn_group = '<div class="btn-group">'
                     if (value) {
-                        btn_group += '<a onclick="submitform(\'stop\', \'{{.web_base_url}}/index/stop\', {\'id\':' + row.Id + ', \'mode\': \'http\'})" class="btn btn-outline btn-warning"><i class="fa fa-pause"></i></a>'
+                        btn_group += actionBtn('btn-warning', 'fa-pause', 'submitform(\'stop\', \'{{.web_base_url}}/index/stop\', {\'id\':' + row.Id + ', \'mode\': \'http\'})')
                     } else {
-                        btn_group += '<a onclick="submitform(\'start\', \'{{.web_base_url}}/index/start\', {\'id\':' + row.Id + ', \'mode\': \'http\'})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>'
+                        btn_group += actionBtn('btn-primary', 'fa-play', 'submitform(\'start\', \'{{.web_base_url}}/index/start\', {\'id\':' + row.Id + ', \'mode\': \'http\'})')
                     }
                     btn_group += '</div>'
                     return btn_group
@@ -296,11 +313,11 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    btn_group = '<div class="btn-group">'
+                    var btn_group = '<div class="btn-group">'
                     if (value) {
-                        btn_group += '<a onclick="submitform(\'stop\', \'{{.web_base_url}}/index/stop\', {\'id\':' + row.Id + ', \'mode\': \'socks5\'})" class="btn btn-outline btn-warning"><i class="fa fa-pause"></i></a>'
+                        btn_group += actionBtn('btn-warning', 'fa-pause', 'submitform(\'stop\', \'{{.web_base_url}}/index/stop\', {\'id\':' + row.Id + ', \'mode\': \'socks5\'})')
                     } else {
-                        btn_group += '<a onclick="submitform(\'start\', \'{{.web_base_url}}/index/start\', {\'id\':' + row.Id + ', \'mode\': \'socks5\'})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>'
+                        btn_group += actionBtn('btn-primary', 'fa-play', 'submitform(\'start\', \'{{.web_base_url}}/index/start\', {\'id\':' + row.Id + ', \'mode\': \'socks5\'})')
                     }
                     btn_group += '</div>'
                     return btn_group
@@ -468,7 +485,7 @@
                 visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return copyable(value)
                 }
             },
             {
@@ -534,18 +551,20 @@
                 halign: 'center',
                 visible: true, //false表示不显示
                 formatter: function (value, row, index) {
-                    btn_group = '<div class="btn-group">'
-                    if (row.Status) {
-                        btn_group += "<a onclick=\"submitform('stop', '{{.web_base_url}}/index/stop', {'id':" + row.Id
-                        btn_group += '})" class="btn btn-outline btn-warning"><i class="fa fa-pause"></i></a>'
-                    } else {
-                        btn_group += "<a onclick=\"submitform('start', '{{.web_base_url}}/index/start', {\'id\':" + row.Id
-                        btn_group += '})" class="btn btn-outline btn-primary"><i class="fa fa-play"></i></a>'
+                    if (row.Mode === "service") {
+                        // a backend a client reports has nothing to stop, delete or edit
+                        return ''
                     }
-                    btn_group += "<a onclick=\"submitform('delete', '{{.web_base_url}}/index/del', {'id':" + row.Id
-                    btn_group += '})" class="btn btn-outline btn-danger"><i class="fa fa-trash"></i></a>'
+                    var btn_group = '<div class="btn-group">'
+                    var idArg = "{'id':" + row.Id + "})"
+                    if (row.Status) {
+                        btn_group += actionBtn('btn-warning', 'fa-pause', "submitform('stop', '{{.web_base_url}}/index/stop', " + idArg)
+                    } else {
+                        btn_group += actionBtn('btn-primary', 'fa-play', "submitform('start', '{{.web_base_url}}/index/start', " + idArg)
+                    }
+                    btn_group += actionBtn('btn-danger', 'fa-trash', "submitform('delete', '{{.web_base_url}}/index/del', " + idArg)
                     if (row.Mode) {
-                        btn_group += '<a href="{{.web_base_url}}/index/edit?id=' + row.Id + '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a>'
+                        btn_group += actionBtn('btn-success', 'fa-edit', '', '{{.web_base_url}}/index/edit?id=' + row.Id)
                     }
                     btn_group += '</div>'
                     return btn_group

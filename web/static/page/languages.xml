@@ -108,9 +108,9 @@
 		<zh-CN>点对点访问列表</zh-CN>
 		<en-US>Point-to-point Access List</en-US>
 	</lang>
-	<lang id="page-listfileserver">
-		<zh-CN>文件代理列表</zh-CN>
-		<en-US>File Server List</en-US>
+	<lang id="page-listvirtualbackend">
+		<zh-CN>虚拟后端列表</zh-CN>
+		<en-US>Virtual Backend List</en-US>
 	</lang>
 	<lang id="page-add">
 		<zh-CN>新增</zh-CN>
@@ -490,10 +490,6 @@
 		<zh-CN>负载</zh-CN>
 		<en-US>Load</en-US>
 	</lang>
-	<lang id="word-localpath">
-		<zh-CN>本地路径</zh-CN>
-		<en-US>Local Path</en-US>
-	</lang>
 	<lang id="word-path">
 		<zh-CN>路径</zh-CN>
 		<en-US>Path</en-US>
@@ -866,10 +862,6 @@
 		<zh-CN>启用 Socks5 代理</zh-CN>
 		<en-US>Enable Socks5 Proxy</en-US>
 	</lang>
-	<lang id="word-stripprefix">
-		<zh-CN>访问前缀</zh-CN>
-		<en-US>Strip Prefix</en-US>
-	</lang>
 	<lang id="word-swapmemory">
 		<zh-CN>交换空间</zh-CN>
 		<en-US>Swap Memory</en-US>
@@ -1165,17 +1157,9 @@
 		<zh-CN>例如&#10;用户1=密码1&#10;用户2=密码2</zh-CN>
 		<en-US>Such as&#10;User1=Password1&#10;User2=Password2</en-US>
 	</lang>
-	<lang id="info-suchaslocalpath">
-		<zh-CN>例如 /tmp</zh-CN>
-		<en-US>Such as /tmp</en-US>
-	</lang>
 	<lang id="info-suchasport">
 		<zh-CN>例如 8024</zh-CN>
 		<en-US>Such as 8024</en-US>
-	</lang>
-	<lang id="info-suchasstripprefix">
-		<zh-CN>例如 static</zh-CN>
-		<en-US>Such as static</en-US>
 	</lang>
 	<lang id="info-tagline">
 		<zh-CN>一款轻量级、高性能、功能强大的内网穿透代理服务器</zh-CN>
@@ -2030,5 +2014,29 @@
 	<lang id="word-collapseadvanced">
 		<zh-CN>全部收起</zh-CN>
 		<en-US>Collapse All</en-US>
+	</lang>
+	<lang id="word-compressalg">
+		<zh-CN>压缩算法（核心协议）</zh-CN>
+		<en-US>Compression algorithm (new protocol)</en-US>
+	</lang>
+	<lang id="word-compressinherit">
+		<zh-CN>跟随客户端</zh-CN>
+		<en-US>Follow the client</en-US>
+	</lang>
+	<lang id="word-compressoff">
+		<zh-CN>不压缩</zh-CN>
+		<en-US>Off</en-US>
+	</lang>
+	<lang id="info-compressalg">
+		<zh-CN>留空跟随客户端的压缩设置；选择算法则只对这条使用该算法，“不压缩”则这条不压缩。</zh-CN>
+		<en-US>Empty follows the client's compression setting; an algorithm applies to this entry only, and Off disables compression for it.</en-US>
+	</lang>
+	<lang id="word-compressdefault">
+		<zh-CN>默认（snappy）</zh-CN>
+		<en-US>Default (snappy)</en-US>
+	</lang>
+	<lang id="info-compressclientalg">
+		<zh-CN>压缩开启时 npc 使用的算法，隧道和域名可以单独覆盖。</zh-CN>
+		<en-US>The algorithm npc uses when compression is on; a tunnel or host may override it.</en-US>
 	</lang>
 </content>

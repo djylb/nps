@@ -54,11 +54,18 @@ func (s *JsonDb) addFileCompanions(list []*model.Tunnel) bool {
 	return added
 }
 
-// portTaken reports whether a stored tunnel already listens on t's port.
+// portTaken reports whether a stored tunnel already listens where t would:
+// the same port, on a protocol both use (TCP, UDP) and on listen addresses
+// that overlap, as the port check of a new tunnel does.
 func (s *JsonDb) portTaken(t *model.Tunnel) (taken bool) {
+	tcp, udp := t.ListenKinds()
 	s.Tasks.Range(func(_, v any) bool {
 		o := v.(*model.Tunnel)
-		taken = o.Port == t.Port && o.Id != t.Id
+		if o.Id == t.Id || o.Port == 0 || o.Port != t.Port || !model.ListenIPsOverlap(o.ServerIp, t.ServerIp) {
+			return true
+		}
+		otcp, oudp := o.ListenKinds()
+		taken = tcp && otcp || udp && oudp
 		return !taken
 	})
 	return taken
