@@ -17,7 +17,7 @@ import (
 
 func appliers(t *testing.T) []servercfg.Applier {
 	db := file.New(t.TempDir())
-	srv := server.New(db, server.Config{})
+	srv := server.New(db, server.Config{CoreEntry: coreStub{}})
 	t.Cleanup(func() { _ = srv.Close() })
 	srv.AddConfigApplier(routers.ConfigApplier(db, nil, srv, func(http.Handler) {}))
 	return srv.ConfigAppliers()

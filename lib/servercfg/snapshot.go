@@ -161,8 +161,11 @@ type RuntimeConfig struct {
 	SessionResumeTimeout int
 	// SessionMaxLanes is the lanes accepted per QUIC pipe of a new protocol
 	// session (session_max_lanes, 0: 16, 1: no lanes).
-	SessionMaxLanes   int
-	FlowStoreInterval int
+	SessionMaxLanes int
+	// SessionMaxServices bounds the virtual services one session may report
+	// (session_max_services, 0: 4096, negative: no limit).
+	SessionMaxServices int
+	FlowStoreInterval  int
 }
 
 // WebhookConfig configures the webhook; an empty URL turns it off.
@@ -265,19 +268,17 @@ func (n NetworkConfig) MixHTTP3() bool { return n.MixPort != 0 && n.HTTP3ProxyPo
 // protocols apart: a name in both quic_alpn (old protocol) and
 // new_protocol_quic_alpn, or h3 in either where HTTP/3 uses the same UDP
 // port. ALPN alone decides (§13).
-func (n NetworkConfig) CheckQUICALPN(withNew, http3 bool) error {
-	if withNew {
-		for _, a := range n.NewProtocolQUICALPN {
-			if slices.Contains(n.QUICALPNList, a) {
-				return fmt.Errorf("ALPN %q is in both quic_alpn (old protocol) and new_protocol_quic_alpn (new protocol): the two lists must not overlap", a)
-			}
+func (n NetworkConfig) CheckQUICALPN(http3 bool) error {
+	for _, a := range n.NewProtocolQUICALPN {
+		if slices.Contains(n.QUICALPNList, a) {
+			return fmt.Errorf("ALPN %q is in both quic_alpn (old protocol) and new_protocol_quic_alpn (new protocol): the two lists must not overlap", a)
 		}
 	}
 	if http3 {
 		if slices.Contains(n.QUICALPNList, "h3") {
 			return errors.New("quic_alpn contains h3, which HTTP/3 uses on the same UDP port: set it to other names")
 		}
-		if withNew && slices.Contains(n.NewProtocolQUICALPN, "h3") {
+		if slices.Contains(n.NewProtocolQUICALPN, "h3") {
 			return errors.New("new_protocol_quic_alpn contains h3, which HTTP/3 uses on the same UDP port: set it to other names")
 		}
 	}
@@ -534,6 +535,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Runtime.IdleS = max(r.intDefault(0, "session_idle_s"), 0)
 	cfg.Runtime.SessionResumeTimeout = r.intDefault(0, "session_resume_timeout")
 	cfg.Runtime.SessionMaxLanes = r.intDefault(0, "session_max_lanes")
+	cfg.Runtime.SessionMaxServices = r.intDefault(0, "session_max_services")
 	cfg.Network.ShapingURL = r.stringDefault("", "shaping_url")
 	cfg.Network.ShapingToken = r.stringDefault("", "shaping_token")
 	cfg.Network.ShapingPubKey = r.stringDefault("", "shaping_pubkey")

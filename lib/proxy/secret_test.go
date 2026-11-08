@@ -264,7 +264,7 @@ func TestSecretPolicyAdmit(t *testing.T) {
 		{name: "list: denied host", task: listed, lk: link("tcp", "denied.example:80", false), denied: true},
 		{name: "list: network outside", task: tcpOnly, lk: link("udp", "a:1", false), denied: true},
 		{name: "list: network inside", task: tcpOnly, lk: link("tcp", "a:1", false), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
-		{name: "file link", task: listed, lk: link(conn.LinkFile, "file://x", false), refused: true},
+		{name: "file link", task: listed, lk: link("file", "file://x", false), refused: true},
 		{name: "local not allowed", task: listed, allowLocalProxy: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
 		{name: "local allowed", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
 	} {

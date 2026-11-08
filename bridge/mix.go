@@ -214,7 +214,7 @@ func (s *Bridge) serveQUICOn(addr, route string, mix *mixEntry, pc net.PacketCon
 	tlsCfg := &tls.Config{Certificates: []tls.Certificate{s.cert}}
 	cfg = s.core.QUICConfig(cfg)
 	http3 := mix != nil && mix.http3
-	if err := n.CheckQUICALPN(true, http3); err != nil {
+	if err := n.CheckQUICALPN(http3); err != nil {
 		return fmt.Errorf("quic listener %s: %w", addr, err)
 	}
 	// ALPN alone tells the protocols apart (§12, §13): quic_alpn names are

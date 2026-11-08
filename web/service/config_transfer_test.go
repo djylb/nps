@@ -37,7 +37,7 @@ func useTempDb(t *testing.T) *file.DbUtils {
 // tasks without a listener that the services start.
 func newTestServer(t *testing.T, db *file.DbUtils) *server.Server {
 	t.Helper()
-	srv := server.New(db, server.Config{DisconnectTimeout: 30})
+	srv := server.New(db, server.Config{CoreEntry: coreStub{}, DisconnectTimeout: 30})
 	t.Cleanup(func() { _ = srv.Close() })
 	return srv
 }

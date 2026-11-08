@@ -27,7 +27,7 @@ func loadTestData(t *testing.T, clients, tasks, hosts string) *Server {
 	db.JsonDb.LoadClientFromJsonFile()
 	db.JsonDb.LoadTaskFromJsonFile()
 	db.JsonDb.LoadHostFromJsonFile()
-	s := New(db, Config{DisconnectTimeout: 30})
+	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30})
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }

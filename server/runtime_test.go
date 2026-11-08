@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
-	s := New(file.New(t.TempDir()), Config{})
+	s := New(file.New(t.TempDir()), Config{CoreEntry: stubEntry{}})
 	t.Cleanup(func() { _ = s.Close() })
 	d := &s.dash
 	d.cacheMu.Lock()

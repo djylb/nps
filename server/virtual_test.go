@@ -43,7 +43,7 @@ func generatedFixture(t *testing.T, noStore bool) (*Server, *file.DbUtils, *mode
 	if err := db.NewClient(c); err != nil {
 		t.Fatal(err)
 	}
-	s := New(db, Config{DisconnectTimeout: 30})
+	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30})
 	t.Cleanup(func() { _ = s.Close() })
 	tn := &model.Tunnel{Id: db.NextTunnelID(), Mode: "tcp", Port: freeTunnelPort(t), ServerIp: "127.0.0.1", Client: c, Status: true,
 		NoStore: noStore, Generated: !noStore, Flow: new(model.Flow), Target: &model.Target{TargetStr: model.ServiceTarget("file", "x")}}

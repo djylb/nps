@@ -86,25 +86,19 @@ func TestCheckQUICALPN(t *testing.T) {
 	if !slices.Equal(n.NewProtocolQUICALPN, []string{"h3"}) || !slices.Equal(n.QUICALPNList, []string{"nps"}) {
 		t.Fatalf("defaults %v %v", n.NewProtocolQUICALPN, n.QUICALPNList)
 	}
-	if err := n.CheckQUICALPN(true, false); err != nil {
-		t.Fatal(err)
-	}
-	if err := n.CheckQUICALPN(true, true); err == nil {
+	if err := n.CheckQUICALPN(true); err == nil {
 		t.Error("h3 new protocol ALPN with HTTP/3 on the port")
 	}
 	n.NewProtocolQUICALPN = []string{"x"}
-	if err := n.CheckQUICALPN(true, true); err != nil {
+	if err := n.CheckQUICALPN(true); err != nil {
 		t.Error(err)
 	}
 	n.QUICALPNList = []string{"h3"}
-	if err := n.CheckQUICALPN(true, true); err == nil {
+	if err := n.CheckQUICALPN(true); err == nil {
 		t.Error("h3 old protocol ALPN with HTTP/3 on the port")
 	}
 	n.QUICALPNList = []string{"x", "y"}
-	if err := n.CheckQUICALPN(true, false); err == nil {
+	if err := n.CheckQUICALPN(false); err == nil {
 		t.Error("overlap")
-	}
-	if err := n.CheckQUICALPN(false, false); err != nil {
-		t.Error("overlap only matters with the new protocol", err)
 	}
 }

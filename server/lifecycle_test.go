@@ -51,7 +51,7 @@ func testServerLifecycle(t *testing.T) {
 	n.WebPort, n.HTTPProxyPort, n.HTTPSProxyPort, n.HTTP3ProxyPort, n.P2PPort = 0, 0, 0, 0, 0
 	connection.Configure(n)
 
-	srv := New(db, Config{DisconnectTimeout: 30, Transports: bridge.Transports{TCP: true}})
+	srv := New(db, Config{CoreEntry: realEntry(t, db), DisconnectTimeout: 30, Transports: bridge.Transports{TCP: true}})
 	if err := srv.Start(context.Background()); err != nil {
 		_ = srv.Close()
 		t.Fatal(err)

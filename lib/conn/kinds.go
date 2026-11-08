@@ -15,6 +15,5 @@ const (
 	LinkTCP  = "tcp"
 	LinkUDP  = "udp"
 	LinkUDP5 = "udp5" // SOCKS5 datagrams with their headers
-	LinkFile = "file" // the file server of a client
 	LinkPing = "ping"
 )

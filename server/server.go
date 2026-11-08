@@ -119,12 +119,13 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
 	}
 	s.bridge = bridge.NewTunnel(db, &s.tasks, bridge.Options{
-		DisconnectTime: cfg.DisconnectTimeout,
-		SecureMode:     cfg.SecureMode,
-		SelectMode:     cfg.SelectMode,
-		AllowedPorts:   cfg.AllowedPorts,
-		Cert:           cfg.Identity.TLSCert(),
-		CoreEntry:      cfg.CoreEntry,
+		MaxNodeServices: servercfg.Current().Runtime.SessionMaxServices,
+		DisconnectTime:  cfg.DisconnectTimeout,
+		SecureMode:      cfg.SecureMode,
+		SelectMode:      cfg.SelectMode,
+		AllowedPorts:    cfg.AllowedPorts,
+		Cert:            cfg.Identity.TLSCert(),
+		CoreEntry:       cfg.CoreEntry,
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)

@@ -76,7 +76,7 @@ func TestLegacyQUICALPNOverlap(t *testing.T) {
 	if len(s.Legacy) != 1 || !strings.Contains(s.Legacy[0], "h3") {
 		t.Fatalf("warnings %q", s.Legacy)
 	}
-	if err := s.Network.CheckQUICALPN(true, false); err != nil {
+	if err := s.Network.CheckQUICALPN(false); err != nil {
 		t.Fatal(err)
 	}
 	s = buildSnapshot(map[string]any{"quic_alpn": "h3"})
@@ -85,12 +85,12 @@ func TestLegacyQUICALPNOverlap(t *testing.T) {
 	}
 	// a written new_protocol_quic_alpn is the administrator's choice
 	s = buildSnapshot(map[string]any{"quic_alpn": "h3", "new_protocol_quic_alpn": "h3"})
-	if s.Network.CheckQUICALPN(true, false) == nil {
+	if s.Network.CheckQUICALPN(false) == nil {
 		t.Fatal("overlap with a written list must stay an error")
 	}
 	// HTTP/3 on the mixed port stays an error
 	s = buildSnapshot(map[string]any{"quic_alpn": "h3", "mix_port": "8024", "https_proxy_port": "8024"})
-	if s.Network.CheckQUICALPN(true, s.Network.MixHTTP3()) == nil {
+	if s.Network.CheckQUICALPN(s.Network.MixHTTP3()) == nil {
 		t.Fatal("h3 with mixed HTTP/3 must be an error")
 	}
 }
