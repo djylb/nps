@@ -31,7 +31,7 @@ npc -server="xxx:123,yyy:456,zzz:789" -vkey="key1,key2,key3" -type="tcp,tls"
 ./npc -server="tls://a.com:8025|wss://a.com:443/ws?tier=1|tcp://b.com:8024?standby=1" -vkey="YOUR_CLIENT_VKEY"
 ```
 
-每次连接和断线重连时，npc 先试上次成功的候选，再按 `tier` 从小到大、同 tier 按书写顺序，`standby` 的放到最后；一个失败就换下一个。不带方案的候选仍是旧写法，承载取 `-type`。参数 `tier`、`weight`、`standby`、`count`、`dirs`、`kinds`、`host`、`sni`、`alpn` 及 `-pipes=multi` 的含义见 [NPC 命令行参数](/reference/npc-cli.md#服务器地址)。多管道写法（当前版本按单管道运行，告警一次）：
+每次连接和断线重连时，npc 先试上次成功的候选，再按 `tier` 从小到大、同 tier 按书写顺序，`standby` 的放到最后；一个失败就换下一个。不带方案的候选仍是旧写法，承载取 `-type`。参数 `tier`、`weight`、`standby`、`count`、`dirs`、`kinds`、`host`、`sni`、`alpn`、`http` 及 `-pipes=multi` 的含义见 [NPC 命令行参数](/reference/npc-cli.md#服务器地址)。多管道写法（当前版本按单管道运行，告警一次）：
 
 ```bash
 ./npc -pipes=multi -server="tls://a.com:8025?tier=0&count=5|wss://b.com/ws?tier=0&dirs=up&count=3|tcp://c.com:8024?tier=1&dirs=down&count=5" -vkey="YOUR_CLIENT_VKEY"

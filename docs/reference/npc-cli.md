@@ -72,7 +72,9 @@
   - `kinds`：http/https 的种类列表，本版本只支持 `websocket`，其他取值告警并忽略；
   - `host`：Host 头和默认 SNI，缺端口时沿用地址的端口；
   - `sni`：覆盖 TLS 服务器名（默认取 `host` 或地址的主机名，IP 地址时不发）；
-  - `alpn`：本版本独有，用于 quic（默认 `nps`），tls、https/wss 也接受；后续版本的承载条目没有这个字段，迁移时会被丢弃。
+  - `alpn`：外层 TLS 的 ALPN，逗号分隔，顺序即偏好，只用于 `tls`、`quic`（quic 默认 `nps`）；http/https/ws/wss 不接受，它们的 ALPN 由 `http` 决定。
+  - `http`：HTTP 版本，`http/1.1`、`h2`、`h3` 的逗号列表，顺序即偏好，只用于 http/https/ws/wss；ws/wss 只能用 `http/1.1`、`h2`。默认 https/wss 为 `h2,http/1.1`，http/ws 为 `http/1.1`。当前版本只走 http/1.1（列表里没有 http/1.1 时告警一次后仍用它）；后续版本按顺序自动选择，并在发现更优版本（如 Alt-Svc 声明 h3）时升级。
+  - 以上参数名与后续版本的承载条目和加入链接相同，迁移时原样保留。
 
   参数名区分大小写；其他参数、重复的参数、未知方案、带用户名或 `#` 的 URL 都会报错。
 - **不带方案**：旧写法 `addr:port[@host[:port]][/path]`，承载取该连接在 `-type` 中对应的值。与 URL 一一对应：`1.2.3.4:443@a.com:443/ws`（`-type=wss`）就是 `wss://1.2.3.4:443/ws?host=a.com:443`；quic 的旧写法把 ALPN 放在路径里（`a.com/h3`），照旧可用，URL 写法用 `?alpn=`。两种写法可以在一个连接里混用。

@@ -2,6 +2,7 @@ package connprofile
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -15,23 +16,23 @@ func TestParseSchemes(t *testing.T) {
 	}{
 		{"tcp://a.com:8024", Candidate{URL: "tcp://a.com:8024", Carrier: "tcp", Addr: "a.com:8024", Host: "a.com:8024", SNI: "a.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"tls://A.com", Candidate{URL: "tls://a.com:8025", Carrier: "tls", Addr: "A.com:8025", Host: "A.com", SNI: "A.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
-		{"tls://a.com?alpn=h2", Candidate{URL: "tls://a.com:8025", Carrier: "tls", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: "h2", Dirs: DirBidi, Count: 1}},
+		{"tls://a.com?alpn=h2", Candidate{URL: "tls://a.com:8025", Carrier: "tls", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: []string{"h2"}, Dirs: DirBidi, Count: 1}},
 		{"kcp://1.2.3.4", Candidate{URL: "kcp://1.2.3.4:8024", Carrier: "kcp", Addr: "1.2.3.4:8024", Host: "1.2.3.4", Path: "/ws", Dirs: DirBidi, Count: 1}},
-		{"quic://1.2.3.4:9?sni=b.com", Candidate{URL: "quic://1.2.3.4:9", Carrier: "quic", Addr: "1.2.3.4:9", Host: "1.2.3.4:9", SNI: "b.com", Path: "/ws", ALPN: "nps", Dirs: DirBidi, Count: 1}},
-		{"quic://a.com?alpn=h3", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: "h3", Dirs: DirBidi, Count: 1}},
-		{"ws://a.com/p", Candidate{URL: "http://a.com/p", Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/p", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"wss://a.com:8443/api/v2/ws", Candidate{URL: "https://a.com:8443/api/v2/ws", Carrier: "wss", Addr: "a.com:8443", Host: "a.com:8443", SNI: "a.com", Path: "/api/v2/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"http://a.com", Candidate{URL: "http://a.com", Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"https://a.com/", Candidate{URL: "https://a.com", Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"https://a.com/x%7Cy%3Fz?kinds=websocket", Candidate{URL: "https://a.com/x%7Cy%3Fz", Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/x%7Cy%3Fz", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"HTTPS://a.com/ws?tier=1&weight=3&count=3&standby&dirs=up,down,bidi", Candidate{URL: "https://a.com/ws", Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Tier: 1, Weight: 3, Count: 3, Standby: true, Dirs: DirBidi | DirUp | DirDown}},
-		{"wss://1.2.3.4:443/ws?host=b.com", Candidate{URL: "https://1.2.3.4/ws", Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:443", SNI: "b.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"wss://1.2.3.4/ws?host=b.com:8443&sni=c.com", Candidate{URL: "https://1.2.3.4/ws", Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:8443", SNI: "c.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"quic://1.2.3.4:9?sni=b.com", Candidate{URL: "quic://1.2.3.4:9", Carrier: "quic", Addr: "1.2.3.4:9", Host: "1.2.3.4:9", SNI: "b.com", Path: "/ws", ALPN: []string{"nps"}, Dirs: DirBidi, Count: 1}},
+		{"quic://a.com?alpn=h3", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: []string{"h3"}, Dirs: DirBidi, Count: 1}},
+		{"ws://a.com/p", Candidate{URL: "http://a.com/p", HTTP: []string{HTTP11}, Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/p", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"wss://a.com:8443/api/v2/ws", Candidate{URL: "https://a.com:8443/api/v2/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:8443", Host: "a.com:8443", SNI: "a.com", Path: "/api/v2/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"http://a.com", Candidate{URL: "http://a.com", HTTP: []string{HTTP11}, Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://a.com/", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://a.com/x%7Cy%3Fz?kinds=websocket", Candidate{URL: "https://a.com/x%7Cy%3Fz", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/x%7Cy%3Fz", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"HTTPS://a.com/ws?tier=1&weight=3&count=3&standby&dirs=up,down,bidi", Candidate{URL: "https://a.com/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Tier: 1, Weight: 3, Count: 3, Standby: true, Dirs: DirBidi | DirUp | DirDown}},
+		{"wss://1.2.3.4:443/ws?host=b.com", Candidate{URL: "https://1.2.3.4/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:443", SNI: "b.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"wss://1.2.3.4/ws?host=b.com:8443&sni=c.com", Candidate{URL: "https://1.2.3.4/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:8443", SNI: "c.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
 		{"tcp://[::1]:8024?standby=true&tier=-2", Candidate{URL: "tcp://[::1]:8024", Carrier: "tcp", Addr: "[::1]:8024", Host: "[::1]:8024", Path: "/ws", Tier: -2, Standby: true, Dirs: DirBidi, Count: 1}},
-		{"https://[::1]:443", Candidate{URL: "https://[::1]", Carrier: "wss", Addr: "[::1]:443", Host: "[::1]:443", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://[::1]:443", Candidate{URL: "https://[::1]", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "[::1]:443", Host: "[::1]:443", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
 		{"tls://[::1]", Candidate{URL: "tls://[::1]:8025", Carrier: "tls", Addr: "[::1]:8025", Host: "[::1]", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"tcp://a.com:1/", Candidate{URL: "tcp://a.com:1", Carrier: "tcp", Addr: "a.com:1", Host: "a.com:1", SNI: "a.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
-		{"https://a.com?kinds=websocket,streaming", Candidate{URL: "https://a.com", Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://a.com?kinds=websocket,streaming", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
 	}
 	for _, c := range cases {
 		got, err := Parse(c.in, "kcp")
@@ -52,9 +53,9 @@ func TestParseLegacy(t *testing.T) {
 	}{
 		{"1.2.3.4:8024", "tcp", Candidate{URL: "tcp://1.2.3.4:8024", Carrier: "tcp", Addr: "1.2.3.4:8024", Host: "1.2.3.4:8024", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"a.com", "TLS", Candidate{URL: "tls://a.com:8025", Carrier: "tls", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
-		{"1.2.3.4:443@b.com:443/path", "wss", Candidate{URL: "https://1.2.3.4/path", Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:443", SNI: "b.com", Path: "/path", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"a.com@b.com/h3", "quic", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "b.com", SNI: "b.com", Path: "/h3", ALPN: "h3", Dirs: DirBidi, Count: 1}},
-		{"a.com", "quic", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: "nps", Dirs: DirBidi, Count: 1}},
+		{"1.2.3.4:443@b.com:443/path", "wss", Candidate{URL: "https://1.2.3.4/path", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:443", SNI: "b.com", Path: "/path", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"a.com@b.com/h3", "quic", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "b.com", SNI: "b.com", Path: "/h3", ALPN: []string{"h3"}, Dirs: DirBidi, Count: 1}},
+		{"a.com", "quic", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: []string{"nps"}, Dirs: DirBidi, Count: 1}},
 		{"[::1]:8024", "tcp", Candidate{URL: "tcp://[::1]:8024", Carrier: "tcp", Addr: "[::1]:8024", Host: "[::1]:8024", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"[::1]", "tcp", Candidate{URL: "tcp://[::1]:8024", Carrier: "tcp", Addr: "[::1]:8024", Host: "[::1]", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"a.com:1", "", Candidate{URL: "tcp://a.com:1", Carrier: "tcp", Addr: "a.com:1", Host: "a.com:1", SNI: "a.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
@@ -175,5 +176,40 @@ func TestParsePipes(t *testing.T) {
 	}
 	if _, err := ParsePipes("double"); err == nil {
 		t.Error("double: no error")
+	}
+}
+
+func TestHTTPAndALPNParameters(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		http []string
+		alpn []string
+		bad  bool
+	}{
+		{in: "https://a.com/ws", http: []string{HTTP2, HTTP11}},
+		{in: "wss://a.com/ws", http: []string{HTTP2, HTTP11}},
+		{in: "ws://a.com/ws", http: []string{HTTP11}},
+		{in: "https://a.com/x?http=h3,h2,http/1.1", http: []string{HTTP3, HTTP2, HTTP11}},
+		{in: "tls://a.com?alpn=x,y", alpn: []string{"x", "y"}},
+		{in: "quic://a.com", alpn: []string{DefaultQUICALPN}},
+		{in: "wss://a.com/ws?http=h3", bad: true},
+		{in: "https://a.com?alpn=h2", bad: true},
+		{in: "tcp://a.com?http=h2", bad: true},
+		{in: "https://a.com?http=h4", bad: true},
+		{in: "https://a.com?http=h2,h2", bad: true},
+	} {
+		cs, err := Parse(tc.in, "tcp")
+		if tc.bad {
+			if err == nil {
+				t.Errorf("%s: accepted", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", tc.in, err)
+		}
+		if !slices.Equal(cs[0].HTTP, tc.http) || !slices.Equal(cs[0].ALPN, tc.alpn) {
+			t.Errorf("%s: http %v alpn %v", tc.in, cs[0].HTTP, cs[0].ALPN)
+		}
 	}
 }

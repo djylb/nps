@@ -471,7 +471,7 @@ func ipFamilyOrder(ip net.IP) int {
 }
 
 // dialBridge connects to one server address and verifies the connection.
-func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP string) (*conn.Conn, string, serverInfo, error) {
+func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUrl, localIP string) (*conn.Conn, string, serverInfo, error) {
 	var err error
 	var connection net.Conn
 	var sess *kcp.UDPSession
@@ -490,9 +490,7 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 			InsecureSkipVerify: true,
 			ServerName:         sni,
 		}
-		if alpn != "" {
-			conf.NextProtos = []string{alpn}
-		}
+		conf.NextProtos = alpn
 		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
@@ -521,10 +519,8 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 			return nil, "", serverInfo{}, err
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		conf := &tls.Config{InsecureSkipVerify: true, ServerName: sni}
-		if alpn != "" {
-			conf.NextProtos = []string{alpn}
-		}
+		// this version's WebSocket runs over http/1.1 only
+		conf := &tls.Config{InsecureSkipVerify: true, ServerName: sni, NextProtos: []string{"http/1.1"}}
 		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
 		cancel()
 		if err != nil {
@@ -541,7 +537,7 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 		tlsCfg := &tls.Config{
 			InsecureSkipVerify: true,
 			ServerName:         sni,
-			NextProtos:         []string{alpn},
+			NextProtos:         alpn,
 		}
 		ctx := context.Background()
 		sess, err := conn.DialQuicWithLocalIP(ctx, server, tlsCfg, QuicConfig, localIP)

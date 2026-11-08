@@ -7,9 +7,9 @@
 //
 // The URL form and its parameters are those of the carrier entries of the
 // next major version (CARRIER with CARRIER_URL, CARRIER_SNI, CARRIER_KINDS,
-// CARRIER_DIRS, TIER, WEIGHT, CARRIER_STANDBY, CARRIER_COUNT), so that a
-// Candidate converts to one field by field. Only this version has the
-// alpn parameter and the kcp, ws and wss schemes (ws and wss are http and
+// CARRIER_DIRS, TIER, WEIGHT, CARRIER_STANDBY, CARRIER_COUNT, CARRIER_ALPN,
+// CARRIER_HTTP), so that a Candidate converts to one field by field. Only
+// this version has the kcp, ws and wss schemes (ws and wss are http and
 // https with kinds=websocket).
 package connprofile
 
@@ -73,9 +73,8 @@ type Candidate struct {
 	Standby bool
 	Count   int // pipes in multi mode, at least 1
 
-	// ALPN is the QUIC ALPN, and the TLS ALPN when given for tls and
-	// https. The next major version has no such field and drops it.
-	ALPN string
+	ALPN []string // TLS ALPN of tls and quic, in order of preference
+	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
 
 	// How this version dials it.
 	Carrier string // tcp, tls, kcp, quic, ws, wss (scheme-less: the profile type as given)
@@ -161,12 +160,12 @@ func parseLegacy(s, carrier string) Candidate {
 	c := Candidate{Carrier: carrier, Dirs: DirBidi, Count: 1}
 	server, path := netaddr.SplitServerAndPath(s)
 	if carrier == "quic" {
-		c.ALPN = "nps"
+		c.ALPN = []string{DefaultQUICALPN}
 	}
 	if path == "" {
 		path = "/ws"
 	} else if carrier == "quic" {
-		c.ALPN = strings.TrimSpace(strings.TrimPrefix(path, "/"))
+		c.ALPN = []string{strings.TrimSpace(strings.TrimPrefix(path, "/"))}
 	}
 	c.Path = path
 	addr, host, sni := netaddr.SplitAddrAndHost(server)
@@ -176,6 +175,7 @@ func parseLegacy(s, carrier string) Candidate {
 	case "ws", "wss":
 		scheme = map[string]string{"ws": "http", "wss": "https"}[carrier]
 		c.Kinds = []string{KindWebSocket}
+		c.HTTP = defaultHTTP(scheme)
 	default:
 		path = ""
 	}
@@ -235,6 +235,7 @@ func parseURL(s string) (Candidate, error) {
 	}
 	if httpKind {
 		c.Kinds = []string{KindWebSocket}
+		c.HTTP = defaultHTTP(scheme)
 	}
 	q, err := url.ParseQuery(u.RawQuery)
 	if err != nil {
@@ -305,15 +306,21 @@ func parseURL(s string) (Candidate, error) {
 		case "sni":
 			sni, hasSNI = v, true
 		case "alpn":
-			if v == "" {
+			if carrier != "tls" && carrier != "quic" {
+				return Candidate{}, fmt.Errorf("alpn is used by tls and quic, not %s (http and https take http=)", u.Scheme)
+			}
+			if c.ALPN = list(v); len(c.ALPN) == 0 {
 				return Candidate{}, errors.New("alpn is empty")
 			}
-			if carrier == "kcp" || carrier == "tcp" || carrier == "ws" {
-				return Candidate{}, fmt.Errorf("alpn is used by quic, tls and https, not %s", u.Scheme)
+		case "http":
+			if !httpKind {
+				return Candidate{}, fmt.Errorf("http is used by http, https, ws and wss, not %s", u.Scheme)
 			}
-			c.ALPN = v
+			if c.HTTP, err = httpVersions(v, u.Scheme); err != nil {
+				return Candidate{}, err
+			}
 		default:
-			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni or alpn)", key)
+			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn or http)", key)
 		}
 	}
 	c.Host = host
@@ -322,11 +329,68 @@ func parseURL(s string) (Candidate, error) {
 	} else {
 		_, _, c.SNI = netaddr.SplitAddrAndHost(host)
 	}
-	if c.ALPN == "" && carrier == "quic" {
-		c.ALPN = "nps"
+	if len(c.ALPN) == 0 && carrier == "quic" {
+		c.ALPN = []string{DefaultQUICALPN}
+	}
+	if httpKind && !slices.Contains(c.HTTP, HTTP11) {
+		warnOnce(s, "http versions other than http/1.1 need zmux; using http/1.1", "http", strings.Join(c.HTTP, ","))
 	}
 	c.URL = entryURL(scheme, c.Addr, path)
 	return c, nil
+}
+
+// DefaultQUICALPN is the ALPN of quic carriers of this version.
+const DefaultQUICALPN = "nps"
+
+// HTTP versions of http and https carriers.
+const (
+	HTTP11 = "http/1.1"
+	HTTP2  = "h2"
+	HTTP3  = "h3"
+)
+
+// defaultHTTP is the HTTP version list of scheme when none is given.
+func defaultHTTP(scheme string) []string {
+	if scheme == "https" {
+		return []string{HTTP2, HTTP11}
+	}
+	return []string{HTTP11}
+}
+
+// httpVersions reads an http= list. WebSocket schemes (ws, wss) run over
+// http/1.1 and h2 only.
+func httpVersions(v, scheme string) ([]string, error) {
+	out := list(strings.ToLower(v))
+	if len(out) == 0 {
+		return nil, errors.New("http is empty")
+	}
+	ws := scheme == "ws" || scheme == "wss"
+	for i, h := range out {
+		switch h {
+		case HTTP11, HTTP2:
+		case HTTP3:
+			if ws {
+				return nil, fmt.Errorf("http=h3 is not used by %s (websocket runs over http/1.1 and h2)", scheme)
+			}
+		default:
+			return nil, fmt.Errorf("http %q: want http/1.1, h2, h3 or a comma list of them", h)
+		}
+		if slices.Contains(out[:i], h) {
+			return nil, fmt.Errorf("http %q given twice", h)
+		}
+	}
+	return out, nil
+}
+
+// list splits a comma list, dropping empty items.
+func list(v string) []string {
+	var out []string
+	for s := range strings.SplitSeq(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 var warned sync.Map

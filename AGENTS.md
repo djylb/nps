@@ -63,9 +63,10 @@ and nps forwards visitors through that connection to targets npc reaches.
 - A server candidate (`-server`, `server_addr`; `lib/connprofile`) is
   written as the carrier entries of the later major version: URL schemes
   `tcp`, `tls`, `quic`, `http`, `https` and the parameters `tier`, `weight`,
-  `standby`, `count`, `dirs`, `kinds`, `host`, `sni`, with the same names
-  and meanings, and `connprofile.Candidate` has their fields. Only `alpn`
-  and the schemes `kcp`, `ws`, `wss` are of this version.
+  `standby`, `count`, `dirs`, `kinds`, `host`, `sni`, `alpn` (tls, quic)
+  and `http` (http/1.1, h2, h3 for http and https), with the same names and
+  meanings, and `connprofile.Candidate` has their fields. Only the schemes
+  `kcp`, `ws`, `wss` are of this version.
 
 ## Adding a tunnel or host setting
 
