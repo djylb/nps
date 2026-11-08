@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/textutil"
 	"go.yaml.in/yaml/v3"
 )
@@ -280,12 +281,17 @@ func parseProfile(m map[string]any, fallback string, trusted bool) ([]Profile, e
 func expandDirect(name string, values map[string]any, trusted bool) ([]Profile, error) {
 	lists := make(map[string]*[]string)
 	var ptrs []*[]string
+	server, err := scalar(values["server_addr"])
+	if err != nil {
+		return nil, fmt.Errorf("server_addr: %w", err)
+	}
+	sep := connprofile.ListSep(server)
 	for _, key := range []string{"server_addr", "vkey", "conn_type", "local_ip"} {
 		text, err := scalar(values[key])
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		list := textutil.HandleArrEmptyVal(strings.Split(strings.ReplaceAll(text, "，", ","), ","))
+		list := connprofile.SplitList(text, sep)
 		lists[key] = &list
 		ptrs = append(ptrs, &list)
 	}

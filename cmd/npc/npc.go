@@ -386,7 +386,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		commonConfig.Server = *serverAddr
 		commonConfig.VKey = *verifyKey
 		commonConfig.Tp = strings.ToLower(*connType)
-		if err := checkProfiles([]string{commonConfig.Server}, []string{commonConfig.Tp}); err != nil {
+		if _, err := connprofile.Parse(commonConfig.Server, commonConfig.Tp); err != nil {
 			cfgLog.Error("invalid command line", "err", err)
 			os.Exit(1)
 		}
@@ -435,33 +435,26 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	if hasCommand {
 		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
-		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
-		*verifyKey = strings.ReplaceAll(*verifyKey, "，", ",")
-		*connType = strings.ReplaceAll(*connType, "，", ",")
-		*localIP = strings.ReplaceAll(*localIP, "，", ",")
-
-		serverAddrs := strings.Split(*serverAddr, ",")
-		verifyKeys := strings.Split(*verifyKey, ",")
-		connTypes := strings.Split(*connType, ",")
-		localIPs := strings.Split(*localIP, ",")
-
-		serverAddrs = textutil.HandleArrEmptyVal(serverAddrs)
-		verifyKeys = textutil.HandleArrEmptyVal(verifyKeys)
-		connTypes = textutil.HandleArrEmptyVal(connTypes)
-		localIPs = textutil.HandleArrEmptyVal(localIPs)
+		// connections are separated by "," in the old syntax and by ";"
+		// once a URL candidate is used (connprofile.ListSep)
+		sep := connprofile.ListSep(*serverAddr)
+		serverAddrs := connprofile.SplitList(*serverAddr, sep)
+		verifyKeys := connprofile.SplitList(*verifyKey, sep)
+		connTypes := connprofile.SplitList(*connType, sep)
+		localIPs := connprofile.SplitList(*localIP, sep)
 
 		if len(connTypes) == 0 {
 			connTypes = append(connTypes, "tcp")
 		}
 
-		if len(serverAddrs) == 0 || len(verifyKeys) == 0 || serverAddrs[0] == "" || verifyKeys[0] == "" {
+		if len(serverAddrs) == 0 || len(verifyKeys) == 0 {
 			cfgLog.Error("server and vkey must not be empty")
 			os.Exit(1)
 		}
 
 		maxLength := textutil.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
-		if err := checkProfiles(serverAddrs, connTypes); err != nil {
+		if err := connprofile.CheckList(*serverAddr, connTypes); err != nil {
 			cfgLog.Error("invalid command line", "err", err)
 			os.Exit(1)
 		}
@@ -516,21 +509,6 @@ func fail(cancel context.CancelFunc, err error) {
 	log.Error("npc stopped", "err", err)
 	cancel()
 	os.Exit(1)
-}
-
-// checkProfiles checks the server profiles of the command line, each with
-// its connection type.
-func checkProfiles(servers, types []string) error {
-	for i, server := range servers {
-		tp := ""
-		if i < len(types) {
-			tp = types[i]
-		}
-		if _, err := connprofile.Parse(server, tp); err != nil {
-			return fmt.Errorf("-server: %w", err)
-		}
-	}
-	return nil
 }
 
 // commandLineMode reports whether npc runs from -server and -vkey rather

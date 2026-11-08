@@ -213,3 +213,31 @@ func TestHTTPAndALPNParameters(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionLists(t *testing.T) {
+	for _, tc := range []struct {
+		server string
+		sep    string
+		n      int
+	}{
+		{"a.com:8024,b.com:8024", SepLegacy, 2},
+		{"a.com:8024，b.com:8024", SepLegacy, 2},
+		{"tls://a.com:8025|https://a.com/ws?http=h2,http/1.1;tcp://b.com:8024", SepURL, 2},
+		{"tls://a.com:8025；a.com:8024", SepURL, 2},
+		{"https://a.com/ws?dirs=up,down|tcp://a.com:8024", SepURL, 1},
+	} {
+		if sep := ListSep(tc.server); sep != tc.sep {
+			t.Fatalf("%s: sep %q", tc.server, sep)
+		}
+		if got := SplitList(tc.server, tc.sep); len(got) != tc.n {
+			t.Fatalf("%s: %d connections %v", tc.server, len(got), got)
+		}
+		if err := CheckList(tc.server, nil); err != nil {
+			t.Fatalf("%s: %v", tc.server, err)
+		}
+	}
+	err := CheckList("tls://a.com:8025,tls://b.com:8025", nil)
+	if err == nil || !strings.Contains(err.Error(), `";"`) {
+		t.Fatalf("comma-separated URL connections: %v", err)
+	}
+}

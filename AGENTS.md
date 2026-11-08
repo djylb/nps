@@ -66,7 +66,10 @@ and nps forwards visitors through that connection to targets npc reaches.
   `standby`, `count`, `dirs`, `kinds`, `host`, `sni`, `alpn` (tls, quic)
   and `http` (http/1.1, h2, h3 for http and https), with the same names and
   meanings, and `connprofile.Candidate` has their fields. Only the schemes
-  `kcp`, `ws`, `wss` are of this version.
+  `kcp`, `ws`, `wss` are of this version. Connections in one `-server` are
+  separated by `,` in the old syntax and by `;` once a URL candidate is
+  used (`connprofile.ListSep`), so that commas stay for parameter lists as
+  in the later version's links; each such connection becomes one `-link`.
 
 ## Adding a tunnel or host setting
 

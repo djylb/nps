@@ -12,14 +12,14 @@
 
 | 参数 | 说明 | 默认 |
 | --- | --- | --- |
-| `-server`, `-s` | 服务器连接：逗号分隔多个连接（档案），每个连接内用 `\|` 分隔多个承载候选；候选写法见下文“服务器地址” | 无 |
+| `-server`, `-s` | 服务器连接：多个连接（档案）之间用逗号分隔（旧写法），使用 URL 写法时改用分号；每个连接内用 `\|` 分隔多个承载候选，见下文“服务器地址” | 无 |
 | `-pipes` | 每个连接的管道模式：`single`、`multi`（`multi` 需要 zmux，当前告警一次后按 `single` 运行） | `single` |
-| `-vkey`, `-k` | 认证密钥，逗号分隔 | 无 |
-| `-type`, `-t` | `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，逗号分隔 | `tcp` |
+| `-vkey`, `-k` | 认证密钥，与 `-server` 的连接一一对应，分隔符与 `-server` 相同 | 无 |
+| `-type`, `-t` | `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同 | `tcp` |
 | `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
 | `--launch` | [快速启动](/guide/client/launch.md)内容，可重复 | 无 |
 | `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
-| `-local_ip` | 出站绑定的本地 IP，逗号分隔，与 `-server` 对应 | 无 |
+| `-local_ip` | 出站绑定的本地 IP，与 `-server` 对应，分隔符与 `-server` 相同 | 无 |
 | `-local_ip_forward` | `local_ip` 同时作用于隧道转发出口（仅公网 IP 与域名目标） | `false` |
 | `-local_type` | 点对点访问的本地监听：`tcp_udp`、`tcp`、`udp`、`mixed`、`transparent` | `tcp_udp` |
 | `-conn_mode` | 点对点访问的连接方式：`auto`、`relay`、`direct` | `auto` |
@@ -58,7 +58,10 @@
 
 `-server` 的值分两层：
 
-- **连接（档案）**：逗号分隔，每个是一条独立的连接，各自对应 `-vkey`、`-type`、`-local_ip` 列表中同一位置的值（较短的列表重复最后一个值）。
+- **连接（档案）**：每个是一条独立的连接，各自对应 `-vkey`、`-type`、`-local_ip` 列表中同一位置的值（较短的列表重复最后一个值）。分隔符：
+  - `-server` 里没有 `://` 时是旧写法，用逗号分隔：`-server="a.com:8024,b.com:8024" -vkey="k1,k2"`；
+  - 只要用了 URL 写法，就用分号分隔，逗号只用于参数里的列表：`-server="tls://a.com:8025|https://a.com/ws?http=h2,http/1.1;tcp://b.com:8024" -vkey="k1;k2"`。`-vkey`、`-type`、`-local_ip` 随之用分号。URL 写法里用逗号分隔连接会报错并提示改用分号。
+  - 分号在 shell 里是命令分隔符，必须加引号。
 - **承载候选**：一个连接内用 `|` 分隔，是到同一服务端的几种走法。单管道（`-pipes=single`）每次连接和重连按顺序尝试，一个失败就换下一个：上次成功的候选最先，其余按 `tier` 升序、同 tier 按书写顺序，`standby` 候选排在最后（只在其他候选都失败后才用）。每个失败的候选记一条 `connect_failed`，成功时 `connected` 记下实际用的承载。
 
 候选有两种写法：

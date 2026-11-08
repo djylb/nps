@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/lib/connprofile"
 	flag "github.com/spf13/pflag"
 )
 
@@ -100,8 +101,7 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	launchMode := len(inputs) > 0
 	if !launchMode && hasCommand {
 		tp, _ := fs.GetString("type")
-		split := func(s string) []string { return strings.Split(strings.ReplaceAll(s, "，", ","), ",") }
-		if err := checkProfiles(split(server), split(tp)); err != nil {
+		if err := connprofile.CheckList(server, connprofile.SplitList(tp, connprofile.ListSep(server))); err != nil {
 			return nil, nil, err
 		}
 		payload := make(map[string]any)

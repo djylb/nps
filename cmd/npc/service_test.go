@@ -188,13 +188,13 @@ func TestWriteServiceFilesKeepsUserFiles(t *testing.T) {
 }
 
 func TestServiceKeepsCandidates(t *testing.T) {
-	server := "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1,c.com:8024@d.com/p"
-	dir, _ := installArgs(t, "", "--server="+server, "--vkey=k1,k2", "--type=tcp,wss", "--pipes=multi")
+	server := "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1;c.com:8024@d.com/p"
+	dir, _ := installArgs(t, "", "--server="+server, "--vkey=k1;k2", "--type=tcp;wss", "--pipes=multi")
 	b, err := os.ReadFile(filepath.Join(dir, serviceConnFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"server": "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1,c.com:8024@d.com/p"`) ||
+	if !strings.Contains(string(b), `"server": "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1;c.com:8024@d.com/p"`) ||
 		!strings.Contains(string(b), `"pipes": "multi"`) {
 		t.Fatalf("service file:\n%s", b)
 	}

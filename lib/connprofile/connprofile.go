@@ -447,3 +447,65 @@ func Order(cands []Candidate, last string) []Candidate {
 	})
 	return out
 }
+
+// Separators of a server list: earlier versions separate connections with
+// a comma; once any connection uses the URL form, connections are
+// separated by a semicolon and commas belong to parameter lists.
+const (
+	SepLegacy = ","
+	SepURL    = ";"
+)
+
+// ListSep returns the separator of the connections in server, and so of
+// the lists that go with it (vkey, type, local_ip).
+func ListSep(server string) string {
+	if strings.Contains(server, "://") {
+		return SepURL
+	}
+	return SepLegacy
+}
+
+// SplitList splits a list of server, vkey, type or local_ip values by sep,
+// accepting the full-width forms of "," and ";" and dropping empty items.
+func SplitList(s, sep string) []string {
+	s = strings.NewReplacer("，", ",", "；", ";").Replace(s)
+	var out []string
+	for v := range strings.SplitSeq(s, sep) {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// CheckList checks the connections of server: each must parse, and a URL
+// list that looks like comma-separated connections gets a hint to use ";".
+func CheckList(server string, types []string) error {
+	sep := ListSep(server)
+	for i, p := range SplitList(server, sep) {
+		tp := ""
+		if i < len(types) {
+			tp = types[i]
+		}
+		if _, err := Parse(p, tp); err != nil {
+			if sep == SepURL && looksLikeCommaList(p) {
+				return fmt.Errorf("%w (separate connections with %q when the URL form is used; commas are for parameter lists)", err, SepURL)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// looksLikeCommaList reports whether p has a comma followed by what starts
+// another candidate (a scheme or an address), outside a query.
+func looksLikeCommaList(p string) bool {
+	for i := strings.IndexByte(p, ','); i >= 0; i = strings.IndexByte(p, ',') {
+		rest := p[i+1:]
+		if strings.Contains(strings.SplitN(rest, "?", 2)[0], "://") || strings.Contains(strings.SplitN(rest, "|", 2)[0], ":") && !strings.Contains(p[:i], "?") {
+			return true
+		}
+		p = rest
+	}
+	return false
+}

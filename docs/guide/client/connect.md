@@ -15,7 +15,7 @@
 
 ## 连接多个服务端
 
-一个进程可以同时连接多个服务端，逗号分隔，较短的列表重复最后一个值：
+一个进程可以同时连接多个服务端，较短的列表重复最后一个值。旧写法用逗号分隔（下例）；使用 URL 写法的承载候选时改用分号，见下文：
 
 ```bash
 npc -server="xxx:123,yyy:456,zzz:789" -vkey="key1,key2,key3" -type="tcp,tls"
@@ -25,7 +25,7 @@ npc -server="xxx:123,yyy:456,zzz:789" -vkey="key1,key2,key3" -type="tcp,tls"
 
 ## 一个连接的多个承载（候选）
 
-逗号分开的是**不同的连接**（各自的服务端、vkey、承载）；同一个连接到同一服务端的几种走法用 `|` 分开，叫**承载候选**。候选可以写成 URL，方案就是承载：
+分隔符分开的是**不同的连接**（各自的服务端、vkey、承载；旧写法用逗号，URL 写法用分号，如 `-server="tls://a.com:8025|wss://a.com/ws;tls://b.com:8025" -vkey="k1;k2"`）；同一个连接到同一服务端的几种走法用 `|` 分开，叫**承载候选**。候选可以写成 URL，方案就是承载：
 
 ```bash
 ./npc -server="tls://a.com:8025|wss://a.com:443/ws?tier=1|tcp://b.com:8024?standby=1" -vkey="YOUR_CLIENT_VKEY"
