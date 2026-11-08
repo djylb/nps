@@ -41,13 +41,12 @@ type Identity struct {
 // when it is an RSA key, a fresh one otherwise.
 func NewIdentity(custom tls.Certificate) (*Identity, error) {
 	id := &Identity{Cert: custom}
-	if len(custom.Certificate) > 0 {
-		log.Info("custom certificate loaded")
-	} else {
+	if len(custom.Certificate) == 0 {
 		var err error
 		if id.Cert, err = newSelfSigned(gofakeit.DomainName(), gofakeit.Company()); err != nil {
 			return nil, fmt.Errorf("create a self-signed certificate: %w", err)
 		}
+		log.Info("self-signed certificate generated")
 	}
 	if key, ok := id.Cert.PrivateKey.(*rsa.PrivateKey); ok {
 		id.rsaKey = key

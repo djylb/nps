@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/pprof"
+	"strconv"
 	"sync"
 	"time"
 
@@ -58,7 +59,8 @@ type P2pBridge struct {
 func NewP2pBridge(mgr *P2PManager, l *config.LocalServer) *P2pBridge {
 	useP2P := l.Type != "secret" && !DisableP2P
 	if useP2P && !clientCaps().P2P {
-		p2pLog.Warn("protocol too old for p2p, relaying only", "need", legacy.P2PMinIndex, "running", protocolIndex, "port", l.Port)
+		p2pLog.Warn("p2p unavailable, relaying only", "reason", "version", "port", l.Port,
+			"version", legacy.CoreVersion(protocolIndex), "min_version", legacy.CoreVersion(legacy.P2PMinIndex))
 		useP2P = false
 	}
 	b := &P2pBridge{
@@ -154,7 +156,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 				return nil, fmt.Errorf("P2P direct path: %w", err)
 			}
 			directErr = err
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "name", b.peer.label, "via", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
 		}
 	}
 	c, err := b.sendViaSecret(*link)
@@ -252,24 +254,24 @@ func (mgr *P2PManager) StartLocalServer(l *config.LocalServer) error {
 		task.Mode = "mixProxy"
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
-		return mgr.serve(fmt.Sprintf("http/socks5 proxy on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessMix, pb, task, true))
+		return mgr.serve(l.Type, "tcp", l.Port, proxy.NewTunnelModeServer(proxy.ProcessMix, pb, task, true))
 	case "p2pt":
 		task.Mode = "p2pt"
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
-		return mgr.serve(fmt.Sprintf("tcp trans on port %d", l.Port), proxy.NewTunnelModeServer(proxy.HandleTrans, pb, task, true))
+		return mgr.serve(l.Type, "tcp", l.Port, proxy.NewTunnelModeServer(proxy.HandleTrans, pb, task, true))
 	}
 
 	var errs []error
 	if l.TargetType == model.TargetAll || l.TargetType == model.TargetTCP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
-		errs = append(errs, mgr.serve(fmt.Sprintf("local tcp listener on port %d", l.Port), proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)))
+		errs = append(errs, mgr.serve(l.Type, "tcp", l.Port, proxy.NewTunnelModeServer(proxy.ProcessTunnel, pb, task, true)))
 	}
 	if l.TargetType == model.TargetAll || l.TargetType == model.TargetUDP {
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
-		errs = append(errs, mgr.serve(fmt.Sprintf("local udp listener on port %d", l.Port), proxy.NewUdpModeServer(pb, task, true)))
+		errs = append(errs, mgr.serve(l.Type, "udp", l.Port, proxy.NewUdpModeServer(pb, task, true)))
 	}
 	return errors.Join(errs...)
 }
@@ -283,9 +285,12 @@ type localServer interface {
 
 // serve binds srv now, so that a port conflict is reported here, and serves
 // it until the manager closes.
-func (mgr *P2PManager) serve(name string, srv localServer) error {
+func (mgr *P2PManager) serve(mode, network string, port int, srv localServer) error {
+	route := mode + ":" + strconv.Itoa(port)
+	listen := net.JoinHostPort("0.0.0.0", strconv.Itoa(port))
 	if err := srv.Bind(); err != nil {
-		log.Error("local server failed to start", "server", name, "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", route, "listen", listen, "network", network,
+			"reason", logevent.NetReason(err), "err", err)
 		_ = srv.Close()
 		return err
 	}
@@ -298,12 +303,12 @@ func (mgr *P2PManager) serve(name string, srv localServer) error {
 	mgr.proxyServers = append(mgr.proxyServers, srv)
 	mgr.wg.Add(1)
 	mgr.mu.Unlock()
-	log.Info("local server started", "server", name)
+	slogx.Emit(context.Background(), log, &logevent.Listening, "route", route, "listen", listen, "network", network)
 	// The label names the local server in stack dumps and tracebacks.
-	go pprof.Do(context.Background(), pprof.Labels("local", name), func(context.Context) {
+	go pprof.Do(context.Background(), pprof.Labels("local", route+"/"+network), func(context.Context) {
 		defer mgr.wg.Done()
 		if err := srv.Start(); err != nil {
-			log.Error("local server stopped", "server", name, "err", err)
+			log.Error("local server stopped", "route", route, "network", network, "err", err)
 		}
 	})
 	return nil
@@ -352,7 +357,7 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	//noinspection GoResourceLeak
 	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP)
 	if err != nil {
-		log.Warn("secret connection to server failed", "err", err)
+		log.Debug("secret connection to server failed", "server", mgr.cfg.Server, "err", err)
 		if !AutoReconnect {
 			mgr.pCancel()
 		}
@@ -369,14 +374,14 @@ func (mgr *P2PManager) openTunnelConn() (net.Conn, serverInfo, error) {
 		return pc, server, nil
 	}
 	if err = SendType(pc, legacy.WorkVisitor, uuid); err != nil {
-		log.Warn("secret send type failed", "err", err)
+		log.Debug("secret send type failed", "err", err)
 		_ = pc.Close()
 		return nil, serverInfo{}, err
 	}
 	tunnel := legacy.NewTunnel(pc, mgr.cfg.Tp, clientCaps(), mgr.cfg.DisconnectTime, true)
 	c, err := tunnel.OpenStream(mgr.ctx)
 	if err != nil {
-		log.Warn("secret open stream failed", "err", err)
+		log.Debug("secret open stream failed", "err", err)
 		_ = tunnel.Close()
 		_ = pc.Close()
 		return nil, serverInfo{}, err
@@ -403,7 +408,7 @@ func (mgr *P2PManager) getSecretConn() (net.Conn, error) {
 	// The wrapper only writes to c, which is closed on failure and returned otherwise.
 	//noinspection GoResourceLeak
 	if err := SendType(conn.NewConn(c), legacy.WorkSecret, mgr.getUUID()); err != nil {
-		log.Warn("secret send type failed", "err", err)
+		log.Debug("secret send type failed", "err", err)
 		_ = c.Close()
 		return nil, err
 	}

@@ -53,7 +53,7 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 	local, err := net.ListenUDP("udp", netaddr.BuildUDPBindAddr(localIP))
 	if err != nil {
 		_ = serverConn.Close()
-		log.Error("local udp port not bound", "addr", localIP, "err", err)
+		log.Debug("local udp port not bound", "listen", localIP, "err", err)
 		return
 	}
 	relay := socks5.DatagramRelay{
@@ -68,9 +68,10 @@ func HandleUdp5(ctx context.Context, serverConn net.Conn, timeout time.Duration,
 
 // CopyWaitGroup relays between conn1, a link to an npc, and conn2. cert is
 // the certificate of the side that opened the link, as for LinkConn; the
-// limits of task apply on that side only.
+// limits of task apply on that side only. It returns the bytes written out
+// to conn2 and read in from it.
 func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate,
-	flows []Flow, cert *tls.Certificate, proxyProtocol int, rb []byte, task Entry, isLocal, isFramed bool) {
+	flows []Flow, cert *tls.Certificate, proxyProtocol int, rb []byte, task Entry, isLocal, isFramed bool) (out, in int64) {
 	var limit *rate.Directional
 	if cert != nil && task != nil {
 		// Client-side relay wrappers stay out of server-side metering.
@@ -83,7 +84,7 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate
 		connHandle = netx.NewFramedConn(netx.WrapConn(connHandle, conn1, netx.WithWrapParentClose()), netx.WithFramedDatagrams())
 	}
 	if proxyHeader := ProxyProtocolHeader(proxyProtocol, conn2.RemoteAddr(), conn2.LocalAddr()); proxyHeader != nil {
-		log.Debug("proxy protocol header sent", "version", proxyProtocol, "src", proxyHeader.Source, "dst", proxyHeader.Destination)
+		log.Debug("proxy protocol header sent", "version", proxyProtocol, "addr", proxyHeader.Source)
 		if _, err := proxyHeader.WriteTo(connHandle); err != nil {
 			log.Debug("proxy protocol header not written", "err", err)
 			_ = conn1.Close()
@@ -105,9 +106,10 @@ func CopyWaitGroup(conn1, conn2 net.Conn, crypt bool, snappy bool, rt *rate.Rate
 			remote = ra.String()
 		}
 	}
-	relay(connHandle, conn2, flows, task, remote)
+	out, in = relay(connHandle, conn2, flows, task, remote)
 	_ = conn1.Close()
 	_ = conn2.Close()
+	return out, in
 }
 
 // ProxyProtocolHeader returns the PROXY protocol header of version 1 or 2
@@ -126,7 +128,7 @@ func ProxyProtocolHeader(version int, client, target net.Addr) *proxyproto.Heade
 	}
 	h, err := proxyproto.NewHeader(v, client, target)
 	if err != nil {
-		log.Debug("proxy protocol header without addresses", "src", client, "dst", target, "err", err)
+		log.Debug("proxy protocol header without addresses", "err", err)
 		return &proxyproto.Header{Version: v}
 	}
 	return h

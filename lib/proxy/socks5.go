@@ -111,7 +111,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 			_ = c.Close()
 			return nil
 		}
-		log.Debug("unknown proxy protocol", "src_ip", srcIP(c.RemoteAddr()), "head", header[:])
+		log.Debug("unknown proxy protocol", "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task))
 		_ = c.Close()
 		return errors.New("unknown protocol")
 	}

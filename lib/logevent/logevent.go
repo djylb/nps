@@ -11,6 +11,7 @@
 //
 //	client      int     client id (never a name); peer is the other side's id in p2p
 //	tunnel      int     tunnel id
+//	role        string  which side or kind of party a line is about (see events)
 //	host        int     domain entry id
 //	domain      string  a domain name (host entry, certificate, SNI)
 //	route       string  what the line is about: "<mode>:<port>" of a tunnel
@@ -24,6 +25,10 @@
 //	target      string  the host:port dialed for a visitor
 //	server      string  npc: the nps address it connects to
 //	carrier     string  tcp, tls, kcp, quic, ws, wss
+//	network     string  tcp or udp of a link or local server
+//	node        string  an npc instance (node uuid) of a client
+//	session     string  a p2p or link session id
+//	prefix      string  an address prefix (an IPv6 /64 ban)
 //	mode        string  tunnel mode (tcp, udp, socks5, httpProxy, ...)
 //	via         string  p2p path: direct or relay
 //	user        string  a web manager user name
@@ -74,7 +79,7 @@ var (
 	// src_ip, src_port, role (client, visitor, secret, api, http_auth),
 	// client (when known), proxy_user (visitor), carrier, route, reason
 	// (bad_key, bad_password, disabled, malformed, timeout, version,
-	// forbidden).
+	// forbidden), flag (forbidden: the refused workflow).
 	AuthFailed = slogx.Def{Name: "auth_failed", Level: warn, Security: true, Bus: true, Limit: "src_ip"}
 	// LoginFailed / LoginOK: web manager login. src_ip, user, reason
 	// (bad_password, bad_captcha, bad_pow, bad_nonce, expired, malformed,
@@ -94,8 +99,8 @@ var (
 // Clients and sessions.
 var (
 	// ClientOnline / ClientOffline: client, src_ip, carrier, version;
-	// offline adds dur_ms and reason (closed, unresponsive, takeover,
-	// deleted). The store publishes these to the bus with the client
+	// offline adds dur_ms and reason (closed, unresponsive, deleted: the
+	// manager kicked, disabled or deleted the client). The store publishes these to the bus with the client
 	// itself, so the log lines do not go there too.
 	ClientOnline  = slogx.Def{Name: "client_online", Level: info}
 	ClientOffline = slogx.Def{Name: "client_offline", Level: info}
@@ -129,7 +134,7 @@ var (
 	// src_ip, target, in_bytes, out_bytes, dur_ms.
 	ConnClosed = slogx.Def{Name: "conn_closed", Level: debug}
 	// TargetDown / TargetUp: a backend target failed or passed its health
-	// check; route, target, reason.
+	// check; route, target, reason (check_failed, check_passed).
 	TargetDown = slogx.Def{Name: "target_down", Level: warn, Bus: true}
 	TargetUp   = slogx.Def{Name: "target_up", Level: info, Bus: true}
 )
@@ -201,9 +206,9 @@ var (
 // npc.
 var (
 	// Connected / ConnectFailed / Disconnected: server, carrier, attempt
-	// (failed attempts in a row) or attempts, reason (dial, send_type,
-	// signal_stream, no_tunnel, closed, lost), err; disconnected adds
-	// dur_ms.
+	// (failed attempts in a row) or attempts, reason (connect_failed: dial,
+	// send_type, signal_stream, no_tunnel; disconnected: lost, closed), err;
+	// disconnected adds dur_ms.
 	Connected     = slogx.Def{Name: "connected", Level: info}
 	Disconnected  = slogx.Def{Name: "disconnected", Level: warn}
 	ConnectFailed = slogx.Def{Name: "connect_failed", Level: warn, Limit: "server"}

@@ -44,7 +44,7 @@ func (s *Server) UpdateSelf() (string, error) {
 		s.updating.Store(false)
 		return "", err
 	}
-	slogx.Emit(context.Background(), log, &logevent.UpdateApplied, slogx.KeyMsg, "restarting", "to", u.Version)
+	log.Info("restarting after update", "to", u.Version)
 	go func() {
 		time.Sleep(restartDelay)
 		if err := u.Restart(); err != nil {

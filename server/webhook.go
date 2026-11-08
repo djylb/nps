@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -146,10 +148,53 @@ func (s *Server) BuildTunnelsReport() TunnelsReport {
 // their fields as the data.
 func busRoute(bus *event.Bus) slogx.Route {
 	return slogx.Route{Name: "webhook", Match: slogx.MatchBus, Func: func(r *slogx.Record) {
-		data := make(map[string]any, len(r.Attrs))
-		for _, a := range r.Attrs {
-			data[a.Key] = a.Value.Resolve().Any()
-		}
-		bus.Publish(r.Def.Name, data)
+		bus.Publish(r.Def.Name, busData(r))
 	}}
+}
+
+// busData is the data of a log event on the bus: its fields, values as JSON
+// can carry them (errors and other values as their text), plus level,
+// module and msg. Secrets stay [REDACTED] whatever log_secrets says.
+func busData(r *slogx.Record) map[string]any {
+	data := make(map[string]any, len(r.Attrs)+3)
+	data["level"] = slogx.LevelName(r.Level)
+	if r.Module != "" {
+		data["module"] = r.Module
+	}
+	if r.Msg != "" {
+		data["msg"] = r.Msg
+	}
+	for _, a := range r.Attrs {
+		data[a.Key] = busValue(a.Value.Resolve())
+	}
+	return data
+}
+
+func busValue(v slog.Value) any {
+	switch v.Kind() {
+	case slog.KindString:
+		return v.String()
+	case slog.KindInt64:
+		return v.Int64()
+	case slog.KindUint64:
+		return v.Uint64()
+	case slog.KindFloat64:
+		return v.Float64()
+	case slog.KindBool:
+		return v.Bool()
+	case slog.KindDuration:
+		return v.Duration().Milliseconds()
+	case slog.KindTime:
+		return v.Time().UTC().Format(time.RFC3339)
+	}
+	switch x := v.Any().(type) {
+	case error:
+		return x.Error()
+	case fmt.Stringer:
+		return x.String()
+	case nil:
+		return nil
+	default:
+		return fmt.Sprint(x)
+	}
 }

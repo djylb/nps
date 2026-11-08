@@ -118,7 +118,7 @@ func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, loc
 	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
 		return err
 	}
-	log.Info("local ip registered", "server", server, "hours", hour)
+	log.Info("local ip registered", "server", server, "dur_ms", int64(hour)*time.Hour.Milliseconds())
 	return nil
 }
 
@@ -145,7 +145,7 @@ func StartFromFile(pCtx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("config file %s: %w", path, err)
 	}
-	log.Info("config loaded", "path", path)
+	log.Info("config loaded", "file", path)
 
 	netaddr.SetCustomDNS(cnf.CommonConfig.DnsServer)
 
@@ -275,6 +275,7 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 		vkey = string(b)
 	}
 
+	var accepted []string // the routes the server took
 	//send hosts to server
 	for _, v := range cnf.Hosts {
 		if err := legacy.WriteHost(c, v); err != nil {
@@ -285,8 +286,10 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 			return "", err
 		}
 		if !ok {
-			log.Error("server refused host", "host", v.Host, "err", errAdd)
+			log.Info("server refused host", "domain", v.Host, "err", errAdd)
+			continue
 		}
+		accepted = append(accepted, v.Host)
 	}
 
 	//send task to server
@@ -299,14 +302,16 @@ func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, de
 			return "", err
 		}
 		if !ok {
-			log.Error("server refused tunnel", "ports", v.Ports, "remark", v.Remark, "err", errAdd)
+			log.Info("server refused tunnel", "mode", v.Mode, "ports", v.Ports, "remark", v.Remark, "err", errAdd)
 			continue
 		}
+		accepted = append(accepted, v.Mode+":"+v.Ports)
 		if v.Mode == "file" {
 			//start local file server
 			go fsm.StartFileServer(v, vkey)
 		}
 	}
+	log.Info("server accepted config", "server", cnf.CommonConfig.Server, "count", len(accepted), "routes", strings.Join(accepted, ","))
 	return vkey, nil
 }
 
@@ -568,7 +573,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 		PadLen:        HandshakeHooks.PadLen,
 		VerifyFingerprint: func(fp []byte) error {
 			if !SkipTLSVerify && isTls && !tlsVerify && !bytes.Equal(fp, tlsFp) {
-				log.Warn("server certificate verification failed; set -skip_verify=true to skip it", "server", connection.RemoteAddr().String())
+				log.Warn("server certificate verification failed", "server", connection.RemoteAddr().String(), "detail", "set -skip_verify=true to skip it")
 				return errors.New("validation cert incorrect")
 			}
 			crypt.AddTrustedCert(vkey, fp)
@@ -582,12 +587,12 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 			log.Error("server rejected the vkey", "server", connection.RemoteAddr().String(), "vkey", slogx.Redacted(vkey), "err", err)
 			return nil, "", serverInfo{}, errors.New("validation key incorrect")
 		case errors.Is(err, legacy.ErrVersionMismatch):
-			log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))
+			log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "version", legacy.CoreVersion(protocolIndex))
 		}
 		return nil, "", serverInfo{}, err
 	}
 	if res.VersionWarning {
-		log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))
+		log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "version", legacy.CoreVersion(protocolIndex))
 	}
 	uuid := res.ServerUUID
 	info.fingerprint = res.Fingerprint

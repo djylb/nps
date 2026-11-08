@@ -35,3 +35,17 @@ func TestSecretsSwitch(t *testing.T) {
 		t.Fatalf("switched off but shown: %s", s)
 	}
 }
+
+func TestInstanceOnEveryLine(t *testing.T) {
+	t.Cleanup(func() { _ = slogx.Default.Configure(slogx.Config{}) })
+	if err := Apply(Options{Output: "off", Memory: 10, Instance: "sg1"}); err != nil {
+		t.Fatal(err)
+	}
+	slogx.Module("t").Info("x", "k", 1)
+	es := slogx.Default.Memory().Take()
+	r := es[len(es)-1].Record()
+	b := slogx.TextEncoder{}.Encode(nil, &r)
+	if !strings.Contains(string(b), "k=1 instance=sg1 msg=x") {
+		t.Fatalf("got %s", b)
+	}
+}

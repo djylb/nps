@@ -40,18 +40,23 @@ func (s *Server) ReloadConfig() servercfg.Report {
 	r := servercfg.Reload(s.ConfigAppliers()...)
 	if r.OK() {
 		for _, w := range servercfg.Current().Legacy {
-			log.Warn("legacy config setting", "reason", w)
+			log.Warn("legacy config setting", "detail", w)
 		}
-		slogx.Emit(context.Background(), log, &logevent.ConfigApplied, "path", r.Path, "keys", strings.Join(r.Applied, ","), "restart", strings.Join(r.Restart, ","))
+		slogx.Emit(context.Background(), log, &logevent.ConfigApplied, "file", r.Path, "keys", strings.Join(r.Applied, ","), "restart", strings.Join(r.Restart, ","))
 		if len(r.Restart) > 0 {
 			log.Warn("config changes need a restart", "keys", strings.Join(r.Restart, ","))
 		}
 	} else {
-		var keys []string
+		var keys, errs []string
 		for _, f := range r.Failed {
 			keys = append(keys, f.Settings...)
+			errs = append(errs, f.Name+": "+f.Error)
 		}
-		slogx.Emit(context.Background(), log, &logevent.ConfigFailed, slogx.KeyMsg, r.String(), "path", r.Path, "keys", strings.Join(keys, ","), "reason", r.Error)
+		reason, err := "apply_failed", strings.Join(errs, "; ")
+		if r.Error != "" {
+			reason, err = "read_failed", r.Error
+		}
+		slogx.Emit(context.Background(), log, &logevent.ConfigFailed, "file", r.Path, "keys", strings.Join(keys, ","), "reason", reason, "err", err)
 	}
 	return r
 }
@@ -79,7 +84,7 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			return slogx.Default.Levels().Set(cur.Log.Level)
 		}},
-		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress", "log_memory"}, Apply: restart},
+		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress", "log_memory", "log_instance", "access_log", "access_log_format"}, Apply: restart},
 		{Name: "ntp", Settings: []string{"ntp_server", "ntp_interval"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			ApplyNTP(cur)
 			return nil

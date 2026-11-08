@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/djylb/netx"
@@ -13,6 +14,7 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
+	"github.com/djylb/nps/server/httpproxy"
 	"github.com/djylb/slogx"
 )
 
@@ -117,7 +119,7 @@ func (s *WebServer) Start() error {
 			})
 		}
 	} else {
-		webLog.Info("only virtual listener active", "reason", "web_port is 0")
+		webLog.Info("only virtual listener active", "route", "web", "reason", "no_port")
 	}
 
 	return serveHTTPListeners(targets...)
@@ -144,6 +146,11 @@ func loadCertPair(prefix, certFile, keyFile string) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("%s certificate: %w", prefix, err)
 	}
+	file := certFile
+	if strings.Contains(file, "-----BEGIN") {
+		file = "" // inline PEM
+	}
+	httpproxy.LogCertLoaded(prefix, "", file, &cert)
 	return cert, nil
 }
 

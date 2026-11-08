@@ -31,6 +31,8 @@ type Options struct {
 	// Secrets writes keys and passwords in lines, for development
 	// (slogx.Config.LogSecrets).
 	Secrets bool
+	// Instance, when set, is written as instance= on every line.
+	Instance string
 }
 
 // Config returns the slogx configuration of o.
@@ -57,6 +59,9 @@ func (o Options) Config() (slogx.Config, error) {
 		out = "file"
 	}
 	c := slogx.Config{Console: slogx.ConsoleStdout, Level: o.Level, Memory: o.Memory, LogSecrets: o.Secrets}
+	if o.Instance != "" {
+		c.Attrs = []slog.Attr{slog.String("instance", o.Instance)}
+	}
 	if out == "file" || out == "off" {
 		c.Console = slogx.ConsoleOff
 	}

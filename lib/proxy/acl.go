@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -39,7 +40,7 @@ func destDenied(addr net.Addr, t *model.Tunnel, dest string) {
 // proxyAuthFailed writes the auth_failed event of a visitor whose proxy
 // credentials the tunnel refuses.
 func proxyAuthFailed(addr net.Addr, t *model.Tunnel, user string) {
-	slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", srcIP(addr), "role", "visitor", "identity", user, "reason", "bad_password", "route", taskName(t))
+	slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", srcIP(addr), "role", "visitor", "client", t.Client.Id, "proxy_user", user, "reason", "bad_password", "route", taskName(t))
 }
 
 // limitExceeded writes the limit_exceeded event of a connection to t that
@@ -53,13 +54,31 @@ func limitExceeded(t *model.Tunnel, f conn.Flow, err error) {
 			kind = "flow"
 		}
 	}
-	slogx.Emit(context.Background(), log, &logevent.LimitExceeded, "identity", t.Client.Id, "route", taskName(t), "kind", kind, "reason", logevent.NetReason(err), "err", err)
+	slogx.Emit(context.Background(), log, &logevent.LimitExceeded, "client", t.Client.Id, "route", taskName(t), "kind", kind, "reason", logevent.NetReason(err), "err", err)
 }
 
 // relayFailed writes the relay_failed event of a link to target through t
 // that could not be opened.
 func relayFailed(t *model.Tunnel, target string, err error) {
 	slogx.Emit(context.Background(), log, &logevent.RelayFailed, "route", taskName(t), "client", t.Client.Id, "target", target, "reason", logevent.NetReason(err), "err", err)
+}
+
+// connClosed writes the conn_closed line of a connection from visitor src
+// through t to target, which began at start; in is the bytes from the
+// visitor, out those to it. Nothing is built when the line is off.
+func connClosed(t *model.Tunnel, src net.Addr, target string, in, out int64, start time.Time) {
+	if t == nil || !log.Enabled(context.Background(), logevent.ConnClosed.Level) {
+		return
+	}
+	slogx.Emit(context.Background(), log, &logevent.ConnClosed, "route", taskName(t), "tunnel", t.Id, "client", clientOf(t),
+		"src_ip", srcIP(src), "target", target, "in_bytes", in, "out_bytes", out, "dur_ms", time.Since(start).Milliseconds())
+}
+
+func clientOf(t *model.Tunnel) int {
+	if t.Client == nil {
+		return 0
+	}
+	return t.Client.Id
 }
 
 // sourcePolicies returns the source access lists of the client and entry, a

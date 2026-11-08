@@ -194,7 +194,7 @@ func (a *App) RegisterUser(c Context) {
 	if len(result.ClientIDs) > 0 {
 		clientID = result.ClientIDs[0]
 	}
-	log.Info("user registered", "src_ip", VisitorIP(c, cfg), "user", result.Username, "client", clientID)
+	auditNote(c, result.Username, clientID)
 	ajax(c, "register success", 1)
 }
 

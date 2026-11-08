@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/slogx"
 	"io"
 	"net"
 	"strconv"
@@ -57,11 +59,11 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	// kcp
 	if t.KCP {
-		log.Info("bridge listening", "carrier", "kcp", "addr", net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort)))
 		l, err := conn.ListenKCP(net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort)))
 		if err != nil {
 			return fmt.Errorf("kcp bridge listener: %w", err)
 		}
+		slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", l.Addr().String(), "carrier", "kcp")
 		s.addCloser(l)
 		_ = s.scope.Go("kcp bridge listener", func(context.Context) error {
 			return conn.ServeKCP(l, func(c net.Conn) {
@@ -72,7 +74,6 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	// quic
 	if t.QUIC {
-		log.Info("bridge listening", "carrier", "quic", "port", n.BridgeQUICPort)
 		quicConfig := &quic.Config{
 			KeepAlivePeriod:    time.Duration(n.QUICKeepAlivePeriod) * time.Second,
 			MaxIdleTimeout:     time.Duration(n.QUICMaxIdleTimeout) * time.Second,
@@ -86,6 +87,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 		if err != nil {
 			return fmt.Errorf("quic bridge listener: %w", err)
 		}
+		slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", l.Addr().String(), "carrier", "quic")
 		s.addCloser(l)
 		_ = s.scope.Go("quic bridge listener", func(context.Context) error {
 			return conn.ServeQUIC(l, func(c net.Conn) {

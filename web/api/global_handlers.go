@@ -22,7 +22,6 @@ func (a *App) SaveGlobal(c Context) {
 		ajax(c, err.Error(), 0)
 		return
 	}
-	log.Info("global settings saved", "user", actorName(c))
 	ajax(c, "save success", 1)
 }
 

@@ -47,7 +47,7 @@ func fetch(ctx context.Context, rawURL string) (string, error) {
 		return "", &RemoteError{Err: errors.New("invalid URL")}
 	}
 	if !strings.EqualFold(req.URL.Scheme, "https") {
-		log.Warn("launch payload fetched over plain http; anyone on the path can read or replace it")
+		log.Warn("launch payload over plain http", "detail", "anyone on the path can read or replace it")
 	}
 	req.Header.Set("User-Agent", "npc-launch")
 	resp, err := httpClient.Do(req)

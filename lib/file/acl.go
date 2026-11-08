@@ -3,6 +3,7 @@ package file
 import (
 	"context"
 	"net"
+	"os"
 	"time"
 
 	"github.com/djylb/geomatch"
@@ -54,6 +55,22 @@ func RefreshAccessLists() {
 // geodata takes effect. Checking reads file metadata only.
 func WatchAccessLists(ctx context.Context, interval time.Duration) {
 	_ = acl.WatchGeoData(ctx, interval, reportGeoRefresh)
+}
+
+// ReportGeoData logs the geodata files the access lists use, as
+// source_loaded for each file present.
+func ReportGeoData() {
+	ipFile, siteFile := acl.GeoFiles()
+	for _, f := range []struct{ name, file string }{{"geoip", ipFile}, {"geosite", siteFile}} {
+		if f.file == "" {
+			continue
+		}
+		if _, err := os.Stat(f.file); err != nil {
+			log.Debug("geodata file not present", "name", f.name, "file", f.file)
+			continue
+		}
+		slogx.Emit(context.Background(), log, &logevent.SourceLoaded, "name", f.name, "file", f.file)
+	}
 }
 
 func reportGeoRefresh(res geomatch.RefreshResult) {

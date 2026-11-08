@@ -135,7 +135,7 @@ func compileLoginACL(mode int, rules string) *acl.Source {
 	}
 	src, err := acl.CompileSource(acl.ScopeGlobal, acl.DenyFirst, black, white, "login_acl_rules")
 	if err != nil {
-		log.Warn("login_acl_rules skipped", "err", err)
+		log.Warn("login source rules skipped", "keys", "login_acl_rules", "err", err)
 	}
 	return src
 }
@@ -152,7 +152,7 @@ func (s *DefaultLoginPolicy) IsUserBanned(username string) bool {
 func (s *DefaultLoginPolicy) RecordIPFailure(ip string) {
 	if prefix, ok := loginPrefix(ip); ok {
 		if until, started := s.limiters().ip.fail(prefix); started {
-			slogx.Emit(context.Background(), log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "key", formatLoginPrefix(prefix), "until", until)
+			slogx.Emit(context.Background(), log, &logevent.BanAdded, append(append([]any{"src_ip", ip, "scope", "login"}, prefixArgs(prefix, false)...), "until", until)...)
 		}
 	}
 }
@@ -182,13 +182,13 @@ func (s *DefaultLoginPolicy) RemoveBan(key string) bool {
 		if !l.ip.unban(prefix) {
 			return false
 		}
-		slogx.Emit(context.Background(), log, &logevent.BanRemoved, "src_ip", formatLoginPrefix(prefix), "scope", "login")
+		slogx.Emit(context.Background(), log, &logevent.BanRemoved, append(prefixArgs(prefix, true), "scope", "login")...)
 		return true
 	}
 	if !l.user.unban(key) {
 		return false
 	}
-	slogx.Emit(context.Background(), log, &logevent.BanRemoved, "scope", "login", "user", key)
+	slogx.Emit(context.Background(), log, &logevent.BanRemoved, "user", key, "scope", "login")
 	return true
 }
 
@@ -263,13 +263,13 @@ func newLoginLimiter[K comparable](delaySeconds, banSeconds int64, maxFail int, 
 	if delaySeconds > 0 {
 		l.delayTime = time.Duration(delaySeconds) * time.Second
 		if l.delay, err = failban.New[K](failban.Config{Threshold: 1, Window: l.delayTime, BanDuration: l.delayTime, Full: full}); err != nil {
-			log.Error("login delay disabled", "seconds", delaySeconds, "err", err)
+			log.Warn("login delay disabled", "dur_ms", delaySeconds*1000, "err", err)
 		}
 	}
 	if banSeconds > 0 {
 		l.countTime = time.Duration(banSeconds) * time.Second
 		if l.count, err = failban.New[K](failban.Config{Threshold: l.threshold, Window: l.countTime, BanDuration: l.countTime, Full: full}); err != nil {
-			log.Error("login ban disabled", "seconds", banSeconds, "err", err)
+			log.Warn("login ban disabled", "dur_ms", banSeconds*1000, "err", err)
 		}
 	}
 	return l
@@ -386,6 +386,19 @@ func loginPrefix(ip string) (netip.Prefix, bool) {
 
 // formatLoginPrefix shows an IPv4 key as its address and an IPv6 key as
 // its prefix.
+// prefixArgs gives a ban key as fields: src_ip for one address, prefix for
+// a wider IPv6 prefix; withAddr false leaves the single address out, for a
+// line that already has src_ip.
+func prefixArgs(prefix netip.Prefix, withAddr bool) []any {
+	if prefix.IsSingleIP() || prefix.Addr().Is4() {
+		if withAddr {
+			return []any{"src_ip", prefix.Addr().String()}
+		}
+		return nil
+	}
+	return []any{"prefix", prefix.String()}
+}
+
 func formatLoginPrefix(prefix netip.Prefix) string {
 	if prefix.Addr().Is4() {
 		return prefix.Addr().String()

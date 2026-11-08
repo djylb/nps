@@ -89,7 +89,7 @@ func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, peer
 		TransportMode:    legacy.P2PTransportMode,
 		TransportData:    p2pLocalPin(),
 		AcceptBackground: background,
-		Logger:           p2pLog.With("peer", peer),
+		Logger:           p2pLog.With("name", peer),
 	}
 	if mapper != nil {
 		opts.PortMapper = mapper

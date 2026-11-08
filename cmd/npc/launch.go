@@ -44,7 +44,7 @@ func launchPayloads() []string {
 func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string) {
 	for _, name := range []string{"server", "vkey", "type", "config", "proxy", "local_ip", "password", "target"} {
 		if f := flag.CommandLine.Lookup(name); f != nil && f.Changed {
-			cfgLog.Warn("flag ignored because --launch is set", "flag", name)
+			cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
 		}
 	}
 	slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
@@ -90,7 +90,7 @@ func superviseLaunch(
 			case !errors.As(err, &remote):
 				return err
 			case remote.Revoked:
-				log.Warn("launch input revoked, stopping it", "input", index, "retry_in_ms", launchSourcePause.Milliseconds())
+				log.Warn("launch input revoked", "input", index, "retry_in_ms", launchSourcePause.Milliseconds())
 				good = nil
 				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourcePause)
 				continue
@@ -99,7 +99,7 @@ func superviseLaunch(
 				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourceRetry)
 				continue
 			default:
-				log.Warn("launch input failed, using the last good payload", "input", index, "err", err)
+				log.Warn("launch input failed", "input", index, "detail", "using the last good payload", "err", err)
 				nextResolve = time.Now().Add(launchSourceRetry)
 			}
 		}
@@ -113,7 +113,7 @@ func superviseLaunch(
 		if !launchReconnects(good) {
 			return err
 		}
-		log.Info("launch input closed, restarting", "input", index, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
+		log.Info("launch input restarting", "input", index, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
 		_ = timeshim.Sleep(ctx, timeshim.Real, launchRelaunchWait)
 	}
 	return nil

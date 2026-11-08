@@ -53,7 +53,7 @@ func UpdateSelf(bin, name string) (*SelfUpdate, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := Update(context.Background(), bin, name, UpdateOptions{Pending: true})
+	res, err := Update(context.Background(), bin, name, UpdateOptions{Pending: true, Quiet: true})
 	if res == nil {
 		return nil, err
 	}

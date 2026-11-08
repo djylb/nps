@@ -110,7 +110,7 @@ func healthProbe(typ, path string) health.Probe {
 // are shared; a group that joins one learns its verdict at once.
 func (hc *HealthChecker) setGroup(m healthcheck.Group) {
 	if m.Name == "" || m.Interval <= 0 || m.Timeout <= 0 || m.Fall <= 0 {
-		log.Warn("invalid health group ignored", "group", m.Name)
+		log.Warn("invalid health group ignored", "name", m.Name)
 		return
 	}
 	spec := healthSpec{typ: m.Type, path: m.Path, interval: m.Interval, timeout: m.Timeout, fall: m.Fall}

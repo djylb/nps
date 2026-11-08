@@ -22,7 +22,7 @@ var errNotRedirected = errors.New("connection was not redirected to the transpar
 func listenTransparent(address string) (net.Listener, error) {
 	l, err := transparent.Listen(context.Background(), "tcp", address)
 	if errors.Is(err, fs.ErrPermission) {
-		log.Warn("no privilege for transparent sockets, TPROXY rules will not reach the listener", "addr", address, "err", err)
+		log.Warn("transparent sockets unavailable", "listen", address, "reason", "permission", "detail", "TPROXY rules will not reach the listener", "err", err)
 		return net.Listen("tcp", address)
 	}
 	return l, err

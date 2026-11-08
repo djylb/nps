@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"slices"
 	"strconv"
@@ -99,12 +100,22 @@ func abortRequest() {
 	panic(http.ErrAbortHandler)
 }
 
-// handleProxy runs a request through the stages described in plan.go.
+// handleProxy serves a request, recording it in the access log when that is
+// on.
 func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
+	if s.accessEnabled(r.Context()) {
+		s.serveRecorded(w, r, s.serveProxy)
+		return
+	}
+	s.serveProxy(w, r)
+}
+
+// serveProxy runs a request through the stages described in plan.go.
+func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 	// entry
 	host, err := s.store.GetInfoByHost(r.Host, r)
 	if err != nil || host.IsClose {
-		proxyLog.Debug("host not found", "route", r.Host, "path", r.RequestURI, "src_ip", srcIP(r.RemoteAddr))
+		// the access line reports it
 		if !s.ErrorAlways {
 			abortRequest()
 		}
@@ -116,6 +127,9 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, &host.SourceLists, host.Host) {
 		abortRequest()
+	}
+	if a := accessOf(r.Context()); a != nil {
+		a.route, a.host = host.Host, host.Id
 	}
 	p := s.plans.get(host, s.compilePlan)
 	req := &proxyRequest{plan: p, remote: r.RemoteAddr, tls: r.TLS != nil}
@@ -178,51 +192,12 @@ func (s *HttpServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		s.forwardTunnel(w, r, req)
 		return
 	}
-	if !proxyLog.Enabled(r.Context(), logevent.HTTPAccess.Level) {
-		p.proxy.ServeHTTP(w, r)
-		return
+	if a := accessOf(r.Context()); a != nil {
+		r = r.WithContext(httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{
+			GotConn: func(info httptrace.GotConnInfo) { a.target = connTarget(info.Conn) },
+		}))
 	}
-	start := time.Now()
-	aw := &accessWriter{ResponseWriter: w}
-	p.proxy.ServeHTTP(aw, r)
-	if aw.status == 0 {
-		aw.status = http.StatusOK
-	}
-	slogx.Emit(r.Context(), proxyLog, &logevent.HTTPAccess, "route", host.Host, "src_ip", srcIP(r.RemoteAddr),
-		"method", r.Method, "host", r.Host, "path", r.URL.Path, "status", aw.status, "bytes", aw.bytes,
-		"dur_ms", time.Since(start).Milliseconds())
-}
-
-// accessWriter records the status and size of a response for http_access.
-// Unwrap lets http.ResponseController reach the flusher and hijacker of the
-// writer it wraps.
-type accessWriter struct {
-	http.ResponseWriter
-	status int
-	bytes  int64
-}
-
-func (w *accessWriter) WriteHeader(code int) {
-	if w.status == 0 && code >= 200 {
-		w.status = code
-	}
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *accessWriter) Write(b []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	n, err := w.ResponseWriter.Write(b)
-	w.bytes += int64(n)
-	return n, err
-}
-
-func (w *accessWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-
-// Flush keeps streamed responses streaming through the wrapper.
-func (w *accessWriter) Flush() {
-	_ = http.NewResponseController(w.ResponseWriter).Flush()
+	p.proxy.ServeHTTP(w, r)
 }
 
 // httpsURL is the HTTPS URL of r, on the HTTPS port of the proxy.
@@ -262,7 +237,7 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 			if p.autoCORS {
 				origin := resp.Request.Header.Get("Origin")
 				if origin != "" && resp.Header.Get("Access-Control-Allow-Origin") == "" {
-					proxyLog.Debug("cors headers set", "origin", origin)
+					proxyLog.Debug("cors headers set", "route", p.host.Host, "detail", origin)
 					resp.Header.Set("Access-Control-Allow-Origin", origin)
 					resp.Header.Set("Access-Control-Allow-Credentials", "true")
 				}
@@ -276,11 +251,10 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			s.plans.drop(p)
 			if err == io.EOF {
-				proxyLog.Debug("backend closed before response", "route", p.host.Host, "status", 521)
 				rw.WriteHeader(521)
 				return
 			}
-			proxyLog.Debug("proxy error", "route", p.host.Host, "method", req.Method, "path", req.URL.Path, "err", err)
+			proxyLog.Debug("proxy error", "route", p.host.Host, "host", p.host.Id, "method", req.Method, "path", req.URL.Path, "err", err)
 
 			errMsg := err.Error()
 			idx := strings.Index(errMsg, "Task")
@@ -395,14 +369,19 @@ func sendProxyHeader(ctx context.Context, c net.Conn, req *proxyRequest) error {
 // relays the connection both ways.
 func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *proxyRequest) {
 	p, host := req.plan, req.plan.host
+	a := accessOf(r.Context())
+	var target string
 	rawConn, err := s.openLink(req, func(addr string) {
-		slogx.Emit(context.Background(), proxyLog, &logevent.HTTPAccess, "route", host.Host, "src_ip", srcIP(r.RemoteAddr), "method", r.Method, "host", r.Host, "path", r.URL.Path, "target", addr)
+		target = addr
+		if a != nil {
+			a.target = addr
+		}
 	}, func(addr string, err error) {
-		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", host.Host, "target", addr, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", host.Host, "host", host.Id, "client", host.Client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrNoTarget) {
-			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", host.Host, "target", r.Host, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", host.Host, "host", host.Id, "client", host.Client.Id, "reason", "no_target", "err", err)
 		}
 		w.WriteHeader(http.StatusBadGateway)
 		return
@@ -420,7 +399,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 	if p.backendTLS {
 		tlsConn, err := tlsconn.Client(r.Context(), netConn, backendTLSConfig(req.sni))
 		if err != nil {
-			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "backend tls handshake failed", "route", host.Host, "target", req.sni, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "backend tls handshake failed", "route", host.Host, "host", host.Id, "target", target, "domain", req.sni, "reason", logevent.NetReason(err), "err", err)
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
@@ -429,17 +408,17 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 
 	p.rewriteUpgrade(r, req)
 
-	hijacker, ok := w.(http.Hijacker)
+	hj, ok := hijacker(w)
 	if !ok {
 		_ = netConn.Close()
 		w.WriteHeader(http.StatusInternalServerError)
-		proxyLog.Error("tunnel request cannot hijack connection", "route", host.Host)
+		proxyLog.Debug("tunnel request cannot hijack connection", "route", host.Host, "host", host.Id, "proto", r.Proto)
 		return
 	}
 
 	r.Close = false
 	if err := r.Write(netConn); err != nil {
-		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "handshake write to backend failed", "route", host.Host, "target", req.sni, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "handshake write to backend failed", "route", host.Host, "host", host.Id, "target", target, "domain", req.sni, "reason", logevent.NetReason(err), "err", err)
 		_ = netConn.Close()
 		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
@@ -448,7 +427,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 	backendReader := bufio.NewReader(netConn)
 	resp, err := http.ReadResponse(backendReader, r)
 	if err != nil {
-		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "handshake read from backend failed", "route", host.Host, "target", req.sni, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "handshake read from backend failed", "route", host.Host, "host", host.Id, "target", target, "domain", req.sni, "reason", logevent.NetReason(err), "err", err)
 		_ = netConn.Close()
 		s.writeErrorPage(w, http.StatusBadGateway, s.ErrorContent)
 		return
@@ -460,7 +439,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 	good := (r.Method == http.MethodConnect && resp.StatusCode == http.StatusOK) ||
 		(r.Method != http.MethodConnect && resp.StatusCode == http.StatusSwitchingProtocols)
 	if !good {
-		proxyLog.Debug("backend refused tunnel handshake", "route", host.Host, "status", resp.StatusCode, "src_ip", srcIP(r.RemoteAddr))
+		proxyLog.Debug("backend refused tunnel handshake", "route", host.Host, "host", host.Id, "status", resp.StatusCode, "src_ip", srcIP(r.RemoteAddr))
 		if !req.authed {
 			// An unauthenticated client never sees a backend response.
 			_ = netConn.Close()
@@ -472,7 +451,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 		return
 	}
 
-	clientConn, clientBuf, err := hijacker.Hijack()
+	clientConn, clientBuf, err := hj.Hijack()
 	if err != nil {
 		_ = netConn.Close()
 		w.WriteHeader(http.StatusInternalServerError)
@@ -486,6 +465,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 		_ = clientConn.Close()
 		return
 	}
+	hijacked(w, resp.StatusCode)
 	if err := clientBuf.Flush(); err != nil {
 		proxyLog.Debug("handshake flush to visitor failed", "route", host.Host, "err", err)
 		_ = netConn.Close()
@@ -634,12 +614,13 @@ func (s *HttpServer) NewServer(port int, scheme string) *http.Server {
 func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
 	req := requestOf(ctx)
 	h := req.plan.host
-	rawConn, err := s.openLink(req, nil, func(addr string, err error) {
-		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", h.Host, "target", addr, "reason", logevent.NetReason(err), "err", err)
+	var target string
+	rawConn, err := s.openLink(req, func(addr string) { target = addr }, func(addr string, err error) {
+		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", h.Host, "host", h.Id, "client", h.Client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrNoTarget) {
-			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", h.Host, "target", h.Id, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", h.Host, "host", h.Id, "client", h.Client.Id, "reason", "no_target", "err", err)
 		}
 		return nil, err
 	}
@@ -648,7 +629,7 @@ func (s *HttpServer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		_ = flowConn.Close()
 		return nil, fmt.Errorf("write PROXY header: %w", err)
 	}
-	return flowConn, nil
+	return &dialedConn{Conn: flowConn, target: target}, nil
 }
 
 func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -658,7 +639,8 @@ func (s *HttpServer) DialTlsContext(ctx context.Context, network, addr string) (
 	}
 	tlsConn, err := tlsconn.Client(ctx, c, backendTLSConfig(requestOf(ctx).sni))
 	if err != nil {
-		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "backend tls handshake failed", "route", requestOf(ctx).plan.host.Host, "target", requestOf(ctx).sni, "reason", logevent.NetReason(err), "err", err)
+		h := requestOf(ctx).plan.host
+		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, slogx.KeyMsg, "backend tls handshake failed", "route", h.Host, "host", h.Id, "target", connTarget(c), "domain", requestOf(ctx).sni, "reason", logevent.NetReason(err), "err", err)
 		return nil, err
 	}
 	return tlsConn, nil

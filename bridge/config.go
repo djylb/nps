@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -21,7 +22,8 @@ func writeAddFail(c *conn.Conn) bool {
 
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *model.Client, caps legacy.Caps, uuid string) {
 	var fail bool
-	var published *Node // the node that awaits its tunnel after this exchange
+	var published *Node   // the node that awaits its tunnel after this exchange
+	var accepted []string // routes of the tunnels and hosts taken from the npc
 	join := func(id int) {
 		_, published = s.joinNode(id, uuid, newNode(uuid, caps), func(*Node) {})
 		published.awaitTunnel()
@@ -113,7 +115,7 @@ loop:
 			}
 			hh, err := s.publishHost(h, client, uuid, caps)
 			if err != nil {
-				log.Info("host from npc config refused", "client", client.Id, "host", h.Host, "err", err)
+				log.Info("host from npc config refused", "client", client.Id, "domain", h.Host, "err", err)
 				if !writeAddFail(c) {
 					fail = true
 					break loop
@@ -121,7 +123,7 @@ loop:
 				continue
 			}
 			if hh != nil && !dispatch(s.OpenHost, hh) {
-				log.Warn("opening host timed out", "client", client.Id, "host", hh.Host)
+				log.Warn("opening host timed out", "client", client.Id, "host", hh.Id, "domain", hh.Host)
 				if !writeAddFail(c) {
 					fail = true
 					break loop
@@ -132,6 +134,7 @@ loop:
 				fail = true
 				break loop
 			}
+			accepted = append(accepted, h.Host)
 
 		case legacy.FlagNewTask:
 			t, err := legacy.ReadTask(c)
@@ -194,8 +197,16 @@ loop:
 					fail = true
 					break loop
 				}
+				if tt != nil {
+					accepted = append(accepted, tt.LogRoute())
+				} else {
+					accepted = append(accepted, tl.LogRoute())
+				}
 			}
 		}
+	}
+	if client != nil && len(accepted) > 0 {
+		log.Info("npc config accepted", "client", client.Id, "count", len(accepted), "routes", strings.Join(accepted, ","))
 	}
 
 	if fail && client != nil {
@@ -255,7 +266,7 @@ func (s *Bridge) dropConfigNode(id int, uuid string, caps legacy.Caps) {
 			return
 		}
 	}
-	s.DelClient(id)
+	s.delClient(id, "closed")
 }
 
 func (s *Bridge) newRoutes(clientId int) *model.RouteSet {

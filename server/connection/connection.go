@@ -1,11 +1,14 @@
 package connection
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"sync/atomic"
 
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/slogx"
 )
@@ -101,11 +104,45 @@ func Listen(k Kind) (net.Listener, error) {
 	if !validPort(port) {
 		return nil, fmt.Errorf("invalid %v port %d", k, port)
 	}
-	log.Info("listener starting", "kind", k, "port", port)
+	listen := net.JoinHostPort(ip, strconv.Itoa(port))
+	route, carrier, secure := k.logNames()
+	var l net.Listener
+	var err error
 	if pMux != nil && port == n.BridgePort {
-		return pMux.register(k)
+		l, err = pMux.register(k)
+	} else {
+		l, err = net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(ip), Port: port})
 	}
-	return net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(ip), Port: port})
+	if err != nil {
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", route, "listen", listen, "reason", logevent.NetReason(err), "err", err)
+		return nil, err
+	}
+	slogx.Emit(context.Background(), log, &logevent.Listening, "route", route, "listen", listen, "carrier", carrier, "tls", secure)
+	return l, nil
+}
+
+// logNames returns the route, carrier and tls of kind k's log lines.
+func (k Kind) logNames() (route, carrier string, secure bool) {
+	switch k {
+	case KindBridgeTCP:
+		return "bridge", "tcp", false
+	case KindBridgeTLS:
+		return "bridge", "tls", true
+	case KindBridgeWS:
+		return "bridge", "ws", false
+	case KindBridgeWSS:
+		return "bridge", "wss", true
+	case KindHTTP:
+		return "http", "tcp", false
+	case KindHTTPS:
+		return "https", "tls", true
+	case KindWeb:
+		if servercfg.Current().Web.OpenSSL {
+			return "web", "tls", true
+		}
+		return "web", "tcp", false
+	}
+	return k.String(), "tcp", false
 }
 
 func validPort(port int) bool { return port > 0 && port <= 65535 }

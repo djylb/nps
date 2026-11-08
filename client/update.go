@@ -14,11 +14,11 @@ var updating atomic.Bool
 
 func handleUpdateRequest() {
 	if RemoteUpdate == nil {
-		log.Info("remote update requested but disabled")
+		log.Info("remote update refused", "reason", "disabled")
 		return
 	}
 	if !updating.CompareAndSwap(false, true) {
-		log.Info("remote update requested while one is running")
+		log.Info("remote update refused", "reason", "running")
 		return
 	}
 	log.Info("remote update requested")

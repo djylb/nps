@@ -54,7 +54,7 @@ func NewFileServerManager(parentCtx context.Context) *FileServerManager {
 
 func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	if fsm.ctx.Err() != nil {
-		log.Debug("file server manager closed, not starting file server")
+		log.Debug("file server not started", "reason", "closed")
 		return
 	}
 	vl := conn.NewVirtualListener(netx.HostAddr(t.ServerIp, uint16(t.Port)))
@@ -107,11 +107,11 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 		BaseContext: func(_ net.Listener) context.Context { return fsm.ctx },
 		Handler:     handler,
 	}
-	log.Info("webdav server started", "path", t.LocalPath, "strip_prefix", t.StripPre, "ports", t.Ports)
+	log.Info("webdav server started", "file", t.LocalPath, "strip_prefix", t.StripPre, "ports", t.Ports)
 	fsm.mu.Lock()
 	if fsm.servers == nil {
 		fsm.mu.Unlock()
-		log.Debug("file server manager closed, not starting file server")
+		log.Debug("file server not started", "reason", "closed")
 		return
 	}
 	fsm.servers[key] = &fileServer{
@@ -150,7 +150,7 @@ func (fsm *FileServerManager) CloseAll() {
 	for key, e := range entries {
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := e.srv.Shutdown(ctx2); err != nil {
-			log.Warn("file server shutdown failed", "key", key, "err", err)
+			log.Warn("file server shutdown failed", "name", key, "err", err)
 		}
 		cancel2()
 		_ = e.listener.Close()

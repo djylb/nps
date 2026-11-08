@@ -182,6 +182,9 @@ nps.exe -conf_path=D:\test\nps
 | `security_log` | 空 | `/var/log/nps/security.log` | 另写一份只含安全事件的文件，供 fail2ban 使用；轮转设置同上 |
 | `log_path` | 系统默认 | `conf/nps.log` | 路径、`off`、`docker`；系统默认为 Windows 程序目录 `nps.log`，其他 `/var/log/nps.log` |
 | `log_secrets` | `false` | `true` | 开发调试用：日志里原样写出密钥和口令（如 vkey、错误密钥的详情），开启时记一条警告；生产环境保持关闭；修改后热生效 |
+| `access_log` | 空 | `logs/access.log` | 域名代理的访问日志文件，记录每个请求（含被拒绝的），不受 `log_level` 影响，轮转设置同主日志 |
+| `access_log_format` | `combined` | `json` | `combined`（Web 服务器通用格式，末尾追加耗时微秒和 Host，GoAccess 等可直接读）或 `json` |
+| `log_instance` | 空 | `nps-sg1` | 每行末尾加 `instance=`，多台 nps 的日志汇总到一处时用来区分 |
 | `log_memory` | `1000` | `5000` | 内存中保留的最近日志条数，供管理面板查看日志（`/api/v1/logs/entries`）；`0` 关闭 |
 | `log_compress` | `false` | `false` | 压缩日志 |
 | `log_max_files` | `30` | `10` | 日志文件数上限 |

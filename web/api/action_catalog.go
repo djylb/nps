@@ -27,8 +27,11 @@ type ActionSpec struct {
 	Ownership        ActionOwnership
 	RequiredFeatures []PageFeature
 	Handler          Handler
-	ClientScope      bool
-	Protected        bool
+	// Audit names the admin_action event of an action that changes
+	// state, such as tunnel_delete; empty for one that only reads.
+	Audit       string
+	ClientScope bool
+	Protected   bool
 }
 
 type ActionEntry struct {
@@ -48,69 +51,69 @@ func SessionActionCatalog(app *App) []ActionSpec {
 	if app == nil {
 		return nil
 	}
-	return []ActionSpec{
+	return app.withAudit([]ActionSpec{
 		{Controller: "auth", Name: "bootstrap", Method: http.MethodGet, APIPath: "/api/v1/auth/bootstrap", LegacyPath: "/auth/bootstrap", Handler: app.Bootstrap},
 		{Controller: "auth", Name: "getauthkey", Method: http.MethodGet, APIPath: "/api/v1/auth/getauthkey", LegacyPath: "/auth/getauthkey", Handler: app.GetAuthKey},
 		{Controller: "auth", Name: "gettime", Method: http.MethodGet, APIPath: "/api/v1/auth/gettime", LegacyPath: "/auth/gettime", Handler: app.GetTime},
 		{Controller: "auth", Name: "getcert", Method: http.MethodGet, APIPath: "/api/v1/auth/getcert", LegacyPath: "/auth/getcert", Handler: app.GetCert},
 		{Controller: "login", Name: "verify", Method: http.MethodPost, APIPath: "/api/v1/login/verify", LegacyPath: "/login/verify", Handler: app.LoginVerify},
 		{
-			Controller: "login", Name: "register", Method: http.MethodPost, APIPath: "/api/v1/login/register", LegacyPath: "/login/register",
+			Controller: "login", Name: "register", Audit: "user_register", Method: http.MethodPost, APIPath: "/api/v1/login/register", LegacyPath: "/login/register",
 			RequiredFeatures: []PageFeature{PageFeatureAllowUserRegister}, Handler: app.RegisterUser,
 		},
 		{Controller: "login", Name: "logout", Method: http.MethodPost, APIPath: "/api/v1/login/logout", Handler: app.Logout},
-	}
+	})
 }
 
 func ProtectedActionCatalog(app *App) []ActionSpec {
 	if app == nil {
 		return nil
 	}
-	return []ActionSpec{
+	return app.withAudit([]ActionSpec{
 		{Controller: "logs", Name: "entries", Method: http.MethodGet, APIPath: "/api/v1/logs/entries", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogEntries},
 		{Controller: "logs", Name: "levels", Method: http.MethodGet, APIPath: "/api/v1/logs/levels", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogLevels},
-		{Controller: "logs", Name: "override", Method: http.MethodPost, APIPath: "/api/v1/logs/override", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogOverride},
+		{Controller: "logs", Name: "override", Audit: "log_override", Method: http.MethodPost, APIPath: "/api/v1/logs/override", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.LogOverride},
 		{Controller: "live", Name: "status", Method: http.MethodPost, APIPath: "/api/v1/live/status", LegacyPath: "/live/status", Protected: true, Handler: app.LiveStatus},
 		{Controller: "index", Name: "stats", Method: http.MethodGet, APIPath: "/api/v1/index/stats", LegacyPath: "/index/stats", Protected: true, Handler: app.DashboardStats},
-		{Controller: "index", Name: "updateserver", Method: http.MethodPost, APIPath: "/api/v1/index/updateserver", LegacyPath: "/index/updateserver", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateServer},
+		{Controller: "index", Name: "updateserver", Audit: "server_update", Method: http.MethodPost, APIPath: "/api/v1/index/updateserver", LegacyPath: "/index/updateserver", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateServer},
 		{Controller: "index", Name: "gettunnel", Method: http.MethodPost, APIPath: "/api/v1/index/gettunnel", LegacyPath: "/index/gettunnel", Permission: webservice.PermissionTunnelsRead, ClientScope: true, Protected: true, Handler: app.GetTunnel},
-		{Controller: "index", Name: "add", Method: http.MethodPost, APIPath: "/api/v1/index/add", LegacyPath: "/index/add", Permission: webservice.PermissionTunnelsCreate, ClientScope: true, Protected: true, Handler: app.AddTunnel},
+		{Controller: "index", Name: "add", Audit: "tunnel_create", Method: http.MethodPost, APIPath: "/api/v1/index/add", LegacyPath: "/index/add", Permission: webservice.PermissionTunnelsCreate, ClientScope: true, Protected: true, Handler: app.AddTunnel},
 		{Controller: "index", Name: "hostlist", Method: http.MethodPost, APIPath: "/api/v1/index/hostlist", LegacyPath: "/index/hostlist", Permission: webservice.PermissionHostsRead, ClientScope: true, Protected: true, Handler: app.HostList},
-		{Controller: "index", Name: "addhost", Method: http.MethodPost, APIPath: "/api/v1/index/addhost", LegacyPath: "/index/addhost", Permission: webservice.PermissionHostsCreate, ClientScope: true, Protected: true, Handler: app.AddHost},
+		{Controller: "index", Name: "addhost", Audit: "host_create", Method: http.MethodPost, APIPath: "/api/v1/index/addhost", LegacyPath: "/index/addhost", Permission: webservice.PermissionHostsCreate, ClientScope: true, Protected: true, Handler: app.AddHost},
 		{Controller: "index", Name: "getonetunnel", Method: http.MethodPost, APIPath: "/api/v1/index/getonetunnel", LegacyPath: "/index/getonetunnel", Permission: webservice.PermissionTunnelsRead, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.GetOneTunnel},
-		{Controller: "index", Name: "edit", Method: http.MethodPost, APIPath: "/api/v1/index/edit", LegacyPath: "/index/edit", Permission: webservice.PermissionTunnelsUpdate, ClientScope: true, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.EditTunnel},
-		{Controller: "index", Name: "start", Method: http.MethodPost, APIPath: "/api/v1/index/start", LegacyPath: "/index/start", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StartTunnel},
-		{Controller: "index", Name: "stop", Method: http.MethodPost, APIPath: "/api/v1/index/stop", LegacyPath: "/index/stop", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StopTunnel},
-		{Controller: "index", Name: "clear", Method: http.MethodPost, APIPath: "/api/v1/index/clear", LegacyPath: "/index/clear", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.ClearTunnel},
-		{Controller: "index", Name: "del", Method: http.MethodPost, APIPath: "/api/v1/index/del", LegacyPath: "/index/del", Permission: webservice.PermissionTunnelsDelete, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.DeleteTunnel},
+		{Controller: "index", Name: "edit", Audit: "tunnel_update", Method: http.MethodPost, APIPath: "/api/v1/index/edit", LegacyPath: "/index/edit", Permission: webservice.PermissionTunnelsUpdate, ClientScope: true, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.EditTunnel},
+		{Controller: "index", Name: "start", Audit: "tunnel_start", Method: http.MethodPost, APIPath: "/api/v1/index/start", LegacyPath: "/index/start", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StartTunnel},
+		{Controller: "index", Name: "stop", Audit: "tunnel_stop", Method: http.MethodPost, APIPath: "/api/v1/index/stop", LegacyPath: "/index/stop", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.StopTunnel},
+		{Controller: "index", Name: "clear", Audit: "tunnel_clear", Method: http.MethodPost, APIPath: "/api/v1/index/clear", LegacyPath: "/index/clear", Permission: webservice.PermissionTunnelsControl, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.ClearTunnel},
+		{Controller: "index", Name: "del", Audit: "tunnel_delete", Method: http.MethodPost, APIPath: "/api/v1/index/del", LegacyPath: "/index/del", Permission: webservice.PermissionTunnelsDelete, Ownership: ActionOwnershipTunnel, Protected: true, Handler: app.DeleteTunnel},
 		{Controller: "index", Name: "certsuggestion", Method: http.MethodPost, APIPath: "/api/v1/index/certsuggestion", LegacyPath: "/index/certsuggestion", Permission: webservice.PermissionHostsRead, ClientScope: true, Protected: true, Handler: app.CertSuggestion},
 		{Controller: "index", Name: "gethost", Method: http.MethodPost, APIPath: "/api/v1/index/gethost", LegacyPath: "/index/gethost", Permission: webservice.PermissionHostsRead, Ownership: ActionOwnershipHost, Protected: true, Handler: app.GetHost},
-		{Controller: "index", Name: "edithost", Method: http.MethodPost, APIPath: "/api/v1/index/edithost", LegacyPath: "/index/edithost", Permission: webservice.PermissionHostsUpdate, ClientScope: true, Ownership: ActionOwnershipHost, Protected: true, Handler: app.EditHost},
-		{Controller: "index", Name: "starthost", Method: http.MethodPost, APIPath: "/api/v1/index/starthost", LegacyPath: "/index/starthost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StartHost},
-		{Controller: "index", Name: "stophost", Method: http.MethodPost, APIPath: "/api/v1/index/stophost", LegacyPath: "/index/stophost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StopHost},
-		{Controller: "index", Name: "clearhost", Method: http.MethodPost, APIPath: "/api/v1/index/clearhost", LegacyPath: "/index/clearhost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.ClearHost},
-		{Controller: "index", Name: "delhost", Method: http.MethodPost, APIPath: "/api/v1/index/delhost", LegacyPath: "/index/delhost", Permission: webservice.PermissionHostsDelete, Ownership: ActionOwnershipHost, Protected: true, Handler: app.DeleteHost},
+		{Controller: "index", Name: "edithost", Audit: "host_update", Method: http.MethodPost, APIPath: "/api/v1/index/edithost", LegacyPath: "/index/edithost", Permission: webservice.PermissionHostsUpdate, ClientScope: true, Ownership: ActionOwnershipHost, Protected: true, Handler: app.EditHost},
+		{Controller: "index", Name: "starthost", Audit: "host_start", Method: http.MethodPost, APIPath: "/api/v1/index/starthost", LegacyPath: "/index/starthost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StartHost},
+		{Controller: "index", Name: "stophost", Audit: "host_stop", Method: http.MethodPost, APIPath: "/api/v1/index/stophost", LegacyPath: "/index/stophost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.StopHost},
+		{Controller: "index", Name: "clearhost", Audit: "host_clear", Method: http.MethodPost, APIPath: "/api/v1/index/clearhost", LegacyPath: "/index/clearhost", Permission: webservice.PermissionHostsControl, Ownership: ActionOwnershipHost, Protected: true, Handler: app.ClearHost},
+		{Controller: "index", Name: "delhost", Audit: "host_delete", Method: http.MethodPost, APIPath: "/api/v1/index/delhost", LegacyPath: "/index/delhost", Permission: webservice.PermissionHostsDelete, Ownership: ActionOwnershipHost, Protected: true, Handler: app.DeleteHost},
 		{Controller: "client", Name: "list", Method: http.MethodPost, APIPath: "/api/v1/client/list", LegacyPath: "/client/list", Permission: webservice.PermissionClientsRead, Protected: true, Handler: app.ListClients},
 		{Controller: "client", Name: "qr", Method: http.MethodGet, APIPath: "/api/v1/client/qr", LegacyPath: "/client/qr", Permission: webservice.PermissionClientsRead, Protected: true, Handler: app.ClientQRCode},
-		{Controller: "client", Name: "add", Method: http.MethodPost, APIPath: "/api/v1/client/add", LegacyPath: "/client/add", Permission: webservice.PermissionClientsCreate, Protected: true, Handler: app.AddClient},
+		{Controller: "client", Name: "add", Audit: "client_create", Method: http.MethodPost, APIPath: "/api/v1/client/add", LegacyPath: "/client/add", Permission: webservice.PermissionClientsCreate, Protected: true, Handler: app.AddClient},
 		{Controller: "client", Name: "pingclient", Method: http.MethodPost, APIPath: "/api/v1/client/pingclient", LegacyPath: "/client/pingclient", Permission: webservice.PermissionClientsRead, Ownership: ActionOwnershipClient, Protected: true, Handler: app.PingClient},
 		{Controller: "client", Name: "getclient", Method: http.MethodPost, APIPath: "/api/v1/client/getclient", LegacyPath: "/client/getclient", Permission: webservice.PermissionClientsRead, Ownership: ActionOwnershipClient, Protected: true, Handler: app.GetClient},
-		{Controller: "client", Name: "edit", Method: http.MethodPost, APIPath: "/api/v1/client/edit", LegacyPath: "/client/edit", Permission: webservice.PermissionClientsUpdate, Ownership: ActionOwnershipClient, Protected: true, Handler: app.EditClient},
-		{Controller: "client", Name: "clear", Method: http.MethodPost, APIPath: "/api/v1/client/clear", LegacyPath: "/client/clear", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ClearClient},
-		{Controller: "client", Name: "changestatus", Method: http.MethodPost, APIPath: "/api/v1/client/changestatus", LegacyPath: "/client/changestatus", Permission: webservice.PermissionClientsStatus, Ownership: ActionOwnershipClient, Protected: true, Handler: app.ChangeClientStatus},
-		{Controller: "client", Name: "update", Method: http.MethodPost, APIPath: "/api/v1/client/update", LegacyPath: "/client/update", Permission: webservice.PermissionManagementAdmin, Ownership: ActionOwnershipClient, Protected: true, Handler: app.UpdateClient},
-		{Controller: "client", Name: "kick", Method: http.MethodPost, APIPath: "/api/v1/client/kick", LegacyPath: "/client/kick", Permission: webservice.PermissionManagementAdmin, Ownership: ActionOwnershipClient, Protected: true, Handler: app.KickClient},
-		{Controller: "client", Name: "del", Method: http.MethodPost, APIPath: "/api/v1/client/del", LegacyPath: "/client/del", Permission: webservice.PermissionClientsDelete, Ownership: ActionOwnershipClient, Protected: true, Handler: app.DeleteClient},
-		{Controller: "global", Name: "save", Method: http.MethodPost, APIPath: "/api/v1/global/save", LegacyPath: "/global/save", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.SaveGlobal},
-		{Controller: "global", Name: "export", Method: http.MethodGet, APIPath: "/api/v1/global/export", LegacyPath: "/global/export", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ExportConfig},
-		{Controller: "global", Name: "import", Method: http.MethodPost, APIPath: "/api/v1/global/import", LegacyPath: "/global/import", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ImportConfig},
-		{Controller: "global", Name: "updategeo", Method: http.MethodPost, APIPath: "/api/v1/global/updategeo", LegacyPath: "/global/updategeo", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateGeoData},
-		{Controller: "global", Name: "reload", Method: http.MethodPost, APIPath: "/api/v1/global/reload", LegacyPath: "/global/reload", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ReloadConfig},
+		{Controller: "client", Name: "edit", Audit: "client_update", Method: http.MethodPost, APIPath: "/api/v1/client/edit", LegacyPath: "/client/edit", Permission: webservice.PermissionClientsUpdate, Ownership: ActionOwnershipClient, Protected: true, Handler: app.EditClient},
+		{Controller: "client", Name: "clear", Audit: "client_clear", Method: http.MethodPost, APIPath: "/api/v1/client/clear", LegacyPath: "/client/clear", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ClearClient},
+		{Controller: "client", Name: "changestatus", Audit: "client_status", Method: http.MethodPost, APIPath: "/api/v1/client/changestatus", LegacyPath: "/client/changestatus", Permission: webservice.PermissionClientsStatus, Ownership: ActionOwnershipClient, Protected: true, Handler: app.ChangeClientStatus},
+		{Controller: "client", Name: "update", Audit: "client_upgrade", Method: http.MethodPost, APIPath: "/api/v1/client/update", LegacyPath: "/client/update", Permission: webservice.PermissionManagementAdmin, Ownership: ActionOwnershipClient, Protected: true, Handler: app.UpdateClient},
+		{Controller: "client", Name: "kick", Audit: "client_kick", Method: http.MethodPost, APIPath: "/api/v1/client/kick", LegacyPath: "/client/kick", Permission: webservice.PermissionManagementAdmin, Ownership: ActionOwnershipClient, Protected: true, Handler: app.KickClient},
+		{Controller: "client", Name: "del", Audit: "client_delete", Method: http.MethodPost, APIPath: "/api/v1/client/del", LegacyPath: "/client/del", Permission: webservice.PermissionClientsDelete, Ownership: ActionOwnershipClient, Protected: true, Handler: app.DeleteClient},
+		{Controller: "global", Name: "save", Audit: "global_save", Method: http.MethodPost, APIPath: "/api/v1/global/save", LegacyPath: "/global/save", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.SaveGlobal},
+		{Controller: "global", Name: "export", Audit: "config_export", Method: http.MethodGet, APIPath: "/api/v1/global/export", LegacyPath: "/global/export", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ExportConfig},
+		{Controller: "global", Name: "import", Audit: "config_import", Method: http.MethodPost, APIPath: "/api/v1/global/import", LegacyPath: "/global/import", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ImportConfig},
+		{Controller: "global", Name: "updategeo", Audit: "geodata_update", Method: http.MethodPost, APIPath: "/api/v1/global/updategeo", LegacyPath: "/global/updategeo", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.UpdateGeoData},
+		{Controller: "global", Name: "reload", Audit: "config_reload", Method: http.MethodPost, APIPath: "/api/v1/global/reload", LegacyPath: "/global/reload", Permission: webservice.PermissionManagementAdmin, Protected: true, Handler: app.ReloadConfig},
 		{Controller: "global", Name: "banlist", Method: http.MethodPost, APIPath: "/api/v1/global/banlist", LegacyPath: "/global/banlist", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.BanList},
-		{Controller: "global", Name: "unban", Method: http.MethodPost, APIPath: "/api/v1/global/unban", LegacyPath: "/global/unban", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.Unban},
-		{Controller: "global", Name: "unbanall", Method: http.MethodPost, APIPath: "/api/v1/global/unbanall", LegacyPath: "/global/unbanall", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.UnbanAll},
-		{Controller: "global", Name: "banclean", Method: http.MethodPost, APIPath: "/api/v1/global/banclean", LegacyPath: "/global/banclean", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.BanClean},
-	}
+		{Controller: "global", Name: "unban", Audit: "ban_remove", Method: http.MethodPost, APIPath: "/api/v1/global/unban", LegacyPath: "/global/unban", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.Unban},
+		{Controller: "global", Name: "unbanall", Audit: "ban_remove_all", Method: http.MethodPost, APIPath: "/api/v1/global/unbanall", LegacyPath: "/global/unbanall", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.UnbanAll},
+		{Controller: "global", Name: "banclean", Audit: "ban_clean", Method: http.MethodPost, APIPath: "/api/v1/global/banclean", LegacyPath: "/global/banclean", Permission: webservice.PermissionGlobalManage, Protected: true, Handler: app.BanClean},
+	})
 }
 
 func VisibleActionEntries(cfg *servercfg.Snapshot, baseURL string, actor *Actor, authz webservice.AuthorizationService, specs []ActionSpec) []ActionEntry {

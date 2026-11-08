@@ -81,7 +81,7 @@ func Accept(l net.Listener, f func(c net.Conn)) error {
 			if netx.IsClosed(err) {
 				return nil
 			}
-			log.Error("accept failed", "addr", l.Addr(), "err", err)
+			log.Error("accept failed", "listen", l.Addr().String(), "err", err)
 			return err
 		}
 		go f(c)

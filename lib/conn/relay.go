@@ -32,9 +32,10 @@ type Entry interface {
 // direction ends, then closes both. Each of flows counts the bytes from the
 // visitor as inlet and those back as export traffic, and the relay stops
 // once one of them is over its limits; the first bytes of each direction set
-// task.IsHttp.
-func Join(visitor, client net.Conn, flows []Flow, task Entry, remote string) {
-	relay(client, visitor, flows, task, remote)
+// task.IsHttp. It returns the bytes written out to the visitor and read in
+// from it.
+func Join(visitor, client net.Conn, flows []Flow, task Entry, remote string) (out, in int64) {
+	return relay(client, visitor, flows, task, remote)
 }
 
 // relay copies between client, the connection to the client, and visitor
@@ -138,7 +139,7 @@ func detectHTTP(b []byte, task Entry, remote string) {
 	if isHTTP && string(b[:3]) != "HTT" {
 		first, _, ok := strings.Cut(string(b), "\r\n")
 		if ok {
-			log.Debug("http request", "request", first, "src_ip", netaddr.Host(remote), "target", task.RelayTarget())
+			log.Debug("http request", "request", first, "src_ip", netaddr.Host(remote))
 		}
 	}
 	task.SetIsHTTP(isHTTP)

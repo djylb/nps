@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -91,8 +90,8 @@ func (c *httpClient) send(req *http.Request, send func(*http.Client) (*http.Resp
 	if resp != nil {
 		_ = resp.Body.Close()
 	}
-	fmt.Printf("WARNING: certificate verification for %s failed: %v\n", req.URL.Host, err)
-	fmt.Println("WARNING: the system certificate store may be broken or outdated; retrying WITHOUT certificate verification, the download is still checked against its digest")
+	log.Warn("retrying without certificate verification", "addr", req.URL.Host, "err", err,
+		"detail", "the system certificate store may be broken or outdated; the download is still checked against its digest")
 	resp, err = send(c.unverified)
 	return resp, false, err
 }

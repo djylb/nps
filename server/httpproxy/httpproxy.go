@@ -15,12 +15,14 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/djylb/netx/httprewrite"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/server/connection"
+	"github.com/djylb/slogx"
 )
 
 type HttpProxy struct {
@@ -47,6 +49,9 @@ type HttpProxy struct {
 	Http3Bridge           bool
 	ErrorAlways           bool
 	ForceAutoSsl          bool
+	// AccessLog, if set, is called with every request that ends, whatever
+	// the log level; set it before Start.
+	AccessLog func(AccessRecord)
 }
 
 func NewHttpProxy(store Store, bridge proxy.NetBridge, task *model.Tunnel, httpPort, httpsPort, http3Port int, httpOnlyPass string, addOrigin, allowLocalProxy bool, plans *Plans) *HttpProxy {
@@ -160,31 +165,32 @@ func (s *HttpProxy) serve() error {
 		if s.HttpPort > 0 {
 			httpListener, err := connection.Listen(connection.KindHTTP)
 			if err != nil {
-				return fmt.Errorf("start HTTP listener: %w", err)
+				return fmt.Errorf("%w: start HTTP listener: %w", ErrBind, err)
 			}
 			s.HttpServer = NewHttpServer(s, httpListener)
-			proxyLog.Info("http server listening", "port", s.HttpPort)
 			run("HTTP", s.HttpServer.Start)
 		}
 
 		if s.HttpsPort > 0 {
 			httpsListener, err := connection.Listen(connection.KindHTTPS)
 			if err != nil {
-				return fmt.Errorf("start HTTPS listener: %w", err)
+				return fmt.Errorf("%w: start HTTPS listener: %w", ErrBind, err)
 			}
 			if s.HttpServer == nil {
 				s.HttpServer = NewHttpServer(s, nil)
 			}
 			s.HttpsServer = NewHttpsServer(s.HttpServer, httpsListener)
-			proxyLog.Info("https server listening", "port", s.HttpsPort)
 			run("HTTPS", s.HttpsServer.Start)
 
 			if s.Http3Port > 0 {
-				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(connection.Network().HTTPProxyIP), Port: s.Http3Port})
+				ip := connection.Network().HTTPProxyIP
+				listen := net.JoinHostPort(ip, strconv.Itoa(s.Http3Port))
+				http3PacketConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(ip), Port: s.Http3Port})
 				if err != nil {
-					return fmt.Errorf("start HTTP/3 listener: %w", err)
+					slogx.Emit(context.Background(), proxyLog, &logevent.ListenFailed, "route", "http3", "listen", listen, "reason", logevent.NetReason(err), "err", err)
+					return fmt.Errorf("%w: start HTTP/3 listener: %w", ErrBind, err)
 				}
-				proxyLog.Info("http3 server listening", "port", s.Http3Port)
+				slogx.Emit(context.Background(), proxyLog, &logevent.Listening, "route", "http3", "listen", listen, "carrier", "quic", "tls", true)
 				s.Http3Server = NewHttp3Server(s.HttpsServer, http3PacketConn)
 				run("HTTP/3", s.Http3Server.Start)
 			}
@@ -200,6 +206,10 @@ func (s *HttpProxy) serve() error {
 	}()
 	return <-errs
 }
+
+// ErrBind wraps the error of a listener that could not be opened; that
+// failure was logged already.
+var ErrBind = errors.New("http proxy")
 
 // stopError is the error of a server that stopped with err, nil if closing it
 // stopped it.
@@ -218,7 +228,7 @@ func (s *HttpProxy) loadOptionalErrorPage(path string) []byte {
 
 	content, err := os.ReadFile(runenv.ResolvePath(path))
 	if err != nil {
-		proxyLog.Error("error page load failed", "path", path, "err", err)
+		proxyLog.Warn("error page load failed", "path", path, "err", err)
 		return nil
 	}
 	return content
@@ -257,7 +267,7 @@ func parseHeaderRules(text string) []httprewrite.Rule {
 	for _, line := range textutil.SplitLines(text) {
 		rs, err := httprewrite.ParseRules(html.UnescapeString(line), ruleVars)
 		if err != nil {
-			proxyLog.Debug("header rule ignored", "rule", line, "err", err)
+			proxyLog.Warn("header rule ignored", "name", line, "err", err)
 			continue
 		}
 		rules = append(rules, rs...)

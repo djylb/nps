@@ -53,7 +53,7 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 	}
 	switch {
 	case sent > 0:
-		log.Info("update requested", "client", id, "npc", sent)
+		log.Info("update requested", "client", id, "count", sent)
 		return sent, nil
 	case lastErr != nil:
 		return 0, fmt.Errorf("send update request: %w", lastErr)

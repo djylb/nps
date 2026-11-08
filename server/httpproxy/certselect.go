@@ -14,6 +14,30 @@ import (
 	"github.com/djylb/slogx"
 )
 
+// LogCertLoaded reports that cert is in use for route; domain and file are
+// left out when empty.
+func LogCertLoaded(route, domain, file string, cert *tls.Certificate) {
+	if cert == nil || len(cert.Certificate) == 0 {
+		return
+	}
+	leaf := cert.Leaf
+	if leaf == nil {
+		var err error
+		if leaf, err = x509.ParseCertificate(cert.Certificate[0]); err != nil {
+			return
+		}
+	}
+	args := []any{"route", route}
+	if domain != "" {
+		args = append(args, "domain", domain)
+	}
+	if file != "" {
+		args = append(args, "file", file)
+	}
+	args = append(args, "until", leaf.NotAfter, "issuer", leaf.Issuer.CommonName)
+	slogx.Emit(context.Background(), proxyLog, &logevent.CertLoaded, args...)
+}
+
 // certMatch is how a certificate covers a server name.
 type certMatch int
 
@@ -60,8 +84,15 @@ func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate
 	if host.HasCert() {
 		cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
 		if err != nil {
-			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, "domain", host.Host, "reason", "load_failed", "err", err)
-		} else if certCovers(cert, sni) != matchNone {
+			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, "route", host.Host, "host", host.Id, "domain", host.Host, "reason", "load_failed", "err", err)
+		} else if old, loaded := s.hostCerts.Swap(host.Id, cert); !loaded || old != cert {
+			file := ""
+			if host.CertType == "file" {
+				file = host.CertFile
+			}
+			LogCertLoaded(host.Host, host.Host, file, cert)
+		}
+		if err == nil && certCovers(cert, sni) != matchNone {
 			return cert, nil
 		}
 		own = cert
@@ -104,7 +135,7 @@ func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
 	}
 	cert, err := s.loadCert(s.defaultCertFile, s.defaultKeyFile, "file")
 	if err != nil {
-		slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, slogx.KeyMsg, "default certificate load failed", "domain", sni, "reason", "load_failed", "err", err)
+		slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, slogx.KeyMsg, "default certificate load failed", "route", "https", "domain", sni, "file", s.defaultCertFile, "reason", "load_failed", "err", err)
 		return nil
 	}
 	if certCovers(cert, sni) == matchNone {

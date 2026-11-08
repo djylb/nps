@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/netx"
@@ -100,6 +101,9 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		tunnel = netx.NewFramedConn(tunnel, netx.WithFramedDatagrams())
 	}
 	defer func() { _ = tunnel.Close() }()
+	start := time.Now()
+	var in, out atomic.Int64
+	defer func() { connClosed(s.Task, addr, route.Target.TargetStr, in.Load(), out.Load(), start) }()
 
 	// Back channel: closing visitor, when the session ends, stops the
 	// forward loop below, and closing tunnel stops this one.
@@ -118,6 +122,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 				log.Debug("udp write to visitor failed", "src_ip", srcIP(addr), "err", err)
 				return
 			}
+			out.Add(int64(n))
 		}
 	}()
 
@@ -145,6 +150,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 			if _, err := tunnel.Write(buf[:n]); err != nil {
 				return
 			}
+			in.Add(int64(n - len(header)))
 			// Later datagrams are read to the start of buf again.
 			header = nil
 			continue
@@ -152,6 +158,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 		if _, err := tunnel.Write(buf[:n]); err != nil {
 			return
 		}
+		in.Add(int64(n))
 	}
 }
 

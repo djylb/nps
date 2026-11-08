@@ -45,7 +45,8 @@ type TRPClient struct {
 	once           sync.Once
 	startedNano    atomic.Int64
 	reasonMu       sync.RWMutex
-	closeReason    string
+	closeReason    string // the disconnected reason word: lost, closed
+	closeDetail    string // what was lost and how, for the err field
 }
 
 // NewRPClient new client
@@ -138,48 +139,48 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 		}
 		flags, err := legacy.ReadFlag(signal)
 		if err != nil {
-			s.noteCloseReason("signal read failed: " + netx.NetErrorDetails(err, signal.Conn).String())
-			log.Warn("signal connection lost", "server", s.svrAddr, "err", netx.NetErrorDetails(err, signal.Conn).String())
+			s.noteCloseReason("lost", "signal read failed: "+err.Error())
+			log.Debug("signal connection lost", "server", s.svrAddr, "reason", logevent.NetReason(err), "err", err)
 			return
 		}
 		switch flags {
 		case legacy.P2PPunchStart:
 			raw, err := legacy.ReadFrame(signal)
 			if err != nil {
-				log.Warn("read p2p invite failed", "server", s.svrAddr, "err", err)
+				log.Debug("read p2p invite failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			var invite legacy.P2PInvite
 			if err := json.Unmarshal(raw, &invite); err != nil {
-				log.Warn("decode p2p invite failed", "server", s.svrAddr, "err", err)
+				log.Debug("decode p2p invite failed", "server", s.svrAddr, "err", err)
 				continue
 			}
 			go s.serveP2P(tunnel, invite)
 		case legacy.UpdateRequest:
 			if _, err := legacy.ReadFrame(signal); err != nil {
-				log.Warn("read update request failed", "server", s.svrAddr, "err", err)
+				log.Debug("read update request failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			handleUpdateRequest()
 		case legacy.HealthSet:
 			group, err := legacy.ReadHealthSet(signal)
 			if err != nil {
-				log.Warn("read health group failed", "server", s.svrAddr, "err", err)
+				log.Debug("read health group failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			s.healthChecker.Load().setGroup(group)
 		case legacy.HealthDel:
 			group, err := legacy.ReadHealthDel(signal)
 			if err != nil {
-				log.Warn("read health group removal failed", "server", s.svrAddr, "err", err)
+				log.Debug("read health group removal failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			s.healthChecker.Load().delGroup(group)
 		default:
 			// The bridge sends nothing else here: an unknown flag means the
 			// stream is out of step, and reconnecting is the only way back.
-			s.noteCloseReason("unexpected signal message " + strconv.Quote(flags))
-			log.Warn("unexpected signal message, reconnecting", "server", s.svrAddr, "flag", flags)
+			s.noteCloseReason("lost", "unexpected signal message "+strconv.Quote(flags))
+			log.Debug("unexpected signal message", "server", s.svrAddr, "flag", flags)
 			return
 		}
 	}
@@ -219,8 +220,8 @@ func (s *TRPClient) newChan() legacy.Carrier {
 			}
 			src, err := tun.AcceptStream(s.ctx)
 			if err != nil {
-				s.noteCloseReason("tunnel accept failed: " + err.Error())
-				log.Warn("tunnel lost", "server", s.svrAddr, "carrier", s.bridgeConnType, "err", err)
+				s.noteCloseReason("lost", "tunnel accept failed: "+err.Error())
+				log.Debug("tunnel lost", "server", s.svrAddr, "carrier", s.bridgeConnType, "err", err)
 				s.Close()
 				return
 			}
@@ -250,7 +251,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	}
 	//socks5 udp
 	if lk.ConnType == conn.LinkUDP5 {
-		log.Debug("new link", "type", lk.ConnType, "addr", lk.RemoteAddr)
+		log.Debug("new link", "network", lk.ConnType, "addr", lk.RemoteAddr)
 		if LocalIPForward {
 			conn.HandleUdp5(s.ctx, src, lk.Option.Timeout, s.localIP)
 		} else {
@@ -263,7 +264,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		key := strings.TrimPrefix(strings.TrimSpace(lk.Host), "file://")
 		vl, ok := s.fsm.GetListenerByKey(key)
 		if !ok {
-			log.Info("file server not found", "key", key)
+			log.Debug("file server not found", "name", key)
 			_ = src.Close()
 			return
 		}
@@ -276,7 +277,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 	}
 	//host for target processing
 	if lk.Host == "" {
-		log.Debug("link without target", "type", lk.ConnType, "addr", lk.RemoteAddr)
+		log.Debug("link without target", "network", lk.ConnType, "addr", lk.RemoteAddr)
 		_ = src.Close()
 		return
 	}
@@ -308,7 +309,7 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		if hc != nil && lk.ConnType != conn.LinkUDP {
 			hc.touch(lk.Host)
 		}
-		log.Debug("new link", "type", lk.ConnType, "target", lk.Host, "addr", lk.RemoteAddr)
+		log.Debug("new link", "network", lk.ConnType, "target", lk.Host, "addr", lk.RemoteAddr)
 		isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
 		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, nil, 0, nil, nil, false, isFramed)
 	}
@@ -350,8 +351,8 @@ func (s *TRPClient) Close() {
 
 func (s *TRPClient) closing() {
 	NowStatus.Store(0)
-	if reason := s.snapshotCloseReason(); reason != "" {
-		s.noteCloseReason(reason)
+	if reason, detail := s.snapshotCloseReason(); reason != "" {
+		s.noteCloseReason(reason, detail)
 	}
 	s.logDisconnectSummary()
 	if s.cancel != nil {
@@ -374,47 +375,51 @@ func (s *TRPClient) markConnected() {
 	s.startedNano.Store(time.Now().UnixNano())
 }
 
-func (s *TRPClient) noteCloseReason(reason string) {
-	if strings.TrimSpace(reason) == "" {
+// noteCloseReason records why the session ends, unless a reason is already
+// recorded: reason is the disconnected reason word, detail the text for err.
+func (s *TRPClient) noteCloseReason(reason, detail string) {
+	if reason == "" {
 		return
 	}
 	s.reasonMu.Lock()
 	defer s.reasonMu.Unlock()
 	if s.closeReason == "" {
-		s.closeReason = reason
+		s.closeReason, s.closeDetail = reason, detail
 	}
 }
 
-func (s *TRPClient) getCloseReason() string {
+func (s *TRPClient) getCloseReason() (string, string) {
 	s.reasonMu.RLock()
 	defer s.reasonMu.RUnlock()
-	return s.closeReason
+	return s.closeReason, s.closeDetail
 }
 
-func (s *TRPClient) snapshotCloseReason() string {
-	if reason := s.getCloseReason(); reason != "" {
-		return reason
+// snapshotCloseReason returns the reason word and detail of the end of the
+// session: the first one noted, or what the tunnel or signal connection say.
+func (s *TRPClient) snapshotCloseReason() (reason, detail string) {
+	if reason, detail := s.getCloseReason(); reason != "" {
+		return reason, detail
 	}
 	if tunnel := s.currentTunnel(); tunnel != nil {
-		if reason := tunnel.Reason(); reason != "" {
-			return reason
+		if d := tunnel.Reason(); d != "" {
+			return "lost", d
 		}
 	}
 	if signal := s.signal.Load(); signal != nil && signal.IsClosed() {
-		return "signal connection closed"
+		return "lost", "signal connection closed"
 	}
-	return ""
+	return "", ""
 }
 
 func (s *TRPClient) logDisconnectSummary() {
 	started := s.startedNano.Load()
-	reason := s.getCloseReason()
+	reason, detail := s.getCloseReason()
 	signal := s.signal.Load()
 	if started == 0 && signal == nil && s.currentTunnel() == nil && reason == "" {
 		return
 	}
 	if reason == "" {
-		reason = "close requested"
+		reason = "closed"
 	}
 	uptime := time.Duration(0)
 	if started > 0 {
@@ -422,15 +427,12 @@ func (s *TRPClient) logDisconnectSummary() {
 	}
 	tunnelUp := !s.isTunnelClosed()
 	signalUp := signal != nil && !signal.IsClosed()
-	slogx.Emit(context.Background(), log, &logevent.Disconnected,
-		"server", s.svrAddr,
-		"carrier", s.bridgeConnType,
-		"uuid", s.uuid,
-		"dur_ms", uptime.Milliseconds(),
-		"tunnel_up", tunnelUp,
-		"signal_up", signalUp,
-		"reason", reason,
-	)
+	args := []any{"server", s.svrAddr, "carrier", s.bridgeConnType, "uuid", s.uuid, "dur_ms", uptime.Milliseconds(),
+		"tunnel_up", tunnelUp, "signal_up", signalUp, "reason", reason}
+	if detail != "" {
+		args = append(args, "err", detail)
+	}
+	slogx.Emit(context.Background(), log, &logevent.Disconnected, args...)
 }
 
 func (s *TRPClient) closeTunnel() {

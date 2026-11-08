@@ -37,7 +37,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	if cfg.App.IPRegisterCertFile != "" || cfg.App.IPRegisterKeyFile != "" {
 		cert, err := loadCertPair("ip_register", cfg.App.IPRegisterCertFile, cfg.App.IPRegisterKeyFile)
 		if err != nil {
-			log.Error("ip registration page cert failed", "err", err)
+			slogx.Emit(context.Background(), log, &logevent.CertFailed, "route", "ip_register", "reason", "load_failed", "err", err)
 			return
 		}
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
@@ -45,15 +45,15 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	addr := net.JoinHostPort(cfg.App.IPRegisterIP, strconv.Itoa(cfg.App.IPRegisterPort))
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", "ip_register", "addr", addr, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", "ip_register", "listen", addr, "reason", logevent.NetReason(err), "err", err)
 		return
 	}
-	scheme := "http"
+	carrier := "tcp"
 	if tlsConfig != nil {
 		l = tls.NewListener(l, tlsConfig)
-		scheme = "https"
+		carrier = "tls"
 	}
-	log.Info("ip registration page listening", "scheme", scheme, "addr", addr)
+	slogx.Emit(context.Background(), log, &logevent.Listening, "route", "ip_register", "listen", addr, "carrier", carrier, "tls", tlsConfig != nil)
 	if !s.goWork("ip register listener", func(context.Context) { _ = hs.Serve(l) }) {
 		_ = l.Close()
 	}

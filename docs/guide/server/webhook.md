@@ -30,6 +30,13 @@ webhook_secret=换成随机字符串
 | `host_created`、`host_updated`、`host_started`、`host_stopped`、`host_deleted` | 域名变更 | 域名 |
 | `tunnels_report` | 周期全量上报 | `tunnels` 和 `hosts` 列表 |
 
+另外，日志里标记为推送的事件也会发到 webhook，事件名与[日志](/guide/server/logging.md#固定事件)相同：`auth_failed`、`login_failed`、`login_ok`、`ban_added`、`ban_removed`、`admin_action`、`limit_exceeded`、`quota_reached`、`target_down`、`target_up`、`listen_failed`、`config_applied`、`config_failed`、`update_available`、`update_applied`、`update_failed`、`cert_issued`、`cert_failed`、`cert_revoked`、`p2p_connected`、`p2p_failed`。它们的 `data` 是这一行日志的字段（键名同日志，数字是数字，错误是文本），另有 `level`、`module` 和 `msg`；密钥始终是 `[REDACTED]`。这类事件不经过日志级别过滤，但 `auth_failed`、`login_failed` 等仍按来源限频。
+
+```json
+{"id":"…","type":"auth_failed","time":"2026-11-08T03:17:14Z",
+ "data":{"level":"WARN","module":"bridge","src_ip":"203.0.113.7","src_port":51802,"role":"client","carrier":"tcp","reason":"bad_key","err":"[REDACTED]"}}
+```
+
 Web 上保存隧道会重启它，因此依次收到 `updated`、`stopped`、`started`。事件不含密钥、密码和证书。
 
 ```json

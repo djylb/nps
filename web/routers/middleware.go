@@ -102,6 +102,10 @@ func protectedRouteMiddleware(state *State) gin.HandlerFunc {
 
 		timestamp, _ := strconv.Atoi(c.Query("timestamp"))
 		if !webservice.ValidAuthKey(cfg.Auth.Key, c.Query("auth_key"), timestamp, clock.Now().Unix()) {
+			if c.Query("auth_key") != "" {
+				slogx.Emit(c.Request.Context(), log, &logevent.AuthFailed,
+					"src_ip", webapi.VisitorIP(newAPIContext(c), cfg), "role", "api", "reason", "bad_key")
+			}
 			if framework.SessionValue(c, "auth") != true {
 				abortUnauthorized(c, state.LoginURL())
 				return

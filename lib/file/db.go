@@ -180,6 +180,21 @@ func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 // newEntryFlow returns the counter of a new task or host: zeroed traffic that
 // keeps the flow and time limits requested in f. A fresh Flow is always
 // allocated so the counter is never shared with the caller's object.
+// tunnelOwnerArgs and hostOwnerArgs name an entry in the events of its flow.
+func tunnelOwnerArgs(t *model.Tunnel) []any {
+	if t.Client != nil {
+		return []any{"client", t.Client.Id, "tunnel", t.Id}
+	}
+	return []any{"tunnel", t.Id}
+}
+
+func hostOwnerArgs(h *model.Host) []any {
+	if h.Client != nil {
+		return []any{"client", h.Client.Id, "host", h.Id}
+	}
+	return []any{"host", h.Id}
+}
+
 func newEntryFlow(f *model.Flow) *model.Flow {
 	if f == nil {
 		return new(model.Flow)
@@ -198,6 +213,7 @@ func (s *DbUtils) NewTask(t *model.Tunnel) error {
 		return err
 	}
 	t.Flow = newEntryFlow(t.Flow)
+	t.Flow.SetOwner(tunnelOwnerArgs(t)...)
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
@@ -443,6 +459,7 @@ func (s *DbUtils) NewHost(t *model.Host) error {
 	t.CertType = crypt.GetCertType(t.CertFile)
 	t.CertHash = crypt.FNV1a64(t.CertType, t.CertFile, t.KeyFile)
 	t.Flow = newEntryFlow(t.Flow)
+	t.Flow.SetOwner(hostOwnerArgs(t)...)
 	t.CompileSourceLists(acl.ScopeUser, hostOwner(t))
 	s.JsonDb.Hosts.Store(t.Id, t)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
@@ -537,6 +554,7 @@ reset:
 		c.Flow = new(model.Flow)
 	}
 	c.Flow.MarkClient()
+	c.Flow.SetOwner("client", c.Id)
 	c.CompileSourceLists(acl.ScopeUser, clientOwner(c))
 	s.JsonDb.Clients.Store(c.Id, c)
 	if c.Id > 0 {
@@ -589,6 +607,7 @@ func (s *DbUtils) UpdateClient(t *model.Client) error {
 		t.Flow = new(model.Flow)
 	}
 	t.Flow.MarkClient()
+	t.Flow.SetOwner("client", t.Id)
 	t.CompileSourceLists(acl.ScopeUser, clientOwner(t))
 	s.JsonDb.Clients.Store(t.Id, t)
 	if t.Id > 0 {

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"net/netip"
 	"strings"
@@ -25,7 +24,7 @@ const p2pSTUNOff = "none"
 func startP2P(b *bridge.Bridge, cfg *servercfg.Snapshot) {
 	port := cfg.Network.P2PPort
 	if port <= 0 {
-		log.Info("p2p off", "reason", "p2p_port not set")
+		log.Info("p2p off", "reason", "no_port")
 		return
 	}
 	err := b.StartP2P(bridge.P2PConfig{
@@ -45,13 +44,13 @@ func startP2P(b *bridge.Bridge, cfg *servercfg.Snapshot) {
 		},
 	})
 	if err != nil {
-		slogx.Emit(context.Background(), log, &logevent.ListenFailed, slogx.KeyMsg, "p2p off: nat observer cannot use udp ports", "route", "p2p", "addr", fmt.Sprintf("udp/%d-%d", port, port+2), "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, slogx.KeyMsg, "p2p off: nat observer cannot use udp ports", "route", "p2p", "port", port, "count", 3, "reason", logevent.NetReason(err), "err", err)
 		return
 	}
 	if !p2pIPv6Configured(cfg.Network.P2PIP) {
-		log.Info("p2p over ipv6 off: p2p_ip names ipv4 only; leave it empty to detect both", "addr", cfg.Network.P2PIP)
+		log.Warn("p2p over ipv6 off", "detail", "p2p_ip names ipv4 only; leave it empty to detect both")
 	}
-	log.Info("p2p nat observers started", "port", port, "port_last", port+2, "addr", cfg.Network.P2PIP)
+	log.Info("p2p nat observers started", "route", "p2p", "port", port, "count", 3)
 }
 
 // millis converts a configured millisecond value; the library clamps it to

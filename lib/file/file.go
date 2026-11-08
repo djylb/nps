@@ -74,6 +74,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		if post.Flow == nil {
 			post.Flow = new(model.Flow)
 		}
+		post.Flow.SetOwner(tunnelOwnerArgs(post)...)
 		if post.Target == nil {
 			post.Target = new(model.Target)
 		}
@@ -127,6 +128,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 			post.Flow = new(model.Flow)
 		}
 		post.Flow.MarkClient()
+		post.Flow.SetOwner("client", post.Id)
 		post.CompileSourceLists(acl.ScopeUser, clientOwner(post))
 		s.Clients.Store(post.Id, post)
 		if post.Id > int(s.ClientIncreaseId) {
@@ -160,6 +162,7 @@ func (s *JsonDb) LoadHostFromJsonFile() error {
 			post.CertHash = crypt.FNV1a64(post.CertType, post.CertFile, post.KeyFile)
 		}
 		post.NowConn = 0
+		post.Flow.SetOwner(hostOwnerArgs(post)...)
 		post.CompileSourceLists(acl.ScopeUser, hostOwner(post))
 		s.Hosts.Store(post.Id, post)
 		s.hostIndex.Add(post.Host, post.Id)
@@ -177,7 +180,7 @@ func (s *JsonDb) LoadGlobalFromJsonFile() error {
 			return
 		}
 		if err := json.Unmarshal([]byte(v), &post); err != nil {
-			log.Error("store file not readable", "path", s.GlobalFilePath, "err", err)
+			log.Error("store file not readable", "file", s.GlobalFilePath, "err", err)
 			backupUnreadable(s.GlobalFilePath, []byte(v))
 			return
 		}
@@ -277,7 +280,7 @@ func loadSyncMapFromFile(filePath string, t any, f func(value any)) error {
 	err = loadJsonFile(b, t, f)
 
 	if err != nil {
-		log.Warn("store file not readable, loading it as the obsolete format", "path", filePath, "err", err)
+		log.Warn("store file not readable, loading it as the obsolete format", "file", filePath, "err", err)
 		backupUnreadable(filePath, b)
 		// 加载新json报错，则加载旧json
 		loadObsoleteJsonFile(b, t, f)
@@ -292,10 +295,10 @@ func backupUnreadable(filePath string, content []byte) {
 		return
 	}
 	if err := os.WriteFile(filePath+".bad", content, 0o600); err != nil {
-		log.Error("unreadable store file not backed up", "path", filePath, "err", err)
+		log.Error("unreadable store file not backed up", "file", filePath, "err", err)
 		return
 	}
-	log.Warn("unreadable store file kept", "path", filePath+".bad")
+	log.Warn("unreadable store file kept", "file", filePath+".bad")
 }
 
 func loadObsoleteJsonFile(b []byte, t any, f func(value any)) {

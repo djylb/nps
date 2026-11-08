@@ -187,7 +187,7 @@ func main() {
 	logOpts := logsetup.Options{
 		Output: cfg.Log.Type, Format: cfg.Log.Format, Level: cfg.Log.Level,
 		Path: logPath, Security: cfg.Log.Security, Dir: runenv.GetRunPath(),
-		MaxSize: cfg.Log.MaxSize, MaxFiles: cfg.Log.MaxFiles, MaxDays: cfg.Log.MaxDays, Compress: cfg.Log.Compress, Memory: cfg.Log.Memory, Secrets: cfg.Log.Secrets,
+		MaxSize: cfg.Log.MaxSize, MaxFiles: cfg.Log.MaxFiles, MaxDays: cfg.Log.MaxDays, Compress: cfg.Log.Compress, Memory: cfg.Log.Memory, Secrets: cfg.Log.Secrets, Instance: cfg.Log.Instance,
 		Service: len(os.Args) > 1 && os.Args[1] == "service",
 	}
 	if err := logsetup.Apply(logOpts); err != nil {
@@ -197,14 +197,16 @@ func main() {
 	watchReopen()
 	warnArgs(strings.EqualFold(cfg.Log.Type, "off"))
 	for _, w := range cfg.Legacy {
-		cfgLog.Warn(w)
+		cfgLog.Warn("legacy config setting", "detail", w)
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Warn("service manager unavailable, running without it", "err", err)
 		srv := prg.mustRun()
 		<-srv.Done()
-		log.Error("nps stopped", "err", srv.Close())
+		if err := srv.Close(); err != nil {
+			log.Error("nps stopped", "err", err)
+		}
 		slogx.Default.Close()
 		os.Exit(1)
 	}
@@ -268,7 +270,7 @@ func printUsage(cmd string) {
 func (p *nps) reloadConfig() {
 	srv := p.srv.Load()
 	if srv == nil {
-		cfgLog.Info("config reload ignored: nps is not running yet")
+		cfgLog.Info("config reload ignored", "reason", "not_running")
 		return
 	}
 	srv.ReloadConfig()
@@ -307,7 +309,7 @@ func warnArgs(logOff bool) {
 			fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
-		cfgLog.Warn(w)
+		cfgLog.Warn("command-line argument", "detail", w)
 	}
 }
 
@@ -345,14 +347,17 @@ func (p *nps) run() error {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			log.Error("panic", "err", err, "stack", string(buf))
+			log.Error("panic", "err", err, "detail", string(buf))
 		}
 	}()
 	srv := p.mustRun()
 	select {
 	case <-p.exit:
 	case <-srv.Done():
-		log.Error("nps stopped", "err", srv.Close())
+		if err := srv.Close(); err != nil {
+			log.Error("nps stopped", "err", err)
+		}
+		slogx.Default.Flush()
 		os.Exit(1)
 	}
 	slogx.Emit(context.Background(), log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
@@ -384,7 +389,7 @@ func run() (*server.Server, error) {
 	}
 	cert, err := crypt.LoadKeyPair(cfg.Bridge.CertFile, cfg.Bridge.KeyFile)
 	if err != nil {
-		log.Info("bridge certificate not loaded, using a generated one", "err", err)
+		log.Warn("bridge certificate not loaded, using a generated one", "file", cfg.Bridge.CertFile, "err", err)
 	}
 	identity, err := crypt.NewIdentity(cert)
 	if err != nil {
@@ -394,9 +399,15 @@ func run() (*server.Server, error) {
 	if err != nil {
 		cfgLog.Warn("invalid client select mode, using default", "value", cfg.Bridge.SelectMode, "mode", selectMode.String())
 	} else {
-		log.Debug("client select mode", "mode", selectMode.String())
+		log.Info("client select mode", "mode", selectMode.String())
 	}
+	accessLog, closeAccessLog, err := openAccessLog(cfg.Log)
+	if err != nil {
+		cfgLog.Error("access log not opened", "file", cfg.Log.Access, "err", err)
+	}
+	defer closeAccessLog()
 	srv := server.New(db, server.Config{
+		AccessLog:           accessLog,
 		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
 		SecureMode:          cfg.Security.SecureMode,
 		SelectMode:          selectMode,
@@ -423,13 +434,14 @@ func run() (*server.Server, error) {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
+	slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "nps", "pid", os.Getpid(), "file", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
 	server.ApplyNTP(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err
 	}
 	legacy.SetPingInterval(time.Duration(cfg.Network.MuxPingInterval) * time.Second)
 	stats.StartSystemInfo()
+	file.ReportGeoData()
 	go file.WatchAccessLists(context.Background(), time.Minute)
 	if err := srv.Start(context.Background()); err != nil {
 		_ = srv.Close()

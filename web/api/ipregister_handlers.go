@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"html/template"
-	"strconv"
 	"time"
 
-	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
@@ -99,10 +97,6 @@ func (a *App) IPRegister(c Context) {
 		c.RespondJSON(200, IPRegisterResponse{Msg: "invalid registration key"})
 		return
 	}
-	owner := strconv.Itoa(id)
-	if id == ipreg.AnyClient {
-		owner = "any"
-	}
-	log.Info("visitor ip registered", "src_ip", ip, "client", owner, "until", until)
+	log.Info("visitor ip registered", "src_ip", ip, "client", id, "until", until)
 	c.RespondJSON(200, IPRegisterResponse{Status: 1, Msg: "ip registered", IP: ip, Until: until.Format(time.DateTime)})
 }

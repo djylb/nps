@@ -115,16 +115,18 @@ func (s *Bridge) CliProcess(c *conn.Conn, tunnelType string) {
 
 func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType string, first bool) {
 	addr := c.RemoteAddr()
+	ip, port := srcIPPort(addr)
 	flag, uuid, err := legacy.ReadWork(c, caps, addr.String())
 	if err != nil {
-		log.Debug("reading work request failed", "client", id, "addr", addr, "err", err)
+		log.Debug("reading work request failed", "client", id, "src_ip", ip, "src_port", port, "err", err)
 		_ = c.Close()
 		return
 	}
 	c.SetAlive()
 	keyClient, err := s.store.GetClient(id)
 	if err != nil || !allowsFlag(keyClient.KeyKind, flag) {
-		log.Warn("workflow refused", "client", id, "addr", addr, "flag", flag)
+		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+			"client", id, "carrier", tunnelType, "reason", "forbidden", "flag", flag)
 		_ = c.Close()
 		return
 	}
@@ -143,11 +145,12 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		node.AddSignal(c)
 		client, node := s.joinNode(id, uuid, node, func(n *Node) { n.AddSignal(c) })
 		s.spawn(c, func() { s.GetHealthFromClient(id, c, client, node) })
-		log.Debug("signal connection joined", "client", id, "addr", addr, "node", uuid)
+		log.Debug("signal connection joined", "client", id, "src_ip", ip, "src_port", port, "node", uuid)
 
 	case legacy.WorkChan:
 		if !first {
-			log.Warn("nested tunnel refused", "client", id, "addr", addr, "flag", flag)
+			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+				"client", id, "carrier", tunnelType, "reason", "forbidden", "flag", flag, "detail", "nested tunnel")
 			_ = c.Close()
 			return
 		}
@@ -162,7 +165,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 					_ = c.Close()
 					node.CloseIfTunnelCurrent(tunnel)
 					removed := client.RemoveOfflineNodes(false)
-					log.Debug("tunnel connection closed", "client", id, "node", uuid, "addr", addr,
+					log.Debug("tunnel connection closed", "client", id, "node", uuid, "src_ip", ip, "src_port", port,
 						"reason", reason, "removed", removed, "remaining", client.NodeCount())
 				}()
 				serveStreams(tunnel, func(stream net.Conn) {
@@ -190,7 +193,8 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 
 	case legacy.WorkVisitor:
 		if !first {
-			log.Warn("nested tunnel refused", "client", id, "addr", addr, "flag", flag)
+			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "client",
+				"client", id, "carrier", tunnelType, "reason", "forbidden", "flag", flag, "detail", "nested tunnel")
 			_ = c.Close()
 			return
 		}
@@ -198,7 +202,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		s.spawn(c, func() {
 			idle := NewIdleTimer(30*time.Second, func() { _ = c.Close() })
 			defer func() {
-				log.Debug("visitor connection closed", "client", id, "addr", addr)
+				log.Debug("visitor connection closed", "client", id, "src_ip", ip, "src_port", port)
 				idle.Stop()
 				_ = c.Close()
 			}()
@@ -215,19 +219,20 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		c.SetReadTimeout(bridgeHandshakeReadTimeout)
 		b, err := legacy.ReadExact(c, 32)
 		if err != nil {
-			log.Debug("reading secret key failed", "client", id, "addr", addr, "err", err)
+			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "secret",
+				"client", id, "carrier", tunnelType, "reason", secretReadReason(err), "err", err)
 			_ = c.Close()
 			return
 		}
 		c.SetAlive()
 		if !dispatch(s.SecretChan, conn.NewSecret(string(b), c, legacy.SecretWire)) {
-			log.Warn("secret connection dropped: queue full", "client", id, "addr", addr)
+			log.Warn("secret connection dropped", "client", id, "src_ip", ip, "src_port", port, "reason", "queue_full")
 			_ = c.Close()
 			return
 		}
 
 	case legacy.WorkFile:
-		log.Info("file workflow refused", "client", id, "addr", addr, "reason", "unsupported")
+		log.Info("file workflow refused", "client", id, "src_ip", ip, "src_port", port, "reason", "unsupported")
 		_ = c.Close()
 		return
 		//muxConn := mux.NewMux(c.Conn, s.tunnelType, s.disconnectTime, false)
@@ -278,7 +283,7 @@ func (s *Bridge) register(c *conn.Conn, id int) {
 				id = ipreg.AnyClient
 			}
 			until := ipreg.Register(id, ip, time.Hour*time.Duration(hour))
-			log.Info("ip registered", "client", id, "src_ip", ip, "until", until.Format(time.DateTime))
+			log.Info("ip registered", "client", id, "src_ip", ip, "until", until.Format(time.RFC3339))
 		}
 	} else {
 		log.Debug("reading ip registration failed", "client", id, "err", err)
@@ -315,13 +320,23 @@ func authFailReason(err error) string {
 }
 
 // srcIPPort is the IP, without zone brackets, and port of a peer address.
-func srcIPPort(a net.Addr) (string, string) {
+func srcIPPort(a net.Addr) (string, int) {
 	if a == nil {
-		return "", ""
+		return "", 0
 	}
 	host, port, err := net.SplitHostPort(a.String())
 	if err != nil {
-		return a.String(), ""
+		return a.String(), 0
 	}
-	return host, port
+	n, _ := strconv.Atoi(port)
+	return host, n
+}
+
+// secretReadReason is the auth_failed reason when the secret key of a
+// visitor could not be read: a timeout, or a short key.
+func secretReadReason(err error) string {
+	if logevent.NetReason(err) == "timeout" {
+		return "timeout"
+	}
+	return "bad_key"
 }

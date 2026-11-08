@@ -115,6 +115,7 @@ type Node struct {
 	tunnel    legacy.Carrier
 	retryTime int
 	joinNano  int64
+	udpWarned atomic.Bool // "udp link needs a newer npc" was logged
 	// tunnelDeadline is when the node stops waiting for a new tunnel.
 	tunnelDeadline time.Time
 	// healthKick wakes the sender of health groups of the node's signal
@@ -232,8 +233,8 @@ func (n *Node) addSignal(signal *conn.Conn) {
 	if n.signal != nil && n.signal != signal {
 		if n.Client != nil {
 			ip, _ := srcIPPort(signal.RemoteAddr())
-			slogx.Emit(context.Background(), log, &logevent.SessionTakeover, "identity", n.Client.Id, "src_ip", ip,
-				"node", n.UUID, "prev_addr", n.signal.RemoteAddr())
+			slogx.Emit(context.Background(), log, &logevent.SessionTakeover, "client", n.Client.Id, "src_ip", ip,
+				"addr", n.signal.RemoteAddr().String(), "node", n.UUID)
 		}
 		_ = n.signal.Close()
 	}

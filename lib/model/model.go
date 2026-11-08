@@ -15,6 +15,7 @@ import (
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/textutil"
@@ -53,7 +54,28 @@ type Flow struct {
 	// ExportFlow, and those written to them as its writes, InletFlow.
 	traffic byterate.Counter
 	budget  byterate.Budget
+	// owner holds the fields naming the entry of the flow (client, tunnel,
+	// host) for its quota_reached events.
+	owner atomic.Pointer[[]any]
 	sync.RWMutex
+}
+
+// SetOwner names the entry of f in its quota_reached events, as fields such
+// as "client", 3 or "tunnel", 7, "client", 3.
+func (s *Flow) SetOwner(args ...any) {
+	if s != nil {
+		s.owner.Store(&args)
+	}
+}
+
+// quotaReached writes the quota_reached event of f, kind flow or expire.
+func (s *Flow) quotaReached(kind string, args ...any) {
+	var fields []any
+	if o := s.owner.Load(); o != nil {
+		fields = append(fields, *o...)
+	}
+	fields = append(fields, "kind", kind)
+	slogx.Emit(context.Background(), log, &logevent.QuotaReached, append(fields, args...)...)
 }
 
 // MarkClient marks f as the flow of a client, see FlowLimitFactor.
@@ -79,8 +101,9 @@ func (s *Flow) startLocked() {
 		s.budget.SetUsed(s.InletFlow + s.ExportFlow)
 		s.budget.SetExpiry(s.TimeLimit)
 		s.budget.OnStep(func(_ int, used int64) {
-			log.Info("traffic limit reached", "bytes", used)
+			s.quotaReached("flow", "bytes", used)
 		})
+		s.budget.AfterExpiry(func() { s.quotaReached("expire") })
 		s.applyLimitLocked()
 		return
 	}

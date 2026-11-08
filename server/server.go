@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"runtime/pprof"
 	"strconv"
@@ -61,6 +62,9 @@ type Config struct {
 	// Identity is the certificate of the bridge and the encrypted links, and
 	// the key of the web login.
 	Identity *crypt.Identity
+	// AccessLog, if set, is called with every request to the domain proxy
+	// when it ends, whatever the log level (httpproxy.HttpProxy.AccessLog).
+	AccessLog func(httpproxy.AccessRecord)
 }
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
@@ -74,7 +78,8 @@ type Server struct {
 	transports bridge.Transports
 	ports      ports.Allowed
 	identity   *crypt.Identity
-	noUpdate   bool        // remote update is disabled
+	noUpdate   bool // remote update is disabled
+	accessLog  func(httpproxy.AccessRecord)
 	updating   atomic.Bool // an update runs
 
 	webHandler   atomic.Pointer[webHandlerBox]
@@ -101,6 +106,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		ports:      cfg.AllowedPorts,
 		identity:   cfg.Identity,
 		noUpdate:   cfg.DisableRemoteUpdate,
+		accessLog:  cfg.AccessLog,
 		// Once the server stops, its work may end with any error.
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
 	}
@@ -315,9 +321,8 @@ func (s *Server) dealBridgeTask(ctx context.Context) {
 		case t := <-b.OpenTask:
 			if t != nil {
 				_ = s.StopTunnel(t.Id)
-				if err := s.StartTunnel(t.Id); err != nil {
-					log.Error("tunnel start failed", "tunnel", t.Id, "err", err)
-				}
+				// AddTunnel reports its own failures
+				_ = s.StartTunnel(t.Id)
 			}
 		case t := <-b.CloseTask:
 			if t != nil {
@@ -341,16 +346,17 @@ func (s *Server) dealBridgeTask(ctx context.Context) {
 }
 
 func (s *Server) handleSecret(sc *conn.Secret) {
-	log.Debug("secret connection", "addr", sc.Conn.Conn.RemoteAddr())
+	remote := sc.Conn.Conn.RemoteAddr()
+	log.Debug("secret connection", "src_ip", netaddr.Host(remote.String()))
 	t := s.db.GetTaskByMd5Password(sc.Password)
 	if t == nil {
-		log.Debug("secret connection dropped", "reason", "unknown_key")
+		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", netaddr.Host(remote.String()), "role", "secret", "reason", "bad_key")
 		_ = sc.Conn.Close()
 		return
 	}
 	if !t.Status {
 		_ = sc.Conn.Close()
-		log.Debug("secret connection dropped", "tunnel", t.Id, "reason", "tunnel_stopped")
+		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", netaddr.Host(remote.String()), "role", "secret", "tunnel", t.Id, "client", clientID(t), "route", tunnelRoute(t), "reason", "disabled")
 		return
 	}
 	feature := servercfg.Current().Feature
@@ -415,7 +421,9 @@ func (s *Server) newMode(c *model.Tunnel) proxy.Service {
 		// http cache settings are currently unused.
 		addOrigin := cfg.Proxy.AddOriginHeader
 		httpOnlyPass := cfg.Auth.HTTPOnlyPass
-		service = httpproxy.NewHttpProxy(s.db, b, c, httpPort, httpsPort, http3Port, httpOnlyPass, addOrigin, allowLocalProxy, s.hostCache)
+		hp := httpproxy.NewHttpProxy(s.db, b, c, httpPort, httpsPort, http3Port, httpOnlyPass, addOrigin, allowLocalProxy, s.hostCache)
+		hp.AccessLog = s.accessLog
+		service = hp
 	}
 	return service
 }
@@ -426,21 +434,22 @@ func (s *Server) StopTunnel(id int) error {
 		return err
 	} else {
 		t.Status = false
-		log.Info("tunnel closing", "tunnel", t.Id, "client", t.Client.Id, "port", t.Port, "remark", t.Remark)
 		_ = s.db.UpdateTask(t)
-	}
-	v, ok := s.tasks.Load(id)
-	if !ok {
-		return errTaskNotRunning
-	}
-	if svr, ok := v.(proxy.Service); ok {
-		if err := svr.Close(); err != nil {
-			log.Warn("tunnel stop failed", "tunnel", id, "err", err)
+		v, ok := s.tasks.Load(id)
+		if !ok {
+			return errTaskNotRunning
+		}
+		var err error
+		if svr, ok := v.(proxy.Service); ok {
+			err = svr.Close()
+		}
+		s.tasks.CompareAndDelete(id, v)
+		if err != nil {
+			slogx.Emit(context.Background(), log, &logevent.TunnelStopped, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "reason", "close_failed", "err", err)
 		} else {
-			log.Info("tunnel stopped", "tunnel", id)
+			slogx.Emit(context.Background(), log, &logevent.TunnelStopped, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "reason", "stopped")
 		}
 	}
-	s.tasks.CompareAndDelete(id, v)
 	return nil
 }
 
@@ -454,37 +463,53 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	default:
 	}
 	if t.Mode == "secret" || t.Mode == "p2p" {
-		log.Info("tunnel started", "tunnel", t.Id, "mode", t.Mode, "remark", t.Remark)
 		s.tasks.Store(t.Id, nil)
+		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 		return nil
 	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
-		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "port", t.Port, "reason", "in_use")
 		return errors.New("the port open error")
 	}
 	svr := s.newMode(t)
 	if svr == nil {
-		return errors.New("the mode is not correct")
+		err := errors.New("the mode is not correct")
+		log.Error("tunnel not started", "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "mode", t.Mode, "err", err)
+		return err
 	}
-	if b, ok := svr.(proxy.Binder); ok {
+	b, binds := svr.(proxy.Binder)
+	if binds {
 		if err := b.Bind(); err != nil {
-			slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "listen", tunnelListen(t), "reason", logevent.NetReason(err), "err", err)
 			return err
 		}
+		carrier := "tcp"
+		if t.Mode == "udp" {
+			carrier = "udp"
+		}
+		slogx.Emit(context.Background(), log, &logevent.Listening, "route", tunnelRoute(t), "listen", tunnelListen(t), "carrier", carrier, "tls", false)
 	}
 	if old, loaded := s.tasks.Swap(t.Id, svr); loaded {
 		if oldSvr, ok := old.(proxy.Service); ok {
 			_ = oldSvr.Close()
 		}
 	}
-	log.Info("tunnel started", "tunnel", t.Id, "mode", t.Mode, "port", t.Port, "remark", t.Remark)
+	if t.Mode != "httpHostServer" {
+		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
+	}
 	// The labels name the task in stack dumps and tracebacks of everything
 	// the server starts.
 	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", t.Mode, "client", strconv.Itoa(clientID(t)))
 	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
 		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
-				slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+				if binds {
+					// the socket is open already: serving stopped
+					slogx.Emit(context.Background(), log, &logevent.TunnelStopped, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "reason", logevent.NetReason(err), "err", err)
+				} else if !errors.Is(err, httpproxy.ErrBind) {
+					// a listener that did not open was reported where it failed
+					log.Error("domain proxy stopped", "reason", logevent.NetReason(err), "err", err)
+				}
 				s.tasks.CompareAndDelete(t.Id, svr)
 				_ = svr.Close()
 			}
@@ -698,3 +723,12 @@ var log = slogx.Module("server")
 
 // tunnelRoute names tunnel t in route fields.
 func tunnelRoute(t *model.Tunnel) string { return t.LogRoute() }
+
+// tunnelListen is the ip:port tunnel t listens on.
+func tunnelListen(t *model.Tunnel) string {
+	ip := t.ServerIp
+	if ip == "" {
+		ip = "0.0.0.0"
+	}
+	return net.JoinHostPort(ip, strconv.Itoa(t.Port))
+}

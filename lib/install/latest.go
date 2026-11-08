@@ -46,6 +46,7 @@ func refreshLatest() {
 	defer latest.Unlock()
 	latest.fetching = false
 	if err != nil {
+		log.Debug("latest version not fetched", "err", err)
 		latest.next = time.Now().Add(latestRetry)
 		return
 	}

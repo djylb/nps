@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"github.com/djylb/nps/lib/logevent"
 	"time"
 
 	"github.com/djylb/netx"
@@ -54,7 +55,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn, client *Client, node 
 				retry++
 				continue
 			}
-			log.Debug("reading health report ended", "client", id, "retry", retry, "err", netx.NetErrorDetails(err, c.Conn))
+			log.Debug("reading health report ended", "client", id, "retry", retry, "reason", logevent.NetReason(err), "err", err)
 			break
 		}
 		retry = 0

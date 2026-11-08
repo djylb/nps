@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,7 +58,9 @@ func (s *Http3Server) Start() error {
 		s.setServer(srv)
 
 		if err := srv.Serve(s.http3Listener); err != nil {
-			proxyLog.Error("http3 server stopped", "err", err)
+			if !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+				proxyLog.Error("http3 server stopped", "route", "http3", "err", err)
+			}
 			s.http3Status.Store(false)
 			return err
 		}

@@ -71,7 +71,7 @@ func Sync() {
 	timeMutex.Unlock()
 	offset, err := calibrateOffset(srv)
 	if err != nil {
-		log.Warn("ntp sync failed", "server", srv, "err", err)
+		log.Warn("ntp sync failed", "addr", srv, "err", err)
 		// Keep the last successful correction when the NTP server is unavailable.
 		return
 	}
@@ -79,7 +79,7 @@ func Sync() {
 	timeOffset = offset
 	timeMutex.Unlock()
 	if offset != 0 {
-		log.Info("ntp synced", "server", srv, "offset_ms", offset.Milliseconds())
+		log.Info("ntp synced", "addr", srv, "offset_ms", offset.Milliseconds())
 	}
 }
 

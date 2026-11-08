@@ -43,7 +43,7 @@ sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 
 以下变更需要重启才生效，重载时列出：
 
-- 日志输出：`log`、`log_path`、`log_max_files`、`log_max_days`、`log_max_size`、`log_compress`、`log_format`、`security_log`、`log_memory`
+- 日志输出：`log`、`log_path`、`log_max_files`、`log_max_days`、`log_max_size`、`log_compress`、`log_format`、`security_log`、`log_memory`、`log_instance`、`access_log`、`access_log_format`
 - 进程：`timezone`、`dns_server`、`pprof_ip`、`pprof_port`、`geoip_path`、`geosite_path`、`acl_max_rules`、`flow_store_interval`
 - 客户端连接监听：`bridge_ip`、`bridge_host`、`bridge_path`、`bridge_port`、`bridge_trusted_ips`、`bridge_real_ip_header`、`bridge_tcp_ip`、`bridge_tcp_port`、`bridge_kcp_ip`、`bridge_kcp_port`、`bridge_quic_ip`、`bridge_quic_port`、`bridge_tls_ip`、`bridge_tls_port`、`bridge_ws_ip`、`bridge_ws_port`、`bridge_wss_ip`、`bridge_wss_port`、`tls_bridge_port`、`bridge_type`、`tcp_enable`、`kcp_enable`、`quic_enable`、`tls_enable`、`ws_enable`、`wss_enable`
 - QUIC 传输：`quic_alpn`、`quic_keep_alive_period`、`quic_max_idle_timeout`、`quic_max_incoming_streams`

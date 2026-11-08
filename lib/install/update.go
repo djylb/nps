@@ -95,6 +95,10 @@ type UpdateOptions struct {
 	// itself (see StartUpdate); a start that does not is rolled back. Set
 	// it when the new version is started right after the update.
 	Pending bool
+	// Quiet writes the progress as log lines instead of printing it, for
+	// an update run by the running daemon rather than from the command
+	// line.
+	Quiet bool
 }
 
 // UpdateResult describes a completed update.
@@ -167,17 +171,29 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 		return nil, err
 	}
 	for _, w := range plan.Warnings {
-		fmt.Println("WARNING:", w)
+		if o.Quiet {
+			log.Warn("update warning", "detail", w)
+		} else {
+			fmt.Println("WARNING:", w)
+		}
 	}
 	for _, n := range plan.Route.Notices {
-		fmt.Println("NOTICE:", n.Message, n.URL)
+		if o.Quiet {
+			log.Info("update notice", "detail", n.Message, "url", n.URL)
+		} else {
+			fmt.Println("NOTICE:", n.Message, n.URL)
+		}
 	}
 	c := plan.Candidate
 	if c == nil {
 		if plan.Route.Status == selfupdate.RouteHeld {
 			return nil, heldError(plan.Route)
 		}
-		fmt.Println("Already up to date, current version is", version.VERSION)
+		if o.Quiet {
+			log.Info("already up to date", "version", version.VERSION)
+		} else {
+			fmt.Println("Already up to date, current version is", version.VERSION)
+		}
 		return nil, nil
 	}
 	to = c.Version
@@ -185,7 +201,11 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 	running := processesRunning(targets)
 	services := servicesToRestart(service, targets, running)
 	if p := serviceExecutable(service); p != "" && !containsFile(targets, p) && isExecutableOf(p, bin) && !runsVersion(p, c.Version) {
-		fmt.Printf("NOTE: service %s runs %s, which this update leaves alone; run \"%s update\" to update it\n", service, p, p)
+		if o.Quiet {
+			log.Info("service executable not updated", "name", service, "file", p)
+		} else {
+			fmt.Printf("NOTE: service %s runs %s, which this update leaves alone; run \"%s update\" to update it\n", service, p, p)
+		}
 	}
 	if o.Pending {
 		err = u.Apply(ctx, c)
@@ -199,7 +219,11 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 		return nil, err
 	}
 	for _, t := range targets {
-		fmt.Println("Replaced", t)
+		if o.Quiet {
+			log.Info("file replaced", "file", t)
+		} else {
+			fmt.Println("Replaced", t)
+		}
 	}
 	slogx.Emit(context.Background(), log, &logevent.UpdateApplied, "from", version.VERSION, "to", c.Version)
 	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running, Services: services}, nil

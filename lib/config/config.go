@@ -146,7 +146,7 @@ func buildConfig(content string, sections []section) (*Config, error) {
 			}
 			c.LocalServer = append(c.LocalServer, local)
 		case legacySection(sec.name, keys) != "":
-			log.Warn(legacySection(sec.name, keys))
+			log.Warn("legacy config section ignored", "name", sec.name, "detail", legacySection(sec.name, keys))
 		case name == "common":
 			c.CommonConfig = dealCommon(sec.body)
 		case keys["host"]:
@@ -364,7 +364,7 @@ func setConf(settings map[string]model.EntrySetting, entry any, item [2]string) 
 		v, _ = crypt.GetCertContent(v, s.ConfPEM)
 	}
 	if s.Set(entry, v) != nil {
-		log.Warn("config value is not a boolean, using false", "key", item[0], "value", item[1])
+		log.Warn("config value is not a boolean, using false", "keys", item[0], "value", item[1])
 	}
 	return true
 }
@@ -489,7 +489,7 @@ func parseEnvTemplate(str string) (string, error) {
 func parseBool(item [2]string) bool {
 	v, err := textutil.ParseBool(item[1])
 	if err != nil {
-		log.Warn("config value is not a boolean, using false", "key", item[0], "value", item[1])
+		log.Warn("config value is not a boolean, using false", "keys", item[0], "value", item[1])
 	}
 	return v
 }

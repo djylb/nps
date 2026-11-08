@@ -33,7 +33,7 @@ func (l *legacyCommon) apply(c *CommonConfig) {
 		return
 	}
 	if !strings.EqualFold(c.Tp, "tls") {
-		log.Warn("npc.conf: tls_enable=true is the old spelling of conn_type=tls; connecting with tls", "conn_type", c.Tp)
+		log.Warn("legacy config setting", "keys", "tls_enable", "conn_type", c.Tp, "detail", "tls_enable=true is the old spelling of conn_type=tls; connecting with tls")
 	}
 	c.Tp = "tls"
 }
@@ -43,7 +43,7 @@ func (l *legacyCommon) apply(c *CommonConfig) {
 func legacySection(name string, keys map[string]bool) string {
 	for k := range keys {
 		if strings.HasPrefix(k, "health_") {
-			return "Ignoring section [" + name + "]: npc no longer runs health checks from npc.conf; " +
+			return "npc no longer runs health checks from npc.conf; " +
 				"set them on the server per tunnel or host (web UI, or health_check* of the web API)"
 		}
 	}

@@ -151,7 +151,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			err = errors.New("client is connecting, please retry")
 			return
 		}
-		s.DelClient(clientId)
+		s.delClient(clientId, "closed")
 		err = errors.New("the client connect error")
 		return
 	}
@@ -162,7 +162,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				err = errors.New("client is connecting, please retry")
 				return
 			}
-			s.DelClient(clientId)
+			s.delClient(clientId, "closed")
 			err = errors.New("the client is offline")
 			return
 		}
@@ -170,7 +170,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 			err = errors.New("client tunnel is reconnecting, please retry")
 			return
 		}
-		s.DelClient(clientId)
+		s.delClient(clientId, "closed")
 		err = errors.New("the client tunnel is unavailable")
 		return
 	}
@@ -198,8 +198,8 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		}
 	}
 
-	if link.ConnType == conn.LinkUDP && !caps.FramedUDP {
-		log.Warn("udp link needs a newer npc", "client", clientId, "protocol", legacy.CoreVersion(caps.Index))
+	if link.ConnType == conn.LinkUDP && !caps.FramedUDP && node.udpWarned.CompareAndSwap(false, true) {
+		log.Info("udp link needs a newer npc", "client", clientId, "version", legacy.CoreVersion(caps.Index))
 	}
 
 	return

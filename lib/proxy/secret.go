@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"net"
+	"time"
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
@@ -134,6 +135,8 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 			visitor = netx.NewFramedConn(c.Conn, netx.WithFramedDatagrams())
 		}
 	}
-	conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Bridge.LinkCert(), proxyProtocol, rb, s.Task, localProxy, false)
+	start := time.Now()
+	out, in := conn.CopyWaitGroup(target, visitor, link.Crypt, link.Compress, s.Task.Client.Rate, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Bridge.LinkCert(), proxyProtocol, rb, s.Task, localProxy, false)
+	connClosed(s.Task, c.RemoteAddr(), link.Host, in, out, start)
 	return nil
 }

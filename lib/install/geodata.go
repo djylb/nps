@@ -86,16 +86,15 @@ func UpdateGeoData(files []GeoFile) (*GeoUpdate, error) {
 	res := &GeoUpdate{}
 	rl, verified, err := fetchLatestRelease(c, geoRepo)
 	if err != nil {
-		fmt.Println("Query latest geodata release failed:", err)
-		fmt.Println("Falling back to the CDN mirrors, checked against their published SHA-256 sums")
+		geoLog.Warn("geodata release not queried, using the mirrors", "err", err)
 		rl = nil
 	} else if !verified {
-		fmt.Println("WARNING: the geodata release metadata was fetched without certificate verification")
+		geoLog.Warn("geodata release fetched without certificate verification")
 	}
 	var errs []error
 	for _, f := range files {
 		if err := updateGeoFile(c, rl, f, res); err != nil {
-			slogx.Emit(context.Background(), geoLog, &logevent.SourceFailed, "source", f.Name, "reason", "update_failed", "err", err)
+			slogx.Emit(context.Background(), geoLog, &logevent.SourceFailed, "name", geoName(f.Name), "file", f.Path, "reason", "update_failed", "err", err)
 			errs = append(errs, fmt.Errorf("update %s: %w", f.Name, err))
 		}
 	}
@@ -130,12 +129,12 @@ func updateGeoFile(c *httpClient, rl *release, f GeoFile, res *GeoUpdate) error 
 	// The first source tells the content to have; the mirrors may lag
 	// behind it.
 	if _, d, err := selfupdate.DigestFile(f.Path); err == nil && hex.EncodeToString(d.SHA256[:]) == sources[0].digest {
-		fmt.Println(f.Name, "is up to date")
+		geoLog.Info("source up to date", "name", geoName(f.Name), "file", f.Path)
 	} else {
 		if err := replaceGeoFile(f.Path, func(staged string) error { return downloadGeoFile(c, sources, staged) }); err != nil {
 			return err
 		}
-		slogx.Emit(context.Background(), geoLog, &logevent.SourceUpdated, "source", f.Name, "path", f.Path)
+		slogx.Emit(context.Background(), geoLog, &logevent.SourceUpdated, "name", geoName(f.Name), "file", f.Path)
 		res.Updated = append(res.Updated, f.Path)
 	}
 	if rl == nil {
@@ -302,7 +301,7 @@ func fetchSHA256Sum(c *httpClient, url string) (string, error) {
 func downloadGeoFile(c *httpClient, sources []geoSource, dest string) error {
 	var errs []error
 	for _, src := range sources {
-		fmt.Println("Trying:", src.url)
+		geoLog.Debug("geodata download", "url", src.url)
 		if err := downloadChecked(c, src, dest); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", src.url, err))
 			continue
@@ -348,7 +347,7 @@ func downloadChecked(c *httpClient, src geoSource, dest string) error {
 	}
 	_ = f.Close()
 	if !verified {
-		fmt.Println("  → downloaded without certificate verification; SHA-256 digest matched")
+		geoLog.Warn("geodata downloaded without certificate verification", "url", src.url, "detail", "the SHA-256 digest matched")
 	}
 	return nil
 }
@@ -377,4 +376,9 @@ func (s *responseSource) close() {
 	if s.body != nil {
 		_ = s.body.Close()
 	}
+}
+
+// geoName is the name of a geo data file in log lines: geoip or geosite.
+func geoName(file string) string {
+	return strings.TrimSuffix(filepath.Base(file), ".dat")
 }

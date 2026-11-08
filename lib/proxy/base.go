@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/djylb/byterate"
 	"github.com/djylb/nps/lib/acl"
@@ -224,7 +225,9 @@ func (s *BaseServer) pipeClientConn(target net.Conn, c *conn.Conn, link *conn.Li
 	if task != nil {
 		entry = task
 	}
-	conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, s.Bridge.LinkCert(), proxyProtocol, rb, entry, isLocal, isFramed)
+	start := time.Now()
+	out, in := conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flows, s.Bridge.LinkCert(), proxyProtocol, rb, entry, isLocal, isFramed)
+	connClosed(task, c.RemoteAddr(), link.Host, in, out, start)
 }
 
 const unauthorizedBytes = "HTTP/1.1 401 Unauthorized\r\n" +

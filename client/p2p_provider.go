@@ -19,12 +19,12 @@ import (
 func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	stream, err := tunnel.OpenStream(s.ctx)
 	if err != nil {
-		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "open_stream", "err", err)
+		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "open_stream", "err", err)
 		return
 	}
 	join := legacy.P2PJoin{SessionID: invite.SessionID, Token: invite.Token, ServerIP: s.server.ip}
 	if DisableP2P {
-		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "disabled")
+		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "disabled")
 		join.Decline = "P2P is disabled on the provider"
 		c := conn.NewConn(stream)
 		if err := SendType(c, legacy.WorkP2PSession, s.uuid); err == nil {
@@ -36,7 +36,7 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	}
 	tc, _, err := openP2PControl(s.ctx, conn.NewConn(stream), legacy.WorkP2PSession, s.uuid, s.server.fingerprint, join)
 	if err != nil {
-		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "join_failed", "err", err)
+		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "join_failed", "err", err)
 		return
 	}
 	// The provider accepts a background session whenever the server offers
@@ -45,29 +45,29 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	_ = tc.Close()
 	if err != nil {
 		if herr, ok := errors.AsType[*holepunch.Error](err); ok {
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err, "nat", p2pNATSummary(herr.Diagnostics))
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err, "nat", p2pNATSummary(herr.Diagnostics))
 		} else {
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err)
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err)
 		}
 		return
 	}
 	diag := sess.Diagnostics()
-	p2pLog.Debug("punched", "peer", "provider", "session", invite.SessionID, "nat", p2pNATSummary(&diag))
+	p2pLog.Debug("punched", "role", "provider", "session", invite.SessionID, "nat", p2pNATSummary(&diag))
 	pc, err := acceptP2PTransport(s.ctx, sess)
 	if err != nil {
-		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "visitor_not_connected", "err", err)
+		slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "role", "provider", "session", invite.SessionID, "reason", "visitor_not_connected", "err", err)
 		return
 	}
 	defer func() { _ = pc.Close() }()
 	qc := pc.QUIC()
-	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "peer", "provider", "session", invite.SessionID, "path", "direct", "addr", qc.RemoteAddr().String())
+	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "role", "provider", "session", invite.SessionID, "via", "direct", "addr", qc.RemoteAddr().String())
 	for {
 		st, err := qc.AcceptStream(s.ctx)
 		if err != nil {
 			if cause := pc.Err(); cause != nil {
 				err = cause
 			}
-			p2pLog.Info("direct connection closed", "peer", "provider", "session", invite.SessionID, "addr", qc.RemoteAddr().String(), "err", err)
+			p2pLog.Info("direct connection closed", "role", "provider", "session", invite.SessionID, "addr", qc.RemoteAddr().String(), "err", err)
 			return
 		}
 		go s.handleChan(conn.NewQuicStreamConn(st, qc))

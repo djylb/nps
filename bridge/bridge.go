@@ -138,7 +138,7 @@ func (s *Bridge) GlobalSource() *acl.Source {
 
 func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	scope := lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(anyError))
-	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { log.Error("connection handler failed", "err", err) }))
+	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { log.Debug("connection handler failed", "err", err) }))
 	return &Bridge{
 		scope:          scope,
 		conns:          conns,
@@ -155,7 +155,13 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	}
 }
 
-func (s *Bridge) DelClient(id int) {
+// DelClient ends the session of client id on behalf of the manager (kick,
+// disable, delete); its client_offline line says reason=deleted.
+func (s *Bridge) DelClient(id int) { s.delClient(id, "deleted") }
+
+// delClient ends the session of client id; reason is the client_offline
+// reason word (closed, unresponsive, deleted).
+func (s *Bridge) delClient(id int, reason string) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()
 	if v, ok := s.Client.Load(id); ok {
@@ -167,7 +173,7 @@ func (s *Bridge) DelClient(id int) {
 			return
 		}
 
-		s.recordConnection(id, false, v.(*Client))
+		s.recordConnection(id, false, v.(*Client), reason)
 		if s.store.IsPubClient(id) {
 			return
 		}
@@ -178,7 +184,7 @@ func (s *Bridge) DelClient(id int) {
 			select {
 			case s.CloseClient <- c.Id:
 			default:
-				log.Warn("close signal dropped: queue full", "client", c.Id)
+				log.Warn("close signal dropped", "client", c.Id, "reason", "queue_full")
 			}
 		}
 	}
@@ -232,7 +238,7 @@ func (s *Bridge) LinkCert() *tls.Certificate { return &s.cert }
 // the store publishes the same transitions to the event bus (ClientPresence),
 // while the line here carries what only the bridge knows, the address and
 // carrier of the session and how long it lasted.
-func (s *Bridge) recordConnection(id int, online bool, session *Client) {
+func (s *Bridge) recordConnection(id int, online bool, session *Client, reason string) {
 	db := s.store
 	c, err := db.GetClient(id)
 	now := time.Now()
@@ -251,14 +257,14 @@ func (s *Bridge) recordConnection(id int, online bool, session *Client) {
 		carrier = t
 	}
 	if online {
-		slogx.Emit(context.Background(), log, &logevent.ClientOnline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version)
+		slogx.Emit(context.Background(), log, &logevent.ClientOnline, "client", id, "src_ip", addr, "carrier", carrier, "version", version)
 		return
 	}
 	var dur int64
 	if session != nil && !session.started.IsZero() {
 		dur = now.Sub(session.started).Milliseconds()
 	}
-	slogx.Emit(context.Background(), log, &logevent.ClientOffline, "identity", id, "src_ip", addr, "carrier", carrier, "version", version, "duration_ms", dur)
+	slogx.Emit(context.Background(), log, &logevent.ClientOffline, "client", id, "src_ip", addr, "carrier", carrier, "version", version, "dur_ms", dur, "reason", reason)
 }
 
 func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
@@ -266,7 +272,7 @@ func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {
 	defer s.presenceMu.Unlock()
 	actual, loaded := s.Client.LoadOrStore(id, client)
 	if !loaded {
-		s.recordConnection(id, true, client)
+		s.recordConnection(id, true, client, "")
 	}
 	return actual, loaded
 }
@@ -306,5 +312,5 @@ func (s *Bridge) storeClient(id int, client *Client) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()
 	s.Client.Store(id, client)
-	s.recordConnection(id, true, client)
+	s.recordConnection(id, true, client, "")
 }

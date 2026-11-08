@@ -1,13 +1,16 @@
 package bridge
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/slogx"
 
 	"github.com/djylb/nps/lib/healthcheck"
 )
@@ -31,6 +34,7 @@ type healthPush struct {
 	store Store
 	mu    sync.Mutex
 	sent  map[string]healthGroup
+	down  map[string]map[string]bool // group -> targets the checks took out
 	quit  chan struct{}
 	done  chan struct{}
 }
@@ -42,8 +46,24 @@ type healthPush struct {
 func (p *healthPush) apply(rep healthcheck.Report) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if g, ok := p.sent[rep.Group]; ok {
-		g.target.SetHealthy(rep.Addr, rep.Up)
+	g, ok := p.sent[rep.Group]
+	if !ok || !g.target.SetHealthy(rep.Addr, rep.Up) {
+		return
+	}
+	if p.down == nil {
+		p.down = make(map[string]map[string]bool)
+	}
+	was := p.down[rep.Group][rep.Addr]
+	switch {
+	case !rep.Up && !was:
+		if p.down[rep.Group] == nil {
+			p.down[rep.Group] = make(map[string]bool)
+		}
+		p.down[rep.Group][rep.Addr] = true
+		slogx.Emit(context.Background(), log, &logevent.TargetDown, "route", g.route, "target", rep.Addr, "reason", "check_failed")
+	case rep.Up && was:
+		delete(p.down[rep.Group], rep.Addr)
+		slogx.Emit(context.Background(), log, &logevent.TargetUp, "route", g.route, "target", rep.Addr, "reason", "check_passed")
 	}
 }
 
@@ -64,6 +84,7 @@ func (p *healthPush) forget(name string) {
 		return
 	}
 	delete(p.sent, name)
+	delete(p.down, name)
 	for _, addr := range g.msg.Targets {
 		g.target.SetHealthy(addr, true)
 	}
@@ -82,6 +103,7 @@ func hostHealthGroup(id int) string   { return "h" + strconv.Itoa(id) }
 type healthGroup struct {
 	msg    healthcheck.Group
 	target *model.Target
+	route  string // the route of the entry, for target_down and target_up
 }
 
 // same reports whether g needs no new message after o: an edit that replaces
@@ -94,7 +116,7 @@ func (g healthGroup) same(o healthGroup) bool {
 
 // newHealthGroup returns the group of target, or false if it needs no checks:
 // one address has no other to fail over to.
-func newHealthGroup(group string, check model.HealthCheck, target *model.Target) (healthGroup, bool) {
+func newHealthGroup(group, route string, check model.HealthCheck, target *model.Target) (healthGroup, bool) {
 	if !check.Enabled {
 		return healthGroup{}, false
 	}
@@ -103,7 +125,7 @@ func newHealthGroup(group string, check model.HealthCheck, target *model.Target)
 		return healthGroup{}, false
 	}
 	check = check.Normalized()
-	return healthGroup{target: target, msg: healthcheck.Group{
+	return healthGroup{target: target, route: route, msg: healthcheck.Group{
 		Name: group, Type: check.Type, Path: check.Path, Interval: check.Interval,
 		Timeout: check.Timeout, Fall: check.MaxFail, Targets: addrs,
 	}}, true
@@ -116,7 +138,7 @@ func newHealthGroup(group string, check model.HealthCheck, target *model.Target)
 func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[string]healthGroup {
 	groups := make(map[string]healthGroup)
 	shared := client.healthNode() == node.UUID
-	add := func(group string, check model.HealthCheck, routes *model.RouteSet, fallback *model.Target) {
+	add := func(group, route string, check model.HealthCheck, routes *model.RouteSet, fallback *model.Target) {
 		target := fallback
 		if routes.Len() > 0 {
 			target = routes.Target(node.UUID, nil)
@@ -126,7 +148,7 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 		if target == nil {
 			return
 		}
-		if g, ok := newHealthGroup(group, check, target); ok {
+		if g, ok := newHealthGroup(group, route, check, target); ok {
 			groups[group] = g
 		}
 	}
@@ -136,17 +158,17 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 		target := v.Target
 		v.RUnlock()
 		if mine {
-			add(tunnelHealthGroup(v.Id), v.HealthCheck(), v.Routes, target)
+			add(tunnelHealthGroup(v.Id), v.LogRoute(), v.HealthCheck(), v.Routes, target)
 		}
 		return true
 	})
 	store.RangeHosts(func(v *model.Host) bool {
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && !v.IsClose
-		target := v.Target
+		target, domain := v.Target, v.Host
 		v.RUnlock()
 		if mine {
-			add(hostHealthGroup(v.Id), v.HealthCheck(), v.Routes, target)
+			add(hostHealthGroup(v.Id), domain, v.HealthCheck(), v.Routes, target)
 		}
 		return true
 	})
@@ -282,7 +304,6 @@ func (s *Bridge) pingClients() {
 		if (node == nil || node.IsOffline()) && !client.awaitingTunnel() {
 			client.retryTime++
 			if client.retryTime >= 3 {
-				log.Debug("client unresponsive", "client", clientID)
 				closedClients = append(closedClients, clientID)
 			}
 		} else {
@@ -292,6 +313,6 @@ func (s *Bridge) pingClients() {
 	})
 
 	for _, clientId := range closedClients {
-		s.DelClient(clientId)
+		s.delClient(clientId, "unresponsive")
 	}
 }

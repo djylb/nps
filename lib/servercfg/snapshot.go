@@ -62,17 +62,20 @@ type AppConfig struct {
 }
 
 type LogConfig struct {
-	Type     string // stdout, file, both, off
-	Format   string // auto (pretty on a terminal, else logfmt), text or json
-	Level    string // "info,bridge=debug"
-	Path     string
-	Security string // security log file; empty for none
-	MaxFiles int
-	MaxDays  int
-	MaxSize  int // MB
-	Compress bool
-	Memory   int // entries kept for the log viewer of the web manager; 0 for none
-	Secrets  bool // write keys and passwords in lines, for development
+	Type         string // stdout, file, both, off
+	Format       string // auto (pretty on a terminal, else logfmt), text or json
+	Level        string // "info,bridge=debug"
+	Path         string
+	Security     string // security log file; empty for none
+	MaxFiles     int
+	MaxDays      int
+	MaxSize      int // MB
+	Compress     bool
+	Memory       int    // entries kept for the log viewer of the web manager; 0 for none
+	Secrets      bool   // write keys and passwords in lines, for development
+	Instance     string // instance= on every line, to tell instances apart where logs meet
+	Access       string // access log file of the domain proxy; empty for none
+	AccessFormat string // combined or json
 }
 
 type WebConfig struct {
@@ -328,17 +331,20 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	cfg.Log = LogConfig{
-		Type:     r.stringDefault("stdout", "log"),
-		Format:   r.stringDefault("auto", "log_format"),
-		Level:    r.stringDefault("info", "log_level"),
-		Path:     r.stringValue("log_path"),
-		Security: r.stringValue("security_log"),
-		MaxFiles: r.intDefault(30, "log_max_files"),
-		MaxDays:  r.intDefault(30, "log_max_days"),
-		MaxSize:  r.intDefault(5, "log_max_size"),
-		Compress: r.boolDefault(false, "log_compress"),
-		Memory:   r.intDefault(1000, "log_memory"),
-		Secrets:  r.boolDefault(false, "log_secrets"),
+		Type:         r.stringDefault("stdout", "log"),
+		Format:       r.stringDefault("auto", "log_format"),
+		Level:        r.stringDefault("info", "log_level"),
+		Path:         r.stringValue("log_path"),
+		Security:     r.stringValue("security_log"),
+		MaxFiles:     r.intDefault(30, "log_max_files"),
+		MaxDays:      r.intDefault(30, "log_max_days"),
+		MaxSize:      r.intDefault(5, "log_max_size"),
+		Compress:     r.boolDefault(false, "log_compress"),
+		Memory:       r.intDefault(1000, "log_memory"),
+		Secrets:      r.boolDefault(false, "log_secrets"),
+		Instance:     r.stringValue("log_instance"),
+		Access:       r.stringValue("access_log"),
+		AccessFormat: r.stringDefault("combined", "access_log_format"),
 	}
 
 	cfg.Web = WebConfig{

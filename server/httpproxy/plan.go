@@ -196,7 +196,7 @@ func compileRedirectURL(setting string) *redirectURL {
 	}
 	t, err := httprewrite.Compile(val, ruleVars)
 	if err != nil {
-		proxyLog.Debug("redirect url used literally", "url", val, "err", err)
+		proxyLog.Debug("redirect url used literally", "detail", val, "err", err)
 		return u
 	}
 	u.tmpl = t

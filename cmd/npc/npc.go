@@ -69,6 +69,7 @@ var (
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
 	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
+	logInstance    = flag.String("log_instance", "", "Name written as instance= on every log line, to tell npc instances apart")
 	logSecrets     = flag.Bool("log_secrets", false, "Write keys and passwords in log lines, for development (never in production)")
 	logFormat      = flag.String("log_format", "auto", "Log line format (auto|text|json); auto is coloured on a terminal, logfmt elsewhere")
 	debug          = flag.Bool("debug", true, "Log to the console when -log is not given (false for services)")
@@ -165,17 +166,17 @@ func main() {
 	if !*disableRemote {
 		client.RemoteUpdate = func() error {
 			if !install.CanRestartSelf() {
-				log.Info("remote update ignored: on Windows only npc installed as a service updates itself")
+				log.Info("remote update refused", "reason", "not_service")
 				return nil
 			}
 			u, err := install.UpdateSelf("npc", svcConfig.Name)
 			if u == nil {
 				if err == nil {
-					log.Info("remote update: already the latest version")
+					log.Info("remote update not needed", "reason", "latest", "version", version.VERSION)
 				}
 				return err
 			}
-			log.Info("remote update installed, restarting", "to", u.Version)
+			slogx.Emit(context.Background(), log, &logevent.UpdateApplied, "from", version.VERSION, "to", u.Version)
 			return u.Restart()
 		}
 	}
@@ -206,7 +207,7 @@ func main() {
 		return
 	}
 	if err != nil {
-		log.Warn("service manager unavailable, running without it", "err", err)
+		log.Warn("service manager unavailable", "err", err)
 		run(ctx, cancel)
 		// run without service
 		wg := sync.WaitGroup{}
@@ -231,7 +232,7 @@ func main() {
 		return
 	case "start", "stop", "restart":
 		if err := install.ControlService(s, svcConfig.Name, cmd); err != nil {
-			log.Error("service control failed", "action", cmd, "valid_actions", service.ControlAction, "err", err)
+			log.Error("service control failed", "action", cmd, "detail", strings.Join(service.ControlAction[:], ","), "err", err)
 		}
 		return
 	case "install":
@@ -286,7 +287,7 @@ func warnArgs(logOff bool) {
 			fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
-		cfgLog.Warn(w)
+		cfgLog.Warn("command line argument", "detail", w)
 	}
 }
 
@@ -308,7 +309,7 @@ func configureLogging() {
 	err := logsetup.Apply(logsetup.Options{
 		Output: *logType, Format: *logFormat, Level: *logLevel, Path: *logPath, Dir: runenv.GetRunPath(),
 		MaxSize: *logMaxSize, MaxFiles: *logMaxFiles, MaxDays: *logMaxDays, Compress: *logCompress,
-		Secrets: *logSecrets,
+		Secrets: *logSecrets, Instance: *logInstance,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "log:", err)
@@ -462,7 +463,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
-						log.Info("client closed, reconnecting", "server", serverAddr)
+						log.Info("reconnecting", "server", serverAddr)
 						if !client.WaitReconnect(ctx) {
 							return
 						}

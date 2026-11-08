@@ -1,14 +1,18 @@
 package crypt
 
 import (
+	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/djylb/netx/tlsconn"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/textutil"
+	"github.com/djylb/slogx"
 )
 
 // GetCertContent returns filePath itself when it is PEM text containing
@@ -38,7 +42,23 @@ func LoadKeyPair(certFile, keyFile string) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	return tlsconn.ParseKeyPair([]byte(certContent), []byte(keyContent))
+	cert, err := tlsconn.ParseKeyPair([]byte(certContent), []byte(keyContent))
+	if err != nil {
+		return cert, err
+	}
+	args := []any{}
+	if GetCertType(certFile) != "text" {
+		args = append(args, "file", certFile)
+	}
+	leaf := cert.Leaf
+	if leaf == nil && len(cert.Certificate) > 0 {
+		leaf, _ = x509.ParseCertificate(cert.Certificate[0])
+	}
+	if leaf != nil {
+		args = append(args, "until", leaf.NotAfter, "issuer", leaf.Issuer.CommonName)
+	}
+	slogx.Emit(context.Background(), log, &logevent.CertLoaded, args...)
+	return cert, nil
 }
 
 // GetCertType reports whether s is "empty", PEM "text", an existing "file"

@@ -133,7 +133,7 @@ func (a *p2pAnnouncer) resolve(ctx context.Context, host string) []netip.Addr {
 	cancel()
 	if err != nil || len(addrs) == 0 {
 		// Warned once per p2pResolveRetry: the failure is cached as long.
-		log.Warn("resolving p2p_ip failed, using earlier addresses", "host", host, "err", err)
+		log.Warn("resolving p2p_ip failed", "domain", host, "err", err)
 		a.mu.Lock()
 		a.cache[host] = p2pResolved{addrs: cached.addrs, at: time.Now(), failed: true}
 		a.mu.Unlock()
