@@ -87,6 +87,8 @@ type Acceptor struct {
 	sessionOpts wire.SessionOptions
 	limits      CompressLimits
 	maxPipes    int // client_max_pipes, 0 unlimited
+	shaping     atomic.Pointer[[]byte]
+	shapingFrom func(context.Context, func([]byte))
 
 	linkMu sync.Mutex
 	links  map[uint64]*peerLink
@@ -113,6 +115,9 @@ type Options struct {
 	// ResumeTimeout is how long a session that lost all its pipes waits for
 	// one (§3.8); 0 is 30 s, negative is no resume.
 	ResumeTimeout time.Duration
+	// ShapingSource keeps the bundle current until ctx ends, through set; nil
+	// is none (§13).
+	ShapingSource func(ctx context.Context, set func([]byte))
 }
 
 // NewAcceptor builds the entry over store, with a key of this process
@@ -123,7 +128,7 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		return nil, err
 	}
 	a := &Acceptor{links: map[uint64]*peerLink{}, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
-		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes}
+		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
 		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
 			EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)},
@@ -225,6 +230,9 @@ func (a *Acceptor) Start(ctx context.Context, h coreapi.Hooks) error {
 	ctx, a.cancel = context.WithCancel(ctx)
 	id := seal.NodeKeyID(a.key.PublicKey().Bytes())
 	log.Info("core protocol entry ready", "key_id", hex.EncodeToString(id[:]))
+	if a.shapingFrom != nil {
+		a.wg.Go(func() { a.shapingFrom(ctx, a.SetShaping) })
+	}
 	a.wg.Go(func() {
 		for {
 			zc, err := a.zl.Accept(ctx)
@@ -492,6 +500,7 @@ func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 			snap.Record = wire.RecordTrusted
 		}
 		snap.Compress = chooseCompress(e.Compress, s.t.hello.CompressAlgs)
+		snap.Shaping = a.shapingFor(s, e.Shaping)
 	}
 	return snap
 }
@@ -573,7 +582,7 @@ func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 		for _, s := range sessions {
 			a.drain(s)
 		}
-	case old.Crypt != r.Crypt || !slices.Equal(old.Compress, r.Compress):
+	case old.Crypt != r.Crypt || old.Shaping != r.Shaping || !slices.Equal(old.Compress, r.Compress):
 		for _, s := range sessions {
 			s.kick()
 		}

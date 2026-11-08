@@ -131,10 +131,15 @@ type Snapshot struct {
 	HasSchedulerUp bool
 	// Health are the checks the client runs (§5.3).
 	Health []HealthGroup
+	// Shaping is the bundle, opaque here (§5); nil for none.
+	Shaping []byte
 }
 
 // AppendSnapshot appends the fields of s, default values omitted.
 func AppendSnapshot(b []byte, s *Snapshot) []byte {
+	if s.HasSchedulerUp {
+		b = AppendUint(b, keyCfgSchedulerUp, s.SchedulerUp)
+	}
 	var so []byte
 	if s.Session.ResumeMs != 0 {
 		so = AppendUint(so, keySoResumeMs, s.Session.ResumeMs)
@@ -148,8 +153,8 @@ func AppendSnapshot(b []byte, s *Snapshot) []byte {
 	if len(so) > 0 {
 		b = AppendBytes(b, keyCfgSessionOptions, so)
 	}
-	if s.HasSchedulerUp {
-		b = AppendUint(b, keyCfgSchedulerUp, s.SchedulerUp)
+	if len(s.Shaping) > 0 {
+		b = AppendBytes(b, keyCfgShaping, s.Shaping)
 	}
 	for i := range s.Health {
 		b = appendHealthGroup(b, &s.Health[i])
@@ -181,6 +186,8 @@ func ParseSnapshot(b []byte) (Snapshot, error) {
 			if KnownCompress(f.Value) {
 				s.Compress = f.Value
 			}
+		case keyCfgShaping:
+			s.Shaping = f.Data
 		case keyCfgHealth:
 			g, ok, err := parseHealthGroup(f.Data)
 			if err != nil {

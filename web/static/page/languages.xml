@@ -1013,6 +1013,14 @@
 		<zh-CN>目标服务不可用</zh-CN>
 		<en-US>Target service unavailable</en-US>
 	</lang>
+	<lang id="word-advanced">
+		<zh-CN>高级设置</zh-CN>
+		<en-US>Advanced</en-US>
+	</lang>
+	<lang id="word-shaping">
+		<zh-CN>流量整形</zh-CN>
+		<en-US>Traffic shaping</en-US>
+	</lang>
 	<lang id="word-generatedtunnel">
 		<zh-CN>自动生成</zh-CN>
 		<en-US>Auto-generated</en-US>

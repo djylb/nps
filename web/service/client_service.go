@@ -73,6 +73,7 @@ type AddClientInput struct {
 	Password         string
 	Compress         bool
 	SchedulerDown    string
+	Shaping          bool
 	Crypt            bool
 	ConfigConnAllow  bool
 	RateLimit        int
@@ -110,6 +111,7 @@ type EditClientInput struct {
 	AllowUserChangeUsername bool
 	Compress                bool
 	SchedulerDown           string
+	Shaping                 bool
 	Crypt                   bool
 	ConfigConnAllow         bool
 	ResetFlow               bool
@@ -155,6 +157,7 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 			P:             input.Password,
 			Compress:      input.Compress,
 			SchedulerDown: input.SchedulerDown,
+			Shaping:       input.Shaping,
 			Crypt:         input.Crypt,
 		},
 		ConfigConnAllow: input.ConfigConnAllow,
@@ -246,6 +249,7 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.Cnf.P = input.Password
 	client.Cnf.Compress = input.Compress
 	client.Cnf.SchedulerDown = input.SchedulerDown
+	client.Cnf.Shaping = input.Shaping
 	client.Cnf.Crypt = input.Crypt
 	if input.IsAdmin || input.AllowUserChangeUsername {
 		client.WebUserName = input.WebUserName

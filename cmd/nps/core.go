@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -18,7 +19,7 @@ func coreRecord(c *model.Client) (coreapi.ClientRecord, bool) {
 	if c.Id <= 0 || c.NoStore || c.KeyKind != model.KeyControl {
 		return coreapi.ClientRecord{}, false
 	}
-	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName()}, true
+	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName(), Shaping: c.Cnf != nil && c.Cnf.Shaping}, true
 }
 
 // RangeClients implements session.Store.
@@ -38,7 +39,16 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 		return nil, nil
 	}
 	resumeS := cfg.Runtime.SessionResumeTimeout
+	src, err := newShapingSource(cfg)
+	if err != nil {
+		return nil, err
+	}
+	var from func(context.Context, func([]byte))
+	if src != nil {
+		from = src.run
+	}
 	a, err := session.NewAcceptor(coreStore{db}, session.Options{
+		ShapingSource: from,
 		// Told to npc only when configured: the default leaves it its own.
 		Session:       wire.SessionOptions{ResumeMs: uint64(max(resumeS, 0)) * 1000, DeadS: uint64(cfg.Runtime.DeadS), IdleS: uint64(cfg.Runtime.IdleS)},
 		ResumeTimeout: time.Duration(resumeS) * time.Second,

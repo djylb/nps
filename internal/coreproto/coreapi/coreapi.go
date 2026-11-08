@@ -35,6 +35,8 @@ type ClientRecord struct {
 	// SchedulerDown names the scheduler of sending to the client; "" is
 	// affinity.
 	SchedulerDown string
+	// Shaping is the client's shaping switch (§13).
+	Shaping bool
 }
 
 // Networks of a link.

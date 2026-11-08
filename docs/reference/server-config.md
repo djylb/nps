@@ -120,6 +120,7 @@ nps.exe -conf_path=D:\test\nps
 | `bridge_wss_port` | `0` | `8027` | |
 | `bridge_path` | `/ws` | `/ws` | WS 路径 |
 | `new_protocol` | `false` | `true` | 在 tcp、tls、ws、wss 客户端端口上同时接受核心协议，旧协议照常接受 |
+| `shaping_url`、`shaping_token`、`shaping_pubkey`、`shaping_file` | 空，`conf/shaping.json` | - | 流量整形的配置来源，默认没有，配置后还要在客户端的高级设置里打开开关才生效 |
 | `new_protocol_tls_alpn` | 空 | - | `new_protocol` 打开时 TLS 端口的 ALPN 列表（逗号分隔），空则不通告 |
 | `new_protocol_quic_alpn` | `h3` | - | `new_protocol` 打开时核心协议 QUIC 承载的 ALPN 列表（逗号分隔）。QUIC 只按 ALPN 区分新旧协议：`quic_alpn` 的名字走旧协议，这里的走核心协议；两个列表有重叠时启动报配置错误。`http3_proxy_port` 等于 `mix_port` 时同端口也服务 HTTP/3，`h3` 归 HTTP/3，两个列表都不能含 `h3` |
 | `compress_max_window` | `0`（8 MiB） | `8388608` | 新协议压缩流的 zstd 帧窗口上限（字节） |

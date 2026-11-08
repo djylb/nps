@@ -235,6 +235,9 @@ type NetworkConfig struct {
 	// in bytes, compress_max_ratio; 0 is the default, a negative ratio
 	// disables that check).
 	CompressMaxWindow uint64
+	// Shaping source: shaping_url, shaping_token, shaping_pubkey and the
+	// local shaping_file. None is the default.
+	ShapingURL, ShapingToken, ShapingPubKey, ShapingFile string
 	CompressMaxRatio  int64
 	HTTPProxyIP       string
 	HTTPProxyPort     int
@@ -536,6 +539,10 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Runtime.IdleS = max(r.intDefault(0, "session_idle_s"), 0)
 	cfg.Runtime.SessionResumeTimeout = r.intDefault(0, "session_resume_timeout")
 	cfg.Runtime.SessionMaxLanes = r.intDefault(0, "session_max_lanes")
+	cfg.Network.ShapingURL = r.stringDefault("", "shaping_url")
+	cfg.Network.ShapingToken = r.stringDefault("", "shaping_token")
+	cfg.Network.ShapingPubKey = r.stringDefault("", "shaping_pubkey")
+	cfg.Network.ShapingFile = r.stringDefault("conf/shaping.json", "shaping_file")
 	cfg.Network.CompressMaxWindow = uint64(max(r.intDefault(0, "compress_max_window"), 0))
 	cfg.Network.CompressMaxRatio = int64(r.intDefault(0, "compress_max_ratio"))
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {

@@ -290,6 +290,9 @@ type Config struct {
 	// SchedulerDown is how nps schedules sending to this client on the core
 	// protocol (connprofile.Schedulers); empty is affinity.
 	SchedulerDown string `json:",omitempty"`
+	// Shaping turns on traffic shaping for this client (off by default); it
+	// takes effect only with a shaping source configured on the server.
+	Shaping bool `json:",omitempty"`
 }
 
 // Tunnel and host override of the compression of a client; "" follows the

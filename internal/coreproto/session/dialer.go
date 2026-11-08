@@ -422,6 +422,7 @@ type clientSession struct {
 	configured     chan struct{} // closed by the first snapshot
 	configuredOnce sync.Once
 
+	shapingRaw   []byte               // the bundle in use; under mu
 	healthRunner coreapi.HealthRunner // made by the first snapshot with checks; under mu
 
 	wg *sync.WaitGroup
@@ -544,6 +545,7 @@ func (s *clientSession) apply(seq uint64, snap wire.Snapshot) {
 	s.d.setResumeMs(snap.Session.ResumeMs)
 	s.applySessionOptions(snap.Session)
 	s.applyHealth(snap.Health)
+	s.applyShaping(snap.Shaping)
 	if snap.HasSchedulerUp {
 		s.zc.SetScheduler(schedulerNamed(connprofile.Schedulers[snap.SchedulerUp]))
 	}
