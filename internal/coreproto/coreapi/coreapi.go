@@ -77,6 +77,11 @@ type Entry interface {
 	// WebSocket returns the handler of the WebSocket bridge path: requests
 	// of the core protocol go to it, every other request to legacy.
 	WebSocket(legacy http.Handler) (http.Handler, error)
+	// WebSocketAnyProtocol returns the handler of the paths that are the
+	// core protocol's alone (new_protocol_ws_paths): every WebSocket
+	// request goes to it, with the subprotocol it offered or none. Other
+	// requests go to next.
+	WebSocketAnyProtocol(next http.Handler) (http.Handler, error)
 	// ClientChanged tells the entry the state of a client after a change.
 	ClientChanged(ClientRecord)
 	// ClientRemoved tells the entry that a client no longer exists.

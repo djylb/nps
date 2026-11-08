@@ -3,7 +3,6 @@ package bridge
 import (
 	"context"
 	"crypto/tls"
-	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -98,7 +97,7 @@ type Bridge struct {
 	secrets            *secretGrants              // grants of point-to-point access
 	lookup             atomic.Pointer[TunnelLookup]
 	core               coreapi.Entry // nil: old protocol only
-	fallback           atomic.Pointer[func(net.Conn, *tls.ConnectionState) bool]
+	fallback           atomic.Pointer[Fallback]
 	webListener        atomic.Pointer[netx.ChanListener]
 	ipRegListener      atomic.Pointer[netx.ChanListener]
 

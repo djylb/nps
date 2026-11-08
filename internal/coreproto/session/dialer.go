@@ -26,6 +26,9 @@ import (
 // boundLimit bounds an attempt in Bound before Sealed on a new carrier (§3.2).
 const boundLimit = 5 * time.Second
 
+// boundFailedTTL is how long a failed Bound is remembered (§3.2).
+const boundFailedTTL = time.Hour
+
 // maxConfigBody is the default bound of a CONFIG snapshot (§4.3).
 const maxConfigBody = 16 << 20
 
@@ -45,9 +48,10 @@ type Dialer struct {
 	cfg DialConfig
 
 	mu          sync.Mutex
-	record      uint64          // last CONFIG record
-	boundFailed map[string]bool // (candidate, local IP) where Bound failed and Sealed worked
-	last        string          // candidate that connected last
+	record      uint64               // last CONFIG record
+	boundFailed map[string]time.Time // (candidate, network) where Bound failed and Sealed worked, when
+	last        string               // candidate that connected last
+	now         func() time.Time     // tests
 }
 
 // NewDialer returns a Dialer for cfg.
@@ -55,7 +59,7 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 15 * time.Second
 	}
-	return &Dialer{cfg: cfg, boundFailed: map[string]bool{}}
+	return &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now}
 }
 
 // Server implements coreapi.Dialer.
@@ -101,8 +105,8 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 // carrier is a dialed carrier and what the mode choice needs of it.
 type carrier struct {
 	pipe    zmux.PipeIO
-	secure  bool // end-to-end TLS of ours: Bound is possible
-	localIP string
+	secure  bool   // end-to-end TLS of ours: Bound is possible
+	network string // the local network the carrier left by (localNetwork)
 }
 
 // plan is the record mode of an attempt.
@@ -135,9 +139,9 @@ func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*c
 	if err != nil {
 		return nil, err
 	}
-	key := c.Key() + "|" + ca.localIP
+	key := c.Key() + "|" + ca.network
 	d.mu.Lock()
-	p := choose(d.record, ca.secure, d.boundFailed[key])
+	p := choose(d.record, ca.secure, d.boundFailedLocked(key))
 	d.mu.Unlock()
 	if p.mode != zmux.Bound {
 		return d.establish(ctx, ca, p.mode, c.Carrier)
@@ -156,9 +160,32 @@ func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*c
 		return nil, err
 	}
 	d.mu.Lock()
-	d.boundFailed[key] = true
+	d.noteBoundFailedLocked(key)
 	d.mu.Unlock()
 	return s, nil
+}
+
+// boundFailedLocked reports whether Bound failed and Sealed worked for key
+// within boundFailedTTL; an older entry is dropped.
+func (d *Dialer) boundFailedLocked(key string) bool {
+	at, ok := d.boundFailed[key]
+	if ok && d.now().Sub(at) >= boundFailedTTL {
+		delete(d.boundFailed, key)
+		return false
+	}
+	return ok
+}
+
+// noteBoundFailedLocked records that Bound failed and Sealed worked for key,
+// and drops the entries that expired.
+func (d *Dialer) noteBoundFailedLocked(key string) {
+	now := d.now()
+	for k, at := range d.boundFailed {
+		if now.Sub(at) >= boundFailedTTL {
+			delete(d.boundFailed, k)
+		}
+	}
+	d.boundFailed[key] = now
 }
 
 func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carrier, error) {
@@ -169,7 +196,7 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		if err != nil {
 			return carrier{}, err
 		}
-		ca := carrier{localIP: localIP(nc)}
+		ca := carrier{network: localNetwork(nc)}
 		if c.Carrier == "tcp" {
 			ca.pipe = zmux.NetPipe(nc)
 			return ca, nil
@@ -189,7 +216,8 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		if !strings.Contains(c.Raw, "://") {
 			protocols = []string{legacySubprotocol}
 		}
-		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true}
+		cd := &captureDialer{}
+		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}
 		if c.Host != "" {
 			o.Header = http.Header{"Host": {c.Host}}
 		}
@@ -198,16 +226,56 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 			return carrier{}, err
 		}
 		// HTTP/1.1 on a TLS connection of its own: zmuxws declares it.
-		return carrier{pipe: p, secure: scheme == "wss" && zmux.IsCarrierSecure(p)}, nil
+		return carrier{pipe: p, secure: scheme == "wss" && zmux.IsCarrierSecure(p), network: cd.network()}, nil
 	}
 	return carrier{}, fmt.Errorf("carrier %q is not available on the new protocol yet", c.Carrier)
 }
 
-func localIP(c net.Conn) string {
-	if a, ok := c.LocalAddr().(*net.TCPAddr); ok {
-		return a.IP.String()
+// captureDialer dials TCP and remembers the local network of the last
+// connection, which zmuxws does not show.
+type captureDialer struct {
+	mu  sync.Mutex
+	net string
+}
+
+func (d *captureDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	nc, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+	if err == nil {
+		d.mu.Lock()
+		d.net = localNetwork(nc)
+		d.mu.Unlock()
 	}
-	return ""
+	return nc, err
+}
+
+func (d *captureDialer) network() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.net
+}
+
+// localNetwork names the local network a connection left by: its local
+// address and the interface that holds it (name, index, hardware address).
+// A cache keyed by it ends with a move to another network, as far as that
+// changes the address or the interface; two networks that hand out the same
+// address on the same interface look alike (the default route, which would
+// tell them apart, has no portable cheap source, so the one-hour limit
+// bounds that case).
+func localNetwork(c net.Conn) string {
+	a, ok := c.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return ""
+	}
+	ifaces, _ := net.Interfaces()
+	for _, ifc := range ifaces {
+		addrs, _ := ifc.Addrs()
+		for _, ia := range addrs {
+			if ipn, ok := ia.(*net.IPNet); ok && ipn.IP.Equal(a.IP) {
+				return fmt.Sprintf("%s@%s#%d/%s", a.IP, ifc.Name, ifc.Index, ifc.HardwareAddr)
+			}
+		}
+	}
+	return a.IP.String()
 }
 
 func serverName(c connprofile.Candidate) string {

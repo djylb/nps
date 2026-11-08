@@ -54,22 +54,44 @@ func coreAuthFailed(f coreapi.AuthFailure) {
 	slogx.Emit(context.Background(), log, &logevent.AuthFailed, args...)
 }
 
-// coreFallback hands a carrier that is neither protocol's to the domain proxy.
+// Fallback is the target of the carriers the new protocol does not take (the
+// domain proxy).
+type Fallback interface {
+	// ServeFallback serves c, every byte replayed; state is its TLS when
+	// this process terminated it. It returns false, leaving c to the
+	// caller, when it cannot take c.
+	ServeFallback(c net.Conn, state *tls.ConnectionState) bool
+	// FallbackCert returns the certificate for the TLS handshake of a
+	// connection that asked for hello.ServerName, or nil, nil to present the
+	// bridge's own.
+	FallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
+}
+
 func (s *Bridge) coreFallback(c net.Conn, state *tls.ConnectionState) bool {
 	if f := s.fallback.Load(); f != nil {
-		return (*f)(c, state)
+		return (*f).ServeFallback(c, state)
 	}
 	return false
 }
 
 // SetFallback sets the target of carriers the new protocol does not take; nil
-// removes it. It returns false when the target cannot take c.
-func (s *Bridge) SetFallback(f func(c net.Conn, state *tls.ConnectionState) bool) {
+// removes it.
+func (s *Bridge) SetFallback(f Fallback) {
 	if f == nil {
 		s.fallback.Store(nil)
 		return
 	}
 	s.fallback.Store(&f)
+}
+
+// fallbackCert picks the certificate of the TLS bridge by the name the client
+// asked for, as the domain proxy does, and the bridge's own when no route
+// has that name.
+func (s *Bridge) fallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if f := s.fallback.Load(); f != nil {
+		return (*f).FallbackCert(hello)
+	}
+	return nil, nil
 }
 
 // startCore starts the new protocol entry, before any listener opens.
@@ -110,18 +132,14 @@ func (s *Bridge) serveCarrier(c net.Conn, transport string) {
 	}
 }
 
-// coreWS is the route of the WebSocket bridge path, nil with the new protocol
-// off.
-func (s *Bridge) coreWS() func(http.Handler) http.Handler {
+// coreWS is the route of the WebSocket bridge: on the bridge path the
+// subprotocol picks the protocol, and new_protocol_ws_paths belong to the new
+// one whatever the subprotocol. Nil with the new protocol off.
+func (s *Bridge) coreWS() *conn.WSRoute {
 	if s.core == nil {
 		return nil
 	}
-	return func(legacy http.Handler) http.Handler {
-		h, err := s.core.WebSocket(legacy)
-		if err != nil {
-			log.Error("new protocol websocket route", "err", err)
-			return legacy
-		}
+	denied := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if addr, err := conn.ParseTCPAddr(r.RemoteAddr); err == nil && addr != nil && s.store.GlobalDenied(addr, "bridge") {
 				panic(http.ErrAbortHandler)
@@ -129,14 +147,36 @@ func (s *Bridge) coreWS() func(http.Handler) http.Handler {
 			h.ServeHTTP(w, r)
 		})
 	}
+	route := &conn.WSRoute{Wrap: func(legacy http.Handler) http.Handler {
+		h, err := s.core.WebSocket(legacy)
+		if err != nil {
+			log.Error("new protocol websocket route", "err", err)
+			return legacy
+		}
+		return denied(h)
+	}}
+	for _, p := range connection.Network().NewProtocolWSPaths {
+		h, err := s.core.WebSocketAnyProtocol(http.NotFoundHandler())
+		if err != nil {
+			log.Error("new protocol websocket route", "path", p, "err", err)
+			continue
+		}
+		if route.Paths == nil {
+			route.Paths = map[string]http.Handler{}
+		}
+		route.Paths[p] = denied(h)
+	}
+	return route
 }
 
 // tlsConfig is the configuration of the TLS bridge listener; the ALPN list
-// applies only with the new protocol (none by default, §13).
+// and the choice of the certificate by name apply only with the new protocol
+// (no ALPN by default, §13).
 func (s *Bridge) tlsConfig() *tls.Config {
 	cfg := &tls.Config{Certificates: []tls.Certificate{s.cert}}
 	if s.core != nil {
 		cfg.NextProtos = connection.Network().NewProtocolTLSALPN
+		cfg.GetCertificate = s.fallbackCert
 	}
 	return cfg
 }

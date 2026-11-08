@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net"
+	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,5 +62,35 @@ func TestWSListenerRoundTripAndRealIP(t *testing.T) {
 	}
 	if err = <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWSRoutePaths(t *testing.T) {
+	var wrapped, extra atomic.Int32
+	mark := func(n *atomic.Int32) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { n.Add(1); w.WriteHeader(http.StatusTeapot) })
+	}
+	base, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := &WSRoute{
+		Wrap:  func(http.Handler) http.Handler { return mark(&wrapped) },
+		Paths: map[string]http.Handler{"/x": mark(&extra), "bad path {": mark(&extra)},
+	}
+	ln := NewWSListener(base, "/ws", "", "", route)
+	defer func() { _ = ln.Close() }()
+	for path, want := range map[string]int{"/ws": http.StatusTeapot, "/x": http.StatusTeapot, "/other": http.StatusNotFound} {
+		resp, err := http.Get("http://" + base.Addr().String() + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("%s: %d, want %d", path, resp.StatusCode, want)
+		}
+	}
+	if wrapped.Load() != 1 || extra.Load() != 1 {
+		t.Fatalf("wrapped %d, extra %d", wrapped.Load(), extra.Load())
 	}
 }

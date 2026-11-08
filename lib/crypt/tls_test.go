@@ -26,7 +26,7 @@ func TestPinFingerprint(t *testing.T) {
 }
 
 func TestGetCertFingerprintIsLeafSHA256(t *testing.T) {
-	cert, err := newSelfSigned("example.com", "Example")
+	cert, err := newSelfSigned("example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +59,14 @@ func TestNewIdentitySelfSignedRSA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if leaf.Subject.CommonName == "" || len(leaf.Subject.Organization) != 1 {
-		t.Fatalf("subject %v lacks common name or organization", leaf.Subject)
+	if len(leaf.RawSubject) != 2 || len(leaf.RawIssuer) != 2 { // an empty SEQUENCE
+		t.Fatalf("subject % x, issuer % x: want both empty", leaf.RawSubject, leaf.RawIssuer)
 	}
-	if !slices.Equal(leaf.DNSNames, []string{leaf.Subject.CommonName}) {
-		t.Fatalf("DNS names %v, want the common name", leaf.DNSNames)
+	if len(leaf.DNSNames) != 1 {
+		t.Fatalf("DNS names %v, want one", leaf.DNSNames)
+	}
+	if leaf.SerialNumber.Sign() <= 0 || leaf.SerialNumber.BitLen() < 64 {
+		t.Fatalf("serial number %v is not a large positive number", leaf.SerialNumber)
 	}
 	if validFor := leaf.NotAfter.Sub(time.Now()); validFor < 9*365*24*time.Hour {
 		t.Fatalf("certificate is valid for only %v", validFor)
@@ -91,6 +94,47 @@ func TestNewIdentitySelfSignedRSA(t *testing.T) {
 	}
 }
 
+func TestSelfSignedCertificatesDiffer(t *testing.T) {
+	a, err := NewIdentity(tls.Certificate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewIdentity(tls.Certificate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	la, _ := x509.ParseCertificate(a.Cert.Certificate[0])
+	lb, _ := x509.ParseCertificate(b.Cert.Certificate[0])
+	if la.SerialNumber.Cmp(lb.SerialNumber) == 0 {
+		t.Fatal("two certificates share a serial number")
+	}
+}
+
+// A client that does not verify, or pins the fingerprint, still completes
+// the handshake with an empty-subject certificate.
+func TestSelfSignedHandshake(t *testing.T) {
+	cert, err := newSelfSigned("example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cfg := range []*tls.Config{{InsecureSkipVerify: true}, NewPinnedTlsClientConfig(GetCertFingerprint(cert))} {
+		c, s := net.Pipe()
+		srv := tls.Server(s, &tls.Config{Certificates: []tls.Certificate{cert}})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_ = srv.Handshake()
+			_ = srv.Close()
+		}()
+		err := tls.Client(c, cfg).Handshake()
+		_ = c.Close()
+		<-done
+		if err != nil {
+			t.Fatalf("handshake: %v", err)
+		}
+	}
+}
+
 func TestAddTrustedCertReplacesPin(t *testing.T) {
 	fp1, fp2 := sha256.Sum256([]byte("one")), sha256.Sum256([]byte("two"))
 	AddTrustedCert("vkey-a", fp1[:])
@@ -111,7 +155,7 @@ func TestAddTrustedCertReplacesPin(t *testing.T) {
 }
 
 func TestNewPinnedTlsClientConfig(t *testing.T) {
-	serverCert, err := newSelfSigned("example.com", "Example")
+	serverCert, err := newSelfSigned("example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

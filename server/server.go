@@ -87,6 +87,9 @@ type Server struct {
 	accessLog  func(httpproxy.AccessRecord)
 	updating   atomic.Bool // an update runs
 
+	notFoundOnce sync.Once
+	notFoundSrv  *httpproxy.NotFound
+
 	webHandler   atomic.Pointer[webHandlerBox]
 	ipRegHandler http.Handler
 	web          *WebServer
@@ -125,7 +128,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
-	s.bridge.SetFallback(s.domainFallback)
+	s.bridge.SetFallback(domainFallback{s})
 	// registered first, so closed last
 	_, _ = s.scope.Add(closerFunc(func() { s.ApplyWebhook(servercfg.WebhookConfig{}) }))
 	s.own(s.bridge)
@@ -133,18 +136,50 @@ func New(db *file.DbUtils, cfg Config) *Server {
 	return s
 }
 
-// domainFallback hands a bridge connection that is neither protocol's to the
-// running domain proxy; false when none runs.
-func (s *Server) domainFallback(c net.Conn, state *tls.ConnectionState) bool {
+// domainFallback is the target of a bridge connection that is neither
+// protocol's: the running domain proxy, or, with none, the plain 404 of an
+// unknown site, so that no probe of a bridge port is left without an answer.
+type domainFallback struct{ s *Server }
+
+func (f domainFallback) proxy(fn func(*httpproxy.HttpProxy) bool) bool {
 	served := false
-	s.tasks.Range(func(_, v any) bool {
+	f.s.tasks.Range(func(_, v any) bool {
 		if hp, ok := v.(*httpproxy.HttpProxy); ok {
-			served = hp.ServeFallback(c, state)
-			return false
+			served = fn(hp)
+			return !served
 		}
 		return true
 	})
 	return served
+}
+
+// ServeFallback implements bridge.Fallback.
+func (f domainFallback) ServeFallback(c net.Conn, state *tls.ConnectionState) bool {
+	if f.proxy(func(hp *httpproxy.HttpProxy) bool { return hp.ServeFallback(c, state) }) {
+		return true
+	}
+	return f.s.notFound().ServeFallback(c, state)
+}
+
+// FallbackCert implements bridge.Fallback.
+func (f domainFallback) FallbackCert(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
+	f.proxy(func(hp *httpproxy.HttpProxy) bool {
+		cert, err = hp.FallbackCert(hello)
+		return cert != nil
+	})
+	return cert, err
+}
+
+// notFound is the answer of a node without a domain proxy, started on first
+// use and closed with the server.
+func (s *Server) notFound() *httpproxy.NotFound {
+	s.notFoundOnce.Do(func() {
+		s.notFoundSrv = httpproxy.NewNotFound(httpproxy.LoadFallback404(servercfg.Current().Proxy.Fallback404File))
+		if !s.own(s.notFoundSrv) {
+			_ = s.notFoundSrv.Close()
+		}
+	})
+	return s.notFoundSrv
 }
 
 // Store returns the store of the entries the server serves.

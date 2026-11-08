@@ -41,6 +41,9 @@ type HttpProxy struct {
 	Http3PortStr          string
 	TimeLimitErrorContent []byte
 	FlowLimitErrorContent []byte
+	// Fallback404Content is the body of the 404 a bridge connection gets
+	// for a host of no route (fallback_404_file).
+	Fallback404Content    []byte
 	Magic                 *certmagic.Config
 	certCache             *certmagic.Cache // of Magic; Close stops it
 	Acme                  *certmagic.ACMEIssuer
@@ -84,6 +87,7 @@ func (s *HttpProxy) Start() error {
 	s.TimeLimitErrorContent = s.loadOptionalErrorPage(cfg.Proxy.ErrorPageTimeLimit)
 	s.FlowLimitErrorContent = s.loadOptionalErrorPage(cfg.Proxy.ErrorPageFlowLimit)
 	s.ErrorAlways = cfg.Proxy.ErrorAlways
+	s.Fallback404Content = LoadFallback404(cfg.Proxy.Fallback404File)
 
 	if s.Bridge.IsServer() {
 		s.Http3Bridge = cfg.Proxy.BridgeHTTP3
@@ -380,4 +384,11 @@ func proxyPortString(port int, fallback string) string {
 		return fallback
 	}
 	return strconv.Itoa(port)
+}
+
+func (s *HttpProxy) fallback404() []byte {
+	if s.Fallback404Content == nil {
+		return []byte(defaultNotFound)
+	}
+	return s.Fallback404Content
 }

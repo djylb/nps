@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/seal"
+	"github.com/zmuxio/zmux-go/zmuxws"
 )
 
 type memStore []coreapi.ClientRecord
@@ -283,6 +285,69 @@ func TestBoundFailureFallsToSealedOnNewCarrier(t *testing.T) {
 	}
 	if n := carriers.Load(); n != 3 {
 		t.Fatalf("%d carriers, want 3", n)
+	}
+}
+
+// The memory of a failed Bound ends after an hour, and holds for no other
+// network than the one it was learned on.
+func TestBoundFailureMemoryExpires(t *testing.T) {
+	e := start(t, "tls", rec(1, "key-1", true))
+	addr, carriers := tlsProxy(t, e.addr)
+	d := NewDialer(DialConfig{Candidates: e.cands(addr), VKey: "key-1", Agent: "t", Timeout: 8 * time.Second})
+	clock := time.Now()
+	d.now = func() time.Time { return clock }
+	dialOnce := func(want int32) {
+		t.Helper()
+		cs := e.dial(d)
+		e.waitOnline()
+		_ = cs.Close()
+		<-cs.Done()
+		if n := carriers.Load(); n != want {
+			t.Fatalf("%d carriers, want %d", n, want)
+		}
+	}
+	dialOnce(2)                         // Bound fails, Sealed on a new carrier
+	clock = clock.Add(59 * time.Minute) // remembered: Sealed at once
+	dialOnce(3)
+	clock = clock.Add(2 * time.Minute) // forgotten: Bound is tried again
+	dialOnce(5)
+	dialOnce(6) // and remembered again
+}
+
+func TestBoundFailureMemoryIsPerNetwork(t *testing.T) {
+	d := NewDialer(DialConfig{})
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.noteBoundFailedLocked("cand|10.0.0.5@en0#4/aa:bb")
+	if !d.boundFailedLocked("cand|10.0.0.5@en0#4/aa:bb") {
+		t.Fatal("not remembered")
+	}
+	for _, other := range []string{"cand|10.0.0.6@en0#4/aa:bb", "cand|10.0.0.5@en1#5/cc:dd", "other|10.0.0.5@en0#4/aa:bb"} {
+		if d.boundFailedLocked(other) {
+			t.Fatalf("%s inherits the memory of another network", other)
+		}
+	}
+}
+
+func TestLocalNetworkNamesTheInterface(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		if c, err := ln.Accept(); err == nil {
+			_ = c.Close()
+		}
+	}()
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	got := localNetwork(c)
+	if !strings.HasPrefix(got, "127.0.0.1@") {
+		t.Fatalf("network %q lacks the interface", got)
 	}
 }
 
@@ -646,6 +711,61 @@ func TestDisabledClientRefused(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("not reported")
+	}
+}
+
+// On a path of new_protocol_ws_paths the subprotocol does not matter: none,
+// binary and one of any other name all reach the new protocol.
+func TestWebSocketAnyProtocol(t *testing.T) {
+	e := start(t, "tcp", rec(1, "key-1", true))
+	var next atomic.Int32
+	h, err := e.a.WebSocketAnyProtocol(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		next.Add(1)
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	addr := srv.Listener.Addr().String()
+	for i, raw := range []string{"http://" + addr + "/x", addr + "/x"} { // none; binary
+		cands, err := connprofile.Parse(raw, "ws")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cs := e.dial(NewDialer(DialConfig{Candidates: cands, VKey: "key-1", Timeout: 3 * time.Second}))
+		waitFor(t, "CONFIG", func() bool { return cs.appliedSeq() == 1 })
+		if s := e.waitOnline(); s.Carrier() != "ws" {
+			t.Fatalf("%d: carrier %q", i, s.Carrier())
+		}
+		_ = cs.Close()
+		<-cs.Done()
+		select {
+		case <-e.offline:
+		case <-time.After(3 * time.Second):
+			t.Fatal("session did not end")
+		}
+	}
+	// a subprotocol of another name is accepted and echoed
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	p, err := zmuxws.DialPipe(ctx, "ws://"+addr+"/x", &zmuxws.DialOptions{Protocols: []string{"other"}})
+	if err != nil {
+		t.Fatalf("subprotocol other: %v", err)
+	}
+	if p.Protocol != "other" {
+		t.Fatalf("negotiated %q", p.Protocol)
+	}
+	_ = p.R.Close()
+	// a request that is no upgrade is next's
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTeapot || next.Load() != 1 {
+		t.Fatalf("plain request: %d, next saw %d", resp.StatusCode, next.Load())
 	}
 }
 

@@ -118,6 +118,10 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 	host, err := s.store.GetInfoByHost(r.Host, r)
 	if err != nil || host.IsClose {
 		// the access line reports it
+		if isFallback(r) {
+			writeNotFound(w, s.fallback404())
+			return
+		}
 		if !s.ErrorAlways {
 			abortRequest()
 		}

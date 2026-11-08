@@ -3,6 +3,7 @@ package conn
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -26,20 +27,30 @@ type httpListener struct {
 	closeOnce sync.Once
 }
 
+// WSRoute is how another protocol shares a WebSocket bridge listener. Both
+// fields are optional.
+type WSRoute struct {
+	// Wrap wraps the handler of the bridge path.
+	Wrap func(http.Handler) http.Handler
+	// Paths are further paths and their handlers. A path that is also the
+	// bridge path replaces it.
+	Paths map[string]http.Handler
+}
+
 // NewWSListener serves WebSocket bridge connections on path over base. The
 // client address is taken from realIpHeader as written by the proxies in
-// trustedIps; see wsResolver. route, when set, wraps the handler of path.
-func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
+// trustedIps; see wsResolver. route, when set, shares the listener.
+func NewWSListener(base net.Listener, path, trustedIps, realIpHeader string, route *WSRoute) net.Listener {
 	return newWSListener(base, base, path, trustedIps, realIpHeader, route)
 }
 
 // NewWSSListener is NewWSListener over TLS with cert.
-func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
+func NewWSSListener(base net.Listener, path string, cert tls.Certificate, trustedIps, realIpHeader string, route *WSRoute) net.Listener {
 	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
 	return newWSListener(base, tls.NewListener(base, tlsConfig), path, trustedIps, realIpHeader, route)
 }
 
-func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string, route func(http.Handler) http.Handler) net.Listener {
+func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string, route *WSRoute) net.Listener {
 	hl := &httpListener{acceptCh: make(chan net.Conn, 16), closeCh: make(chan struct{}), addr: base.Addr()}
 	resolvers := wsResolvers(trustedIps, realIpHeader)
 	opts := &wsconn.ServerOptions{Options: wsOptions, CheckOrigin: wsconn.AnyOrigin}
@@ -66,11 +77,22 @@ func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string,
 			_ = c.Close()
 		}
 	})
-	if route != nil {
-		handler = route(handler)
-	}
 	mux := http.NewServeMux()
-	mux.Handle(path, handler)
+	if route != nil {
+		if route.Wrap != nil {
+			handler = route.Wrap(handler)
+		}
+		for p, h := range route.Paths {
+			if err := handlePath(mux, p, h); err != nil {
+				log.Error("websocket path ignored", "path", p, "err", err)
+			} else if p == path {
+				handler = nil
+			}
+		}
+	}
+	if handler != nil {
+		mux.Handle(path, handler)
+	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: HandshakeTimeout}
 	go func() { _ = srv.Serve(ln) }()
 	go func() {
@@ -78,6 +100,18 @@ func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string,
 		_ = srv.Close()
 	}()
 	return hl
+}
+
+// handlePath registers h on pattern; an invalid or taken pattern is an error
+// where ServeMux panics.
+func handlePath(mux *http.ServeMux, pattern string, h http.Handler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	mux.Handle(pattern, h)
+	return nil
 }
 
 // wsResolvers returns the resolvers tried in turn for the client address:

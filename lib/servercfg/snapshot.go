@@ -190,6 +190,11 @@ type NetworkConfig struct {
 	// NewProtocolTLSALPN is the ALPN list of the TLS bridge with NewProtocol
 	// (nps.conf new_protocol_tls_alpn, comma-separated); empty selects none.
 	NewProtocolTLSALPN []string
+	// NewProtocolWSPaths are the WebSocket paths whose requests go to the
+	// core protocol whatever their subprotocol (nps.conf
+	// new_protocol_ws_paths, comma-separated, default none). On BridgePath
+	// the subprotocol decides: binary is the core protocol, none the old one.
+	NewProtocolWSPaths []string
 	HTTPProxyIP        string
 	HTTPProxyPort      int
 	HTTPSProxyPort     int
@@ -257,9 +262,13 @@ type ProxyConfig struct {
 	ErrorPageTimeLimit string
 	ErrorPageFlowLimit string
 	ErrorAlways        bool
-	BridgeHTTP3        bool
-	ForceAutoSSL       bool
-	SSL                SSLConfig
+	// Fallback404File is the body of the 404 that bridge connections of no
+	// known route get (nps.conf fallback_404_file); empty selects a minimal
+	// built-in body.
+	Fallback404File string
+	BridgeHTTP3     bool
+	ForceAutoSSL    bool
+	SSL             SSLConfig
 }
 
 type SSLConfig struct {
@@ -457,6 +466,11 @@ func buildSnapshot(values map[string]any) *Snapshot {
 			cfg.Network.NewProtocolTLSALPN = append(cfg.Network.NewProtocolTLSALPN, v)
 		}
 	}
+	for v := range strings.SplitSeq(r.stringValue("new_protocol_ws_paths"), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			cfg.Network.NewProtocolWSPaths = append(cfg.Network.NewProtocolWSPaths, v)
+		}
+	}
 	cfg.Network.BridgeTCPIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_tcp_ip")
 	cfg.Network.BridgeKCPIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_kcp_ip")
 	cfg.Network.BridgeQUICIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_quic_ip")
@@ -561,6 +575,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		ErrorPageTimeLimit: r.stringValue("error_page_time_limit"),
 		ErrorPageFlowLimit: r.stringValue("error_page_flow_limit"),
 		ErrorAlways:        r.boolDefault(false, "error_always"),
+		Fallback404File:    r.stringValue("fallback_404_file"),
 		BridgeHTTP3:        r.boolDefault(true, "bridge_http3"),
 		ForceAutoSSL:       r.boolDefault(false, "force_auto_ssl"),
 		SSL: SSLConfig{

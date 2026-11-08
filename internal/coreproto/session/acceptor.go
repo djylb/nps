@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -217,6 +218,34 @@ func (a *Acceptor) Serve(ctx context.Context, c net.Conn, carrier string) {
 // binary is the core protocol; anything else stays with the old one.
 func (a *Acceptor) WebSocket(legacy http.Handler) (http.Handler, error) {
 	return zmuxws.Handler(a.zl, &zmux.HTTPOptions{Next: legacy}, legacySubprotocol)
+}
+
+// WebSocketAnyProtocol implements coreapi.Entry (§12): the path is the core
+// protocol's, so a request is accepted with the subprotocol it offered (the
+// first of them) or with none.
+func (a *Acceptor) WebSocketAnyProtocol(next http.Handler) (http.Handler, error) {
+	o := &zmux.HTTPOptions{Next: next}
+	if _, err := zmuxws.Handler(a.zl, o); err != nil {
+		return nil, err
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		protocols := []string{zmuxws.NoSubprotocol}
+		for _, v := range r.Header.Values("Sec-WebSocket-Protocol") {
+			for p := range strings.SplitSeq(v, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					protocols = append(protocols, p)
+				}
+			}
+		}
+		// Built per request: it holds no state, and the protocols are the
+		// request's own, which is what accepting any subprotocol means.
+		h, err := zmuxws.Handler(a.zl, o, protocols...)
+		if err != nil {
+			o.Fallback(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	}), nil
 }
 
 // decide routes a carrier by its first bytes (§12, §13). It is the one place

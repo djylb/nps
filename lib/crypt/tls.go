@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"sync"
 	"time"
@@ -43,7 +44,7 @@ func NewIdentity(custom tls.Certificate) (*Identity, error) {
 	id := &Identity{Cert: custom}
 	if len(custom.Certificate) == 0 {
 		var err error
-		if id.Cert, err = newSelfSigned(gofakeit.DomainName(), gofakeit.Company()); err != nil {
+		if id.Cert, err = newSelfSigned(gofakeit.DomainName()); err != nil {
 			return nil, fmt.Errorf("create a self-signed certificate: %w", err)
 		}
 		log.Debug("self-signed certificate generated")
@@ -216,16 +217,38 @@ func NewPinnedTlsClientConfig(fingerprint []byte) *tls.Config {
 }
 
 // newSelfSigned returns a ten-year self-signed server certificate with a
-// fresh RSA key, which the web login also uses to decrypt credentials.
-func newSelfSigned(commonName, organization string) (tls.Certificate, error) {
+// fresh RSA key, which the web login also uses to decrypt credentials. The
+// subject is empty and the serial number random, so the certificate says
+// nothing about who made it; dnsName is its only name (as RFC 5280 wants for
+// an empty subject, in a critical subject alternative name). Peers pin it
+// by fingerprint or do not verify it.
+func newSelfSigned(dnsName string) (tls.Certificate, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	return tlsconn.NewSelfSigned(tlsconn.SelfSignedOptions{
-		Hosts:        []string{commonName},
-		Organization: organization,
-		ValidFor:     10 * 365 * 24 * time.Hour,
-		Key:          key,
-	})
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127))
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	serial.Add(serial, big.NewInt(1)) // positive
+	notBefore := time.Now().Add(-time.Hour)
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		NotBefore:             notBefore,
+		NotAfter:              notBefore.Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{dnsName},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}, nil
 }
