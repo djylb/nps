@@ -4,111 +4,43 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/hex"
-	"net"
-	"os"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/djylb/nps/client"
-	"github.com/djylb/nps/internal/coreproto/coreapi"
+	"github.com/djylb/nps/internal/coreproto/connect"
 	"github.com/djylb/nps/internal/coreproto/session"
-	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/connprofile"
-	"github.com/djylb/nps/lib/version"
-	"github.com/quic-go/quic-go"
+	"github.com/djylb/nps/lib/config"
 )
 
-// runCoreProfile runs one server profile on the new protocol.
+// setCoreDefaults hands the command line to the configuration and the client
+// as what a file or payload that does not set a key uses (config.CommonDefaults,
+// connect.Process).
+func setCoreDefaults() {
+	connect.Install()
+	config.CommonDefaults = config.Defaults{
+		Pipes:       *pipes,
+		SchedulerUp: *schedulerUp,
+		CoreSettings: config.CoreSettings{
+			NewProtocol:   *newProtocol,
+			MaxLanes:      *sessionMaxLanes,
+			RelayIdle:     *relayIdle,
+			KeepServer:    *p2pVisitorKeepServer,
+			ResumeTimeout: *sessionResumeTimeout,
+		},
+	}
+	connect.Process.Pin = *newProtocolPin
+	connect.Process.UDP5Idle = time.Duration(*udp5IdleTimeout) * time.Second
+	connect.Process.Compress = session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio}
+}
+
+// runCoreProfile hosts one server profile of the command line on the new
+// protocol.
 func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) {
-	d := coreDialer(server, vkey, carrier, localIP)
-	if d != nil {
-		client.RunCore(ctx, d, *autoReconnect)
-	}
-}
-
-// startCoreVisitors makes mgr reach its tasks over the new protocol through
-// one on-demand session.
-func startCoreVisitors(ctx context.Context, mgr *client.SecretManager, server, vkey, carrier, localIP string) bool {
-	first, _, _ := strings.Cut(server, ";")
-	d := coreDialer(first, vkey, carrier, localIP)
-	if d == nil {
-		return false
-	}
-	outer := session.NewOuterSessions(d)
-	outer.Keep = *p2pVisitorKeepServer
-	if outer.Keep {
-		go keepOuter(ctx, outer)
-	}
-	mgr.UseCoreVisitors(func(password, mode string) coreapi.Visitor {
-		return session.NewVisitor(session.VisitorConfig{Outer: outer, Access: []byte(password), Mode: session.ConnModeOf(mode),
-			RelayIdle: time.Duration(*relayIdle) * time.Second})
-	})
-	go func() {
-		<-ctx.Done()
-		outer.Close()
-	}()
-	return true
-}
-
-// keepOuter holds the session open for p2p_visitor_keep_server.
-func keepOuter(ctx context.Context, outer *session.OuterSessions) {
-	t := time.NewTicker(5 * time.Second)
-	defer t.Stop()
-	for {
-		if _, err := outer.Get(ctx); err != nil && ctx.Err() == nil {
-			log.Debug("server session not made", "err", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
-}
-
-// coreDialer is the dialer of one server profile; nil after logging why not.
-func coreDialer(server, vkey, carrier, localIP string) *session.Dialer {
-	cands, err := connprofile.Parse(server, carrier)
-	if err != nil {
+	cfg := config.NewCommonConfig()
+	cfg.Server, cfg.VKey, cfg.Tp, cfg.LocalIP = server, vkey, strings.ToLower(carrier), localIP
+	cfg.ProxyUrl = *proxyUrl
+	if err := client.RunCoreProfile(ctx, cfg, *autoReconnect); err != nil {
 		log.Error("invalid server", "err", err)
-		return nil
 	}
-	connprofile.UseCoreDefaults(cands)
-	mode, _ := connprofile.ParsePipes(*pipes)
-	scheduler, _ := connprofile.ParseScheduler(*schedulerUp)
-	pin, err := hex.DecodeString(*newProtocolPin)
-	if err != nil {
-		log.Error("invalid pin", "err", err)
-		return nil
-	}
-	label, _ := os.Hostname()
-	exit := client.NewCoreExit(localIP, time.Duration(*udp5IdleTimeout)*time.Second)
-	return session.NewDialer(session.DialConfig{
-		Candidates: cands,
-		Pipes:      mode,
-		Scheduler:  scheduler,
-		VKey:       vkey,
-		Pin:        pin,
-		Agent:      "npc/" + version.VERSION + " " + runtime.GOOS + "/" + runtime.GOARCH,
-		Label:      label,
-		Dial: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			timeout := 15 * time.Second
-			if d, ok := ctx.Deadline(); ok {
-				timeout = time.Until(d)
-			}
-			return client.GetProxyConn(*proxyUrl, addr, timeout, localIP)
-		},
-		DialQUIC: func(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
-			return conn.DialQuicWithLocalIP(ctx, addr, t, q, localIP)
-		},
-		MaxLanes:       *sessionMaxLanes,
-		Exit:           exit,
-		PeerExit:       client.NewCorePeerExit(exit),
-		Puncher:        client.NewCorePuncher(localIP, session.QUICConfig),
-		CompressLimits: session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio},
-		ResumeTimeout:  time.Duration(*sessionResumeTimeout) * time.Second,
-	})
 }

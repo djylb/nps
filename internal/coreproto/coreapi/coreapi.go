@@ -279,3 +279,19 @@ type Dialer interface {
 	// Server names the profile for log lines.
 	Server() string
 }
+
+// Outer is the one session of a profile to the server, which what hosts on it
+// and what visits through it share (§9.4a). A host keeps it through Dial; the
+// visitors dial it on demand and give it up when idle, unless it is held.
+type Outer interface {
+	Dialer
+	// Visitor makes the access of the secret task Access in connection mode
+	// mode (auto, relay or direct). relayIdle is how long a relay stands by
+	// once the direct path is up; zero is the default.
+	Visitor(access []byte, mode string, relayIdle time.Duration) Visitor
+	// Hold sets what keeps the session whatever the visitors need: keep
+	// always, hosting while it returns true.
+	Hold(keep bool, hosting func() bool)
+	// Close ends the session.
+	Close()
+}

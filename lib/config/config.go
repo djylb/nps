@@ -33,6 +33,45 @@ type CommonConfig struct {
 	NtpInterval      int
 	Client           *model.Client
 	DisconnectTime   int
+	CoreSettings
+}
+
+// CoreSettings are the [common] keys of the new protocol; the zero value of
+// each is the protocol's own default.
+type CoreSettings struct {
+	NewProtocol   bool // new_protocol: connect with the new protocol
+	MaxLanes      int  // session_max_lanes: 0 is 16, 1 turns lanes off
+	RelayIdle     int  // relay_idle, seconds: 0 is 60
+	KeepServer    bool // p2p_visitor_keep_server
+	ResumeTimeout int  // session_resume_timeout, seconds: 0 is 30, negative no resume
+}
+
+// Defaults are the values a [common] section starts from. The command line
+// sets them before any file is read, so that a flag is the default of every
+// file and launch payload that does not set the key itself.
+type Defaults struct {
+	Pipes       string
+	SchedulerUp string
+	CoreSettings
+}
+
+// CommonDefaults is set once at start-up, before configuration is parsed.
+var CommonDefaults Defaults
+
+// NewCommonConfig returns a [common] section with no key set: the defaults of
+// CommonDefaults and of the keys. dealCommon and the command line build their
+// connection settings from it, so that both have the same defaults.
+func NewCommonConfig() *CommonConfig {
+	c := &CommonConfig{
+		Tp:               "tcp",
+		AutoReconnection: true,
+		Pipes:            CommonDefaults.Pipes,
+		SchedulerUp:      CommonDefaults.SchedulerUp,
+		CoreSettings:     CommonDefaults.CoreSettings,
+		Client:           model.NewClient("", true, true),
+	}
+	c.Client.Cnf = new(model.Config)
+	return c
 }
 
 type Config struct {
@@ -228,11 +267,7 @@ func splitKV(line string) (item [2]string, ok bool) {
 }
 
 func dealCommon(s string) *CommonConfig {
-	c := new(CommonConfig)
-	c.Tp = "tcp"
-	c.AutoReconnection = true
-	c.Client = model.NewClient("", true, true)
-	c.Client.Cnf = new(model.Config)
+	c := NewCommonConfig()
 	var legacy legacyCommon
 	for _, v := range textutil.SplitLines(s) {
 		item, ok := splitKV(v)
@@ -250,6 +285,16 @@ func dealCommon(s string) *CommonConfig {
 			c.Pipes = item[1]
 		case "scheduler_up":
 			c.SchedulerUp = item[1]
+		case "new_protocol":
+			c.NewProtocol = parseBool(item)
+		case "session_max_lanes":
+			c.MaxLanes = textutil.GetIntNoErrByStr(item[1])
+		case "relay_idle":
+			c.RelayIdle = textutil.GetIntNoErrByStr(item[1])
+		case "p2p_visitor_keep_server":
+			c.KeepServer = parseBool(item)
+		case "session_resume_timeout":
+			c.ResumeTimeout = textutil.GetIntNoErrByStr(item[1])
 		case "auto_reconnection":
 			c.AutoReconnection = parseBool(item)
 		case "basic_username":

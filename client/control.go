@@ -146,7 +146,9 @@ func StartFromFile(pCtx context.Context, path string) error {
 		return fmt.Errorf("config file %s: %w", path, err)
 	}
 	log.Info("config loaded", "file", path)
-	NotePipes(cnf.CommonConfig.Pipes)
+	if !cnf.CommonConfig.NewProtocol {
+		NotePipes(cnf.CommonConfig.Pipes)
+	}
 
 	netaddr.SetCustomDNS(cnf.CommonConfig.DnsServer)
 
@@ -190,6 +192,14 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	if len(cnf.LocalServer) > 0 {
 		return uuid, runLocalServers(ctx, cnf)
 	}
+	if cnf.CommonConfig.NewProtocol {
+		// The tunnels and hosts of the file cannot be sent on the new
+		// protocol: they are defined on the server.
+		if _, seen := coreTasksWarned.LoadOrStore(cnf.CommonConfig.Server, true); !seen && len(cnf.Tasks)+len(cnf.Hosts) > 0 {
+			log.Warn("tunnels and hosts of the config file are not sent on the new protocol", "server", cnf.CommonConfig.Server, "detail", "define them on the server")
+		}
+		return uuid, RunCoreProfile(ctx, cnf.CommonConfig, false)
+	}
 	c, cid, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP)
 	if err != nil {
 		return uuid, fmt.Errorf("failed to connect: %w", err)
@@ -223,11 +233,20 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 	return uuid, nil
 }
 
+// coreTasksWarned has the servers whose config tunnels the new protocol
+// ignored, so that the warning comes once and not at every reconnect.
+var coreTasksWarned sync.Map
+
 func runLocalServers(ctx context.Context, cnf *config.Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	mgr := NewSecretManager(ctx, cancel, cnf.CommonConfig)
 	defer mgr.Close()
+	if cnf.CommonConfig.NewProtocol {
+		if err := mgr.UseCore(); err != nil {
+			return err
+		}
+	}
 	for _, l := range cnf.LocalServer {
 		if err := mgr.StartLocalServer(l); err != nil {
 			return err

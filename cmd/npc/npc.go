@@ -94,7 +94,7 @@ var (
 	udp5IdleTimeout      = flag.Int("socks5_udp_idle_timeout", 300, "New protocol: seconds a SOCKS5 UDP association of the exit stays without traffic, as a backstop to the entry's timeout")
 	sessionMaxLanes      = flag.Int("session_max_lanes", 0, "Lanes accepted per QUIC pipe on the new protocol: 0 is 16, 1 turns lanes off")
 	p2pVisitorKeepServer = flag.Bool("p2p_visitor_keep_server", false, "Keep the server connection of a point-to-point visitor while it is idle (new protocol)")
-	relayIdle            = flag.Int("relay_idle", 60, "Seconds a relay stands by once the direct path is up, then it closes (new protocol)")
+	relayIdle            = flag.Int("relay_idle", 0, "Seconds a relay stands by once the direct path is up, then it closes (new protocol; 0: 60)")
 	newProtocolPin       = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
 	launchInputs         = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
 )
@@ -379,6 +379,7 @@ func (p *Npc) run() error {
 func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
 	runenv.InitPProfByAddr(*pprofAddr)
+	setCoreDefaults()
 	mode, err := connprofile.ParsePipes(*pipes)
 	if err != nil {
 		cfgLog.Error("invalid command line", "err", err)
@@ -399,7 +400,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	if *password != "" {
 		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
-		commonConfig := new(config.CommonConfig)
+		commonConfig := config.NewCommonConfig()
 		commonConfig.Server = *serverAddr
 		commonConfig.VKey = *verifyKey
 		commonConfig.Tp = strings.ToLower(*connType)
@@ -422,8 +423,12 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		// with auto reconnection off.
 		p2pCtx, p2pCancel := context.WithCancel(ctx)
 		p2pm := client.NewSecretManager(p2pCtx, p2pCancel, commonConfig)
-		if *newProtocol && !startCoreVisitors(p2pCtx, p2pm, *serverAddr, *verifyKey, commonConfig.Tp, commonConfig.LocalIP) {
-			os.Exit(1)
+		if commonConfig.NewProtocol {
+			commonConfig.ProxyUrl = *proxyUrl
+			if err := p2pm.UseCore(); err != nil {
+				cfgLog.Error("invalid command line", "err", err)
+				os.Exit(1)
+			}
 		}
 		go func() { _ = p2pm.StartLocalServer(localServer) }()
 		go func() {

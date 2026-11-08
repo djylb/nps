@@ -46,6 +46,7 @@ type SecretManager struct {
 	// coreVisitor makes the access of a password on the new protocol; nil
 	// is the old one.
 	coreVisitor  func(password, mode string) coreapi.Visitor
+	coreRelease  func()                     // gives back the shared session of coreVisitor
 	visitors     map[string]coreapi.Visitor // by task password
 	proxyServers []Closer
 	mapper       *portmapper.Mapper
@@ -91,12 +92,6 @@ func (mgr *SecretManager) getUUID() string {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	return mgr.uuid
-}
-
-// UseCoreVisitors makes the local sections reach their tasks over the new
-// protocol. It is called before the sections start.
-func (mgr *SecretManager) UseCoreVisitors(f func(password, mode string) coreapi.Visitor) {
-	mgr.coreVisitor = f
 }
 
 func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Visitor {
@@ -457,9 +452,14 @@ func (mgr *SecretManager) Close() {
 	mgr.secretConn = nil
 	visitors := mgr.visitors
 	mgr.visitors = nil
+	release := mgr.coreRelease
+	mgr.coreRelease = nil
 	mgr.mu.Unlock()
 	for _, v := range visitors {
 		_ = v.Close()
+	}
+	if release != nil {
+		defer release()
 	}
 	for _, srv := range psList {
 		_ = srv.Close()

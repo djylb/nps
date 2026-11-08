@@ -86,6 +86,31 @@ func (o *OuterSessions) Get(ctx context.Context) (*clientSession, error) {
 	return s, nil
 }
 
+// Dial implements coreapi.Dialer with the session itself: a host keeps the
+// session through it, and the visitors that share it keep theirs.
+func (o *OuterSessions) Dial(ctx context.Context) (coreapi.ClientSession, error) {
+	s, err := o.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// Server implements coreapi.Dialer.
+func (o *OuterSessions) Server() string { return o.d.Server() }
+
+// Visitor implements coreapi.Outer.
+func (o *OuterSessions) Visitor(access []byte, mode string, relayIdle time.Duration) coreapi.Visitor {
+	return NewVisitor(VisitorConfig{Outer: o, Access: access, Mode: ConnModeOf(mode), RelayIdle: relayIdle})
+}
+
+// Hold implements coreapi.Outer. It is called before the session is used.
+func (o *OuterSessions) Hold(keep bool, hosting func() bool) {
+	o.mu.Lock()
+	o.Keep, o.Hosting = keep, hosting
+	o.mu.Unlock()
+}
+
 // setNeed records whether v needs the session, closing it when nobody does.
 func (o *OuterSessions) setNeed(v *Visitor, need bool) {
 	o.mu.Lock()

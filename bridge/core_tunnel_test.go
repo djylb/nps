@@ -46,6 +46,7 @@ type coreFixture struct {
 	b      *Bridge
 	a      *session.Acceptor
 	client *model.Client
+	extra  []*model.Client // the clients of newCoreFixtureWith
 	addr   string
 }
 
@@ -55,6 +56,13 @@ func newCoreFixture(tb testing.TB, mode SelectMode, cnf model.Config) *coreFixtu
 }
 
 func newCoreFixtureOpts(tb testing.TB, mode SelectMode, cnf model.Config, opts session.Options) *coreFixture {
+	tb.Helper()
+	return newCoreFixtureWith(tb, mode, cnf, opts)
+}
+
+// newCoreFixtureWith is newCoreFixtureOpts with more clients, one for each
+// vkey given.
+func newCoreFixtureWith(tb testing.TB, mode SelectMode, cnf model.Config, opts session.Options, vkeys ...string) *coreFixture {
 	tb.Helper()
 	root := tb.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {
@@ -67,6 +75,15 @@ func newCoreFixtureOpts(tb testing.TB, mode SelectMode, cnf model.Config, opts s
 		tb.Fatal(err)
 	}
 	c.Cnf.Crypt, c.Cnf.Compress, c.Cnf.CompressAlg = cnf.Crypt, cnf.Compress, cnf.CompressAlg
+	var extra []*model.Client
+	for _, vkey := range vkeys {
+		x := model.NewClient(vkey, false, false)
+		x.Status = true
+		if err := db.NewClient(x); err != nil {
+			tb.Fatal(err)
+		}
+		extra = append(extra, x)
+	}
 	a, err := session.NewAcceptor(dbClients{db}, opts)
 	if err != nil {
 		tb.Fatal(err)
@@ -94,7 +111,7 @@ func newCoreFixtureOpts(tb testing.TB, mode SelectMode, cnf model.Config, opts s
 		wg.Wait()
 		_ = b.Close()
 	})
-	return &coreFixture{db: db, b: b, a: a, client: c, addr: ln.Addr().String()}
+	return &coreFixture{db: db, b: b, a: a, client: c, extra: extra, addr: ln.Addr().String()}
 }
 
 // joinCore connects one npc on the new protocol, a process of its own.
