@@ -45,6 +45,9 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 	case wire.OpPunch:
 		s.servePunch(ctx, lc, fields)
 		return
+	case wire.OpUpdate:
+		s.serveUpdate(lc)
+		return
 	case wire.OpTCP, wire.OpUDP:
 	default:
 		lc.abort(rejectCode(st.Preamble(), wire.Op.FromServer))

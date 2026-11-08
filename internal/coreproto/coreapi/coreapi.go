@@ -8,6 +8,7 @@ package coreapi
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"net/netip"
@@ -114,6 +115,12 @@ func TunnelOffline() *LinkError {
 	return &LinkError{Code: wire.CodeTunnelOffline, Reason: "client_offline"}
 }
 
+// IsNotAllowed reports whether err is a refusal by the peer's local policy.
+func IsNotAllowed(err error) bool {
+	var e *LinkError
+	return errors.As(err, &e) && e.Code == wire.CodeNotAllowed
+}
+
 // LinkNotAllowed is the refusal of a link its visitor may not make.
 func LinkNotAllowed() *LinkError {
 	return &LinkError{Code: wire.CodeNotAllowed, Reason: "permission"}
@@ -150,6 +157,11 @@ type Session interface {
 	Suspended() bool
 	// Close ends the session; npc may come back at once.
 	Close() error
+	// CanUpdate reports whether npc answers update requests (§2.3).
+	CanUpdate() bool
+	// RequestUpdate asks npc to update itself; a refusal by its local policy
+	// is a LinkError with the code NOT_ALLOWED.
+	RequestUpdate(ctx context.Context) error
 	// CanHealth reports whether npc runs health checks (§2.3).
 	CanHealth() bool
 	// SetHealth makes groups, complete, what npc checks (§5.3).

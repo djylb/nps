@@ -5,7 +5,7 @@ import "github.com/djylb/nps/internal/coreproto/wire"
 // serverCaps and clientCaps are what Hello advertises (§2.3).
 var (
 	serverCaps = []uint64{wire.CapLink}
-	clientCaps = []uint64{wire.CapLink, wire.CapHealth}
+	clientCaps = []uint64{wire.CapLink, wire.CapHealth, wire.CapUpdate}
 )
 
 // compressAlgs is what Hello lists as decompressible (§7.2: must include

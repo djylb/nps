@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -48,5 +49,34 @@ func TestHealthOnCoreSession(t *testing.T) {
 		if time.Now().After(end) {
 			t.Fatal("dead target was not reported down")
 		}
+	}
+}
+
+// An update request reaches npc as UPDATE: accepted by its policy, or refused.
+func TestUpdateOnCoreSession(t *testing.T) {
+	for _, accept := range []bool{true, false} {
+		f := newCoreFixture(t, 0, model.Config{})
+		cands, err := connprofile.Parse(f.addr, "tcp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		asked := make(chan struct{}, 1)
+		s, err := session.NewDialer(session.DialConfig{Candidates: cands, VKey: f.client.VerifyKey, Agent: "npc/9.8.7 test/x",
+			Exit: client.NewCoreExit("", 0), Timeout: 4 * time.Second,
+			Update: func() bool { asked <- struct{}{}; return accept }}).Dial(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.waitConnected(t)
+		n, err := f.b.RequestClientUpdate(f.client.Id)
+		<-asked
+		if accept && (err != nil || n != 1) {
+			t.Fatalf("accepted: %d, %v", n, err)
+		}
+		if !accept && !errors.Is(err, ErrUpdateUnsupported) {
+			t.Fatalf("refused: %d, %v", n, err)
+		}
+		_ = s.Close()
+		<-s.Done()
 	}
 }

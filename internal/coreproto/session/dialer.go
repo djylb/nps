@@ -70,6 +70,9 @@ type DialConfig struct {
 	Puncher coreapi.Puncher
 	// CompressLimits are the receive limits of compressed streams (§7.4).
 	CompressLimits CompressLimits
+	// Update decides an update request of the server (§6) and starts the
+	// update when it returns true; nil refuses them.
+	Update func() bool
 	// Health makes the runner of a session's checks (§5.3); nil runs none.
 	Health func(coreapi.HealthSink) coreapi.HealthRunner
 	// MaxConfig bounds a CONFIG snapshot; 0 is 16 MiB (§4.3).

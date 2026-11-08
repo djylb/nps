@@ -1,11 +1,13 @@
 package bridge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 )
 
 // updateRequestTimeout bounds writing an update request to a client.
@@ -38,6 +40,24 @@ func (s *Bridge) RequestClientUpdate(id int) (int, error) {
 	var sent, unsupported int
 	var lastErr error
 	for _, node := range c.nodeList() {
+		if cs := node.coreSession(); cs != nil {
+			if !cs.CanUpdate() {
+				unsupported++
+				continue
+			}
+			ctx, cancel := context.WithTimeout(s.scope.Context(), updateRequestTimeout)
+			err := cs.RequestUpdate(ctx)
+			cancel()
+			switch {
+			case err == nil:
+				sent++
+			case coreapi.IsNotAllowed(err):
+				unsupported++
+			default:
+				lastErr = err
+			}
+			continue
+		}
 		if node.GetSignal() == nil {
 			continue
 		}

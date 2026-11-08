@@ -283,6 +283,13 @@ func (n *Node) addCore(cs coreapi.Session) {
 
 // suspended reports whether the node's session waits for its pipes (§3.8):
 // the node is online, but a link has to wait or go elsewhere.
+// coreSession is the node's core protocol session, nil for none.
+func (n *Node) coreSession() coreapi.Session {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.core
+}
+
 func (n *Node) suspended() bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()

@@ -12,14 +12,16 @@ var RemoteUpdate func() error
 // several servers.
 var updating atomic.Bool
 
-func handleUpdateRequest() {
+// AcceptUpdate starts the update the server asked for, and reports whether it
+// did: refused by default, and while one is running.
+func AcceptUpdate() bool {
 	if RemoteUpdate == nil {
 		log.Info("remote update refused", "reason", "disabled")
-		return
+		return false
 	}
 	if !updating.CompareAndSwap(false, true) {
 		log.Info("remote update refused", "reason", "running")
-		return
+		return false
 	}
 	log.Info("remote update requested")
 	go func() {
@@ -28,4 +30,7 @@ func handleUpdateRequest() {
 			log.Error("remote update failed", "err", err)
 		}
 	}()
+	return true
 }
+
+func handleUpdateRequest() { _ = AcceptUpdate() }
