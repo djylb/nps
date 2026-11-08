@@ -96,7 +96,7 @@ func GetRandomString(l int, id ...int) string {
 		// 使用当前时间的UnixNano作为随机数种子
 		//r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		// 生成剩余的随机字符
-		for i := 0; i < remainingLength; i++ {
+		for range remainingLength {
 			//result = append(result, dictBytes[r.Intn(len(dictBytes))])
 			nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(dictBytes))))
 			if err != nil {

@@ -93,7 +93,7 @@ func EnsureSession(g *gin.Context) error {
 	return nil
 }
 
-func SessionValue(g *gin.Context, key string) interface{} {
+func SessionValue(g *gin.Context, key string) any {
 	session := sessionStateFromContext(g)
 	if session == nil {
 		return nil
@@ -101,7 +101,7 @@ func SessionValue(g *gin.Context, key string) interface{} {
 	return session.Get(key)
 }
 
-func SetSessionValue(g *gin.Context, key string, value interface{}) error {
+func SetSessionValue(g *gin.Context, key string, value any) error {
 	if err := EnsureSession(g); err != nil {
 		return err
 	}
@@ -124,14 +124,14 @@ func sessionStateFromContext(g *gin.Context) *sessionState {
 	return nil
 }
 
-func (s *sessionState) Get(key string) interface{} {
+func (s *sessionState) Get(key string) any {
 	if s == nil || s.session == nil {
 		return nil
 	}
 	return s.session.Values[key]
 }
 
-func (s *sessionState) Set(key string, value interface{}) error {
+func (s *sessionState) Set(key string, value any) error {
 	if s == nil || s.session == nil {
 		return nil
 	}

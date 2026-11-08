@@ -139,7 +139,7 @@ func TestConnReadTimeoutKeepsStreamAndData(t *testing.T) {
 	}
 	waitQueued(t, local, 3)
 	_ = local.SetReadDeadline(time.Now().Add(-time.Second))
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		_, err := local.Read(make([]byte, 16))
 		requireTimeout(t, err)
 	}
@@ -183,7 +183,7 @@ func TestConnReadAfterEOFDoesNotPanic(t *testing.T) {
 		t.Fatalf("Read() = %q, want %q", got, "last")
 	}
 	_ = local.SetReadDeadline(time.Now().Add(2 * time.Second))
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, err := local.Read(make([]byte, 16)); err != io.EOF {
 			t.Fatalf("Read() #%d error = %v, want io.EOF", i, err)
 		}
@@ -242,12 +242,10 @@ func TestWindowCloseConcurrent(t *testing.T) {
 	w := new(window)
 	w.New()
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 16 {
+		wg.Go(func() {
 			w.CloseWindow()
-		}()
+		})
 	}
 	done := make(chan struct{})
 	go func() {
@@ -284,15 +282,13 @@ func TestConnCloseConcurrentWithBlockedIO(t *testing.T) {
 	}()
 	time.Sleep(50 * time.Millisecond)
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			_ = local.Close()
-		}()
+		})
 	}
 	wg.Wait()
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case err := <-errs:
 			if err == nil {
@@ -310,7 +306,7 @@ func TestMuxAcceptOnClosedMuxClosesStream(t *testing.T) {
 	m := NewMux(a, "tcp", 30, false)
 	_ = m.Close()
 
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		c := NewConn(int32(2*i+2), m)
 		m.enqueueAccepted(c)
 		if !c.IsClosed() {
@@ -345,7 +341,7 @@ func TestAcceptBacklogFullRefusesStream(t *testing.T) {
 	defer b.Close()
 	m := NewMux(a, "tcp", 30, false)
 	defer m.Close()
-	for i := 0; i < acceptBacklog; i++ {
+	for i := range acceptBacklog {
 		if c := NewConn(int32(2*i+2), m); !m.enqueueAccepted(c) {
 			t.Fatalf("stream %d refused below the backlog", i)
 		}

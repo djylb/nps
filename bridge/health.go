@@ -266,7 +266,7 @@ func (s *Bridge) ping() {
 // pingClients closes the clients that had no online node for three rounds.
 func (s *Bridge) pingClients() {
 	closedClients := make([]int, 0)
-	s.Client.Range(func(key, value interface{}) bool {
+	s.Client.Range(func(key, value any) bool {
 		clientID := key.(int)
 		if clientID <= 0 {
 			return true

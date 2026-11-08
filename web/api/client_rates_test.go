@@ -48,7 +48,7 @@ func TestClientListDirectionalRatesAndLegacyJSON(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 		app := &App{Services: webservice.Services{Clients: clientSpeedService{client: client}, Authz: webservice.DefaultAuthorizationService{}}}
-		c := &clientSpeedContext{rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{}}}}
+		c := &clientSpeedContext{values: map[string]string{}}
 		app.ListClients(c)
 		response := c.response.(ClientListResponse)
 		rows := response.Rows.([]*clientRateRow)

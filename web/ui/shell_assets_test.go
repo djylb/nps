@@ -27,8 +27,8 @@ func TestResolveManagementShellAssetsFromViteManifest(t *testing.T) {
 }
 
 func TestRenderManagementShellWithAssetsInjectsExternalBundle(t *testing.T) {
-	html, err := RenderManagementShellWithAssets(map[string]interface{}{
-		"routes": map[string]interface{}{
+	html, err := RenderManagementShellWithAssets(map[string]any{
+		"routes": map[string]any{
 			"api_base": "/api/v1",
 		},
 	}, ManagementShellMetadata{

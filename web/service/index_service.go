@@ -14,7 +14,7 @@ import (
 )
 
 type IndexService interface {
-	DashboardData(force bool) map[string]interface{}
+	DashboardData(force bool) map[string]any
 	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
 	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
 	AddTunnel(TunnelInput) (TunnelMutation, error)
@@ -107,7 +107,7 @@ func (in HostInput) form() *model.Host {
 	return in.Host
 }
 
-func (s DefaultIndexService) DashboardData(force bool) map[string]interface{} {
+func (s DefaultIndexService) DashboardData(force bool) map[string]any {
 	return s.Backend.Runtime.DashboardData(force)
 }
 

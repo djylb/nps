@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,15 +15,15 @@ type Page struct {
 	Action     string
 	Template   string
 	Layout     string
-	Data       map[string]interface{}
+	Data       map[string]any
 }
 
 type Model struct {
-	Controller string                 `json:"controller"`
-	Action     string                 `json:"action"`
-	TplName    string                 `json:"tpl_name"`
-	Layout     string                 `json:"layout,omitempty"`
-	Data       map[string]interface{} `json:"data"`
+	Controller string         `json:"controller"`
+	Action     string         `json:"action"`
+	TplName    string         `json:"tpl_name"`
+	Layout     string         `json:"layout,omitempty"`
+	Data       map[string]any `json:"data"`
 }
 
 var (
@@ -84,7 +85,7 @@ func currentRoot() string {
 	return rootPath
 }
 
-func execute(path string, data map[string]interface{}) (string, error) {
+func execute(path string, data map[string]any) (string, error) {
 	tpl, err := templateAt(path)
 	if err != nil {
 		return "", err
@@ -119,13 +120,11 @@ func templateAt(path string) (*template.Template, error) {
 	return tpl, nil
 }
 
-func cloneData(data map[string]interface{}) map[string]interface{} {
+func cloneData(data map[string]any) map[string]any {
 	if data == nil {
-		return make(map[string]interface{})
+		return make(map[string]any)
 	}
-	cloned := make(map[string]interface{}, len(data)+1)
-	for key, value := range data {
-		cloned[key] = value
-	}
+	cloned := make(map[string]any, len(data)+1)
+	maps.Copy(cloned, data)
 	return cloned
 }

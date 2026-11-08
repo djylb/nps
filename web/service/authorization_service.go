@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -193,12 +194,7 @@ func (s DefaultAuthorizationService) canAccessClient(principal Principal, client
 	if clientID <= 0 {
 		return false
 	}
-	for _, current := range principal.ClientIDs {
-		if current == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(principal.ClientIDs, clientID)
 }
 
 func normalizePrincipalClientIDs(clientIDs []int) []int {
@@ -207,13 +203,7 @@ func normalizePrincipalClientIDs(clientIDs []int) []int {
 		if clientID <= 0 {
 			continue
 		}
-		exists := false
-		for _, current := range normalized {
-			if current == clientID {
-				exists = true
-				break
-			}
-		}
+		exists := slices.Contains(normalized, clientID)
 		if !exists {
 			normalized = append(normalized, clientID)
 		}
@@ -295,20 +285,15 @@ func matchPermission(granted, required string) bool {
 	if granted == PermissionAll || granted == required {
 		return true
 	}
-	if strings.HasSuffix(granted, "*") {
-		prefix := strings.TrimSuffix(granted, "*")
+	if before, ok := strings.CutSuffix(granted, "*"); ok {
+		prefix := before
 		return strings.HasPrefix(required, prefix)
 	}
 	return false
 }
 
 func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }
 
 func (s DefaultAuthorizationService) resolver() PermissionResolver {

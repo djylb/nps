@@ -9,10 +9,10 @@ const (
 	requestInputKey   = "nps.request_input"
 )
 
-func SetRequestData(g *gin.Context, key string, value interface{}) {
+func SetRequestData(g *gin.Context, key string, value any) {
 	data := requestDataFromContext(g)
 	if data == nil {
-		data = make(map[string]interface{})
+		data = make(map[string]any)
 		g.Set(requestDataKey, data)
 	}
 	data[key] = value
@@ -57,9 +57,9 @@ func RequestInput(g *gin.Context, key string) (string, bool) {
 	return value, ok
 }
 
-func requestDataFromContext(g *gin.Context) map[string]interface{} {
+func requestDataFromContext(g *gin.Context) map[string]any {
 	if v, ok := g.Get(requestDataKey); ok {
-		if data, ok := v.(map[string]interface{}); ok {
+		if data, ok := v.(map[string]any); ok {
 			return data
 		}
 	}

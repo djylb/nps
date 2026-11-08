@@ -19,7 +19,7 @@ func TestLogHandlers(t *testing.T) {
 
 	a := &App{}
 	entries := func(v map[string]string) map[string]any {
-		c := &liveContext{rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: v}}}
+		c := &liveContext{values: v}
 		a.LogEntries(c)
 		return c.response.(map[string]any)
 	}
@@ -37,7 +37,7 @@ func TestLogHandlers(t *testing.T) {
 	}
 
 	override := func(v map[string]string) int {
-		c := &liveContext{rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: v}}}
+		c := &liveContext{values: v}
 		a.LogOverride(c)
 		return c.status
 	}

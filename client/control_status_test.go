@@ -21,7 +21,7 @@ func TestReadTaskAddStatusConsumesEveryPort(t *testing.T) {
 	go func() {
 		// three statuses for the multi-port task, then two for the secret
 		// task (its port plus the password entry), the last one a failure.
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			_ = legacy.WriteStatus(server, true)
 		}
 		_ = legacy.WriteStatus(server, false)

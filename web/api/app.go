@@ -131,12 +131,12 @@ type Context interface {
 	Host() string
 	RemoteAddr() string
 	RequestHeader(string) string
-	SessionValue(string) interface{}
+	SessionValue(string) any
 	// SetSessionValue and DeleteSessionValue change the session and save it
 	// in the response; an error says that it could not be saved.
-	SetSessionValue(string, interface{}) error
+	SetSessionValue(string, any) error
 	DeleteSessionValue(string) error
-	RespondJSON(int, interface{})
+	RespondJSON(int, any)
 	RespondString(int, string)
 	RespondData(int, string, []byte)
 	Redirect(int, string)

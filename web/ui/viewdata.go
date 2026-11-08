@@ -11,8 +11,8 @@ type LoginPageCommonData struct {
 	CaptchaHTML    template.HTML
 }
 
-func (d LoginPageCommonData) Map() map[string]interface{} {
-	data := map[string]interface{}{
+func (d LoginPageCommonData) Map() map[string]any {
+	data := map[string]any{
 		"web_base_url":     d.WebBaseURL,
 		"head_custom_code": d.HeadCustomCode,
 		"version":          d.Version,
@@ -63,8 +63,8 @@ type ManagementPageCommonData struct {
 	Features map[string]bool
 }
 
-func (d ManagementPageCommonData) Map() map[string]interface{} {
-	data := map[string]interface{}{
+func (d ManagementPageCommonData) Map() map[string]any {
+	data := map[string]any{
 		"web_base_url":        d.WebBaseURL,
 		"head_custom_code":    d.HeadCustomCode,
 		"version":             d.Version,

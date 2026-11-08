@@ -61,7 +61,7 @@ type JsonDb struct {
 
 func (s *JsonDb) LoadTaskFromJsonFile() error {
 	s.taskPasswords.reset()
-	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.TaskFilePath, model.Tunnel{}, func(v any) {
 		var err error
 		post := v.(*model.Tunnel)
 		if post.Id <= 0 || post.Client == nil {
@@ -101,7 +101,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 
 func (s *JsonDb) LoadClientFromJsonFile() error {
 	s.vkeyIndex.Clear()
-	return loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.ClientFilePath, model.Client{}, func(v any) {
 		post := v.(*model.Client)
 		if post.ConnectionHistory == nil {
 			post.ConnectionHistory = new(model.ConnectionHistory)
@@ -137,7 +137,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 
 func (s *JsonDb) LoadHostFromJsonFile() error {
 	s.hostIndex.Destroy()
-	return loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v interface{}) {
+	return loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v any) {
 		var err error
 		post := v.(*model.Host)
 		if post.Id <= 0 || post.Client == nil {
@@ -259,7 +259,7 @@ func (s *JsonDb) GetHostId() int32 {
 	return atomic.AddInt32(&s.HostIncreaseId, 1)
 }
 
-func loadSyncMapFromFile(filePath string, t interface{}, f func(value interface{})) error {
+func loadSyncMapFromFile(filePath string, t any, f func(value any)) error {
 	// 如果文件不存在，则创建空文件
 	if !runenv.FileExists(filePath) {
 		if err := createEmptyFile(filePath); err != nil {
@@ -298,11 +298,11 @@ func backupUnreadable(filePath string, content []byte) {
 	log.Warn("unreadable store file kept", "path", filePath+".bad")
 }
 
-func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
+func loadObsoleteJsonFile(b []byte, t any, f func(value any)) {
 	// 加载旧版的json文件，以"\n"+connDataSeq分隔
 	var err error
 	// 根据分隔符处理内容
-	for _, v := range strings.Split(string(b), "\n"+connDataSeq) {
+	for v := range strings.SplitSeq(string(b), "\n"+connDataSeq) {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			continue
@@ -336,7 +336,7 @@ func loadObsoleteJsonFile(b []byte, t interface{}, f func(value interface{})) {
 	}
 }
 
-func loadJsonFile(b []byte, t interface{}, f func(value interface{})) error {
+func loadJsonFile(b []byte, t any, f func(value any)) error {
 	// 加载新的json文件，是一个正常的json数组文件
 	var err error
 	switch t.(type) {
@@ -421,7 +421,7 @@ func storeSyncMapToFile(m *sync.Map, filePath string) error {
 		}
 		first := true
 		var rangeErr error
-		m.Range(func(key, value interface{}) bool {
+		m.Range(func(key, value any) bool {
 			switch v := value.(type) {
 			case *model.Tunnel:
 				if v.NoStore {

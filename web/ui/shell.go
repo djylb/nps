@@ -17,11 +17,11 @@ type ManagementShellMetadata struct {
 	HeadCustomCode string
 }
 
-func RenderManagementShell(bootstrap interface{}, metadata ManagementShellMetadata) (string, error) {
+func RenderManagementShell(bootstrap any, metadata ManagementShellMetadata) (string, error) {
 	return RenderManagementShellWithAssets(bootstrap, metadata, DefaultManagementShellAssets(metadata.BaseURL))
 }
 
-func RenderManagementShellWithAssets(bootstrap interface{}, metadata ManagementShellMetadata, assets ManagementShellAssets) (string, error) {
+func RenderManagementShellWithAssets(bootstrap any, metadata ManagementShellMetadata, assets ManagementShellAssets) (string, error) {
 	payload, err := marshalShellBootstrap(bootstrap)
 	if err != nil {
 		return "", err
@@ -37,7 +37,7 @@ func RenderManagementShellWithAssets(bootstrap interface{}, metadata ManagementS
 	return out.String(), nil
 }
 
-func marshalShellBootstrap(bootstrap interface{}) (string, error) {
+func marshalShellBootstrap(bootstrap any) (string, error) {
 	if bootstrap == nil {
 		bootstrap = struct{}{}
 	}

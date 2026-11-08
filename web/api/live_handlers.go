@@ -67,7 +67,7 @@ func (a *App) LiveStatus(c Context) {
 			}
 		}
 	}
-	rows := make([]map[string]interface{}, 0, len(items))
+	rows := make([]map[string]any, 0, len(items))
 	rt := a.Services.Runtime
 	admin := a.Services.Authz.RequireAdmin(principal) == nil
 	for _, it := range items {
@@ -114,7 +114,7 @@ func (a *App) LiveStatus(c Context) {
 		if client == nil || (!admin && a.Services.Authz.RequireClient(principal, client.Id) != nil) {
 			continue
 		}
-		row := map[string]interface{}{"Id": id}
+		row := map[string]any{"Id": id}
 		var up, down int64
 		ratesRead := false
 		var values model.FlowValues
@@ -168,7 +168,7 @@ func (a *App) LiveStatus(c Context) {
 		}
 		rows = append(rows, row)
 	}
-	result := map[string]interface{}{"rows": rows}
+	result := map[string]any{"rows": rows}
 	if wantGlobal {
 		in, out := rate.GlobalTraffic()
 		up, down := rate.GlobalThroughput()

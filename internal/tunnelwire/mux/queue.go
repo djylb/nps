@@ -629,11 +629,9 @@ startPush:
 	// The current dequeue is full. Allocate a New one of twice
 	// the size.
 	if atomic.CompareAndSwapUint32(&c.newChain, 0, 1) {
-		newSize := len(d.vals) * 2
-		if newSize >= dequeueLimit {
+		newSize := min(len(d.vals)*2,
 			// Can't make it any bigger.
-			newSize = dequeueLimit
-		}
+			dequeueLimit)
 
 		d2 := &bufChainElt{prev: d}
 		d2.vals = make([]unsafe.Pointer, newSize)

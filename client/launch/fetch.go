@@ -52,8 +52,7 @@ func fetch(ctx context.Context, rawURL string) (string, error) {
 	req.Header.Set("User-Agent", "npc-launch")
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
+		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err // the URL may hold an access token
 		}
 		return "", &RemoteError{Err: err}

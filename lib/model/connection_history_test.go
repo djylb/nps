@@ -10,7 +10,7 @@ import (
 func TestConnectionHistoryPairsAndRestart(t *testing.T) {
 	h := new(ConnectionHistory)
 	now := time.Date(2026, 10, 20, 1, 2, 3, 0, time.UTC)
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		h.record(true, now.Add(time.Duration(i)*time.Minute))
 		h.record(true, now)
 		h.record(false, now.Add(time.Duration(i)*time.Minute+time.Second))
@@ -42,9 +42,9 @@ func TestConnectionHistoryPairsAndRestart(t *testing.T) {
 func TestConnectionHistoryConcurrentSnapshot(t *testing.T) {
 	h := new(ConnectionHistory)
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		wg.Go(func() {
-			for n := 0; n < 100; n++ {
+			for n := range 100 {
 				h.record(n%2 == 0, time.Now())
 				if _, err := json.Marshal(h); err != nil {
 					t.Error(err)
@@ -62,7 +62,7 @@ func TestConnectionHistoryConfiguredLimit(t *testing.T) {
 	t.Cleanup(func() { SetClientHistoryLimit(5) })
 	SetClientHistoryLimit(2)
 	h := new(ConnectionHistory)
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		h.record(true, time.Now())
 		h.record(false, time.Now())
 	}

@@ -45,7 +45,7 @@ func apiInputMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		payload := make(map[string]interface{})
+		payload := make(map[string]any)
 		decoder := json.NewDecoder(c.Request.Body)
 		decoder.UseNumber()
 		if err := decoder.Decode(&payload); err != nil {
@@ -236,7 +236,7 @@ func requestedClientID(c *gin.Context) (int, error) {
 	return strconv.Atoi(raw)
 }
 
-func stringifyAPIValue(value interface{}) string {
+func stringifyAPIValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return ""
@@ -246,7 +246,7 @@ func stringifyAPIValue(value interface{}) string {
 		return strconv.FormatBool(v)
 	case json.Number:
 		return v.String()
-	case []interface{}, map[string]interface{}:
+	case []any, map[string]any:
 		if data, err := json.Marshal(v); err == nil {
 			return string(data)
 		}

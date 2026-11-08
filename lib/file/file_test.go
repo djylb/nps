@@ -16,7 +16,7 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		ids := make([]int, 0)
 		keys := make([]string, 0)
 
-		err := loadJsonFile(input, model.Client{}, func(value interface{}) {
+		err := loadJsonFile(input, model.Client{}, func(value any) {
 			c := value.(*model.Client)
 			ids = append(ids, c.Id)
 			keys = append(keys, c.VerifyKey)
@@ -36,7 +36,7 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		input := []byte(`[{"Id":10,"Host":"a.com"},{"Id":11,"Host":"b.com"}]`)
 		hosts := make([]string, 0)
 
-		err := loadJsonFile(input, model.Host{}, func(value interface{}) {
+		err := loadJsonFile(input, model.Host{}, func(value any) {
 			h := value.(*model.Host)
 			hosts = append(hosts, h.Host)
 		})
@@ -52,7 +52,7 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 		input := []byte(`[{"Id":21,"Mode":"tcp"},{"Id":22,"Mode":"udp"}]`)
 		modes := make([]string, 0)
 
-		err := loadJsonFile(input, model.Tunnel{}, func(value interface{}) {
+		err := loadJsonFile(input, model.Tunnel{}, func(value any) {
 			tn := value.(*model.Tunnel)
 			modes = append(modes, tn.Mode)
 		})
@@ -66,7 +66,7 @@ func TestLoadJsonFileSupportsAllTypes(t *testing.T) {
 }
 
 func TestLoadJsonFileInvalidJSONReturnsError(t *testing.T) {
-	err := loadJsonFile([]byte(`[{"Id":1}`), model.Client{}, func(value interface{}) {})
+	err := loadJsonFile([]byte(`[{"Id":1}`), model.Client{}, func(value any) {})
 	if err == nil {
 		t.Fatalf("expected json unmarshal error")
 	}
@@ -130,7 +130,7 @@ func TestStoreToJsonFileReportsErrorAndReleasesLock(t *testing.T) {
 	db := &JsonDb{TaskFilePath: target}
 	db.Tasks.Store(1, &model.Tunnel{Id: 1})
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if err := db.StoreTasksToJsonFile(); err == nil {
 			t.Fatalf("expected store to fail")
 		}
@@ -146,7 +146,7 @@ func TestCorruptJSONIsKeptAsBad(t *testing.T) {
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loadSyncMapFromFile(path, model.Tunnel{}, func(interface{}) {})
+	loadSyncMapFromFile(path, model.Tunnel{}, func(any) {})
 	got, err := os.ReadFile(path + ".bad")
 	if err != nil || string(got) != string(content) {
 		t.Fatalf("backup = %q, %v", got, err)

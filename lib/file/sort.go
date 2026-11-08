@@ -17,7 +17,7 @@ func sortClientByKey(m *sync.Map, sortKey, order string) (res []int) {
 		value int64
 	}
 	var list []entry
-	m.Range(func(_, value interface{}) bool {
+	m.Range(func(_, value any) bool {
 		c, ok := value.(*model.Client)
 		if !ok || c == nil {
 			return true

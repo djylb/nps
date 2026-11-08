@@ -52,7 +52,7 @@ func GetMapKeys(m *sync.Map, isSort bool, sortKey, order string) (keys []int) {
 	if (sortKey == "InletFlow" || sortKey == "ExportFlow") && isSort {
 		return sortClientByKey(m, sortKey, order)
 	}
-	m.Range(func(key, value interface{}) bool {
+	m.Range(func(key, value any) bool {
 		keys = append(keys, key.(int))
 		return true
 	})
@@ -122,7 +122,7 @@ func (s *DbUtils) GetClientList(start, length int, search, sort, order string, c
 
 func (s *DbUtils) GetIdByVerifyKey(vKey, addr, localAddr string, hashFunc func(string) string) (id int, err error) {
 	var exist bool
-	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if hashFunc(v.VerifyKey) == vKey && v.Status && v.Id > 0 {
 			v.Addr = netaddr.Host(addr)
@@ -161,7 +161,7 @@ func (s *DbUtils) GetClientIdByBlake2bVkey(vkey string) (id int, err error) {
 
 func (s *DbUtils) GetClientIdByMd5Vkey(vkey string) (id int, err error) {
 	var exist bool
-	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if v.Id > 0 && crypt.Md5(v.VerifyKey) == vkey {
 			exist = true
@@ -392,7 +392,7 @@ func (s *DbUtils) IsHostExist(h *model.Host) bool {
 	if h.Location == "" {
 		h.Location = "/"
 	}
-	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+	s.JsonDb.Hosts.Range(func(key, value any) bool {
 		v := value.(*model.Host)
 		if v.Location == "" {
 			v.Location = "/"
@@ -549,7 +549,7 @@ reset:
 
 func (s *DbUtils) VerifyVkey(vkey string, id int) (res bool) {
 	res = true
-	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if v.VerifyKey == vkey && v.Id != id {
 			res = false
@@ -562,7 +562,7 @@ func (s *DbUtils) VerifyVkey(vkey string, id int) (res bool) {
 
 func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 	res = true
-	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if v.WebUserName == username && v.Id != id {
 			res = false
@@ -850,7 +850,7 @@ func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*model.Host) bool) 
 // ClientTunnel returns the stored tunnel of c on the port or with the
 // password of t.
 func (s *DbUtils) ClientTunnel(c *model.Client, t *model.Tunnel) (tt *model.Tunnel, exist bool) {
-	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.JsonDb.Tasks.Range(func(key, value any) bool {
 		v := value.(*model.Tunnel)
 		if v.Client.Id == c.Id && ((v.Port == t.Port && t.Port != 0) || (v.Password == t.Password && t.Password != "")) {
 			exist = true
@@ -864,7 +864,7 @@ func (s *DbUtils) ClientTunnel(c *model.Client, t *model.Tunnel) (tt *model.Tunn
 
 // ClientEntryCount returns how many tunnels and hosts c has.
 func (s *DbUtils) ClientEntryCount(c *model.Client) (num int) {
-	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.JsonDb.Tasks.Range(func(key, value any) bool {
 		v := value.(*model.Tunnel)
 		if v.Client.Id == c.Id {
 			num++
@@ -872,7 +872,7 @@ func (s *DbUtils) ClientEntryCount(c *model.Client) (num int) {
 		return true
 	})
 
-	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+	s.JsonDb.Hosts.Range(func(key, value any) bool {
 		v := value.(*model.Host)
 		if v.Client.Id == c.Id {
 			num++
@@ -884,7 +884,7 @@ func (s *DbUtils) ClientEntryCount(c *model.Client) (num int) {
 
 // ClientHost returns the stored host of c with the host and location of h.
 func (s *DbUtils) ClientHost(c *model.Client, h *model.Host) (hh *model.Host, exist bool) {
-	s.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+	s.JsonDb.Hosts.Range(func(key, value any) bool {
 		v := value.(*model.Host)
 		if v.Client.Id == c.Id && v.Host == h.Host && h.Location == v.Location {
 			exist = true

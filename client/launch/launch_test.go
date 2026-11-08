@@ -179,8 +179,7 @@ func TestFetchedPayloadIsUntrusted(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Resolve(context.Background(), serve(t, 200, body))
-			var remote *RemoteError
-			if !errors.As(err, &remote) {
+			if _, ok := errors.AsType[*RemoteError](err); !ok {
 				t.Fatalf("expected a remote error, got %v", err)
 			}
 		})

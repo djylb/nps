@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -289,10 +290,8 @@ func appendUniqueClientID(clientIDs []int, clientID int) []int {
 	if clientID <= 0 {
 		return clientIDs
 	}
-	for _, current := range clientIDs {
-		if current == clientID {
-			return clientIDs
-		}
+	if slices.Contains(clientIDs, clientID) {
+		return clientIDs
 	}
 	return append(clientIDs, clientID)
 }

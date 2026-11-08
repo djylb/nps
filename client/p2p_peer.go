@@ -228,8 +228,7 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.label))
 	_ = tc.Close()
 	if err != nil {
-		var herr *holepunch.Error
-		if errors.As(err, &herr) {
+		if herr, ok := errors.AsType[*holepunch.Error](err); ok {
 			p2pLog.Debug("punch failed", "peer", p.label, "session", sessionID, "nat", p2pNATSummary(herr.Diagnostics))
 		}
 		return nil, err

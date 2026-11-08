@@ -35,7 +35,7 @@ type PageBuildInput struct {
 }
 
 type PageBuildResult struct {
-	Data map[string]interface{}
+	Data map[string]any
 }
 
 func (s DefaultPageService) Build(input PageBuildInput) (PageBuildResult, error) {
@@ -208,7 +208,7 @@ func (s DefaultPageService) system() SystemService {
 	return DefaultSystemService{}
 }
 
-func managementPageData(system SystemService, input PageBuildInput) map[string]interface{} {
+func managementPageData(system SystemService, input PageBuildInput) map[string]any {
 	cfg := normalizePageConfig(input.Config)
 	if system == nil {
 		system = DefaultSystemService{}
@@ -282,7 +282,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]i
 }
 
 // setAccessListData exposes the lists of an edited entry to its template.
-func setAccessListData(data map[string]interface{}, l *model.SourceLists) {
+func setAccessListData(data map[string]any, l *model.SourceLists) {
 	data["RegisteredOnly"] = l.RegisteredOnly
 	data["IpListPriority"] = l.IpListPriority
 	data["BlackIpList"] = joinRuleLines(l.BlackIpList)

@@ -44,8 +44,7 @@ func (s *TRPClient) serveP2P(tunnel legacy.Carrier, invite legacy.P2PInvite) {
 	sess, err := holepunch.Punch(s.ctx, tc, p2pOptions(s.localIP, s.mapper, true, "provider"))
 	_ = tc.Close()
 	if err != nil {
-		var herr *holepunch.Error
-		if errors.As(err, &herr) {
+		if herr, ok := errors.AsType[*holepunch.Error](err); ok {
 			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err, "nat", p2pNATSummary(herr.Diagnostics))
 		} else {
 			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", "provider", "session", invite.SessionID, "reason", "punch_failed", "err", err)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"html"
+	"maps"
 	"strings"
 
 	"github.com/djylb/nps/lib/textutil"
@@ -141,7 +142,7 @@ func sessionString(c Context, key string) string {
 
 // setSession and deleteSession change the session where a failed save,
 // which is logged, leaves nothing to undo.
-func setSession(c Context, key string, value interface{}) {
+func setSession(c Context, key string, value any) {
 	_ = c.SetSessionValue(key, value)
 }
 
@@ -156,11 +157,9 @@ func titleName(name string) string {
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
-func newPage(controller, action, tpl string, data map[string]interface{}) *ui.Page {
-	pageData := make(map[string]interface{}, len(data))
-	for key, value := range data {
-		pageData[key] = value
-	}
+func newPage(controller, action, tpl string, data map[string]any) *ui.Page {
+	pageData := make(map[string]any, len(data))
+	maps.Copy(pageData, data)
 	return &ui.Page{
 		Controller: titleName(controller) + "Controller",
 		Action:     titleName(action),
@@ -170,11 +169,11 @@ func newPage(controller, action, tpl string, data map[string]interface{}) *ui.Pa
 	}
 }
 
-func newManagedSpecPage(spec PageSpec, data map[string]interface{}) *ui.Page {
+func newManagedSpecPage(spec PageSpec, data map[string]any) *ui.Page {
 	return withSpecDefaults(spec, newPage(spec.Controller, spec.Action, spec.Template, data))
 }
 
-func newStandaloneSpecPage(spec PageSpec, data map[string]interface{}) *ui.Page {
+func newStandaloneSpecPage(spec PageSpec, data map[string]any) *ui.Page {
 	return withSpecDefaults(spec, &ui.Page{
 		Controller: titleName(spec.Controller) + "Controller",
 		Action:     titleName(spec.Action),
@@ -188,7 +187,7 @@ func withSpecDefaults(spec PageSpec, page *ui.Page) *ui.Page {
 		return nil
 	}
 	if page.Data == nil {
-		page.Data = make(map[string]interface{})
+		page.Data = make(map[string]any)
 	}
 	if spec.Menu != "" {
 		if _, ok := page.Data["menu"]; !ok {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -591,11 +592,9 @@ func (s *HttpServer) writeHandshakeRefusal(w http.ResponseWriter, resp *http.Res
 	}
 	applyResponseRules(resp, respRules)
 	header := w.Header()
-	for k, vv := range resp.Header {
-		header[k] = vv
-	}
+	maps.Copy(header, resp.Header)
 	for _, v := range resp.Header.Values("Connection") {
-		for _, name := range strings.Split(v, ",") {
+		for name := range strings.SplitSeq(v, ",") {
 			if name = strings.TrimSpace(name); name != "" {
 				header.Del(name)
 			}

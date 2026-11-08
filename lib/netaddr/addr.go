@@ -148,7 +148,7 @@ func GetPorts(s string) []int {
 		return nil
 	}
 	seen := make(map[int]struct{})
-	for _, item := range strings.Split(s, ",") {
+	for item := range strings.SplitSeq(s, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
 			continue

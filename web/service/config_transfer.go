@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,8 +257,8 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 	var undo []func()
 	defer func() {
 		if err != nil {
-			for i := len(undo) - 1; i >= 0; i-- {
-				undo[i]()
+			for _, u := range slices.Backward(undo) {
+				u()
 			}
 			result = ImportResult{}
 		}

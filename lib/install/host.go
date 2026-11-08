@@ -57,7 +57,7 @@ func commandOutput(name string, args ...string) ([]byte, error) {
 // hierarchy of cgroup v1.
 func parseCgroupUnit(cgroup string) string {
 	var path string
-	for _, line := range strings.Split(cgroup, "\n") {
+	for line := range strings.SplitSeq(cgroup, "\n") {
 		parts := strings.SplitN(strings.TrimSpace(line), ":", 3)
 		if len(parts) != 3 {
 			continue
@@ -84,7 +84,7 @@ func parseCgroupUnit(cgroup string) string {
 // output of `launchctl list` ("PID\tStatus\tLabel" rows), or "".
 func parseLaunchctlList(out string, pid int) string {
 	want := strconv.Itoa(pid)
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == want {
 			return fields[2]
@@ -97,7 +97,7 @@ func parseLaunchctlList(out string, pid int) string {
 // `sc queryex`, or "".
 func parseScQueryex(out string, pid int) string {
 	var name string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
 			continue

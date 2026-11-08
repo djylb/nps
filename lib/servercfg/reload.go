@@ -67,11 +67,12 @@ func (r Report) String() string {
 		for _, f := range r.Failed {
 			parts = append(parts, fmt.Sprintf("%s (%s): %s", f.Name, strings.Join(f.Settings, ", "), f.Error))
 		}
-		s := "config reload failed, the previous settings were restored: " + strings.Join(parts, "; ")
+		var s strings.Builder
+		s.WriteString("config reload failed, the previous settings were restored: " + strings.Join(parts, "; "))
 		for _, f := range r.RollbackFailed {
-			s += fmt.Sprintf("; restoring %s failed: %s", f.Name, f.Error)
+			s.WriteString(fmt.Sprintf("; restoring %s failed: %s", f.Name, f.Error))
 		}
-		return s
+		return s.String()
 	}
 	s := "config reloaded from " + r.Path
 	if len(r.Applied) == 0 && len(r.Restart) == 0 {

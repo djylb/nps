@@ -17,7 +17,7 @@ import (
 var (
 	statusCap  = 1440
 	ssMu       sync.RWMutex
-	statBuf    = make([]map[string]interface{}, statusCap)
+	statBuf    = make([]map[string]any, statusCap)
 	statIdx    = 0
 	statFilled = false
 
@@ -41,22 +41,22 @@ func statusCount() int {
 	return statIdx
 }
 
-func StatusSnapshot() []map[string]interface{} {
+func StatusSnapshot() []map[string]any {
 	ssMu.RLock()
 	defer ssMu.RUnlock()
 
 	if !statFilled {
-		out := make([]map[string]interface{}, statIdx)
+		out := make([]map[string]any, statIdx)
 		copy(out, statBuf[:statIdx])
 		return out
 	}
-	out := make([]map[string]interface{}, statusCap)
+	out := make([]map[string]any, statusCap)
 	copy(out, statBuf[statIdx:])
 	copy(out[statusCap-statIdx:], statBuf[:statIdx])
 	return out
 }
 
-func ChartDeciles() []map[string]interface{} {
+func ChartDeciles() []map[string]any {
 	ssMu.RLock()
 	defer ssMu.RUnlock()
 
@@ -70,14 +70,14 @@ func ChartDeciles() []map[string]interface{} {
 		return nil
 	}
 	if n <= 10 {
-		out := make([]map[string]interface{}, n)
+		out := make([]map[string]any, n)
 		for i := 0; i < n; i++ {
 			out[i] = statBuf[(start+i)%statusCap]
 		}
 		return out
 	}
-	out := make([]map[string]interface{}, 10)
-	for i := 0; i < 10; i++ {
+	out := make([]map[string]any, 10)
+	for i := range 10 {
 		pos := (i * (n - 1)) / 9
 		idx := (start + pos) % statusCap
 		out[i] = statBuf[idx]
@@ -93,7 +93,7 @@ func getServerStatus() {
 			time.Sleep(1 * time.Minute)
 		}
 
-		m := make(map[string]interface{}, 12)
+		m := make(map[string]any, 12)
 
 		// CPU
 		if cpuPercent, err := cpu.Percent(0, true); err == nil && len(cpuPercent) > 0 {

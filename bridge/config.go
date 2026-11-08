@@ -155,7 +155,7 @@ loop:
 			}
 
 		ports:
-			for i := 0; i < len(ports); i++ {
+			for i := range ports {
 				tl := configPortTask(t, client, s.store.NextTunnelID(), ports, targets, i)
 				if caps.NodeID {
 					join(client.Id)

@@ -42,7 +42,7 @@ func TestVisibleClientsRateSortBeforePaging(t *testing.T) {
 				if order == "desc" {
 					want = []int{3, 1}
 				}
-				for offset := 0; offset < 2; offset++ {
+				for offset := range 2 {
 					rows, total := (storeRepository{db: db}).ListVisibleClients(ListClientsInput{Offset: offset, Limit: 1, Sort: field, Order: order, Search: "visible", Visibility: ClientVisibility{PrimaryClientID: 1, ClientIDs: []int{1, 3, 4}}})
 					if total != 2 || len(rows) != 1 || rows[0].Id != want[offset] {
 						t.Fatalf("%s %s page %d: total=%d rows=%+v want=%d", field, order, offset, total, rows, want[offset])

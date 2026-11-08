@@ -42,15 +42,13 @@ func TestConnWriteSerializesConcurrentWriters(t *testing.T) {
 
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 2 {
+		wg.Go(func() {
 			<-start
 			if _, err := c.Write([]byte("payload")); err != nil {
 				t.Errorf("Write() error = %v", err)
 			}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

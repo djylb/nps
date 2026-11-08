@@ -125,7 +125,7 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 		// replaces both, so the config files become launch inputs too.
 		if !p2p {
 			if f, ok := changed("config"); ok {
-				for _, p := range strings.Split(f.Value.String(), ",") {
+				for p := range strings.SplitSeq(f.Value.String(), ",") {
 					if p = strings.TrimSpace(p); p != "" {
 						if err := addInput("@" + p); err != nil {
 							return nil, nil, err

@@ -13,8 +13,8 @@ func resetStatusState() {
 }
 
 func fillStatusEntries(n int) {
-	for i := 0; i < n; i++ {
-		statBuf[i] = map[string]interface{}{"id": i}
+	for i := range n {
+		statBuf[i] = map[string]any{"id": i}
 	}
 	statIdx = n
 	if n >= statusCap {
@@ -36,7 +36,7 @@ func TestStatusCountAndSnapshotWithoutWrap(t *testing.T) {
 		t.Fatalf("len(StatusSnapshot())=%d, want 3", len(snapshot))
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if snapshot[i]["id"].(int) != i {
 			t.Fatalf("snapshot[%d].id=%v, want %d", i, snapshot[i]["id"], i)
 		}
@@ -46,8 +46,8 @@ func TestStatusCountAndSnapshotWithoutWrap(t *testing.T) {
 func TestStatusSnapshotWithWrap(t *testing.T) {
 	resetStatusState()
 	ssMu.Lock()
-	for i := 0; i < statusCap; i++ {
-		statBuf[i] = map[string]interface{}{"id": i}
+	for i := range statusCap {
+		statBuf[i] = map[string]any{"id": i}
 	}
 	statIdx = 100
 	statFilled = true
@@ -77,7 +77,7 @@ func TestChartDecilesEdgeCasesAndSampling(t *testing.T) {
 	if len(small) != 5 {
 		t.Fatalf("len(ChartDeciles())=%d, want 5", len(small))
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if small[i]["id"].(int) != i {
 			t.Fatalf("small[%d].id=%v, want %d", i, small[i]["id"], i)
 		}
@@ -85,8 +85,8 @@ func TestChartDecilesEdgeCasesAndSampling(t *testing.T) {
 
 	resetStatusState()
 	ssMu.Lock()
-	for i := 0; i < statusCap; i++ {
-		statBuf[i] = map[string]interface{}{"id": i}
+	for i := range statusCap {
+		statBuf[i] = map[string]any{"id": i}
 	}
 	statIdx = 100
 	statFilled = true
@@ -97,7 +97,7 @@ func TestChartDecilesEdgeCasesAndSampling(t *testing.T) {
 		t.Fatalf("len(ChartDeciles())=%d, want 10", len(deciles))
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		pos := (i * (statusCap - 1)) / 9
 		expected := (100 + pos) % statusCap
 		if deciles[i]["id"].(int) != expected {

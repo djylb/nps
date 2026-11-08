@@ -17,9 +17,9 @@ type liveContext struct {
 	status int
 }
 
-func (c *liveContext) Actor() *Actor                         { return c.actor }
-func (c *liveContext) SetResponseHeader(string, string)      {}
-func (c *liveContext) RespondJSON(status int, v interface{}) { c.status = status; c.response = v }
+func (c *liveContext) Actor() *Actor                    { return c.actor }
+func (c *liveContext) SetResponseHeader(string, string) {}
+func (c *liveContext) RespondJSON(status int, v any)    { c.status = status; c.response = v }
 
 type liveClients struct {
 	webservice.ClientService
@@ -64,9 +64,9 @@ func TestLiveStatusFieldsAndOwnership(t *testing.T) {
 		if kind == "client" {
 			ids = []int{1, 2, -1, 99}
 		}
-		var items []map[string]interface{}
+		var items []map[string]any
 		for _, id := range ids {
-			items = append(items, map[string]interface{}{"id": id, "fields": []string{"Flow.InletFlow"}})
+			items = append(items, map[string]any{"id": id, "fields": []string{"Flow.InletFlow"}})
 		}
 		raw, _ := json.Marshal(items)
 		for _, admin := range []bool{false, true} {
@@ -79,12 +79,12 @@ func TestLiveStatusFieldsAndOwnership(t *testing.T) {
 					want = 3
 				}
 			}
-			c := &liveContext{actor: actor, rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{"resource": kind, "items": string(raw)}}}}
+			c := &liveContext{actor: actor, values: map[string]string{"resource": kind, "items": string(raw)}}
 			app.LiveStatus(c)
 			if c.status != 200 {
 				t.Fatalf("%s admin=%v: %d %+v", kind, admin, c.status, c.response)
 			}
-			rows := c.response.(map[string]interface{})["rows"].([]map[string]interface{})
+			rows := c.response.(map[string]any)["rows"].([]map[string]any)
 			if len(rows) != want {
 				t.Fatalf("%s admin=%v: %+v", kind, admin, rows)
 			}
@@ -100,13 +100,13 @@ func TestLiveStatusFieldsAndOwnership(t *testing.T) {
 		}
 	}
 
-	c := &liveContext{actor: AdminActorWithFallback("admin", "admin"), rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{"resource": "client", "items": `[{"id":1,"fields":["TotalFlow"]},{"id":2,"fields":["NowConn"]}]`, "global": "In"}}}}
+	c := &liveContext{actor: AdminActorWithFallback("admin", "admin"), values: map[string]string{"resource": "client", "items": `[{"id":1,"fields":["TotalFlow"]},{"id":2,"fields":["NowConn"]}]`, "global": "In"}}
 	app.LiveStatus(c)
 	if c.status != 200 {
 		t.Fatalf("derived request: %+v", c.response)
 	}
-	payload := c.response.(map[string]interface{})
-	rows := payload["rows"].([]map[string]interface{})
+	payload := c.response.(map[string]any)
+	rows := payload["rows"].([]map[string]any)
 	if len(rows[0]) != 2 || rows[0]["TotalFlow"] != int64(579) || len(rows[1]) != 2 {
 		t.Fatalf("per-row fields not respected: %+v", rows)
 	}
@@ -124,7 +124,7 @@ func TestLiveStatusFieldsAndOwnership(t *testing.T) {
 		{"client", `[{"id":1,"fields":["Status"]},{"id":1,"fields":["Status"]}]`, "", UserActor("u", []int{1}), 400},
 		{"client", `[]`, "VerifyKey", AdminActorWithFallback("admin", "admin"), 400},
 	} {
-		c := &liveContext{actor: tc.actor, rateResponseContext: rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{"resource": tc.resource, "items": tc.items, "global": tc.global}}}}
+		c := &liveContext{actor: tc.actor, values: map[string]string{"resource": tc.resource, "items": tc.items, "global": tc.global}}
 		app.LiveStatus(c)
 		if c.status != tc.want {
 			t.Fatalf("got %d want %d: %+v", c.status, tc.want, tc)

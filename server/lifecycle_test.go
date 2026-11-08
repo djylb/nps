@@ -101,11 +101,11 @@ func serverGoroutines() string {
 	var b bytes.Buffer
 	_ = pprof.Lookup("goroutine").WriteTo(&b, 2)
 	var left []string
-	for _, g := range strings.Split(b.String(), "\n\n") {
+	for g := range strings.SplitSeq(b.String(), "\n\n") {
 		if strings.Contains(g, "testing.tRunner") || strings.Contains(g, "testing.(*M).Run") {
 			continue // the test itself
 		}
-		for _, line := range strings.Split(g, "\n") {
+		for line := range strings.SplitSeq(g, "\n") {
 			if strings.HasPrefix(line, "created by") || strings.Contains(line, "testServerLifecycle") {
 				continue
 			}

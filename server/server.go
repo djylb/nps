@@ -265,7 +265,7 @@ func (s *Server) initFromDb() {
 
 	s.addKeyClients(cfg.Runtime.PublicVKey, cfg.Runtime.VisitorVKey)
 	//Initialize services in server-side files
-	s.db.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		if value.(*model.Tunnel).Status {
 			_ = s.AddTunnel(value.(*model.Tunnel))
 		}
@@ -539,7 +539,7 @@ func (s *Server) DeleteClientResources(id int) { s.deleteClientEntries(id, false
 // clientId, only the unstored ones if justDelNoStore.
 func (s *Server) deleteClientEntries(clientId int, justDelNoStore bool) {
 	var ids []int
-	s.db.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		v := value.(*model.Tunnel)
 		if justDelNoStore && !v.NoStore {
 			return true
@@ -553,7 +553,7 @@ func (s *Server) deleteClientEntries(clientId int, justDelNoStore bool) {
 		_ = s.DeleteTunnel(id)
 	}
 	ids = ids[:0]
-	s.db.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Hosts.Range(func(key, value any) bool {
 		v := value.(*model.Host)
 		if justDelNoStore && !v.NoStore {
 			return true
@@ -597,7 +597,7 @@ func (s *Server) TunnelPortAvailable(t *model.Tunnel) bool { return s.ports.Test
 
 func (s *Server) dealClientData() {
 	b := s.bridge
-	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if vv, ok := b.Client.Load(v.Id); ok {
 			v.IsConnect = true
@@ -650,19 +650,19 @@ func (s *Server) dealClientData() {
 		sum.out += v.ExportFlow
 		sums[c] = sum
 	}
-	s.db.JsonDb.Hosts.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Hosts.Range(func(key, value any) bool {
 		if h, ok := value.(*model.Host); ok && h != nil {
 			addFlow(h.Client, h.Flow)
 		}
 		return true
 	})
-	s.db.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		if t, ok := value.(*model.Tunnel); ok && t != nil {
 			addFlow(t.Client, t.Flow)
 		}
 		return true
 	})
-	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value any) bool {
 		c := value.(*model.Client)
 		sum := sums[c]
 		c.InletFlow.Store(sum.in)

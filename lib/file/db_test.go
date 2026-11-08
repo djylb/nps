@@ -163,7 +163,7 @@ func fill(t *testing.T, v reflect.Value) {
 			f.SetBool(true)
 		case reflect.String:
 			f.SetString(sf.Name)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			f.Set(reflect.New(f.Type().Elem()))
 		case reflect.Map:
 			f.Set(reflect.MakeMap(f.Type()))
@@ -171,7 +171,7 @@ func fill(t *testing.T, v reflect.Value) {
 		case reflect.Slice:
 			f.Set(reflect.Append(reflect.MakeSlice(f.Type(), 0, 1), reflect.ValueOf("x")))
 		case reflect.Struct:
-			if sf.Type == reflect.TypeOf(time.Time{}) {
+			if sf.Type == reflect.TypeFor[time.Time]() {
 				f.Set(reflect.ValueOf(time.Unix(int64(i+1), 0)))
 			} else if sf.Anonymous && sf.Name == "Health" {
 				fill(t, f)

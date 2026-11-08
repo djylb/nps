@@ -1,6 +1,7 @@
 package index
 
 import (
+	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,9 +33,7 @@ func (dt *DomainTree) CloneAdd(domain string, id int) *DomainTree {
 
 func (n *node) cloneAdd(parts []string, id int) *node {
 	newChildren := make(map[string]*node, len(n.children))
-	for k, v := range n.children {
-		newChildren[k] = v
-	}
+	maps.Copy(newChildren, n.children)
 	newIDs := make(map[int]struct{}, len(n.ids)+1)
 	for iid := range n.ids {
 		newIDs[iid] = struct{}{}
@@ -68,9 +67,7 @@ func (dt *DomainTree) CloneRemove(domain string, id int) *DomainTree {
 
 func (n *node) cloneRemove(parts []string, id int) (*node, bool) {
 	newChildren := make(map[string]*node, len(n.children))
-	for k, v := range n.children {
-		newChildren[k] = v
-	}
+	maps.Copy(newChildren, n.children)
 	newIDs := make(map[int]struct{}, len(n.ids))
 	for iid := range n.ids {
 		newIDs[iid] = struct{}{}

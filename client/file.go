@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"maps"
 	"net"
 	"net/http"
 	"strings"
@@ -91,14 +92,10 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 		accounts[t.Client.Cnf.U] = t.Client.Cnf.P
 	}
 	if t.MultiAccount != nil {
-		for user, pass := range t.MultiAccount.AccountMap {
-			accounts[user] = pass
-		}
+		maps.Copy(accounts, t.MultiAccount.AccountMap)
 	}
 	if t.UserAuth != nil {
-		for user, pass := range t.UserAuth.AccountMap {
-			accounts[user] = pass
-		}
+		maps.Copy(accounts, t.UserAuth.AccountMap)
 	}
 	if len(accounts) > 0 {
 		handler = basicAuth(accounts, "WebDAV", handler)
@@ -124,13 +121,11 @@ func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
 	fsm.mu.Unlock()
 	registered = true
 
-	fsm.wg.Add(1)
-	go func() {
-		defer fsm.wg.Done()
+	fsm.wg.Go(func() {
 		if err := srv.Serve(vl); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("webdav server failed", "err", err)
 		}
-	}()
+	})
 }
 
 func (fsm *FileServerManager) GetListenerByKey(key string) (*netx.ChanListener, bool) {

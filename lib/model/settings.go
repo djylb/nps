@@ -104,7 +104,7 @@ var timeType = reflect.TypeFor[time.Time]()
 // structs on its path that are nil.
 func (s EntrySetting) field(entry any) reflect.Value {
 	v := reflect.ValueOf(entry).Elem()
-	for _, name := range strings.Split(s.Field, ".") {
+	for name := range strings.SplitSeq(s.Field, ".") {
 		if v.Kind() == reflect.Pointer {
 			if v.IsNil() {
 				v.Set(reflect.New(v.Type().Elem()))

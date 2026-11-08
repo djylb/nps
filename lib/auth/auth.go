@@ -21,7 +21,7 @@ func ValidatePoW(bits int, parts ...string) bool {
 	data := strings.Join(parts, "")
 	sum := sha256.Sum256([]byte(data))
 	fullBytes := bits / 8
-	for i := 0; i < fullBytes; i++ {
+	for i := range fullBytes {
 		if sum[i] != 0 {
 			return false
 		}
@@ -42,7 +42,7 @@ func ValidatePoW(bits int, parts ...string) bool {
 // of these are skipped. Parse the list once, where the config is read.
 func ParseTrustedProxies(list string) *forwarded.PrefixSet {
 	var prefixes []netip.Prefix
-	for _, raw := range strings.Split(list, ",") {
+	for raw := range strings.SplitSeq(list, ",") {
 		entry := strings.TrimSpace(raw)
 		if entry == "*" {
 			return AnyAddress

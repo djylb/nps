@@ -1,6 +1,8 @@
 package api
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	webservice "github.com/djylb/nps/web/service"
@@ -97,9 +99,7 @@ func ActorFromSessionIdentityWithFallback(identity *webservice.SessionIdentity, 
 	}
 	if len(identity.Attributes) > 0 {
 		actor.Attributes = make(map[string]string, len(identity.Attributes))
-		for key, value := range identity.Attributes {
-			actor.Attributes[key] = value
-		}
+		maps.Copy(actor.Attributes, identity.Attributes)
 	}
 	if actor.Kind == "" {
 		if actor.IsAdmin {
@@ -127,12 +127,7 @@ func ActorCanAccessClient(actor *Actor, clientID int) bool {
 	if clientID < 0 {
 		return false
 	}
-	for _, current := range actor.ClientIDs {
-		if current == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(actor.ClientIDs, clientID)
 }
 
 func ActorPrimaryClientID(actor *Actor) (int, bool) {
@@ -162,9 +157,7 @@ func PrincipalFromActor(actor *Actor) webservice.Principal {
 	}
 	if len(actor.Attributes) > 0 {
 		principal.Attributes = make(map[string]string, len(actor.Attributes))
-		for key, value := range actor.Attributes {
-			principal.Attributes[key] = value
-		}
+		maps.Copy(principal.Attributes, actor.Attributes)
 	}
 	return principal
 }

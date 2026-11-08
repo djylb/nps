@@ -60,7 +60,7 @@ func TestPowHelpers(t *testing.T) {
 		t.Fatal("ValidatePoW(bits<1) = true, want false")
 	}
 	found := false
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		if ValidatePoW(1, "seed", string(rune('A'+i))) {
 			found = true
 			break

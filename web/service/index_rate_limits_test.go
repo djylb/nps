@@ -40,31 +40,31 @@ func (r *rateLimitRepository) SaveHost(v *model.Host, _ string) error {
 }
 
 func newRateLimitService() (DefaultIndexService, *rateLimitRepository) {
-	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*model.Client, error) { return &model.Client{Id: 1}, nil }}}
+	r := &rateLimitRepository{getClient: func(int) (*model.Client, error) { return &model.Client{Id: 1}, nil }}
 	return DefaultIndexService{Backend: Backend{Repository: r, Runtime: stubRuntime{}}}, r
 }
 
 func TestIndexRateLimitsCreateEditClear(t *testing.T) {
 	s, r := newRateLimitService()
-	if _, err := s.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp", Port: 1234, RateLimits: model.RateLimits{UploadLimit: 12, DownloadLimit: 34}}}); err != nil {
+	if _, err := s.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp", Port: 1234, UploadLimit: 12, DownloadLimit: 34}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.tunnel.UploadLimit != 12 || r.tunnel.DownloadLimit != 34 {
 		t.Fatalf("created tunnel limits: %+v", r.tunnel)
 	}
-	if _, err := s.AddHost(HostInput{ClientID: 1, Host: &model.Host{Host: "example.com", RateLimits: model.RateLimits{UploadLimit: 56, DownloadLimit: 78}}}); err != nil {
+	if _, err := s.AddHost(HostInput{ClientID: 1, Host: &model.Host{Host: "example.com", UploadLimit: 56, DownloadLimit: 78}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.host.UploadLimit != 56 || r.host.DownloadLimit != 78 {
 		t.Fatalf("created host limits: %+v", r.host)
 	}
-	if _, err := s.EditTunnel(TunnelInput{Tunnel: &model.Tunnel{RateLimits: model.RateLimits{UploadLimit: -1, DownloadLimit: 90}}}); err != nil {
+	if _, err := s.EditTunnel(TunnelInput{Tunnel: &model.Tunnel{UploadLimit: -1, DownloadLimit: 90}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.tunnel.UploadLimit != 0 || r.tunnel.DownloadLimit != 90 {
 		t.Fatalf("edited tunnel limits: %+v", r.tunnel)
 	}
-	if _, err := s.EditHost(HostInput{Host: &model.Host{Host: "example.com", RateLimits: model.RateLimits{UploadLimit: 91, DownloadLimit: -2}}}); err != nil {
+	if _, err := s.EditHost(HostInput{Host: &model.Host{Host: "example.com", UploadLimit: 91, DownloadLimit: -2}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.host.UploadLimit != 91 || r.host.DownloadLimit != 0 {
@@ -95,10 +95,10 @@ func TestIndexRateLimitsCreateEditClear(t *testing.T) {
 
 func TestIndexRateLimitNegativeCreation(t *testing.T) {
 	s, r := newRateLimitService()
-	if _, err := s.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp", Port: 1234, RateLimits: model.RateLimits{UploadLimit: -1, DownloadLimit: -2}}}); err != nil {
+	if _, err := s.AddTunnel(TunnelInput{ClientID: 1, Tunnel: &model.Tunnel{Mode: "tcp", Port: 1234, UploadLimit: -1, DownloadLimit: -2}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AddHost(HostInput{ClientID: 1, Host: &model.Host{Host: "example.com", RateLimits: model.RateLimits{UploadLimit: -1, DownloadLimit: -2}}}); err != nil {
+	if _, err := s.AddHost(HostInput{ClientID: 1, Host: &model.Host{Host: "example.com", UploadLimit: -1, DownloadLimit: -2}}); err != nil {
 		t.Fatal(err)
 	}
 	if r.tunnel.UploadLimit != 0 || r.tunnel.DownloadLimit != 0 || r.host.UploadLimit != 0 || r.host.DownloadLimit != 0 {

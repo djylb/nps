@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,7 +50,7 @@ func (c formContext) Bool(k string, def ...bool) bool {
 	b, _ := textutil.ParseBool(v)
 	return b
 }
-func (c formContext) SessionValue(k string) interface{} {
+func (c formContext) SessionValue(k string) any {
 	if k == "isAdmin" {
 		return c.admin
 	}
@@ -108,7 +109,7 @@ func storedTunnel(c *model.Client) *model.Tunnel {
 		MultiAccount: &model.MultiAccount{Content: "m"},
 		UserAuth:     &model.MultiAccount{Content: "a=b"},
 		MaxConn:      4,
-		RateLimits:   model.RateLimits{UploadLimit: 1, DownloadLimit: 2},
+		UploadLimit:  1, DownloadLimit: 2,
 	}
 }
 
@@ -123,7 +124,7 @@ func storedHost(c *model.Client) *model.Host {
 		MultiAccount: &model.MultiAccount{Content: "m"},
 		UserAuth:     &model.MultiAccount{Content: "a=b"},
 		MaxConn:      4,
-		RateLimits:   model.RateLimits{UploadLimit: 1, DownloadLimit: 2},
+		UploadLimit:  1, DownloadLimit: 2,
 	}
 }
 
@@ -180,16 +181,12 @@ var hostFormCases = map[string]map[string]string{
 
 func merge(a, b map[string]string) map[string]string {
 	m := make(map[string]string, len(a)+len(b))
-	for k, v := range a {
-		m[k] = v
-	}
-	for k, v := range b {
-		m[k] = v
-	}
+	maps.Copy(m, a)
+	maps.Copy(m, b)
 	return m
 }
 
-func snapshotEntry(v interface{}, flow *model.Flow) string {
+func snapshotEntry(v any, flow *model.Flow) string {
 	if flow != nil {
 		flow.TimeLimit = flow.TimeLimit.UTC()
 	}

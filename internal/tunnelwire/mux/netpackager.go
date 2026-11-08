@@ -130,7 +130,7 @@ type muxPackager struct {
 	queueNext *muxPackager
 }
 
-func (Self *muxPackager) Set(flag uint8, id int32, content interface{}) (err error) {
+func (Self *muxPackager) Set(flag uint8, id int32, content any) (err error) {
 	Self.buf = windowBuff.Get()
 	Self.flag = flag
 	Self.id = id

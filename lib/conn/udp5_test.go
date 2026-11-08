@@ -33,8 +33,7 @@ func TestHandleUdp5RelaysDatagrams(t *testing.T) {
 
 			tunnel, peer := net.Pipe()
 			defer func() { _ = peer.Close() }()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			done := make(chan struct{})
 			go func() {
 				HandleUdp5(ctx, tunnel, 5*time.Second, "")

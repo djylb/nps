@@ -14,7 +14,7 @@ func TestMuxReleaseReturnsEachBufferOnce(t *testing.T) {
 	m := &Mux{closeChan: make(chan struct{})}
 	m.writeQueue.New()
 	const packs = 64
-	for i := 0; i < packs; i++ {
+	for range packs {
 		pack := muxPack.Get()
 		if err := pack.Set(muxNewMsg, 1, []byte("payload")); err != nil {
 			t.Fatalf("Set() error = %v", err)
@@ -25,7 +25,7 @@ func TestMuxReleaseReturnsEachBufferOnce(t *testing.T) {
 	m.release()
 
 	seen := make(map[*byte]struct{})
-	for i := 0; i < 4*packs; i++ {
+	for range 4 * packs {
 		b := windowBuff.Get()
 		p := &b[0]
 		if _, dup := seen[p]; dup {
@@ -37,7 +37,7 @@ func TestMuxReleaseReturnsEachBufferOnce(t *testing.T) {
 
 func TestPingReturnPayloadDoesNotLeakPoolData(t *testing.T) {
 	for _, length := range []uint16{8, 9, 12} {
-		for i := 0; i < 64; i++ {
+		for range 64 {
 			pack := &muxPackager{}
 			pack.content = make([]byte, poolSizeWindowBuffer)
 			for j := range pack.content {

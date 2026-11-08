@@ -447,7 +447,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 		maxLength := textutil.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
-		for i := 0; i < maxLength; i++ {
+		for i := range maxLength {
 			serverAddr := serverAddrs[i]
 			verifyKey := verifyKeys[i]
 			connType := connTypes[i]

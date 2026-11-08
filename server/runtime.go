@@ -26,7 +26,7 @@ import (
 // dashboard caches the dashboard data and samples the network speed.
 type dashboard struct {
 	cacheMu         sync.RWMutex
-	cache           map[string]interface{}
+	cache           map[string]any
 	lastRefresh     time.Time
 	lastFullRefresh time.Time
 
@@ -85,7 +85,7 @@ func (s *Server) initDashboardData() {
 
 // DashboardData returns the dashboard data, refreshed when force or when the
 // cache is old.
-func (s *Server) DashboardData(force bool) map[string]interface{} {
+func (s *Server) DashboardData(force bool) map[string]any {
 	cfg := servercfg.Current()
 	d := &s.dash
 	d.cacheMu.RLock()
@@ -100,12 +100,12 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 		}
 
 		tcpCount := 0
-		s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
+		s.db.JsonDb.Clients.Range(func(key, value any) bool {
 			tcpCount += int(value.(*model.Client).CurrentConnections())
 			return true
 		})
 
-		var cpuVal interface{}
+		var cpuVal any
 		if cpuPercent, err := cpu.Percent(0, true); err == nil {
 			var sum float64
 			for _, v := range cpuPercent {
@@ -116,17 +116,17 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 			}
 		}
 
-		var loadVal interface{}
+		var loadVal any
 		if loads, err := load.Avg(); err == nil {
 			loadVal = loads.String()
 		}
 
-		var swapVal interface{}
+		var swapVal any
 		if swap, err := mem.SwapMemory(); err == nil {
 			swapVal = math.Round(swap.UsedPercent)
 		}
 
-		var virtVal interface{}
+		var virtVal any
 		if vir, err := mem.VirtualMemory(); err == nil {
 			virtVal = math.Round(vir.UsedPercent)
 		}
@@ -150,7 +150,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 			}
 		}
 
-		var ioSend, ioRecv interface{}
+		var ioSend, ioRecv any
 		if v, ok := d.ioSendRate.Load().(float64); ok {
 			ioSend = v
 		}
@@ -197,7 +197,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 		return cloneDashboardData(dst)
 	}
 
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 	data["version"] = version.VERSION
 	data["minVersion"] = s.bridge.MinClientVersion()
 	data["hostCount"] = syncMapLen(&s.db.JsonDb.Hosts)
@@ -207,7 +207,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 
 	c := 0
 	var in, out int64
-	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if v.NoDisplay { // the public and visitor keys are not clients to show
 			data["clientCount"] = data["clientCount"].(int) - 1
@@ -225,7 +225,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 	data["exportFlowCount"] = int(out)
 
 	var tcpN, udpN, secretN, socks5N, p2pN, httpN int
-	s.db.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		t := value.(*model.Tunnel)
 		switch t.Mode {
 		case "tcp":
@@ -274,7 +274,7 @@ func (s *Server) DashboardData(force bool) map[string]interface{} {
 	data["startTime"] = runenv.GetStartTime()
 
 	tcpCount := 0
-	s.db.JsonDb.Clients.Range(func(key, value interface{}) bool {
+	s.db.JsonDb.Clients.Range(func(key, value any) bool {
 		tcpCount += int(value.(*model.Client).CurrentConnections())
 		return true
 	})
@@ -354,23 +354,23 @@ func intStringOrEmpty(value int) string {
 	return strconv.Itoa(value)
 }
 
-func cloneDashboardData(src map[string]interface{}) map[string]interface{} {
+func cloneDashboardData(src map[string]any) map[string]any {
 	if src == nil {
 		return nil
 	}
-	dst := make(map[string]interface{}, len(src))
+	dst := make(map[string]any, len(src))
 	for key, value := range src {
 		dst[key] = cloneDashboardValue(value)
 	}
 	return dst
 }
 
-func cloneDashboardValue(value interface{}) interface{} {
+func cloneDashboardValue(value any) any {
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return cloneDashboardData(v)
-	case []interface{}:
-		items := make([]interface{}, len(v))
+	case []any:
+		items := make([]any, len(v))
 		for i, item := range v {
 			items[i] = cloneDashboardValue(item)
 		}
@@ -383,7 +383,7 @@ func cloneDashboardValue(value interface{}) interface{} {
 // syncMapLen counts the entries of m.
 func syncMapLen(m *sync.Map) int {
 	var c int
-	m.Range(func(key, value interface{}) bool {
+	m.Range(func(key, value any) bool {
 		c++
 		return true
 	})

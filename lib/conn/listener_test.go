@@ -138,7 +138,7 @@ func TestDialVirtualWaitsForQueueSpaceUntilContextDone(t *testing.T) {
 			_ = c.Close()
 		}
 	}()
-	for i := 0; i < virtualQueue; i++ {
+	for i := range virtualQueue {
 		client, server := net.Pipe()
 		clients = append(clients, client)
 		if !l.TryDeliver(server) {

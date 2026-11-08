@@ -235,7 +235,7 @@ func (s *Mux) Addr() net.Addr {
 
 // sendInfo queues a frame and reports whether it was accepted; it returns
 // false when the mux is closed.
-func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data interface{}) bool {
+func (s *Mux) sendInfo(flag uint8, id int32, priority bool, data any) bool {
 	if s.IsClosed() {
 		return false
 	}
@@ -554,10 +554,7 @@ func (s *Mux) enqueueAccepted(connection *Conn) bool {
 func pingReturnPayload(pack *muxPackager) []byte {
 	buf := pack.content[:pack.length]
 	if pack.length == 8 || (pack.length > 8 && isZero(buf[8:])) {
-		n := 8 + rand.Intn(PingMaxPad)
-		if n > maximumSegmentSize {
-			n = maximumSegmentSize
-		}
+		n := min(8+rand.Intn(PingMaxPad), maximumSegmentSize)
 		if n > int(pack.length) {
 			clear(pack.content[pack.length:n])
 		}

@@ -97,7 +97,7 @@ func (a Allowed) GenerateServerPort(m string) int {
 			}
 		}
 	} else {
-		for attempt := 0; attempt < 1000; attempt++ {
+		for range 1000 {
 			serverPort := rand.Intn(65535-1024+1) + 1024 // [1024, 65535]
 			if a.TestServerPort(serverPort, m) {
 				return serverPort
@@ -134,7 +134,7 @@ func (a Allowed) GenerateTunnelPort(t *model.Tunnel) int {
 			}
 		}
 	} else {
-		for attempt := 0; attempt < 1000; attempt++ {
+		for range 1000 {
 			serverPort := rand.Intn(65535-1024+1) + 1024
 			probe.Port = serverPort
 			if a.TestTunnelPort(probe) {

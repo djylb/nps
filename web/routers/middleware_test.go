@@ -2,6 +2,7 @@ package routers
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -75,7 +76,7 @@ func newRequestParamFixture(t *testing.T) *requestParamFixture {
 	return f
 }
 
-func performJSONRequest(handler http.Handler, path string, cookies []*http.Cookie, payload map[string]interface{}) *httptest.ResponseRecorder {
+func performJSONRequest(handler http.Handler, path string, cookies []*http.Cookie, payload map[string]any) *httptest.ResponseRecorder {
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
@@ -95,7 +96,7 @@ func TestRequestIntTrimsSpace(t *testing.T) {
 		t.Fatalf("padded id: status=%d body=%s", resp.Code, resp.Body.String())
 	}
 
-	resp = performJSONRequest(f.handler, "/api/v1/index/getonetunnel", f.cookies, map[string]interface{}{"id": " 201"})
+	resp = performJSONRequest(f.handler, "/api/v1/index/getonetunnel", f.cookies, map[string]any{"id": " 201"})
 	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "\"Id\":201") {
 		t.Fatalf("padded json id: status=%d body=%s", resp.Code, resp.Body.String())
 	}
@@ -127,19 +128,15 @@ func TestRequestIntTrimsSpace(t *testing.T) {
 
 func TestEditHostClientSelection(t *testing.T) {
 	f := newRequestParamFixture(t)
-	base := map[string]interface{}{
+	base := map[string]any{
 		"id":     f.hostOfB.Id,
 		"host":   f.hostOfB.Host,
 		"target": "127.0.0.1:80",
 	}
-	with := func(extra map[string]interface{}) map[string]interface{} {
-		payload := make(map[string]interface{}, len(base)+len(extra))
-		for k, v := range base {
-			payload[k] = v
-		}
-		for k, v := range extra {
-			payload[k] = v
-		}
+	with := func(extra map[string]any) map[string]any {
+		payload := make(map[string]any, len(base)+len(extra))
+		maps.Copy(payload, base)
+		maps.Copy(payload, extra)
 		return payload
 	}
 	ownerOf := func() int {
@@ -150,7 +147,7 @@ func TestEditHostClientSelection(t *testing.T) {
 		return host.Client.Id
 	}
 
-	resp := performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]interface{}{"client_id": f.clientC.Id}))
+	resp := performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]any{"client_id": f.clientC.Id}))
 	if resp.Code != http.StatusForbidden {
 		t.Fatalf("json client_id outside scope status = %d, want 403", resp.Code)
 	}
@@ -172,7 +169,7 @@ func TestEditHostClientSelection(t *testing.T) {
 		t.Fatalf("host client after edit without client_id = %d, want %d", got, f.clientB.Id)
 	}
 
-	resp = performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]interface{}{"client_id": f.clientA.Id}))
+	resp = performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]any{"client_id": f.clientA.Id}))
 	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "\"status\":1") {
 		t.Fatalf("edit to own client: status=%d body=%s", resp.Code, resp.Body.String())
 	}
@@ -182,7 +179,7 @@ func TestEditHostClientSelection(t *testing.T) {
 
 	f.clientB.MaxTunnelNum = 1
 	createTestHost(t, f.db, 304, f.clientB, "b2.example.test")
-	resp = performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]interface{}{"client_id": f.clientB.Id}))
+	resp = performJSONRequest(f.handler, "/api/v1/index/edithost", f.cookies, with(map[string]any{"client_id": f.clientB.Id}))
 	if !strings.Contains(resp.Body.String(), "\"status\":0") {
 		t.Fatalf("edit to client at limit should fail, status=%d body=%s", resp.Code, resp.Body.String())
 	}
@@ -219,7 +216,7 @@ func TestEditResourceVirtualClientSelection(t *testing.T) {
 			if resource == "host" {
 				action, id = "edithost", 301
 			}
-			payload := map[string]interface{}{"id": id, "target": "127.0.0.1:80"}
+			payload := map[string]any{"id": id, "target": "127.0.0.1:80"}
 			if resource == "host" {
 				payload["host"] = f.hostOfB.Host
 			}

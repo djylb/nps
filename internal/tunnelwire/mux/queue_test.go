@@ -18,7 +18,7 @@ func waitForStack(t *testing.T, markers ...string) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		n := runtime.Stack(buf, true)
-		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
+		for g := range strings.SplitSeq(string(buf[:n]), "\n\n") {
 			ok := true
 			for _, m := range markers {
 				if !strings.Contains(g, m) {
@@ -52,7 +52,7 @@ func TestPriorityQueuePopAcrossLowWaterWhileWaiting(t *testing.T) {
 
 	// enqueue exactly writeQueueLowWater frames without waking the consumer,
 	// then wake it once: its first pop crosses the low water mark
-	for i := uint64(0); i < writeQueueLowWater; i++ {
+	for range writeQueueLowWater {
 		q.length.Add(1)
 		q.mu.Lock()
 		q.push(newTestPack())
@@ -85,7 +85,7 @@ func newBackpressuredConn(t *testing.T) (*Mux, *Conn) {
 	t.Helper()
 	m := &Mux{closeChan: make(chan struct{}), connMap: NewConnMap()}
 	m.writeQueue.New()
-	for i := uint64(0); i < writeQueueHighWater; i++ {
+	for range writeQueueHighWater {
 		m.writeQueue.Push(newTestPack())
 	}
 	c := NewConn(1, m)
@@ -211,7 +211,7 @@ func TestDeadlineNanoClampsOutOfRange(t *testing.T) {
 
 // Data pushed just before the stop must be delivered, not lost to an EOF.
 func TestReceiveWindowQueuePopSeesPushBeforeStop(t *testing.T) {
-	for i := 0; i < 20000; i++ {
+	for i := range 20000 {
 		q := newReceiveWindowQueue()
 		res := make(chan *listElement, 1)
 		go func() {
@@ -238,7 +238,7 @@ func TestPriorityQueueStreamScheduling(t *testing.T) {
 	q.New()
 	frame := func(flag uint8, id int32) {
 		pack := muxPack.Get()
-		var data interface{}
+		var data any
 		switch flag {
 		case muxNewMsg:
 			data = []byte("x")
@@ -259,13 +259,13 @@ func TestPriorityQueueStreamScheduling(t *testing.T) {
 		muxPack.Put(pack)
 	}
 	for _, id := range []int32{1, 3} {
-		for i := 0; i < streamQuantum+1; i++ {
+		for range streamQuantum + 1 {
 			frame(muxNewMsg, id)
 		}
 	}
 	frame(muxConnClose, 3)
 	for _, id := range []int32{1, 3} { // both use a fresh turn
-		for i := 0; i < streamQuantum; i++ {
+		for range streamQuantum {
 			pop(muxNewMsg, id)
 		}
 	}

@@ -79,8 +79,7 @@ func isSync(t reflect.Type) bool {
 // "Target.TargetStr". Fields of the sync packages are left out.
 func Fields(t reflect.Type, into ...string) []string {
 	var names []string
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		if isSync(f.Type) {
 			continue
 		}
@@ -104,7 +103,7 @@ func Fields(t reflect.Type, into ...string) []string {
 
 // Value returns the field of the struct v that Fields names name.
 func Value(v reflect.Value, name string) reflect.Value {
-	for _, part := range strings.Split(name, ".") {
+	for part := range strings.SplitSeq(name, ".") {
 		if v.Kind() == reflect.Pointer {
 			v = v.Elem()
 		}

@@ -12,9 +12,9 @@ func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 	d := &s.dash
 	d.cacheMu.Lock()
-	d.cache = map[string]interface{}{
+	d.cache = map[string]any{
 		"count": 1,
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"value": 2,
 		},
 	}
@@ -25,7 +25,7 @@ func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
 	snapshot := s.DashboardData(false)
 	snapshot["count"] = 99
 
-	nested, ok := snapshot["nested"].(map[string]interface{})
+	nested, ok := snapshot["nested"].(map[string]any)
 	if !ok {
 		t.Fatalf("snapshot nested type = %T, want map[string]interface{}", snapshot["nested"])
 	}
@@ -35,7 +35,7 @@ func TestGetDashboardDataReturnsDetachedSnapshot(t *testing.T) {
 	if again["count"] == 99 {
 		t.Fatalf("DashboardData() returned shared top-level cache: %+v", again)
 	}
-	againNested, ok := again["nested"].(map[string]interface{})
+	againNested, ok := again["nested"].(map[string]any)
 	if !ok {
 		t.Fatalf("again nested type = %T, want map[string]interface{}", again["nested"])
 	}

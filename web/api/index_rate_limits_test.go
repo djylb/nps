@@ -21,7 +21,7 @@ type rateInputContext struct {
 func (c rateInputContext) String(k string) string     { return c.values[k] }
 func (c rateInputContext) Int(k string, _ ...int) int { v, _ := strconv.Atoi(c.values[k]); return v }
 func (c rateInputContext) Bool(string, ...bool) bool  { return false }
-func (c rateInputContext) SessionValue(k string) interface{} {
+func (c rateInputContext) SessionValue(k string) any {
 	if k == "isAdmin" {
 		return c.admin
 	}
@@ -47,14 +47,14 @@ func TestIndexRateLimitInputsAndFeaturePolicy(t *testing.T) {
 	}
 }
 
-func assertRateJSON(t *testing.T, original, wrapped interface{}, upload, download int64) {
+func assertRateJSON(t *testing.T, original, wrapped any, upload, download int64) {
 	t.Helper()
-	decode := func(v interface{}) map[string]interface{} {
+	decode := func(v any) map[string]any {
 		b, err := json.Marshal(v)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var m map[string]interface{}
+		var m map[string]any
 		if err = json.Unmarshal(b, &m); err != nil {
 			t.Fatal(err)
 		}
@@ -133,10 +133,10 @@ func TestIndexRateLimitActionsRetainPermissions(t *testing.T) {
 
 type rateResponseContext struct {
 	rateInputContext
-	response interface{}
+	response any
 }
 
-func (c *rateResponseContext) RespondJSON(_ int, v interface{}) { c.response = v }
+func (c *rateResponseContext) RespondJSON(_ int, v any) { c.response = v }
 
 type rateListService struct {
 	webservice.IndexService
@@ -166,7 +166,7 @@ func (s *rateListService) ClearHost(id int, mode string) error {
 func TestIndexRateListHandlers(t *testing.T) {
 	s := &rateListService{tunnel: &model.Tunnel{Id: 7, Remark: "tunnel"}, host: &model.Host{Id: 8, Host: "example.com"}}
 	app := &App{Services: webservice.Services{Index: s}}
-	c := &rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{}}}
+	c := &rateResponseContext{values: map[string]string{}}
 	app.GetTunnel(c)
 	table := c.response.(TableResponse)
 	if table.Total != 17 {
@@ -196,7 +196,7 @@ func TestIndexRateClearHandlers(t *testing.T) {
 	app := &App{Services: webservice.Services{Index: s}}
 	for _, mode := range []string{"upload_limit", "download_limit"} {
 		for _, handler := range []func(Context){app.ClearTunnel, app.ClearHost} {
-			c := &rateResponseContext{rateInputContext: rateInputContext{values: map[string]string{"id": "42", "mode": mode}}}
+			c := &rateResponseContext{values: map[string]string{"id": "42", "mode": mode}}
 			handler(c)
 			if s.clearID != 42 || s.clearMode != mode {
 				t.Fatalf("clear=%d,%s", s.clearID, s.clearMode)
@@ -217,9 +217,9 @@ func TestIndexRateTableLegacyJSONCompatibility(t *testing.T) {
 	host.SetRateLimits(56, 78)
 	for _, tc := range []struct {
 		name     string
-		rows     interface{}
-		original interface{}
-		legacy   interface{}
+		rows     any
+		original any
+		legacy   any
 	}{
 		{"tunnel", tunnelRateRows([]*model.Tunnel{tunnel}), tunnel, new(struct {
 			Rows  []*model.Tunnel `json:"rows"`

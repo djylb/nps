@@ -168,8 +168,7 @@ func clientFromWire(m *control.Client) (*model.Client, error) {
 	if len(m.ConnectionHistory) > 0 {
 		c.ConnectionHistory = new(model.ConnectionHistory)
 		if err := json.Unmarshal(m.ConnectionHistory, c.ConnectionHistory); err != nil {
-			var typeErr *json.UnmarshalTypeError
-			if !errors.As(err, &typeErr) {
+			if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
 				return nil, err
 			}
 		}
@@ -228,8 +227,8 @@ func taskFromWire(m *control.Task) (*model.Tunnel, error) {
 
 func taskToWire(t *model.Tunnel) *control.Task {
 	return &control.Task{
-		RateLimits: control.RateLimits{UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit},
-		MaxConn:    t.MaxConn, Id: t.Id, Port: t.Port, ServerIp: t.ServerIp, Mode: t.Mode, Status: t.Status,
+		UploadLimit: t.UploadLimit, DownloadLimit: t.DownloadLimit,
+		MaxConn: t.MaxConn, Id: t.Id, Port: t.Port, ServerIp: t.ServerIp, Mode: t.Mode, Status: t.Status,
 		RunStatus: t.RunStatus, Client: clientToWire(t.Client), Ports: t.Ports, Flow: flowToWire(t.Flow), NowConn: t.NowConn,
 		Password: t.Password, Remark: t.Remark, TargetAddr: t.TargetAddr, TargetType: t.TargetType,
 		DestAclMode: t.DestAclMode, DestAclRules: t.DestAclRules, SourceLists: listsToWire(&t.SourceLists),
@@ -262,8 +261,8 @@ func hostFromWire(m *control.Host) (*model.Host, error) {
 
 func hostToWire(h *model.Host) *control.Host {
 	return &control.Host{
-		RateLimits: control.RateLimits{UploadLimit: h.UploadLimit, DownloadLimit: h.DownloadLimit},
-		Id:         h.Id, Host: h.Host, HeaderChange: h.HeaderChange, RespHeaderChange: h.RespHeaderChange,
+		UploadLimit: h.UploadLimit, DownloadLimit: h.DownloadLimit,
+		Id: h.Id, Host: h.Host, HeaderChange: h.HeaderChange, RespHeaderChange: h.RespHeaderChange,
 		HostChange: h.HostChange, Location: h.Location, PathRewrite: h.PathRewrite, Remark: h.Remark, Scheme: h.Scheme,
 		RedirectURL: h.RedirectURL, HttpsJustProxy: h.HttpsJustProxy, TlsOffload: h.TlsOffload, AutoSSL: h.AutoSSL,
 		CertType: h.CertType, CertHash: h.CertHash, CertFile: h.CertFile, KeyFile: h.KeyFile, NoStore: h.NoStore,

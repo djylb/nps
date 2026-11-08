@@ -64,9 +64,9 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		if raw == "" {
 			return nil, fmt.Errorf("empty host")
 		}
-		if idx := strings.Index(raw, "://"); idx >= 0 {
-			scheme := strings.ToLower(strings.TrimSpace(raw[:idx]))
-			targetStr := strings.TrimSpace(raw[idx+3:])
+		if before, after, ok := strings.Cut(raw, "://"); ok {
+			scheme := strings.ToLower(strings.TrimSpace(before))
+			targetStr := strings.TrimSpace(after)
 			if targetStr == "" {
 				return nil, fmt.Errorf("missing target in %q", raw)
 			}

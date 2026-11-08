@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"html/template"
+	"maps"
 
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/web/framework"
@@ -119,11 +120,9 @@ func (a *App) buildLoginPage(c Context, spec PageSpec) (*ui.Page, error) {
 	}
 }
 
-func toPageData(data map[string]interface{}) map[string]interface{} {
-	pageData := make(map[string]interface{}, len(data))
-	for key, value := range data {
-		pageData[key] = value
-	}
+func toPageData(data map[string]any) map[string]any {
+	pageData := make(map[string]any, len(data))
+	maps.Copy(pageData, data)
 	return pageData
 }
 
@@ -151,12 +150,12 @@ func (a *App) ManagementShell(c Context) {
 }
 
 type PageModelResponse struct {
-	Controller string                 `json:"controller"`
-	Action     string                 `json:"action"`
-	TplName    string                 `json:"tpl_name"`
-	Layout     string                 `json:"layout,omitempty"`
-	Data       map[string]interface{} `json:"data"`
-	Page       PageEntry              `json:"page"`
+	Controller string         `json:"controller"`
+	Action     string         `json:"action"`
+	TplName    string         `json:"tpl_name"`
+	Layout     string         `json:"layout,omitempty"`
+	Data       map[string]any `json:"data"`
+	Page       PageEntry      `json:"page"`
 }
 
 func newPageModelResponse(baseURL string, spec PageSpec, page *ui.Page) *PageModelResponse {

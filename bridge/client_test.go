@@ -82,7 +82,7 @@ func TestRemoveOfflineNodesRetriesBeforeRemoval(t *testing.T) {
 	client.lastConnectNano.Store(time.Now().Add(-10 * time.Second).UnixNano())
 	node.joinNano = time.Now().Add(-10 * time.Second).UnixNano()
 
-	for i := 0; i < retryTimeMax; i++ {
+	for i := range retryTimeMax {
 		if removed := client.RemoveOfflineNodes(true); removed != 0 {
 			t.Fatalf("attempt %d removed=%d, want 0 before retry limit", i+1, removed)
 		}
@@ -125,7 +125,7 @@ func TestNodeCloseIfSignalCurrentKeepsReplacedNode(t *testing.T) {
 func TestClientNodeSelectModes(t *testing.T) {
 	client := NewClient(-1, NewNode("a", "", 8), Primary)
 	client.AddNode(NewNode("b", "", 8))
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if n := client.GetNode(); n == nil || n.UUID != "b" {
 			t.Fatalf("Primary must stick to the last node, got %v", n)
 		}
@@ -134,7 +134,7 @@ func TestClientNodeSelectModes(t *testing.T) {
 	client = NewClient(-1, NewNode("a", "", 8), RoundRobin)
 	client.AddNode(NewNode("b", "", 8))
 	seen := map[string]int{}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		seen[client.GetNode().UUID]++
 	}
 	if seen["a"] != 2 || seen["b"] != 2 {

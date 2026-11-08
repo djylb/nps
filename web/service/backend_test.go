@@ -90,12 +90,12 @@ func (stubRepository) ClientOwnsTunnel(int, int) bool     { return false }
 func (stubRepository) ClientOwnsHost(int, int) bool       { return false }
 
 type stubRuntime struct {
-	dashboardData func(bool) map[string]interface{}
+	dashboardData func(bool) map[string]any
 	generatePort  func(*model.Tunnel) int
 	portAvailable func(*model.Tunnel) bool
 }
 
-func (s stubRuntime) DashboardData(force bool) map[string]interface{} {
+func (s stubRuntime) DashboardData(force bool) map[string]any {
 	if s.dashboardData != nil {
 		return s.dashboardData(force)
 	}
@@ -165,8 +165,8 @@ func TestDefaultIndexServiceUsesInjectedRuntimeForDashboard(t *testing.T) {
 		Backend: Backend{
 			Repository: stubRepository{},
 			Runtime: stubRuntime{
-				dashboardData: func(force bool) map[string]interface{} {
-					return map[string]interface{}{"force": force, "source": "backend"}
+				dashboardData: func(force bool) map[string]any {
+					return map[string]any{"force": force, "source": "backend"}
 				},
 			},
 		},
@@ -327,7 +327,7 @@ func (r cacheOrderRuntime) RemoveHostCache(int) { r.removed() }
 // cache a transport of the old settings again.
 func TestEditHostRemovesCacheAfterEdit(t *testing.T) {
 	host := &model.Host{Id: 1, Host: "a.example", Client: &model.Client{Id: 1}, Flow: &model.Flow{}, Target: &model.Target{}}
-	r := &rateLimitRepository{stubRepository: stubRepository{getClient: func(int) (*model.Client, error) { return host.Client, nil }}, host: host}
+	r := &rateLimitRepository{getClient: func(int) (*model.Client, error) { return host.Client, nil }, host: host}
 	var hostAtRemoval string
 	s := DefaultIndexService{Backend: Backend{Repository: r, Runtime: cacheOrderRuntime{removed: func() { hostAtRemoval = host.Host }}}}
 	if _, err := s.EditHost(HostInput{ID: 1, Host: &model.Host{Host: "b.example"}}); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -124,10 +125,8 @@ func appendShellAsset(target *[]string, staticBase, raw string, extensions ...st
 		return
 	}
 	value := normalizeShellAssetPath(staticBase, raw)
-	for _, existing := range *target {
-		if existing == value {
-			return
-		}
+	if slices.Contains(*target, value) {
+		return
 	}
 	*target = append(*target, value)
 }

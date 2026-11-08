@@ -336,7 +336,7 @@ func executableVersion(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Version:"); ok {
 			return strings.TrimSpace(v), nil
 		}

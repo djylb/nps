@@ -192,8 +192,7 @@ func joinRuleErrors(errs ...error) error {
 		if err == nil {
 			continue
 		}
-		var re geomatch.RuleErrors
-		if errors.As(err, &re) {
+		if re, ok := errors.AsType[geomatch.RuleErrors](err); ok {
 			all = append(all, re...)
 		} else {
 			other = append(other, err)

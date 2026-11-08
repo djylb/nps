@@ -98,11 +98,11 @@ func NewAnyStringIndex() *AnyStringIndex {
 	return &AnyStringIndex{}
 }
 
-func (idx *AnyStringIndex) Add(key string, value interface{}) {
+func (idx *AnyStringIndex) Add(key string, value any) {
 	idx.data.Store(key, value)
 }
 
-func (idx *AnyStringIndex) Get(key string) (value interface{}, ok bool) {
+func (idx *AnyStringIndex) Get(key string) (value any, ok bool) {
 	return idx.data.Load(key)
 }
 
@@ -111,7 +111,7 @@ func (idx *AnyStringIndex) Remove(key string) {
 }
 
 func (idx *AnyStringIndex) Clear() {
-	idx.data.Range(func(k, _ interface{}) bool {
+	idx.data.Range(func(k, _ any) bool {
 		idx.data.Delete(k)
 		return true
 	})

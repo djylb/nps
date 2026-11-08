@@ -689,7 +689,7 @@ func (c *Client) removeNode(uuid string) {
 			c.LastUUID = bs[0].ID()
 		}
 	}
-	c.files.Range(func(key, value interface{}) bool {
+	c.files.Range(func(key, value any) bool {
 		if v, ok := value.(string); ok && v == uuid {
 			c.files.Delete(key)
 		}

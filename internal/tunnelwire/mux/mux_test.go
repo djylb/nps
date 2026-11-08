@@ -272,7 +272,7 @@ func TestApp(t *testing.T) {
 			// get 100md from user
 			startTime = time.Now()
 			readLen := 0
-			for i := int64(0); i < 2<<32; i++ {
+			for range int64(2 << 32) {
 				n, err := userConn.Read(b)
 				fmt.Println(n)
 				if err != nil {
@@ -319,7 +319,7 @@ func TestUser(t *testing.T) {
 	startTime := time.Now()
 	// get 100md from app
 	readLen := 0
-	for i := int64(0); i < 2<<32; i++ {
+	for range int64(2 << 32) {
 		n, err := appConn.Read(b)
 		if err != nil {
 			log.Fatal(err)
@@ -590,7 +590,7 @@ func TestChain(t *testing.T) {
 	d.new(256)
 	go func() {
 		time.Sleep(time.Second)
-		for i := 0; i < 30000; i++ {
+		for i := range 30000 {
 			unsa, ok := d.popTail()
 			str := (*string)(unsa)
 			if ok {
@@ -604,9 +604,9 @@ func TestChain(t *testing.T) {
 	}()
 	go func() {
 		time.Sleep(time.Second)
-		for i := 0; i < 3000; i++ {
+		for i := range 3000 {
 			go func(i int) {
-				for n := 0; n < 10; n++ {
+				for n := range 10 {
 					data := "test " + strconv.Itoa(i) + strconv.Itoa(n)
 					fmt.Println(data, unsafe.Pointer(&data))
 					//logs.Warn(data, unsafe.Pointer(&data))

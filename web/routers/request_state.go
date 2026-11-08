@@ -98,7 +98,7 @@ func sessionClientIDs(c *gin.Context) []int {
 	switch value := framework.SessionValue(c, "clientIds").(type) {
 	case []int:
 		return append([]int(nil), value...)
-	case []interface{}:
+	case []any:
 		clientIDs := make([]int, 0, len(value))
 		for _, current := range value {
 			switch typed := current.(type) {

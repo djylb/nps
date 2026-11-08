@@ -6,8 +6,8 @@ import (
 )
 
 func TestRenderManagementShellIncludesBootstrapAndCustomHead(t *testing.T) {
-	html, err := RenderManagementShell(map[string]interface{}{
-		"routes": map[string]interface{}{
+	html, err := RenderManagementShell(map[string]any{
+		"routes": map[string]any{
 			"api_base": "/api/v1",
 		},
 	}, ManagementShellMetadata{

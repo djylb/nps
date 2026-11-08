@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/djylb/nps/lib/servercfg"
@@ -39,13 +40,7 @@ func TestSessionIdentityRoundTrip(t *testing.T) {
 	if len(identity.Permissions) == 0 {
 		t.Fatal("Permissions should be derived from roles")
 	}
-	found := false
-	for _, permission := range identity.Permissions {
-		if permission == PermissionClientsRead {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(identity.Permissions, PermissionClientsRead)
 	if !found {
 		t.Fatalf("Permissions = %v, expected %q to be present", identity.Permissions, PermissionClientsRead)
 	}

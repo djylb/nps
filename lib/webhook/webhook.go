@@ -205,8 +205,7 @@ func (s *Sender) attempt(e event.Event, body []byte) (retry bool, err error) {
 
 // withoutURL keeps the configured URL, which may hold a token, out of the logs.
 func withoutURL(err error) error {
-	var u *url.Error
-	if errors.As(err, &u) {
+	if u, ok := errors.AsType[*url.Error](err); ok {
 		return u.Err
 	}
 	return err

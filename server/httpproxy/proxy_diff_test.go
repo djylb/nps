@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -240,9 +241,7 @@ func newRequest(t *testing.T, method, scheme, addr, host, path string, header ht
 		t.Fatal(err)
 	}
 	req.Host = host
-	for k, v := range header {
-		req.Header[k] = v
-	}
+	maps.Copy(req.Header, header)
 	return req
 }
 

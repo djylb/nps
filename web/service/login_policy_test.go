@@ -72,7 +72,7 @@ func TestDefaultLoginPolicyCountsFailures(t *testing.T) {
 			},
 		}
 	})
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		policy.RecordUserFailure("alice", "192.0.2.9")
 		policy.RecordIPFailure("2001:db8::1")
 	}

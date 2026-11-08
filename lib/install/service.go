@@ -119,7 +119,7 @@ func LinkServiceStart(name string) {
 // two digits; 50 and 02 when it sets none.
 func rcOrder(script []byte) (start, stop string) {
 	start, stop = "50", "02"
-	for _, line := range strings.Split(string(script), "\n") {
+	for line := range strings.SplitSeq(string(script), "\n") {
 		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok {
 			continue
@@ -190,7 +190,7 @@ func parseSystemdExecStart(out string) string {
 // parseSysvCmd extracts the executable from the cmd= line of the System V
 // init script.
 func parseSysvCmd(script string) string {
-	for _, line := range strings.Split(script, "\n") {
+	for line := range strings.SplitSeq(script, "\n") {
 		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), `cmd="`); ok {
 			if fields := strings.Fields(strings.TrimSuffix(rest, `"`)); len(fields) > 0 {
 				return fields[0]
@@ -203,7 +203,7 @@ func parseSysvCmd(script string) string {
 // parseScBinaryPath extracts the executable from the BINARY_PATH_NAME line of
 // `sc qc` output.
 func parseScBinaryPath(out string) string {
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok || strings.TrimSpace(key) != "BINARY_PATH_NAME" {
 			continue

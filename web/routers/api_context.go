@@ -73,11 +73,11 @@ func (c *ginAPIContext) RequestHeader(key string) string {
 	return c.gin.GetHeader(key)
 }
 
-func (c *ginAPIContext) SessionValue(key string) interface{} {
+func (c *ginAPIContext) SessionValue(key string) any {
 	return framework.SessionValue(c.gin, key)
 }
 
-func (c *ginAPIContext) SetSessionValue(key string, value interface{}) error {
+func (c *ginAPIContext) SetSessionValue(key string, value any) error {
 	return framework.SetSessionValue(c.gin, key, value)
 }
 
@@ -85,7 +85,7 @@ func (c *ginAPIContext) DeleteSessionValue(key string) error {
 	return framework.DeleteSessionValue(c.gin, key)
 }
 
-func (c *ginAPIContext) RespondJSON(status int, value interface{}) {
+func (c *ginAPIContext) RespondJSON(status int, value any) {
 	c.gin.JSON(status, value)
 }
 

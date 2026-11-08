@@ -102,11 +102,9 @@ func (mgr *P2PManager) peer(l *config.LocalServer, relay bool) *p2pPeer {
 		p = newP2PPeer(mgr, l.Password, fmt.Sprintf("P2P local port %d", l.Port))
 		mgr.peers[l.Password] = p
 		if mgr.ctx.Err() == nil {
-			mgr.wg.Add(1)
-			go func() {
-				defer mgr.wg.Done()
+			mgr.wg.Go(func() {
 				p.run()
-			}()
+			})
 		}
 	}
 	if relay {

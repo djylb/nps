@@ -150,7 +150,7 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 			return true, nil
 		})
 	}
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		if addr, _ := pickTarget(target); addr == "a:1" {
 			t.Fatalf("ejected target picked")
 		}
@@ -159,7 +159,7 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 	target.SetHealthy("a:1", false)
 	target.SetHealthy("a:1", true)
 	seen := map[string]bool{}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		addr, _ := pickTarget(target)
 		seen[addr] = true
 	}
@@ -176,17 +176,17 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 	target := &Target{TargetStr: "a:1\r\nb:2\n\nc：3"}
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 200; j++ {
+			for range 200 {
 				_, _ = pickTarget(target)
 			}
 		}()
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 200; j++ {
+			for range 200 {
 				target.SetHealthy("b:2", false)
 				target.SetHealthy("b:2", true)
 			}
@@ -200,7 +200,7 @@ func TestTargetConcurrentRotationAndHealthUpdates(t *testing.T) {
 
 	pick := func(n int) map[string]int {
 		seen := map[string]int{}
-		for i := 0; i < n; i++ {
+		for range n {
 			addr, err := pickTarget(target)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -250,22 +250,20 @@ func TestClientGetConnHonoursMaxConn(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	got := 0
-	for i := 0; i < 64; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 64 {
+		wg.Go(func() {
 			if c.GetConn() {
 				mu.Lock()
 				got++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if got != 5 || c.CurrentConnections() != 5 {
 		t.Fatalf("granted %d, NowConn %d, want 5", got, c.CurrentConnections())
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		c.CutConn()
 	}
 	if c.CurrentConnections() != 0 {
@@ -388,12 +386,12 @@ func TestClientFlowTotalsRaceFree(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := int64(0); i < 1000; i++ {
+		for i := range int64(1000) {
 			c.InletFlow.Store(i)
 			c.ExportFlow.Store(i)
 		}
 	}()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if _, err := json.Marshal(c); err != nil {
 			t.Fatal(err)
 		}

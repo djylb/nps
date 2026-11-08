@@ -51,7 +51,7 @@ type Repository interface {
 }
 
 type Runtime interface {
-	DashboardData(bool) map[string]interface{}
+	DashboardData(bool) map[string]any
 	ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int)
 	PingClient(int, string) int
 	DisconnectClient(int)
@@ -99,7 +99,7 @@ func NewBackend(db *file.DbUtils, runtime Runtime) Backend {
 type storeRepository struct{ db *file.DbUtils }
 
 func (r storeRepository) RangeClients(fn func(*model.Client) bool) {
-	r.db.JsonDb.Clients.Range(func(_, value interface{}) bool {
+	r.db.JsonDb.Clients.Range(func(_, value any) bool {
 		return fn(value.(*model.Client))
 	})
 }
@@ -291,7 +291,7 @@ func (r storeRepository) ClientOwnsHost(clientID, hostID int) bool {
 // Without a server there is no allow list: every port is allowed.
 type offlineRuntime struct{ db *file.DbUtils }
 
-func (offlineRuntime) DashboardData(bool) map[string]interface{} { return map[string]interface{}{} }
+func (offlineRuntime) DashboardData(bool) map[string]any { return map[string]any{} }
 
 func (r offlineRuntime) ListClients(offset, limit int, search, sort, order string, clientID int) ([]*model.Client, int) {
 	return r.db.GetClientList(offset, limit, search, sort, order, clientID)

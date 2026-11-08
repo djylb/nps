@@ -52,7 +52,7 @@ func TestListsSortCurrentRatesBeforePaging(t *testing.T) {
 				if order == "desc" {
 					want[0], want[2] = want[2], want[0]
 				}
-				for offset := 0; offset < 3; offset++ {
+				for offset := range 3 {
 					tunnels, n := s.ListTunnels(offset, 1, "tcp", 0, "", tc.field, order)
 					if n != 3 || len(tunnels) != 1 || tunnels[0].Id != want[offset] {
 						t.Fatalf("tunnels %s %s offset %d: %+v want %d", tc.field, order, offset, tunnels, want[offset])

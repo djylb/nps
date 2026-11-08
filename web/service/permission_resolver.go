@@ -1,5 +1,7 @@
 package service
 
+import "maps"
+
 import "strings"
 
 type PermissionResolver interface {
@@ -116,9 +118,7 @@ func (r StaticPermissionResolver) NormalizeIdentity(identity *SessionIdentity) *
 	normalized.Permissions = append([]string(nil), principal.Permissions...)
 	if len(principal.Attributes) > 0 {
 		normalized.Attributes = make(map[string]string, len(principal.Attributes))
-		for key, value := range principal.Attributes {
-			normalized.Attributes[key] = value
-		}
+		maps.Copy(normalized.Attributes, principal.Attributes)
 	} else {
 		normalized.Attributes = nil
 	}

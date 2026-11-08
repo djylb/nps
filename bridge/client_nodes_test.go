@@ -86,7 +86,7 @@ func TestClientAwaitingTunnelKeepsNode(t *testing.T) {
 	if !client.awaitingTunnel() {
 		t.Fatal("client does not report the node awaiting its tunnel")
 	}
-	for i := 0; i < retryTimeMax+2; i++ {
+	for range retryTimeMax + 2 {
 		if got := client.GetNode(); got != nil {
 			t.Fatalf("offline node chosen: %v", got)
 		}
@@ -103,7 +103,7 @@ func TestClientRandomChoosesOnlyOnlineNodes(t *testing.T) {
 	client := NewClient(-1, NewNode("a", "", 8), Random)
 	client.AddNode(NewNode("b", "", 8))
 	seen := map[string]bool{}
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		n := client.GetNode()
 		if n == nil {
 			t.Fatal("no node chosen")
