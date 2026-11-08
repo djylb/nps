@@ -92,6 +92,7 @@ func (l *peerLink) acquire(op wire.Op, p *linkPath) bool {
 	l.paths[op] = p
 	l.mu.Unlock()
 	if old != nil {
+		old.abort = wire.CodeInternal // replaced, the link lives on
 		old.stop()
 	}
 	return true
@@ -463,7 +464,8 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 	}
 	p := &linkPath{s: s, ends: []*linkConn{lc}, abort: wire.CodeNotAllowed}
 	if !l.acquire(op, p) {
-		lc.abort(wire.CodeNotAllowed)
+		// A slot still held is no refusal of the link: the visitor retries.
+		lc.abort(wire.CodeInternal)
 		return
 	}
 	defer l.release(op, p)
@@ -490,13 +492,37 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 	if op == wire.OpPipe {
 		var opts zmux.SpliceOptions
 		if l.grant.Limiters != nil {
-			opts.AtoB, opts.BtoA = l.grant.Limiters()
+			// A direction stopped by a quota or expiry leaves nothing to
+			// rejoin: end the link now instead of letting the nested
+			// session wait out its resume.
+			stopped := func() {
+				if l.grant.Valid != nil && !l.grant.Valid() {
+					l.end(wire.CodeNotAllowed)
+					s.a.dropLink(l)
+				}
+			}
+			up, down := l.grant.Limiters()
+			opts.AtoB, opts.BtoA = quotaWatch{up, stopped}, quotaWatch{down, stopped}
 		}
 		_, _ = zmux.Splice(pctx, lc.Stream, end.Stream, &opts)
 		return
 	}
 	h.Coordinate(ctx, coreapi.PunchPair{Visitor: lc, Provider: end, VisitorID: l.visitor, ProviderID: l.grant.Provider,
 		Tunnel: l.grant.Tunnel, Background: o.Background, ServerAddr: o.ServerAddr})
+}
+
+// quotaWatch reports a limiter that ended its direction.
+type quotaWatch struct {
+	coreapi.Limiter
+	stopped func()
+}
+
+func (q quotaWatch) Ready(ctx context.Context, minBytes, maxBytes int) (int, error) {
+	n, err := q.Limiter.Ready(ctx, minBytes, maxBytes)
+	if err != nil && ctx.Err() == nil {
+		q.stopped()
+	}
+	return n, err
 }
 
 // serveExitStream is a TCP or UDP stream of a server-exit LINK (§4.6).

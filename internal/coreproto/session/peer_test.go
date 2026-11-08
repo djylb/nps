@@ -599,3 +599,43 @@ func TestPeerNestedCompression(t *testing.T) {
 		t.Fatalf("%q, %v", b, err)
 	}
 }
+
+// quotaLimiter refuses every byte once the grant stopped being valid.
+type quotaLimiter struct{ valid *atomic.Bool }
+
+func (q quotaLimiter) Ready(_ context.Context, _, maxBytes int) (int, error) {
+	if !q.valid.Load() {
+		return 0, errors.New("quota")
+	}
+	return maxBytes, nil
+}
+func (q quotaLimiter) TryReady(maxBytes int) int {
+	if !q.valid.Load() {
+		return 0
+	}
+	return maxBytes
+}
+func (quotaLimiter) Charge(int) {}
+
+// A relay pipe stopped by a quota ends the link at once, well before the
+// nested session's resume timeout.
+func TestPeerQuotaEndsLink(t *testing.T) {
+	p := startPeer(t, false)
+	lim := quotaLimiter{&p.valid}
+	p.limiters = func() (coreapi.Limiter, coreapi.Limiter) { return lim, lim }
+	v := p.visitor(t, wire.ConnRelay, time.Minute)
+	ctx := peerCtx(t)
+	echoOnce(t, ctx, v, "up")
+	l := v.live()
+	p.valid.Store(false)
+	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Target: p.echo})
+	if err == nil {
+		_, _ = c.Write([]byte("more"))
+		defer c.Close()
+	}
+	start := time.Now()
+	waitUntil(t, "link ended", func() bool { return l.ended() })
+	if d := time.Since(start); d > 10*time.Second {
+		t.Fatalf("took %v", d)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -258,10 +259,12 @@ func peerCompressAlgs(q zmux.PipeIO) []uint64 {
 
 // visitorLink is a live link: the nested session and its paths.
 type visitorLink struct {
-	v    *Visitor
-	id   uint64
-	mode uint64
-	key  []byte
+	v *Visitor
+	// refused: the server said the link is gone (refusalReader).
+	refused atomic.Bool
+	id      uint64
+	mode    uint64
+	key     []byte
 
 	// server_exit only: the LINK stream that keeps the link and its session.
 	exit        *linkConn
@@ -433,7 +436,38 @@ func (l *visitorLink) openRelay(ctx context.Context) (zmux.PipeIO, error) {
 	if err != nil {
 		return zmux.PipeIO{}, err
 	}
+	p.R = &refusalReader{ReadCloser: p.R, refused: &l.refused}
 	return relayPipe(p), nil
+}
+
+// refusalReader notes a pipe the server refused or ended because the link
+// is gone (§9.4a): no redial can succeed, so the link ends at once.
+type refusalReader struct {
+	io.ReadCloser
+	refused *atomic.Bool
+}
+
+func (r *refusalReader) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	var se *zmux.StreamError
+	if errors.As(err, &se) && uint64(se.ErrorCode) == wire.CodeNotAllowed {
+		r.refused.Store(true)
+	}
+	return n, err
+}
+
+func (r *refusalReader) CarrierConn() any {
+	if c, ok := r.ReadCloser.(interface{ CarrierConn() any }); ok {
+		return c.CarrierConn()
+	}
+	return nil
+}
+
+func (r *refusalReader) SetReadDeadline(t time.Time) error {
+	if d, ok := r.ReadCloser.(interface{ SetReadDeadline(time.Time) error }); ok {
+		return d.SetReadDeadline(t)
+	}
+	return nil
 }
 
 // punch makes a direct path and opens a pipe on it.
@@ -560,6 +594,10 @@ func (l *visitorLink) run() {
 		case <-l.ctx.Done():
 			return
 		case <-t.C:
+		}
+		if l.refused.Load() {
+			_ = l.zc.Close()
+			return
 		}
 		l.step()
 	}
