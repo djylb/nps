@@ -509,3 +509,16 @@ func looksLikeCommaList(p string) bool {
 	}
 	return false
 }
+
+// UsesType reports whether a server list has a candidate without a scheme,
+// whose carrier comes from the connection type (-type, conn_type).
+func UsesType(server string) bool {
+	for _, p := range SplitList(server, ListSep(server)) {
+		for c := range strings.SplitSeq(p, "|") {
+			if c = strings.TrimSpace(c); c != "" && !strings.Contains(c, "://") {
+				return true
+			}
+		}
+	}
+	return false
+}

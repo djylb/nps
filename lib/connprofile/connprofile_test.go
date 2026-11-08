@@ -241,3 +241,9 @@ func TestConnectionLists(t *testing.T) {
 		t.Fatalf("comma-separated URL connections: %v", err)
 	}
 }
+
+func TestUsesType(t *testing.T) {
+	if !UsesType("a.com:8024,b.com:8024") || !UsesType("tls://a.com:8025|b.com:8024") || UsesType("tls://a.com:8025|wss://a.com/ws;tcp://b.com:8024") {
+		t.Fatal("UsesType")
+	}
+}

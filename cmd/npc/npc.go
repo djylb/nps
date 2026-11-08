@@ -458,6 +458,9 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			cfgLog.Error("invalid command line", "err", err)
 			os.Exit(1)
 		}
+		if flag.CommandLine.Changed("type") && !connprofile.UsesType(*serverAddr) {
+			cfgLog.Warn("-type has no effect", "detail", "every server candidate is a URL, whose scheme names the carrier")
+		}
 		for i := range maxLength {
 			serverAddr := serverAddrs[i]
 			verifyKey := verifyKeys[i]

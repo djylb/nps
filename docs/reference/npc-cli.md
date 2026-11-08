@@ -15,7 +15,7 @@
 | `-server`, `-s` | 服务器连接：多个连接（档案）之间用逗号分隔（旧写法），使用 URL 写法时改用分号；每个连接内用 `\|` 分隔多个承载候选，见下文“服务器地址” | 无 |
 | `-pipes` | 每个连接的管道模式：`single`、`multi`（`multi` 需要 zmux，当前告警一次后按 `single` 运行） | `single` |
 | `-vkey`, `-k` | 认证密钥，与 `-server` 的连接一一对应，分隔符与 `-server` 相同 | 无 |
-| `-type`, `-t` | `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同 | `tcp` |
+| `-type`, `-t` | 旧写法（不带 `://`）候选的承载：`tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同。URL 写法的候选由方案名决定承载，不需要 `-type`；全部是 URL 时给出 `-type` 会告警它不起作用 | `tcp` |
 | `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
 | `--launch` | [快速启动](/guide/client/launch.md)内容，可重复 | 无 |
 | `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
