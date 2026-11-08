@@ -35,7 +35,18 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		lc.abort(wire.CodeMalformed)
 		return
 	}
-	if op != wire.OpTCP && op != wire.OpUDP {
+	switch op {
+	case wire.OpLink:
+		s.serveProviderLink(ctx, lc, fields)
+		return
+	case wire.OpPipe:
+		s.servePipe(ctx, st, lc, fields)
+		return
+	case wire.OpPunch:
+		s.servePunch(ctx, lc, fields)
+		return
+	case wire.OpTCP, wire.OpUDP:
+	default:
 		lc.abort(rejectCode(st.Preamble(), wire.Op.FromServer))
 		return
 	}
@@ -55,8 +66,9 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 
 // checkOpen is what the exit decides before it dials (§7.2, §8).
 func (s *clientSession) checkOpen(o *wire.StreamOpen) uint64 {
-	if o.Op == wire.OpTCP && o.LinkID != 0 {
-		// Only the side that made a server-exit LINK takes these (§4.6).
+	if o.Op == wire.OpTCP && o.LinkID != 0 || o.Fixed {
+		// Only the side that made a server-exit LINK takes link ids (§4.6),
+		// and only a provider picks a target (§9.3).
 		return wire.CodeMalformed
 	}
 	if o.Compress != 0 && !localCompress(o.Compress) {
@@ -116,26 +128,34 @@ func dialError(err error) uint64 {
 
 // serveLink dials the target of a stream, replies when asked, and relays.
 func (s *clientSession) serveLink(ctx context.Context, lc *linkConn, o *wire.StreamOpen) {
-	exit := s.d.cfg.Exit
+	serveExitLink(ctx, s.d.cfg.Exit, s.zc, s.d.limits, lc, o)
+}
+
+// serveExitLink is the exit's work on one stream of zc, outer or nested.
+func serveExitLink(ctx context.Context, exit coreapi.Exit, zc *zmux.Conn, limits CompressLimits, lc *linkConn, o *wire.StreamOpen) {
 	network := coreapi.NetworkTCP
 	if o.Op == wire.OpUDP {
 		network = coreapi.NetworkUDP
 	}
-	if o.Target == nil {
+	if o.Target == nil && !o.Fixed {
 		// Addressed UDP: no dial, the exit relays each datagram (§4.5).
 		if !ackLink(lc, o) {
 			return
 		}
-		c, _ := wrapLink(lc, *o, s.zc, s.d.limits)
+		c, _ := wrapLink(lc, *o, zc, limits)
 		exit.ServeUDP5(ctx, c)
 		_ = c.Close()
 		return
 	}
+	var dest string
+	if o.Target != nil {
+		dest = o.Target.String()
+	}
 	dctx, cancel := context.WithTimeout(ctx, exitDialTimeout)
-	target, err := exit.Dial(dctx, network, o.Target.String())
+	target, err := exit.Dial(dctx, network, dest)
 	cancel()
 	if err != nil {
-		log.Debug("dial target failed", "target", o.Target.String(), "err", err)
+		log.Debug("dial target failed", "target", dest, "err", err)
 		failLink(lc, o.WantReply, dialError(err))
 		return
 	}
@@ -143,7 +163,7 @@ func (s *clientSession) serveLink(ctx context.Context, lc *linkConn, o *wire.Str
 		_ = target.Close()
 		return
 	}
-	c, err := wrapLink(lc, *o, s.zc, s.d.limits)
+	c, err := wrapLink(lc, *o, zc, limits)
 	if err != nil {
 		_ = target.Close()
 		return

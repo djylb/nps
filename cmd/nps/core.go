@@ -44,6 +44,7 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 		ResumeTimeout: time.Duration(resumeS) * time.Second,
 		Compress:      session.CompressLimits{MaxWindow: cfg.Network.CompressMaxWindow, MaxRatio: cfg.Network.CompressMaxRatio},
 		MaxPipes:      cfg.Network.ClientMaxPipes,
+		MaxLanes:      cfg.Runtime.SessionMaxLanes,
 	})
 	if err != nil {
 		return nil, err

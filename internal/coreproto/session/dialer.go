@@ -59,8 +59,15 @@ type DialConfig struct {
 	// Pipes is connprofile.PipesMulti for several pipes in a session; any
 	// other value is one pipe, the candidates tried in order.
 	Pipes string
+	// MaxLanes is session_max_lanes: 0 is DefaultMaxLanes, 1 no lanes.
+	MaxLanes int
 	// Exit serves the links the server opens; nil refuses them.
 	Exit coreapi.Exit
+	// PeerExit makes the exit of a link this client provides under its
+	// policy (§9.3); nil refuses LINK.
+	PeerExit func(coreapi.LinkPolicy) (coreapi.Exit, error)
+	// Puncher makes the direct paths of links; nil is relay only.
+	Puncher coreapi.Puncher
 	// CompressLimits are the receive limits of compressed streams (§7.4).
 	CompressLimits CompressLimits
 	// MaxConfig bounds a CONFIG snapshot; 0 is 16 MiB (§4.3).
@@ -418,9 +425,10 @@ type clientSession struct {
 	redialMode  zmux.RecordMode // its mode (Config.RecordPolicy)
 	redialBound map[string]bool // candidate|network of Bound tries of unknown result
 
-	mu      sync.Mutex
-	applied uint64                      // seq of the applied snapshot
-	onApply func(uint64, wire.Snapshot) // tests
+	mu       sync.Mutex
+	provided map[uint64]*providerLink    // links this client provides, by id
+	applied  uint64                      // seq of the applied snapshot
+	onApply  func(uint64, wire.Snapshot) // tests
 }
 
 func (s *clientSession) start(boot connprofile.Candidate) {

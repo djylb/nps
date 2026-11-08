@@ -223,6 +223,9 @@ type StreamOpen struct {
 	Compress  uint64
 	Service   []byte
 	LinkID    uint64
+	// Fixed asks the provider to pick the target of a nested stream that
+	// names none (target_type on the OPEN_INFO, §9.3).
+	Fixed bool
 }
 
 // AppendStreamOpen encodes o in id order; the result is at most MaxOpenInfo
@@ -257,6 +260,9 @@ func AppendStreamOpen(o *StreamOpen) ([]byte, error) {
 	}
 	if o.LinkID != 0 {
 		b = AppendUint(b, KeyLinkID, o.LinkID)
+	}
+	if o.Fixed {
+		b = AppendUint(b, KeyTargetType, TargetAll)
 	}
 	if len(b) > MaxOpenInfo {
 		return nil, ErrMalformed
@@ -298,6 +304,8 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 			o.Service = f.Data
 		case KeyLinkID:
 			o.LinkID = f.Value
+		case KeyTargetType:
+			o.Fixed = true
 		}
 		return err
 	})
@@ -309,7 +317,7 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 	}
 	switch op {
 	case OpTCP:
-		if (o.Target == nil) == (len(o.Service) == 0) {
+		if (o.Target == nil && !o.Fixed) == (len(o.Service) == 0) || o.Target != nil && o.Fixed {
 			return o, ErrMalformed
 		}
 	case OpUDP:

@@ -159,7 +159,10 @@ type RuntimeConfig struct {
 	// pipes waits for one, in seconds (session_resume_timeout, 0: 30,
 	// negative: no resume).
 	SessionResumeTimeout int
-	FlowStoreInterval    int
+	// SessionMaxLanes is the lanes accepted per QUIC pipe of a new protocol
+	// session (session_max_lanes, 0: 16, 1: no lanes).
+	SessionMaxLanes   int
+	FlowStoreInterval int
 }
 
 // WebhookConfig configures the webhook; an empty URL turns it off.
@@ -532,6 +535,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 	cfg.Runtime.IdleS = max(r.intDefault(0, "session_idle_s"), 0)
 	cfg.Runtime.SessionResumeTimeout = r.intDefault(0, "session_resume_timeout")
+	cfg.Runtime.SessionMaxLanes = r.intDefault(0, "session_max_lanes")
 	cfg.Network.CompressMaxWindow = uint64(max(r.intDefault(0, "compress_max_window"), 0))
 	cfg.Network.CompressMaxRatio = int64(r.intDefault(0, "compress_max_ratio"))
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {

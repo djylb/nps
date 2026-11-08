@@ -67,7 +67,7 @@ func linkError(code uint64) *coreapi.LinkError {
 // openLink opens the TCP or UDP stream of r on zc, on the side that is the
 // entry (§4.4, §4.5). peerAlgs is what the other side decompresses.
 func openLink(ctx context.Context, zc *zmux.Conn, r coreapi.LinkRequest, peerAlgs []uint64, limits CompressLimits) (net.Conn, error) {
-	o := wire.StreamOpen{Op: wire.OpTCP, WantReply: r.WantReply}
+	o := wire.StreamOpen{Op: wire.OpTCP, WantReply: r.WantReply, LinkID: r.LinkID}
 	if r.Network == coreapi.NetworkUDP {
 		o.Op = wire.OpUDP
 	} else {
@@ -79,9 +79,10 @@ func openLink(ctx context.Context, zc *zmux.Conn, r coreapi.LinkRequest, peerAlg
 			return nil, linkError(wire.CodeMalformed)
 		}
 		o.Target = &a
-	} else if o.Op == wire.OpTCP {
+	} else if o.Op == wire.OpTCP && !r.Fixed {
 		return nil, linkError(wire.CodeMalformed)
 	}
+	o.Fixed = r.Fixed
 	if a, err := wire.ParseHostPort(r.Source); err == nil {
 		o.Source = &a
 	}
@@ -146,7 +147,7 @@ func replyReadError(err error) error {
 // decoded, or UDP packets as the frames the tunnel code reads.
 func wrapLink(lc *linkConn, o wire.StreamOpen, zc *zmux.Conn, limits CompressLimits) (net.Conn, error) {
 	if o.Op == wire.OpUDP {
-		return newUDPConn(lc, o.Target == nil, zc), nil
+		return newUDPConn(lc, o.Target == nil && !o.Fixed, zc), nil
 	}
 	if o.Compress != 0 {
 		c, err := newCompressConn(lc, o.Compress, limits)

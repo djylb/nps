@@ -88,6 +88,9 @@ type Acceptor struct {
 	limits      CompressLimits
 	maxPipes    int // client_max_pipes, 0 unlimited
 
+	linkMu sync.Mutex
+	links  map[uint64]*peerLink
+
 	mu     sync.Mutex
 	sess   map[int][]*serverSession
 	grants map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
@@ -102,6 +105,8 @@ type Options struct {
 	Session wire.SessionOptions
 	// Compress are the receive limits of compressed streams (§7.4).
 	Compress CompressLimits
+	// MaxLanes is session_max_lanes: 0 is DefaultMaxLanes, 1 no lanes.
+	MaxLanes int
 	// MaxPipes limits the pipes of one client over all its sessions
 	// (client_max_pipes); 0 is no limit.
 	MaxPipes int
@@ -117,10 +122,10 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Acceptor{table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
+	a := &Acceptor{links: map[uint64]*peerLink{}, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
-		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin,
+		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
 			EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)},
 		MaxSuspended:        maxSuspended,
 		MaxPending:          maxPending,
@@ -458,7 +463,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		s.watch(ctx, h)
 	})
 	a.wg.Go(func() { rejectUniStreams(ctx, zc, wire.Op.FromClient) })
-	a.wg.Go(func() { rejectStreams(ctx, zc, wire.Op.FromClient) })
+	a.wg.Go(func() { s.serveStreams(ctx) })
 	a.wg.Go(func() { s.pushLoop(ctx) })
 	s.kick()
 	_ = zc.Wait()

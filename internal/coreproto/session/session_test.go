@@ -85,6 +85,16 @@ func start(t *testing.T, carrier string, records ...coreapi.ClientRecord) *env {
 
 func startOpts(t *testing.T, carrier string, opts Options, records ...coreapi.ClientRecord) *env {
 	t.Helper()
+	return startFull(t, carrier, opts, coreapi.Hooks{}, records...)
+}
+
+func startHooks(t *testing.T, h coreapi.Hooks, records ...coreapi.ClientRecord) *env {
+	t.Helper()
+	return startFull(t, "tcp", Options{}, h, records...)
+}
+
+func startFull(t *testing.T, carrier string, opts Options, extra coreapi.Hooks, records ...coreapi.ClientRecord) *env {
+	t.Helper()
 	a, err := NewAcceptor(memStore(records), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +105,7 @@ func startOpts(t *testing.T, carrier string, opts Options, records ...coreapi.Cl
 	e.ctx = ctx
 	var hookWG sync.WaitGroup
 	if err := a.Start(ctx, coreapi.Hooks{
+		ResolveLink: extra.ResolveLink, Coordinate: extra.Coordinate,
 		Online:  func(s coreapi.Session) { e.online <- s.(*serverSession) },
 		Offline: func(_ coreapi.Session, r string) { e.offline <- r },
 		AuthFailed: func(f coreapi.AuthFailure) {

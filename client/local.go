@@ -15,6 +15,7 @@ import (
 	"github.com/djylb/holepunch"
 	"github.com/djylb/holepunch/portmapper"
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -31,17 +32,21 @@ type Closer interface{ Close() error }
 // listeners, the relay tunnel to nps and one peerLink per secret task
 // (password), which the sections of that task share.
 type SecretManager struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	pCancel      context.CancelFunc
-	mu           sync.Mutex
-	dialMu       sync.Mutex // serializes connecting the visitor tunnel
-	wg           sync.WaitGroup
-	cfg          *config.CommonConfig
-	uuid         string
-	secretConn   legacy.Carrier
-	server       serverInfo           // of the bridge connection carrying secretConn
-	links        map[string]*peerLink // by task password
+	ctx        context.Context
+	cancel     context.CancelFunc
+	pCancel    context.CancelFunc
+	mu         sync.Mutex
+	dialMu     sync.Mutex // serializes connecting the visitor tunnel
+	wg         sync.WaitGroup
+	cfg        *config.CommonConfig
+	uuid       string
+	secretConn legacy.Carrier
+	server     serverInfo           // of the bridge connection carrying secretConn
+	links      map[string]*peerLink // by task password
+	// coreVisitor makes the access of a password on the new protocol; nil
+	// is the old one.
+	coreVisitor  func(password, mode string) coreapi.Visitor
+	visitors     map[string]coreapi.Visitor // by task password
 	proxyServers []Closer
 	mapper       *portmapper.Mapper
 }
@@ -88,17 +93,43 @@ func (mgr *SecretManager) getUUID() string {
 	return mgr.uuid
 }
 
+// UseCoreVisitors makes the local sections reach their tasks over the new
+// protocol. It is called before the sections start.
+func (mgr *SecretManager) UseCoreVisitors(f func(password, mode string) coreapi.Visitor) {
+	mgr.coreVisitor = f
+}
+
+func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Visitor {
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	if v, ok := mgr.visitors[l.Password]; ok {
+		return v
+	}
+	if mgr.visitors == nil {
+		mgr.visitors = make(map[string]coreapi.Visitor)
+	}
+	v := mgr.coreVisitor(l.Password, mode)
+	mgr.visitors[l.Password] = v
+	return v
+}
+
 // secretAccess is the bridge of one local section's listeners: it opens
-// every link on the section's peerLink in the section's mode.
+// every link on the section's peerLink in the section's mode, or on its
+// visitor over the new protocol.
 type secretAccess struct {
 	link *peerLink
 	mode string
+	core coreapi.Visitor
+	ctx  context.Context
 }
 
 // Session returns the access itself: there is one target whatever the client.
 func (a *secretAccess) Session(int) conn.ClientSession { return a }
 
 func (a *secretAccess) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
+	if a.core != nil {
+		return a.core.OpenLink(a.ctx, coreRequest(link))
+	}
 	return a.link.OpenLink(a.link.mgr.ctx, link, a.mode)
 }
 
@@ -132,8 +163,17 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 	if mgr.ctx.Err() != nil {
 		return errors.New("parent context canceled")
 	}
-	mode := connMode(l)
-	pb := &secretAccess{link: mgr.peerLink(l, mode), mode: mode}
+	var pb *secretAccess
+	if mgr.coreVisitor != nil {
+		mode := l.ConnMode
+		if mode == "" {
+			mode = config.ConnAuto
+		}
+		pb = &secretAccess{mode: mode, core: mgr.visitor(l, mode), ctx: mgr.ctx}
+	} else {
+		mode := connMode(l)
+		pb = &secretAccess{link: mgr.peerLink(l, mode), mode: mode}
+	}
 	ip := l.Ip
 	if ip == "" {
 		ip = "0.0.0.0"
@@ -415,7 +455,12 @@ func (mgr *SecretManager) Close() {
 	secretConn := mgr.secretConn
 	mgr.proxyServers = nil
 	mgr.secretConn = nil
+	visitors := mgr.visitors
+	mgr.visitors = nil
 	mgr.mu.Unlock()
+	for _, v := range visitors {
+		_ = v.Close()
+	}
 	for _, srv := range psList {
 		_ = srv.Close()
 	}

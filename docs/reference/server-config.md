@@ -136,6 +136,7 @@ nps.exe -conf_path=D:\test\nps
 | `mix_plain` | `false` | `true` | 混合端口接受明文承载（`tcp`、`ws`）；前面有自己的 TLS 反代时打开。关闭时明文 HTTP 仍进域名转发，其余不响应 |
 | `mix_legacy` | `true` | `false` | 混合端口和 `bridge://mix` 是否接受旧协议（TLS 内层、明文和 QUIC 的 `TST`）；没有老客户端后关闭 |
 | `session_resume_timeout` | `0` | `60` | 核心协议会话失去所有底层流后等待恢复的秒数，`0` 为 30 秒，负数不恢复。挂起期间客户端仍算在线；配置后（正数）也下发给 npc，下次会话生效，取两端较小者 |
+| `session_max_lanes` | `0` | `8` | 核心协议每条 QUIC 管道接受的车道数，`0` 为 16，`1` 关闭车道 |
 | `session_idle_s` | `0` | `15` | 核心协议空闲管道的探测周期（秒），`0` 用 zmux 默认（15 秒）；配置后也下发给 npc |
 | `client_max_pipes` | `0` | `20` | 单个客户端所有会话的底层流总数，`0` 不限；超限拒绝新管道，已有的不动 |
 | `bridge_type` | `both` | - | 已弃用；`tcp`、`kcp`、`quic`、`udp`、`both`。只配 `bridge_port` 时 `tcp` 类（`tcp`、`both`）得到混合端口，`kcp`、`udp`、`quic` 得到只在 UDP 上的 QUIC 端口，见 `bridge_port` |

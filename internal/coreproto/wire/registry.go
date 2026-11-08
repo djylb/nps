@@ -20,9 +20,10 @@ const (
 func (o Op) Known() bool { return o >= OpConfig && o <= OpUpdate }
 
 // FromServer reports whether the server may open o towards the client: TCP
-// and UDP go from the entry to the exit, LINK both ways (§2.1).
+// and UDP go from the entry to the exit, LINK, PIPE and PUNCH to the provider
+// (§2.1, §9).
 func (o Op) FromServer() bool {
-	return o == OpConfig || o == OpUpdate || o == OpLink || o == OpTCP || o == OpUDP
+	return o == OpConfig || o == OpUpdate || o == OpLink || o == OpPipe || o == OpPunch || o == OpTCP || o == OpUDP
 }
 
 // FromClient reports whether a client may open o towards the server.

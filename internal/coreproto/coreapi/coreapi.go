@@ -39,6 +39,8 @@ type ClientRecord struct {
 const (
 	NetworkTCP = "tcp"
 	NetworkUDP = "udp"
+	// NetworkUDP5 is addressed UDP on a server-exit link.
+	NetworkUDP5 = "udp5"
 )
 
 // LinkRequest is one link to open on a session.
@@ -54,6 +56,11 @@ type LinkRequest struct {
 	// Compress is the compression of a TCP link, algorithms in order of
 	// preference; nil for none. UDP is not compressed.
 	Compress []string
+	// Fixed leaves the choice of target to the provider, Target empty
+	// (§9.3).
+	Fixed bool
+	// LinkID names a server-exit LINK (§4.6).
+	LinkID uint64
 }
 
 // LinkError is a link the exit refused or could not make.
@@ -68,6 +75,11 @@ func (e *LinkError) Error() string { return "link refused: " + e.Reason }
 // carry it (NPS_TUNNEL_OFFLINE).
 func TunnelOffline() *LinkError {
 	return &LinkError{Code: wire.CodeTunnelOffline, Reason: "client_offline"}
+}
+
+// LinkNotAllowed is the refusal of a link its visitor may not make.
+func LinkNotAllowed() *LinkError {
+	return &LinkError{Code: wire.CodeNotAllowed, Reason: "permission"}
 }
 
 // NetReason gives the word to logevent.NetReason.
@@ -103,6 +115,46 @@ type Session interface {
 	Close() error
 }
 
+// LinkResolve is the request of a LINK.
+type LinkResolve struct {
+	Tunnel int    // 0 when Access names it
+	Access []byte // nil when Tunnel names it
+}
+
+// LinkGrant is what the bridge resolved of a LINK.
+type LinkGrant struct {
+	Tunnel   int
+	Provider int // the provider's client; unused with ServerExit
+	// ServerExit makes the server the exit of the link (§9.1).
+	ServerExit bool
+	// Policy is the provider's local policy of the link.
+	Policy LinkPolicy
+	// Valid reports whether the tunnel and the access still hold (§4.6).
+	Valid func() bool
+	// ServeExit serves one link of a server-exit LINK until it ends.
+	ServeExit func(ctx context.Context, c net.Conn, network, target string)
+	// Count adds the bytes relayed for the link to its flow.
+	Count func(in, out int64)
+}
+
+// LinkPolicy is a link's policy at its provider (§9.1).
+type LinkPolicy struct {
+	Targets    []string // host:port
+	TargetType string   // tcp, udp, or "" for all
+	NameDest   bool
+	Scope      string // rule text (§9.5), "" for everything
+}
+
+// PunchPair are the control streams of one punch.
+type PunchPair struct {
+	Visitor, Provider net.Conn
+	VisitorID         int
+	ProviderID        int
+	Tunnel            int
+	Background        bool
+	ServerAddr        string
+}
+
 // AuthFailure is a failed authentication of an identified client.
 type AuthFailure struct {
 	Source  netip.AddrPort
@@ -129,6 +181,12 @@ type Hooks struct {
 	// Legacy takes over a carrier of the old protocol, every byte replayed.
 	// It owns c from then on.
 	Legacy func(c net.Conn, carrier string)
+	// ResolveLink authorizes a LINK of visitor client (§9.1); nil refuses
+	// them all.
+	ResolveLink func(client int, r LinkResolve) (*LinkGrant, error)
+	// Coordinate runs the punch of a link over the control streams of its
+	// visitor and provider until it ends; nil refuses PUNCH.
+	Coordinate func(ctx context.Context, p PunchPair)
 	// Fallback serves a carrier that is not ours (the domain proxy), every
 	// byte replayed; state is its TLS when this process terminated it. It
 	// returns false, leaving c to the caller, when there is no target.
@@ -166,6 +224,8 @@ type Entry interface {
 	ClientChanged(ClientRecord)
 	// ClientRemoved tells the entry that a client no longer exists.
 	ClientRemoved(id int)
+	// RevokeLinks ends the links match selects (§9.4a).
+	RevokeLinks(match func(tunnel, visitor, provider int) bool)
 	// Kick closes the sessions of a client. With auth the credential no
 	// longer holds (§3.7); otherwise the client may come back at once.
 	Kick(id int, auth bool)
@@ -181,6 +241,26 @@ type Exit interface {
 	// ServeUDP5 relays the SOCKS5 datagrams of c, length-prefixed frames as
 	// conn.HandleUdp5 reads them, until it ends.
 	ServeUDP5(ctx context.Context, c net.Conn)
+}
+
+// DirectPath is a punched path on which QUIC is up.
+type DirectPath struct {
+	QUIC  *quic.Conn
+	Close func() // ends the path and its socket
+}
+
+// Puncher makes direct paths of a link (§9.4).
+type Puncher interface {
+	// Punch runs holepunch over the control stream ctrl and brings QUIC up:
+	// as its client with accept false, as its server with accept true.
+	Punch(ctx context.Context, ctrl net.Conn, background, accept bool) (*DirectPath, error)
+}
+
+// Visitor is the visitor's access to one link's provider (§9).
+type Visitor interface {
+	// OpenLink opens a link to the provider as Session.OpenLink does.
+	OpenLink(ctx context.Context, r LinkRequest) (net.Conn, error)
+	Close() error
 }
 
 // ClientSession is an established session on npc.

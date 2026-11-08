@@ -124,7 +124,7 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		{Name: "bridge listeners", Settings: []string{
 			"bridge_ip", "bridge_host", "bridge_path", "bridge_port",
 			"bridge_trusted_ips", "bridge_real_ip_header", "new_protocol", "new_protocol_tls_alpn", "new_protocol_quic_alpn", "new_protocol_ws_paths", "compress_max_window", "compress_max_ratio",
-			"session_idle_s", "session_resume_timeout", "mix_ip", "mix_port", "mix_plain", "mix_legacy", "client_max_pipes",
+			"session_idle_s", "session_resume_timeout", "session_max_lanes", "mix_ip", "mix_port", "mix_plain", "mix_legacy", "client_max_pipes",
 			"bridge_tcp_ip", "bridge_tcp_port", "bridge_kcp_ip", "bridge_kcp_port",
 			"bridge_quic_ip", "bridge_quic_port", "bridge_tls_ip", "bridge_tls_port", "tls_bridge_port",
 			"bridge_ws_ip", "bridge_ws_port", "bridge_wss_ip", "bridge_wss_port",
