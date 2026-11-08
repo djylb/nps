@@ -193,12 +193,7 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 		return uuid, runLocalServers(ctx, cnf)
 	}
 	if cnf.CommonConfig.NewProtocol {
-		// The tunnels and hosts of the file cannot be sent on the new
-		// protocol: they are defined on the server.
-		if _, seen := coreTasksWarned.LoadOrStore(cnf.CommonConfig.Server, true); !seen && len(cnf.Tasks)+len(cnf.Hosts) > 0 {
-			log.Warn("tunnels and hosts of the config file are not sent on the new protocol", "server", cnf.CommonConfig.Server, "detail", "define them on the server")
-		}
-		return uuid, RunCoreProfile(ctx, cnf.CommonConfig, false)
+		return uuid, runCoreConfig(ctx, cnf)
 	}
 	c, cid, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP)
 	if err != nil {
@@ -223,19 +218,21 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 		return uuid, fmt.Errorf("config exchange failed: %w", err)
 	}
 	_ = c.Close()
-	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
-		log.Info("web access login", "user", "user", "password", slogx.Redacted(vkey))
-	} else {
-		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", slogx.Redacted(cnf.CommonConfig.Client.WebPassword))
-	}
+	logWebAccess(cnf, vkey)
 
 	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf.CommonConfig.LocalIP, uuid, cnf, cnf.CommonConfig.DisconnectTime, fsm).Start(ctx)
 	return uuid, nil
 }
 
-// coreTasksWarned has the servers whose config tunnels the new protocol
-// ignored, so that the warning comes once and not at every reconnect.
-var coreTasksWarned sync.Map
+// logWebAccess logs the web login of the client cnf describes, whose key is
+// vkey.
+func logWebAccess(cnf *config.Config, vkey string) {
+	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
+		log.Info("web access login", "user", "user", "password", slogx.Redacted(vkey))
+	} else {
+		log.Info("web access login", "user", cnf.CommonConfig.Client.WebUserName, "password", slogx.Redacted(cnf.CommonConfig.Client.WebPassword))
+	}
+}
 
 func runLocalServers(ctx context.Context, cnf *config.Config) error {
 	ctx, cancel := context.WithCancel(ctx)

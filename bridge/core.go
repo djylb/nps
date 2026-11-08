@@ -36,9 +36,10 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
 		},
-		Fallback:    s.coreFallback,
-		ResolveLink: s.coreResolveLink,
-		Coordinate:  s.coreCoordinate,
+		Fallback:     s.coreFallback,
+		ResolveLink:  s.coreResolveLink,
+		Coordinate:   s.coreCoordinate,
+		ConfigUpload: s.coreConfigUpload,
 	}
 }
 

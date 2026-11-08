@@ -179,13 +179,12 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		}
 
 	case legacy.WorkConfig:
-		client, err := s.store.GetClient(id)
-		if err != nil || (!isPub && !client.ConfigConnAllow) {
+		run, ok := s.openConfig(c, id, isPub, caps, uuid)
+		if !ok {
 			_ = c.Close()
 			return
 		}
-		_ = binary.Write(c, binary.LittleEndian, isPub)
-		s.spawn(c, func() { s.getConfig(c, isPub, client, caps, uuid) })
+		s.spawn(c, run)
 
 	case legacy.WorkRegister:
 		s.spawn(c, func() { s.register(c, id) })
@@ -254,6 +253,19 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 
 	c.SetAlive()
 	//return
+}
+
+// openConfig admits the config exchange of client id on c, announcing to npc
+// whether its key is the public one, and returns what runs the exchange. It
+// is the one admission of the old protocol's WorkConfig and of the config
+// upload on the new one.
+func (s *Bridge) openConfig(c *conn.Conn, id int, isPub bool, caps legacy.Caps, uuid string) (run func(), ok bool) {
+	client, err := s.store.GetClient(id)
+	if err != nil || (!isPub && !client.ConfigConnAllow) {
+		return nil, false
+	}
+	_ = binary.Write(c, binary.LittleEndian, isPub)
+	return func() { s.getConfig(c, isPub, client, caps, uuid) }, true
 }
 
 // serveStreams hands each stream the peer opens on tunnel to handle until the

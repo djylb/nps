@@ -120,6 +120,12 @@ func keepOuter(ctx context.Context, outer coreapi.Dialer) {
 // to the same server share the session and it is not closed while this runs.
 // The error is a profile that cannot be made.
 func RunCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect bool) error {
+	return runCoreProfile(ctx, cfg, autoReconnect, nil)
+}
+
+// runCoreProfile is RunCoreProfile with after, see runCore; its error is that
+// of the last session's after.
+func runCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect bool, after func(context.Context, coreapi.ClientSession) error) error {
 	e, err := acquireCore(cfg, cfg.Server)
 	if err != nil {
 		return err
@@ -127,8 +133,7 @@ func RunCoreProfile(ctx context.Context, cfg *config.CommonConfig, autoReconnect
 	defer e.release()
 	e.hosts.Add(1)
 	defer e.hosts.Add(-1)
-	RunCore(ctx, e.outer, autoReconnect)
-	return nil
+	return runCore(ctx, e.outer, autoReconnect, after)
 }
 
 // UseCore makes the local sections of the manager reach their tasks over the

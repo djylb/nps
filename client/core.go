@@ -49,8 +49,16 @@ func (e coreExit) ServeUDP5(ctx context.Context, c net.Conn) {
 // (or, without autoReconnect, until the first one ends). The tunnels are run
 // by the session, through the Exit of the dialer.
 func RunCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool) {
+	_ = runCore(ctx, d, autoReconnect, nil)
+}
+
+// runCore is RunCore with after, which runs on each session once it is up
+// (the config upload). A session after fails ends, and the error is returned
+// when no reconnect follows.
+func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after func(context.Context, coreapi.ClientSession) error) error {
 	attempt := 0
 	for ctx.Err() == nil {
+		var failed error
 		s, err := d.Dial(ctx)
 		if err != nil {
 			attempt++
@@ -58,17 +66,23 @@ func RunCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool) {
 		} else {
 			attempt = 0
 			slogx.Emit(ctx, log, &logevent.Connected, "server", d.Server(), "carrier", s.Carrier())
+			if after != nil {
+				if failed = after(ctx, s); failed != nil {
+					_ = s.Close()
+				}
+			}
 			select {
 			case <-s.Done():
 				slogx.Emit(ctx, log, &logevent.Disconnected, "server", d.Server(), "carrier", s.Carrier(), "reason", "lost", "err", s.Err())
 			case <-ctx.Done():
 				_ = s.Close()
 				<-s.Done()
-				return
+				return nil
 			}
 		}
 		if !autoReconnect || !WaitReconnect(ctx) {
-			return
+			return failed
 		}
 	}
+	return nil
 }

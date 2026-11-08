@@ -187,6 +187,10 @@ type Hooks struct {
 	// Coordinate runs the punch of a link over the control streams of its
 	// visitor and provider until it ends; nil refuses PUNCH.
 	Coordinate func(ctx context.Context, p PunchPair)
+	// ConfigUpload admits the config upload a session of its client opens
+	// (0.35 transition, removed in the next major version): it returns what
+	// serves the stream, or nil to refuse. nil here refuses all.
+	ConfigUpload func(Session) func(net.Conn)
 	// Fallback serves a carrier that is not ours (the domain proxy), every
 	// byte replayed; state is its TLS when this process terminated it. It
 	// returns false, leaving c to the caller, when there is no target.
@@ -271,6 +275,13 @@ type ClientSession interface {
 	Done() <-chan struct{}
 	Err() error
 	Close() error
+}
+
+// ConfigUploader is implemented by an established session that can open the
+// config upload stream (0.35 transition, removed in the next major version).
+type ConfigUploader interface {
+	// OpenConfigUpload opens the stream once the server has admitted it.
+	OpenConfigUpload(ctx context.Context) (net.Conn, error)
 }
 
 // Dialer establishes sessions of one server profile of npc.

@@ -1,0 +1,48 @@
+package bridge
+
+import (
+	"net"
+
+	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
+	"github.com/djylb/nps/lib/conn"
+)
+
+// The config upload of a core session is a 0.35 transition: npc sends the
+// tunnels and domains of its npc.conf with the byte exchange of the old
+// protocol's WorkConfig, on a stream of the session, so that a config file
+// keeps working when only the binary is upgraded. It is removed in the next
+// major version, with this file and wire.OpConfigUpload.
+
+// coreConfigUpload admits an upload of the client cs is authenticated as,
+// under the rules of WorkConfig: the key kind, ConfigConnAllow and the
+// public key (whose upload creates a client and a new key, which a session
+// cannot follow, so it is refused). It returns what serves the stream, or nil
+// to refuse.
+func (s *Bridge) coreConfigUpload(cs coreapi.Session) func(net.Conn) {
+	id := cs.ClientID()
+	client, err := s.store.GetClient(id)
+	if err != nil || !allowsFlag(client.KeyKind, legacy.WorkConfig) {
+		coreAuthFailed(coreapi.AuthFailure{Source: cs.Source(), Carrier: cs.Carrier(), Client: id,
+			Reason: "forbidden", Flag: legacy.WorkConfig})
+		return nil
+	}
+	if !client.ConfigConnAllow {
+		return nil
+	}
+	if s.store.IsPubClient(id) {
+		log.Info("config upload refused", "client", id, "reason", "public_key")
+		return nil
+	}
+	uuid := coreNodeUUID(cs)
+	caps := legacy.CapsOf(legacy.LatestIndex, agentVersion(cs.Agent()))
+	return func(nc net.Conn) {
+		c := conn.NewConn(nc)
+		run, ok := s.openConfig(c, id, false, caps, uuid)
+		if !ok {
+			_ = c.Close()
+			return
+		}
+		run()
+	}
+}
