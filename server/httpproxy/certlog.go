@@ -8,8 +8,8 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/slogxzap"
+	"github.com/djylb/slogx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -33,7 +33,7 @@ func certEvent(_ context.Context, name string, data map[string]any) error {
 	switch name {
 	case "cert_obtained":
 		issuer, _ := data["issuer"].(string)
-		slogx.Emit(acmeLog, &logevent.CertIssued, "domain", domain, "issuer", issuer, "renewal", r)
+		slogx.Emit(context.Background(), acmeLog, &logevent.CertIssued, "domain", domain, "issuer", issuer, "renewal", r)
 	case "cert_failed":
 		d := &logevent.CertFailed
 		if hasRemaining && remaining < 7*24*time.Hour {
@@ -52,13 +52,13 @@ func certEvent(_ context.Context, name string, data map[string]any) error {
 		if hasRemaining {
 			args = append(args, "remaining_s", int64(remaining.Seconds()))
 		}
-		slogx.EmitMsg(acmeLog, d, msg, args...)
+		slogx.Emit(context.Background(), acmeLog, d, append([]any{slogx.KeyMsg, msg}, args...)...)
 	case "cert_ocsp_revoked":
 		var subjects []string
 		if s, ok := data["subjects"].([]string); ok {
 			subjects = s
 		}
-		slogx.Emit(acmeLog, &logevent.CertRevoked, "domain", strings.Join(subjects, ","), "reason", "ocsp")
+		slogx.Emit(context.Background(), acmeLog, &logevent.CertRevoked, "domain", strings.Join(subjects, ","), "reason", "ocsp")
 	case "cert_obtaining":
 		acmeLog.Debug("obtaining certificate", "domain", domain, "renewal", r)
 	}
@@ -98,10 +98,10 @@ func emitLimit(host *model.Host, err error) {
 	} else if traffic {
 		kind = "flow"
 	}
-	slogx.Emit(proxyLog, &logevent.LimitExceeded, "identity", host.Client.Id, "route", host.Host, "kind", kind, "reason", logevent.NetReason(err), "err", err)
+	slogx.Emit(context.Background(), proxyLog, &logevent.LimitExceeded, "identity", host.Client.Id, "route", host.Host, "kind", kind, "reason", logevent.NetReason(err), "err", err)
 }
 
 // emitAuthDenied reports a request to host without valid credentials.
 func emitAuthDenied(host *model.Host, remote string) {
-	slogx.Emit(proxyLog, &logevent.TunnelDenied, "src_ip", srcIP(remote), "route", host.Host, "reason", "auth")
+	slogx.Emit(context.Background(), proxyLog, &logevent.TunnelDenied, "src_ip", srcIP(remote), "route", host.Host, "reason", "auth")
 }

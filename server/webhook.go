@@ -7,7 +7,7 @@ import (
 
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 
 	"github.com/djylb/nps/lib/event"
 	"github.com/djylb/nps/lib/servercfg"
@@ -145,7 +145,7 @@ func (s *Server) BuildTunnelsReport() TunnelsReport {
 // busRoute publishes the bus events of the log (logevent, Bus) to bus,
 // their fields as the data.
 func busRoute(bus *event.Bus) slogx.Route {
-	return slogx.Route{Name: "webhook", Match: slogx.BusEvents, Func: func(r *slogx.Record) {
+	return slogx.Route{Name: "webhook", Match: slogx.MatchBus, Func: func(r *slogx.Record) {
 		data := make(map[string]any, len(r.Attrs))
 		for _, a := range r.Attrs {
 			data[a.Key] = a.Value.Resolve().Any()

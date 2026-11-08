@@ -13,7 +13,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // newSocks5Server returns the SOCKS5 server of s. Bind sets its UDP socket.
@@ -99,7 +99,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	if header[0] != socks5.Version5 {
 		if looksLikeHTTPProxyRequest(header[:]) {
 			if !httpEnabled {
-				slogx.Emit(log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "http_disabled")
+				slogx.Emit(context.Background(), log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "http_disabled")
 				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
@@ -117,7 +117,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	}
 
 	if !socksEnabled {
-		slogx.Emit(log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "socks5_disabled")
+		slogx.Emit(context.Background(), log, &logevent.TunnelDenied, "src_ip", srcIP(c.RemoteAddr()), "route", taskName(s.Task), "reason", "socks5_disabled")
 		_ = c.Close()
 		return errors.New("socks5 proxy is disabled")
 	}

@@ -21,7 +21,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 const (
@@ -152,7 +152,6 @@ var All = []*slogx.Def{
 	&UpdateAvailable, &UpdateApplied, &UpdateFailed, &SourceUpdated, &SourceFailed,
 	&CertIssued, &CertFailed, &CertRevoked,
 	&Connected, &ConnectFailed, &Disconnected, &P2PConnected, &P2PFailed, &P2PPathChanged,
-	&slogx.LogFallback, &slogx.TLSHandshakeFailed,
 }
 
 func init() { slogx.Register(All...) }

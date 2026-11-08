@@ -10,7 +10,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // SetIPRegisterHandler sets the registration page that Start serves; call it
@@ -45,7 +45,7 @@ func (s *Server) startIPRegister(cfg *servercfg.Snapshot) {
 	addr := net.JoinHostPort(cfg.App.IPRegisterIP, strconv.Itoa(cfg.App.IPRegisterPort))
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		slogx.Emit(log, &logevent.ListenFailed, "route", "ip_register", "addr", addr, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", "ip_register", "addr", addr, "reason", logevent.NetReason(err), "err", err)
 		return
 	}
 	scheme := "http"

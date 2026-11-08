@@ -10,8 +10,8 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/slogx"
 )
 
 var cl *client.TRPClient
@@ -49,12 +49,12 @@ func Version() *C.char {
 
 //export SetLogsLevel
 func SetLogsLevel(logsLevel *C.char) {
-	_ = slogx.Default.SetLevel(C.GoString(logsLevel))
+	_ = slogx.Default.Levels().Set(C.GoString(logsLevel))
 }
 
 //export Logs
 func Logs() *C.char {
-	return C.CString(slogx.Default.TakeBuffered())
+	return C.CString(takeLogs())
 }
 
 //export SetDnsServer
@@ -64,4 +64,18 @@ func SetDnsServer(dnsServer *C.char) {
 
 func main() {
 	// Need a main function to make CGO compile package as C shared library
+}
+
+// takeLogs returns the log lines not returned before, as logfmt.
+func takeLogs() string {
+	m := slogx.Default.Memory()
+	if m == nil {
+		return ""
+	}
+	var b []byte
+	for _, e := range m.Take() {
+		r := e.Record()
+		b = slogx.TextEncoder{}.Encode(b, &r)
+	}
+	return string(b)
 }

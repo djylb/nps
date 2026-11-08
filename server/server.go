@@ -24,11 +24,11 @@ import (
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/rate"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/httpproxy"
 	"github.com/djylb/nps/server/ports"
+	"github.com/djylb/slogx"
 )
 
 const pingTimeout = 15 * time.Second
@@ -459,7 +459,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		return nil
 	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
-		slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", "port unavailable")
 		return errors.New("the port open error")
 	}
 	svr := s.newMode(t)
@@ -468,7 +468,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	}
 	if b, ok := svr.(proxy.Binder); ok {
 		if err := b.Bind(); err != nil {
-			slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 			return err
 		}
 	}
@@ -484,7 +484,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
 		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
-				slogx.Emit(log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
+				slogx.Emit(context.Background(), log, &logevent.ListenFailed, "tunnel", t.Id, "route", tunnelRoute(t), "addr", t.Port, "reason", logevent.NetReason(err), "err", err)
 				s.tasks.CompareAndDelete(t.Id, svr)
 				_ = svr.Close()
 			}

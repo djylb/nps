@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -9,8 +10,8 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/server/stats"
+	"github.com/djylb/slogx"
 )
 
 // configAppliers are the appliers added with AddConfigApplier.
@@ -41,7 +42,7 @@ func (s *Server) ReloadConfig() servercfg.Report {
 		for _, w := range servercfg.Current().Legacy {
 			log.Warn("legacy config setting", "reason", w)
 		}
-		slogx.Emit(log, &logevent.ConfigApplied, "path", r.Path, "keys", strings.Join(r.Applied, ","), "restart", strings.Join(r.Restart, ","))
+		slogx.Emit(context.Background(), log, &logevent.ConfigApplied, "path", r.Path, "keys", strings.Join(r.Applied, ","), "restart", strings.Join(r.Restart, ","))
 		if len(r.Restart) > 0 {
 			log.Warn("config changes need a restart", "keys", strings.Join(r.Restart, ","))
 		}
@@ -50,7 +51,7 @@ func (s *Server) ReloadConfig() servercfg.Report {
 		for _, f := range r.Failed {
 			keys = append(keys, f.Settings...)
 		}
-		slogx.EmitMsg(log, &logevent.ConfigFailed, r.String(), "path", r.Path, "keys", strings.Join(keys, ","), "reason", r.Error)
+		slogx.Emit(context.Background(), log, &logevent.ConfigFailed, slogx.KeyMsg, r.String(), "path", r.Path, "keys", strings.Join(keys, ","), "reason", r.Error)
 	}
 	return r
 }
@@ -72,7 +73,7 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 	restart := servercfg.RestartRequired
 	return []servercfg.Applier{
 		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
-			return slogx.Default.SetLevel(cur.Log.Level)
+			return slogx.Default.Levels().Set(cur.Log.Level)
 		}},
 		{Name: "log output", Settings: []string{"log", "log_format", "log_path", "security_log", "log_max_files", "log_max_days", "log_max_size", "log_compress"}, Apply: restart},
 		{Name: "ntp", Settings: []string{"ntp_server", "ntp_interval"}, Apply: func(_, cur *servercfg.Snapshot) error {

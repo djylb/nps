@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
 	"github.com/xtaci/kcp-go/v5"
 )

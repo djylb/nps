@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // watchReopen reopens the log files on every SIGHUP, so that an external

@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/slogx"
 
 	"github.com/djylb/selfupdate"
 )
@@ -94,7 +95,7 @@ func UpdateGeoData(files []GeoFile) (*GeoUpdate, error) {
 	var errs []error
 	for _, f := range files {
 		if err := updateGeoFile(c, rl, f, res); err != nil {
-			slogx.Emit(geoLog, &logevent.SourceFailed, "source", f.Name, "reason", "update_failed", "err", err)
+			slogx.Emit(context.Background(), geoLog, &logevent.SourceFailed, "source", f.Name, "reason", "update_failed", "err", err)
 			errs = append(errs, fmt.Errorf("update %s: %w", f.Name, err))
 		}
 	}
@@ -134,7 +135,7 @@ func updateGeoFile(c *httpClient, rl *release, f GeoFile, res *GeoUpdate) error 
 		if err := replaceGeoFile(f.Path, func(staged string) error { return downloadGeoFile(c, sources, staged) }); err != nil {
 			return err
 		}
-		slogx.Emit(geoLog, &logevent.SourceUpdated, "source", f.Name, "path", f.Path)
+		slogx.Emit(context.Background(), geoLog, &logevent.SourceUpdated, "source", f.Name, "path", f.Path)
 		res.Updated = append(res.Updated, f.Path)
 	}
 	if rl == nil {

@@ -8,7 +8,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/beevik/ntp"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("clock")

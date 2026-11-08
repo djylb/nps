@@ -20,7 +20,7 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // ------------------------------
@@ -156,7 +156,7 @@ func (b *P2pBridge) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
 				return nil, fmt.Errorf("P2P direct path: %w", err)
 			}
 			directErr = err
-			slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", b.peer.label, "path", "relay", "target", link.Host, "reason", "direct_failed", "err", err)
 		}
 	}
 	c, err := b.sendViaSecret(*link)

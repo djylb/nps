@@ -12,8 +12,8 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/server/connection"
+	"github.com/djylb/slogx"
 )
 
 // WebServer serves the web manager of a Server on the web port and on the

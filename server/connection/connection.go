@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var pMux *portMux

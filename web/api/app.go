@@ -7,9 +7,9 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("web")

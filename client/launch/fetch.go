@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("client")

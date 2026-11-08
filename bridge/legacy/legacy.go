@@ -13,7 +13,7 @@ import (
 	"github.com/djylb/nps/internal/tunnelwire"
 	"github.com/djylb/nps/internal/tunnelwire/mux"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("bridge")

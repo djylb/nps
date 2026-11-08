@@ -17,8 +17,8 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/rate"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
+	"github.com/djylb/slogx"
 	"github.com/djylb/upstream"
 )
 

@@ -4,12 +4,13 @@ package logsetup
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
 
 	_ "github.com/djylb/nps/lib/logevent" // registers the events
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // Options are the log settings as nps.conf and the npc flags give them.
@@ -53,13 +54,19 @@ func (o Options) Config() (slogx.Config, error) {
 	if o.Service && out == "stdout" && path != "" {
 		out = "file"
 	}
-	c := slogx.Config{Output: out, Level: o.Level, Memory: o.Memory, Pretty: true}
+	c := slogx.Config{Console: slogx.ConsoleStdout, Level: o.Level, Memory: o.Memory}
+	if out == "file" || out == "off" {
+		c.Console = slogx.ConsoleOff
+	}
 	switch strings.ToLower(o.Format) {
-	case "", "text", "logfmt":
+	case "", "auto":
+		// pretty on a terminal, logfmt elsewhere
+	case "text", "logfmt":
+		c.Format = slogx.Text
 	case "json":
 		c.Format = slogx.JSON
 	default:
-		return slogx.Config{}, fmt.Errorf("unknown log format %q (text, json)", o.Format)
+		return slogx.Config{}, fmt.Errorf("unknown log format %q (auto, text, json)", o.Format)
 	}
 	rot := func(p string) slogx.Rotation {
 		if p != "" && !filepath.IsAbs(p) {
@@ -91,6 +98,6 @@ func Apply(o Options) error {
 	if err := slogx.Default.Configure(c); err != nil {
 		return err
 	}
-	slogx.CaptureStdLog(slogx.Module("lib"))
+	slogx.CaptureStdLog(slogx.Module("lib"), slog.LevelWarn)
 	return nil
 }

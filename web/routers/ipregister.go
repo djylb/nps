@@ -8,11 +8,11 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/runenv"
-	"github.com/djylb/nps/lib/slogx"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
+	"github.com/djylb/slogx"
 	"github.com/gin-gonic/gin"
 )
 

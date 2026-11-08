@@ -13,7 +13,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 	"github.com/djylb/timeshim"
 )
 
@@ -115,7 +115,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 				close(p.changed)
 				p.changed = make(chan struct{})
 				p.mu.Unlock()
-				slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_passed")
+				slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_passed")
 				return
 			}
 			if !t.Alive() || p.mgr.ctx.Err() != nil {
@@ -129,7 +129,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 // lost takes a dead transport out of use and closes it, which wakes the
 // goroutine holding it to punch again.
 func (p *p2pPeer) lost(t *p2pTransport, err error) {
-	slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_failed", "err", err)
+	slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_failed", "err", err)
 	p.uninstall(t)
 	_ = t.Close()
 }
@@ -143,9 +143,9 @@ func (p *p2pPeer) hold(t *p2pTransport) time.Duration {
 	case <-t.Done():
 		err := t.Err()
 		if errors.Is(err, quicpath.ErrIdleTimeout) {
-			slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "idle_timeout", "err", err)
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "idle_timeout", "err", err)
 		} else {
-			slogx.Emit(p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "closed", "err", err)
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "peer", p.label, "path", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "closed", "err", err)
 		}
 	case <-p.mgr.ctx.Done():
 	}
@@ -191,10 +191,10 @@ func (p *p2pPeer) run() {
 				default:
 				}
 				gaveUp = true
-				slogx.EmitMsg(p2pLog, &logevent.P2PFailed, "next attempt when a connection waits for it", "peer", p.label, "reason", "punch_failed", "err", err)
+				slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, slogx.KeyMsg, "next attempt when a connection waits for it", "peer", p.label, "reason", "punch_failed", "err", err)
 				continue
 			}
-			slogx.Emit(p2pLog, &logevent.P2PFailed, "peer", p.label, "reason", "punch_failed", "err", err, "next_mode", p2pModeName(background), "next_in_ms", wait.Milliseconds())
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "peer", p.label, "reason", "punch_failed", "err", err, "next_mode", p2pModeName(background), "next_in_ms", wait.Milliseconds())
 			continue
 		}
 		background = false
@@ -240,7 +240,7 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	if err != nil {
 		return nil, err
 	}
-	slogx.Emit(p2pLog, &logevent.P2PConnected, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "session", sessionID)
+	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "peer", p.label, "path", "direct", "addr", t.QUIC().RemoteAddr().String(), "session", sessionID)
 	return t, nil
 }
 

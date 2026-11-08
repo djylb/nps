@@ -38,7 +38,7 @@
 | `-log` | `stdout`、`file`、`both`、`off`；`-debug` 开启时 `file` 改为 `stdout` | `file` |
 | `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |
 | `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn` | `info` |
-| `-log_format` | `text`（logfmt）或 `json` | `text` |
+| `-log_format` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）或 `json` | `auto` |
 | `-log_compress` | 压缩日志 | `false` |
 | `-log_max_days` | 保留天数，`0` 关闭 | `7` |
 | `-log_max_files` | 文件数，`0` 关闭 | `10` |

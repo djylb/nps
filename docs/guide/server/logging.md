@@ -1,6 +1,6 @@
 # 日志
 
-nps 和 npc 的日志都是**一个事件一行**。默认格式是 logfmt（`log_format=text`），也可以设为 JSON（`log_format=json`）。
+nps 和 npc 的日志都是**一个事件一行**。写文件或被重定向时默认是 logfmt（`log_format=auto`，在终端里显示为彩色），也可以固定为 logfmt（`text`）或 JSON（`json`）。
 
 ```
 time=2026-11-08T03:12:45.120Z level=WARN event=auth_failed module=bridge src_ip=203.0.113.7 src_port=51234 role=client reason=unknown_key

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"strconv"
@@ -8,10 +9,10 @@ import (
 
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
 	"github.com/djylb/nps/web/ui"
+	"github.com/djylb/slogx"
 )
 
 // ipRegisterSpec is the public page on which visitors register their
@@ -92,7 +93,7 @@ func (a *App) IPRegister(c Context) {
 	id, until, err := a.Services.Clients.RegisterVisitorIP(requestString(c, "key"), ip, requestIntValue(c, "hours"))
 	if err != nil {
 		if errors.Is(err, webservice.ErrRegisterKeyInvalid) {
-			slogx.Emit(log, &logevent.AuthFailed, "src_ip", ip, "role", "visitor", "reason", "bad_key")
+			slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "role", "visitor", "reason", "bad_key")
 			policy.RecordIPFailure(ip)
 		}
 		c.RespondJSON(200, IPRegisterResponse{Msg: "invalid registration key"})

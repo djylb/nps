@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,10 +11,10 @@ import (
 
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
 	webapi "github.com/djylb/nps/web/api"
 	"github.com/djylb/nps/web/framework"
 	webservice "github.com/djylb/nps/web/service"
+	"github.com/djylb/slogx"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +23,7 @@ var log = slogx.Module("web")
 // loginRefused writes the login_failed event of a login from ip that the
 // login source list refuses.
 func loginRefused(ip string) {
-	slogx.Emit(log, &logevent.LoginFailed, "src_ip", ip, "reason", "acl")
+	slogx.Emit(context.Background(), log, &logevent.LoginFailed, "src_ip", ip, "reason", "acl")
 }
 
 func sessionMiddleware() gin.HandlerFunc {

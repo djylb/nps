@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/netip"
@@ -11,8 +12,8 @@ import (
 	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
+	"github.com/djylb/slogx"
 )
 
 // p2pSTUNOff is the p2p_stun_servers value that hands the clients no STUN
@@ -44,7 +45,7 @@ func startP2P(b *bridge.Bridge, cfg *servercfg.Snapshot) {
 		},
 	})
 	if err != nil {
-		slogx.EmitMsg(log, &logevent.ListenFailed, "p2p off: nat observer cannot use udp ports", "route", "p2p", "addr", fmt.Sprintf("udp/%d-%d", port, port+2), "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ListenFailed, slogx.KeyMsg, "p2p off: nat observer cannot use udp ports", "route", "p2p", "addr", fmt.Sprintf("udp/%d-%d", port, port+2), "reason", logevent.NetReason(err), "err", err)
 		return
 	}
 	if !p2pIPv6Configured(cfg.Network.P2PIP) {

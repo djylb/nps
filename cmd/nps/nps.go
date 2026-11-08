@@ -25,13 +25,13 @@ import (
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/nps/server"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/ports"
 	"github.com/djylb/nps/server/stats"
 	"github.com/djylb/nps/web/routers"
+	"github.com/djylb/slogx"
 	"github.com/gin-gonic/gin"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
@@ -355,7 +355,7 @@ func (p *nps) run() error {
 		log.Error("nps stopped", "err", srv.Close())
 		os.Exit(1)
 	}
-	slogx.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
+	slogx.Emit(context.Background(), log, &logevent.Stopping, "version", version.VERSION, "role", "nps")
 	_ = srv.Close()
 	slogx.Default.Flush()
 	close(p.stopped)
@@ -423,7 +423,7 @@ func run() (*server.Server, error) {
 		// query the latest release now, so that the dashboard knows it
 		install.LatestVersion()
 	}
-	slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
+	slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "nps", "config", servercfg.Path(), "min_client_version", srv.Bridge().MinClientVersion())
 	server.ApplyNTP(cfg)
 	if err := connection.InitConnectionService(); err != nil {
 		return nil, err

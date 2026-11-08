@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/netip"
 	"strings"
 	"sync"
@@ -10,7 +11,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("web")
@@ -151,7 +152,7 @@ func (s *DefaultLoginPolicy) IsUserBanned(username string) bool {
 func (s *DefaultLoginPolicy) RecordIPFailure(ip string) {
 	if prefix, ok := loginPrefix(ip); ok {
 		if until, started := s.limiters().ip.fail(prefix); started {
-			slogx.Emit(log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "key", formatLoginPrefix(prefix), "until", until)
+			slogx.Emit(context.Background(), log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "key", formatLoginPrefix(prefix), "until", until)
 		}
 	}
 }
@@ -159,7 +160,7 @@ func (s *DefaultLoginPolicy) RecordIPFailure(ip string) {
 func (s *DefaultLoginPolicy) RecordUserFailure(username, ip string) {
 	if username != "" {
 		if until, started := s.limiters().user.fail(username); started {
-			slogx.Emit(log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "user", username, "until", until)
+			slogx.Emit(context.Background(), log, &logevent.BanAdded, "src_ip", ip, "scope", "login", "user", username, "until", until)
 		}
 	}
 }
@@ -181,13 +182,13 @@ func (s *DefaultLoginPolicy) RemoveBan(key string) bool {
 		if !l.ip.unban(prefix) {
 			return false
 		}
-		slogx.Emit(log, &logevent.BanRemoved, "src_ip", formatLoginPrefix(prefix), "scope", "login")
+		slogx.Emit(context.Background(), log, &logevent.BanRemoved, "src_ip", formatLoginPrefix(prefix), "scope", "login")
 		return true
 	}
 	if !l.user.unban(key) {
 		return false
 	}
-	slogx.Emit(log, &logevent.BanRemoved, "scope", "login", "user", key)
+	slogx.Emit(context.Background(), log, &logevent.BanRemoved, "scope", "login", "user", key)
 	return true
 }
 

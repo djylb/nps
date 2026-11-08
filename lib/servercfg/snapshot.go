@@ -63,7 +63,7 @@ type AppConfig struct {
 
 type LogConfig struct {
 	Type     string // stdout, file, both, off
-	Format   string // text (logfmt) or json
+	Format   string // auto (pretty on a terminal, else logfmt), text or json
 	Level    string // "info,bridge=debug"
 	Path     string
 	Security string // security log file; empty for none
@@ -327,7 +327,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Log = LogConfig{
 		Type:     r.stringDefault("stdout", "log"),
-		Format:   r.stringDefault("text", "log_format"),
+		Format:   r.stringDefault("auto", "log_format"),
 		Level:    r.stringDefault("info", "log_level"),
 		Path:     r.stringValue("log_path"),
 		Security: r.stringValue("security_log"),

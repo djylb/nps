@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -13,7 +14,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 	"github.com/djylb/upstream"
 )
 
@@ -231,7 +232,7 @@ func (n *Node) addSignal(signal *conn.Conn) {
 	if n.signal != nil && n.signal != signal {
 		if n.Client != nil {
 			ip, _ := srcIPPort(signal.RemoteAddr())
-			slogx.Emit(log, &logevent.SessionTakeover, "identity", n.Client.Id, "src_ip", ip,
+			slogx.Emit(context.Background(), log, &logevent.SessionTakeover, "identity", n.Client.Id, "src_ip", ip,
 				"node", n.UUID, "prev_addr", n.signal.RemoteAddr())
 		}
 		_ = n.signal.Close()

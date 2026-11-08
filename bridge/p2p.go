@@ -23,7 +23,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 // p2pLog is the log of P2P sessions, shared with the hole punching library.
@@ -370,13 +370,13 @@ func (p *p2pService) onResult(r coord.Result) {
 		if r.Winner != nil {
 			family = string(r.Winner.Family)
 		}
-		slogx.Emit(p2pLog, &logevent.P2PConnected, "session", r.SessionID, "tunnel", task, "client", visitor,
+		slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "session", r.SessionID, "tunnel", task, "client", visitor,
 			"peer", provider, "path", "direct", "family", family, "rounds", len(r.Rounds), "pair", r.PairClass,
 			"connected_total", n, "failed_total", p.failed.Load())
 		return
 	}
 	n := p.failed.Add(1)
-	slogx.Emit(p2pLog, &logevent.P2PFailed, "session", r.SessionID, "tunnel", task, "client", visitor,
+	slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "session", r.SessionID, "tunnel", task, "client", visitor,
 		"peer", provider, "outcome", r.Outcome, "reason", r.Reason, "detail", r.Detail, "side", r.FailedRole,
 		"advice", r.Retry.Advice, "connected_total", p.succeeded.Load(), "failed_total", n)
 }

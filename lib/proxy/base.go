@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -13,7 +14,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var errProxyAccessDenied = errors.New("proxy access denied")
@@ -211,7 +212,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	}
 	target, err := s.Bridge.Session(client.Id).OpenLink(link, taskID)
 	if err != nil {
-		slogx.Emit(log, &logevent.RelayFailed, "route", taskName(task), "client", client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)
+		slogx.Emit(context.Background(), log, &logevent.RelayFailed, "route", taskName(task), "client", client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)
 		return nil, nil, isLocal, err
 	}
 	return target, link, isLocal, nil

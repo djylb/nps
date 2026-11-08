@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/event"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("webhook")

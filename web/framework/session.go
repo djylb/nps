@@ -8,7 +8,7 @@ import (
 
 	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/servercfg"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )

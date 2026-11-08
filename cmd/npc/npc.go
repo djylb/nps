@@ -26,9 +26,9 @@ import (
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/runenv"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/lib/version"
+	"github.com/djylb/slogx"
 	"github.com/kardianos/service"
 	flag "github.com/spf13/pflag"
 )
@@ -69,7 +69,7 @@ var (
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
 	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
-	logFormat      = flag.String("log_format", "text", "Log line format (text|json)")
+	logFormat      = flag.String("log_format", "auto", "Log line format (auto|text|json); auto is coloured on a terminal, logfmt elsewhere")
 	debug          = flag.Bool("debug", true, "Enable debug mode")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
@@ -354,7 +354,7 @@ func (p *Npc) run() error {
 	}()
 	run(p.ctx, p.cancel)
 	<-p.exit
-	slogx.Emit(log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
+	slogx.Emit(context.Background(), log, &logevent.Stopping, "version", version.VERSION, "role", "npc")
 	slogx.Default.Flush()
 	return nil
 }
@@ -369,7 +369,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 	}
 	//p2p or secret command
 	if *password != "" {
-		slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
+		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		commonConfig := new(config.CommonConfig)
 		commonConfig.Server = *serverAddr
@@ -419,7 +419,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		os.Exit(1)
 	}
 	if hasCommand {
-		slogx.Emit(log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
+		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		*serverAddr = strings.ReplaceAll(*serverAddr, "，", ",")
 		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")

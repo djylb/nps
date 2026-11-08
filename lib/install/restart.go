@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/slogx"
 	"github.com/djylb/selfupdate"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("install")
@@ -105,7 +105,7 @@ func StartUpdate() {
 			log.Info("update confirmed", "to", out.Version)
 		}()
 	case selfupdate.StatusRolledBack:
-		slogx.EmitMsg(log, &logevent.UpdateFailed, "rolled back; restarting", "from", out.Previous, "to", out.Version, "reason", "rolled_back")
+		slogx.Emit(context.Background(), log, &logevent.UpdateFailed, slogx.KeyMsg, "rolled back; restarting", "from", out.Previous, "to", out.Version, "reason", "rolled_back")
 		if err := RestartSelf(exe); err != nil {
 			log.Error("restart after rollback failed, restart manually", "to", out.Previous, "err", err)
 		}

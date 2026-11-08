@@ -18,7 +18,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/netaddr"
-	"github.com/djylb/nps/lib/slogx"
+	"github.com/djylb/slogx"
 )
 
 var log = slogx.Module("client")
@@ -74,7 +74,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 	if !clientCaps().TunnelStreams {
 		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 		if err != nil {
-			slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
 			return
 		}
 		if s.uuid == "" {
@@ -82,11 +82,11 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		err = SendType(c, legacy.WorkMain, s.uuid)
 		if err != nil {
-			slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 			_ = c.Close()
 			return
 		}
-		slogx.Emit(log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
+		slogx.Emit(context.Background(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
 		s.signal.Store(c)
 	}
 	//start a channel connection
@@ -99,7 +99,7 @@ func (s *TRPClient) Start(ctx context.Context) {
 		}
 		stream, err := tunnel.OpenStream(s.ctx)
 		if err != nil {
-			slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "signal_stream", "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "signal_stream", "err", err)
 			s.Close()
 			return
 		}
@@ -109,12 +109,12 @@ func (s *TRPClient) Start(ctx context.Context) {
 		stream = conn.SignalStream(stream)
 		c := conn.NewConn(stream)
 		if err = SendType(c, legacy.WorkMain, s.uuid); err != nil {
-			slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+			slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 			_ = stream.Close()
 			return
 		}
 		s.signal.Store(c)
-		slogx.Emit(log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
+		slogx.Emit(context.Background(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType)
 	}
 	//monitor the connection
 	go s.ping()
@@ -189,11 +189,11 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 func (s *TRPClient) newChan() legacy.Carrier {
 	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
 	if err != nil {
-		slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "dial", "err", err)
 		return nil
 	}
 	if tunnel == nil {
-		slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "no_tunnel")
+		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "no_tunnel")
 		return nil
 	}
 	if s.uuid == "" {
@@ -202,7 +202,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 	s.server = server
 	err = SendType(tunnel, legacy.WorkChan, s.uuid)
 	if err != nil {
-		slogx.Emit(log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
+		slogx.Emit(context.Background(), log, &logevent.ConnectFailed, "server", s.svrAddr, "carrier", s.bridgeConnType, "reason", "send_type", "err", err)
 		_ = tunnel.Close()
 		return nil
 	}
@@ -422,7 +422,7 @@ func (s *TRPClient) logDisconnectSummary() {
 	}
 	tunnelUp := !s.isTunnelClosed()
 	signalUp := signal != nil && !signal.IsClosed()
-	slogx.Emit(log, &logevent.Disconnected,
+	slogx.Emit(context.Background(), log, &logevent.Disconnected,
 		"server", s.svrAddr,
 		"carrier", s.bridgeConnType,
 		"uuid", s.uuid,
