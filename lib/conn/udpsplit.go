@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"container/list"
 	"net"
 	"net/netip"
 	"os"
@@ -24,12 +25,14 @@ type UDPSplit struct {
 	pc        net.PacketConn
 	KCP, QUIC *splitSide
 	mu        sync.Mutex
-	src       map[netip.AddrPort]*splitSrc
+	src       map[netip.AddrPort]*list.Element
+	order     list.List // of *splitSrc, least recently seen first
 	closed    sync.Once
 	done      chan struct{}
 }
 
 type splitSrc struct {
+	ap   netip.AddrPort
 	kcp  bool
 	seen time.Time
 }
@@ -40,7 +43,7 @@ func ListenUDPSplit(addr string) (*UDPSplit, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &UDPSplit{pc: pc, src: map[netip.AddrPort]*splitSrc{}, done: make(chan struct{})}
+	s := &UDPSplit{pc: pc, src: map[netip.AddrPort]*list.Element{}, done: make(chan struct{})}
 	s.KCP, s.QUIC = newSplitSide(s), newSplitSide(s)
 	go s.run()
 	return s, nil
@@ -67,27 +70,13 @@ func (s *UDPSplit) run() {
 		now := time.Now()
 		s.mu.Lock()
 		if now.After(next) {
-			for k, v := range s.src {
-				if now.Sub(v.seen) > splitIdle {
-					delete(s.src, k)
-				}
-			}
+			s.expire(now)
 			next = now.Add(splitIdle)
 		}
-		e := s.src[ap]
-		if e == nil && len(s.src) < splitMax {
-			e = &splitSrc{kcp: n >= 6 && buf[5] == 0 && (buf[4] == 0xf1 || buf[4] == 0xf2)}
-			s.src[ap] = e
-		}
-		if e != nil {
-			e.seen = now
-		}
+		kcp := s.classify(ap, n >= 6 && buf[5] == 0 && (buf[4] == 0xf1 || buf[4] == 0xf2), now)
 		s.mu.Unlock()
-		if e == nil {
-			continue
-		}
 		side := s.QUIC
-		if e.kcp {
+		if kcp {
 			side = s.KCP
 		}
 		select {
@@ -95,6 +84,36 @@ func (s *UDPSplit) run() {
 		default: // the side is behind: a lost packet
 		}
 	}
+}
+
+// expire forgets the sources silent for splitIdle; s.mu is held.
+func (s *UDPSplit) expire(now time.Time) {
+	for el := s.order.Front(); el != nil && now.Sub(el.Value.(*splitSrc).seen) > splitIdle; el = s.order.Front() {
+		s.forget(el)
+	}
+}
+
+func (s *UDPSplit) forget(el *list.Element) {
+	delete(s.src, el.Value.(*splitSrc).ap)
+	s.order.Remove(el)
+}
+
+// classify is whether ap is a KCP source: what it was first seen as, or kcp
+// for a new one. A full table forgets its least recently seen source, in
+// constant time, so a flood cannot lock new sources out; a source forgotten
+// that way is told apart again by its next packet. s.mu is held.
+func (s *UDPSplit) classify(ap netip.AddrPort, kcp bool, now time.Time) bool {
+	if el := s.src[ap]; el != nil {
+		e := el.Value.(*splitSrc)
+		e.seen = now
+		s.order.MoveToBack(el)
+		return e.kcp
+	}
+	if len(s.src) >= splitMax {
+		s.forget(s.order.Front())
+	}
+	s.src[ap] = s.order.PushBack(&splitSrc{ap: ap, kcp: kcp, seen: now})
+	return kcp
 }
 
 type splitPacket struct {

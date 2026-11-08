@@ -88,6 +88,10 @@ type peerEnv struct {
 	// exitTarget is the target the last server-exit stream named.
 	exitTarget atomic.Pointer[string]
 	echo       string
+	// Set before the LINK that should see them.
+	admit    func(stop func()) (func(), error)
+	limiters func() (coreapi.Limiter, coreapi.Limiter)
+	exitErr  error
 }
 
 // allowAll is the exit of a provider that reaches everything.
@@ -107,21 +111,29 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 	p.valid.Store(true)
 	p.env = startHooks(t, coreapi.Hooks{
 		ResolveLink: func(client int, r coreapi.LinkResolve) (*coreapi.LinkGrant, error) {
-			if string(r.Access) != "secret" {
+			if !bytes.Equal(r.AccessID, wire.AccessID([]byte("secret"))) || !r.Verify([]byte("secret")) {
 				return nil, linkError(wire.CodeNotAllowed)
 			}
 			return &coreapi.LinkGrant{Tunnel: 7, Provider: 1, ServerExit: serverExit,
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
-				ServeExit: func(ctx context.Context, c net.Conn, _, target string) {
+				Admit:  p.admit, Limiters: p.limiters,
+				ServeExit: func(ctx context.Context, c net.Conn, _, target string, ack func() error) error {
+					if p.exitErr != nil {
+						return p.exitErr
+					}
 					if a, ok := c.RemoteAddr().(*net.TCPAddr); !ok || !a.IP.IsLoopback() {
 						t.Errorf("remote %v", c.RemoteAddr())
 					}
 					p.exitTarget.Store(&target)
+					if err := ack(); err != nil {
+						return err
+					}
 					u, err := net.Dial("tcp", p.echo)
 					if err == nil {
 						_, _, _ = netx.Relay(ctx, c, u, netx.WithRelayHalfClose())
 					}
+					return nil
 				}}, nil
 		},
 		Coordinate: func(ctx context.Context, q coreapi.PunchPair) {
@@ -253,7 +265,11 @@ func TestPeerRevokedByServer(t *testing.T) {
 
 func linkReply(t *testing.T, ctx context.Context, s *clientSession) wire.LinkReply {
 	t.Helper()
-	info, _ := wire.AppendLinkOpen(&wire.LinkOpen{Access: []byte("secret"), ConnMode: wire.ConnRelay})
+	ekm, err := s.zc.ExportKeyingMaterial(wire.AccessExportLabel, nil, wire.AccessExportLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _ := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess([]byte("secret"), ekm), ConnMode: wire.ConnRelay})
 	st, err := s.zc.OpenStreamSync(ctx)
 	if err != nil {
 		t.Fatal(err)

@@ -5,11 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/djylb/netx"
@@ -71,27 +69,14 @@ func (s *Bridge) newMixEntry(kind mixKind) *mixEntry {
 // mixRoute is the WebSocket routing of an entry. On a mixed port and
 // bridge://mix a WebSocket is the new protocol whatever its subprotocol,
 // since nothing tells the old one apart. The generic port keeps the rules of
-// a single WebSocket bridge port, where the subprotocol decides (§12); with
-// the new protocol off it serves only the old protocol's WebSocket, and any
-// other request is dropped as that port always did.
+// a single WebSocket bridge port, where the subprotocol decides (§12).
 func (s *Bridge) mixRoute(kind mixKind) *conn.WSRoute {
 	if kind == mixGeneric {
-		if r := s.coreWS(); r != nil {
-			return r
-		}
-		abort := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
-		return &conn.WSRoute{NotFound: abort, Wrap: func(old http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if !isWebSocket(r) {
-					abort(w, r)
-					return
-				}
-				old.ServeHTTP(w, r)
-			})
-		}}
+		return s.coreWS()
 	}
 	n := connection.Network()
 	notFound := s.deniedHTTP(http.HandlerFunc(s.serveHTTPFallback))
+	fw := s.coreForwarding()
 	route := &conn.WSRoute{NotFound: notFound, Paths: map[string]http.Handler{}}
 	path := n.BridgePath
 	if path == "" {
@@ -99,10 +84,7 @@ func (s *Bridge) mixRoute(kind mixKind) *conn.WSRoute {
 	}
 	for _, p := range append(slices.Clone(n.NewProtocolWSPaths), path) {
 		route.Paths[p] = notFound
-		if s.core == nil {
-			continue
-		}
-		h, err := s.core.WebSocketAnyProtocol(notFound)
+		h, err := s.core.WebSocketAnyProtocol(notFound, fw)
 		if err != nil {
 			log.Error("new protocol websocket route", "path", p, "err", err)
 			continue
@@ -110,10 +92,6 @@ func (s *Bridge) mixRoute(kind mixKind) *conn.WSRoute {
 		route.Paths[p] = s.deniedHTTP(h)
 	}
 	return route
-}
-
-func isWebSocket(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
 
 // serveMixPort opens the listener of kind and serves it as e.
@@ -186,38 +164,17 @@ func (s *Bridge) dispatchMix(ctx context.Context, c net.Conn, e *mixEntry) {
 	if connection.IsHTTP(magic) && s.coreFallback(nc, nil) {
 		return
 	}
-	s.stall(ctx, nc)
+	s.core.Stall(ctx, nc)
 }
 
-// admitMix gives a carrier to the new protocol's admission, or, with the
-// new protocol off, directly to what comes after it.
+// admitMix gives a carrier to the new protocol's admission.
 func (s *Bridge) admitMix(ctx context.Context, c net.Conn, carrier string, e *mixEntry) {
 	other := func(c net.Conn, st *tls.ConnectionState) bool { return s.mixOther(c, st, e) }
-	if s.core != nil {
-		s.core.ServeMixed(ctx, c, carrier, other)
-		return
-	}
-	var st *tls.ConnectionState
-	if tc, ok := c.(*tls.Conn); ok {
-		hctx, cancel := context.WithTimeout(ctx, conn.HandshakeTimeout)
-		err := tc.HandshakeContext(hctx)
-		cancel()
-		if err != nil {
-			_ = c.Close()
-			return
-		}
-		state := tc.ConnectionState()
-		st = &state
-	}
-	if !other(c, st) {
-		s.stall(ctx, c)
-	}
+	s.core.ServeMixed(ctx, c, carrier, other)
 }
 
 // mixOther routes what the new protocol's admission did not take: the old
-// protocol's magic, HTTP, and on the generic port with the new protocol off
-// the old handshake for anything else, as that port always did. It owns c
-// when it returns true.
+// protocol's magic and HTTP. It owns c when it returns true.
 func (s *Bridge) mixOther(c net.Conn, st *tls.ConnectionState, e *mixEntry) bool {
 	head, nc := readHead(c, len(legacy.Magic))
 	transport := conn.TransportTCP
@@ -236,23 +193,8 @@ func (s *Bridge) mixOther(c net.Conn, st *tls.ConnectionState, e *mixEntry) bool
 			return e.httpTLS.TryDeliver(&conn.TLSStateConn{Conn: nc, State: st})
 		}
 		return e.httpPlain.TryDeliver(nc)
-	case s.core == nil && e.kind == mixGeneric:
-		s.serve(conn.NewConn(nc), transport)
-		return true
 	}
 	return false
-}
-
-// stall holds c without an answer for a while and closes it, so that bytes
-// of neither protocol tell a prober nothing.
-func (s *Bridge) stall(ctx context.Context, c net.Conn) {
-	t := time.NewTimer(10*time.Second + rand.N(20*time.Second))
-	defer t.Stop()
-	select {
-	case <-t.C:
-	case <-ctx.Done():
-	}
-	_ = c.Close()
 }
 
 // listenQUIC opens a QUIC listener: the bridge's own (mix nil), where only
@@ -269,22 +211,18 @@ func (s *Bridge) serveQUICOn(addr, route string, mix *mixEntry, pc net.PacketCon
 		MaxIdleTimeout:     time.Duration(n.QUICMaxIdleTimeout) * time.Second,
 		MaxIncomingStreams: n.QUICMaxIncomingStreams,
 	}
-	tlsCfg := &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: slices.Clone(n.QUICALPNList)}
-	if s.core != nil {
-		cfg = s.core.QUICConfig(cfg)
-	}
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{s.cert}}
+	cfg = s.core.QUICConfig(cfg)
 	http3 := mix != nil && mix.http3
-	if err := n.CheckQUICALPN(s.core != nil, http3); err != nil {
+	if err := n.CheckQUICALPN(true, http3); err != nil {
 		return fmt.Errorf("quic listener %s: %w", addr, err)
 	}
 	// ALPN alone tells the protocols apart (§12, §13): quic_alpn names are
 	// the old protocol's, new_protocol_quic_alpn the new one's, h3 HTTP/3's
 	// where it shares the port.
-	if s.core != nil {
-		tlsCfg.NextProtos = slices.Clone(n.NewProtocolQUICALPN)
-		if mix == nil || mix.legacy {
-			tlsCfg.NextProtos = append(tlsCfg.NextProtos, n.QUICALPNList...)
-		}
+	tlsCfg.NextProtos = slices.Clone(n.NewProtocolQUICALPN)
+	if mix == nil || mix.legacy {
+		tlsCfg.NextProtos = append(tlsCfg.NextProtos, n.QUICALPNList...)
 	}
 	if http3 {
 		tlsCfg.NextProtos = append(tlsCfg.NextProtos, "h3")
@@ -331,7 +269,7 @@ func (s *Bridge) serveQUIC(qc *quic.Conn, mix *mixEntry) {
 		switch {
 		case mix != nil && mix.http3 && alpn == "h3":
 			s.serveHTTP3(qc)
-		case s.core != nil && !slices.Contains(n.QUICALPNList, alpn):
+		case !slices.Contains(n.QUICALPNList, alpn):
 			s.core.ServeQUIC(ctx, qc)
 		case mix != nil && !mix.legacy:
 			// the old protocol is off on this port

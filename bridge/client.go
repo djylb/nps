@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -449,10 +448,14 @@ type Client struct {
 	LastUUID string
 	// nodePool is the node set, keyed by node UUID; it is closed when the
 	// client is. Members are read through node and nodeList.
-	nodePool        *upstream.Pool[*Node]
-	mode            SelectMode // how nodes are chosen
-	services        sync.Map   // map[service id in hex]nodeUUID
-	retryTime       int        // it will add 1 when ping not ok until to 3 will close the client
+	nodePool *upstream.Pool[*Node]
+	mode     SelectMode // how nodes are chosen
+	// services and nodeServices are the two ways into which nodes report
+	// which service; guarded by mu. Several npc processes of one vkey may
+	// report the same service.
+	services        map[string]map[string]struct{} // service id in hex -> node uuids
+	nodeServices    map[string]map[string]struct{} // node uuid -> service ids
+	retryTime       int                            // it will add 1 when ping not ok until to 3 will close the client
 	lastConnectNano atomic.Int64
 	started         time.Time // when the session began, for client_offline
 	// changed is closed and dropped by notifyChange; nil while nobody waits.
@@ -502,6 +505,9 @@ func NewClient(id int, n *Node, mode SelectMode) *Client {
 		mode:     mode,
 		started:  time.Now(),
 		nodePool: upstream.New[*Node](nodePoolConfig(mode)),
+
+		services:     map[string]map[string]struct{}{},
+		nodeServices: map[string]map[string]struct{}{},
 	}
 	c.MarkConnectedNow()
 	c.putNode(n)
@@ -600,41 +606,58 @@ func (c *Client) setNodeServices(uuid string, keys []string) error {
 	if _, ok := c.node(uuid); !ok {
 		return fmt.Errorf("uuid %q not found", uuid)
 	}
-	c.services.Range(func(k, v any) bool {
-		if v == uuid && !slices.Contains(keys, k.(string)) {
-			c.services.Delete(k)
-		}
-		return true
-	})
+	want := make(map[string]struct{}, len(keys))
 	for _, k := range keys {
-		c.services.Store(k, uuid)
+		want[k] = struct{}{}
 	}
+	for k := range c.nodeServices[uuid] {
+		if _, ok := want[k]; !ok {
+			c.dropService(k, uuid)
+		}
+	}
+	for k := range want {
+		if c.services[k] == nil {
+			c.services[k] = map[string]struct{}{}
+		}
+		c.services[k][uuid] = struct{}{}
+	}
+	c.nodeServices[uuid] = want
 	return nil
+}
+
+// dropService ends uuid's report of service k; callers hold c.mu.
+func (c *Client) dropService(k, uuid string) {
+	delete(c.services[k], uuid)
+	if len(c.services[k]) == 0 {
+		delete(c.services, k)
+	}
 }
 
 func (c *Client) nodeOfService(key string) (*Node, bool) {
 	c.mu.RLock()
-	v, ok := c.services.Load(key)
+	uuids := make([]string, 0, len(c.services[key]))
+	for uuid := range c.services[key] {
+		uuids = append(uuids, uuid)
+	}
 	c.mu.RUnlock()
-	if !ok {
-		return nil, false
+	var waiting *Node // online, suspended: only when no other can serve
+	for _, uuid := range uuids {
+		node, ok := c.node(uuid)
+		if !ok {
+			continue
+		}
+		if node.IsOnline() {
+			if !node.suspended() {
+				return node, true
+			}
+			waiting = node
+			continue
+		}
+		if !c.InConnectGraceWindow(connectGraceProtectWindow) && !node.awaitingTunnel() {
+			c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
+		}
 	}
-	uuid, ok := v.(string)
-	if !ok {
-		return nil, false
-	}
-	node, ok := c.node(uuid)
-	if !ok {
-		return nil, false
-	}
-	if node.IsOnline() {
-		return node, true
-	}
-	if c.InConnectGraceWindow(connectGraceProtectWindow) || node.awaitingTunnel() {
-		return nil, false
-	}
-	c.closeAndRemoveNodeIfCurrent(uuid, node, nodeNotOnline)
-	return nil, false
+	return waiting, waiting != nil
 }
 
 // CheckNode returns the current node: in Primary mode the last node used
@@ -805,12 +828,10 @@ func (c *Client) removeNode(uuid string) {
 			c.LastUUID = bs[0].ID()
 		}
 	}
-	c.services.Range(func(key, value any) bool {
-		if v, ok := value.(string); ok && v == uuid {
-			c.services.Delete(key)
-		}
-		return true
-	})
+	for k := range c.nodeServices[uuid] {
+		c.dropService(k, uuid)
+	}
+	delete(c.nodeServices, uuid)
 }
 
 // IsClosed reports whether Close was called; the node pool records it.
@@ -832,7 +853,7 @@ func (c *Client) Close() error {
 	}
 	nodes := c.nodeList()
 	c.nodePool.Close()
-	c.services.Clear()
+	c.services, c.nodeServices = map[string]map[string]struct{}{}, map[string]map[string]struct{}{}
 	c.mu.Unlock()
 	for _, n := range nodes {
 		_ = n.Close()

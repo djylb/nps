@@ -63,7 +63,7 @@ func TestClientRemoveNodeUpdatesLastAndFiles(t *testing.T) {
 	if _, ok := client.GetNodeByUUID("b"); ok || client.NodeCount() != 1 {
 		t.Fatalf("removed node still listed, count %d", client.NodeCount())
 	}
-	if _, ok := client.services.Load("f"); ok {
+	if _, ok := client.services["f"]; ok {
 		t.Fatal("file of removed node kept")
 	}
 	if err := client.setNodeServices("b", []string{"g"}); err == nil {

@@ -39,7 +39,7 @@ func healthEnv(t *testing.T) (*file.DbUtils, *model.Client, *model.Tunnel) {
 func runSignal(t *testing.T, db *file.DbUtils, version string) (net.Conn, func()) {
 	t.Helper()
 	npc, srv := net.Pipe()
-	s := NewTunnel(db, nil, Options{DisconnectTime: 30})
+	s := NewTunnel(db, nil, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	node := NewNode("uuid-"+version, version, legacy.LatestIndex)
 	client := NewClient(5, node, Primary)
 	s.Client.Store(5, client)
@@ -186,7 +186,7 @@ func TestRepublishedTunnelAnnouncesChange(t *testing.T) {
 	db, client, tn := healthEnv(t)
 	tn.NoStore, tn.Remark, tn.Port = true, "r", 7000
 	tn.Routes = model.NewRouteSet(func(string) bool { return true })
-	s := NewTunnel(db, nil, Options{DisconnectTime: 30})
+	s := NewTunnel(db, nil, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	var calls atomic.Int32
 	db.OnEntriesChanged(func() { calls.Add(1) })
 	again := &model.Tunnel{Id: tn.Id, Port: tn.Port, Mode: "tcp", Remark: "r", Password: "", Target: &model.Target{TargetStr: "a:1"}, Client: client}

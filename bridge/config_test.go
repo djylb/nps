@@ -23,7 +23,7 @@ func TestNewConfigIgnoresClientIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	clientSide, serverSide := net.Pipe()
 	defer func() { _ = clientSide.Close() }()
 	done := make(chan struct{})
@@ -86,7 +86,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 	freePort := free.Addr().(*net.TCPAddr).Port
 	_ = free.Close()
 
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	b.OpenTask = make(chan *model.Tunnel, 8)
 	b.Client.Store(client.Id, NewClient(client.Id, NewNode("node", "", legacy.LatestIndex), Primary))
 	clientSide, serverSide := net.Pipe()
@@ -131,7 +131,7 @@ func TestConfigPortConflictFailsOnlyThatTask(t *testing.T) {
 
 func TestJoinNodeReplacesClosedClient(t *testing.T) {
 	db := useTestDb(t)
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	closed := NewClient(9, NewNode("old", "", 8), Primary)
 	_ = closed.Close()
 	b.Client.Store(9, closed)

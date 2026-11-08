@@ -199,8 +199,37 @@ type HealthRunner interface {
 
 // LinkResolve is the request of a LINK.
 type LinkResolve struct {
-	Tunnel int    // 0 when Access names it
-	Access []byte // nil when Tunnel names it
+	Tunnel int // 0 when AccessID names it
+	// AccessID finds the task of an access (§9.1); nil when Tunnel names it.
+	AccessID []byte
+	// Verify reports whether the visitor proved it holds password on this
+	// session; set with AccessID. The password itself is never on the wire.
+	Verify func(password []byte) bool
+	// Source is where the visitor's session comes from.
+	Source netip.AddrPort
+}
+
+// AccessID is what an access key is found by (§9.1).
+func AccessID(password []byte) []byte { return wire.AccessID(password) }
+
+// Limiter meters one direction of a relayed path. Its method set is what the
+// protocol's splice takes.
+type Limiter interface {
+	// Ready waits until at least minBytes bytes (or the burst, if less) are
+	// allowed and returns the allowance, at most maxBytes. An error ends
+	// the direction.
+	Ready(ctx context.Context, minBytes, maxBytes int) (int, error)
+	// TryReady returns the allowance now, 0 when it would have to wait.
+	TryReady(maxBytes int) int
+	// Charge accounts n bytes forwarded, as they pass.
+	Charge(n int)
+}
+
+// Forwarding resolves the source of an HTTP carrier behind trusted
+// intermediaries. A nil Forwarding takes the peer of each request.
+type Forwarding interface {
+	// Source is the client of r, as the WebSocket routes count it.
+	Source(r *http.Request) netip.AddrPort
 }
 
 // LinkGrant is what the bridge resolved of a LINK.
@@ -213,10 +242,17 @@ type LinkGrant struct {
 	Policy LinkPolicy
 	// Valid reports whether the tunnel and the access still hold (§4.6).
 	Valid func() bool
-	// ServeExit serves one link of a server-exit LINK until it ends.
-	ServeExit func(ctx context.Context, c net.Conn, network, target string)
-	// Count adds the bytes relayed for the link to its flow.
-	Count func(in, out int64)
+	// ServeExit serves one link of a server-exit LINK until it ends. It calls
+	// ack once the link is admitted and its target reached, before any byte
+	// of c (§4.4); an error returned before that is what the stream is
+	// refused with, a *LinkError naming its code.
+	ServeExit func(ctx context.Context, c net.Conn, network, target string, ack func() error) error
+	// Admit admits one relayed PIPE against the quota and the connection
+	// limits; the PIPE holds what release gives back. stop ends the PIPE
+	// when its quota expires.
+	Admit func(stop func()) (release func(), err error)
+	// Limiters limit and meter a relayed PIPE: from the visitor and to it.
+	Limiters func() (up, down Limiter)
 }
 
 // LinkPolicy is a link's policy at its provider (§9.1).
@@ -305,12 +341,20 @@ type Entry interface {
 	ServeQUIC(ctx context.Context, qc *quic.Conn)
 	// WebSocket returns the handler of the WebSocket bridge path: requests
 	// of the core protocol go to it, every other request to legacy.
-	WebSocket(legacy http.Handler) (http.Handler, error)
+	WebSocket(legacy http.Handler, f Forwarding) (http.Handler, error)
 	// WebSocketAnyProtocol returns the handler of the paths that are the
 	// core protocol's alone (new_protocol_ws_paths): every WebSocket
 	// request goes to it, with the subprotocol it offered or none. Other
 	// requests go to next.
-	WebSocketAnyProtocol(next http.Handler) (http.Handler, error)
+	WebSocketAnyProtocol(next http.Handler, f Forwarding) (http.Handler, error)
+	// Forwarding builds what the WebSocket routes take: the prefixes are the
+	// trusted intermediaries, header the field they report the client in.
+	// Nil for no prefixes.
+	Forwarding(trusted []netip.Prefix, header string) Forwarding
+	// Stall holds c without an answer for a while and closes it, so that
+	// bytes of neither protocol tell a prober nothing. Past the limits of
+	// stalled carriers it closes c at once. It blocks.
+	Stall(ctx context.Context, c net.Conn)
 	// ClientChanged tells the entry the state of a client after a change.
 	ClientChanged(ClientRecord)
 	// ClientRemoved tells the entry that a client no longer exists.

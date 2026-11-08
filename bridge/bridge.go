@@ -41,9 +41,11 @@ type Options struct {
 	// AllowedPorts are the ports the tunnels npc publishes may listen on;
 	// the zero value allows every port.
 	AllowedPorts ports.Allowed
-	// CoreEntry is the new protocol on the bridge ports; nil, in tests, leaves
-	// them to the old protocol.
+	// CoreEntry is the new protocol on the bridge ports.
 	CoreEntry coreapi.Entry
+	// MaxNodeServices bounds the virtual services one session may report: 0
+	// is defaultMaxNodeServices, negative no limit.
+	MaxNodeServices int
 }
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
@@ -97,7 +99,9 @@ type Bridge struct {
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 	secrets            *secretGrants              // grants of point-to-point access
 	lookup             atomic.Pointer[TunnelLookup]
-	core               coreapi.Entry // nil: old protocol only
+	core               coreapi.Entry
+	maxNodeServices    int
+	accessGuesses      sync.Map // client id -> *guessBucket
 	fallback           atomic.Pointer[Fallback]
 	corePushes         sync.Map // coreapi.Session -> *healthPush
 	coreServicesOf     sync.Map // coreapi.Session -> []coreapi.ServiceInfo
@@ -124,6 +128,7 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.ports = opts.AllowedPorts
 	b.cert = opts.Cert
 	b.core = opts.CoreEntry
+	b.maxNodeServices = opts.MaxNodeServices
 	b.fingerprint = crypt.GetCertFingerprint(opts.Cert)
 	if opts.NewUUID != nil {
 		b.newUUID = opts.NewUUID
@@ -167,12 +172,10 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 // DelClient ends the session of client id on behalf of the manager (kick,
 // disable, delete); its client_offline line says reason=deleted.
 func (s *Bridge) DelClient(id int) {
-	if s.core != nil {
-		// Before the sessions close by the way of their nodes, so that a
-		// client whose key no longer holds is told (§3.7).
-		c, err := s.store.GetClient(id)
-		s.core.Kick(id, err != nil || !c.Status)
-	}
+	// Before the sessions close by the way of their nodes, so that a client
+	// whose key no longer holds is told (§3.7).
+	c, err := s.store.GetClient(id)
+	s.core.Kick(id, err != nil || !c.Status)
 	s.delClient(id, "deleted")
 }
 

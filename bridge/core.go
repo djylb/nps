@@ -9,10 +9,12 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/djylb/geomatch"
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -84,6 +86,11 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 // id a target names a service with.
 func (s *Bridge) coreServices(cs coreapi.Session, list []coreapi.ServiceInfo) {
 	id := cs.ClientID()
+	if limit := s.nodeServiceLimit(); limit > 0 && len(list) > limit {
+		// The snapshot is refused whole; what the session reported stays.
+		log.Warn("too many virtual services reported", "client", id, "count", len(list), "limit", limit)
+		return
+	}
 	v, ok := s.Client.Load(id)
 	if !ok {
 		return
@@ -97,6 +104,21 @@ func (s *Bridge) coreServices(cs coreapi.Session, list []coreapi.ServiceInfo) {
 		return
 	}
 	s.coreServicesOf.Store(cs, list)
+	// coreOffline may have run before the Store: its Delete then missed it.
+	if cs.Closed() {
+		s.coreServicesOf.Delete(cs)
+	}
+}
+
+// defaultMaxNodeServices is the bound of one session's virtual services when
+// none is configured: the SERVICE body limit alone would allow millions.
+const defaultMaxNodeServices = 4096
+
+func (s *Bridge) nodeServiceLimit() int {
+	if s.maxNodeServices == 0 {
+		return defaultMaxNodeServices
+	}
+	return s.maxNodeServices
 }
 
 // VirtualService is a service a connected npc reports.
@@ -188,9 +210,24 @@ func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
 		client.notifyChange()
 		kickClientHealth(client) // who checks shared targets may have changed
 	}
-	if reason == "deleted" {
+	if reason == "deleted" && !s.otherCoreSession(id, cs) {
 		s.delClient(id, "deleted")
 	}
+}
+
+// otherCoreSession reports whether client id has a live core session besides
+// cs, as when only one of its processes was refused.
+func (s *Bridge) otherCoreSession(id int, cs coreapi.Session) bool {
+	v, ok := s.Client.Load(id)
+	if !ok {
+		return false
+	}
+	for _, n := range v.(*Client).nodeList() {
+		if o := n.coreSession(); o != nil && o != cs && !o.Closed() {
+			return true
+		}
+	}
+	return false
 }
 
 func coreAuthFailed(f coreapi.AuthFailure) {
@@ -256,9 +293,6 @@ func (s *Bridge) fallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 
 // startCore starts the new protocol entry, before any listener opens.
 func (s *Bridge) startCore() error {
-	if s.core == nil {
-		return nil
-	}
 	if err := s.core.Start(s.scope.Context(), s.coreHooks()); err != nil {
 		return err
 	}
@@ -266,14 +300,10 @@ func (s *Bridge) startCore() error {
 	return nil
 }
 
-// serveCarrier handles an accepted tcp or tls connection of a bridge port: with
-// the new protocol on, admission routes it, and the old protocol's first bytes
-// come back through Hooks.Legacy.
+// serveCarrier handles an accepted tcp or tls connection of a bridge port:
+// admission routes it, and the old protocol's first bytes come back through
+// Hooks.Legacy.
 func (s *Bridge) serveCarrier(c net.Conn, transport string) {
-	if s.core == nil {
-		s.serve(conn.NewConn(c), transport)
-		return
-	}
 	if tc, ok := c.(*net.TCPConn); ok {
 		// the old protocol set this on its signal connection, which it
 		// can no longer see behind the replayed prefix
@@ -294,12 +324,10 @@ func (s *Bridge) serveCarrier(c net.Conn, transport string) {
 
 // coreWS is the route of the WebSocket bridge: on the bridge path the
 // subprotocol picks the protocol, and new_protocol_ws_paths belong to the new
-// one whatever the subprotocol. Nil with the new protocol off.
+// one whatever the subprotocol.
 func (s *Bridge) coreWS() *conn.WSRoute {
-	if s.core == nil {
-		return nil
-	}
 	denied := s.deniedHTTP
+	fw := s.coreForwarding()
 	notFound := denied(http.HandlerFunc(s.serveHTTPFallback))
 	route := &conn.WSRoute{NotFound: notFound, Wrap: func(legacy http.Handler) http.Handler {
 		// A request that is no WebSocket on the bridge path is a visitor's.
@@ -310,7 +338,7 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 			}
 			notFound.ServeHTTP(w, r)
 		})
-		h, err := s.core.WebSocket(next)
+		h, err := s.core.WebSocket(next, fw)
 		if err != nil {
 			log.Error("new protocol websocket route", "err", err)
 			return legacy
@@ -318,7 +346,7 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		return denied(h)
 	}}
 	for _, p := range connection.Network().NewProtocolWSPaths {
-		h, err := s.core.WebSocketAnyProtocol(notFound)
+		h, err := s.core.WebSocketAnyProtocol(notFound, fw)
 		if err != nil {
 			log.Error("new protocol websocket route", "path", p, "err", err)
 			continue
@@ -331,10 +359,56 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 	return route
 }
 
-// deniedHTTP drops a request whose address the global lists deny.
+// coreForwarding is bridge_trusted_ips and bridge_real_ip_header for the
+// core protocol's routes. Without a configured header the old protocol takes
+// X-Forwarded-For, then X-Real-IP; deniedHTTP gives the second to the first.
+func (s *Bridge) coreForwarding() coreapi.Forwarding {
+	n := connection.Network()
+	header := n.BridgeRealIPHeader
+	if header == "" {
+		header = "X-Forwarded-For"
+	}
+	return s.core.Forwarding(trustedPrefixes(n.BridgeTrustedIPs), header)
+}
+
+// trustedPrefixes reads a bridge_trusted_ips list as auth.ParseTrustedProxies
+// does, for what wants the prefixes themselves.
+func trustedPrefixes(list string) []netip.Prefix {
+	var out []netip.Prefix
+	for raw := range strings.SplitSeq(list, ",") {
+		entry := strings.TrimSpace(raw)
+		if entry == "*" {
+			return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+		}
+		r, err := geomatch.ParseRule(entry)
+		if err != nil || r.Kind != geomatch.RuleIP || r.Last.IsValid() || len(r.Ports) > 0 {
+			continue
+		}
+		out = append(out, r.Prefix)
+	}
+	return out
+}
+
+// deniedHTTP drops a request whose address, behind trusted intermediaries
+// the client they report, the global lists deny.
 func (s *Bridge) deniedHTTP(h http.Handler) http.Handler {
+	fw := s.coreForwarding()
+	realIPToo := fw != nil && connection.Network().BridgeRealIPHeader == ""
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if addr, err := conn.ParseTCPAddr(r.RemoteAddr); err == nil && addr != nil && s.store.GlobalDenied(addr, "bridge") {
+		if realIPToo && r.Header.Get("X-Forwarded-For") == "" {
+			if ip := r.Header.Get("X-Real-IP"); ip != "" {
+				r.Header.Set("X-Forwarded-For", ip)
+			}
+		}
+		var addr net.Addr
+		if fw != nil {
+			if src := fw.Source(r); src.IsValid() {
+				addr = net.TCPAddrFromAddrPort(src)
+			}
+		} else if a, err := conn.ParseTCPAddr(r.RemoteAddr); err == nil && a != nil {
+			addr = a
+		}
+		if addr != nil && s.store.GlobalDenied(addr, "bridge") {
 			panic(http.ErrAbortHandler)
 		}
 		h.ServeHTTP(w, r)
@@ -384,14 +458,8 @@ func requestHead(r *http.Request) []byte {
 	return b.Bytes()
 }
 
-// tlsConfig is the configuration of the TLS bridge listener; the ALPN list
-// and the choice of the certificate by name apply only with the new protocol
-// (no ALPN by default, §13).
+// tlsConfig is the configuration of the TLS bridge listener (no ALPN by
+// default, §13).
 func (s *Bridge) tlsConfig() *tls.Config {
-	cfg := &tls.Config{Certificates: []tls.Certificate{s.cert}}
-	if s.core != nil {
-		cfg.NextProtos = connection.Network().NewProtocolTLSALPN
-		cfg.GetCertificate = s.fallbackCert
-	}
-	return cfg
+	return &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: connection.Network().NewProtocolTLSALPN, GetCertificate: s.fallbackCert}
 }

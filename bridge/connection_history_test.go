@@ -15,7 +15,7 @@ func TestRegistryConnectionHistory(t *testing.T) {
 	const id = 987654
 	c := &model.Client{Id: id, ConnectionHistory: new(model.ConnectionHistory)}
 	db.JsonDb.Clients.Store(id, c)
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	first := NewClient(id, NewNode("one", "", 8), Primary)
 	b.loadOrStoreClient(id, first)
 	b.loadOrStoreClient(id, NewClient(id, NewNode("two", "", 8), Primary))

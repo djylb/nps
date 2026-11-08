@@ -20,6 +20,17 @@ import (
 
 var errProxyAccessDenied = errors.New("proxy access denied")
 
+// ErrForwardingRefused matches the errors of AcquireForwarding: the quota,
+// the expiry or the connection limits refuse the transfer.
+var ErrForwardingRefused = errors.New("forwarding refused")
+
+// forwardingRefused keeps the text of its cause, which callers show.
+type forwardingRefused struct{ err error }
+
+func (e forwardingRefused) Error() string        { return e.err.Error() }
+func (e forwardingRefused) Unwrap() error        { return e.err }
+func (e forwardingRefused) Is(target error) bool { return target == ErrForwardingRefused }
+
 // ErrServerClosed is returned by Bind and Start once the server was closed.
 var ErrServerClosed = errors.New("server closed")
 
@@ -126,16 +137,16 @@ func (s *BaseServer) Auth(r *http.Request, c *conn.Conn, u, p string, multiAccou
 func (s *BaseServer) AcquireForwarding(client *model.Client, group *byterate.Group) (func(), error) {
 	traffic, expired := client.Flow.Over()
 	if expired {
-		return nil, errors.New("service access expired")
+		return nil, forwardingRefused{errors.New("service access expired")}
 	}
 	if traffic {
-		return nil, errors.New("traffic limit exceeded")
+		return nil, forwardingRefused{errors.New("traffic limit exceeded")}
 	}
 	if group == nil {
 		group = client.ControlGroup()
 	}
 	if err := group.Acquire(); err != nil {
-		return nil, err
+		return nil, forwardingRefused{err}
 	}
 	return sync.OnceFunc(group.Release), nil
 }

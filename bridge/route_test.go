@@ -91,7 +91,7 @@ func routeFixture(t *testing.T) (*file.DbUtils, *Bridge, *model.Client) {
 	if err := db.NewClient(client); err != nil {
 		t.Fatal(err)
 	}
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30})
 	return db, b, client
 }
 

@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	legacyclient "github.com/djylb/nps/client/legacy"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -47,9 +46,8 @@ type mixFixture struct {
 	fallback recordFallback
 }
 
-// mixOn starts a mixed entry of kind over a fixture; core false takes the new
-// protocol away.
-func mixOn(t *testing.T, kind mixKind, core bool, n servercfg.NetworkConfig) *mixFixture {
+// mixOn starts a mixed entry of kind over a fixture.
+func mixOn(t *testing.T, kind mixKind, n servercfg.NetworkConfig) *mixFixture {
 	t.Helper()
 	if n.BridgePath == "" {
 		n.BridgePath = "/ws"
@@ -65,9 +63,6 @@ func mixOn(t *testing.T, kind mixKind, core bool, n servercfg.NetworkConfig) *mi
 	connection.Configure(n)
 	t.Cleanup(func() { connection.Configure(old) })
 	f := newCoreFixture(t, SelectMode(0), model.Config{Crypt: true})
-	if !core {
-		f.b.core = nil
-	}
 	f.b.cert = selfSigned(t, "bridge.test")
 	f.b.fingerprint = crypt.GetCertFingerprint(f.b.cert)
 	var wg sync.WaitGroup
@@ -191,7 +186,7 @@ func (f *mixFixture) wantStall(t *testing.T, payload string) {
 }
 
 func TestMixPortPlainOff(t *testing.T) {
-	f := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true})
+	f := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true})
 	t.Run("tls new", func(t *testing.T) { f.dialCore(t, "tls://"+f.addr, true) })
 	t.Run("wss new", func(t *testing.T) { f.dialCore(t, "wss://"+f.addr+"/ws", true) })
 	t.Run("tcp new off", func(t *testing.T) { f.dialCore(t, "tcp://"+f.addr, false) })
@@ -200,39 +195,39 @@ func TestMixPortPlainOff(t *testing.T) {
 	t.Run("junk stalls", func(t *testing.T) { f.wantStall(t, "xyzzy") })
 	t.Run("plain TST stalls", func(t *testing.T) { f.wantStall(t, "TST!!") })
 	t.Run("old tls", func(t *testing.T) {
-		g := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true})
+		g := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true})
 		g.dialOld(t, "tls", true)
 	})
 	t.Run("old tcp off", func(t *testing.T) {
-		g := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true})
+		g := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true})
 		g.dialOld(t, "tcp", false)
 	})
 	t.Run("old wss off", func(t *testing.T) {
-		g := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true})
+		g := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true})
 		g.dialOld(t, "wss", false)
 	})
 	t.Run("mix_legacy off", func(t *testing.T) {
-		g := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: false})
+		g := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: false})
 		g.dialOld(t, "tls", false)
 	})
 }
 
 func TestMixPortPlainOn(t *testing.T) {
 	n := servercfg.NetworkConfig{MixLegacy: true, MixPlain: true}
-	f := mixOn(t, mixPort, true, n)
+	f := mixOn(t, mixPort, n)
 	t.Run("tcp new", func(t *testing.T) { f.dialCore(t, "tcp://"+f.addr, true) })
 	t.Run("ws new", func(t *testing.T) { f.dialCore(t, "ws://"+f.addr+"/ws", true) })
 	t.Run("ws binary new", func(t *testing.T) { f.dialCore(t, "ws|"+f.addr+"/ws", true) })
 	t.Run("http to proxy", func(t *testing.T) { f.wantHTTPFallback(t) })
 	t.Run("junk stalls", func(t *testing.T) { f.wantStall(t, "xyzzy") })
-	t.Run("old tcp", func(t *testing.T) { mixOn(t, mixPort, true, n).dialOld(t, "tcp", true) })
-	t.Run("old ws off", func(t *testing.T) { mixOn(t, mixPort, true, n).dialOld(t, "ws", false) })
+	t.Run("old tcp", func(t *testing.T) { mixOn(t, mixPort, n).dialOld(t, "tcp", true) })
+	t.Run("old ws off", func(t *testing.T) { mixOn(t, mixPort, n).dialOld(t, "ws", false) })
 }
 
 func TestMixVirtualTarget(t *testing.T) {
 	// mix_plain stays off: the virtual target does not read it.
 	n := servercfg.NetworkConfig{MixLegacy: true}
-	f := mixOn(t, mixVirtual, true, n)
+	f := mixOn(t, mixVirtual, n)
 	for _, s := range []string{"tcp://", "tls://", "ws://", "wss://"} {
 		u := s + f.addr
 		if strings.HasPrefix(s, "ws") {
@@ -241,13 +236,13 @@ func TestMixVirtualTarget(t *testing.T) {
 		t.Run(s, func(t *testing.T) { f.dialCore(t, u, true) })
 	}
 	for carrier, want := range map[string]bool{"tcp": true, "tls": true, "ws": false, "wss": false} {
-		t.Run("old "+carrier, func(t *testing.T) { mixOn(t, mixVirtual, true, n).dialOld(t, carrier, want) })
+		t.Run("old "+carrier, func(t *testing.T) { mixOn(t, mixVirtual, n).dialOld(t, carrier, want) })
 	}
 }
 
 func TestGenericBridgePort(t *testing.T) {
 	n := servercfg.NetworkConfig{NewProtocolWSPaths: []string{"/new"}}
-	f := mixOn(t, mixGeneric, true, n)
+	f := mixOn(t, mixGeneric, n)
 	t.Run("tcp new", func(t *testing.T) { f.dialCore(t, "tcp://"+f.addr, true) })
 	t.Run("tls new", func(t *testing.T) { f.dialCore(t, "tls://"+f.addr, true) })
 	t.Run("ws binary new", func(t *testing.T) { f.dialCore(t, "ws|"+f.addr+"/ws", true) })
@@ -255,31 +250,8 @@ func TestGenericBridgePort(t *testing.T) {
 	t.Run("ws path new", func(t *testing.T) { f.dialCore(t, "ws://"+f.addr+"/new", true) })
 	t.Run("http to proxy", func(t *testing.T) { f.wantHTTPFallback(t) })
 	for _, carrier := range []string{"tcp", "tls", "ws", "wss"} {
-		t.Run("old "+carrier, func(t *testing.T) { mixOn(t, mixGeneric, true, n).dialOld(t, carrier, true) })
+		t.Run("old "+carrier, func(t *testing.T) { mixOn(t, mixGeneric, n).dialOld(t, carrier, true) })
 	}
-}
-
-// With the switch off the port serves all the carriers of the old protocol,
-// and nothing else.
-func TestGenericBridgePortSwitchOff(t *testing.T) {
-	n := servercfg.NetworkConfig{}
-	for _, carrier := range []string{"tcp", "tls", "ws", "wss"} {
-		t.Run("old "+carrier, func(t *testing.T) { mixOn(t, mixGeneric, false, n).dialOld(t, carrier, true) })
-	}
-	t.Run("new off", func(t *testing.T) { mixOn(t, mixGeneric, false, n).dialCore(t, "tcp://"+"127.0.0.1:1", false) })
-	t.Run("http dropped", func(t *testing.T) {
-		f := mixOn(t, mixGeneric, false, n)
-		c := f.raw(t, plainGET)
-		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
-		if b, err := io.ReadAll(c); len(b) != 0 {
-			t.Fatalf("answered %q (%v)", b, err)
-		}
-		select {
-		case got := <-f.fallback.got:
-			t.Fatalf("reached the proxy: %q", got)
-		default:
-		}
-	})
 }
 
 func freeUDP(t *testing.T) string {
@@ -295,7 +267,7 @@ func freeUDP(t *testing.T) string {
 // The bridge's QUIC port takes both protocols, whichever ALPN is used.
 func TestBridgeQUICBothProtocols(t *testing.T) {
 	boot := func(t *testing.T, mix bool) *mixFixture {
-		f := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true})
+		f := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true})
 		f.addr = freeUDP(t)
 		var e *mixEntry
 		if mix {
@@ -321,7 +293,7 @@ func TestBridgeQUICBothProtocols(t *testing.T) {
 // Without HTTP/3 on the port, ALPN h3 is the carrier's even when the node has
 // a domain proxy that could serve it.
 func TestMixQUICH3IsCarrierWithoutHTTP3(t *testing.T) {
-	f := mixOn(t, mixPort, true, servercfg.NetworkConfig{MixLegacy: true, MixPort: 9443, HTTP3ProxyPort: 8443})
+	f := mixOn(t, mixPort, servercfg.NetworkConfig{MixLegacy: true, MixPort: 9443, HTTP3ProxyPort: 8443})
 	f.addr = freeUDP(t)
 	got := make(chan struct{}, 1)
 	f.b.SetFallback(h3Stub{got: got})
@@ -342,7 +314,7 @@ func TestMixQUICH3IsCarrierWithoutHTTP3(t *testing.T) {
 func TestMixQUICHTTP3ByALPN(t *testing.T) {
 	cfg := servercfg.NetworkConfig{MixLegacy: true, MixPort: 9443, HTTP3ProxyPort: 9443, NewProtocolQUICALPN: []string{"core"}}
 	boot := func(t *testing.T) (*mixFixture, chan struct{}) {
-		f := mixOn(t, mixPort, true, cfg)
+		f := mixOn(t, mixPort, cfg)
 		f.addr = freeUDP(t)
 		got := make(chan struct{}, 1)
 		f.b.SetFallback(h3Stub{got: got})
@@ -383,7 +355,7 @@ func TestMixQUICHTTP3ByALPN(t *testing.T) {
 	t.Run("new protocol ALPN h3 is a configuration error", func(t *testing.T) {
 		c := cfg
 		c.NewProtocolQUICALPN = []string{"h3"}
-		f := mixOn(t, mixPort, true, c)
+		f := mixOn(t, mixPort, c)
 		err := f.b.listenQUIC(freeUDP(t), "mix", f.b.newMixEntry(mixPort))
 		if err == nil || !strings.Contains(err.Error(), "new_protocol_quic_alpn") {
 			t.Fatalf("err = %v", err)
@@ -392,7 +364,7 @@ func TestMixQUICHTTP3ByALPN(t *testing.T) {
 	t.Run("quic_alpn h3 is a configuration error", func(t *testing.T) {
 		c := cfg
 		c.QUICALPN, c.QUICALPNList = "nps,h3", []string{"nps", "h3"}
-		f := mixOn(t, mixPort, true, c)
+		f := mixOn(t, mixPort, c)
 		err := f.b.listenQUIC(freeUDP(t), "mix", f.b.newMixEntry(mixPort))
 		if err == nil || !strings.Contains(err.Error(), "quic_alpn") {
 			t.Fatalf("err = %v", err)
@@ -405,7 +377,7 @@ func TestMixQUICHTTP3ByALPN(t *testing.T) {
 // configuration error.
 func TestQUICProtocolByALPN(t *testing.T) {
 	boot := func(t *testing.T, mix bool, n servercfg.NetworkConfig) *mixFixture {
-		f := mixOn(t, mixPort, true, n)
+		f := mixOn(t, mixPort, n)
 		f.addr = freeUDP(t)
 		var e *mixEntry
 		if mix {
@@ -431,7 +403,7 @@ func TestQUICProtocolByALPN(t *testing.T) {
 		f.dialOld(t, "quic", false)
 	})
 	t.Run("overlap", func(t *testing.T) {
-		f := mixOn(t, mixPort, true, servercfg.NetworkConfig{NewProtocolQUICALPN: []string{"h3", "nps"}})
+		f := mixOn(t, mixPort, servercfg.NetworkConfig{NewProtocolQUICALPN: []string{"h3", "nps"}})
 		err := f.b.listenQUIC(freeUDP(t), "quic", nil)
 		if err == nil || !strings.Contains(err.Error(), "must not overlap") {
 			t.Fatalf("err = %v", err)
@@ -463,20 +435,11 @@ func (h h3Stub) ServeHTTP3(*quic.Conn) bool {
 	return true
 }
 
-func TestBridgeQUICSwitchOffOldProtocol(t *testing.T) {
-	f := mixOn(t, mixPort, false, servercfg.NetworkConfig{})
-	f.addr = freeUDP(t)
-	if err := f.b.listenQUIC(f.addr, "quic", nil); err != nil {
-		t.Fatal(err)
-	}
-	f.dialOld(t, "quic", true)
-}
-
 // One UDP port takes the old KCP and QUIC (a config with only bridge_port and
 // bridge_type=kcp), and closing the bridge ends both listeners.
 func TestBridgeKCPAndQUICSharePort(t *testing.T) {
 	boot := func(t *testing.T) *mixFixture {
-		f := mixOn(t, mixPort, true, servercfg.NetworkConfig{})
+		f := mixOn(t, mixPort, servercfg.NetworkConfig{})
 		f.addr = freeUDP(t)
 		if err := f.b.listenKCPQUIC(f.addr); err != nil {
 			t.Fatal(err)

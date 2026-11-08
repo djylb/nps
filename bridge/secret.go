@@ -183,18 +183,14 @@ func clientIDOf(t *model.Tunnel) int {
 // the task stops, restarts with changed settings or is deleted.
 func (s *Bridge) RevokeSecretTunnel(id int) {
 	s.secrets.revokeIf("tunnel_changed", func(g *secretGrant) bool { return g.tunnel.Id == id })
-	if s.core != nil {
-		s.core.RevokeLinks(func(tunnel, _, _ int) bool { return tunnel == id })
-	}
+	s.core.RevokeLinks(func(tunnel, _, _ int) bool { return tunnel == id })
 }
 
 // RevokeSecretGrants ends every grant: the server calls it when settings
 // the policies were resolved under change.
 func (s *Bridge) RevokeSecretGrants() {
 	s.secrets.revokeIf("config_changed", func(*secretGrant) bool { return true })
-	if s.core != nil {
-		s.core.RevokeLinks(func(_, _, _ int) bool { return true })
-	}
+	s.core.RevokeLinks(func(_, _, _ int) bool { return true })
 }
 
 // revokeSecretClient ends the grants client id holds as visitor or serves

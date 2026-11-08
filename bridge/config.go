@@ -76,6 +76,10 @@ loop:
 			// The server assigns the client id and verify key.
 			client.Id = 0
 			client.VerifyKey = ""
+			// What arrives is the peer's: relays read client.Cnf.
+			if client.Cnf == nil {
+				client.Cnf = new(model.Config)
+			}
 
 			if err = s.store.NewClient(client); err != nil {
 				fail = true

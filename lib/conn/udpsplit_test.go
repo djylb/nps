@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"container/list"
 	"github.com/xtaci/kcp-go/v5"
+	"net/netip"
 )
 
 func TestUDPSplitByFirstPacket(t *testing.T) {
@@ -82,4 +84,41 @@ func TestUDPSplitKCPSession(t *testing.T) {
 	}
 	_ = l.Close()
 	_ = s.Close()
+}
+
+// A full table takes a new source in place of the one silent longest.
+func TestUDPSplitFullTableEvictsOldest(t *testing.T) {
+	s := &UDPSplit{src: map[netip.AddrPort]*list.Element{}}
+	now := time.Now()
+	addr := func(i int) netip.AddrPort {
+		return netip.AddrPortFrom(netip.AddrFrom4([4]byte{10, byte(i >> 16), byte(i >> 8), byte(i)}), 1)
+	}
+	for i := range splitMax {
+		s.classify(addr(i), false, now)
+	}
+	s.classify(addr(0), false, now.Add(time.Second)) // seen again: no longer the oldest
+	if !s.classify(addr(splitMax), true, now.Add(2*time.Second)) {
+		t.Fatal("new source not told apart")
+	}
+	if s.src[addr(splitMax)] == nil || len(s.src) != splitMax {
+		t.Fatalf("new source not kept, %d entries", len(s.src))
+	}
+	if s.src[addr(1)] != nil || s.src[addr(0)] == nil {
+		t.Fatal("evicted the wrong source")
+	}
+	if s.order.Len() != len(s.src) {
+		t.Fatalf("order %d, table %d", s.order.Len(), len(s.src))
+	}
+}
+
+func TestUDPSplitExpiresIdle(t *testing.T) {
+	s := &UDPSplit{src: map[netip.AddrPort]*list.Element{}}
+	now := time.Now()
+	old := netip.MustParseAddrPort("10.0.0.1:1")
+	s.classify(old, false, now)
+	s.classify(netip.MustParseAddrPort("10.0.0.2:1"), false, now.Add(splitIdle))
+	s.expire(now.Add(splitIdle + time.Second))
+	if s.src[old] != nil || len(s.src) != 1 {
+		t.Fatalf("%d entries", len(s.src))
+	}
 }

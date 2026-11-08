@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/index"
@@ -253,13 +254,15 @@ func (s *DbUtils) ReserveTaskPassword(t *model.Tunnel) error {
 // taskPasswords holds the password every task claims, so that two tasks
 // can never claim the same password.
 type taskPasswords struct {
-	mu     sync.Mutex
-	index  *index.StringIDIndex // crypt.SecretIndex of the password -> task id
-	claims map[int]string       // task id -> the password hash it holds in index
+	mu       sync.Mutex
+	index    *index.StringIDIndex // crypt.SecretIndex of the password -> task id
+	claims   map[int]string       // task id -> the password hash it holds in index
+	access   map[string]int       // coreapi.AccessID of the password -> task id
+	accessOf map[int]string       // task id -> its key in access
 }
 
 func newTaskPasswords() *taskPasswords {
-	return &taskPasswords{index: index.NewStringIDIndex(), claims: make(map[int]string)}
+	return &taskPasswords{index: index.NewStringIDIndex(), claims: make(map[int]string), access: make(map[string]int), accessOf: make(map[int]string)}
 }
 
 func (p *taskPasswords) reset() {
@@ -267,6 +270,8 @@ func (p *taskPasswords) reset() {
 	defer p.mu.Unlock()
 	p.index.Clear()
 	p.claims = make(map[int]string)
+	p.access = make(map[string]int)
+	p.accessOf = make(map[int]string)
 }
 
 func (p *taskPasswords) release(id int) {
@@ -283,11 +288,23 @@ func (p *taskPasswords) releaseLocked(id int) {
 		}
 		delete(p.claims, id)
 	}
+	if key, ok := p.accessOf[id]; ok {
+		delete(p.access, key)
+		delete(p.accessOf, id)
+	}
 }
 
 // lookup returns the task id that claims the password of index
 // crypt.SecretIndex.
 func (p *taskPasswords) lookup(hash string) (int, bool) { return p.index.Get(hash) }
+
+// lookupAccess returns the task id whose password has the access id.
+func (p *taskPasswords) lookupAccess(id []byte) (int, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	v, ok := p.access[string(id)]
+	return v, ok
+}
 
 // reserve makes t.Password the password claimed by t.Id and releases the
 // one the task held before. A secret task without a password gets a
@@ -328,6 +345,9 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 	}
 	p.index.Add(hash, t.Id)
 	p.claims[t.Id] = hash
+	key := string(coreapi.AccessID([]byte(password)))
+	p.access[key] = t.Id
+	p.accessOf[t.Id] = key
 	return nil
 }
 
@@ -375,6 +395,17 @@ func (s *DbUtils) GetTaskBySecretIndex(p string) (t *model.Tunnel) {
 		}
 	}
 	return
+}
+
+// GetTaskByAccessID returns the task whose password has the access id
+// (coreapi.AccessID), nil if none has.
+func (s *DbUtils) GetTaskByAccessID(id []byte) *model.Tunnel {
+	if tid, ok := s.JsonDb.taskPasswords.lookupAccess(id); ok {
+		if v, ok := s.JsonDb.Tasks.Load(tid); ok {
+			return v.(*model.Tunnel)
+		}
+	}
+	return nil
 }
 
 func (s *DbUtils) GetTask(id int) (t *model.Tunnel, err error) {

@@ -2,12 +2,15 @@ package session
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -34,35 +37,60 @@ type peerLink struct {
 
 	mu    sync.Mutex
 	ended bool
-	paths map[wire.Op]*linkPath // at most one PIPE and one PUNCH (§4.6)
+	paths map[wire.Op]*linkPath  // at most one PIPE and one PUNCH (§4.6)
+	exits map[*linkConn]struct{} // active streams of a server-exit link
 }
 
 // linkPath is the visitor's end of a PIPE or PUNCH and who opened it.
 type linkPath struct {
 	s     *serverSession
-	ends  []*linkConn
 	abort uint64
+
+	mu      sync.Mutex
+	stopped bool
+	ends    []*linkConn
 }
 
+// stop aborts the path's ends, and any added later.
 func (p *linkPath) stop() {
-	for _, c := range p.ends {
+	p.mu.Lock()
+	p.stopped = true
+	ends := p.ends
+	p.ends = nil
+	p.mu.Unlock()
+	for _, c := range ends {
 		c.abort(p.abort)
 	}
+}
+
+// add makes c an end of the path; a path already stopped aborts it, false.
+func (p *linkPath) add(c *linkConn) bool {
+	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		c.abort(p.abort)
+		return false
+	}
+	p.ends = append(p.ends, c)
+	p.mu.Unlock()
+	return true
 }
 
 // acquire makes op's slot p's. A path of an earlier session of the visitor
 // gives way; one of the same session keeps the slot.
 func (l *peerLink) acquire(op wire.Op, p *linkPath) bool {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.ended {
+		l.mu.Unlock()
 		return false
 	}
 	old := l.paths[op]
 	if old != nil && old.s == p.s {
+		l.mu.Unlock()
 		return false
 	}
 	l.paths[op] = p
+	l.mu.Unlock()
 	if old != nil {
 		old.stop()
 	}
@@ -77,10 +105,21 @@ func (l *peerLink) release(op wire.Op, p *linkPath) {
 	}
 }
 
-func (l *peerLink) addEnd(p *linkPath, c *linkConn) {
+// addExit makes c a stream the link's end aborts; false when it has ended.
+func (l *peerLink) addExit(c *linkConn) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	p.ends = append(p.ends, c)
+	if l.ended {
+		return false
+	}
+	l.exits[c] = struct{}{}
+	return true
+}
+
+func (l *peerLink) dropExit(c *linkConn) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.exits, c)
 }
 
 // setAnchor records the link's anchor; false when the link was already
@@ -106,9 +145,14 @@ func (l *peerLink) end(code uint64) {
 	paths := l.paths
 	l.paths = nil
 	anchor := l.anchor
+	exits := l.exits
+	l.exits = nil
 	l.mu.Unlock()
 	if anchor != nil {
 		anchor.abort(code)
+	}
+	for c := range exits {
+		c.abort(wire.CodeNotAllowed)
 	}
 	// The provider closes the nested session over the paths first, so the
 	// visitor learns at once; then they end whatever it does.
@@ -173,7 +217,8 @@ func (a *Acceptor) providerOf(id int) *serverSession {
 	all := a.sessionsOf(id)
 	var best *serverSession
 	for _, s := range all {
-		if s.Closed() {
+		// A client that did not announce link gets none (§2.3).
+		if s.Closed() || !slices.Contains(s.t.hello.Caps, wire.CapLink) {
 			continue
 		}
 		if best == nil || !s.Suspended() {
@@ -247,12 +292,21 @@ func (s *serverSession) serveLinkOpen(ctx context.Context, lc *linkConn, fields 
 		failLink(lc, true, wire.CodeNotAllowed)
 		return
 	}
-	g, err := h.ResolveLink(s.ClientID(), coreapi.LinkResolve{Tunnel: int(o.Tunnel), Access: o.Access})
+	r := coreapi.LinkResolve{Tunnel: int(o.Tunnel), Source: s.t.src}
+	if len(o.Access) > 0 {
+		id, proof, ok := wire.SplitAccess(o.Access)
+		if !ok {
+			failLink(lc, true, wire.CodeMalformed)
+			return
+		}
+		r.AccessID, r.Verify = id, func(password []byte) bool { return s.verifyAccess(password, proof) }
+	}
+	g, err := h.ResolveLink(s.ClientID(), r)
 	if err != nil {
 		failLink(lc, true, linkFailCode(err))
 		return
 	}
-	l := &peerLink{visitor: s.ClientID(), grant: g, paths: map[wire.Op]*linkPath{}}
+	l := &peerLink{visitor: s.ClientID(), grant: g, paths: map[wire.Op]*linkPath{}, exits: map[*linkConn]struct{}{}}
 	if g.ServerExit {
 		s.holdExitLink(lc, l)
 		return
@@ -265,6 +319,17 @@ func (s *serverSession) serveLinkOpen(ctx context.Context, lc *linkConn, fields 
 	_ = lc.SetWriteDeadline(time.Now().Add(linkOpenTimeout))
 	_, _ = lc.Write(wire.AppendReply(nil, wire.CodeOK, "", wire.AppendLinkReply(reply)))
 	_ = lc.Close() // one question, one answer: the visitor's side holds nothing
+}
+
+// verifyAccess checks a proof of password against this session's exporter
+// (§9.1).
+func (s *serverSession) verifyAccess(password, proof []byte) bool {
+	ekm, err := s.zc.ExportKeyingMaterial(wire.AccessExportLabel, nil, wire.AccessExportLen)
+	if err != nil {
+		log.Debug("no session exporter for an access proof", "client", s.t.client, "err", err)
+		return false
+	}
+	return hmac.Equal(wire.AccessProof(password, ekm), proof)
 }
 
 // holdExitLink is a server-exit LINK: the visitor's stream is the anchor.
@@ -384,6 +449,18 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 		lc.abort(wire.CodeNotAllowed)
 		return
 	}
+	pctx := ctx
+	if op == wire.OpPipe && l.grant.Admit != nil {
+		var cancel context.CancelFunc
+		pctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		release, err := l.grant.Admit(cancel)
+		if err != nil {
+			lc.abort(wire.CodeNotAllowed)
+			return
+		}
+		defer release()
+	}
 	p := &linkPath{s: s, ends: []*linkConn{lc}, abort: wire.CodeNotAllowed}
 	if !l.acquire(op, p) {
 		lc.abort(wire.CodeNotAllowed)
@@ -398,7 +475,9 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 		return
 	}
 	end := l.provider.conn(st)
-	l.addEnd(p, end)
+	if !p.add(end) {
+		return
+	}
 	info, _ := wire.AppendPathOpen(&wire.PathOpen{Op: op, LinkID: l.id, Background: o.Background})
 	if op == wire.OpPipe && l.provider.zc.ConnectionState().PeerIsZmux {
 		_ = st.SetPipeCarrier()
@@ -409,10 +488,11 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 		return
 	}
 	if op == wire.OpPipe {
-		res, _ := zmux.Splice(ctx, lc.Stream, end.Stream, nil)
-		if l.grant.Count != nil {
-			l.grant.Count(int64(res.AtoB.Bytes), int64(res.BtoA.Bytes))
+		var opts zmux.SpliceOptions
+		if l.grant.Limiters != nil {
+			opts.AtoB, opts.BtoA = l.grant.Limiters()
 		}
+		_, _ = zmux.Splice(pctx, lc.Stream, end.Stream, &opts)
 		return
 	}
 	h.Coordinate(ctx, coreapi.PunchPair{Visitor: lc, Provider: end, VisitorID: l.visitor, ProviderID: l.grant.Provider,
@@ -441,16 +521,74 @@ func (s *serverSession) serveExitStream(ctx context.Context, lc *linkConn, op wi
 		failLink(lc, o.WantReply, wire.CodeUnsupported)
 		return
 	}
-	if !ackLink(lc, &o) {
+	if !l.addExit(lc) {
+		failLink(lc, o.WantReply, wire.CodeNotAllowed)
 		return
 	}
+	defer l.dropExit(lc)
 	c, err := wrapLink(lc, o, s.zc, s.a.limits)
 	if err != nil {
 		return
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
+	var acked atomic.Bool
+	ack := func() error {
+		if !ackLink(lc, &o) {
+			return linkError(wire.CodeInternal)
+		}
+		acked.Store(true)
+		return nil
+	}
 	network, target := streamNetwork(&o)
-	l.grant.ServeExit(ctx, c, network, target)
+	// The reply comes after the target is reached (§4.4); until then closing
+	// the conn must not end the stream the refusal goes on.
+	if err := l.grant.ServeExit(ctx, &exitConn{Conn: c, acked: &acked}, network, target, ack); err != nil && !acked.Load() {
+		failLink(lc, o.WantReply, exitFailCode(err))
+	}
+}
+
+// exitFailCode is the refusal of a server-exit stream.
+func exitFailCode(err error) uint64 {
+	var le *coreapi.LinkError
+	if errors.As(err, &le) {
+		return le.Code
+	}
+	return dialError(err)
+}
+
+// exitConn is what the exit serves: a Close before the ack leaves the stream
+// to its refusal. It keeps the zero-copy and half-close of what it wraps.
+type exitConn struct {
+	net.Conn
+	acked *atomic.Bool
+}
+
+func (c *exitConn) Close() error {
+	if !c.acked.Load() {
+		return nil
+	}
+	return c.Conn.Close()
+}
+
+func (c *exitConn) CloseWrite() error {
+	if w, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return w.CloseWrite()
+	}
+	return c.Close()
+}
+
+func (c *exitConn) ReadFrom(r io.Reader) (int64, error) {
+	if w, ok := c.Conn.(io.ReaderFrom); ok {
+		return w.ReadFrom(r)
+	}
+	return io.Copy(struct{ io.Writer }{c.Conn}, r)
+}
+
+func (c *exitConn) WriteTo(w io.Writer) (int64, error) {
+	if r, ok := c.Conn.(io.WriterTo); ok {
+		return r.WriteTo(w)
+	}
+	return io.Copy(w, struct{ io.Reader }{c.Conn})
 }
 
 // streamNetwork is the network and target of a stream, as coreapi names them.

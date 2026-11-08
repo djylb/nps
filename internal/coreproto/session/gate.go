@@ -21,6 +21,7 @@ var (
 // ticket is the Gate's verdict, read back as Peer.Value.
 type ticket struct {
 	client  int
+	handle  [wire.HandleLen]byte // of the vkey it was admitted under
 	crypt   bool
 	hello   wire.Hello
 	static  []byte
@@ -71,7 +72,7 @@ func (g *gate) Commit(_ context.Context, a seal.Admission) (any, error) {
 			return refuse("malformed", "")
 		}
 	}
-	t := &ticket{client: e.ID, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source}
+	t := &ticket{client: e.ID, handle: e.handle, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source}
 	if !g.a.admitFirstPipe(t) {
 		return refuse("pipes", "")
 	}

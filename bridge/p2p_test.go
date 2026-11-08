@@ -32,7 +32,7 @@ var testCert = sync.OnceValue(func() tls.Certificate {
 // newTestP2PBridge returns a bridge with a P2P service on loopback.
 func newTestP2PBridge(t *testing.T, db *file.DbUtils) *Bridge {
 	t.Helper()
-	b := NewTunnel(db, &sync.Map{}, Options{DisconnectTime: 30, Cert: testCert()})
+	b := NewTunnel(db, &sync.Map{}, Options{CoreEntry: stubEntry{}, DisconnectTime: 30, Cert: testCert()})
 	err := b.StartP2P(P2PConfig{IP: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)

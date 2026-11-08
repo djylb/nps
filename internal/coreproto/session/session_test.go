@@ -106,7 +106,12 @@ func startFull(t *testing.T, carrier string, opts Options, extra coreapi.Hooks, 
 	var hookWG sync.WaitGroup
 	if err := a.Start(ctx, coreapi.Hooks{
 		ResolveLink: extra.ResolveLink, Coordinate: extra.Coordinate,
-		Online:  func(s coreapi.Session) { e.online <- s.(*serverSession) },
+		Online: func(s coreapi.Session) {
+			if extra.Online != nil {
+				extra.Online(s)
+			}
+			e.online <- s.(*serverSession)
+		},
 		Offline: func(_ coreapi.Session, r string) { e.offline <- r },
 		AuthFailed: func(f coreapi.AuthFailure) {
 			select {
@@ -738,7 +743,7 @@ func TestWebSocketAnyProtocol(t *testing.T) {
 	h, err := e.a.WebSocketAnyProtocol(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		next.Add(1)
 		w.WriteHeader(http.StatusTeapot)
-	}))
+	}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -791,7 +796,7 @@ func TestWebSocketRouting(t *testing.T) {
 	h, err := e.a.WebSocket(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		legacy.Add(1)
 		w.WriteHeader(http.StatusTeapot)
-	}))
+	}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

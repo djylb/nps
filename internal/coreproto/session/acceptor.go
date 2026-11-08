@@ -54,6 +54,12 @@ const (
 	// bounds suspended sessions, and a network failure of the server may
 	// suspend every client at once.
 	maxSuspended = 1 << 30
+	// Stalled carriers hold a socket for up to a couple of minutes and are
+	// the cheapest thing to open, so they get what the admission gives
+	// pending carriers, per source too; past that a probe gets a close
+	// rather than the file descriptors of real clients.
+	maxStalled          = maxPending
+	maxStalledPerSource = maxPendingPerSource
 )
 
 // resumeTimeoutOf is a configured grace: 0 is the default, negative no resume.
@@ -97,6 +103,11 @@ type Acceptor struct {
 	sess   map[int][]*serverSession
 	grants map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
 
+	stallMu                  sync.Mutex
+	stalled                  map[netip.Prefix]int
+	stallTotal               int
+	stallMax, stallPerSource int
+
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -128,7 +139,8 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		return nil, err
 	}
 	a := &Acceptor{links: map[uint64]*peerLink{}, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
-		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource}
+		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource,
+		stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
 		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
 			EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)},
@@ -301,15 +313,42 @@ func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {
 
 // WebSocket implements coreapi.Entry (§12): on the bridge path the subprotocol
 // binary is the core protocol; anything else stays with the old one.
-func (a *Acceptor) WebSocket(legacy http.Handler) (http.Handler, error) {
-	return zmuxws.Handler(a.zl, &zmux.HTTPOptions{Next: legacy}, legacySubprotocol)
+func (a *Acceptor) WebSocket(legacy http.Handler, f coreapi.Forwarding) (http.Handler, error) {
+	return zmuxws.Handler(a.zl, &zmux.HTTPOptions{Next: legacy, Trusted: trustedOf(f)}, legacySubprotocol)
+}
+
+// forwarding is the coreapi.Forwarding of zmux's resolver, so that the route
+// and the admission agree on a request's source.
+type forwarding struct{ t *zmux.TrustedProxies }
+
+func (f forwarding) Source(r *http.Request) netip.AddrPort {
+	peer, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return netip.AddrPort{}
+	}
+	return f.t.Source(r, peer)
+}
+
+func trustedOf(f coreapi.Forwarding) *zmux.TrustedProxies {
+	if v, ok := f.(forwarding); ok {
+		return v.t
+	}
+	return nil
+}
+
+// Forwarding implements coreapi.Entry.
+func (a *Acceptor) Forwarding(trusted []netip.Prefix, header string) coreapi.Forwarding {
+	if len(trusted) == 0 {
+		return nil
+	}
+	return forwarding{&zmux.TrustedProxies{Prefixes: trusted, Header: header}}
 }
 
 // WebSocketAnyProtocol implements coreapi.Entry (§12): the path is the core
 // protocol's, so a request is accepted with the subprotocol it offered (the
 // first of them) or with none.
-func (a *Acceptor) WebSocketAnyProtocol(next http.Handler) (http.Handler, error) {
-	o := &zmux.HTTPOptions{Next: next}
+func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding) (http.Handler, error) {
+	o := &zmux.HTTPOptions{Next: next, Trusted: trustedOf(f)}
 	if _, err := zmuxws.Handler(a.zl, o); err != nil {
 		return nil, err
 	}
@@ -390,13 +429,59 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	if info.other == nil && h != nil && h.Fallback != nil && h.Fallback(nc, tlsState(info)) {
 		return
 	}
-	t := time.NewTimer(a.zl.StallDuration(addrPort(c.RemoteAddr())))
+	a.Stall(ctx, nc)
+}
+
+// Stall implements coreapi.Entry.
+func (a *Acceptor) Stall(ctx context.Context, c net.Conn) {
+	defer func() { _ = c.Close() }()
+	src := addrPort(c.RemoteAddr())
+	key := stallKey(src)
+	if !a.acquireStall(key) {
+		return
+	}
+	defer a.releaseStall(key)
+	t := time.NewTimer(a.zl.StallDuration(src))
 	defer t.Stop()
 	select {
 	case <-t.C:
 	case <-ctx.Done():
 	}
-	_ = nc.Close()
+}
+
+// stallKey aggregates a source as the admission does: an IPv6 address to its
+// /64.
+func stallKey(src netip.AddrPort) netip.Prefix {
+	addr := src.Addr().Unmap()
+	if !addr.IsValid() {
+		return netip.Prefix{}
+	}
+	bits := addr.BitLen()
+	if addr.Is6() {
+		bits = 64
+	}
+	p, _ := addr.Prefix(bits)
+	return p
+}
+
+func (a *Acceptor) acquireStall(key netip.Prefix) bool {
+	a.stallMu.Lock()
+	defer a.stallMu.Unlock()
+	if a.stallTotal >= a.stallMax || a.stalled[key] >= a.stallPerSource {
+		return false
+	}
+	a.stallTotal++
+	a.stalled[key]++
+	return true
+}
+
+func (a *Acceptor) releaseStall(key netip.Prefix) {
+	a.stallMu.Lock()
+	defer a.stallMu.Unlock()
+	a.stallTotal--
+	if a.stalled[key]--; a.stalled[key] == 0 {
+		delete(a.stalled, key)
+	}
 }
 
 // tlsState is the TLS of a carrier this process terminated, nil for none.
@@ -461,7 +546,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		h.Online(s)
 	}
 	// The client may have changed between Commit and register.
-	if e := a.table.get(t.client); e == nil || !e.Enabled {
+	if e := a.table.get(t.client); e == nil || !e.Enabled || e.handle != t.handle {
 		s.closeAuth("deleted")
 	} else if e.Crypt && s.mode == zmux.Trusted {
 		a.drain(s)
@@ -575,6 +660,7 @@ func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 		for _, s := range sessions {
 			s.closeAuth("deleted")
 		}
+		a.revokeClientLinks(r.ID)
 	case old == nil:
 		for _, s := range sessions {
 			s.kick()
@@ -596,6 +682,13 @@ func (a *Acceptor) ClientRemoved(id int) {
 	for _, s := range a.sessionsOf(id) {
 		s.closeAuth("deleted")
 	}
+	a.revokeClientLinks(id)
+}
+
+// revokeClientLinks ends the links of a client whose credential no longer
+// holds. A client that is merely offline keeps them (§9.1).
+func (a *Acceptor) revokeClientLinks(id int) {
+	a.RevokeLinks(func(_, visitor, provider int) bool { return visitor == id || provider == id })
 }
 
 // Kick implements coreapi.Entry.
@@ -607,6 +700,9 @@ func (a *Acceptor) Kick(id int, auth bool) {
 			s.closing.CompareAndSwap(nil, "kicked")
 			a.drain(s)
 		}
+	}
+	if auth {
+		a.revokeClientLinks(id)
 	}
 }
 

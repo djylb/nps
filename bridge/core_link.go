@@ -2,47 +2,111 @@ package bridge
 
 import (
 	"context"
-	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/djylb/byterate"
 	"github.com/djylb/holepunch/coord"
 	"github.com/djylb/holepunch/protocol"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
+	"github.com/djylb/slogx"
 )
 
-// coreResolveLink authorizes a visitor's LINK by the task's password (§9.1).
-// It is the one place the core protocol reads a secret task; the check runs
-// again on every PIPE and PUNCH through the grant's Valid.
-func (s *Bridge) coreResolveLink(_ int, r coreapi.LinkResolve) (*coreapi.LinkGrant, error) {
+// accessGuessBurst and accessGuessPerSecond bound the wrong access keys a
+// client may try: past the burst its guesses are refused unchecked and not
+// logged, so neither guessing nor the audit line scales with what it sends.
+const (
+	accessGuessBurst     = 20
+	accessGuessPerSecond = 1
+)
+
+// guessBucket is one client's allowance of wrong access keys.
+type guessBucket struct {
+	mu     sync.Mutex
+	tokens float64
+	last   time.Time
+}
+
+func (b *guessBucket) refill(now time.Time) {
+	b.tokens = min(accessGuessBurst, b.tokens+now.Sub(b.last).Seconds()*accessGuessPerSecond)
+	b.last = now
+}
+
+// guessesLeft reports whether client may try another access key.
+func (s *Bridge) guessesLeft(client int) bool {
+	v, ok := s.accessGuesses.Load(client)
+	if !ok {
+		return true
+	}
+	b := v.(*guessBucket)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.refill(time.Now())
+	return b.tokens >= 1
+}
+
+// spendGuess takes one wrong key off client's allowance.
+func (s *Bridge) spendGuess(client int) {
+	v, _ := s.accessGuesses.LoadOrStore(client, &guessBucket{tokens: accessGuessBurst, last: time.Now()})
+	b := v.(*guessBucket)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.refill(time.Now())
+	b.tokens--
+}
+
+func accessRefused(client int, src netip.AddrPort, extra ...any) {
+	args := append([]any{"src_ip", src.Addr().Unmap().String(), "src_port", int(src.Port()), "role", "secret", "client", client}, extra...)
+	slogx.Emit(context.Background(), log, &logevent.AuthFailed, args...)
+}
+
+// coreResolveLink authorizes a visitor's LINK by its proof of the task's
+// password (§9.1). It is the one place the core protocol reads a secret task;
+// the task is checked again on every PIPE and PUNCH through the grant's Valid.
+func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.LinkGrant, error) {
 	refused := coreapi.LinkNotAllowed()
-	if len(r.Access) == 0 {
+	if len(r.AccessID) == 0 || !s.guessesLeft(client) {
 		return nil, refused
 	}
-	password := string(r.Access)
+	accessID := slices.Clone(r.AccessID)
 	find := func() *model.Tunnel {
-		t := s.store.GetTaskBySecretIndex(crypt.SecretIndex(password))
-		if t == nil || t.Mode != "secret" || !t.Status || t.Client == nil ||
-			subtle.ConstantTimeCompare([]byte(t.Password), r.Access) != 1 {
+		t := s.store.GetTaskByAccessID(accessID)
+		if t == nil || t.Mode != "secret" {
 			return nil
 		}
 		return t
 	}
 	t := find()
-	if t == nil {
+	if t == nil || !r.Verify([]byte(t.Password)) {
+		s.spendGuess(client)
+		accessRefused(client, r.Source, "reason", "bad_key")
+		return nil, refused
+	}
+	if !t.Status || t.Client == nil {
+		accessRefused(client, r.Source, "tunnel", t.Id, "route", t.LogRoute(), "reason", "disabled")
 		return nil, refused
 	}
 	feature := servercfg.Current().Feature
 	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal, feature.LegacySecretLink)
 	server := proxy.NewSecretServer(s, t, p, feature.AllowLocalProxy)
+	// The LINK is admitted as a link would be; each PIPE then holds its slot.
+	release, err := server.AcquireForwarding(t.Client, t.ControlGroup())
+	if err != nil {
+		return nil, refused
+	}
+	release()
 	id := t.Id
 	return &coreapi.LinkGrant{
 		Tunnel:     t.Id,
@@ -51,17 +115,104 @@ func (s *Bridge) coreResolveLink(_ int, r coreapi.LinkResolve) (*coreapi.LinkGra
 		Policy:     linkPolicyOf(p),
 		Valid: func() bool {
 			c := find()
-			return c != nil && c.Id == id
+			if c == nil || c.Id != id || !c.Status || c.Client == nil {
+				return false
+			}
+			return !flowOver(c.Flow) && !flowOver(c.Client.Flow)
 		},
-		ServeExit: func(_ context.Context, c net.Conn, network, target string) {
-			_ = server.Serve(c, conn.NewLink(exitLinkType(network), target, false, false, c.RemoteAddr().String(), p.LocalProxy),
-				func(net.Conn, time.Duration) error { return nil })
+		ServeExit: func(_ context.Context, c net.Conn, network, target string, ack func() error) error {
+			lk := conn.NewLink(exitLinkType(network), target, false, false, c.RemoteAddr().String(), p.LocalProxy)
+			lk.Option.NeedAck = true
+			err := server.Serve(c, lk, func(net.Conn, time.Duration) error { return ack() })
+			if errors.Is(err, proxy.ErrSecretDestDenied) || errors.Is(err, proxy.ErrSecretLinkRefused) || errors.Is(err, proxy.ErrForwardingRefused) {
+				return coreapi.LinkNotAllowed()
+			}
+			return err
 		},
-		Count: func(in, out int64) {
-			t.Flow.Add(in, out)
-			t.Client.Flow.Add(in, out)
+		Admit: func(stop func()) (func(), error) {
+			release, err := server.AcquireForwarding(t.Client, t.ControlGroup())
+			if err != nil {
+				return nil, err
+			}
+			unwatch := watchExpiry(stop, t.Flow, t.Client.Flow)
+			return func() { unwatch(); release() }, nil
+		},
+		Limiters: func() (coreapi.Limiter, coreapi.Limiter) {
+			g := t.ControlGroup()
+			flows := []*model.Flow{t.Flow, t.Client.Flow}
+			// The directions are the visitor's: its PIPE stands where the
+			// connection to an npc stands in a relay.
+			return newPipeLimiter(g.Writes(), flows, true), newPipeLimiter(g.Reads(), flows, false)
 		},
 	}, nil
+}
+
+func flowOver(f *model.Flow) bool {
+	traffic, expired := f.Over()
+	return traffic || expired
+}
+
+// watchExpiry calls stop when one of flows expires, until the function it
+// returns is called.
+func watchExpiry(stop func(), flows ...*model.Flow) func() {
+	var stops []func() bool
+	for _, f := range flows {
+		if b := f.Budget(); b != nil {
+			stops = append(stops, b.AfterExpiry(stop))
+		}
+	}
+	return func() {
+		for _, s := range stops {
+			s()
+		}
+	}
+}
+
+// pipeLimiter is the rate limits, the quota and the counting of a relay
+// (conn.CopyWaitGroup) for bytes the protocol forwards itself: charged as
+// they pass, so a long PIPE counts while it runs.
+type pipeLimiter struct {
+	limit    byterate.Limiter
+	counters []*byterate.Counter
+	inbound  bool
+}
+
+func newPipeLimiter(rate byterate.Limiter, flows []*model.Flow, inbound bool) *pipeLimiter {
+	limiters := []byterate.Limiter{rate}
+	l := &pipeLimiter{inbound: inbound}
+	for _, f := range flows {
+		if b := f.Budget(); b != nil {
+			limiters = append(limiters, b)
+			l.counters = append(l.counters, f.Traffic())
+		}
+	}
+	l.limit = byterate.NewHierarchy(limiters...)
+	return l
+}
+
+func (l *pipeLimiter) Ready(ctx context.Context, _, maxBytes int) (int, error) {
+	n, err := l.limit.Ready(ctx, int64(maxBytes))
+	return int(n), err
+}
+
+func (l *pipeLimiter) TryReady(maxBytes int) int {
+	if l.limit.TryWait(int64(maxBytes)) != nil {
+		return 0
+	}
+	l.limit.Refund(int64(maxBytes))
+	return maxBytes
+}
+
+func (l *pipeLimiter) Charge(n int) {
+	for _, c := range l.counters {
+		if l.inbound {
+			c.Add(0, int64(n))
+		} else {
+			c.Add(int64(n), 0)
+		}
+	}
+	// A refusal comes back from the next Ready.
+	_ = l.limit.Charge(int64(n))
 }
 
 func exitLinkType(network string) string {
@@ -114,7 +265,7 @@ func scopeOfACL(mode int, rules string) string {
 	}
 	if b.Len() == 0 {
 		if mode == model.AclWhitelist {
-			return "deny 0.0.0.0/0\ndeny ::/0\n"
+			return "deny *\n"
 		}
 		return ""
 	}

@@ -43,6 +43,9 @@ type Store interface {
 	// GetTaskBySecretIndex finds the task whose password has index p
 	// (crypt.SecretIndex).
 	GetTaskBySecretIndex(p string) *model.Tunnel
+	// GetTaskByAccessID finds the task whose password has the access id
+	// (coreapi.AccessID).
+	GetTaskByAccessID(id []byte) *model.Tunnel
 
 	// ClientHost finds the stored host of c that matches h.
 	ClientHost(c *model.Client, h *model.Host) (*model.Host, bool)

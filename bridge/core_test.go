@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 
@@ -61,10 +62,6 @@ func TestTLSBridgeCertificateByName(t *testing.T) {
 	own, route := selfSigned(t, "bridge.test"), selfSigned(t, "site.test")
 	b := newBridge(&sync.Map{}, 0)
 	b.cert = own
-	b.core = coreapi.Entry(nil)
-	if got := served(t, b.tlsConfig(), "site.test"); !bytes.Equal(got, own.Certificate[0]) {
-		t.Fatal("without the new protocol the bridge certificate is not presented")
-	}
 	b.core = stubEntry{}
 	b.SetFallback(stubFallback{name: "site.test", cert: &route})
 	if got := served(t, b.tlsConfig(), "site.test"); !bytes.Equal(got, route.Certificate[0]) {
@@ -81,4 +78,9 @@ func TestTLSBridgeCertificateByName(t *testing.T) {
 	}
 }
 
+// stubEntry is the entry of tests that do not run the new protocol.
 type stubEntry struct{ coreapi.Entry }
+
+func (stubEntry) Kick(int, bool)                                       {}
+func (stubEntry) RevokeLinks(func(tunnel, visitor, provider int) bool) {}
+func (stubEntry) Forwarding([]netip.Prefix, string) coreapi.Forwarding { return nil }
