@@ -3,7 +3,9 @@ package slogx
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -45,24 +47,33 @@ func (f Format) Encoder(color bool) Encoder {
 const timeLayout = "2006-01-02T15:04:05.000Z07:00"
 
 // LevelName returns the name a line carries for level.
+// Levels between the named ones are written as the name below with an
+// offset, as slog does: "INFO+2".
 func LevelName(l slog.Level) string {
+	base, name := LevelTrace, "TRACE"
 	switch {
-	case l < slog.LevelDebug:
-		return "TRACE"
-	case l < slog.LevelInfo:
-		return "DEBUG"
-	case l < slog.LevelWarn:
-		return "INFO"
-	case l < slog.LevelError:
-		return "WARN"
-	default:
-		return "ERROR"
+	case l >= slog.LevelError:
+		base, name = slog.LevelError, "ERROR"
+	case l >= slog.LevelWarn:
+		base, name = slog.LevelWarn, "WARN"
+	case l >= slog.LevelInfo:
+		base, name = slog.LevelInfo, "INFO"
+	case l >= slog.LevelDebug:
+		base, name = slog.LevelDebug, "DEBUG"
 	}
+	if d := l - base; d != 0 {
+		if d > 0 {
+			return name + "+" + strconv.Itoa(int(d))
+		}
+		return name + strconv.Itoa(int(d))
+	}
+	return name
 }
 
 // TextEncoder writes logfmt.
 type TextEncoder struct{}
 
+// Encode implements Encoder.
 func (TextEncoder) Encode(b []byte, r *Record) []byte {
 	b = append(b, "time="...)
 	b = r.Time.UTC().AppendFormat(b, timeLayout)
@@ -101,6 +112,7 @@ func (TextEncoder) Encode(b []byte, r *Record) []byte {
 // TextEncoder; numbers and booleans keep their type.
 type JSONEncoder struct{}
 
+// Encode implements Encoder.
 func (JSONEncoder) Encode(b []byte, r *Record) []byte {
 	b = append(b, `{"time":"`...)
 	b = r.Time.UTC().AppendFormat(b, timeLayout)
@@ -134,6 +146,7 @@ type PrettyEncoder struct {
 	Color bool
 }
 
+// Encode implements Encoder.
 func (e PrettyEncoder) Encode(b []byte, r *Record) []byte {
 	b = r.Time.Local().AppendFormat(b, "15:04:05.000")
 	b = append(b, ' ')
@@ -155,7 +168,7 @@ func (e PrettyEncoder) Encode(b []byte, r *Record) []byte {
 		if e.Color {
 			b = append(b, "\x1b[1m"...)
 		}
-		b = append(b, r.Event...)
+		b = append(b, sanitize(r.Event)...)
 		if e.Color {
 			b = append(b, "\x1b[0m"...)
 		}
@@ -202,10 +215,13 @@ func levelColor(l slog.Level) string {
 
 // sanitize keeps s on one line and free of terminal escapes.
 func sanitize(s string) string {
-	for i := 0; i < len(s); i++ {
-		if s[i] < ' ' || s[i] == 0x7f {
+	for _, r := range s {
+		if r < ' ' || r == 0x7f || unsafeRune(r) || r == utf8.RuneError {
 			q := appendText(nil, s)
-			return string(q[1 : len(q)-1])
+			if len(q) >= 2 && q[0] == '"' {
+				q = q[1 : len(q)-1]
+			}
+			return string(q)
 		}
 	}
 	return s
@@ -254,7 +270,7 @@ func appendTextValue(b []byte, v slog.Value) []byte {
 	case slog.KindBool:
 		return strconv.AppendBool(b, v.Bool())
 	case slog.KindDuration:
-		return strconv.AppendInt(b, v.Duration().Milliseconds(), 10)
+		return append(b, v.Duration().String()...)
 	case slog.KindTime:
 		return v.Time().UTC().AppendFormat(b, timeLayout)
 	default:
@@ -262,11 +278,30 @@ func appendTextValue(b []byte, v slog.Value) []byte {
 	}
 }
 
-func valueString(v slog.Value) string {
+// valueString is the text of v; a value whose Error or String method
+// panics, such as a nil pointer, is written as !PANIC rather than taking
+// the caller down, as slog's own handlers do.
+func valueString(v slog.Value) (s string) {
+	defer func() {
+		if p := recover(); p != nil {
+			s = fmt.Sprintf("!PANIC: %v", p)
+		}
+	}()
 	if e, ok := v.Any().(error); ok {
 		return e.Error()
 	}
 	return v.String()
+}
+
+// unsafeRune reports a character that terminals or bidi rendering act on
+// even though it is printable UTF-8: C1 controls and bidi overrides.
+func unsafeRune(r rune) bool {
+	return r >= 0x80 && r <= 0x9f || r >= 0x202a && r <= 0x202e || r >= 0x2066 && r <= 0x2069 || r == 0x200e || r == 0x200f
+}
+
+func appendRuneEscape(b []byte, r rune) []byte {
+	const hex = "0123456789abcdef"
+	return append(b, '\\', 'u', hex[r>>12&15], hex[r>>8&15], hex[r>>4&15], hex[r&15])
 }
 
 // appendText writes s bare when it needs no quoting, else quoted with
@@ -280,9 +315,12 @@ func appendText(b []byte, s string) []byte {
 		c := s[i]
 		if c >= utf8.RuneSelf {
 			r, n := utf8.DecodeRuneInString(s[i:])
-			if r == utf8.RuneError && n == 1 {
-				b = append(b, `�`...)
-			} else {
+			switch {
+			case r == utf8.RuneError && n == 1:
+				b = append(b, `\ufffd`...)
+			case unsafeRune(r):
+				b = appendRuneEscape(b, r)
+			default:
 				b = append(b, s[i:i+n]...)
 			}
 			i += n
@@ -359,9 +397,9 @@ func appendJSONString(b []byte, s string) []byte {
 			start = i
 			continue
 		}
-		if r == '\u2028' || r == '\u2029' {
+		if r == '\u2028' || r == '\u2029' || unsafeRune(r) {
 			b = append(b, s[start:i]...)
-			b = append(b, '\\', 'u', '2', '0', '2', hex[r&15])
+			b = appendRuneEscape(b, r)
 			i += n
 			start = i
 			continue
@@ -376,11 +414,13 @@ func appendJSONValue(b []byte, v slog.Value) []byte {
 	switch v.Kind() {
 	case slog.KindString:
 		return appendJSONString(b, v.String())
-	case slog.KindInt64, slog.KindUint64, slog.KindBool, slog.KindDuration:
+	case slog.KindInt64, slog.KindUint64, slog.KindBool:
 		return appendTextValue(b, v)
+	case slog.KindDuration:
+		return appendJSONString(b, v.Duration().String())
 	case slog.KindFloat64:
 		f := v.Float64()
-		if f != f || f > 1e308 || f < -1e308 {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return appendJSONString(b, strconv.FormatFloat(f, 'g', -1, 64))
 		}
 		return appendTextValue(b, v)
@@ -390,7 +430,7 @@ func appendJSONValue(b []byte, v slog.Value) []byte {
 		return append(b, '"')
 	default:
 		if m, ok := v.Any().(json.Marshaler); ok {
-			if j, err := m.MarshalJSON(); err == nil {
+			if j, err := marshalSafe(m); err == nil {
 				var c bytes.Buffer
 				if json.Compact(&c, j) == nil {
 					return append(b, c.Bytes()...)
@@ -399,4 +439,14 @@ func appendJSONValue(b []byte, v slog.Value) []byte {
 		}
 		return appendJSONString(b, valueString(v))
 	}
+}
+
+// marshalSafe is MarshalJSON with a panic turned into an error.
+func marshalSafe(m json.Marshaler) (j []byte, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("!PANIC: %v", p)
+		}
+	}()
+	return m.MarshalJSON()
 }

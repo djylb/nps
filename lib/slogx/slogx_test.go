@@ -54,17 +54,29 @@ func TestModuleLevels(t *testing.T) {
 	}
 }
 
-func TestSinkGetsFilteredBusEvents(t *testing.T) {
+func TestAttachedBusRoute(t *testing.T) {
 	l := newBuffered(t, "error")
 	var got []string
-	l.SetSink(func(d *Def, attrs []slog.Attr) { got = append(got, d.Name) })
+	detach, err := l.Attach(Route{Match: BusEvents, Func: func(r *Record) { got = append(got, r.Def.Name) }})
+	if err != nil {
+		t.Fatal(err)
+	}
 	Emit(l.Module("x"), &testQuiet, "a", 1)
 	l.Module("x").Error("plain")
-	if len(got) != 1 || got[0] != "test_quiet_bus" {
-		t.Fatalf("sink got %v", got)
+	if err := l.Configure(Config{Output: "off", Level: "error", Memory: 4096}); err != nil {
+		t.Fatal(err)
+	}
+	Emit(l.Module("x"), &testQuiet, "a", 2)
+	detach()
+	Emit(l.Module("x"), &testQuiet, "a", 3)
+	if len(got) != 2 || got[0] != "test_quiet_bus" {
+		t.Fatalf("attached route got %v", got)
 	}
 	if strings.Contains(l.TakeBuffered(), "test_quiet_bus") {
 		t.Fatal("filtered event written")
+	}
+	if _, err := l.Attach(Route{}); err == nil {
+		t.Fatal("route without destination accepted")
 	}
 }
 

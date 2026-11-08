@@ -6,7 +6,10 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 // TLSHandshakeFailed is a TLS handshake that net/http reported failing.
@@ -16,15 +19,44 @@ var TLSHandshakeFailed = Def{Name: "tls_handshake_failed", Level: slog.LevelDebu
 type lineWriter struct {
 	l     *slog.Logger
 	level slog.Level
-	parse func(l *slog.Logger, msg string) bool
+	parse func(l *slog.Logger, msg string, pc uintptr) bool
 }
 
 func (w lineWriter) Write(p []byte) (int, error) {
 	msg := string(bytes.TrimRight(p, "\r\n"))
-	if w.parse == nil || !w.parse(w.l, msg) {
-		w.l.Log(context.Background(), w.level, msg)
+	pc := outsideLog()
+	if w.parse == nil || !w.parse(w.l, msg, pc) {
+		ctx := context.Background()
+		if w.l.Enabled(ctx, w.level) {
+			r := slog.NewRecord(time.Now(), w.level, msg, pc)
+			_ = w.l.Handler().Handle(ctx, r)
+		}
 	}
 	return len(p), nil
+}
+
+// ownDir is the directory of this package's source, to tell its frames.
+var ownDir = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Dir(file) + "/"
+}()
+
+// outsideLog returns the pc of the first caller outside the log package
+// and this one, so source= names the code that logged.
+func outsideLog() uintptr {
+	var pcs [24]uintptr
+	n := runtime.Callers(3, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		f, more := frames.Next()
+		own := strings.HasPrefix(f.File, ownDir) && !strings.HasSuffix(f.File, "_test.go")
+		if !strings.HasPrefix(f.Function, "log.") && !own {
+			return f.PC + 1
+		}
+		if !more {
+			return 0
+		}
+	}
 }
 
 // StdLogger returns a *log.Logger that writes each line to l at level.
@@ -44,13 +76,13 @@ func CaptureStdLog(l *slog.Logger) {
 // failures become tls_handshake_failed events of listener, other lines are
 // warnings.
 func HTTPErrorLog(l *slog.Logger, listener string) *log.Logger {
-	return log.New(lineWriter{l: l, level: slog.LevelWarn, parse: func(l *slog.Logger, msg string) bool {
-		return parseTLSHandshake(l, listener, msg)
+	return log.New(lineWriter{l: l, level: slog.LevelWarn, parse: func(l *slog.Logger, msg string, pc uintptr) bool {
+		return parseTLSHandshake(l, listener, msg, pc)
 	}}, "", 0)
 }
 
 // parseTLSHandshake reads "http: TLS handshake error from <addr>: <err>".
-func parseTLSHandshake(l *slog.Logger, listener, msg string) bool {
+func parseTLSHandshake(l *slog.Logger, listener, msg string, pc uintptr) bool {
 	_, rest, ok := strings.Cut(msg, "TLS handshake error from ")
 	if !ok {
 		return false
@@ -60,7 +92,7 @@ func parseTLSHandshake(l *slog.Logger, listener, msg string) bool {
 	if err != nil {
 		host = addr
 	}
-	Emit(l, &TLSHandshakeFailed, "src_ip", host, "src_port", port, "listener", listener, "reason", tlsReason(why))
+	emit(context.Background(), l, &TLSHandshakeFailed, "", pc, []any{"src_ip", host, "src_port", port, "listener", listener, "reason", tlsReason(why)})
 	return true
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net/http"
 	"sort"
 	"strings"
@@ -30,6 +29,11 @@ type Levels struct {
 	base   levelTable
 	raises map[string]raise
 	timer  *time.Timer
+	// stopped: the Logs closed; no timer runs again.
+	stopped bool
+	// MaxRaises bounds how many modules may be raised at once; Raise
+	// refuses more. Zero is 1024.
+	MaxRaises int
 }
 
 type raise struct {
@@ -80,17 +84,37 @@ func (l *Levels) String() string {
 	return formatLevels(l.base)
 }
 
-// Raise lowers the threshold of module ("" for the default) to level for
-// ttl, after which it returns to what Set gave. A raise never makes a
-// module quieter than Set made it.
-func (l *Levels) Raise(module string, level slog.Level, ttl time.Duration) {
+// ErrTooManyRaises is returned by Raise beyond MaxRaises modules.
+var ErrTooManyRaises = errors.New("slogx: too many raised modules")
+
+// Raise lowers the threshold of module ("" for the default and so every
+// module) to level for ttl, after which it returns to what Set gave. A raise
+// never makes a module quieter than Set made it. A non-positive ttl ends the
+// raise, as Lower does.
+func (l *Levels) Raise(module string, level slog.Level, ttl time.Duration) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.stopped {
+		return errors.New("slogx: logs closed")
+	}
+	if ttl <= 0 {
+		delete(l.raises, module)
+		l.publish()
+		return nil
+	}
+	limit := l.MaxRaises
+	if limit <= 0 {
+		limit = 1024
+	}
+	if _, ok := l.raises[module]; !ok && len(l.raises) >= limit {
+		return ErrTooManyRaises
+	}
 	if l.raises == nil {
 		l.raises = map[string]raise{}
 	}
 	l.raises[module] = raise{level: level, until: time.Now().Add(ttl)}
 	l.publish()
+	return nil
 }
 
 // Lower ends the raise of module now.
@@ -101,11 +125,11 @@ func (l *Levels) Lower(module string) {
 	l.publish()
 }
 
-// publish builds the effective table; l.mu is held.
+// publish builds the effective table; l.mu is held. A raise of the
+// default ("") applies to every module; a module's own raise to it alone.
 func (l *Levels) publish() {
 	now := time.Now()
-	t := levelTable{def: l.base.def, modules: make(map[string]slog.Level, len(l.base.modules)+len(l.raises))}
-	maps.Copy(t.modules, l.base.modules)
+	defRaise := LevelOff
 	var next time.Time
 	for m, r := range l.raises {
 		if !now.Before(r.until) {
@@ -116,10 +140,21 @@ func (l *Levels) publish() {
 			next = r.until
 		}
 		if m == "" {
-			t.def = min(t.def, r.level)
-			continue
+			defRaise = r.level
 		}
-		t.modules[m] = min(t.of(m), r.level)
+	}
+	t := levelTable{def: min(l.base.def, defRaise), modules: make(map[string]slog.Level, len(l.base.modules)+len(l.raises))}
+	for m, v := range l.base.modules {
+		t.modules[m] = min(v, defRaise)
+	}
+	for m, r := range l.raises {
+		if m != "" {
+			base, ok := l.base.modules[m]
+			if !ok {
+				base = l.base.def
+			}
+			t.modules[m] = min(base, defRaise, r.level)
+		}
 	}
 	t.min = t.def
 	for _, v := range t.modules {
@@ -130,23 +165,36 @@ func (l *Levels) publish() {
 		l.timer.Stop()
 		l.timer = nil
 	}
-	if !next.IsZero() {
+	if !next.IsZero() && !l.stopped {
 		l.timer = time.AfterFunc(time.Until(next), func() {
 			l.mu.Lock()
 			defer l.mu.Unlock()
-			l.publish()
+			if !l.stopped {
+				l.publish()
+			}
 		})
 	}
 }
 
-// stop ends the expiry timer.
+// setBase is Set with a parsed table.
+func (l *Levels) setBase(t levelTable) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.base = t
+	l.publish()
+}
+
+// stop ends the expiry timer and the raises for good.
 func (l *Levels) stop() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.stopped = true
+	l.raises = nil
 	if l.timer != nil {
 		l.timer.Stop()
 		l.timer = nil
 	}
+	l.publish()
 }
 
 // ServeHTTP shows the levels on GET, and on PUT or POST takes a JSON body
@@ -161,6 +209,12 @@ func (l *Levels) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 	case http.MethodPut, http.MethodPost:
+		// A JSON body cannot be sent cross-site without a preflight, which
+		// keeps a browser of an authorized user from being used (CSRF).
+		if mt, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(mt) != "application/json" {
+			http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
 		var req struct {
 			Module *string `json:"module"`
 			Level  string  `json:"level"`
@@ -171,9 +225,12 @@ func (l *Levels) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var err error
-		if req.Module == nil {
+		switch {
+		case strings.TrimSpace(req.Level) == "":
+			err = errors.New("level is required")
+		case req.Module == nil:
 			err = l.Set(req.Level)
-		} else {
+		default:
 			var lv slog.Level
 			var ttl time.Duration
 			if lv, err = ParseLevel(req.Level); err == nil {
@@ -182,7 +239,7 @@ func (l *Levels) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if err == nil {
-				l.Raise(*req.Module, lv, ttl)
+				err = l.Raise(*req.Module, lv, ttl)
 			}
 		}
 		if err != nil {
@@ -267,7 +324,8 @@ func levelWord(l slog.Level) string {
 }
 
 func formatLevels(t levelTable) string {
-	parts := []string{levelWord(t.def)}
+	parts := make([]string, 0, 1+len(t.modules))
+	parts = append(parts, levelWord(t.def))
 	mods := make([]string, 0, len(t.modules))
 	for m := range t.modules {
 		mods = append(mods, m)

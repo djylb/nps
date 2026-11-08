@@ -94,5 +94,6 @@ grep -o 'event=auth_failed .*src_ip=[^ ]*' nps.log | grep -o 'src_ip=[^ ]*' | so
 - 在终端里直接运行时，控制台输出改用便于阅读的彩色格式；写文件或被重定向时始终是 logfmt 或 JSON。
 - `log=stdout|file|both|off`；以服务方式运行时，`stdout` 改为写文件。
 - 日志文件按大小轮转（`log_max_size`，单位 MB），保留份数和天数分别由 `log_max_files`、`log_max_days` 控制，可选压缩（`log_compress`）。轮转出的文件名形如 `nps-20261108T031245.000.log`。
+- 新建的日志文件权限为 `0640`（属主可写，同组可读，例如给运行 fail2ban 的管理组）。
 - 日志文件无法创建或写入时，改写到 stderr，并记一条 `log_fallback`，不影响启动。
 - npc 在 OpenWrt 上默认不写日志（`-log=off`）。

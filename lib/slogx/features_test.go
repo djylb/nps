@@ -112,6 +112,7 @@ func TestLevelsHTTP(t *testing.T) {
 	defer srv.Close()
 	put := func(body string) int {
 		req, _ := http.NewRequest(http.MethodPut, srv.URL, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -168,7 +169,7 @@ func TestJSONValidAndTyped(t *testing.T) {
 	if err := json.Unmarshal([]byte(o.all()), &m); err != nil {
 		t.Fatalf("%v: %q", err, o.all())
 	}
-	if m["n"] != float64(3) || m["ok"] != true || m["d"] != float64(1500) || m["s"] != `a"b` || m["msg"] != "hi\nthere" || m["module"] != "web" {
+	if m["n"] != float64(3) || m["ok"] != true || m["d"] != "1.5s" || m["s"] != `a"b` || m["msg"] != "hi\nthere" || m["module"] != "web" {
 		t.Fatalf("decoded %v", m)
 	}
 }
@@ -193,7 +194,7 @@ func TestSourceAndContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), key{}, "r42")
 	l.Module("web").InfoContext(ctx, "handled")
 	got := o.all()
-	if !strings.Contains(got, "req=r42 msg=handled source=slogx/features_test.go:") {
+	if !strings.Contains(got, "req=r42 msg=handled source=") || !strings.Contains(got, "/features_test.go:") {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -206,12 +207,12 @@ func TestMemoryQueryAndSubscribe(t *testing.T) {
 	defer l.Close()
 	m := l.Memory()
 	ctx, cancel := context.WithCancel(context.Background())
-	sub := m.Subscribe(ctx, Query{MinLevel: slog.LevelWarn}, 4)
+	sub := m.Subscribe(ctx, Query{MinLevel: new(slog.LevelWarn)}, 4)
 	l.Module("a").Debug("one")
 	l.Module("b").Warn("two", "ip", "1.1.1.1")
 	l.Module("a").Info("three")
 	l.Module("a").Error("four")
-	if got := m.Query(Query{AnyLevel: true}); len(got) != 3 || got[0].Msg != "two" {
+	if got := m.Query(Query{}); len(got) != 3 || got[0].Msg != "two" {
 		t.Fatalf("kept %+v", got)
 	}
 	if got := m.Query(Query{Modules: []string{"b"}, Text: "1.1.1"}); len(got) != 1 {

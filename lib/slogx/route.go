@@ -61,8 +61,26 @@ type Route struct {
 	Encoder Encoder // nil is TextEncoder
 	Output  Output
 	Memory  *Memory
-	// Func receives the record; it must not keep it or block.
+	// Func receives the record; it must not keep the record or its Attrs,
+	// and must not block. Clone what it needs (Record.Clone).
 	Func func(*Record)
+}
+
+func (rt *Route) validate() error {
+	n := 0
+	if rt.Output != nil {
+		n++
+	}
+	if rt.Memory != nil {
+		n++
+	}
+	if rt.Func != nil {
+		n++
+	}
+	if n != 1 {
+		return errNoDestination
+	}
+	return nil
 }
 
 func (rt *Route) takes(r *Record, lv *Levels) bool {

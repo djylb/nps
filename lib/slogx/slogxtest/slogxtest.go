@@ -24,10 +24,10 @@ type Recorder struct {
 	lines []Line
 }
 
-// Route returns a route that records into r: all lines at or above min,
+// Route returns a route that records into r: all lines at or above minLevel,
 // whatever the module levels.
-func (r *Recorder) Route(min slog.Level) slogx.Route {
-	return slogx.Route{Name: "slogxtest", Match: slogx.MinLevel(min), Below: true, Func: r.add}
+func (r *Recorder) Route(minLevel slog.Level) slogx.Route {
+	return slogx.Route{Name: "slogxtest", Match: slogx.MinLevel(minLevel), Below: true, Func: r.add}
 }
 
 // New returns Logs that write nothing but to the returned Recorder, which

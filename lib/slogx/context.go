@@ -22,7 +22,7 @@ func PprofLabels(ctx context.Context) []slog.Attr {
 // ContextAttrs combines context extractors for Config.Context.
 func ContextAttrs(fns ...func(context.Context) []slog.Attr) func(context.Context) []slog.Attr {
 	return func(ctx context.Context) []slog.Attr {
-		var out []slog.Attr
+		out := make([]slog.Attr, 0, 2*len(fns))
 		for _, f := range fns {
 			out = append(out, f(ctx)...)
 		}

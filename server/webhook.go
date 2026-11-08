@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -50,6 +49,8 @@ type webhookState struct {
 	sender *webhook.Sender
 	stop   chan struct{}
 	done   chan struct{}
+	detach func() // the log route that feeds bus
+
 }
 
 // ApplyWebhook makes the webhook run as cfg says; it restarts it, discarding
@@ -63,7 +64,7 @@ func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
 		return
 	}
 	if w.bus != nil {
-		slogx.Default.SetSink(nil)
+		w.detach()
 		s.db.SetEventBus(nil)
 		close(w.stop)
 		<-w.done
@@ -86,7 +87,11 @@ func (s *Server) ApplyWebhook(cfg servercfg.WebhookConfig) {
 		Retries: cfg.Retries,
 	}, w.bus.Subscribe(cfg.QueueSize))
 	s.db.SetEventBus(w.bus)
-	slogx.Default.SetSink(busSink(w.bus))
+	if detach, err := slogx.Default.Attach(busRoute(w.bus)); err == nil {
+		w.detach = detach
+	} else {
+		w.detach = func() {}
+	}
 	w.stop, w.done = make(chan struct{}), make(chan struct{})
 	go s.reportTunnels(w.bus, time.Duration(cfg.ReportInterval)*time.Second, w.stop, w.done)
 }
@@ -137,14 +142,14 @@ func (s *Server) BuildTunnelsReport() TunnelsReport {
 	return r
 }
 
-// busSink publishes the bus events of the log (logevent, Bus) to bus, their
-// fields as the data.
-func busSink(bus *event.Bus) slogx.Sink {
-	return func(d *slogx.Def, attrs []slog.Attr) {
-		data := make(map[string]any, len(attrs))
-		for _, a := range attrs {
-			data[a.Key] = a.Value.Any()
+// busRoute publishes the bus events of the log (logevent, Bus) to bus,
+// their fields as the data.
+func busRoute(bus *event.Bus) slogx.Route {
+	return slogx.Route{Name: "webhook", Match: slogx.BusEvents, Func: func(r *slogx.Record) {
+		data := make(map[string]any, len(r.Attrs))
+		for _, a := range r.Attrs {
+			data[a.Key] = a.Value.Resolve().Any()
 		}
-		bus.Publish(d.Name, data)
-	}
+		bus.Publish(r.Def.Name, data)
+	}}
 }

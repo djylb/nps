@@ -2,6 +2,7 @@ package slogx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,10 +13,16 @@ import (
 	"sync/atomic"
 )
 
-// Keys of the fixed fields.
+// Keys of the fixed fields. An attribute with one of these keys is written
+// as "_" + key, so no attribute can stand in for a fixed field.
 const (
+	KeyTime       = "time"
+	KeyLevel      = "level"
 	KeyEvent      = "event"
 	KeyModule     = "module"
+	KeyMsg        = "msg"
+	KeySource     = "source"
+	KeyStack      = "stack"
 	KeySuppressed = "suppressed"
 )
 
@@ -41,11 +48,12 @@ type Config struct {
 	File Rotation
 	// SecurityFile, when set, receives every security event.
 	SecurityFile Rotation
-	// Memory, when positive, keeps that many entries for Logs.Memory.
+	// Memory, when positive, keeps that many entries for Logs.Memory. The
+	// Memory survives a Configure with the same size, subscribers included.
 	Memory int
 	// Async, when positive, writes files through a queue of that many
 	// lines, so a slow disk never slows the caller; lines that do not fit
-	// are dropped and counted.
+	// are dropped, and a log_dropped event says how many.
 	Async int
 	// Routes are further destinations.
 	Routes []Route
@@ -62,37 +70,45 @@ type Config struct {
 	Sample *Sampling
 }
 
-// Sink receives every bus event (Def.Bus), whatever the levels. It must not
-// block.
-type Sink func(d *Def, attrs []slog.Attr)
+// LogDropped is written when an asynchronous output had to drop lines.
+var LogDropped = Def{Name: "log_dropped", Level: slog.LevelWarn}
 
 // Logs is a process's logging. Its loggers keep working across Configure.
 type Logs struct {
-	levels  *Levels
-	pipe    atomic.Pointer[pipeline]
-	sink    atomic.Pointer[Sink]
-	sampler sampler
-	mu      sync.Mutex // Configure and Close
-	taken   atomic.Uint64
+	levels   *Levels
+	pipe     atomic.Pointer[pipeline]
+	attached atomic.Pointer[[]*Route]
+	// attachedBelow: an attached route sees lines below the level table.
+	attachedBelow atomic.Bool
+	sampler       sampler
+	mu            sync.Mutex // Configure, Close, Attach
 }
 
-// pipeline is one configuration, replaced whole.
+// pipeline is one configuration, replaced whole. Lines in flight hold mu
+// for reading; the pipeline is closed only once they are done.
 type pipeline struct {
 	routes    []Route
-	below     bool // a route sees lines below the level table
 	closers   []Output
+	mu        sync.RWMutex
 	memory    *Memory
-	addSource bool
 	stackFrom *slog.Level
 	ctxAttrs  func(context.Context) []slog.Attr
 	sample    *Sampling
+	closed    bool
+	below     bool // a route sees lines below the level table
+	addSource bool
+}
+
+func consolePipeline() *pipeline {
+	return &pipeline{routes: []Route{{Name: "console", Output: WriterOutput(os.Stderr)}}}
 }
 
 // New returns Logs that write logfmt at info level to stderr until
 // Configure.
 func New() *Logs {
 	l := &Logs{levels: newLevels()}
-	l.pipe.Store(&pipeline{routes: []Route{{Name: "console", Output: WriterOutput(os.Stderr)}}})
+	l.pipe.Store(consolePipeline())
+	l.attached.Store(new([]*Route{}))
 	return l
 }
 
@@ -120,9 +136,10 @@ func (l *Logs) SetLevel(spec string) error { return l.levels.Set(spec) }
 // Memory returns the in-memory entries of Config.Memory, or nil.
 func (l *Logs) Memory() *Memory { return l.pipe.Load().memory }
 
-// Configure replaces where and how l writes. A file that cannot be opened
-// falls back to stderr with a log_fallback line rather than failing; an
-// invalid Output or Level is an error and changes nothing.
+// Configure replaces where and how l writes; lines being written finish on
+// the old outputs before those close. A file that cannot be opened falls
+// back to stderr with a log_fallback line rather than failing; an invalid
+// Output, Level, route or sampling is an error and changes nothing.
 func (l *Logs) Configure(c Config) error {
 	lv, err := parseLevels(c.Level)
 	if err != nil {
@@ -134,9 +151,19 @@ func (l *Logs) Configure(c Config) error {
 	default:
 		return fmt.Errorf("unknown log output %q", c.Output)
 	}
+	for i := range c.Routes {
+		if err := c.Routes[i].validate(); err != nil {
+			return err
+		}
+	}
+	if c.Sample != nil {
+		if err := c.Sample.validate(); err != nil {
+			return err
+		}
+	}
 	p := &pipeline{addSource: c.AddSource, stackFrom: c.StackFrom, ctxAttrs: c.Context, sample: c.Sample}
 	var fallback []string
-	open := func(r Rotation) Output {
+	open := func(name string, r Rotation) Output {
 		f, err := OpenRotating(r)
 		if err != nil {
 			fallback = append(fallback, err.Error())
@@ -144,7 +171,9 @@ func (l *Logs) Configure(c Config) error {
 		}
 		var o Output = f
 		if c.Async > 0 {
-			o = Async(f, c.Async)
+			a := Async(f, c.Async)
+			a.OnDrop = func(n uint64) { Emit(l.Module("slogx"), &LogDropped, "output", name, "dropped", n) }
+			o = a
 		}
 		p.closers = append(p.closers, o)
 		return o
@@ -154,7 +183,7 @@ func (l *Logs) Configure(c Config) error {
 	if out == "file" || out == "both" {
 		if c.File.Path == "" {
 			console = true
-		} else if o := open(c.File); o != nil {
+		} else if o := open("file", c.File); o != nil {
 			p.routes = append(p.routes, Route{Name: "file", Encoder: enc, Output: o})
 		} else {
 			console = true
@@ -172,45 +201,81 @@ func (l *Logs) Configure(c Config) error {
 		p.routes = append(p.routes, Route{Name: "console", Encoder: ce, Output: WriterOutput(w)})
 	}
 	if c.SecurityFile.Path != "" {
-		if o := open(c.SecurityFile); o != nil {
+		if o := open("security", c.SecurityFile); o != nil {
 			p.routes = append(p.routes, Route{Name: "security", Match: SecurityEvents, Encoder: enc, Output: o})
 		}
 	}
+	l.mu.Lock()
+	old := l.pipe.Load()
 	if c.Memory > 0 {
-		p.memory = NewMemory(c.Memory)
+		if old.memory != nil && old.memory.Size() == c.Memory {
+			p.memory = old.memory
+		} else {
+			p.memory = NewMemory(c.Memory)
+		}
 		p.routes = append(p.routes, Route{Name: "memory", Memory: p.memory})
 	}
 	p.routes = append(p.routes, c.Routes...)
 	for _, r := range p.routes {
 		p.below = p.below || r.Below
 	}
-	l.mu.Lock()
-	l.levels.mu.Lock()
-	l.levels.base = lv
-	l.levels.publish()
-	l.levels.mu.Unlock()
-	old := l.pipe.Swap(p)
+	l.levels.setBase(lv)
+	l.pipe.Store(p)
 	l.mu.Unlock()
-	closeAll(old.closers)
+	retire(old, p.memory)
 	for _, f := range fallback {
 		Emit(l.Module("slogx"), &LogFallback, "reason", f)
 	}
 	return nil
 }
 
-func closeAll(os []Output) {
-	for _, o := range os {
+// retire waits for the lines in flight on p, then closes its outputs, and
+// its Memory unless it lives on in keep.
+func retire(p *pipeline, keep *Memory) {
+	p.mu.Lock()
+	p.closed = true
+	p.mu.Unlock()
+	for _, o := range p.closers {
 		_ = o.Close()
+	}
+	if p.memory != nil && p.memory != keep {
+		p.memory.closeSubscriptions()
 	}
 }
 
-// SetSink sets the Sink of bus events; nil removes it.
-func (l *Logs) SetSink(s Sink) {
-	if s == nil {
-		l.sink.Store(nil)
-		return
+// Attach adds a route that stays across Configure until the returned
+// function detaches it, for consumers that come and go: an event bus, a
+// live viewer. It is checked like Config.Routes.
+func (l *Logs) Attach(r Route) (detach func(), err error) {
+	if err := r.validate(); err != nil {
+		return nil, err
 	}
-	l.sink.Store(&s)
+	rp := &r
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	cur := *l.attached.Load()
+	l.attached.Store(new(append(cur[:len(cur):len(cur)], rp)))
+	l.attachedBelow.Store(l.attachedBelow.Load() || r.Below)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			cur := *l.attached.Load()
+			next := make([]*Route, 0, len(cur))
+			for _, x := range cur {
+				if x != rp {
+					next = append(next, x)
+				}
+			}
+			below := false
+			for _, x := range next {
+				below = below || x.Below
+			}
+			l.attached.Store(&next)
+			l.attachedBelow.Store(below)
+		})
+	}, nil
 }
 
 // Reopen reopens the log files, after an external rotation (SIGHUP).
@@ -237,37 +302,42 @@ func (l *Logs) TakeBuffered() string {
 	if m == nil {
 		return ""
 	}
-	es := m.Query(Query{After: l.taken.Load(), AnyLevel: true})
-	if len(es) == 0 {
-		return ""
-	}
-	l.taken.Store(es[len(es)-1].Seq)
 	var b []byte
-	for _, e := range es {
-		r := Record{Time: e.Time, Level: e.Level, Module: e.Module, Event: e.Event, Msg: e.Msg}
-		for _, f := range e.Attrs {
-			r.Attrs = append(r.Attrs, slog.String(f.Key, f.Value))
-		}
+	for _, e := range m.Take() {
+		r := e.record()
 		b = TextEncoder{}.Encode(b, &r)
 	}
 	return string(b)
 }
 
-// Close flushes and closes the files; lines after it go to stderr.
+// Close waits for the lines in flight, then closes the files and the
+// Memory; lines after it go to stderr.
 func (l *Logs) Close() {
 	l.mu.Lock()
-	old := l.pipe.Swap(&pipeline{routes: []Route{{Name: "console", Output: WriterOutput(os.Stderr)}}})
+	old := l.pipe.Swap(consolePipeline())
 	l.mu.Unlock()
-	closeAll(old.closers)
+	retire(old, nil)
 	l.levels.stop()
 }
 
 // enabled reports whether a line of module at lv may be written anywhere.
 func (l *Logs) enabled(module string, lv slog.Level) bool {
-	if l.pipe.Load().below {
+	if l.pipe.Load().below || l.attachedBelow.Load() {
 		return true
 	}
 	return lv >= l.levels.Of(module)
+}
+
+// acquire returns the current pipeline, held for reading until release.
+func (l *Logs) acquire() *pipeline {
+	for {
+		p := l.pipe.Load()
+		p.mu.RLock()
+		if !p.closed {
+			return p
+		}
+		p.mu.RUnlock()
+	}
 }
 
 var bufPool = sync.Pool{New: func() any { b := make([]byte, 0, 512); return &b }}
@@ -282,11 +352,6 @@ func (l *Logs) dispatch(p *pipeline, r *Record) {
 			}
 			if n > 0 {
 				r.Attrs = append(r.Attrs, slog.Uint64(KeySuppressed, n))
-			}
-		}
-		if d.Bus {
-			if s := l.sink.Load(); s != nil {
-				(*s)(d, r.Attrs)
 			}
 		}
 	} else if p.sample != nil {
@@ -305,10 +370,17 @@ func (l *Logs) dispatch(p *pipeline, r *Record) {
 			rt.deliver(r, bp)
 		}
 	}
+	for _, rt := range *l.attached.Load() {
+		if rt.takes(r, l.levels) {
+			rt.deliver(r, bp)
+		}
+	}
 	if cap(*bp) <= 64<<10 {
 		bufPool.Put(bp)
 	}
 }
+
+var errNoDestination = errors.New("slogx: a route needs exactly one of Output, Memory and Func")
 
 func source(pc uintptr) string {
 	if pc == 0 {

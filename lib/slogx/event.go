@@ -46,16 +46,21 @@ var (
 
 // Register lists defs for Registered, such as for generating documentation
 // of the events an application writes. Logging does not need it.
-// Registering a name twice with different definitions panics.
+// Two definitions of one name may differ in level (an urgent variant of an
+// event) but not in where the event goes; registering such a pair panics.
 func Register(defs ...*Def) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	for _, d := range defs {
-		if old, ok := registry[d.Name]; ok && old != d && (old.Security != d.Security || old.Bus != d.Bus) {
+		if old, ok := registry[d.Name]; ok && old != d && !sameRouting(old, d) {
 			panic("slogx: event " + d.Name + " defined twice")
 		}
 		registry[d.Name] = d
 	}
+}
+
+func sameRouting(a, b *Def) bool {
+	return a.Security == b.Security && a.Bus == b.Bus && a.Limit == b.Limit && (a.Sample == nil) == (b.Sample == nil) && (a.Sample == nil || *a.Sample == *b.Sample)
 }
 
 // Registered returns the registered events by name.
@@ -73,34 +78,38 @@ func Registered() []*Def {
 // LogFallback is written when a log file cannot be opened.
 var LogFallback = Def{Name: "log_fallback", Level: slog.LevelWarn}
 
-func init() { Register(&LogFallback, &TLSHandshakeFailed) }
+func init() { Register(&LogFallback, &LogDropped, &TLSHandshakeFailed) }
 
 // Emit writes event d at its level to l with the given attributes (as
 // slog's args). A security or bus event is passed on even when its level is
 // filtered out of the main log.
 func Emit(l *slog.Logger, d *Def, args ...any) {
-	emit(context.Background(), l, d, "", args)
+	emit(context.Background(), l, d, "", callerPC(3), args)
 }
 
 // EmitMsg is Emit with a message for people.
 func EmitMsg(l *slog.Logger, d *Def, msg string, args ...any) {
-	emit(context.Background(), l, d, msg, args)
+	emit(context.Background(), l, d, msg, callerPC(3), args)
 }
 
 // EmitContext is EmitMsg with a context, whose attributes
 // (Config.Context) the line carries.
 func EmitContext(ctx context.Context, l *slog.Logger, d *Def, msg string, args ...any) {
-	emit(ctx, l, d, msg, args)
+	emit(ctx, l, d, msg, callerPC(3), args)
 }
 
-func emit(ctx context.Context, l *slog.Logger, d *Def, msg string, args []any) {
+func callerPC(skip int) uintptr {
+	var pcs [1]uintptr
+	runtime.Callers(skip+1, pcs[:])
+	return pcs[0]
+}
+
+func emit(ctx context.Context, l *slog.Logger, d *Def, msg string, pc uintptr, args []any) {
 	h := l.Handler()
 	if !d.Security && !d.Bus && !h.Enabled(ctx, d.Level) {
 		return
 	}
-	var pcs [1]uintptr
-	runtime.Callers(3, pcs[:])
-	r := slog.NewRecord(time.Now(), d.Level, msg, pcs[0])
+	r := slog.NewRecord(time.Now(), d.Level, msg, pc)
 	r.AddAttrs(slog.Any(KeyEvent, defValue{d}))
 	r.Add(args...)
 	_ = h.Handle(ctx, r)

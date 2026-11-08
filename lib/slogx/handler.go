@@ -13,6 +13,7 @@ package slogx
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -29,12 +30,15 @@ func (h *handler) Enabled(_ context.Context, l slog.Level) bool {
 }
 
 func (h *handler) Handle(ctx context.Context, sr slog.Record) error {
-	p := h.logs.pipe.Load()
-	r := Record{Time: sr.Time, Level: sr.Level, Module: h.module, Msg: sr.Message}
+	p := h.logs.acquire()
+	defer p.mu.RUnlock()
+	rp := recordPool.Get().(*Record)
+	defer putRecord(rp)
+	r := rp
+	*r = Record{Time: sr.Time, Level: sr.Level, Module: h.module, Msg: sr.Message, Attrs: r.Attrs[:0]}
 	if r.Time.IsZero() {
 		r.Time = time.Now()
 	}
-	r.Attrs = make([]slog.Attr, 0, len(h.attrs)+sr.NumAttrs()+2)
 	if p.ctxAttrs != nil && ctx != nil {
 		for _, a := range p.ctxAttrs(ctx) {
 			r.add(a, "")
@@ -58,7 +62,7 @@ func (h *handler) Handle(ctx context.Context, sr slog.Record) error {
 	if p.stackFrom != nil && r.Level >= *p.stackFrom {
 		r.Stack = stack()
 	}
-	h.logs.dispatch(p, &r)
+	h.logs.dispatch(p, r)
 	return nil
 }
 
@@ -85,4 +89,16 @@ func (h *handler) WithGroup(name string) slog.Handler {
 	n := *h
 	n.group = h.group + name + "."
 	return &n
+}
+
+// Records are reused: routes, encoders and outputs must not keep them.
+var recordPool = sync.Pool{New: func() any { return &Record{Attrs: make([]slog.Attr, 0, 16)} }}
+
+func putRecord(r *Record) {
+	if cap(r.Attrs) > 256 {
+		return
+	}
+	clear(r.Attrs)
+	*r = Record{Attrs: r.Attrs[:0]}
+	recordPool.Put(r)
 }
