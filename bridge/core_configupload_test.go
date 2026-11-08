@@ -293,3 +293,37 @@ func TestServiceNetwork(t *testing.T) {
 		t.Fatalf("%d tunnels stored", tasks)
 	}
 }
+
+// An upload with the public key creates a client with a new key, and npc
+// goes on with that key, as with the old protocol's config exchange.
+func TestConfigUploadPublicKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	connect.Install()
+	t.Cleanup(func() { client.CoreOuter = nil })
+	f := newCoreFixture(t, 0, model.Config{})
+	f.db.OnClientChanged(func(c *model.Client, deleted bool) {
+		if deleted {
+			f.a.ClientRemoved(c.Id)
+			return
+		}
+		f.a.ClientChanged(coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf.Crypt,
+			ConfigOnly: c.KeyKind == model.KeyPublic})
+	})
+	pub := model.NewClient("public-key", true, true)
+	pub.KeyKind, pub.Status = model.KeyPublic, true
+	if err := f.db.NewClient(pub); err != nil {
+		t.Fatal(err)
+	}
+	serveOpened(t, f)
+	echo := echoListener(t)
+	port := freeLocalPort(t)
+	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey=public-key\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"[echo]\nmode=tcp\ntarget_addr="+echo+"\nserver_port="+strconv.Itoa(port)+"\n")
+	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
+	waitEcho(t, "tunnel of the issued key", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if v, ok := f.b.Client.Load(pub.Id); ok && v.(*Client).NodeCount() != 0 {
+		t.Fatal("the public key became a node")
+	}
+}

@@ -35,6 +35,9 @@ type ClientRecord struct {
 	// SchedulerDown names the scheduler of sending to the client; "" is
 	// affinity.
 	SchedulerDown string
+	// ConfigOnly is the public key: its sessions only upload a configuration
+	// and are never nodes of a client.
+	ConfigOnly bool
 	// Shaping is the client's shaping switch (§13).
 	Shaping bool
 }

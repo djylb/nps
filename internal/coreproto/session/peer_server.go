@@ -205,6 +205,10 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		lc.abort(wire.CodeMalformed)
 		return
 	}
+	if s.configOnly && op != wire.OpConfigUpload {
+		lc.abort(wire.CodeNotAllowed)
+		return
+	}
 	switch op {
 	case wire.OpLink:
 		s.serveLinkOpen(ctx, lc, fields)

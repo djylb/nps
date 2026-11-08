@@ -16,9 +16,8 @@ import (
 
 // coreConfigUpload admits an upload of the client cs is authenticated as,
 // under the rules of WorkConfig: the key kind, ConfigConnAllow and the
-// public key (whose upload creates a client and a new key, which a session
-// cannot follow, so it is refused). It returns what serves the stream, or nil
-// to refuse.
+// public key, whose upload creates a client with a new key for npc to
+// redial with. It returns what serves the stream, or nil to refuse.
 func (s *Bridge) coreConfigUpload(cs coreapi.Session) func(net.Conn) {
 	id := cs.ClientID()
 	client, err := s.store.GetClient(id)
@@ -27,18 +26,15 @@ func (s *Bridge) coreConfigUpload(cs coreapi.Session) func(net.Conn) {
 			Reason: "forbidden", Flag: legacy.WorkConfig})
 		return nil
 	}
-	if !client.ConfigConnAllow {
-		return nil
-	}
-	if s.store.IsPubClient(id) {
-		log.Info("config upload refused", "client", id, "reason", "public_key")
+	isPub := s.store.IsPubClient(id)
+	if !isPub && !client.ConfigConnAllow {
 		return nil
 	}
 	uuid := coreNodeUUID(cs)
 	caps := legacy.CapsOf(legacy.LatestIndex, agentVersion(cs.Agent()))
 	return func(nc net.Conn) {
 		c := conn.NewConn(nc)
-		run, ok := s.openConfig(c, id, false, caps, uuid)
+		run, ok := s.openConfig(c, id, isPub, caps, uuid)
 		if !ok {
 			_ = c.Close()
 			return

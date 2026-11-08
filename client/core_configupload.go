@@ -27,19 +27,40 @@ func runCoreConfig(ctx context.Context, cnf *config.Config) error {
 	defer cancel()
 	fsm := NewFileServerManager(ctx)
 	defer fsm.CloseAll()
-	var after func(context.Context, coreapi.ClientSession) error
-	if len(cnf.Tasks)+len(cnf.Hosts) > 0 {
-		after = func(ctx context.Context, s coreapi.ClientSession) error { return uploadConfig(ctx, s, cnf, fsm) }
+	if len(cnf.Tasks)+len(cnf.Hosts) == 0 {
+		return runCoreProfile(ctx, cnf.CommonConfig, false, nil)
 	}
-	return runCoreProfile(ctx, cnf.CommonConfig, false, after)
+	var issued string
+	err := runCoreProfile(ctx, cnf.CommonConfig, false, func(ctx context.Context, s coreapi.ClientSession) error {
+		vkey, err := uploadConfig(ctx, s, cnf, fsm)
+		if err != nil {
+			return err
+		}
+		if vkey != cnf.CommonConfig.VKey {
+			// The public key: the server made a client with this key, and
+			// the session of the public key has done its work.
+			issued = vkey
+			_ = s.Close()
+			return nil
+		}
+		return publishFiles(ctx, s, fsm)
+	})
+	if err != nil || issued == "" || ctx.Err() != nil {
+		return err
+	}
+	run := *cnf.CommonConfig
+	run.VKey = issued
+	return runCoreProfile(ctx, &run, false, func(ctx context.Context, s coreapi.ClientSession) error {
+		return publishFiles(ctx, s, fsm)
+	})
 }
 
 // uploadConfig sends the tunnels and hosts of cnf on a new stream of s, and
-// reports the file servers it started as the session's virtual services.
-func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Config, fsm *FileServerManager) error {
+// starts the file servers it declares. It returns the key to run with.
+func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Config, fsm *FileServerManager) (string, error) {
 	up, ok := s.(coreapi.ConfigUploader)
 	if !ok {
-		return errors.New("config upload is not available on this session")
+		return "", errors.New("config upload is not available on this session")
 	}
 	// A virtual backend is local: the session reports it, it is not uploaded.
 	send := *cnf
@@ -53,15 +74,20 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 	}
 	nc, err := up.OpenConfigUpload(ctx)
 	if err != nil {
-		return fmt.Errorf("config upload failed: %w", err)
+		return "", fmt.Errorf("config upload failed: %w", err)
 	}
 	c := conn.NewConn(nc)
 	defer c.Close()
 	vkey, err := exchangeConfig(c, &send, fsm, time.Now().Add(configExchangeTimeout(&send)))
 	if err != nil {
-		return fmt.Errorf("config exchange failed: %w", err)
+		return "", fmt.Errorf("config exchange failed: %w", err)
 	}
 	logWebAccess(cnf, vkey)
+	return vkey, nil
+}
+
+// publishFiles reports the file servers as the session's virtual services.
+func publishFiles(ctx context.Context, s coreapi.ClientSession, fsm *FileServerManager) error {
 	services := fsm.Services()
 	if len(services) == 0 {
 		return nil

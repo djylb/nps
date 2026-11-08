@@ -439,6 +439,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	}
 	s := &serverSession{a: a, zc: zc, t: t, mode: peer.Mode, since: time.Now(), kicked: make(chan struct{}, 1)}
 	if e := a.table.get(t.client); e != nil {
+		s.configOnly = e.ConfigOnly
 		zc.SetScheduler(schedulerNamed(e.SchedulerDown))
 	}
 	if a.sessionOpts.IdleS != 0 || a.sessionOpts.DeadS != 0 {
@@ -456,7 +457,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		}
 		a.drain(old)
 	}
-	if h != nil && h.Online != nil {
+	if h != nil && h.Online != nil && !s.configOnly {
 		h.Online(s)
 	}
 	// The client may have changed between Commit and register.
@@ -479,7 +480,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	// hooks.
 	<-watched
 	a.unregister(s)
-	if h != nil && h.Offline != nil {
+	if h != nil && h.Offline != nil && !s.configOnly {
 		reason, _ := s.closing.Load().(string)
 		if reason == "" {
 			reason = "closed"
@@ -622,6 +623,8 @@ type serverSession struct {
 	// suspended is true between EventSessionSuspended and
 	// EventSessionResumed; only watch writes it.
 	suspended atomic.Bool
+	// configOnly is a session of the public key.
+	configOnly bool
 
 	healthMu sync.Mutex
 	health   []wire.HealthGroup
