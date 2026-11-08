@@ -34,8 +34,8 @@
 | `-disconnect_timeout` | 连接超时（秒） | `30` |
 | `-keepalive` | 保活周期（秒），`0` 用默认 | `0` |
 | `-skip_verify` | 跳过服务器证书校验 | `false` |
-| `-debug` | 调试模式：日志输出到控制台，级别 `trace` | `true` |
-| `-log` | `stdout`、`file`、`both`、`off`；`-debug` 开启时 `file` 改为 `stdout` | `file` |
+| `-debug` | 没有给出 `-log` 时输出到控制台；安装的服务会带 `-debug=false`，按 `-log` 输出。不再改变日志级别，级别用 `-log_level` | `true` |
+| `-log` | `stdout`、`file`、`both`、`off`；显式给出时总是生效 | `file`（OpenWrt 上为 `off`） |
 | `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |
 | `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn` | `info` |
 | `-log_format` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）或 `json` | `auto` |

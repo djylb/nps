@@ -579,7 +579,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 		switch {
 		case errors.Is(err, legacy.ErrUnauthorized):
 			log.Error("server rejected the vkey", "server", connection.RemoteAddr().String(), "err", err)
-			return nil, "", serverInfo{}, fmt.Errorf("validation key %s incorrect", vkey)
+			return nil, "", serverInfo{}, errors.New("validation key incorrect")
 		case errors.Is(err, legacy.ErrVersionMismatch):
 			log.Warn("client and server versions do not match", "server", connection.RemoteAddr().String(), "core_version", legacy.CoreVersion(protocolIndex))
 		}

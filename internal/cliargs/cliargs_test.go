@@ -141,3 +141,13 @@ func TestNPCOldServiceArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareKeepsHelp(t *testing.T) {
+	fs := pflag.NewFlagSet("x", pflag.ContinueOnError)
+	for _, a := range []string{"-h", "--help", "-help"} {
+		out, warnings := Prepare(fs, []string{a}, nil)
+		if len(out) != 1 || out[0] != a || len(warnings) != 0 {
+			t.Fatalf("%s -> %v %v", a, out, warnings)
+		}
+	}
+}

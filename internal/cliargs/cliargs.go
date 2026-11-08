@@ -59,6 +59,10 @@ func Prepare(fs *pflag.FlagSet, args []string, rules []Rule, commands ...string)
 		body := strings.TrimLeft(a, "-")
 		name, value, hasValue := strings.Cut(body, "=")
 		switch {
+		case !hasValue && (name == "h" || name == "help"):
+			// pflag prints the usage and exits
+			out = append(out, a)
+			continue
 		case long[normalize(name)]:
 			if !double {
 				a = "--" + body

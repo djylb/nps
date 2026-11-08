@@ -6,8 +6,11 @@
 package legacy
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/djylb/nps/internal/tunnelwire"
@@ -26,9 +29,21 @@ func (muxLogger) Println(v ...any) { log.Debug("mux", "detail", fmt.Sprint(v...)
 func (muxLogger) Printf(format string, v ...any) {
 	log.Debug("mux", "detail", fmt.Sprintf(format, v...))
 }
-func (muxLogger) Warn(format string, v ...any) { log.Warn("mux", "detail", fmt.Sprintf(format, v...)) }
+func (muxLogger) Warn(format string, v ...any) { muxLine(slog.LevelWarn, fmt.Sprintf(format, v...)) }
 func (muxLogger) Error(format string, v ...any) {
-	log.Error("mux", "detail", fmt.Sprintf(format, v...))
+	muxLine(slog.LevelError, fmt.Sprintf(format, v...))
+}
+
+// muxLine writes a warning or error of the mux; one that only says the peer
+// went away, as every disconnect does, is debug.
+func muxLine(level slog.Level, detail string) {
+	for _, s := range []string{"EOF", "use of closed", "connection reset", "broken pipe", "closed pipe"} {
+		if strings.Contains(detail, s) {
+			level = slog.LevelDebug
+			break
+		}
+	}
+	log.Log(context.Background(), level, "mux", "detail", detail)
 }
 
 func init() { mux.SetLogger(muxLogger{}) }

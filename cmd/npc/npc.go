@@ -70,7 +70,7 @@ var (
 	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
 	logFormat      = flag.String("log_format", "auto", "Log line format (auto|text|json); auto is coloured on a terminal, logfmt elsewhere")
-	debug          = flag.Bool("debug", true, "Enable debug mode")
+	debug          = flag.Bool("debug", true, "Log to the console when -log is not given (false for services)")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
 	disconnectTime = flag.Int("disconnect_timeout", 30, "Disconnect timeout in seconds")
@@ -294,11 +294,12 @@ func configureLogging() {
 	if strings.EqualFold(*logType, "false") {
 		*logType = "off"
 	}
-	if *debug && *logType != "off" {
+	// An interactive run logs to the console unless -log says otherwise;
+	// an installed service passes -debug=false and logs as -log says.
+	if *debug && *logType != "off" && !flag.CommandLine.Changed("log") {
 		if *logType != "both" {
 			*logType = "stdout"
 		}
-		*logLevel = "trace"
 	}
 	if *logPath == "" || strings.EqualFold(*logPath, "on") || strings.EqualFold(*logPath, "true") {
 		*logPath = runenv.GetNpcLogPath()

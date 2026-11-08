@@ -66,7 +66,7 @@ time=2026-11-08T03:12:46.002Z level=INFO module=p2p peer=12 msg="punch started"
 ```
 # /etc/fail2ban/filter.d/nps.conf
 [Definition]
-failregex = ^time=\S+ level=WARN event=(auth_failed|login_failed) .*\bsrc_ip=<HOST>(\s|$)
+failregex = ^time=\S* level=WARN event=(auth_failed|login_failed) .*\bsrc_ip=<HOST>(\s|$)
 ignoreregex =
 
 # /etc/fail2ban/jail.d/nps.local
@@ -74,10 +74,13 @@ ignoreregex =
 enabled  = true
 filter   = nps
 logpath  = /var/log/nps/security.log
-maxretry = 10
+maxretry = 3
 findtime = 10m
 bantime  = 1h
 ```
+
+- 过滤器里写 `time=\S*`：fail2ban 匹配前会先把时间戳从行里去掉。
+- `auth_failed` 对同一来源每分钟最多写一行，期间省略的次数记在 `suppressed=` 里，所以一行代表一分钟内至少一次失败；`login_failed` 每次失败都写一行。上面的 `maxretry = 3`、`findtime = 10m` 对 npc 密钥错误相当于"10 分钟里有 3 分钟在失败"，对面板登录是 10 分钟内失败 3 次。
 
 nps 自己也会按来源限速和封禁；fail2ban 只是系统层面的可选补充。
 
