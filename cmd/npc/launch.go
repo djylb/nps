@@ -42,7 +42,7 @@ func launchPayloads() []string {
 }
 
 func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string) {
-	for _, name := range []string{"server", "vkey", "type", "config", "proxy", "local_ip", "password", "target"} {
+	for _, name := range []string{"server", "vkey", "type", "config", "proxy", "local_ip", "password", "target", "pipes"} {
 		if f := flag.CommandLine.Lookup(name); f != nil && f.Changed {
 			cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
 		}

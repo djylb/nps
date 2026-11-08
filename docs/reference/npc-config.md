@@ -4,7 +4,18 @@
 
 ## [common]
 
-`server_addr`、`conn_type`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
+`server_addr`、`conn_type`、`pipes`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
+
+`server_addr` 是一个连接（档案）：可以用 `|` 写多个承载候选，写法与命令行 `-server` 相同（见 [NPC 命令行参数](npc-cli.md#服务器地址)），不带方案的候选用 `conn_type`。`pipes` 为 `single`（默认）或 `multi`，同 `-pipes`。配置文件里不需要引号：
+
+```ini
+[common]
+server_addr=tls://a.com:8025|wss://a.com:443/ws?tier=1|b.com:8024
+conn_type=tcp
+vkey=xxx
+```
+
+上例最后一个候选不带方案，承载取 `conn_type`；不带方案的候选没有查询参数，要设 `tier`、`standby` 等请写成 URL。URL 候选写错（未知方案、参数）时加载配置即报错。
 
 旧写法 `tls_enable=true` 等同 `conn_type=tls`，并覆盖 `conn_type`（会告警）。
 

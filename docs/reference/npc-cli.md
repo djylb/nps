@@ -1,7 +1,7 @@
 # NPC 命令行参数
 
 ```bash
-./npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off -debug=false
+./npc -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log=off -debug=false
 ```
 
 ## 命令
@@ -12,7 +12,8 @@
 
 | 参数 | 说明 | 默认 |
 | --- | --- | --- |
-| `-server`, `-s` | 服务器地址 `addr:port[@host_or_sni[:port]][/ws_path_or_quic_alpn]`，逗号分隔多个 | 无 |
+| `-server`, `-s` | 服务器连接：逗号分隔多个连接（档案），每个连接内用 `\|` 分隔多个承载候选；候选写法见下文“服务器地址” | 无 |
+| `-pipes` | 每个连接的管道模式：`single`、`multi`（`multi` 需要 zmux，当前告警一次后按 `single` 运行） | `single` |
 | `-vkey`, `-k` | 认证密钥，逗号分隔 | 无 |
 | `-type`, `-t` | `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，逗号分隔 | `tcp` |
 | `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
@@ -52,6 +53,56 @@
 | `-gen2fa` | 生成 TOTP 密钥 | `false` |
 | `-get2fa` | 根据密钥输出当前验证码 | 无 |
 | `-version`, `-v` | 显示版本 | |
+
+## 服务器地址
+
+`-server` 的值分两层：
+
+- **连接（档案）**：逗号分隔，每个是一条独立的连接，各自对应 `-vkey`、`-type`、`-local_ip` 列表中同一位置的值（较短的列表重复最后一个值）。
+- **承载候选**：一个连接内用 `|` 分隔，是到同一服务端的几种走法。单管道（`-pipes=single`）每次连接和重连按顺序尝试，一个失败就换下一个：上次成功的候选最先，其余按 `tier` 升序、同 tier 按书写顺序，`standby` 候选排在最后（只在其他候选都失败后才用）。每个失败的候选记一条 `connect_failed`，成功时 `connected` 记下实际用的承载。
+
+候选有两种写法：
+
+- **URL**：方案即承载：`tcp://`、`tls://`、`quic://`、`http://`、`https://`（后续版本的承载条目同样只有这五种），另外本版本还接受 `kcp://`、`ws://`（= `http://` 只用 websocket）、`wss://`（= `https://` 只用 websocket）。URL 里写**拨号地址**；未写端口时用默认端口（tcp/kcp 8024，tls/quic 8025，http/ws 80，https/wss 443），IPv6 写成 `tcp://[::1]:8024`。路径是 http/https/ws/wss 的端点路径（默认 `/ws`），多级路径直接写，如 `/api/v2/ws`；其他方案不能带路径。路径或参数里的 `|` 写成 `%7C`，`?` 写成 `%3F`。查询参数（与后续版本的承载条目同名）：
+  - `tier`：整数，越小越先尝试，默认 0；
+  - `weight`：非负整数，多管道的权重，本版本只解析保存；
+  - `standby`：布尔，备用候选，默认 false（只写 `standby` 也算 true）；
+  - `count`：多管道下这个候选的管道数，默认 1；
+  - `dirs`：`bidi`（默认）、`up`、`down`，可用逗号组合，如 `dirs=up,down`。会话只能在含 `bidi` 的候选上建立，所以每个连接至少要有一个；单管道下跳过不含 `bidi` 的候选（告警一次：方向需要 zmux）；
+  - `kinds`：http/https 的种类列表，本版本只支持 `websocket`，其他取值告警并忽略；
+  - `host`：Host 头和默认 SNI，缺端口时沿用地址的端口；
+  - `sni`：覆盖 TLS 服务器名（默认取 `host` 或地址的主机名，IP 地址时不发）；
+  - `alpn`：本版本独有，用于 quic（默认 `nps`），tls、https/wss 也接受；后续版本的承载条目没有这个字段，迁移时会被丢弃。
+
+  参数名区分大小写；其他参数、重复的参数、未知方案、带用户名或 `#` 的 URL 都会报错。
+- **不带方案**：旧写法 `addr:port[@host[:port]][/path]`，承载取该连接在 `-type` 中对应的值。与 URL 一一对应：`1.2.3.4:443@a.com:443/ws`（`-type=wss`）就是 `wss://1.2.3.4:443/ws?host=a.com:443`；quic 的旧写法把 ALPN 放在路径里（`a.com/h3`），照旧可用，URL 写法用 `?alpn=`。两种写法可以在一个连接里混用。
+
+```bash
+# 一个连接，三个候选：先 tls，失败换 wss，最后才用 b.com 的 tcp
+./npc -server="tls://a.com:8025|wss://a.com:443/ws?tier=1|tcp://b.com:8024?standby=1" -vkey="xxx"
+# 两个连接：第一个两种候选，第二个用旧写法和 -type 中的 kcp
+./npc -server="tls://a.com|a.com:8024,c.com:8024" -vkey="k1,k2" -type="tcp,kcp"
+```
+
+多管道（`-pipes=multi`）的语义与后续版本一致，当前版本只解析、校验并保存这些参数，运行时仍是单管道：
+
+- 只有 `tier` 不超过最优 tier + 1 的非 standby 候选参与，每个候选按 `count` 建管道；
+- 会话先在一个含 `bidi` 的候选上建立，只有 `up` 或 `down` 的候选只承载那个方向；
+- `standby` 候选也建好管道，但只在非 standby 管道全部失效时才承载流量（单管道下 standby 只是排在最后）。
+
+```bash
+./npc -pipes=multi -server="tls://a.com:8025?tier=0&count=5|wss://b.com/ws?tier=0&dirs=up&count=3|tcp://c.com:8024?tier=1&dirs=down&count=5" -vkey="xxx"
+```
+
+### 引号
+
+值里有 `|`、`&`、`?` 等字符时必须加引号，建议所有值都用**双引号**：
+
+- Linux/macOS shell、PowerShell：双引号或单引号都可以；
+- Windows cmd 只认双引号（`|`、`&` 在双引号外会被 cmd 解释）；
+- `.bat`/`.cmd` 脚本中 `%` 要写成 `%%`（例如 URL 里的 `%2F`）。
+
+PowerShell 会把不加引号的 `-server=1.2.3.4:8024` 在第一个 `.` 处拆成两个参数，npc 和 nps 会把它们重新拼起来，但仍建议加引号。
 
 ## 旧写法
 

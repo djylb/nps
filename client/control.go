@@ -26,6 +26,7 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -145,6 +146,7 @@ func StartFromFile(pCtx context.Context, path string) error {
 		return fmt.Errorf("config file %s: %w", path, err)
 	}
 	log.Info("config loaded", "file", path)
+	NotePipes(cnf.CommonConfig.Pipes)
 
 	netaddr.SetCustomDNS(cnf.CommonConfig.DnsServer)
 
@@ -354,20 +356,9 @@ func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, ve
 	return sum[:], verified
 }
 
-func EnsurePort(server string, tp string) string {
-	_, port, err := net.SplitHostPort(server)
-	if err == nil && port != "" {
-		return server
-	}
-	if p, ok := defaultPort[tp]; ok {
-		return net.JoinHostPort(server, p)
-	}
-	return server
-}
-
 // NewConn Create a new connection with the server and verify it
 func NewConn(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, error) {
-	c, uuid, _, err := dialServer(tp, vkey, server, proxyUrl, localIP)
+	c, uuid, _, err := dialServer(tp, vkey, server, proxyUrl, localIP, nil)
 	return c, uuid, err
 }
 
@@ -380,28 +371,61 @@ type serverInfo struct {
 	// through a proxy (proxy_url, or a WebSocket bridge that may sit behind
 	// a reverse proxy or CDN).
 	ip string
+	// via is the carrier candidate that connected.
+	via connprofile.Candidate
 }
 
-// dialServer is NewConn returning the server information as well.
-func dialServer(tp string, vkey string, server string, proxyUrl string, localIP string) (*conn.Conn, string, serverInfo, error) {
-	alpn := "nps"
-	server, path := netaddr.SplitServerAndPath(server)
-	if path == "" {
-		path = "/ws"
-	} else {
-		alpn = strings.TrimSpace(strings.TrimPrefix(path, "/"))
-	}
-	addr, host, sni := netaddr.SplitAddrAndHost(server)
-	server = EnsurePort(addr, tp)
+var (
+	// lastCandidate remembers, per profile (tp + " " + server), the key of
+	// the candidate that connected last, which the next dial tries first.
+	lastCandidate sync.Map
+	// dirWarned says once that up and down candidates are skipped.
+	dirWarned sync.Once
+)
 
-	var (
-		c    *conn.Conn
-		uuid string
-		info serverInfo
-		err  error
-	)
-	for _, target := range dialTargets(tp, server) {
-		c, uuid, info, err = dialBridge(tp, vkey, target, path, alpn, host, sni, proxyUrl, localIP)
+// dialServer is NewConn returning the server information as well. server is
+// a profile (see connprofile): its candidates are tried in connprofile.Order
+// until one connects; failed, when set, is told of each one that does not.
+func dialServer(tp string, vkey string, server string, proxyUrl string, localIP string, failed func(connprofile.Candidate, error)) (*conn.Conn, string, serverInfo, error) {
+	cands, err := connprofile.Parse(server, tp)
+	if err != nil {
+		return nil, "", serverInfo{}, err
+	}
+	profileKey := tp + " " + server
+	last, _ := lastCandidate.Load(profileKey)
+	lastKey, _ := last.(string)
+	var errs []error
+	for _, cand := range connprofile.Order(cands, lastKey) {
+		if !cand.Starts() {
+			// one direction only: a member of a multi-pipe session
+			dirWarned.Do(func() {
+				log.Warn("one-direction candidates need zmux; skipped", "server", cand.Addr, "carrier", cand.Carrier)
+			})
+			continue
+		}
+		c, uuid, info, err := dialCandidate(cand, vkey, proxyUrl, localIP)
+		if err == nil {
+			lastCandidate.Store(profileKey, cand.Key())
+			info.via = cand
+			return c, uuid, info, nil
+		}
+		if failed != nil {
+			failed(cand, err)
+		}
+		if len(cands) == 1 {
+			return nil, "", serverInfo{}, err
+		}
+		log.Debug("server candidate failed", "server", cand.Addr, "carrier", cand.Carrier, "err", err)
+		errs = append(errs, fmt.Errorf("%s: %w", cand.Raw, err))
+	}
+	return nil, "", serverInfo{}, errors.Join(errs...)
+}
+
+// dialCandidate connects through one carrier candidate.
+func dialCandidate(cand connprofile.Candidate, vkey, proxyUrl, localIP string) (c *conn.Conn, uuid string, info serverInfo, err error) {
+	tp := strings.ToLower(cand.Carrier)
+	for _, target := range dialTargets(tp, cand.Addr) {
+		c, uuid, info, err = dialBridge(tp, vkey, target, cand.Path, cand.ALPN, cand.Host, cand.SNI, proxyUrl, localIP)
 		if err == nil {
 			return c, uuid, info, nil
 		}
@@ -466,6 +490,9 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 			InsecureSkipVerify: true,
 			ServerName:         sni,
 		}
+		if alpn != "" {
+			conf.NextProtos = []string{alpn}
+		}
 		rawConn, err := GetProxyConn(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
@@ -494,7 +521,11 @@ func dialBridge(tp, vkey, server, path, alpn, host, sni, proxyUrl, localIP strin
 			return nil, "", serverInfo{}, err
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		tlsConn, err := tlsconn.Client(ctx, rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: sni})
+		conf := &tls.Config{InsecureSkipVerify: true, ServerName: sni}
+		if alpn != "" {
+			conf.NextProtos = []string{alpn}
+		}
+		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
 		cancel()
 		if err != nil {
 			return nil, "", serverInfo{}, err
@@ -656,12 +687,3 @@ func GetProxyConn(proxyUrl, server string, timeout time.Duration, localIP string
 //	auth := username + ":" + password
 //	return base64.StdEncoding.EncodeToString([]byte(auth))
 //}
-
-var defaultPort = map[string]string{
-	"tcp":  "8024",
-	"kcp":  "8024",
-	"tls":  "8025",
-	"quic": "8025",
-	"ws":   "80",
-	"wss":  "443",
-}

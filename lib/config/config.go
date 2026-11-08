@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/runenv"
@@ -22,6 +23,7 @@ type CommonConfig struct {
 	Server           string
 	VKey             string
 	Tp               string //bridgeType kcp or tcp
+	Pipes            string // connprofile.PipesSingle or PipesMulti
 	AutoReconnection bool
 	ProxyUrl         string
 	LocalIP          string
@@ -155,6 +157,9 @@ func buildConfig(content string, sections []section) (*Config, error) {
 	if c.CommonConfig == nil {
 		return nil, errors.New("missing [common] section")
 	}
+	if err := c.CommonConfig.checkConnection(); err != nil {
+		return nil, fmt.Errorf("[common]: %w", err)
+	}
 	return c, nil
 }
 
@@ -240,6 +245,8 @@ func dealCommon(s string) *CommonConfig {
 			c.VKey = item[1]
 		case "conn_type":
 			c.Tp = item[1]
+		case "pipes":
+			c.Pipes = item[1]
 		case "auto_reconnection":
 			c.AutoReconnection = parseBool(item)
 		case "basic_username":
@@ -284,6 +291,21 @@ func dealCommon(s string) *CommonConfig {
 	}
 	legacy.apply(c)
 	return c
+}
+
+// checkConnection checks server_addr, a profile of carrier candidates, and
+// pipes, and sets Pipes to its canonical value.
+func (c *CommonConfig) checkConnection() error {
+	pipes, err := connprofile.ParsePipes(c.Pipes)
+	if err != nil {
+		return err
+	}
+	c.Pipes = pipes
+	if strings.TrimSpace(c.Server) == "" {
+		return nil
+	}
+	_, err = connprofile.Parse(c.Server, c.Tp)
+	return err
 }
 
 func dealHost(s string) (*model.Host, error) {

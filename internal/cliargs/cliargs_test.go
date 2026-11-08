@@ -31,6 +31,12 @@ func TestPrepare(t *testing.T) {
 		{"unknown shorthand", []string{"-x"}, nil, []string{"-x"}},
 		{"after --", []string{"--", "-unknown"}, []string{"--", "-unknown"}, nil},
 		{"positional", []string{"update", "-"}, []string{"update", "-"}, nil},
+		{"PowerShell split", []string{"-server=1", ".2.3.4:8024", "-v"}, []string{"--server=1.2.3.4:8024", "-v"}, nil},
+		{"PowerShell split twice", []string{"-server=a", ".b", ".c:1"}, []string{"--server=a.b.c:1"}, nil},
+		{"PowerShell split, empty value", []string{"-server=", ".a"}, []string{"--server=.a"}, nil},
+		{"no rejoin with double dash", []string{"--server=1", ".2"}, []string{"--server=1", ".2"}, nil},
+		{"no rejoin without =", []string{"-server", "1", ".2"}, []string{"--server", "1", ".2"}, nil},
+		{"no rejoin of unknown", []string{"-other=1", ".2"}, []string{".2"}, []string{"-other=1"}},
 	} {
 		out, warnings := Prepare(fs, tc.args, nil, commands...)
 		if !slices.Equal(out, tc.out) && !(len(out) == 0 && len(tc.out) == 0) {

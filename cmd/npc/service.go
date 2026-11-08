@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ const (
 // connFlags are the flags a connection from the command line is made of,
 // with the launch payload key each one becomes.
 var connFlags = map[string]string{
-	"server": "server", "vkey": "vkey", "type": "type", "proxy": "proxy", "local_ip": "local_ip",
+	"server": "server", "vkey": "vkey", "type": "type", "proxy": "proxy", "local_ip": "local_ip", "pipes": "pipes",
 }
 
 // localFlags make the local server of -password, with its npc.conf key.
@@ -98,6 +99,11 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	_, p2p := changed("password")
 	launchMode := len(inputs) > 0
 	if !launchMode && hasCommand {
+		tp, _ := fs.GetString("type")
+		split := func(s string) []string { return strings.Split(strings.ReplaceAll(s, "，", ","), ",") }
+		if err := checkProfiles(split(server), split(tp)); err != nil {
+			return nil, nil, err
+		}
 		payload := make(map[string]any)
 		for name, key := range connFlags {
 			if f, ok := changed(name); ok {
@@ -113,12 +119,16 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 			}
 			payload["locals"] = []any{local}
 		}
-		data, err := json.MarshalIndent(payload, "", "  ")
-		if err != nil {
+		// the user's strings as given: "&" of a candidate's query stays "&"
+		var data bytes.Buffer
+		enc := json.NewEncoder(&data)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(payload); err != nil {
 			return nil, nil, err
 		}
 		path := filepath.Join(confDir, serviceConnFile)
-		files = append([]serviceFile{{path, append(data, '\n')}}, files...)
+		files = append([]serviceFile{{path, data.Bytes()}}, files...)
 		inputs = append(inputs, "@"+path)
 		// -config runs beside the command line connection but --launch
 		// replaces both, so the config files become launch inputs too.

@@ -170,7 +170,7 @@ func parseStructured(root any, trusted bool) ([]Profile, error) {
 
 var shorthand = map[string]string{
 	"server": "server_addr", "vkey": "vkey", "type": "conn_type",
-	"proxy": "proxy_url", "local_ip": "local_ip",
+	"proxy": "proxy_url", "local_ip": "local_ip", "pipes": "pipes",
 }
 
 type sectionKind struct {

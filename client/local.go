@@ -269,7 +269,7 @@ func (mgr *SecretManager) openTunnelConn() (net.Conn, serverInfo, error) {
 	}
 	// Every failure closes pc; otherwise it is returned or owned by the tunnel stored in mgr.
 	//noinspection GoResourceLeak
-	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP)
+	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP, nil)
 	if err != nil {
 		log.Debug("secret connection to server failed", "server", mgr.cfg.Server, "err", err)
 		if !AutoReconnect {
@@ -292,7 +292,7 @@ func (mgr *SecretManager) openTunnelConn() (net.Conn, serverInfo, error) {
 		_ = pc.Close()
 		return nil, serverInfo{}, err
 	}
-	tunnel := legacy.NewTunnel(pc, mgr.cfg.Tp, clientCaps(), mgr.cfg.DisconnectTime, true)
+	tunnel := legacy.NewTunnel(pc, server.via.Carrier, clientCaps(), mgr.cfg.DisconnectTime, true)
 	c, err := tunnel.OpenStream(mgr.ctx)
 	if err != nil {
 		log.Debug("secret open stream failed", "err", err)

@@ -25,6 +25,7 @@ func serviceFlags(t *testing.T, args ...string) *flag.FlagSet {
 	fs.StringP("config", "c", "", "")
 	fs.String("proxy", "", "")
 	fs.String("local_ip", "", "")
+	fs.String("pipes", "single", "")
 	fs.String("local_type", "tcp_udp", "")
 	fs.String("conn_mode", "auto", "")
 	fs.Int("local_port", 2000, "")
@@ -183,5 +184,30 @@ func TestWriteServiceFilesKeepsUserFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("stale launch file kept: %v", err)
+	}
+}
+
+func TestServiceKeepsCandidates(t *testing.T) {
+	server := "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1,c.com:8024@d.com/p"
+	dir, _ := installArgs(t, "", "--server="+server, "--vkey=k1,k2", "--type=tcp,wss", "--pipes=multi")
+	b, err := os.ReadFile(filepath.Join(dir, serviceConnFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"server": "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1,c.com:8024@d.com/p"`) ||
+		!strings.Contains(string(b), `"pipes": "multi"`) {
+		t.Fatalf("service file:\n%s", b)
+	}
+	profiles := resolveFile(t, filepath.Join(dir, serviceConnFile))
+	if len(profiles) != 2 {
+		t.Fatalf("%d profiles", len(profiles))
+	}
+	c0, c1 := profiles[0].Config.CommonConfig, profiles[1].Config.CommonConfig
+	if c0.Server != "tls://a.com:8025|wss://a.com:443/ws?tier=1&sni=b.com|tcp://[::1]:8024?standby=1" || c0.Pipes != "multi" ||
+		c1.Server != "c.com:8024@d.com/p" || c1.Tp != "wss" {
+		t.Fatalf("profiles %+v %+v", c0, c1)
+	}
+	if _, _, err := serviceArguments(serviceFlags(t, "--server=ftp://a.com", "--vkey=k"), t.TempDir(), ""); err == nil {
+		t.Fatal("bad candidate accepted")
 	}
 }

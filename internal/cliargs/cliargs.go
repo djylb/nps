@@ -29,7 +29,9 @@ type Rule struct {
 
 // Prepare returns args, without the program name, ready for fs.Parse, and
 // the warnings to log once logging is set up: single-dash long flags such
-// as -server become --server; a flag fs does not define is handled by its
+// as -server become --server; a single-dash -name=value of a known flag is
+// joined with the arguments after it that start with ".", which PowerShell
+// split off at the first '.' of the value; a flag fs does not define is handled by its
 // rule in rules or else left out. A flag left out that is not Bool and is
 // written without "=" also takes the argument after it, its value, unless
 // that starts with "-" or is one of commands. Arguments after "--" are kept
@@ -58,6 +60,16 @@ func Prepare(fs *pflag.FlagSet, args []string, rules []Rule, commands ...string)
 		double := strings.HasPrefix(a, "--")
 		body := strings.TrimLeft(a, "-")
 		name, value, hasValue := strings.Cut(body, "=")
+		if !double && hasValue && (long[normalize(name)] || findRule(rules, name) != nil) {
+			// PowerShell splits an unquoted -name=value at its first '.':
+			// -server=1.2.3.4:8024 arrives as -server=1 and .2.3.4:8024.
+			for i+1 < len(args) && strings.HasPrefix(args[i+1], ".") {
+				i++
+				a += args[i]
+			}
+			body = strings.TrimLeft(a, "-")
+			name, value, hasValue = strings.Cut(body, "=")
+		}
 		switch {
 		case !hasValue && (name == "h" || name == "help"):
 			// pflag prints the usage and exits

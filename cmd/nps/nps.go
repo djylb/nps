@@ -224,6 +224,7 @@ func main() {
 				os.Exit(1)
 			}
 			svcConfig.Executable = binPath
+			install.SetServiceScripts(svcConfig)
 			s, err := service.New(prg, svcConfig)
 			if err != nil {
 				log.Error("create service failed", "err", err)

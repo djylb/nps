@@ -20,6 +20,7 @@ import (
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logevent"
@@ -45,9 +46,10 @@ var defaultLogType, defaultLogMaxSize, defaultLogMaxFiles = runenv.LogDefaults("
 
 var (
 	ver            = flag.BoolP("version", "v", false, "Show current version")
-	serverAddr     = flag.StringP("server", "s", "", "Server addr (ip1:port1,ip2:port2)")
+	serverAddr     = flag.StringP("server", "s", "", "Server profiles, separated by ',', each one or more carrier candidates separated by '|' (eg: \"tls://a.com:8025|wss://a.com:443/ws?tier=1\" or \"ip1:port1,ip2:port2\")")
 	verifyKey      = flag.StringP("vkey", "k", "", "Authentication key (eg: vkey1,vkey2)")
 	connType       = flag.StringP("type", "t", "tcp", "Connection type with the server (tcp|tls|kcp|quic|ws|wss) (eg: tcp,tls)")
+	pipes          = flag.String("pipes", connprofile.PipesSingle, "Pipes of a connection (single|multi); multi needs zmux, until then npc runs single")
 	configPath     = flag.StringP("config", "c", "", "Configuration file path (path1,path2)")
 	proxyUrl       = flag.String("proxy", "", "Proxy URL: http, https, socks5, socks5h, socks4 or socks4a (eg: socks5://user:pass@127.0.0.1:9007)")
 	localIP        = flag.String("local_ip", "", "Local source IP for outbound connections")
@@ -252,6 +254,7 @@ func main() {
 			os.Exit(1)
 		}
 		svcConfig.Arguments = svcArgs
+		install.SetServiceScripts(svcConfig)
 		if s, err = service.New(prg, svcConfig); err != nil {
 			log.Error("create service failed", "err", err)
 			return
@@ -365,6 +368,12 @@ func (p *Npc) run() error {
 func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
 	runenv.InitPProfByAddr(*pprofAddr)
+	mode, err := connprofile.ParsePipes(*pipes)
+	if err != nil {
+		cfgLog.Error("invalid command line", "err", err)
+		os.Exit(1)
+	}
+	client.NotePipes(mode)
 	if inputs := launchPayloads(); len(inputs) > 0 {
 		startLaunch(ctx, cancel, inputs)
 		return
@@ -377,6 +386,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		commonConfig.Server = *serverAddr
 		commonConfig.VKey = *verifyKey
 		commonConfig.Tp = strings.ToLower(*connType)
+		if err := checkProfiles([]string{commonConfig.Server}, []string{commonConfig.Tp}); err != nil {
+			cfgLog.Error("invalid command line", "err", err)
+			os.Exit(1)
+		}
 		commonConfig.LocalIP = strings.TrimSpace(*localIP)
 		localServer := new(config.LocalServer)
 		localServer.Type = strings.ToLower(strings.TrimSpace(*localType))
@@ -448,6 +461,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 		maxLength := textutil.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
+		if err := checkProfiles(serverAddrs, connTypes); err != nil {
+			cfgLog.Error("invalid command line", "err", err)
+			os.Exit(1)
+		}
 		for i := range maxLength {
 			serverAddr := serverAddrs[i]
 			verifyKey := verifyKeys[i]
@@ -499,6 +516,21 @@ func fail(cancel context.CancelFunc, err error) {
 	log.Error("npc stopped", "err", err)
 	cancel()
 	os.Exit(1)
+}
+
+// checkProfiles checks the server profiles of the command line, each with
+// its connection type.
+func checkProfiles(servers, types []string) error {
+	for i, server := range servers {
+		tp := ""
+		if i < len(types) {
+			tp = types[i]
+		}
+		if _, err := connprofile.Parse(server, tp); err != nil {
+			return fmt.Errorf("-server: %w", err)
+		}
+	}
+	return nil
 }
 
 // commandLineMode reports whether npc runs from -server and -vkey rather

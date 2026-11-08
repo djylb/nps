@@ -188,16 +188,47 @@ func parseSystemdExecStart(out string) string {
 }
 
 // parseSysvCmd extracts the executable from the cmd= line of the System V
-// init script.
+// or procd init script: cmd='<path>' as SetServiceScripts writes it, or
+// cmd="<path> <arguments>" as the service library and earlier versions did.
 func parseSysvCmd(script string) string {
 	for line := range strings.SplitSeq(script, "\n") {
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), `cmd="`); ok {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "cmd='"); ok {
+			return shUnquote("'" + rest)
+		}
+		if rest, ok := strings.CutPrefix(line, `cmd="`); ok {
 			if fields := strings.Fields(strings.TrimSuffix(rest, `"`)); len(fields) > 0 {
 				return fields[0]
 			}
 		}
 	}
 	return ""
+}
+
+// shUnquote reads one word of single-quoted parts, as shQuote writes it.
+func shUnquote(s string) string {
+	var b strings.Builder
+	for len(s) > 0 {
+		switch s[0] {
+		case '\'':
+			end := strings.IndexByte(s[1:], '\'')
+			if end < 0 {
+				return b.String() + s[1:]
+			}
+			b.WriteString(s[1 : 1+end])
+			s = s[2+end:]
+		case '\\':
+			if len(s) > 1 {
+				b.WriteByte(s[1])
+				s = s[2:]
+			} else {
+				s = s[1:]
+			}
+		default:
+			return b.String()
+		}
+	}
+	return b.String()
 }
 
 // parseScBinaryPath extracts the executable from the BINARY_PATH_NAME line of

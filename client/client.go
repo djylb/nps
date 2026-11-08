@@ -16,6 +16,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
@@ -27,6 +28,7 @@ var log = slogx.Module("client")
 type TRPClient struct {
 	svrAddr        string
 	bridgeConnType string
+	carrier        connprofile.Candidate // the candidate that connected last
 	proxyUrl       string
 	localIP        string
 	vKey           string
@@ -68,6 +70,16 @@ func NewRPClient(svrAddr, vKey, bridgeConnType, proxyUrl, localIP, uuid string, 
 	}
 }
 
+var pipesWarned sync.Once
+
+// NotePipes takes the pipe mode of a connection. Several pipes per
+// connection need zmux, so npc runs multi as single and says so once.
+func NotePipes(mode string) {
+	if mode == connprofile.PipesMulti {
+		pipesWarned.Do(func() { log.Warn("multi pipes need zmux; running single") })
+	}
+}
+
 var NowStatus atomic.Int32
 
 func (s *TRPClient) Start(ctx context.Context) {
@@ -75,11 +87,11 @@ func (s *TRPClient) Start(ctx context.Context) {
 	defer s.Close()
 	NowStatus.Store(0)
 	if !clientCaps().TunnelStreams {
-		c, uuid, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
+		c, uuid, info, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP, s.candidateFailed)
 		if err != nil {
-			s.connectFailed("dial", err)
 			return
 		}
+		s.carrier = info.via
 		if s.uuid == "" {
 			s.uuid = uuid
 		}
@@ -202,11 +214,11 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 
 // newChan connects the mux tunnel and returns it; nil on failure.
 func (s *TRPClient) newChan() legacy.Carrier {
-	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP)
+	tunnel, uuid, server, err := dialServer(s.bridgeConnType, s.vKey, s.svrAddr, s.proxyUrl, s.localIP, s.candidateFailed)
 	if err != nil {
-		s.connectFailed("dial", err)
 		return nil
 	}
+	s.carrier = server.via
 	if tunnel == nil {
 		s.connectFailed("no_tunnel", nil)
 		return nil
@@ -221,7 +233,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 		_ = tunnel.Close()
 		return nil
 	}
-	tun := legacy.NewTunnel(tunnel, s.bridgeConnType, clientCaps(), s.disconnectTime, true)
+	tun := legacy.NewTunnel(tunnel, s.carrier.Carrier, clientCaps(), s.disconnectTime, true)
 	s.tunnel.Store(&tun)
 
 	go func() {
@@ -235,7 +247,7 @@ func (s *TRPClient) newChan() legacy.Carrier {
 			src, err := tun.AcceptStream(s.ctx)
 			if err != nil {
 				s.noteCloseReason("lost", "tunnel accept failed: "+err.Error())
-				log.Debug("tunnel lost", "server", s.svrAddr, "carrier", s.bridgeConnType, "err", err)
+				log.Debug("tunnel lost", "server", s.carrier.Addr, "carrier", s.carrier.Carrier, "err", err)
 				s.Close()
 				return
 			}
@@ -471,7 +483,7 @@ func (s *TRPClient) logDisconnectSummary() {
 	}
 	tunnelUp := !s.isTunnelClosed()
 	signalUp := signal != nil && !signal.IsClosed()
-	args := []any{"server", s.svrAddr, "carrier", s.bridgeConnType, "uuid", s.uuid, "dur_ms", uptime.Milliseconds(),
+	args := []any{"server", s.carrier.Addr, "carrier", s.carrier.Carrier, "uuid", s.uuid, "dur_ms", uptime.Milliseconds(),
 		"tunnel_up", tunnelUp, "signal_up", signalUp, "reason", reason}
 	if detail != "" {
 		args = append(args, "err", detail)
@@ -494,10 +506,20 @@ func (s *TRPClient) attempts() *atomic.Int64 {
 	return v.(*atomic.Int64)
 }
 
+// candidateFailed writes connect_failed for a carrier candidate that did not
+// connect.
+func (s *TRPClient) candidateFailed(c connprofile.Candidate, err error) {
+	s.emitConnectFailed(c, "dial", err)
+}
+
 // connectFailed writes connect_failed with how many attempts in a row have
-// failed, this one included.
+// failed, this one included, for the candidate that connected last.
 func (s *TRPClient) connectFailed(reason string, err error) {
-	args := []any{"server", s.svrAddr, "carrier", s.bridgeConnType, "reason", reason, "attempt", s.attempts().Add(1)}
+	s.emitConnectFailed(s.carrier, reason, err)
+}
+
+func (s *TRPClient) emitConnectFailed(c connprofile.Candidate, reason string, err error) {
+	args := []any{"server", c.Addr, "carrier", c.Carrier, "reason", reason, "attempt", s.attempts().Add(1)}
 	if err != nil {
 		args = append(args, "err", err)
 	}
@@ -507,7 +529,7 @@ func (s *TRPClient) connectFailed(reason string, err error) {
 // connected writes connected, with the attempts it took, and resets them.
 func (s *TRPClient) connected() {
 	n := s.attempts().Swap(0)
-	slogx.Emit(s.ctxOrBackground(), log, &logevent.Connected, "server", s.svrAddr, "carrier", s.bridgeConnType, "attempts", n+1)
+	slogx.Emit(s.ctxOrBackground(), log, &logevent.Connected, "server", s.carrier.Addr, "carrier", s.carrier.Carrier, "attempts", n+1)
 }
 
 func (s *TRPClient) ctxOrBackground() context.Context {

@@ -60,6 +60,13 @@ and nps forwards visitors through that connection to targets npc reaches.
   `web/service`) and `internal/cliargs/rules.go`, to be removed together
   in the next major version.
 
+- A server candidate (`-server`, `server_addr`; `lib/connprofile`) is
+  written as the carrier entries of the later major version: URL schemes
+  `tcp`, `tls`, `quic`, `http`, `https` and the parameters `tier`, `weight`,
+  `standby`, `count`, `dirs`, `kinds`, `host`, `sni`, with the same names
+  and meanings, and `connprofile.Candidate` has their fields. Only `alpn`
+  and the schemes `kcp`, `ws`, `wss` are of this version.
+
 ## Adding a tunnel or host setting
 
 1. Add the field to `lib/model` and one row to `TunnelSettings` or

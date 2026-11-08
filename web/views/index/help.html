@@ -35,7 +35,7 @@
                     点击该客户端的域名管理，添加两条规则规则：1、域名：a.proxy.com，内网目标：127.0.0.1:81，2、域名：b.proxy.com，内网目标：127.0.0.1:82
                 </li>
                 <li>内网客户端运行<code>
-                    <pre>./npc -server={{.ip}}:{{.p}} -vkey=客户端的密钥</pre>
+                    <pre>./npc -server="{{.ip}}:{{.p}}" -vkey="客户端的密钥"</pre>
                 </code></pre></li>
                 <li>现在访问a.proxy.com，b.proxy.com即可成功</li>
             </ul>
@@ -58,7 +58,7 @@
             <ul>
                 <li>在客户端管理中创建一个客户端，记录下验证密钥</li>
                 <li>内网客户端运行<code>
-                    <pre>./npc -server={{.ip}}:{{.p}} -vkey=客户端的密钥</pre>
+                    <pre>./npc -server="{{.ip}}:{{.p}}" -vkey="客户端的密钥"</pre>
                 </code></pre>
                 </li>
                 <li>
@@ -84,7 +84,7 @@
             <ul>
                 <li>在客户端管理中创建一个客户端，记录下验证密钥</li>
                 <li>内网客户端运行<code>
-                    <pre>./npc -server={{.ip}}:{{.p}} -vkey=客户端的密钥</pre>
+                    <pre>./npc -server="{{.ip}}:{{.p}}" -vkey="客户端的密钥"</pre>
                 </code></pre>
                 </li>
                 <li>
@@ -110,7 +110,7 @@
             <ul>
                 <li>在客户端管理中创建一个客户端，记录下验证密钥</li>
                 <li>内网客户端运行<code>
-                    <pre>./npc -server={{.ip}}:{{.p}} -vkey=客户端的密钥</pre>
+                    <pre>./npc -server="{{.ip}}:{{.p}}" -vkey="客户端的密钥"</pre>
                 </code></pre>
                 </li>
                 <li>在该客户端隧道管理中添加一条混合代理，填写监听的端口（8004），保存。</li>
