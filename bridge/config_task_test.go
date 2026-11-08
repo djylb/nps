@@ -83,7 +83,7 @@ func TestConfigPortTaskCarriesFields(t *testing.T) {
 	cleared := map[string]bool{
 		"RunStatus": true, "NowConn": true, "IsHttp": true, "Routes": true, "Ports": true, "TargetAddr": true,
 		"IpListPriority": true, "BlackIpList": true, "WhiteIpList": true, "RegisteredOnly": true,
-		"UserAuth": true, "HealthConfig": true,
+		"UserAuth": true, "HealthConfig": true, "Compress": true,
 	}
 	client := model.NewClient("vk", false, false)
 	sent := sentTask()

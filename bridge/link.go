@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/netaddr"
 )
@@ -114,7 +115,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 
 	client := clientValue.(*Client)
 
-	var tunnel legacy.Carrier
+	var path linkPath
 	var node *Node
 	isFile := strings.Contains(link.Host, "file://")
 	if isFile {
@@ -123,16 +124,16 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	if link.Option.Node != "" {
 		// The route chose the node; its absence says nothing about the others.
 		if node, ok = client.GetNodeByUUID(link.Option.Node); ok {
-			tunnel = node.GetTunnel()
+			path = node.path()
 		}
-		if tunnel == nil {
+		if path == nil {
 			return nil, fmt.Errorf("node %s of client %d is not connected", link.Option.Node, clientId)
 		}
 	} else if isFile {
 		key := strings.TrimPrefix(strings.TrimSpace(link.Host), "file://")
 		node, ok = client.GetNodeByFile(key)
 		if ok {
-			tunnel = node.GetTunnel()
+			path = node.path()
 		} else {
 			log.Debug("no node holds the file tunnel", "client", clientId)
 			err = fmt.Errorf("failed to find tunnel for host: %s", link.Host)
@@ -142,7 +143,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	} else {
 		node = client.GetNode()
 		if node != nil {
-			tunnel = node.GetTunnel()
+			path = node.path()
 		}
 	}
 
@@ -155,7 +156,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		err = errors.New("the client connect error")
 		return
 	}
-	if tunnel == nil {
+	if path == nil {
 		sig := node.GetSignal()
 		if sig == nil || sig.IsClosed() {
 			if client.InConnectGraceWindow(clientConnectGraceWindow) || client.awaitingTunnel() {
@@ -175,34 +176,87 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 		return
 	}
 
+	return path.open(clientId, link)
+}
+
+// linkPath is how links reach one node, whichever protocol it speaks.
+type linkPath interface {
+	open(clientId int, link *conn.Link) (net.Conn, error)
+}
+
+// legacyPath opens links on a carrier of the old protocol.
+type legacyPath struct {
+	node   *Node
+	tunnel legacy.Carrier
+}
+
+func (p legacyPath) open(clientId int, link *conn.Link) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
-	target, err = tunnel.OpenStream(ctx)
+	target, err := p.tunnel.OpenStream(ctx)
 	cancel()
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	if err = legacy.WriteLink(target, link); err != nil {
 		log.Debug("writing link failed", "client", clientId, "target", link.Host, "err", err)
 		_ = target.Close()
-		return
+		return nil, err
 	}
 
-	caps := node.Caps()
+	caps := p.node.Caps()
 	if link.Option.NeedAck && caps.LinkAck {
 		if err := legacy.ReadAck(target, link.Option.Timeout); err != nil {
 			_ = target.Close()
 			log.Debug("reading link ack failed", "client", clientId, "target", link.Host, "err", err)
-			node.CloseIfTunnelCurrent(tunnel)
+			p.node.CloseIfTunnelCurrent(p.tunnel)
 			return nil, err
 		}
 	}
 
-	if link.ConnType == conn.LinkUDP && !caps.FramedUDP && node.udpWarned.CompareAndSwap(false, true) {
+	if link.ConnType == conn.LinkUDP && !caps.FramedUDP && p.node.udpWarned.CompareAndSwap(false, true) {
 		log.Info("udp link needs a newer npc", "client", clientId, "version", legacy.CoreVersion(caps.Index))
 	}
+	return target, nil
+}
 
-	return
+// corePath opens links on a core protocol session, which encrypts and
+// compresses them itself.
+type corePath struct{ s coreapi.Session }
+
+func (p corePath) open(clientId int, link *conn.Link) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
+	defer cancel()
+	req := coreapi.LinkRequest{Source: link.RemoteAddr, WantReply: link.Option.NeedAck, Compress: link.Option.Compress}
+	switch link.ConnType {
+	case conn.LinkPing:
+		if _, err := p.s.Ping(ctx); err != nil {
+			return nil, err
+		}
+		return closedConn(), nil
+	case conn.LinkTCP:
+		req.Network, req.Target = coreapi.NetworkTCP, netaddr.FormatAddress(link.Host)
+	case conn.LinkUDP:
+		req.Network, req.Target = coreapi.NetworkUDP, netaddr.FormatAddress(link.Host)
+	case conn.LinkUDP5:
+		req.Network = coreapi.NetworkUDP
+	default:
+		return nil, fmt.Errorf("the client %d cannot serve a %s link", clientId, link.ConnType)
+	}
+	target, err := p.s.OpenLink(ctx, req)
+	if err != nil {
+		log.Debug("opening link failed", "client", clientId, "target", link.Host, "err", err)
+		return nil, err
+	}
+	link.Crypt, link.Compress = false, false
+	return target, nil
+}
+
+// closedConn is the connection of a link that carries nothing.
+func closedConn() net.Conn {
+	c, peer := net.Pipe()
+	_ = peer.Close()
+	return c
 }
 
 // Local targets of bridge:// addresses besides the bridge transports.

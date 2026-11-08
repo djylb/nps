@@ -24,7 +24,48 @@ type ClientRecord struct {
 	VKey    string
 	Enabled bool
 	Crypt   bool
+	// Compress is the client's default compression, algorithms in order of
+	// preference (§7): the first the peer can decompress is used.
+	Compress []string
 }
+
+// Networks of a link.
+const (
+	NetworkTCP = "tcp"
+	NetworkUDP = "udp"
+)
+
+// LinkRequest is one link to open on a session.
+type LinkRequest struct {
+	Network string // NetworkTCP or NetworkUDP
+	// Target is the final target, host:port; empty only for addressed UDP,
+	// where each packet names its own.
+	Target string
+	// Source is the visitor's address, host:port, or empty.
+	Source string
+	// WantReply waits for the exit's result before the link is returned.
+	WantReply bool
+	// Compress is the compression of a TCP link, algorithms in order of
+	// preference; nil for none. UDP is not compressed.
+	Compress []string
+}
+
+// LinkError is a link the exit refused or could not make.
+type LinkError struct {
+	Code   uint64 // the protocol's error code
+	Reason string // a word of logevent.NetReason
+}
+
+func (e *LinkError) Error() string { return "link refused: " + e.Reason }
+
+// NetReason gives the word to logevent.NetReason.
+func (e *LinkError) NetReason() string { return e.Reason }
+
+// Timeout marks a timed-out dial as net.Error does.
+func (e *LinkError) Timeout() bool { return e.Reason == "timeout" }
+
+// Temporary implements net.Error.
+func (e *LinkError) Temporary() bool { return false }
 
 // Session is one authenticated core protocol session on the server.
 type Session interface {
@@ -34,6 +75,16 @@ type Session interface {
 	Carrier() string
 	Agent() string
 	Since() time.Time
+	// OpenLink opens a link to the exit, within ctx: a connection to the
+	// target, bytes for TCP, length-prefixed frames as the old protocol
+	// shows them for UDP (SOCKS5 datagrams in the addressed mode).
+	OpenLink(ctx context.Context, r LinkRequest) (net.Conn, error)
+	// Ping measures the round trip to npc.
+	Ping(ctx context.Context) (time.Duration, error)
+	// Closed reports whether the session ended.
+	Closed() bool
+	// Close ends the session; npc may come back at once.
+	Close() error
 }
 
 // AuthFailure is a failed authentication of an identified client.
@@ -86,9 +137,21 @@ type Entry interface {
 	ClientChanged(ClientRecord)
 	// ClientRemoved tells the entry that a client no longer exists.
 	ClientRemoved(id int)
-	// Kick closes the sessions of a client, which may come back at once.
-	Kick(id int)
+	// Kick closes the sessions of a client. With auth the credential no
+	// longer holds (§3.7); otherwise the client may come back at once.
+	Kick(id int, auth bool)
 	Close() error
+}
+
+// Exit is what npc does for the links the server opens, its local policy
+// included.
+type Exit interface {
+	// Dial connects to target, host:port, on network; a refusal by local
+	// policy is a permission error.
+	Dial(ctx context.Context, network, target string) (net.Conn, error)
+	// ServeUDP5 relays the SOCKS5 datagrams of c, length-prefixed frames as
+	// conn.HandleUdp5 reads them, until it ends.
+	ServeUDP5(ctx context.Context, c net.Conn)
 }
 
 // ClientSession is an established session on npc.

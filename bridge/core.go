@@ -1,12 +1,18 @@
 package bridge
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/hex"
+	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/djylb/netx"
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
@@ -14,13 +20,14 @@ import (
 	"github.com/djylb/slogx"
 )
 
-// coreHooks connects the new protocol entry to the bridge. Its sessions carry
-// no tunnels yet; step 2 of the switch plugs them in here.
+// coreHooks connects the new protocol entry to the bridge: a session is a
+// node of its client, beside the nodes of the old protocol, and links reach
+// it through the same selection (Node.path).
 func (s *Bridge) coreHooks() coreapi.Hooks {
 	return coreapi.Hooks{
-		Online:     coreOnline,
+		Online:     s.coreOnline,
 		Takeover:   coreTakeover,
-		Offline:    coreOffline,
+		Offline:    s.coreOffline,
 		AuthFailed: coreAuthFailed,
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
@@ -29,17 +36,52 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 	}
 }
 
-func coreOnline(cs coreapi.Session) {
-	slogx.Emit(context.Background(), log, &logevent.ClientOnline, "client", cs.ClientID(), "src_ip", cs.Source().Addr().Unmap().String(), "carrier", cs.Carrier(), "version", cs.Agent())
+// coreNodeUUID names the node of a core session: one npc process.
+func coreNodeUUID(cs coreapi.Session) string { return hex.EncodeToString([]byte(cs.Instance())) }
+
+// agentVersion is the version in Hello's agent, "npc/1.2.3 linux/amd64".
+func agentVersion(agent string) string {
+	first, _, _ := strings.Cut(agent, " ")
+	if _, v, ok := strings.Cut(first, "/"); ok {
+		return v
+	}
+	return agent
+}
+
+// coreOnline registers a session as the old protocol registers a connection:
+// the client's address and carrier, then joinNode, which does the presence.
+func (s *Bridge) coreOnline(cs coreapi.Session) {
+	id := cs.ClientID()
+	if c, err := s.store.GetClient(id); err == nil {
+		c.Lock()
+		c.Addr, c.LocalAddr, c.Mode = cs.Source().Addr().Unmap().String(), "", cs.Carrier()
+		c.Unlock()
+	}
+	uuid := coreNodeUUID(cs)
+	node := NewNode(uuid, agentVersion(cs.Agent()), legacy.LatestIndex)
+	node.AddCore(cs)
+	s.joinNode(id, uuid, node, func(n *Node) { n.AddCore(cs) })
 }
 
 func coreTakeover(cs, old coreapi.Session) {
 	slogx.Emit(context.Background(), log, &logevent.SessionTakeover, "client", cs.ClientID(), "src_ip", cs.Source().Addr().Unmap().String(), "addr", old.Source().String())
 }
 
-func coreOffline(cs coreapi.Session, reason string) {
-	slogx.Emit(context.Background(), log, &logevent.ClientOffline, "client", cs.ClientID(), "src_ip", cs.Source().Addr().Unmap().String(),
-		"carrier", cs.Carrier(), "version", cs.Agent(), "dur_ms", time.Since(cs.Since()).Milliseconds(), "reason", reason)
+// coreOffline drops the node of a session that ended, unless a newer session
+// of the same npc holds it now. A client that may no longer connect leaves at
+// once; otherwise it has the grace of the health checks, as on the old
+// protocol.
+func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
+	id := cs.ClientID()
+	if v, ok := s.Client.Load(id); ok {
+		client := v.(*Client)
+		if n, ok := client.GetNodeByUUID(coreNodeUUID(cs)); ok && n.CloseIfCoreCurrent(cs) {
+			client.RemoveOfflineNodes(false)
+		}
+	}
+	if reason == "deleted" {
+		s.delClient(id, "deleted")
+	}
 }
 
 func coreAuthFailed(f coreapi.AuthFailure) {
@@ -147,8 +189,17 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 			h.ServeHTTP(w, r)
 		})
 	}
-	route := &conn.WSRoute{Wrap: func(legacy http.Handler) http.Handler {
-		h, err := s.core.WebSocket(legacy)
+	notFound := denied(http.HandlerFunc(s.serveHTTPFallback))
+	route := &conn.WSRoute{NotFound: notFound, Wrap: func(legacy http.Handler) http.Handler {
+		// A request that is no WebSocket on the bridge path is a visitor's.
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				legacy.ServeHTTP(w, r)
+				return
+			}
+			notFound.ServeHTTP(w, r)
+		})
+		h, err := s.core.WebSocket(next)
 		if err != nil {
 			log.Error("new protocol websocket route", "err", err)
 			return legacy
@@ -156,7 +207,7 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		return denied(h)
 	}}
 	for _, p := range connection.Network().NewProtocolWSPaths {
-		h, err := s.core.WebSocketAnyProtocol(http.NotFoundHandler())
+		h, err := s.core.WebSocketAnyProtocol(notFound)
 		if err != nil {
 			log.Error("new protocol websocket route", "path", p, "err", err)
 			continue
@@ -167,6 +218,49 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		route.Paths[p] = denied(h)
 	}
 	return route
+}
+
+// serveHTTPFallback gives a request of a WebSocket bridge port that is not a
+// carrier to the domain proxy, as the other bridge ports give theirs (§13):
+// the connection, its parsed request written back in front.
+func (s *Bridge) serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
+	if s.fallback.Load() == nil {
+		http.NotFound(w, r)
+		return
+	}
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	c, rw, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	_ = c.SetDeadline(time.Time{})
+	head := requestHead(r)
+	if n := rw.Reader.Buffered(); n > 0 {
+		b, _ := rw.Reader.Peek(n)
+		head = append(head, b...)
+	}
+	// ServeFallback owns the connection when it takes it.
+	//noinspection GoResourceLeak
+	if !s.coreFallback(netx.NewPrefixConn(c, head), r.TLS) {
+		_ = c.Close()
+	}
+}
+
+// requestHead writes the head of a parsed request back: only its order of
+// fields differs from what the client sent.
+func requestHead(r *http.Request) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "%s %s %s\r\nHost: %s\r\n", r.Method, r.RequestURI, r.Proto, r.Host)
+	if len(r.TransferEncoding) > 0 {
+		fmt.Fprintf(&b, "Transfer-Encoding: %s\r\n", strings.Join(r.TransferEncoding, ","))
+	}
+	_ = r.Header.Write(&b)
+	b.WriteString("\r\n")
+	return b.Bytes()
 }
 
 // tlsConfig is the configuration of the TLS bridge listener; the ALPN list

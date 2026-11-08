@@ -2,8 +2,11 @@ package wire
 
 import (
 	"encoding/binary"
+	"net"
 	"net/netip"
 	"strconv"
+
+	"golang.org/x/net/idna"
 )
 
 // Address types (§1).
@@ -80,4 +83,24 @@ func ParseAddress(b []byte) (Address, error) {
 		return Address{}, ErrMalformed
 	}
 	return a, nil
+}
+
+// ParseHostPort reads the host:port of a target or a source: an IP, or a name
+// written as its A-label.
+func ParseHostPort(s string) (Address, error) {
+	h, p, err := net.SplitHostPort(s)
+	if err != nil {
+		return Address{}, ErrMalformed
+	}
+	port, err := strconv.ParseUint(p, 10, 16)
+	if err != nil {
+		return Address{}, ErrMalformed
+	}
+	if ip, err := netip.ParseAddr(h); err == nil {
+		return Address{IP: ip.WithZone("").Unmap(), Port: uint16(port)}, nil
+	}
+	if h, err = idna.Lookup.ToASCII(h); err != nil || h == "" || len(h) > 255 {
+		return Address{}, ErrMalformed
+	}
+	return Address{Host: h, Port: uint16(port)}, nil
 }

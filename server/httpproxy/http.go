@@ -335,6 +335,7 @@ func (s *HttpServer) openLink(req *proxyRequest, dialing func(addr string), fail
 		}
 		link = conn.NewLink(conn.LinkTCP, addr, h.Client.Cnf.Crypt, h.Client.Cnf.Compress, req.remote, isLocal)
 		link.Option.Node = route.Node
+		link.Option.Compress = model.ResolveCompress(h.Client, h.Compress)
 		var err error
 		target, err = s.Bridge.Session(h.Client.Id).OpenLink(link, 0)
 		if err != nil {

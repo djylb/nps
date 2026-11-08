@@ -239,10 +239,15 @@ func init() { slogx.Register(All...) }
 
 // NetReason maps a dial, listen or relay error to a short reason word: eof,
 // timeout, refused, reset, closed, dns, tls, limit, in_use, permission,
-// client_offline, other.
+// client_offline, other. An error that knows its word gives it through a
+// NetReason() string method.
 func NetReason(err error) string {
 	if err == nil {
 		return ""
+	}
+	var r interface{ NetReason() string }
+	if errors.As(err, &r) {
+		return r.NetReason()
 	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return "eof"

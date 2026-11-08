@@ -7,14 +7,17 @@ import (
 	"github.com/zmuxio/zmux-go"
 )
 
-// rejectCode answers a stream nobody serves yet: nothing at all is open to the
-// peer at this step except CONFIG (§4.1, §11).
+// rejectCode answers a stream nobody serves yet (§4.1, §11).
 func rejectCode(preamble []byte, allowed func(wire.Op) bool) uint64 {
 	op, _, err := wire.ParseOpenOp(preamble)
 	switch {
 	case err != nil:
 		return wire.CodeMalformed
 	case op.Known() && !allowed(op):
+		return wire.CodeNotAllowed
+	case op == wire.OpTCP || op == wire.OpUDP:
+		// §4.6: only with the link_id of a server-exit LINK, and none
+		// exists before point-to-point arrives.
 		return wire.CodeNotAllowed
 	}
 	return wire.CodeUnsupported

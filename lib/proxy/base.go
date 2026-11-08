@@ -208,9 +208,11 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
 	link.Option.Node = node
 	taskID := 0
+	override := model.CompressDefault
 	if task != nil {
-		taskID = task.Id
+		taskID, override = task.Id, task.Compress
 	}
+	link.Option.Compress = model.ResolveCompress(client, override)
 	target, err := s.Bridge.Session(client.Id).OpenLink(link, taskID)
 	if err != nil {
 		slogx.Emit(context.Background(), log, &logevent.RelayFailed, "route", taskName(task), "client", client.Id, "target", addr, "reason", logevent.NetReason(err), "err", err)

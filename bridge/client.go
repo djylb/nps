@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
@@ -113,6 +114,7 @@ type Node struct {
 	caps      legacy.Caps
 	signal    *conn.Conn
 	tunnel    legacy.Carrier
+	core      coreapi.Session // the session of an npc on the core protocol
 	retryTime int
 	joinNano  int64
 	udpWarned atomic.Bool // "udp link needs a newer npc" was logged
@@ -221,6 +223,9 @@ func (n *Node) AddNode(node *Node) {
 	if node.tunnel != nil {
 		n.addTunnel(node.tunnel)
 	}
+	if node.core != nil {
+		n.addCore(node.core)
+	}
 }
 
 func (n *Node) AddSignal(signal *conn.Conn) {
@@ -259,6 +264,35 @@ func (n *Node) addTunnel(tunnel legacy.Carrier) {
 	}
 }
 
+// AddCore makes cs the node's session on the core protocol.
+func (n *Node) AddCore(cs coreapi.Session) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.addCore(cs)
+}
+
+func (n *Node) addCore(cs coreapi.Session) {
+	if n.core != cs {
+		// The entry already ended a session this one replaces (§3.6).
+		n.core = cs
+		n.touchJoinTime()
+		n.Client.markOnline(n)
+	}
+}
+
+// path returns how links reach the node; nil when it has no way yet.
+func (n *Node) path() linkPath {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	switch {
+	case n.core != nil:
+		return corePath{s: n.core}
+	case n.tunnel != nil:
+		return legacyPath{node: n, tunnel: n.tunnel}
+	}
+	return nil
+}
+
 func (n *Node) InJoinGraceWindow(window time.Duration) bool {
 	if window <= 0 {
 		return false
@@ -291,6 +325,9 @@ func (n *Node) IsOnline() bool {
 }
 
 func (n *Node) isOnline() bool {
+	if n.core != nil {
+		return !n.core.Closed()
+	}
 	return !n.isTunnelClosed() && (n.signal != nil && !n.signal.IsClosed()) || n.Client.Id < 0
 }
 
@@ -301,6 +338,9 @@ func (n *Node) IsTunnelClosed() bool {
 }
 
 func (n *Node) isTunnelClosed() bool {
+	if n.core != nil {
+		return n.core.Closed()
+	}
 	return n.tunnel == nil || n.tunnel.Closed()
 }
 
@@ -343,6 +383,17 @@ func (n *Node) CloseIfSignalCurrent(signal *conn.Conn) bool {
 	return true
 }
 
+// CloseIfCoreCurrent is CloseIfSignalCurrent for a core protocol session.
+func (n *Node) CloseIfCoreCurrent(cs coreapi.Session) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.core != cs {
+		return false
+	}
+	n.closeLocked()
+	return true
+}
+
 // CloseIfTunnelCurrent is CloseIfSignalCurrent for the tunnel.
 func (n *Node) CloseIfTunnelCurrent(tunnel legacy.Carrier) bool {
 	n.mu.Lock()
@@ -355,6 +406,10 @@ func (n *Node) CloseIfTunnelCurrent(tunnel legacy.Carrier) bool {
 }
 
 func (n *Node) closeLocked() {
+	if n.core != nil {
+		_ = n.core.Close()
+		n.core = nil
+	}
 	n.closeTunnel()
 	if n.signal != nil {
 		_ = n.signal.Close()
@@ -490,6 +545,12 @@ func (c *Client) InConnectGraceWindow(window time.Duration) bool {
 		return false
 	}
 	return time.Since(time.Unix(0, v)) < window
+}
+
+func (c *Client) lastUUID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.LastUUID
 }
 
 func (c *Client) AddFile(key, uuid string) error {

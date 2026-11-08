@@ -219,6 +219,7 @@ func (s *SecretServer) Serve(src net.Conn, lk *conn.Link, ack func(net.Conn, tim
 		link = conn.NewLink(connType, addr, s.Task.Client.Cnf.Crypt, s.Task.Client.Cnf.Compress, src.RemoteAddr().String(), localProxy)
 		link.Option.Node = route.Node
 		var err error
+		link.Option.Compress = model.ResolveCompress(s.Task.Client, s.Task.Compress)
 		target, err = s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 		return localProxy, err
 	}

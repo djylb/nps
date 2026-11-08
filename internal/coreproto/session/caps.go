@@ -11,8 +11,8 @@ var (
 )
 
 // compressAlgs is what Hello lists as decompressible (§7.2: must include
-// flate). No stream is compressed yet, and flate alone is the minimum.
-var compressAlgs = []uint64{wire.CompressFlate}
+// flate).
+var compressAlgs = []uint64{wire.CompressFlate, wire.CompressZstd, wire.CompressSnappy}
 
 func serverHello() []byte {
 	return wire.AppendHello(nil, &wire.Hello{Caps: serverCaps, CompressAlgs: compressAlgs})

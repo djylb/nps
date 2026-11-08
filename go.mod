@@ -26,6 +26,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.4.0
 	github.com/kardianos/service v1.3.0
+	github.com/klauspost/compress v1.20.3
 	github.com/quic-go/quic-go v0.65.0
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e

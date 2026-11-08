@@ -121,6 +121,8 @@ nps.exe -conf_path=D:\test\nps
 | `bridge_path` | `/ws` | `/ws` | WS 路径 |
 | `new_protocol` | `false` | `true` | 在 tcp、tls、ws、wss 客户端端口上同时接受核心协议，旧协议照常接受 |
 | `new_protocol_tls_alpn` | 空 | - | `new_protocol` 打开时 TLS 端口的 ALPN 列表（逗号分隔），空则不通告 |
+| `compress_max_window` | `0`（8 MiB） | `8388608` | 新协议压缩流的 zstd 帧窗口上限（字节） |
+| `compress_max_ratio` | `0`（4096） | `-1` | 新协议压缩流的解压比上限，负值不检查 |
 | `new_protocol_ws_paths` | 空 | `/a1b2,/c3d4` | 逗号分隔的 WS 路径，这些路径上的请求不看子协议，一律进核心协议；`bridge_path` 上仍按子协议分流（`binary` 进核心协议，不带的进旧协议） |
 | `bridge_real_ip_header` / `bridge_trusted_ips` | 空 | - | WS 取真实 IP 的请求头和信任的代理 |
 | `bridge_host` | 空 | `xxx.com` | 端口复用时的主机名 |

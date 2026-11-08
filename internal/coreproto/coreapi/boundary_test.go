@@ -14,7 +14,7 @@ import (
 // or the wire types; the bridge and the client see this package.
 func TestImportBoundary(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	deny := []string{"github.com/zmuxio/", "github.com/djylb/nps/internal/coreproto/wire", "github.com/djylb/nps/internal/coreproto/session"}
+	deny := []string{"github.com/zmuxio/", "github.com/klauspost/compress", "github.com/djylb/nps/internal/coreproto/wire", "github.com/djylb/nps/internal/coreproto/session"}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

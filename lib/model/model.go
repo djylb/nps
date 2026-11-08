@@ -282,7 +282,66 @@ type Config struct {
 	U        string // username
 	P        string // password
 	Compress bool
-	Crypt    bool
+	// CompressAlg is the algorithm of Compress for npc on the core
+	// protocol (flate, zstd, snappy); empty is snappy, the old protocol's
+	// compression (§7.1).
+	CompressAlg string `json:",omitempty"`
+	Crypt       bool
+}
+
+// Tunnel and host override of the compression of a client; "" follows the
+// client.
+const (
+	CompressDefault = ""
+	CompressOff     = "off"
+	CompressFlate   = "flate"
+	CompressZstd    = "zstd"
+	CompressSnappy  = "snappy"
+)
+
+var (
+	compressOnlyFlate  = []string{CompressFlate}
+	compressOnlyZstd   = []string{CompressZstd}
+	compressOnlySnappy = []string{CompressSnappy}
+)
+
+func compressOf(alg string) []string {
+	switch alg {
+	case CompressFlate:
+		return compressOnlyFlate
+	case CompressZstd:
+		return compressOnlyZstd
+	case CompressSnappy:
+		return compressOnlySnappy
+	}
+	return nil
+}
+
+// CompressList is the default compression of a client: algorithms in order of
+// preference, nil for none (§7). The result is shared and not modified.
+func (c *Config) CompressList() []string {
+	if c == nil || !c.Compress {
+		return nil
+	}
+	if c.CompressAlg == "" {
+		return compressOnlySnappy
+	}
+	return compressOf(c.CompressAlg)
+}
+
+// ResolveCompress is the compression of a stream of a tunnel or host:
+// override, or the client's when it is CompressDefault.
+func ResolveCompress(c *Client, override string) []string {
+	switch override {
+	case CompressDefault:
+		if c == nil {
+			return nil
+		}
+		return c.Cnf.CompressList()
+	case CompressOff:
+		return nil
+	}
+	return compressOf(override)
 }
 
 // KeyKind is the scope of a client's vkey on the bridge.
@@ -471,6 +530,8 @@ type Tunnel struct {
 	// modified, under the entry's lock.
 	HealthConfig *HealthCheck `json:",omitempty"`
 	sync.RWMutex
+	// Compress overrides the client's compression (Compress* constants).
+	Compress string `json:",omitempty"`
 }
 
 // CompileDestACL compiles the destination list. Rules that cannot be used
@@ -556,6 +617,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 		NoStore:      true,
 		Target:       host.Target,
 		Routes:       host.Routes,
+		Compress:     host.Compress,
 		UserAuth:     host.UserAuth,
 		MultiAccount: host.MultiAccount,
 		hostRoute:    host.Host,
@@ -578,6 +640,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		Port:         t.Port,
 		ServerIp:     t.ServerIp,
 		Mode:         t.Mode,
+		Compress:     t.Compress,
 		Status:       t.Status,
 		RunStatus:    t.RunStatus,
 		Client:       t.Client,
@@ -754,6 +817,8 @@ func (c *HealthCheck) orDefault() HealthCheck {
 
 type Host struct {
 	RateLimits
+	// Compress overrides the client's compression (Compress* constants).
+	Compress         string `json:",omitempty"`
 	Id               int
 	Host             string // host
 	HeaderChange     string // request header change

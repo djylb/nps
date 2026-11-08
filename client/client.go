@@ -347,19 +347,7 @@ func (s *TRPClient) serveLink(src net.Conn, lk *conn.Link, targets *model.Target
 // dialTarget connects to lk's host and reports the result to the health
 // checks.
 func (s *TRPClient) dialTarget(lk *conn.Link) (net.Conn, error) {
-	var targetConn net.Conn
-	var err error
-	if LocalIPForward && s.localIP != "" && netaddr.IsPublicHost(lk.Host) {
-		dialer := net.Dialer{Timeout: lk.Option.Timeout}
-		if lk.ConnType == conn.LinkUDP {
-			dialer.LocalAddr = netaddr.BuildUDPBindAddr(s.localIP)
-		} else {
-			dialer.LocalAddr = netaddr.BuildTCPBindAddr(s.localIP)
-		}
-		targetConn, err = dialer.DialContext(s.ctx, lk.ConnType, lk.Host)
-	} else {
-		targetConn, err = net.DialTimeout(lk.ConnType, lk.Host, lk.Option.Timeout)
-	}
+	targetConn, err := dialExit(s.ctx, lk.ConnType, lk.Host, s.localIP, lk.Option.Timeout)
 	if hc := s.healthChecker.Load(); hc != nil {
 		if err != nil {
 			hc.dialFailed(lk.Host)
@@ -369,6 +357,20 @@ func (s *TRPClient) dialTarget(lk *conn.Link) (net.Conn, error) {
 		}
 	}
 	return targetConn, err
+}
+
+// dialExit connects to a target as an exit does: from localIP when
+// -local_ip_forward asks for it and the target is public.
+func dialExit(ctx context.Context, network, host, localIP string, timeout time.Duration) (net.Conn, error) {
+	d := net.Dialer{Timeout: timeout}
+	if LocalIPForward && localIP != "" && netaddr.IsPublicHost(host) {
+		if network == conn.LinkUDP {
+			d.LocalAddr = netaddr.BuildUDPBindAddr(localIP)
+		} else {
+			d.LocalAddr = netaddr.BuildTCPBindAddr(localIP)
+		}
+	}
+	return d.DialContext(ctx, network, host)
 }
 
 // Whether the monitor channel is closed

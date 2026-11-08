@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,6 +58,9 @@ type Acceptor struct {
 	key   *ecdh.PrivateKey
 	hello []byte
 
+	sessionOpts wire.SessionOptions
+	limits      CompressLimits
+
 	mu   sync.Mutex
 	sess map[int][]*serverSession
 
@@ -64,16 +68,25 @@ type Acceptor struct {
 	wg     sync.WaitGroup
 }
 
+// Options are the settings of the entry that are not per client.
+type Options struct {
+	// Session is what every snapshot carries as session_options (§5).
+	Session wire.SessionOptions
+	// Compress are the receive limits of compressed streams (§7.4).
+	Compress CompressLimits
+}
+
 // NewAcceptor builds the entry over store, with a key of this process
 // (nothing is persisted, §3.3).
-func NewAcceptor(store Store) (*Acceptor, error) {
+func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	key, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	a := &Acceptor{table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{}}
+	a := &Acceptor{table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
+		sessionOpts: opts.Session, limits: opts.Compress.normalized()}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
-		Config:              &zmux.Config{AllowRecordMode: a.allowJoinMode},
+		Config:              &zmux.Config{AllowRecordMode: a.allowJoinMode, EnableDatagrams: true},
 		MaxPending:          maxPending,
 		MaxPendingPerSource: maxPendingPerSource,
 		Admission: &zmux.Admission{
@@ -347,7 +360,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		_ = zc.Close()
 		return
 	}
-	s := &serverSession{zc: zc, t: t, mode: peer.Mode, since: time.Now()}
+	s := &serverSession{a: a, zc: zc, t: t, mode: peer.Mode, since: time.Now(), kicked: make(chan struct{}, 1)}
 	replaced := a.register(s)
 	h := a.hooks.Load()
 	for _, old := range replaced {
@@ -366,11 +379,10 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	} else if e.Crypt && s.mode == zmux.Trusted {
 		a.drain(s)
 	}
-	a.wg.Go(func() { rejectStreams(ctx, zc, wire.Op.FromClient) })
 	a.wg.Go(func() { rejectUniStreams(ctx, zc, wire.Op.FromClient) })
-	if err := s.pushConfig(a.snapshotOf(t.client)); err != nil {
-		log.Debug("config push failed", "client", t.client, "err", err)
-	}
+	a.wg.Go(func() { rejectStreams(ctx, zc, wire.Op.FromClient) })
+	a.wg.Go(func() { s.pushLoop(ctx) })
+	s.kick()
 	_ = zc.Wait()
 	a.unregister(s)
 	if h != nil && h.Offline != nil {
@@ -382,12 +394,19 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	}
 }
 
-// snapshotOf is what CONFIG carries so far: the record rule of §3.2.
-func (a *Acceptor) snapshotOf(client int) *wire.Snapshot {
-	if e := a.table.get(client); e != nil && !e.Crypt {
-		return &wire.Snapshot{Record: wire.RecordTrusted}
+// snapshotOf is a client's CONFIG: the record rule of §3.2, its default
+// compression, and the session options. record, compress and the options are
+// its only dependencies so far; listener and health arrive with their
+// features.
+func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
+	snap := &wire.Snapshot{Session: a.sessionOpts}
+	if e := a.table.get(s.t.client); e != nil {
+		if !e.Crypt {
+			snap.Record = wire.RecordTrusted
+		}
+		snap.Compress = chooseCompress(e.Compress, s.t.hello.CompressAlgs)
 	}
-	return &wire.Snapshot{}
+	return snap
 }
 
 // register adds s and returns the sessions of the same instance it replaces
@@ -440,7 +459,8 @@ func (a *Acceptor) drain(s *serverSession) {
 }
 
 // ClientChanged implements coreapi.Entry: §3.2's rules for the switch, §3.7
-// for a client that may no longer connect.
+// for a client that may no longer connect; a change of what CONFIG carries
+// goes out as a new snapshot.
 func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 	old := a.table.set(r)
 	sessions := a.sessionsOf(r.ID)
@@ -450,17 +470,16 @@ func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 			s.closeAuth("deleted")
 		}
 	case old == nil:
+		for _, s := range sessions {
+			s.kick()
+		}
 	case !old.Crypt && r.Crypt:
 		for _, s := range sessions {
 			a.drain(s)
 		}
-	case old.Crypt && !r.Crypt:
+	case old.Crypt != r.Crypt || !slices.Equal(old.Compress, r.Compress):
 		for _, s := range sessions {
-			a.wg.Go(func() {
-				if err := s.pushConfig(a.snapshotOf(r.ID)); err != nil {
-					log.Debug("config push failed", "client", r.ID, "err", err)
-				}
-			})
+			s.kick()
 		}
 	}
 }
@@ -474,22 +493,27 @@ func (a *Acceptor) ClientRemoved(id int) {
 }
 
 // Kick implements coreapi.Entry.
-func (a *Acceptor) Kick(id int) {
+func (a *Acceptor) Kick(id int, auth bool) {
 	for _, s := range a.sessionsOf(id) {
-		s.closing.Store("deleted")
-		a.drain(s)
+		if auth {
+			s.closeAuth("deleted")
+		} else {
+			s.closing.CompareAndSwap(nil, "kicked")
+			a.drain(s)
+		}
 	}
 }
 
 // serverSession implements coreapi.Session.
 type serverSession struct {
+	a       *Acceptor
 	zc      *zmux.Conn
 	t       *ticket
 	mode    zmux.RecordMode
 	since   time.Time
 	seq     atomic.Uint64
-	pushMu  sync.Mutex
-	closing atomic.Value // string: reason of a close this side made
+	kicked  chan struct{} // a newer snapshot wants pushing
+	closing atomic.Value  // string: reason of a close this side made
 }
 
 func (s *serverSession) ClientID() int          { return s.t.client }
@@ -499,26 +523,62 @@ func (s *serverSession) Carrier() string        { return s.t.carrier }
 func (s *serverSession) Agent() string          { return s.t.hello.Agent }
 func (s *serverSession) Since() time.Time       { return s.since }
 
+// Close implements coreapi.Session.
+func (s *serverSession) Close() error {
+	s.closing.CompareAndSwap(nil, "kicked")
+	return s.zc.CloseWithError(zmux.ApplicationErrorCode(wire.CodeDrain), "")
+}
+
 func (s *serverSession) closeAuth(reason string) {
 	s.closing.Store(reason)
 	_ = s.zc.CloseWithError(zmux.ApplicationErrorCode(wire.CodeAuth), "")
 }
 
-// pushConfig opens one stream carrying a full snapshot (§4.3). Pushes are
-// serialized so that seq order is the order of the snapshots' content.
+// kick asks for a new snapshot; concurrent changes coalesce into one push of
+// the latest state.
+func (s *serverSession) kick() {
+	select {
+	case s.kicked <- struct{}{}:
+	default:
+	}
+}
+
+// configWriteTimeout bounds pushing one snapshot to a peer that stopped
+// reading.
+const configWriteTimeout = 30 * time.Second
+
+// pushLoop sends snapshots, one at a time, so that seq order is the order of
+// their content (§4.3).
+func (s *serverSession) pushLoop(ctx context.Context) {
+	stop := s.zc.Context().Done()
+	for {
+		select {
+		case <-s.kicked:
+			if err := s.pushConfig(s.a.snapshotOf(s)); err != nil {
+				log.Debug("config push failed", "client", s.t.client, "err", err)
+			}
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// pushConfig opens one stream carrying a full snapshot (§4.3).
 func (s *serverSession) pushConfig(snap *wire.Snapshot) error {
-	s.pushMu.Lock()
-	defer s.pushMu.Unlock()
 	st, err := s.zc.OpenUniStream()
 	if err != nil {
 		return err
 	}
+	_ = st.SetWriteDeadline(time.Now().Add(configWriteTimeout))
 	if err := st.SetPreamble(wire.AppendConfigOpen(s.seq.Add(1))); err != nil {
 		st.CancelWrite(zmux.StreamErrorCode(wire.CodeInternal))
 		return err
 	}
 	if body := wire.AppendSnapshot(nil, snap); len(body) > 0 {
 		if _, err := st.Write(body); err != nil {
+			st.CancelWrite(zmux.StreamErrorCode(wire.CodeInternal))
 			return err
 		}
 	}

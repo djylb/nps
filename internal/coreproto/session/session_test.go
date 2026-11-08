@@ -80,7 +80,7 @@ func read5(c net.Conn) []byte {
 
 func start(t *testing.T, carrier string, records ...coreapi.ClientRecord) *env {
 	t.Helper()
-	a, err := NewAcceptor(memStore(records))
+	a, err := NewAcceptor(memStore(records), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

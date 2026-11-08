@@ -230,6 +230,7 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 	tl.Ports, tl.TargetAddr = "", "" // what the ports and targets of the entry were made of
 	tl.CopySourceLists(new(model.SourceLists))
 	tl.UserAuth, tl.HealthConfig = nil, nil
+	tl.Compress = model.CompressDefault // the server decides compression (§7)
 
 	if len(ports) == 1 {
 		tl.Target = t.Target

@@ -195,9 +195,15 @@ type NetworkConfig struct {
 	// new_protocol_ws_paths, comma-separated, default none). On BridgePath
 	// the subprotocol decides: binary is the core protocol, none the old one.
 	NewProtocolWSPaths []string
-	HTTPProxyIP        string
-	HTTPProxyPort      int
-	HTTPSProxyPort     int
+	// CompressMaxWindow and CompressMaxRatio are the receive limits of
+	// compressed links on the core protocol (nps.conf compress_max_window
+	// in bytes, compress_max_ratio; 0 is the default, a negative ratio
+	// disables that check).
+	CompressMaxWindow uint64
+	CompressMaxRatio  int64
+	HTTPProxyIP       string
+	HTTPProxyPort     int
+	HTTPSProxyPort    int
 	// HTTPProxyAccessPort and HTTPSProxyAccessPort are the ports visitors
 	// reach the host proxy on from outside, behind a reverse proxy or port
 	// mapping; they default to the listen ports and only build links.
@@ -461,6 +467,8 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.BridgeIP = r.stringDefault(r.stringDefault("0.0.0.0", "bridge_tcp_ip"), "bridge_ip")
 	cfg.Network.BridgeHost = r.stringValue("bridge_host")
 	cfg.Network.NewProtocol = r.boolDefault(false, "new_protocol")
+	cfg.Network.CompressMaxWindow = uint64(max(r.intDefault(0, "compress_max_window"), 0))
+	cfg.Network.CompressMaxRatio = int64(r.intDefault(0, "compress_max_ratio"))
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {
 		if v = strings.TrimSpace(v); v != "" {
 			cfg.Network.NewProtocolTLSALPN = append(cfg.Network.NewProtocolTLSALPN, v)

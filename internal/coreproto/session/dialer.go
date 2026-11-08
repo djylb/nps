@@ -32,6 +32,10 @@ const boundFailedTTL = time.Hour
 // maxConfigBody is the default bound of a CONFIG snapshot (§4.3).
 const maxConfigBody = 16 << 20
 
+// maxIncomingLinks is the credit of links the server may have open on one
+// session; the old protocol had no limit, and it is the visitors that count.
+const maxIncomingLinks = 1 << 30
+
 // DialConfig is one server profile of npc.
 type DialConfig struct {
 	Candidates []connprofile.Candidate // from connprofile.Parse
@@ -41,6 +45,15 @@ type DialConfig struct {
 	Agent      string
 	Label      string
 	Timeout    time.Duration
+	// Dial connects to the server, keeping -proxy and -local_ip; nil dials
+	// directly.
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Exit serves the links the server opens; nil refuses them.
+	Exit coreapi.Exit
+	// CompressLimits are the receive limits of compressed streams (§7.4).
+	CompressLimits CompressLimits
+	// MaxConfig bounds a CONFIG snapshot; 0 is 16 MiB (§4.3).
+	MaxConfig int
 }
 
 // Dialer establishes the sessions of a profile.
@@ -52,6 +65,7 @@ type Dialer struct {
 	boundFailed map[string]time.Time // (candidate, network) where Bound failed and Sealed worked, when
 	last        string               // candidate that connected last
 	now         func() time.Time     // tests
+	limits      CompressLimits
 }
 
 // NewDialer returns a Dialer for cfg.
@@ -59,7 +73,13 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 15 * time.Second
 	}
-	return &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now}
+	if cfg.Dial == nil {
+		cfg.Dial = (&net.Dialer{}).DialContext
+	}
+	if cfg.MaxConfig <= 0 {
+		cfg.MaxConfig = maxConfigBody
+	}
+	return &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
 }
 
 // Server implements coreapi.Dialer.
@@ -192,7 +212,7 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 	tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: c.ALPN, ServerName: serverName(c)}
 	switch c.Carrier {
 	case "tcp", "tls":
-		nc, err := (&net.Dialer{}).DialContext(ctx, "tcp", c.Addr)
+		nc, err := d.cfg.Dial(ctx, "tcp", c.Addr)
 		if err != nil {
 			return carrier{}, err
 		}
@@ -216,7 +236,7 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		if !strings.Contains(c.Raw, "://") {
 			protocols = []string{legacySubprotocol}
 		}
-		cd := &captureDialer{}
+		cd := &captureDialer{dial: d.cfg.Dial}
 		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}
 		if c.Host != "" {
 			o.Header = http.Header{"Host": {c.Host}}
@@ -234,12 +254,13 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 // captureDialer dials TCP and remembers the local network of the last
 // connection, which zmuxws does not show.
 type captureDialer struct {
-	mu  sync.Mutex
-	net string
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	mu   sync.Mutex
+	net  string
 }
 
 func (d *captureDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	nc, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+	nc, err := d.dial(ctx, network, addr)
 	if err == nil {
 		d.mu.Lock()
 		d.net = localNetwork(nc)
@@ -325,11 +346,11 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	if err != nil {
 		return nil, err
 	}
-	zc, err := zmux.Start(ctx, q, zmux.RoleClient, &zmux.Config{})
+	zc, err := zmux.Start(ctx, q, zmux.RoleClient, &zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks})
 	if err != nil {
 		return nil, err
 	}
-	s := &clientSession{d: d, zc: zc, mode: mode, carrier: label, done: make(chan struct{})}
+	s := &clientSession{d: d, zc: zc, mode: mode, carrier: label, done: make(chan struct{}), wg: &sync.WaitGroup{}}
 	s.start()
 	return s, nil
 }
@@ -355,6 +376,8 @@ type clientSession struct {
 	done    chan struct{}
 	err     error
 
+	wg *sync.WaitGroup
+
 	mu      sync.Mutex
 	applied uint64                      // seq of the applied snapshot
 	onApply func(uint64, wire.Snapshot) // tests
@@ -362,21 +385,20 @@ type clientSession struct {
 
 func (s *clientSession) start() {
 	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-	wg.Go(func() { rejectStreams(ctx, s.zc, wire.Op.FromServer) })
-	wg.Go(func() {
+	s.wg.Go(func() { s.serveStreams(ctx) })
+	s.wg.Go(func() {
 		for {
 			st, err := s.zc.AcceptUniStream(ctx)
 			if err != nil {
 				return
 			}
-			wg.Go(func() { s.receive(st) })
+			s.wg.Go(func() { s.receive(st) })
 		}
 	})
 	go func() {
 		s.err = s.zc.Wait()
 		cancel()
-		wg.Wait()
+		s.wg.Wait()
 		s.ended()
 		close(s.done)
 	}()
@@ -411,11 +433,12 @@ func (s *clientSession) receive(st *zmux.ReceiveStream) {
 		st.CancelRead(zmux.StreamErrorCode(wire.ErrorCode(err)))
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(st, maxConfigBody+1))
+	limit := s.d.cfg.MaxConfig
+	body, err := io.ReadAll(io.LimitReader(st, int64(limit)+1))
 	if err != nil {
 		return
 	}
-	if len(body) > maxConfigBody {
+	if len(body) > limit {
 		st.CancelRead(zmux.StreamErrorCode(wire.CodeMalformed))
 		return
 	}
@@ -436,8 +459,23 @@ func (s *clientSession) apply(seq uint64, snap wire.Snapshot) {
 	}
 	s.applied = seq
 	s.d.setRecord(snap.Record)
+	s.applySessionOptions(snap.Session)
 	if s.onApply != nil {
 		s.onApply(seq, snap)
+	}
+}
+
+// applySessionOptions follows the server's timers (§5): idle_s is how often
+// the session checks an idle peer, dead_s when it gives up on one.
+func (s *clientSession) applySessionOptions(o wire.SessionOptions) {
+	if o.IdleS == 0 && o.DeadS == 0 {
+		return
+	}
+	var l zmux.Liveness
+	l.KeepAlivePeriod = time.Duration(o.IdleS) * time.Second
+	l.DeadTimeout = time.Duration(o.DeadS) * time.Second
+	if err := s.zc.SetLiveness(l); err != nil {
+		log.Debug("session options not applied", "err", err)
 	}
 }
 

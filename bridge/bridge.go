@@ -164,10 +164,13 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 // DelClient ends the session of client id on behalf of the manager (kick,
 // disable, delete); its client_offline line says reason=deleted.
 func (s *Bridge) DelClient(id int) {
-	s.delClient(id, "deleted")
 	if s.core != nil {
-		s.core.Kick(id)
+		// Before the sessions close by the way of their nodes, so that a
+		// client whose key no longer holds is told (§3.7).
+		c, err := s.store.GetClient(id)
+		s.core.Kick(id, err != nil || !c.Status)
 	}
+	s.delClient(id, "deleted")
 }
 
 // delClient ends the session of client id; reason is the client_offline
@@ -264,6 +267,9 @@ func (s *Bridge) recordConnection(id int, online bool, session *Client, reason s
 	c.RLock()
 	addr, mode, version := c.Addr, c.Mode, c.Version
 	c.RUnlock()
+	if v := sessionVersion(session); v != "" {
+		version = v
+	}
 	carrier := mode
 	if _, t, ok := strings.Cut(mode, ","); ok {
 		carrier = t
@@ -277,6 +283,21 @@ func (s *Bridge) recordConnection(id int, online bool, session *Client, reason s
 		dur = now.Sub(session.started).Milliseconds()
 	}
 	slogx.Emit(context.Background(), log, &logevent.ClientOffline, "client", id, "src_ip", addr, "carrier", carrier, "version", version, "dur_ms", dur, "reason", reason)
+}
+
+// sessionVersion is the npc version of a session, "" if unknown: the stored
+// one is only refreshed by the periodic sampler, so it is empty or old when a
+// client comes online.
+func sessionVersion(c *Client) string {
+	if c == nil {
+		return ""
+	}
+	n, ok := c.node(c.lastUUID())
+	if !ok {
+		return ""
+	}
+	_, v := n.versions()
+	return v
 }
 
 func (s *Bridge) loadOrStoreClient(id int, client *Client) (any, bool) {

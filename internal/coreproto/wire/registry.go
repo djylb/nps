@@ -19,9 +19,11 @@ const (
 // Known reports whether o is in the table of operations.
 func (o Op) Known() bool { return o >= OpConfig && o <= OpUpdate }
 
-// FromServer reports whether the server is the side that opens o towards the
-// client; LINK goes both ways (§2.1).
-func (o Op) FromServer() bool { return o == OpConfig || o == OpUpdate || o == OpLink }
+// FromServer reports whether the server may open o towards the client: TCP
+// and UDP go from the entry to the exit, LINK both ways (§2.1).
+func (o Op) FromServer() bool {
+	return o == OpConfig || o == OpUpdate || o == OpLink || o == OpTCP || o == OpUDP
+}
 
 // FromClient reports whether a client may open o towards the server.
 func (o Op) FromClient() bool { return o.Known() && o != OpConfig && o != OpUpdate }
@@ -76,6 +78,9 @@ const (
 	CompressZstd   uint64 = 2
 	CompressSnappy uint64 = 3
 )
+
+// KnownCompress reports whether v is in the table of algorithms.
+func KnownCompress(v uint64) bool { return v >= CompressFlate && v <= CompressSnappy }
 
 // Handshake limits (§3.5).
 const (

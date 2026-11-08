@@ -35,6 +35,8 @@ type WSRoute struct {
 	// Paths are further paths and their handlers. A path that is also the
 	// bridge path replaces it.
 	Paths map[string]http.Handler
+	// NotFound serves the paths nothing else takes; nil is the mux's 404.
+	NotFound http.Handler
 }
 
 // NewWSListener serves WebSocket bridge connections on path over base. The
@@ -92,6 +94,10 @@ func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string,
 	}
 	if handler != nil {
 		mux.Handle(path, handler)
+	}
+	if route != nil && route.NotFound != nil {
+		// An error only says "/" is taken: it is then the only path.
+		_ = handlePath(mux, "/", route.NotFound)
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: HandshakeTimeout}
 	go func() { _ = srv.Serve(ln) }()

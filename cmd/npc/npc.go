@@ -86,9 +86,11 @@ var (
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 	autoReconnect  = flag.Bool("auto_reconnect", true, "Auto Reconnect")
 	// Temporary, until npc has moved to the core protocol: off by default.
-	newProtocol    = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss; no tunnels yet)")
-	newProtocolPin = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
-	launchInputs   = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
+	newProtocol       = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss)")
+	compressMaxWindow = flag.Uint64("compress_max_window", 0, "New protocol: largest zstd window of a compressed link, bytes (default 8 MiB)")
+	compressMaxRatio  = flag.Int64("compress_max_ratio", 0, "New protocol: largest expansion of a compressed link (default 4096, negative: no check)")
+	newProtocolPin    = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
+	launchInputs      = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
 )
 
 func main() {
@@ -473,7 +475,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				if *newProtocol {
-					runCoreProfile(ctx, serverAddr, verifyKey, connType)
+					runCoreProfile(ctx, serverAddr, verifyKey, connType, localIP)
 					return
 				}
 				for {

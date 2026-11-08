@@ -20,8 +20,8 @@ var (
 	// read by lib/config.
 	accounts = []string{"UserAuth.AccountMap", "MultiAccount.Content", "MultiAccount.AccountMap"}
 
-	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp"})
-	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash"})
+	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "Compress"})
+	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash", "Compress"})
 )
 
 // TestEntrySettingsCoverModel fails for a field added to Tunnel or Host
@@ -124,9 +124,9 @@ func TestCloneCopiesFields(t *testing.T) {
 func TestUpdateCopiesFields(t *testing.T) {
 	kept := map[string][]string{
 		"Tunnel": {"Id", "Port", "Status", "RunStatus", "Client", "Ports", "Flow", "NowConn", "TargetAddr",
-			"NoStore", "IsHttp", "Routes", "UserAuth", "HealthConfig"},
+			"NoStore", "IsHttp", "Routes", "UserAuth", "HealthConfig", "Compress"},
 		"Host": {"Id", "Host", "Location", "Scheme", "TlsOffload", "CertType", "CertHash", "NoStore", "IsClose",
-			"Flow", "NowConn", "Client", "Routes", "UserAuth", "HealthConfig"},
+			"Flow", "NowConn", "Client", "Routes", "UserAuth", "HealthConfig", "Compress"},
 	}
 	for kind, pair := range map[string][2]any{"Tunnel": {new(Tunnel), new(Tunnel)}, "Host": {new(Host), new(Host)}} {
 		dst, src := pair[0], pair[1]

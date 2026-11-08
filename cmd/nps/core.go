@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
+	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/servercfg"
@@ -15,7 +16,7 @@ func coreRecord(c *model.Client) (coreapi.ClientRecord, bool) {
 	if c.Id <= 0 || c.NoStore || c.KeyKind != model.KeyControl {
 		return coreapi.ClientRecord{}, false
 	}
-	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt}, true
+	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList()}, true
 }
 
 // RangeClients implements session.Store.
@@ -34,7 +35,10 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 	if !cfg.Network.NewProtocol {
 		return nil, nil
 	}
-	a, err := session.NewAcceptor(coreStore{db})
+	a, err := session.NewAcceptor(coreStore{db}, session.Options{
+		Session:  wire.SessionOptions{DeadS: uint64(max(cfg.Runtime.DisconnectTimeout, 0))},
+		Compress: session.CompressLimits{MaxWindow: cfg.Network.CompressMaxWindow, MaxRatio: cfg.Network.CompressMaxRatio},
+	})
 	if err != nil {
 		return nil, err
 	}
