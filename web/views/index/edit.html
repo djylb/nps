@@ -27,7 +27,6 @@
                                         <span id="casesocks5" langtag="info-casesocks5"></span>
                                         <span id="casemixProxy" langtag="info-casemixproxy"></span>
                                         <span id="casesecret" langtag="info-casesecret"></span>
-                                        <span id="casep2p" langtag="info-casep2p"></span>
                                         <span id="casefile" langtag="info-casefile"></span>
                                     </span>
                                     <select class="form-control selectpicker" id="type" name="type">
@@ -37,7 +36,6 @@
                                         {{/*<option value="httpProxy" langtag="scheme-httpProxy"></option>*/}}
                                         {{/*<option value="socks5" langtag="scheme-socks5"></option>*/}}
                                         <option value="secret" langtag="scheme-secret"></option>
-                                        <option value="p2p" langtag="scheme-p2p"></option>
                                         {{/*<option value="file" langtag="scheme-file"></option>*/}}
                                     </select>
                                 </div>
@@ -339,7 +337,6 @@
     //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     arr["secret"] = ["health_check", "client_id", "target_type", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
-    arr["p2p"] = ["client_id", "target_type", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy"]
     arr["file"] = ["client_id", "port", "local_path", "strip_pre", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
 
     function resetForm() {
@@ -347,7 +344,7 @@
         $("#usecase span").css("display", "none");
         o = $("#type").val();
         $('#case' + o).css("display", "inline")
-        $('.p2p-rate-hint').toggle(o === 'p2p');
+        $('.p2p-rate-hint').toggle(o === 'secret');
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }

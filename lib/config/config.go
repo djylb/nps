@@ -32,17 +32,6 @@ type CommonConfig struct {
 	DisconnectTime   int
 }
 
-type LocalServer struct {
-	Type       string
-	Port       int
-	Ip         string
-	Password   string
-	Target     string
-	TargetType string
-	Fallback   bool
-	LocalProxy bool
-}
-
 type Config struct {
 	content      string
 	title        []string
@@ -50,6 +39,7 @@ type Config struct {
 	Hosts        []*model.Host
 	Tasks        []*model.Tunnel
 	LocalServer  []*LocalServer
+	legacy       bool // settings of an earlier version were converted (legacy.go)
 }
 
 // NewConfig loads and parses an npc configuration file.
@@ -136,15 +126,11 @@ func buildConfig(content string, sections []section) (*Config, error) {
 		keys := sectionKeys(sec.body)
 		switch {
 		case strings.HasPrefix(name, "secret") && !keys["mode"]:
-			local := delLocalService(sec.body)
-			local.Type = "secret"
-			c.LocalServer = append(c.LocalServer, local)
-		case strings.HasPrefix(name, "p2p") && !keys["mode"]:
-			local := delLocalService(sec.body)
-			if local.Type == "" {
-				local.Type = "p2p"
-			}
-			c.LocalServer = append(c.LocalServer, local)
+			l, old := delLocalService(sec.name, false, sec.body)
+			c.LocalServer, c.legacy = append(c.LocalServer, l), c.legacy || old
+		case legacyLocalSection(name, keys):
+			l, _ := delLocalService(sec.name, true, sec.body)
+			c.LocalServer, c.legacy = append(c.LocalServer, l), true
 		case legacySection(sec.name, keys) != "":
 			log.Warn("legacy config section ignored", "name", sec.name, "detail", legacySection(sec.name, keys))
 		case name == "common":
@@ -163,6 +149,7 @@ func buildConfig(content string, sections []section) (*Config, error) {
 			}
 			t.Remark = sec.name
 			c.Tasks = append(c.Tasks, t)
+			c.legacy = c.legacy || legacyTunnelMode(t)
 		}
 	}
 	if c.CommonConfig == nil {
@@ -429,33 +416,42 @@ func dealMultiUser(s string) map[string]string {
 	return multiUserMap
 }
 
-func delLocalService(s string) *LocalServer {
-	l := new(LocalServer)
+// delLocalService reads a point-to-point access section. legacy is true for
+// a section of an earlier version ([p2p...]); old reports whether keys of
+// an earlier version were converted.
+func delLocalService(name string, legacy bool, s string) (l *LocalServer, old bool) {
+	l = new(LocalServer)
+	prev := legacyLocal{section: legacy}
 	for _, v := range textutil.SplitLines(s) {
 		item, ok := splitKV(v)
-		if !ok {
+		if !ok || prev.read(item) {
 			continue
 		}
 		switch item[0] {
 		case "local_port":
 			l.Port = textutil.GetIntNoErrByStr(item[1])
 		case "local_type":
-			l.Type = item[1]
+			l.Type = strings.ToLower(strings.TrimSpace(item[1]))
+		case "conn_mode":
+			l.ConnMode = strings.ToLower(strings.TrimSpace(item[1]))
 		case "local_ip":
 			l.Ip = item[1]
 		case "password":
 			l.Password = item[1]
 		case "target_addr":
 			l.Target = item[1]
-		case "target_type":
-			l.TargetType = item[1]
 		case "local_proxy":
 			l.LocalProxy = parseBool(item)
-		case "fallback_secret":
-			l.Fallback = parseBool(item)
 		}
 	}
-	return l
+	old = prev.apply(name, l)
+	if l.Type == "" {
+		l.Type = LocalTCPUDP
+	}
+	if l.ConnMode == "" {
+		l.ConnMode = ConnAuto
+	}
+	return l, old
 }
 
 func getAllTitle(content string) ([]string, error) {

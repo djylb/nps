@@ -48,7 +48,7 @@ func (a Allowed) TestTunnelPort(t *model.Tunnel) bool {
 }
 
 func (a Allowed) testPortUsage(p int, m string, needUDP bool) (b bool) {
-	if m == "p2p" || m == "secret" {
+	if m == "secret" {
 		return true
 	}
 	if p > 65535 || p < 0 {

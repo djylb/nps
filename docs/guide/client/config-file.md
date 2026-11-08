@@ -143,13 +143,15 @@ multi_account=multi_account.conf
 | server_port   | 在服务端的代理端口                                                                                                                                  |
 | multi_account | socks5多账号配置文件（可选),配置后使用basic_username和basic_password无法通过认证 <br> multi_account.conf要与可执行文件npc同一目录，或者npc.conf里面写相对路径,conf/multi_account.conf |
 
-## 私密代理模式
+## 点对点访问模式
+
+提供端：
 
 ```ini
 [common]
 server_addr=1.1.1.1:8024
 vkey=123
-[secret_ssh]
+[ssh]
 mode=secret
 password=ssh2
 target_addr=10.1.50.2:22
@@ -161,23 +163,7 @@ target_addr=10.1.50.2:22
 | password    | 唯一密钥   |
 | target_addr | 内网目标   |
 
-## p2p代理模式
-
-```ini
-[common]
-server_addr=1.1.1.1:8024
-vkey=123
-[p2p_ssh]
-mode=p2p
-password=ssh2
-target_addr=10.1.50.2:22
-```
-
-| 项           | 含义   |
-|-------------|------|
-| mode        | p2p  |
-| password    | 唯一密钥 |
-| target_addr | 内网目标 |
+访问端写 `[secret...]` 节（`local_port`、`local_type`、`conn_mode`、`password`），见[点对点访问](/guide/tunnels/secret.md)和 [npc.conf](/reference/npc-config.md)。旧版的 `mode=p2p` 读作 `mode=secret` 并告警。
 
 ## 文件访问模式
 

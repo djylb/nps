@@ -163,8 +163,8 @@ nps.exe -conf_path=D:\test\nps
 | `allow_connection_num_limit` | `false` | `true` | 客户端连接数限制 |
 | `allow_local_proxy` | `false` | `true` | 服务端本地代理 |
 | `allow_user_local` | 同 `allow_local_proxy` | `false` | 用户使用本地代理 |
-| `allow_secret_link` | `false` | `false` | 私密代理指定目标 |
-| `allow_secret_local` | `false` | `false` | 私密代理连到服务端本地 |
+| `allow_secret_link` | `false` | `false` | 点对点访问指定目标 |
+| `allow_secret_local` | `false` | `false` | 点对点访问连到服务端本地 |
 | `allow_multi_ip` | `false` | `true` | 配置隧道监听 IP |
 | `system_info_display` | `false` | `true` | 显示系统负载 |
 

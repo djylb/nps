@@ -52,14 +52,12 @@ var (
 	proxyUrl       = flag.String("proxy", "", "Proxy URL: http, https, socks5, socks5h, socks4 or socks4a (eg: socks5://user:pass@127.0.0.1:9007)")
 	localIP        = flag.String("local_ip", "", "Local source IP for outbound connections")
 	localIPForward = flag.Bool("local_ip_forward", false, "Apply local_ip to tunnel forwarding egress for public IP/domain targets")
-	localType      = flag.String("local_type", "p2p", "P2P target type")
-	localPort      = flag.Int("local_port", 2000, "P2P local port")
-	password       = flag.String("password", "", "P2P password flag")
-	target         = flag.String("target", "", "P2P target")
-	targetType     = flag.String("target_type", "all", "P2P target connection type (all|tcp|udp)")
+	localType      = flag.String("local_type", config.LocalTCPUDP, "Point-to-point access listener (tcp|udp|tcp_udp|mixed|transparent)")
+	connMode       = flag.String("conn_mode", config.ConnAuto, "Point-to-point access connection (auto|relay|direct)")
+	localPort      = flag.Int("local_port", 2000, "Point-to-point access local port")
+	password       = flag.String("password", "", "Point-to-point access password")
+	target         = flag.String("target", "", "Point-to-point access target, when the server allows it")
 	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
-	fallbackSecret = flag.Bool("fallback_secret", true, "P2P fallback secret (true or false)")
-	disableP2P     = flag.Bool("disable_p2p", false, "Disable P2P connection (true or false)")
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
 	logType        = flag.String("log", defaultLogType, "Log output mode (stdout|file|both|off)")
@@ -97,9 +95,10 @@ func main() {
 	flag.CommandLine.SortFlags = false
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	prepared, warnings := cliargs.Prepare(flag.CommandLine, os.Args[1:], cliargs.NPC, "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
+	localArgs, warnings := cliargs.NPCLocal(os.Args[1:])
+	prepared, prepWarnings := cliargs.Prepare(flag.CommandLine, localArgs, cliargs.NPC, "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
 	os.Args = append(os.Args[:1], prepared...)
-	argWarnings = warnings
+	argWarnings = append(warnings, prepWarnings...)
 	flag.Parse()
 
 	args := flag.Args()
@@ -124,7 +123,6 @@ func main() {
 	}
 	install.RecoverUpdate()
 	client.SkipTLSVerify = *skipVerify
-	client.DisableP2P = *disableP2P
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
@@ -371,7 +369,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		startLaunch(ctx, cancel, inputs)
 		return
 	}
-	//p2p or secret command
+	// point-to-point access command
 	if *password != "" {
 		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
@@ -381,12 +379,11 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		commonConfig.Tp = strings.ToLower(*connType)
 		commonConfig.LocalIP = strings.TrimSpace(*localIP)
 		localServer := new(config.LocalServer)
-		localServer.Type = strings.ToLower(*localType)
+		localServer.Type = strings.ToLower(strings.TrimSpace(*localType))
+		localServer.ConnMode = strings.ToLower(strings.TrimSpace(*connMode))
 		localServer.Password = *password
 		localServer.Target = *target
-		localServer.TargetType = strings.ToLower(*targetType)
 		localServer.Port = *localPort
-		localServer.Fallback = *fallbackSecret
 		localServer.LocalProxy = *localProxy
 		commonConfig.Client = new(model.Client)
 		commonConfig.Client.Cnf = new(model.Config)
@@ -394,7 +391,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		// The manager cancels p2pCtx when it gives up, which only happens
 		// with auto reconnection off.
 		p2pCtx, p2pCancel := context.WithCancel(ctx)
-		p2pm := client.NewP2PManager(p2pCtx, p2pCancel, commonConfig)
+		p2pm := client.NewSecretManager(p2pCtx, p2pCancel, commonConfig)
 		go func() { _ = p2pm.StartLocalServer(localServer) }()
 		go func() {
 			<-p2pCtx.Done()

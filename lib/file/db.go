@@ -287,7 +287,7 @@ func (p *taskPasswords) releaseLocked(id int) {
 func (p *taskPasswords) lookup(hash string) (int, bool) { return p.index.Get(hash) }
 
 // reserve makes t.Password the password claimed by t.Id and releases the
-// one the task held before. A secret or p2p task without a password gets a
+// one the task held before. A secret task without a password gets a
 // random one, regenerated until it is unique. An explicitly set password
 // that another task already uses is rejected when strict, leaving t and the
 // index unchanged; otherwise it is logged and replaced by a random one.
@@ -296,7 +296,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 	defer p.mu.Unlock()
 	password := t.Password
 	generated := false
-	if (t.Mode == "secret" || t.Mode == "p2p") && password == "" {
+	if t.Mode == "secret" && password == "" {
 		password = crypt.GetRandomString(16, t.Id)
 		generated = true
 	}
@@ -329,16 +329,7 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 }
 
 func normalizeTask(t *model.Tunnel) {
-	switch t.Mode {
-	case "socks5":
-		t.Mode = "mixProxy"
-		t.HttpProxy = false
-		t.Socks5Proxy = true
-	case "httpProxy":
-		t.Mode = "mixProxy"
-		t.HttpProxy = true
-		t.Socks5Proxy = false
-	}
+	legacyTask(t)
 	t.TargetType = model.NormalizeTargetType(t.TargetType)
 	t.CompileDestACL()
 	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))

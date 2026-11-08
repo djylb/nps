@@ -42,7 +42,7 @@ npc.exe install -server=xx,yy -vkey=xx,yy -type=tcp,tls -config=xxx,yyy -log=off
 npc.exe uninstall
 ```
 
-安装时连接参数（`-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，带 `-password` 时连同 `-local_type`、`-local_port`、`-target`、`-target_type`、`-local_proxy`、`-fallback_secret`）不写进服务定义，而是写到安装目录下的 `conf/npc-service.json`（仅属主可读写，Linux/macOS 为 `/etc/nps/conf/`），服务以 `--launch=@<该文件>` 运行；同时给的 `-config` 文件也改为 `--launch=@<绝对路径>`。`--launch` 或 `NPC_LAUNCH` 的内容写到 `conf/npc-service-launch-N.conf`，`@文件` 只转为绝对路径。只用 `-config` 安装时服务仍用 `-config`，路径转为绝对路径。不会改动已有的 `conf/npc.conf`。
+安装时连接参数（`-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，带 `-password` 时连同 `-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`）不写进服务定义，而是写到安装目录下的 `conf/npc-service.json`（仅属主可读写，Linux/macOS 为 `/etc/nps/conf/`），服务以 `--launch=@<该文件>` 运行；同时给的 `-config` 文件也改为 `--launch=@<绝对路径>`。`--launch` 或 `NPC_LAUNCH` 的内容写到 `conf/npc-service-launch-N.conf`，`@文件` 只转为绝对路径。只用 `-config` 安装时服务仍用 `-config`，路径转为绝对路径。不会改动已有的 `conf/npc.conf`。
 
 日志默认位置：Windows 为程序目录下的 `npc.log`，Linux/macOS 为 `/var/log/npc.log`，可用 `-log_path` 修改。
 

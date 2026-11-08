@@ -87,8 +87,7 @@ curl -X POST \
 | `/index/http`   | HTTP 代理           |
 | `/index/mix`    | 混合代理（HTTP+SOCKS5） |
 | `/index/file`   | 文件服务              |
-| `/index/secret` | 私密代理              |
-| `/index/p2p`    | P2P 隧道            |
+| `/index/secret` | 点对点访问            |
 | `/index/host`   | 域名解析              |
 | `/index/all`    | 按客户端展示            |
 
@@ -101,7 +100,7 @@ curl -X POST \
   | 参数 | 说明 |
   |------|------|
   | `client_id` | 需要查询的客户端 ID（整数） |
-  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`, `p2p`） |
+  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`） |
   | `search` | 关键词搜索（字符串） |
   | `sort` | 排序字段（如 `id`） |
   | `order` | 排序方式（`asc` 或 `desc`） |
@@ -118,7 +117,7 @@ curl -X POST \
   | `client_id` | 关联客户端 ID（整数） |
   | `port` | 服务器监听端口，若 ≤0 则自动分配 |
   | `server_ip` | 服务器 IP 地址 |
-  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`, `p2p`） |
+  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`） |
   | `target` | 目标地址（如 `127.0.0.1:8080`，支持多行换行 `\n`） |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |

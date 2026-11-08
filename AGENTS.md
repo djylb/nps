@@ -52,6 +52,13 @@ and nps forwards visitors through that connection to targets npc reaches.
   by an older version still starts after an update. Old npc.conf and
   nps.conf keys are handled in `lib/config/legacy.go` and
   `lib/servercfg/legacy.go`.
+- Point-to-point access (tunnel mode `secret`) names its visitor settings
+  as the later major version does: `local_type` (`tcp`, `udp`, `tcp_udp`,
+  `mixed`, `transparent`) and `conn_mode` (`auto`, `relay`, `direct`).
+  Settings of earlier versions are converted only in the legacy files
+  (`lib/config/legacy.go`, `lib/file/legacy.go`, `legacyBundle` in
+  `web/service`) and `internal/cliargs/rules.go`, to be removed together
+  in the next major version.
 
 ## Adding a tunnel or host setting
 

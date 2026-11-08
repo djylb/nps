@@ -80,16 +80,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		}
 		_ = s.taskPasswords.reserve(post, false)
 		post.NowConn = 0
-		switch post.Mode {
-		case "socks5":
-			post.Mode = "mixProxy"
-			post.HttpProxy = false
-			post.Socks5Proxy = true
-		case "httpProxy":
-			post.Mode = "mixProxy"
-			post.HttpProxy = true
-			post.Socks5Proxy = false
-		}
+		legacyTask(post)
 		post.TargetType = model.NormalizeTargetType(post.TargetType)
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))

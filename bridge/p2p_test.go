@@ -77,7 +77,7 @@ func visitorRequest(t *testing.T, b *Bridge, vs string, req legacy.P2PRequest) (
 func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	db := useTestDb(t)
 	b := newTestP2PBridge(t, db)
-	task := &model.Tunnel{Id: 7, Mode: "p2p", Password: "secret", Status: false, Client: &model.Client{Id: 2}}
+	task := &model.Tunnel{Id: 7, Mode: "secret", Password: "secret", Status: false, Client: &model.Client{Id: 2}}
 	if err := db.NewTask(task); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +90,31 @@ func TestP2PVisitorRefusedForDisabledTask(t *testing.T) {
 	}
 	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {
 		t.Fatalf("%d sessions created for a disabled task", n)
+	}
+}
+
+// A task that is not a secret task, and one whose target the server reaches
+// itself, get no direct path: the visitor relays.
+func TestP2PVisitorRefusedWithoutDirectAccess(t *testing.T) {
+	db := useTestDb(t)
+	b := newTestP2PBridge(t, db)
+	for _, task := range []*model.Tunnel{
+		{Id: 8, Mode: "tcp", Port: 1, Password: "tcp-task", Status: true, Client: &model.Client{Id: 2}, Target: &model.Target{TargetStr: "127.0.0.1:1"}},
+		{Id: 9, Mode: "secret", Password: "own-client", Status: true, Client: &model.Client{Id: -1}, Target: &model.Target{TargetStr: "127.0.0.1:1"}},
+	} {
+		if err := db.NewTask(task); err != nil {
+			t.Fatal(err)
+		}
+		reply, err := visitorRequest(t, b, version.VERSION, legacy.P2PRequest{Password: crypt.Md5(task.Password)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reply.Code != legacy.P2PCodeRefused {
+			t.Fatalf("task %d: reply = %+v, want a refusal", task.Id, reply)
+		}
+	}
+	if n := b.p2p.Load().co.Stats().SessionsTotal; n != 0 {
+		t.Fatalf("%d sessions created", n)
 	}
 }
 

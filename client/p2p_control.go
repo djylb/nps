@@ -35,23 +35,24 @@ var errP2PServerIncompatible = errors.New("the nps server does not speak this P2
 // sends the work type and msg, reads the bridge's reply and runs a TLS
 // handshake that accepts only the bridge certificate with fingerprint, the
 // one the bridge sent, encrypted with the vkey, when the tunnel was set up.
-// It returns the TLS stream and the session id; on error c is closed.
+// It returns the TLS stream and the bridge's reply; on error c is closed.
 // Canceling ctx closes c.
-func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fingerprint []byte, msg any) (*tls.Conn, string, error) {
+func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fingerprint []byte, msg any) (*tls.Conn, legacy.P2PReply, error) {
+	var none legacy.P2PReply
 	if len(fingerprint) == 0 {
 		_ = c.Close()
-		return nil, "", errors.New("no bridge certificate fingerprint: P2P needs protocol 0.28.0 or newer")
+		return nil, none, errors.New("no bridge certificate fingerprint: P2P needs protocol 0.28.0 or newer")
 	}
 	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
 	defer stop()
 	if err := SendType(c, workType, uuid); err != nil {
-		return nil, "", fmt.Errorf("send work type: %w", err)
+		return nil, none, fmt.Errorf("send work type: %w", err)
 	}
 	// After SendType, which clears the read deadline.
 	_ = c.SetDeadline(time.Now().Add(p2pControlTimeout))
 	if err := legacy.WriteP2P(c, msg); err != nil {
 		_ = c.Close()
-		return nil, "", fmt.Errorf("send request: %w", err)
+		return nil, none, fmt.Errorf("send request: %w", err)
 	}
 	_ = c.SetReadDeadline(time.Now().Add(p2pReplyTimeout))
 	var reply legacy.P2PReply
@@ -61,22 +62,22 @@ func openP2PControl(ctx context.Context, c *conn.Conn, workType, uuid string, fi
 		// protocol; an ended stream may be a restart or a network change.
 		var syntax *json.SyntaxError
 		if errors.As(err, &syntax) || errors.Is(err, legacy.ErrP2PMessageSize) {
-			return nil, "", fmt.Errorf("%w: %v", errP2PServerIncompatible, err)
+			return nil, none, fmt.Errorf("%w: %v", errP2PServerIncompatible, err)
 		}
-		return nil, "", fmt.Errorf("read reply: %w", err)
+		return nil, none, fmt.Errorf("read reply: %w", err)
 	}
 	_ = c.SetDeadline(time.Now().Add(p2pControlTimeout))
 	if err := reply.Err(); err != nil {
 		_ = c.Close()
-		return nil, "", err
+		return nil, none, err
 	}
 	tc := tls.Client(c, crypt.NewPinnedTlsClientConfig(fingerprint))
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
-		return nil, "", fmt.Errorf("control tls: %w", err)
+		return nil, none, fmt.Errorf("control tls: %w", err)
 	}
 	_ = c.SetDeadline(time.Time{})
-	return tc, reply.SessionID, nil
+	return tc, reply, nil
 }
 
 // p2pOptions are the holepunch options of both sides: this side's pin as
@@ -89,7 +90,7 @@ func p2pOptions(localIP string, mapper *portmapper.Mapper, background bool, peer
 		TransportMode:    legacy.P2PTransportMode,
 		TransportData:    p2pLocalPin(),
 		AcceptBackground: background,
-		Logger:           p2pLog.With("name", peer),
+		Logger:           p2pLog.With("route", peer),
 	}
 	if mapper != nil {
 		opts.PortMapper = mapper

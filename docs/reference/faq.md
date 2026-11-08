@@ -24,7 +24,7 @@
 
 **隧道端口连不上**：隧道端口由 nps 服务端开放，不是 npc。nps 用 Docker 且未使用 `--net=host` 时要映射这些端口。
 
-**P2P 失败**：两端都是随机端口的对称型 NAT 时通常无法直连，见 [P2P](/guide/tunnels/p2p.md)。
+**点对点访问无法直连**：两端都是随机端口的对称型 NAT 时通常无法直连，`conn_mode=auto` 下继续经 nps 中转，见[点对点访问](/guide/tunnels/secret.md)。
 
 **一个进程连接多个服务器**：`npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`；可以省略填写，如 `npc -server=xxx:123 -vkey=key1,key2,key3`。
 

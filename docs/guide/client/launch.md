@@ -21,7 +21,7 @@ npc --launch https://example.com/npc.yaml --launch @/etc/npc/office.json
 | Base64 | 以下任一内容的 Base64（标准或 URL 安全） |
 | JSON / YAML / INI | 见下 |
 
-npc URL 还支持 `server_addr`、`conn_type`、`proxy`、`proxy_url`、`local_ip`、`local_type`、`target_addr`、`target_type`、`fallback_secret`、`local_proxy`、`name` 参数，未知参数会报错。
+npc URL 还支持 `server_addr`、`conn_type`、`proxy`、`proxy_url`、`local_ip`、`local_type`、`conn_mode`、`target_addr`、`local_proxy`、`name` 参数，未知参数会报错。
 
 ## JSON 与 YAML
 
@@ -69,3 +69,5 @@ INI 内容就是配置文件本身，并按配置文件模式运行。
 需要这些功能时使用本地配置文件。
 
 此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。
+
+点对点访问的本地服务器只接受新写法：`local_type`（`tcp_udp`、`tcp`、`udp`、`mixed`、`transparent`）和 `conn_mode`（`auto`、`relay`、`direct`）；`target_type`、`fallback_secret` 和旧的 `local_type` 取值会报错。

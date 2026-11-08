@@ -81,9 +81,6 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 	case "secret":
 		data["name"] = "secret"
 		data["type"] = "secret"
-	case "p2p":
-		data["name"] = "p2p"
-		data["type"] = "p2p"
 	case "host":
 		data["name"] = "host"
 		data["type"] = "hostServer"

@@ -17,6 +17,7 @@ import (
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/slogx"
 )
@@ -147,15 +148,15 @@ func (s *TRPClient) handleMain(tunnel legacy.Carrier) {
 		case legacy.P2PPunchStart:
 			raw, err := legacy.ReadFrame(signal)
 			if err != nil {
-				log.Debug("read p2p invite failed", "server", s.svrAddr, "err", err)
+				log.Debug("read secret invite failed", "server", s.svrAddr, "err", err)
 				return
 			}
 			var invite legacy.P2PInvite
 			if err := json.Unmarshal(raw, &invite); err != nil {
-				log.Debug("decode p2p invite failed", "server", s.svrAddr, "err", err)
+				log.Debug("decode secret invite failed", "server", s.svrAddr, "err", err)
 				continue
 			}
-			go s.serveP2P(tunnel, invite)
+			go s.serveSecretDirect(tunnel, invite)
 		case legacy.UpdateRequest:
 			if _, err := legacy.ReadFrame(signal); err != nil {
 				log.Debug("read update request failed", "server", s.svrAddr, "err", err)
@@ -232,23 +233,36 @@ func (s *TRPClient) newChan() legacy.Carrier {
 }
 
 func (s *TRPClient) handleChan(src net.Conn) {
+	if lk := readLink(src); lk != nil {
+		s.serveLink(src, lk, nil)
+	}
+}
+
+// readLink reads the link information that opens a stream and acknowledges
+// it when asked; nil when src failed, which is then closed.
+func readLink(src net.Conn) *conn.Link {
 	// The wrapper only reads from src, which every path below closes or hands on.
 	//noinspection GoResourceLeak
 	lk, err := legacy.ReadLink(src)
 	if err != nil || lk == nil {
 		_ = src.Close()
 		log.Debug("read link failed", "err", err)
-		return
+		return nil
 	}
-	//ack
 	if lk.Option.NeedAck {
 		if err := legacy.WriteAck(src, lk.Option.Timeout); err != nil {
 			log.Debug("write ack failed", "err", err)
 			_ = src.Close()
-			return
+			return nil
 		}
 		log.Log(context.Background(), slogx.LevelTrace, "ack sent")
 	}
+	return lk
+}
+
+// serveLink connects src to what lk names. A link without a host goes to
+// one of targets, when set (a secret task's targets on the direct path).
+func (s *TRPClient) serveLink(src net.Conn, lk *conn.Link, targets *model.Target) {
 	//socks5 udp
 	if lk.ConnType == conn.LinkUDP5 {
 		log.Debug("new link", "network", lk.ConnType, "addr", lk.RemoteAddr)
@@ -275,15 +289,41 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		conn.ServeVirtual(vl, c)
 		return
 	}
-	//host for target processing
-	if lk.Host == "" {
+	var targetConn net.Conn
+	var err error
+	switch {
+	case lk.Host != "":
+		lk.Host = netaddr.FormatAddress(lk.Host)
+		// CopyWaitGroup closes targetConn.
+		//noinspection GoResourceLeak
+		targetConn, err = s.dialTarget(lk)
+	case targets != nil:
+		err = targets.Dial(func(addr string) (bool, error) {
+			lk.Host = netaddr.FormatAddress(addr)
+			var derr error
+			targetConn, derr = s.dialTarget(lk)
+			return true, derr
+		})
+	default:
 		log.Debug("link without target", "network", lk.ConnType, "addr", lk.RemoteAddr)
 		_ = src.Close()
 		return
 	}
-	lk.Host = netaddr.FormatAddress(lk.Host)
-	//connect to target if conn type is tcp or udp
+	if err != nil {
+		log.Debug("dial target failed", "target", lk.Host, "err", err)
+		_ = src.Close()
+		return
+	}
+	log.Debug("new link", "network", lk.ConnType, "target", lk.Host, "addr", lk.RemoteAddr)
+	isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
+	conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, nil, 0, nil, nil, false, isFramed)
+}
+
+// dialTarget connects to lk's host and reports the result to the health
+// checks.
+func (s *TRPClient) dialTarget(lk *conn.Link) (net.Conn, error) {
 	var targetConn net.Conn
+	var err error
 	if LocalIPForward && s.localIP != "" && netaddr.IsPublicHost(lk.Host) {
 		dialer := net.Dialer{Timeout: lk.Option.Timeout}
 		if lk.ConnType == conn.LinkUDP {
@@ -293,26 +333,17 @@ func (s *TRPClient) handleChan(src net.Conn) {
 		}
 		targetConn, err = dialer.DialContext(s.ctx, lk.ConnType, lk.Host)
 	} else {
-		// CopyWaitGroup closes targetConn.
-		//noinspection GoResourceLeak
 		targetConn, err = net.DialTimeout(lk.ConnType, lk.Host, lk.Option.Timeout)
 	}
-	hc := s.healthChecker.Load()
-	if err != nil {
-		log.Debug("dial target failed", "target", lk.Host, "err", err)
-		if hc != nil {
+	if hc := s.healthChecker.Load(); hc != nil {
+		if err != nil {
 			hc.dialFailed(lk.Host)
-		}
-		_ = src.Close()
-	} else {
-		// A UDP dial reaches nothing, so it says nothing about the target.
-		if hc != nil && lk.ConnType != conn.LinkUDP {
+		} else if lk.ConnType != conn.LinkUDP {
+			// A UDP dial reaches nothing, so it says nothing about the target.
 			hc.touch(lk.Host)
 		}
-		log.Debug("new link", "network", lk.ConnType, "target", lk.Host, "addr", lk.RemoteAddr)
-		isFramed := lk.ConnType == conn.LinkUDP && clientCaps().FramedUDP
-		conn.CopyWaitGroup(src, targetConn, lk.Crypt, lk.Compress, nil, nil, nil, 0, nil, nil, false, isFramed)
 	}
+	return targetConn, err
 }
 
 // Whether the monitor channel is closed

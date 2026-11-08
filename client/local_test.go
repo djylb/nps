@@ -28,7 +28,7 @@ type fakeRelay struct {
 
 // newTestManager returns a manager whose visitor tunnel ends in a fake relay
 // that runs serve for every secret connection.
-func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PManager, *fakeRelay) {
+func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*SecretManager, *fakeRelay) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -73,16 +73,25 @@ func newTestManager(t *testing.T, serve func(lk *conn.Link, c net.Conn)) (*P2PMa
 		}
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
-	mgr := &P2PManager{
+	mgr := &SecretManager{
 		ctx:        ctx,
 		cancel:     cancel,
 		pCancel:    cancel,
 		cfg:        &config.CommonConfig{Client: &model.Client{Cnf: &model.Config{}}},
-		peers:      make(map[string]*p2pPeer),
+		links:      make(map[string]*peerLink),
 		secretConn: legacy.NewMuxCarrier(clientSide, "tcp", 30, true),
 	}
 	t.Cleanup(mgr.Close)
 	return mgr, relay
+}
+
+// newTestLink returns a peer link of mgr with a direct path that does not
+// punch: tests install transports on it themselves.
+func newTestLink(mgr *SecretManager) (*peerLink, *directPath) {
+	p := newPeerLink(mgr, "pw", "test")
+	p.direct = newDirectPath(p)
+	p.direct.relay.Store(true)
+	return p, p.direct
 }
 
 // newTestTransport connects a QUIC transport over loopback the way the
@@ -178,12 +187,16 @@ func (p *testPipe) Close() error {
 // echoLink answers a relayed connection by echoing it.
 func echoLink(_ *conn.Link, c net.Conn) { _, _ = io.Copy(c, c) }
 
-func TestP2pBridgeWaitsForDirectPathWithoutRelay(t *testing.T) {
-	mgr, _ := newTestManager(t, echoLink)
-	b := &P2pBridge{mgr: mgr, peer: newP2PPeer(mgr, "pw", "test"), timeout: 80 * time.Millisecond}
+func TestPeerLinkDirectWaitsForDirectPath(t *testing.T) {
+	mgr, relay := newTestManager(t, echoLink)
+	b, _ := newTestLink(mgr)
+	b.timeout = 80 * time.Millisecond
 	start := time.Now()
-	_, err := b.OpenLink(&conn.Link{}, 0)
-	if err == nil || !strings.Contains(err.Error(), "timeout waiting for the P2P direct path") {
+	_, err := b.OpenLink(mgr.ctx, &conn.Link{}, config.ConnDirect)
+	if relay.links.Load() != 0 {
+		t.Fatal("direct mode used the relay")
+	}
+	if err == nil || !strings.Contains(err.Error(), "timeout waiting for the direct path") {
 		t.Fatalf("OpenLink() error = %v, want direct path timeout", err)
 	}
 	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
@@ -193,9 +206,9 @@ func TestP2pBridgeWaitsForDirectPathWithoutRelay(t *testing.T) {
 
 // A direct path whose QUIC connection dies is taken out of use as soon as
 // the connection reports it, and the next connection is relayed.
-func TestP2PPeerDropsDeadDirectPathAndRelays(t *testing.T) {
+func TestPeerLinkDropsDeadDirectPathAndRelays(t *testing.T) {
 	mgr, relay := newTestManager(t, echoLink)
-	peer := newP2PPeer(mgr, "pw", "test")
+	b, peer := newTestLink(mgr)
 	tr, remote := newTestTransport(t, &quic.Config{MaxIdleTimeout: 5 * time.Second})
 	held := make(chan struct{})
 	go func() {
@@ -218,8 +231,7 @@ func TestP2PPeerDropsDeadDirectPathAndRelays(t *testing.T) {
 		t.Fatal("dead direct path still in use")
 	}
 
-	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
-	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
+	c, err := b.OpenLink(mgr.ctx, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), config.ConnAuto)
 	if err != nil {
 		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
@@ -234,9 +246,9 @@ func TestP2PPeerDropsDeadDirectPathAndRelays(t *testing.T) {
 // p2pOpenStreamTimeout goes over the relay instead: the link reaches the
 // relay once, the direct path carries no stream, and the data follows the
 // link.
-func TestP2pBridgeRelaysWhenDirectStreamCannotOpen(t *testing.T) {
+func TestPeerLinkRelaysWhenDirectStreamCannotOpen(t *testing.T) {
 	mgr, relay := newTestManager(t, echoLink)
-	peer := newP2PPeer(mgr, "pw", "test")
+	b, peer := newTestLink(mgr)
 	// The provider allows no streams: opening one blocks until the timeout.
 	tr, remote := newTestTransport(t, &quic.Config{MaxIdleTimeout: 5 * time.Second, MaxIncomingStreams: -1})
 	peer.install(tr)
@@ -247,9 +259,8 @@ func TestP2pBridgeRelaysWhenDirectStreamCannotOpen(t *testing.T) {
 		}
 	}()
 
-	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
 	start := time.Now()
-	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
+	c, err := b.OpenLink(mgr.ctx, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), config.ConnAuto)
 	if err != nil {
 		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
@@ -274,9 +285,9 @@ func TestP2pBridgeRelaysWhenDirectStreamCannotOpen(t *testing.T) {
 // A path that breaks silently is caught by the acknowledgement a new
 // connection asks for after p2pIdleProbeAfter without an answer: the
 // connection is relayed, and the path is closed once its checks fail.
-func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
+func TestPeerLinkRelaysOverSilentlyBrokenPath(t *testing.T) {
 	mgr, relay := newTestManager(t, echoLink)
-	peer := newP2PPeer(mgr, "pw", "test")
+	b, peer := newTestLink(mgr)
 	tr, remote, cut := newTestTransportDrop(t, &quic.Config{MaxIdleTimeout: 30 * time.Second})
 	go func() { // the provider: acknowledge what asks for it
 		for {
@@ -294,10 +305,9 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 		}
 	}()
 	peer.install(tr)
-	b := &P2pBridge{mgr: mgr, local: &config.LocalServer{Password: "pw"}, peer: peer, secret: true, timeout: time.Second}
 
 	// A recent answer: the connection goes direct without asking.
-	c, err := b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
+	c, err := b.OpenLink(mgr.ctx, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), config.ConnAuto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +318,7 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 
 	cut.drop.Store(true)
 	tr.lastHeard.Store(time.Now().Add(-2 * p2pIdleProbeAfter).UnixNano())
-	c, err = b.OpenLink(conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), 0)
+	c, err = b.OpenLink(mgr.ctx, conn.NewLink("tcp", "127.0.0.1:1", false, false, "", false), config.ConnAuto)
 	if err != nil {
 		t.Fatalf("OpenLink() = %v, want relayed connection", err)
 	}
@@ -328,9 +338,9 @@ func TestP2pBridgeRelaysOverSilentlyBrokenPath(t *testing.T) {
 }
 
 // A path that fails one connection but answers its check stays in use.
-func TestP2PPeerKeepsPathThatPassesCheck(t *testing.T) {
+func TestDirectPathKeepsPathThatPassesCheck(t *testing.T) {
 	mgr, _ := newTestManager(t, echoLink)
-	peer := newP2PPeer(mgr, "pw", "test")
+	_, peer := newTestLink(mgr)
 	tr, remote := newTestTransport(t, &quic.Config{MaxIdleTimeout: 30 * time.Second})
 	go func() {
 		for {
@@ -374,11 +384,8 @@ func assertEcho(t *testing.T, c net.Conn, msg string) {
 	}
 }
 
-// A p2ps section serves HTTP proxy and SOCKS5 requests on its local port.
-func TestP2psServesHTTPAndSocks5(t *testing.T) {
-	old := DisableP2P
-	DisableP2P = true
-	t.Cleanup(func() { DisableP2P = old })
+// A mixed section serves HTTP proxy and SOCKS5 requests on its local port.
+func TestMixedServesHTTPAndSocks5(t *testing.T) {
 	hosts := make(chan string, 2)
 	mgr, _ := newTestManager(t, func(lk *conn.Link, c net.Conn) {
 		hosts <- lk.Host
@@ -400,7 +407,7 @@ func TestP2psServesHTTPAndSocks5(t *testing.T) {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
-	if err := mgr.StartLocalServer(&config.LocalServer{Type: "p2ps", Port: port, Password: "pw"}); err != nil {
+	if err := mgr.StartLocalServer(&config.LocalServer{Type: config.LocalMixed, ConnMode: config.ConnRelay, Ip: "127.0.0.1", Port: port, Password: "pw"}); err != nil {
 		t.Fatalf("StartLocalServer() = %v", err)
 	}
 	addr := "127.0.0.1:" + strconv.Itoa(port)

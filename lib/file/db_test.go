@@ -30,7 +30,7 @@ func TestTaskPasswordConflicts(t *testing.T) {
 		t.Fatalf("NewTask(1): %v", err)
 	}
 
-	web := &model.Tunnel{Id: 2, Mode: "p2p", Password: "shared"}
+	web := &model.Tunnel{Id: 2, Mode: "secret", Password: "shared"}
 	if err := db.NewTask(web); err == nil {
 		t.Fatalf("explicit duplicate password from the web must be rejected")
 	}

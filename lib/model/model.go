@@ -531,7 +531,7 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 	targets = netaddr.GetPorts(t.Target.TargetStr)
 	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && len(ports) != len(targets) {
 		return nil, nil, false
-	} else if t.Mode == "secret" || t.Mode == "p2p" {
+	} else if t.Mode == "secret" {
 		ports = append(ports, 0)
 	}
 	if t.Mode == "file" && len(ports) == 0 {

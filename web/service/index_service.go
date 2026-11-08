@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"html"
 	"strconv"
 	"strings"
@@ -145,6 +146,9 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	if err != nil {
 		return TunnelMutation{}, ErrClientNotFound
 	}
+	if !webTunnelMode(form.Mode) {
+		return TunnelMutation{}, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, form.Mode)
+	}
 	tunnel.Client = client
 	if tunnel.Client.MaxTunnelNum != 0 && s.Backend.Repository.ClientEntryCount(tunnel.Client) >= tunnel.Client.MaxTunnelNum {
 		return TunnelMutation{}, ErrTunnelLimitExceeded
@@ -195,6 +199,8 @@ func (s DefaultIndexService) EditTunnel(input TunnelInput) (TunnelMutation, erro
 	desiredMode := form.Mode
 	if desiredMode == "" {
 		desiredMode = tunnel.Mode
+	} else if !webTunnelMode(desiredMode) {
+		return TunnelMutation{}, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, desiredMode)
 	}
 	probe := &model.Tunnel{
 		Port:        form.Port,
@@ -613,4 +619,14 @@ func (s DefaultIndexService) resolveTunnelPort(tunnel *model.Tunnel) (int, error
 		return 0, ErrPortUnavailable
 	}
 	return tunnel.Port, nil
+}
+
+// webTunnelMode reports whether the web may create or edit a tunnel of mode;
+// an empty mode is left to the form defaults.
+func webTunnelMode(mode string) bool {
+	if mode == "" || mode == "file" {
+		return true
+	}
+	_, _, ok := importableMode(mode)
+	return ok
 }

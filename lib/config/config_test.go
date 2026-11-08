@@ -210,22 +210,21 @@ func TestDealMultiUser_IgnoreInvalidAndComments(t *testing.T) {
 }
 
 func TestDelLocalService_ParseAllFields(t *testing.T) {
-	local := delLocalService(`local_port=9000
+	local, _ := delLocalService("secret", false, `local_port=9000
 local_type=tcp
+conn_mode=relay
 local_ip=127.0.0.1
 password=secret
 target_addr=10.0.0.1:22
-target_type=tcp
-local_proxy=true
-fallback_secret=true`)
+local_proxy=true`)
 
 	if local.Port != 9000 || local.Type != "tcp" || local.Ip != "127.0.0.1" {
 		t.Fatalf("basic local fields parse failed: %+v", local)
 	}
-	if local.Password != "secret" || local.Target != "10.0.0.1:22" || local.TargetType != "tcp" {
+	if local.Password != "secret" || local.Target != "10.0.0.1:22" || local.ConnMode != ConnRelay {
 		t.Fatalf("target/auth parse failed: %+v", local)
 	}
-	if !local.LocalProxy || !local.Fallback {
+	if !local.LocalProxy {
 		t.Fatalf("boolean flags parse failed: %+v", local)
 	}
 }
@@ -278,7 +277,7 @@ func TestParseConfig_SectionTypeByKey(t *testing.T) {
 	if c.CommonConfig == nil || len(c.LocalServer) != 2 || len(c.Hosts) != 0 || len(c.Tasks) != 0 {
 		t.Fatalf("unexpected result: %+v %+v %+v", c.LocalServer, c.Hosts, c.Tasks)
 	}
-	if c.LocalServer[0].Type != "secret" || c.LocalServer[1].Type != "p2p" {
+	if c.LocalServer[0].Type != LocalTCPUDP || c.LocalServer[0].ConnMode != ConnRelay || c.LocalServer[1].Type != LocalTCPUDP || c.LocalServer[1].ConnMode != ConnAuto {
 		t.Fatalf("unexpected local types: %+v %+v", c.LocalServer[0], c.LocalServer[1])
 	}
 }

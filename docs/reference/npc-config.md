@@ -14,19 +14,20 @@
 
 ## 隧道段
 
-`mode`（`tcp`、`udp`、`tcpTrans`、`mixProxy`、`httpProxy`、`socks5`、`secret`、`p2p`、`file`）、`server_port`、`server_ip`、`target_addr`、`target_port`、`target_ip`、`password`、`proxy_protocol`、`socks5_proxy`、`http_proxy`、`dest_acl_mode`、`dest_acl_rules`、`local_path`、`strip_pre`、`read_only`、`multi_account`、`max_conn`、`upload_limit`、`download_limit`。
+`mode`（`tcp`、`udp`、`tcpTrans`、`mixProxy`、`httpProxy`、`socks5`、`secret`、`file`；旧的 `p2p` 读作 `secret` 并告警）、`server_port`、`server_ip`、`target_addr`、`target_port`、`target_ip`、`password`、`proxy_protocol`、`socks5_proxy`、`http_proxy`、`dest_acl_mode`、`dest_acl_rules`、`local_path`、`strip_pre`、`read_only`、`multi_account`、`max_conn`、`upload_limit`、`download_limit`。
 
 ## 本地访问段
 
-`local_port`、`local_type`、`local_ip`、`password`、`target_addr`、`target_type`、`local_proxy`、`fallback_secret`。
+`[secret...]` 节：`local_port`、`local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`transparent`）、`conn_mode`（`auto` 默认、`relay`、`direct`）、`local_ip`、`password`、`target_addr`、`local_proxy`。
 
 ```ini
-[p2p_ssh]
+[secret_ssh]
 local_port=2002
 password=ssh3
-target_addr=123.206.77.88:22
-target_type=tcp
-fallback_secret=true
+local_type=tcp
+conn_mode=auto
 ```
+
+旧版的 `[p2p...]` 节和 `target_type`、`fallback_secret`、`local_type=p2p|p2ps|p2pt|secret` 仍可读取，自动换算并告警，对照表见[点对点访问](/guide/tunnels/secret.md#旧版写法)。
 
 `health_*` 配置节已不再支持，读到时告警并忽略；健康检查改在服务端按隧道或域名配置，见[健康检查](/guide/tunnels/health-check.md)。

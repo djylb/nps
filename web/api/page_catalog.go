@@ -187,17 +187,6 @@ func ProtectedPageSpecs() []PageSpec {
 		},
 		{
 			Controller: "index",
-			Action:     "p2p",
-			Permission: webservice.PermissionTunnelsRead,
-			Protected:  true,
-			Section:    "tunnels",
-			Menu:       "p2p",
-			Template:   "index/list.html",
-			Navigation: true,
-			Params:     []PageParam{{Name: "type", In: "query", Type: "string", Required: false}},
-		},
-		{
-			Controller: "index",
 			Action:     "all",
 			Permission: webservice.PermissionTunnelsRead,
 			Protected:  true,

@@ -10,9 +10,6 @@ import (
 func TestTestServerPortShortCircuitAndValidation(t *testing.T) {
 	a := newAllowed([]int{12345})
 
-	if !a.TestServerPort(-1, "p2p") {
-		t.Fatal("TestServerPort() should short-circuit for p2p mode")
-	}
 	if !a.TestServerPort(70000, "secret") {
 		t.Fatal("TestServerPort() should short-circuit for secret mode")
 	}
@@ -31,7 +28,7 @@ func TestGenerateServerPortWithAllowList(t *testing.T) {
 	a := newAllowed([]int{0, 10001, 10002})
 	//rand.Seed(1)
 
-	got := a.GenerateServerPort("p2p")
+	got := a.GenerateServerPort("tcp")
 	if got != 10001 && got != 10002 {
 		t.Fatalf("GenerateServerPort()=%d, want one of configured non-zero ports", got)
 	}
@@ -39,7 +36,7 @@ func TestGenerateServerPortWithAllowList(t *testing.T) {
 
 func TestGenerateServerPortWithOnlyZeroAllowList(t *testing.T) {
 	a := newAllowed([]int{0, 0})
-	if got := a.GenerateServerPort("p2p"); got != 0 {
+	if got := a.GenerateServerPort("tcp"); got != 0 {
 		t.Fatalf("GenerateServerPort()=%d, want 0 when allow list has no usable ports", got)
 	}
 }
@@ -48,7 +45,7 @@ func TestGenerateServerPortWithoutAllowListUsesDynamicRange(t *testing.T) {
 	a := newAllowed(nil)
 	//rand.Seed(1)
 
-	got := a.GenerateServerPort("p2p")
+	got := a.GenerateServerPort("tcp")
 	if got < 1024 || got > 65535 {
 		t.Fatalf("GenerateServerPort()=%d, want in [1024, 65535]", got)
 	}

@@ -33,8 +33,7 @@ var connFlags = map[string]string{
 // localFlags make the local server of -password, with its npc.conf key.
 var localFlags = map[string]string{
 	"local_type": "local_type", "local_port": "local_port", "password": "password",
-	"target": "target_addr", "target_type": "target_type",
-	"local_proxy": "local_proxy", "fallback_secret": "fallback_secret",
+	"target": "target_addr", "conn_mode": "conn_mode", "local_proxy": "local_proxy",
 }
 
 // serviceOnly are left out of the service arguments: they choose what runs

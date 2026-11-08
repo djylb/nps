@@ -8,6 +8,7 @@
 ## Stable
 
 ### v0.35.0
+- 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`）：访问端用 `local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`transparent`）选本地监听，`conn_mode`（`auto` 默认、`relay`、`direct`）选经 nps 中转、打洞直连或自动。旧配置自动换算并告警：npc.conf 的 `mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值，nps 存储与面板导入里的 p2p 隧道（密钥不变，访问端照常可用），以及 npc 命令行的 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p`。**不兼容**：Web/API 不再接受 `mode=p2p`；`--launch` 只接受新写法；旧版 npc 不能与新版互通点对点访问。对照表见 docs/guide/tunnels/secret.md
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
 - **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
 - npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法

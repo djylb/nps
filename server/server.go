@@ -349,7 +349,7 @@ func (s *Server) handleSecret(sc *conn.Secret) {
 	remote := sc.Conn.Conn.RemoteAddr()
 	log.Debug("secret connection", "src_ip", netaddr.Host(remote.String()))
 	t := s.db.GetTaskByMd5Password(sc.Password)
-	if t == nil {
+	if t == nil || t.Mode != "secret" {
 		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", netaddr.Host(remote.String()), "role", "secret", "reason", "bad_key")
 		_ = sc.Conn.Close()
 		return
@@ -462,7 +462,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		return ErrClosed
 	default:
 	}
-	if t.Mode == "secret" || t.Mode == "p2p" {
+	if t.Mode == "secret" {
 		s.tasks.Store(t.Id, nil)
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 		return nil

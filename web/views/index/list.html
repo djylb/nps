@@ -110,7 +110,7 @@
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
             var tmp = resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
-            var access = row.Mode != "secret" && row.Mode != "p2p" ? accessListDetail(row) : ''
+            var access = row.Mode != "secret" ? accessListDetail(row) : ''
             if (row.Mode != "mixProxy") {
                 tmp += resourceDetailSection('section-access', access)
             }
@@ -138,18 +138,15 @@
                     + '<b langtag="word-stripprefix"></b>: ' + row.StripPre + '&emsp;<br/><br>'
                     + '<b langtag="word-target"></b>: <span onclick="oCopy(this)">' + row.Target.TargetStr + '</span>&emsp;')
             }
-            if (row.Mode == "p2p") {
-                return tmp + resourceDetailSection('section-commands', ''
-                    + '<b langtag="word-commandaccessp2p"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target=\"" + row.Target.TargetStr + "\" -target_type=\"" + row.TargetType + "\"</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2ps"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2ps\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>" + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2pt"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"p2pt\" -fallback_secret=\"{{if .allow_secret_link}}true{{else}}false{{end}}\"" + "</code>")
-            }
             if (row.Mode == "secret") {
-                return tmp + resourceDetailSection('section-commands', '' + '<b langtag="word-commandaccess"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
-                    + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -target_type=\"" + row.TargetType + "\" -local_type=\"secret\"" + "</code>")
+                var cmd = function (localType) {
+                    return '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.addr}}\" -vkey=\"" + ({{.visitor_vkey}} || row.Client.VerifyKey)
+                        + "\" -type=\"" + {{.bridgeType}} + "\" -password=\"" + row.Password + "\" -local_type=\"" + localType + "\" -conn_mode=\"auto\"</code>"
+                }
+                return tmp + resourceDetailSection('section-commands', ''
+                    + '<b langtag="word-commandaccessp2p"></b>: ' + cmd("tcp_udp") + "<br/><br>"
+                    + '<b langtag="word-commandaccessp2ps"></b>: ' + cmd("mixed") + "<br/><br>"
+                    + '<b langtag="word-commandaccessp2pt"></b>: ' + cmd("transparent"))
             }
             return '<div class="resource-details">' + tmp + '</div>'
         },
@@ -220,7 +217,7 @@
                     return '<span onclick="oCopy(this)">' + value + '</span>'
                 }
             },
-            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") (eq .type "p2p") }}
+            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") }}
             {
                 field: 'Target.TargetStr', //域值
                 title: '<span langtag="word-target"></span>', //标题
@@ -232,7 +229,7 @@
                 }
             },
             {{ end }}
-            {{ if or (not .type) (eq .type "secret") (eq .type "p2p") }}
+            {{ if or (not .type) (eq .type "secret") }}
             {
                 field: 'TargetType', //域值
                 title: '<span langtag="word-targettype"></span>', //标题

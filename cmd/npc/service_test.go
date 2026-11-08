@@ -25,7 +25,8 @@ func serviceFlags(t *testing.T, args ...string) *flag.FlagSet {
 	fs.StringP("config", "c", "", "")
 	fs.String("proxy", "", "")
 	fs.String("local_ip", "", "")
-	fs.String("local_type", "p2p", "")
+	fs.String("local_type", "tcp_udp", "")
+	fs.String("conn_mode", "auto", "")
 	fs.Int("local_port", 2000, "")
 	fs.String("password", "", "")
 	fs.String("target", "", "")
@@ -99,7 +100,7 @@ func TestServiceArgumentsKeepConnectionOut(t *testing.T) {
 }
 
 func TestServiceArgumentsPassword(t *testing.T) {
-	dir, svc := installArgs(t, "", "-s", "a:1", "-k", "k", "--password=pw", "--local_type=secret",
+	dir, svc := installArgs(t, "", "-s", "a:1", "-k", "k", "--password=pw", "--local_type=tcp", "--conn_mode=relay",
 		"--local_port=3000", "--target=10.0.0.2:22")
 	conn := filepath.Join(dir, serviceConnFile)
 	if !slices.Equal(svc, []string{"--launch=@" + conn, "-debug=false"}) {
@@ -110,7 +111,7 @@ func TestServiceArgumentsPassword(t *testing.T) {
 		t.Fatalf("profiles = %+v", p)
 	}
 	l := p[0].Config.LocalServer[0]
-	if l.Type != "secret" || l.Password != "pw" || l.Port != 3000 || l.Target != "10.0.0.2:22" || p[0].Config.CommonConfig.VKey != "k" {
+	if l.Type != "tcp" || l.ConnMode != "relay" || l.Password != "pw" || l.Port != 3000 || l.Target != "10.0.0.2:22" || p[0].Config.CommonConfig.VKey != "k" {
 		t.Fatalf("local server = %+v", l)
 	}
 }

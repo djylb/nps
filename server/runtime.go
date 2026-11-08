@@ -224,7 +224,7 @@ func (s *Server) DashboardData(force bool) map[string]any {
 	data["inletFlowCount"] = int(in)
 	data["exportFlowCount"] = int(out)
 
-	var tcpN, udpN, secretN, socks5N, p2pN, httpN int
+	var tcpN, udpN, secretN, socks5N, httpN int
 	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		t := value.(*model.Tunnel)
 		switch t.Mode {
@@ -243,8 +243,6 @@ func (s *Server) DashboardData(force bool) map[string]any {
 			}
 		case "udp":
 			udpN++
-		case "p2p":
-			p2pN++
 		case "secret":
 			secretN++
 		}
@@ -255,7 +253,6 @@ func (s *Server) DashboardData(force bool) map[string]any {
 	data["socks5Count"] = socks5N
 	data["httpProxyCount"] = httpN
 	data["secretCount"] = secretN
-	data["p2pCount"] = p2pN
 
 	data["bridgeType"] = cfg.Bridge.PrimaryType
 	data["httpProxyPort"] = intStringOrEmpty(cfg.Network.HTTPProxyPort)

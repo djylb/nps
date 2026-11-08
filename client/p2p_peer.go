@@ -25,15 +25,15 @@ const p2pStableAfter = time.Minute
 
 var errP2PPathLost = errors.New("direct path lost soon after it was established")
 
-// p2pPeer is the direct path of the visitor to one P2P task (one password):
-// every local section with that password shares it. Its goroutine punches,
+// directPath is the direct path of a peerLink: its goroutine punches,
 // holds the QUIC transport while it lives and punches again with a backoff
 // when it ends.
-type p2pPeer struct {
-	mgr      *P2PManager
-	password string
-	label    string
-	relay    atomic.Bool // some section relays when the direct path is down
+type directPath struct {
+	link  *peerLink
+	mgr   *SecretManager
+	relay atomic.Bool // some section relays when the direct path is down
+
+	tunnel, peer atomic.Int64 // the task and provider ids nps last named
 
 	// demand wakes a peer that gave up punching: a connection waits for
 	// the direct path.
@@ -44,13 +44,24 @@ type p2pPeer struct {
 	changed   chan struct{} // closed and replaced whenever a transport is installed
 }
 
-func newP2PPeer(mgr *P2PManager, password, label string) *p2pPeer {
-	return &p2pPeer{mgr: mgr, password: password, label: label, changed: make(chan struct{}), demand: make(chan struct{}, 1)}
+func newDirectPath(link *peerLink) *directPath {
+	return &directPath{link: link, mgr: link.mgr, changed: make(chan struct{}), demand: make(chan struct{}, 1)}
+}
+
+func (p *directPath) ids() (tunnel, peer int) { return int(p.tunnel.Load()), int(p.peer.Load()) }
+
+// logArgs are the fields naming this path in logs.
+func (p *directPath) logArgs(args ...any) []any {
+	out := []any{"route", p.link.route}
+	if t, peer := p.ids(); t != 0 {
+		out = append(out, "tunnel", t, "peer", peer)
+	}
+	return append(out, args...)
 }
 
 // active returns the live direct transport that is not under suspicion, or
 // nil.
-func (p *p2pPeer) active() *p2pTransport {
+func (p *directPath) active() *p2pTransport {
 	p.mu.Lock()
 	t := p.transport
 	p.mu.Unlock()
@@ -61,7 +72,7 @@ func (p *p2pPeer) active() *p2pTransport {
 }
 
 // waitActive waits for a live direct transport until ctx ends.
-func (p *p2pPeer) waitActive(ctx context.Context) *p2pTransport {
+func (p *directPath) waitActive(ctx context.Context) *p2pTransport {
 	for {
 		p.mu.Lock()
 		t, changed := p.transport, p.changed
@@ -81,7 +92,7 @@ func (p *p2pPeer) waitActive(ctx context.Context) *p2pTransport {
 	}
 }
 
-func (p *p2pPeer) install(t *p2pTransport) {
+func (p *directPath) install(t *p2pTransport) {
 	p.mu.Lock()
 	p.transport = t
 	close(p.changed)
@@ -89,7 +100,7 @@ func (p *p2pPeer) install(t *p2pTransport) {
 	p.mu.Unlock()
 }
 
-func (p *p2pPeer) uninstall(t *p2pTransport) {
+func (p *directPath) uninstall(t *p2pTransport) {
 	p.mu.Lock()
 	if p.transport == t {
 		p.transport = nil
@@ -101,11 +112,11 @@ func (p *p2pPeer) uninstall(t *p2pTransport) {
 // connections and checks it: a slow moment must not cost the streams it
 // carries, a dead path is closed. A transport that passes the check is used
 // again.
-func (p *p2pPeer) suspect(t *p2pTransport, err error) {
+func (p *directPath) suspect(t *p2pTransport, err error) {
 	if p.mgr.ctx.Err() != nil || !t.suspect.CompareAndSwap(false, true) {
 		return
 	}
-	p2pLog.Info("checking direct path", "name", p.label, "addr", t.QUIC().RemoteAddr().String(), "err", err)
+	p2pLog.Info("checking direct path", p.logArgs("addr", t.QUIC().RemoteAddr().String(), "err", err)...)
 	p.mgr.wg.Go(func() {
 		var last error
 		for range p2pCheckAttempts {
@@ -115,7 +126,7 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 				close(p.changed)
 				p.changed = make(chan struct{})
 				p.mu.Unlock()
-				slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "name", p.label, "via", "direct", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_passed")
+				p2pLog.Debug("direct path passed its check", p.logArgs("addr", t.QUIC().RemoteAddr().String())...)
 				return
 			}
 			if !t.Alive() || p.mgr.ctx.Err() != nil {
@@ -128,25 +139,26 @@ func (p *p2pPeer) suspect(t *p2pTransport, err error) {
 
 // lost takes a dead transport out of use and closes it, which wakes the
 // goroutine holding it to punch again.
-func (p *p2pPeer) lost(t *p2pTransport, err error) {
-	slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "name", p.label, "via", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "check_failed", "err", err)
+func (p *directPath) lost(t *p2pTransport, err error) {
+	p.link.directLost("check_failed", err)
 	p.uninstall(t)
 	_ = t.Close()
 }
 
 // hold serves t until its QUIC connection ends or the manager closes, and
 // returns how long it lived.
-func (p *p2pPeer) hold(t *p2pTransport) time.Duration {
+func (p *directPath) hold(t *p2pTransport) time.Duration {
 	start := time.Now()
 	p.install(t)
 	select {
 	case <-t.Done():
 		err := t.Err()
+		reason := "closed"
 		if errors.Is(err, quicpath.ErrIdleTimeout) {
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "name", p.label, "via", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "idle_timeout", "err", err)
-		} else {
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PPathChanged, "name", p.label, "via", "relay", "addr", t.QUIC().RemoteAddr().String(), "reason", "closed", "err", err)
+			reason = "idle_timeout"
 		}
+		p2pLog.Info("direct path ended", p.logArgs("addr", t.QUIC().RemoteAddr().String(), "reason", reason, "err", err)...)
+		p.link.directLost(reason, err)
 	case <-p.mgr.ctx.Done():
 	}
 	p.uninstall(t)
@@ -157,7 +169,7 @@ func (p *p2pPeer) hold(t *p2pTransport) time.Duration {
 // run punches and holds direct paths until the manager closes. After a
 // failure it follows holepunch.NextAttempt; once that gives up it punches
 // again only when a connection waits for the direct path.
-func (p *p2pPeer) run() {
+func (p *directPath) run() {
 	ctx := p.mgr.ctx
 	var b p2pBackoff
 	var wait time.Duration
@@ -191,10 +203,10 @@ func (p *p2pPeer) run() {
 				default:
 				}
 				gaveUp = true
-				slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "name", p.label, "reason", "punch_failed", "err", err, "next_mode", "on_demand")
+				slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, p.logArgs("reason", "punch_failed", "err", err, "next_mode", "on_demand")...)
 				continue
 			}
-			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, "name", p.label, "reason", "punch_failed", "err", err, "next_mode", p2pModeName(background), "next_in_ms", wait.Milliseconds())
+			slogx.Emit(context.Background(), p2pLog, &logevent.P2PFailed, p.logArgs("reason", "punch_failed", "err", err, "next_mode", p2pModeName(background), "next_in_ms", wait.Milliseconds())...)
 			continue
 		}
 		background = false
@@ -209,7 +221,7 @@ func (p *p2pPeer) run() {
 
 // punch runs one hole-punching session through the bridge and connects QUIC
 // over the punched path.
-func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, error) {
+func (p *directPath) punch(ctx context.Context, background bool) (*p2pTransport, error) {
 	mgr := p.mgr
 	rc, server, err := mgr.openTunnelConn()
 	if err != nil {
@@ -217,29 +229,32 @@ func (p *p2pPeer) punch(ctx context.Context, background bool) (*p2pTransport, er
 	}
 	// openP2PControl owns the stream and closes it on failure.
 	//noinspection GoResourceLeak
-	tc, sessionID, err := openP2PControl(ctx, conn.NewConn(rc), legacy.WorkP2P, mgr.getUUID(), server.fingerprint,
-		legacy.P2PRequest{Password: crypt.Md5(p.password), Background: background, ServerIP: server.ip})
+	tc, reply, err := openP2PControl(ctx, conn.NewConn(rc), legacy.WorkP2P, mgr.getUUID(), server.fingerprint,
+		legacy.P2PRequest{Password: crypt.Md5(p.link.password), Background: background, ServerIP: server.ip})
 	if err != nil {
 		return nil, err
 	}
-	p2pLog.Debug("punching", "name", p.label, "session", sessionID, "punch_mode", p2pModeName(background))
+	sessionID := reply.SessionID
+	p.tunnel.Store(int64(reply.Tunnel))
+	p.peer.Store(int64(reply.Peer))
+	p2pLog.Debug("punching", p.logArgs("session", sessionID, "punch_mode", p2pModeName(background))...)
 	// tc is closed right below; on success the session is handed to the transport.
 	//noinspection GoResourceLeak
-	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.label))
+	sess, err := holepunch.Punch(ctx, tc, p2pOptions(mgr.cfg.LocalIP, mgr.mapper, background, p.link.route))
 	_ = tc.Close()
 	if err != nil {
 		if herr, ok := errors.AsType[*holepunch.Error](err); ok {
-			p2pLog.Debug("punch failed", "name", p.label, "session", sessionID, "nat", p2pNATSummary(herr.Diagnostics))
+			p2pLog.Debug("punch failed", p.logArgs("session", sessionID, "nat", p2pNATSummary(herr.Diagnostics))...)
 		}
 		return nil, err
 	}
 	diag := sess.Diagnostics()
-	p2pLog.Debug("punched", "name", p.label, "session", sessionID, "nat", p2pNATSummary(&diag))
+	p2pLog.Debug("punched", p.logArgs("session", sessionID, "nat", p2pNATSummary(&diag))...)
 	t, err := dialP2PTransport(ctx, sess)
 	if err != nil {
 		return nil, err
 	}
-	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, "name", p.label, "via", "direct", "addr", t.QUIC().RemoteAddr().String(), "session", sessionID)
+	slogx.Emit(context.Background(), p2pLog, &logevent.P2PConnected, p.logArgs("via", "direct", "addr", t.QUIC().RemoteAddr().String(), "session", sessionID)...)
 	return t, nil
 }
 

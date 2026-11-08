@@ -102,6 +102,7 @@ func NewMux(c net.Conn, connType string, pingCheckThreshold int, isInitiator boo
 		conn:          c,
 		connMap:       NewConnMap(),
 		id:            startId,
+		isInitiator:   isInitiator,
 		closeChan:     make(chan struct{}, 1),
 		newConnCh:     make(chan *Conn, acceptBacklog),
 		bw:            NewBandwidth(fd),
@@ -682,8 +683,10 @@ func (s *Mux) release() {
 // Get New connId as unique flag
 func (s *Mux) getId() (id int32) {
 	//Avoid going beyond the scope
+	// In int64: the initiator starts at -1, where MaxInt32-curID overflows
+	// int32 and would reset it onto the other side's (even) ids.
 	curID := atomic.LoadInt32(&s.id)
-	if (math.MaxInt32 - curID) < 10000 {
+	if math.MaxInt32-int64(curID) < 10000 {
 		if s.isInitiator {
 			atomic.StoreInt32(&s.id, -1)
 		} else {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net"
 	"strings"
@@ -238,5 +239,56 @@ func TestSecretLinkDestinationDenied(t *testing.T) {
 	case <-bridge.links:
 		t.Fatal("denied destination was dialed")
 	default:
+	}
+}
+
+// The policy decides the same after a trip over the wire, as the provider
+// applies it on the direct path.
+func TestSecretPolicyAdmit(t *testing.T) {
+	task := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "tcp", DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
+	target := &model.Target{TargetStr: "127.0.0.1:80"}
+	link := func(typ, host string, local bool) *conn.Link { return conn.NewLink(typ, host, false, false, "", local) }
+	for _, tc := range []struct {
+		name                          string
+		allowLocalProxy, allow, local bool
+		lk                            *conn.Link
+		want                          SecretGrant
+		refused                       bool
+	}{
+		{name: "fixed target ignores host", lk: link("udp", "other:1", false), want: SecretGrant{ConnType: "tcp"}},
+		{name: "no link info", lk: nil, want: SecretGrant{ConnType: "tcp"}},
+		{name: "link host", allow: true, lk: link("udp", "other:1", false), want: SecretGrant{ConnType: "udp", Host: "other:1"}},
+		{name: "denied host", allow: true, lk: link("tcp", "denied.example:80", false), refused: true},
+		{name: "file link", allow: true, lk: link(conn.LinkFile, "file://x", false), refused: true},
+		{name: "local not allowed", allowLocalProxy: true, allow: true, lk: link("tcp", "a:1", true), want: SecretGrant{ConnType: "tcp", Host: "a:1"}},
+		{name: "local allowed", allowLocalProxy: true, allow: true, local: true, lk: link("tcp", "a:1", true), want: SecretGrant{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := NewSecretPolicy(task, target, tc.allowLocalProxy, tc.allow, tc.local)
+			b, err := json.Marshal(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wire SecretPolicy
+			if err := json.Unmarshal(b, &wire); err != nil {
+				t.Fatal(err)
+			}
+			if err := wire.Compile(); err != nil {
+				t.Fatal(err)
+			}
+			for side, p := range map[string]*SecretPolicy{"nps": p, "provider": &wire} {
+				g, err := p.Admit(tc.lk)
+				if (err != nil) != tc.refused || err == nil && g != tc.want {
+					t.Fatalf("%s: Admit = %+v, %v; want %+v, refused %t", side, g, err, tc.want, tc.refused)
+				}
+			}
+			if wire.Targets != target.TargetStr {
+				t.Fatalf("targets = %q", wire.Targets)
+			}
+		})
+	}
+	own := NewSecretPolicy(&model.Tunnel{Client: &model.Client{Id: -1}}, target, false, true, true)
+	if own.Direct() {
+		t.Fatal("a task of the server's own client offers a direct path")
 	}
 }

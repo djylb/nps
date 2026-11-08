@@ -90,9 +90,9 @@ func (t *p2pTransport) openLink(ctx context.Context, link conn.Link) (net.Conn, 
 }
 
 // check asks the provider for an acknowledgement on a stream of its own: a
-// link without a host, which the provider acknowledges and closes.
+// linkCheck link, which the provider acknowledges and closes.
 func (t *p2pTransport) check(ctx context.Context) error {
-	c, err := t.open(ctx, conn.Link{Option: conn.Options{NeedAck: true, Timeout: p2pCheckTimeout}}, p2pCheckTimeout)
+	c, err := t.open(ctx, conn.Link{ConnType: linkCheck, Option: conn.Options{NeedAck: true, Timeout: p2pCheckTimeout}}, p2pCheckTimeout)
 	if err == nil {
 		_ = c.Close()
 	}

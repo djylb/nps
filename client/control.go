@@ -43,7 +43,6 @@ const dialTimeout = 10 * time.Second
 // set older ones to check that the bridge still accepts released clients.
 var protocolIndex = legacy.LatestIndex
 var SkipTLSVerify = false
-var DisableP2P = false
 var AutoReconnect = true
 var LocalIPForward = false
 
@@ -225,7 +224,7 @@ func RunConfigOnce(ctx context.Context, cnf *config.Config, uuid string) (string
 func runLocalServers(ctx context.Context, cnf *config.Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	mgr := NewP2PManager(ctx, cancel, cnf.CommonConfig)
+	mgr := NewSecretManager(ctx, cancel, cnf.CommonConfig)
 	defer mgr.Close()
 	for _, l := range cnf.LocalServer {
 		if err := mgr.StartLocalServer(l); err != nil {

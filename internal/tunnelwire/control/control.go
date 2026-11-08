@@ -268,6 +268,12 @@ type P2PRequest struct {
 type P2PInvite struct {
 	SessionID string `json:"session_id"` // the invitation id
 	Token     string `json:"token"`      // one-time join token
+	// Policy is what the visitor may reach over the direct path, a JSON
+	// proxy.SecretPolicy: the provider applies it to every link arriving
+	// on that path, as nps does to relayed ones.
+	Policy  json.RawMessage `json:"policy"`
+	Tunnel  int             `json:"tunnel,omitempty"`  // the secret task, for logs
+	Visitor int             `json:"visitor,omitempty"` // the visitor's client id, for logs
 }
 
 // P2PJoin answers an invitation.
@@ -291,6 +297,8 @@ type P2PReply struct {
 	Code      string `json:"code,omitempty"`
 	Message   string `json:"message,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
+	Tunnel    int    `json:"tunnel,omitempty"` // to the visitor: the secret task, for logs
+	Peer      int    `json:"peer,omitempty"`   // to the visitor: the provider's client id, for logs
 }
 
 // P2PRefusedError is a P2PReply that did not accept the request.

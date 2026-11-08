@@ -25,6 +25,7 @@ var (
 	ErrHostNotFound              = errors.New("host not found")
 	ErrHostExists                = errors.New("host already exists")
 	ErrModeRequired              = errors.New("mode is required")
+	ErrTunnelModeInvalid         = errors.New("unknown tunnel mode")
 	ErrPortUnavailable           = errors.New("port unavailable")
 	ErrTunnelLimitExceeded       = errors.New("tunnel limit exceeded")
 	ErrInvalidCredentials        = errors.New("invalid credentials")

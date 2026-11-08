@@ -20,7 +20,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/djylb/nps/lib/config"
-	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/textutil"
 	"go.yaml.in/yaml/v3"
 )
@@ -184,10 +183,14 @@ var sectionKinds = []sectionKind{
 	{"hosts", namedOr("host")},
 	{"tasks", namedOr("task")},
 	{"locals", func(m map[string]any, i int) string {
-		if m["local_type"] == "secret" {
-			return fmt.Sprintf("secret_%d", i)
+		// a payload spells local servers the current way: give the defaults
+		// of the current spelling, so the section is not read as an old one
+		for key, def := range map[string]string{"local_type": config.LocalTCPUDP, "conn_mode": config.ConnAuto} {
+			if _, ok := m[key]; !ok {
+				m[key] = def
+			}
 		}
-		return fmt.Sprintf("p2p_%d", i)
+		return fmt.Sprintf("secret_%d", i)
 	}},
 }
 
@@ -258,6 +261,11 @@ func parseProfile(m map[string]any, fallback string, trusted bool) ([]Profile, e
 				return nil, fmt.Errorf("%s[%d] is not a mapping", kind.key, i)
 			}
 			section = maps.Clone(section)
+			if kind.key == "locals" {
+				if err := checkLocal(section); err != nil {
+					return nil, fmt.Errorf("locals[%d]: %w", i, err)
+				}
+			}
 			if err := writeSection(&b, kind.name(section, i+1), section); err != nil {
 				return nil, err
 			}
@@ -391,6 +399,9 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 	if err != nil {
 		return nil, err
 	}
+	if cfg.UsesLegacyPointToPoint() {
+		return nil, errors.New("point-to-point access settings of an earlier version (mode=p2p, [p2p...], target_type, fallback_secret, old local_type) are not accepted in launch payloads; use local_type and conn_mode")
+	}
 	c := cfg.CommonConfig
 	if c.Server == "" || c.VKey == "" {
 		return nil, errors.New("launch payload requires a server and a vkey")
@@ -404,9 +415,6 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 		if l.Password == "" {
 			return nil, errors.New("a local server requires a password")
 		}
-		if l.TargetType == "" {
-			l.TargetType = model.TargetAll
-		}
 	}
 	if name == "" {
 		name = "profile-1"
@@ -416,8 +424,8 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 
 var npcLocalKeys = map[string]string{
 	"local_type": "local_type", "local_port": "local_port", "password": "password",
-	"target": "target_addr", "target_addr": "target_addr", "target_type": "target_type",
-	"fallback_secret": "fallback_secret", "local_proxy": "local_proxy",
+	"target": "target_addr", "target_addr": "target_addr",
+	"local_proxy": "local_proxy", "conn_mode": "conn_mode",
 }
 
 // parseNPC reads npc://vkey@host:port?type=tls. Lists use the server and vkey
@@ -443,7 +451,7 @@ func parseNPC(raw string, trusted bool) ([]Profile, error) {
 		switch iniKey, isLocal := npcLocalKeys[key]; {
 		case isLocal:
 			if local == nil {
-				local = map[string]any{"fallback_secret": true}
+				local = map[string]any{}
 			}
 			local[iniKey] = value
 		case key == "server_addr":
@@ -462,4 +470,27 @@ func parseNPC(raw string, trusted bool) ([]Profile, error) {
 		m["locals"] = []any{local}
 	}
 	return parseProfile(m, "profile-1", trusted)
+}
+
+// checkLocal refuses a local server with keys or values npc.conf accepts only
+// from earlier versions: launch payloads take the current ones alone.
+func checkLocal(m map[string]any) error {
+	for key, value := range m {
+		var allowed []string
+		switch key {
+		case "local_type":
+			allowed = config.LocalTypes
+		case "conn_mode":
+			allowed = config.ConnModes
+		case "local_port", "local_ip", "password", "target_addr", "local_proxy":
+			continue
+		default:
+			return fmt.Errorf("unknown key %q", key)
+		}
+		v, _ := value.(string)
+		if !slices.Contains(allowed, strings.ToLower(strings.TrimSpace(v))) {
+			return fmt.Errorf("%s must be one of %s", key, strings.Join(allowed, ", "))
+		}
+	}
+	return nil
 }

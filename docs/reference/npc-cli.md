@@ -20,15 +20,13 @@
 | `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
 | `-local_ip` | 出站绑定的本地 IP，逗号分隔，与 `-server` 对应 | 无 |
 | `-local_ip_forward` | `local_ip` 同时作用于隧道转发出口（仅公网 IP 与域名目标） | `false` |
-| `-local_type` | 访问模式：`p2p`、`p2ps`、`p2pt`、`secret` | `p2p` |
+| `-local_type` | 点对点访问的本地监听：`tcp_udp`、`tcp`、`udp`、`mixed`、`transparent` | `tcp_udp` |
+| `-conn_mode` | 点对点访问的连接方式：`auto`、`relay`、`direct` | `auto` |
 | `-local_port` | 访问端本地端口 | `2000` |
-| `-password` | secret/P2P 隧道的唯一密钥 | 无 |
-| `-target` | secret/P2P 访问的目标，如 `10.2.50.2:22` | 无 |
-| `-target_type` | `all`、`tcp`、`udp` | `all` |
-| `-local_proxy` | Secret 连到服务端本地 | `false` |
-| `-fallback_secret` | P2P 不可用时回退到私密代理 | `true` |
-| `-disable_p2p` | 禁用 P2P | `false` |
-| `-p2p_timeout` | P2P 超时（秒） | `5` |
+| `-password` | 点对点访问隧道的唯一密钥 | 无 |
+| `-target` | 点对点访问的目标，如 `10.2.50.2:22`（需服务端 `allow_secret_link`） | 无 |
+| `-local_proxy` | 点对点访问连到服务端本地 | `false` |
+| `-p2p_timeout` | 打洞超时（秒） | `5` |
 | `-disable_remote_update` | 忽略服务端下发的远程更新 | `false` |
 | `-auto_reconnect` | 断线自动重连 | `true` |
 | `-disconnect_timeout` | 连接超时（秒） | `30` |
@@ -69,3 +67,5 @@
 其他不认识的参数忽略并告警。
 
 环境变量：`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_CONFIG_PATH`、`NPC_LOCAL_IP`、`NPC_LAUNCH`。
+
+旧参数 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p` 仍可使用，自动换算为 `-local_type` 和 `-conn_mode` 并告警，对照表见[点对点访问](/guide/tunnels/secret.md#旧版写法)。

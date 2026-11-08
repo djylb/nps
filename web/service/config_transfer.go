@@ -105,6 +105,7 @@ func (s DefaultConfigTransferService) Import(input ImportConfigInput) (ImportRes
 	if bundle.Version != configBundleVersion {
 		return ImportResult{}, fmt.Errorf("unsupported export version %d", bundle.Version)
 	}
+	legacyBundle(&bundle)
 	importLock.Lock()
 	defer importLock.Unlock()
 	if err := s.validateBundle(&bundle, input.ReservedAdminUsername); err != nil {
@@ -236,7 +237,7 @@ func importableMode(mode string) (network string, hasPort, ok bool) {
 		return "tcp", true, true
 	case "udp":
 		return "udp", true, true
-	case "secret", "p2p":
+	case "secret":
 		return "", false, true
 	}
 	return "", false, false
@@ -349,4 +350,16 @@ func freshFlow(f *model.Flow) *model.Flow {
 		return new(model.Flow)
 	}
 	return &model.Flow{FlowLimit: f.FlowLimit, TimeLimit: f.TimeLimit}
+}
+
+// legacyBundle converts tunnels of an export of an earlier version: mode p2p
+// is secret (point-to-point access) now, with the same password. Remove in
+// the next major version.
+func legacyBundle(b *ConfigBundle) {
+	for _, t := range b.Tunnels {
+		if t != nil && t.Mode == "p2p" {
+			log.Warn("imported p2p tunnel converted to secret (point-to-point access)", "tunnel", t.Id)
+			t.Mode = "secret"
+		}
+	}
 }

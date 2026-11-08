@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/djylb/nps/lib/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -52,7 +53,7 @@ func TestResolveForms(t *testing.T) {
 		{name: "npc local", input: "npc://k@a:1?password=pw&target=t:22&local_port=2000", names: []string{"profile-1"},
 			check: func(t *testing.T, p []Profile) {
 				l := p[0].Config.LocalServer[0]
-				if l.Password != "pw" || l.Target != "t:22" || l.Port != 2000 || l.TargetType != "all" || !l.Fallback {
+				if l.Password != "pw" || l.Target != "t:22" || l.Port != 2000 || l.Type != config.LocalTCPUDP || l.ConnMode != config.ConnAuto {
 					t.Fatalf("%+v", l)
 				}
 			}},
@@ -66,9 +67,9 @@ func TestResolveForms(t *testing.T) {
 		{name: "file", input: "@" + file, names: []string{"y"}, direct: true},
 		{name: "base64", input: base64.StdEncoding.EncodeToString([]byte(iniPayload)), names: []string{"profile-1"}},
 		{name: "base64 url unpadded", input: base64.RawURLEncoding.EncodeToString([]byte(yamlPayload)), names: []string{"y"}, direct: true},
-		{name: "yaml sections", input: "common: {server_addr: a:1, vkey: k}\nlocals:\n  - {password: pw, local_type: secret, local_port: 9}\n", names: []string{"profile-1"},
+		{name: "yaml sections", input: "common: {server_addr: a:1, vkey: k}\nlocals:\n  - {password: pw, local_type: udp, conn_mode: relay, local_port: 9}\n", names: []string{"profile-1"},
 			check: func(t *testing.T, p []Profile) {
-				if p[0].Config.LocalServer[0].Type != "secret" {
+				if p[0].Config.LocalServer[0].Type != config.LocalUDP || p[0].Config.LocalServer[0].ConnMode != config.ConnRelay {
 					t.Fatalf("%+v", p[0].Config.LocalServer[0])
 				}
 			}},
@@ -127,6 +128,10 @@ func TestResolveRejects(t *testing.T) {
 		"line break":       `{"server":"a:1","vkey":"k\n[x]\nmode=file"}`,
 		"reserved remark":  `{"common":{"server_addr":"a:1","vkey":"k"},"tasks":[{"remark":"p2p1","password":"p"}]}`,
 		"local without pw": "npc://k@a:1?target=t:22",
+		"old local key":    "npc://k@a:1?password=pw&target_type=tcp",
+		"old local type":   `{"common":{"server_addr":"a:1","vkey":"k"},"locals":[{"password":"pw","local_type":"p2ps"}]}`,
+		"old ini local":    "[common]\nserver_addr=a:1\nvkey=k\n[p2p_a]\npassword=pw\n",
+		"bad conn mode":    `{"common":{"server_addr":"a:1","vkey":"k"},"locals":[{"password":"pw","conn_mode":"p2p"}]}`,
 		"plain word":       "hello",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -187,7 +192,7 @@ func TestFetchedPayloadIsUntrusted(t *testing.T) {
 }
 
 func TestRunStopsOnCancel(t *testing.T) {
-	profiles, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?password=pw&target=127.0.0.1:2&local_port=0&target_type=tcp")
+	profiles, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?password=pw&target=127.0.0.1:2&local_port=0&local_type=tcp")
 	if err != nil {
 		t.Fatal(err)
 	}

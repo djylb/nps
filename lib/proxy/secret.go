@@ -6,10 +6,125 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 )
+
+// SecretPolicy is what a visitor of a secret task may reach. nps applies it
+// to the links it relays (SecretServer) and hands it to the provider npc in
+// the invitation of a direct path, where the provider applies it to every
+// link the visitor sends over that path: both paths follow the same rules.
+type SecretPolicy struct {
+	// Targets are the task's target addresses, one per line, used when the
+	// visitor names none or may not name one.
+	Targets string `json:"targets,omitempty"`
+	// TargetType is the task's network for its targets: tcp, udp or all.
+	TargetType string `json:"target_type,omitempty"`
+	// AllowLink lets the visitor choose the destination and the network
+	// (allow_secret_link).
+	AllowLink bool `json:"allow_link,omitempty"`
+	// AllowLocal lets a visitor with AllowLink choose whether nps reaches
+	// the destination itself (allow_secret_local and allow_local_proxy).
+	AllowLocal bool `json:"allow_local,omitempty"`
+	// LocalProxy is whether nps reaches the target itself when the visitor
+	// does not choose: then no direct path can serve the link.
+	LocalProxy bool `json:"local_proxy,omitempty"`
+	// DestAclMode and DestAclRules are the task's destination list, applied
+	// to destinations the visitor chooses.
+	DestAclMode  int    `json:"dest_acl_mode,omitempty"`
+	DestAclRules string `json:"dest_acl_rules,omitempty"`
+
+	allows func(addr string) bool
+}
+
+// SecretGrant is what an admitted link reaches: Host empty means one of
+// the policy's targets.
+type SecretGrant struct {
+	ConnType   string
+	Host       string
+	LocalProxy bool
+}
+
+// ErrSecretLinkRefused is a link the policy does not admit.
+var ErrSecretLinkRefused = errors.New("secret link refused by the task's policy")
+
+// NewSecretPolicy is the policy of task t reaching target, with the
+// server's allow_local_proxy, allow_secret_link and allow_secret_local.
+func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy, allowLink, allowLocal bool) *SecretPolicy {
+	p := &SecretPolicy{
+		TargetType:   t.TargetType,
+		AllowLink:    allowLink,
+		AllowLocal:   allowLink && allowLocal && allowLocalProxy,
+		DestAclMode:  t.DestAclMode,
+		DestAclRules: t.DestAclRules,
+		allows:       t.AllowsDestination,
+	}
+	if target != nil {
+		p.Targets = target.TargetStr
+		p.LocalProxy = allowLocalProxy && target.LocalProxy
+	}
+	if t.Client != nil && t.Client.Id < 0 {
+		// The server's own client: nps always reaches the target itself.
+		p.LocalProxy, p.AllowLocal = true, false
+	}
+	return p
+}
+
+// Compile prepares a policy received on the wire for Admit. A destination
+// list with rules this side cannot apply (geodata it lacks) is an error:
+// the direct path must not allow what nps would refuse.
+func (p *SecretPolicy) Compile() error {
+	d, err := acl.CompileDest(p.DestAclMode, p.DestAclRules, "secret policy")
+	if err != nil {
+		return err
+	}
+	p.allows = d.Allows
+	return nil
+}
+
+// Direct reports whether a direct path can serve some link: not when nps
+// must reach the target itself.
+func (p *SecretPolicy) Direct() bool {
+	return !p.LocalProxy || p.AllowLocal
+}
+
+// Admit decides what lk reaches; lk nil is a visitor that sent no link
+// information.
+func (p *SecretPolicy) Admit(lk *conn.Link) (SecretGrant, error) {
+	g := SecretGrant{ConnType: conn.LinkTCP, LocalProxy: p.LocalProxy}
+	if lk == nil {
+		return g, nil
+	}
+	if p.AllowLink {
+		switch lk.ConnType {
+		case conn.LinkTCP, conn.LinkUDP, conn.LinkUDP5:
+			g.ConnType = lk.ConnType
+		default:
+			return g, ErrSecretLinkRefused
+		}
+		if lk.Host != "" {
+			g.Host = netaddr.FormatAddress(lk.Host)
+			if p.allows != nil && !p.allows(g.Host) {
+				return g, errProxyAccessDenied
+			}
+		}
+		if p.AllowLocal {
+			g.LocalProxy = lk.LocalProxy
+		}
+		return g, nil
+	}
+	switch p.TargetType {
+	case model.TargetAll, "":
+		if lk.ConnType == conn.LinkUDP {
+			g.ConnType = conn.LinkUDP
+		}
+	default:
+		g.ConnType = p.TargetType
+	}
+	return g, nil
+}
 
 type SecretServer struct {
 	*BaseServer
@@ -25,6 +140,7 @@ func NewSecretServer(bridge NetBridge, task *model.Tunnel, allowLocalProxy, allo
 	}
 }
 
+// HandleSecret serves a relayed link of a visitor by the task's SecretPolicy.
 func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	release, err := s.AcquireForwarding(s.Task.Client, s.Task.ControlGroup())
 	if err != nil {
@@ -33,11 +149,6 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	}
 	defer release()
 
-	connType := conn.LinkTCP
-	host := ""
-	localProxy := false
-	needAck := false
-
 	var rb []byte
 	tee := netx.NewRecordingConn(src, 0)
 	// c wraps src only; it is closed on failure and CopyWaitGroup closes it otherwise.
@@ -45,42 +156,22 @@ func (s *SecretServer) HandleSecret(src net.Conn, wire conn.SecretWire) error {
 	c := conn.NewConn(tee)
 	lk, err := wire.ReadLink(c)
 	if err != nil || lk == nil {
+		lk = nil
 		rb = tee.Buffered()
 	}
 	tee.Discard()
 
-	if lk != nil {
-		needAck = lk.Option.NeedAck
-		if s.allowSecretLink {
-			connType = lk.ConnType
-			if lk.Host != "" {
-				host = netaddr.FormatAddress(lk.Host)
-				if s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(host) {
-					destDenied(src.RemoteAddr(), s.Task, host)
-					_ = c.Close()
-					return errProxyAccessDenied
-				}
-			}
-			if s.allowSecretLocal {
-				localProxy = lk.LocalProxy
-			} else {
-				localProxy = s.Task.Target.LocalProxy
-			}
-		} else {
-			if s.Task.TargetType == model.TargetAll {
-				switch lk.ConnType {
-				case conn.LinkUDP:
-					connType = conn.LinkUDP
-				default:
-					connType = conn.LinkTCP
-				}
-			} else {
-				connType = s.Task.TargetType
-			}
-		}
-	}
-	localProxy = s.AllowLocalProxy && localProxy || s.Task.Client.Id < 0
+	needAck := lk != nil && lk.Option.NeedAck
 	route := s.Task.Route()
+	g, err := NewSecretPolicy(s.Task, route.Target, s.AllowLocalProxy, s.allowSecretLink, s.allowSecretLocal).Admit(lk)
+	if err != nil {
+		if errors.Is(err, errProxyAccessDenied) {
+			destDenied(src.RemoteAddr(), s.Task, g.Host)
+		}
+		_ = c.Close()
+		return err
+	}
+	connType, host, localProxy := g.ConnType, g.Host, g.LocalProxy
 	var link *conn.Link
 	var target net.Conn
 	dial := func(addr string) (bool, error) {

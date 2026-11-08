@@ -1,14 +1,15 @@
-# 私密代理
+# 点对点访问
 
-**适用范围：** 不想占用公网端口、防止他人连接的 TCP 服务，例如 SSH。所有流量经 nps 中转。
+**适用范围：** 不占用公网端口、防止他人连接的服务，例如 SSH、远程桌面、大流量传输、游戏联机（TCP 和 UDP）。提供端 npc 上建一条点对点访问隧道，访问端 npc 用隧道密钥在本机开一个端口；流量经 nps 中转，或打洞成功后直连，由访问端的 `conn_mode` 决定。
 
-**场景：** 不开公网端口访问内网 `10.1.50.2:22`。
+**场景：** 从本机的 `2000` 端口访问内网 `10.2.50.2:22`。
 
-1. 在客户端中添加私密代理，设置唯一密钥 `secrettest` 和内网目标 `10.1.50.2:22`。
-2. 在需要连接的机器上运行（具体命令可从 Web 复制）：
+1. 要直连时，在 `nps.conf` 设置 `p2p_port`，防火墙开放 UDP `p2p_port`..`p2p_port+2`（设为 `6000` 时开放 `6000-6002`）。必要时设置 `p2p_ip`，留空自动识别 IPv4 和 IPv6，可填 IP 或 DDNS 域名。服务端在路由器后时，把这 3 个 UDP 端口一并映射。只用中转时不需要。
+2. 在客户端中添加点对点访问隧道，设置唯一密钥 `sshkey` 和内网目标 `10.2.50.2:22`。
+3. 在本机运行（具体命令可从 Web 复制）：
 
 ```bash
-./npc -server=1.1.1.1:8024 -vkey=vkey -type=tcp -password=secrettest -local_type=secret
+./npc -server=1.1.1.1:8024 -vkey=123 -password=sshkey
 ```
 
 `-local_port` 指定本地端口，默认 `2000`。然后：
@@ -17,8 +18,64 @@
 ssh -p 2000 root@127.0.0.1
 ```
 
-配置 `visitor_vkey` 后，网页上的访问命令使用这个只能访问隧道的密钥，访问方不需要客户端自己的密钥。
+**不要公开访问命令**，这会把提供端 npc 所在内网暴露给对方。访问方不需要客户端自己的密钥：配置 `visitor_vkey` 后，网页上的访问命令使用这个只能访问隧道的密钥。
+
+## 连接方式
+
+`-conn_mode`（npc.conf 为 `conn_mode`）：
+
+| 取值 | 行为 |
+| --- | --- |
+| `auto`（默认） | 先经 nps 中转，打洞成功后转为直连；打洞失败时继续中转，并在后台以低速率重试直连 |
+| `relay` | 始终经 nps 中转，不打洞 |
+| `direct` | 只直连，打洞失败时连接失败 |
+
+隧道的限速只对中转流量生效，直连流量不经过服务端。
+
+## 本地监听
+
+`-local_type`（npc.conf 为 `local_type`）：
+
+| 取值 | 本地提供 |
+| --- | --- |
+| `tcp_udp`（默认） | TCP 和 UDP 端口映射 |
+| `tcp` | 只有 TCP 端口映射 |
+| `udp` | 只有 UDP 端口映射 |
+| `mixed` | HTTP/SOCKS5 代理 |
+| `transparent` | [透明代理](/guide/tunnels/transparent.md) |
+
+配置文件写法见 [npc.conf](/reference/npc-config.md)。
 
 ## 指定目标
 
 允许访问端自己指定目标：服务端设置 `allow_secret_link=true`，访问端加 `-target=ip:port`。此时连接遵守目标名单。`allow_secret_local=true` 允许访问端用 `-local_proxy=true` 连到服务端本地。
+
+## NAT 类型与排查
+
+NAT 类型由 nps 的观测端在每次打洞时测量，访问端与提供端都会在日志中输出本端结果，例如：
+
+```
+P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filtering=pdf ports=preserving
+```
+
+打洞失败时日志给出原因与下一次尝试的时间。两端都是随机端口分配的对称型 NAT 时通常无法直连，`auto` 下继续中转。
+
+直连仅使用 QUIC，支持 IPv4/IPv6 双栈。全局名单不限制 `p2p_port`。相关配置：`p2p_stun_servers`、`p2p_probe_timeout_ms`、`p2p_handshake_timeout_ms`、`p2p_transport_timeout_ms`，以及默认关闭的端口映射 `p2p_enable_upnp_portmap`、`p2p_enable_pcp_portmap`、`p2p_enable_natpmp_portmap`、`p2p_portmap_lease_seconds`。见[服务端配置](/reference/server-config.md)。
+
+## 旧版写法
+
+0.34 及以前的“私密代理”（secret）和“P2P”合并为点对点访问。旧配置照常读取，自动换算并在日志中告警，给出新写法：
+
+| 旧写法 | 新写法 |
+| --- | --- |
+| 隧道 `mode=p2p`（npc.conf 任务、nps 存储、面板导入） | `mode=secret`，密钥不变 |
+| `[p2p...]` 节 | `[secret...]` 节 |
+| `local_type=p2p` 或不写（`[p2p...]` 节、命令行） | `local_type` 由 `target_type` 定，`conn_mode=auto` |
+| `local_type=secret`，或 `[secret...]` 节里的 `target_type` | `conn_mode=relay`，`local_type` 由 `target_type` 定 |
+| `target_type=all` / `tcp` / `udp` | `local_type=tcp_udp` / `tcp` / `udp` |
+| `local_type=p2ps` | `local_type=mixed` |
+| `local_type=p2pt` | `local_type=transparent` |
+| `fallback_secret=false` | `conn_mode=direct` |
+| `-disable_p2p` | `-conn_mode=relay` |
+
+显式写出的新键优先于换算结果。既没有 `local_type` 也没有 `conn_mode` 的 `[secret...]` 节是旧写法，保持原来的中转（`relay`）并告警；写上 `conn_mode=auto` 即可尝试直连。新写法只要给出 `local_type` 或 `conn_mode`，默认就是 `auto`。`--launch` 只接受新写法。Web 和 API 不再接受 `mode=p2p`。
