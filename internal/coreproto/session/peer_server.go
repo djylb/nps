@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -194,7 +195,7 @@ func (s *serverSession) serveStreams(ctx context.Context) {
 }
 
 func (s *serverSession) conn(st *zmux.Stream) *linkConn {
-	return &linkConn{Stream: st, local: s.zc.LocalAddr(), remote: s.zc.RemoteAddr()}
+	return &linkConn{Stream: st, local: s.zc.LocalAddr(), remote: net.TCPAddrFromAddrPort(s.t.src)}
 }
 
 func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {

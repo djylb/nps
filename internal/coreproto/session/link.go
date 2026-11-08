@@ -31,8 +31,17 @@ func (c *linkConn) Close() error {
 }
 
 func (c *linkConn) CloseWrite() error    { return c.Stream.Close() }
-func (c *linkConn) LocalAddr() net.Addr  { return c.local }
-func (c *linkConn) RemoteAddr() net.Addr { return c.remote }
+func (c *linkConn) LocalAddr() net.Addr  { return addrOrZero(c.local) }
+func (c *linkConn) RemoteAddr() net.Addr { return addrOrZero(c.remote) }
+
+// addrOrZero keeps the net.Conn contract where the session has no address:
+// zmux reports none for a wrapped carrier.
+func addrOrZero(a net.Addr) net.Addr {
+	if a == nil {
+		return &net.TCPAddr{}
+	}
+	return a
+}
 
 func (c *linkConn) abort(code uint64) {
 	e := zmux.StreamErrorCode(code)

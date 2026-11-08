@@ -114,6 +114,9 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
 				ServeExit: func(ctx context.Context, c net.Conn, _, target string) {
+					if a, ok := c.RemoteAddr().(*net.TCPAddr); !ok || !a.IP.IsLoopback() {
+						t.Errorf("remote %v", c.RemoteAddr())
+					}
 					p.exitTarget.Store(&target)
 					u, err := net.Dial("tcp", p.echo)
 					if err == nil {
