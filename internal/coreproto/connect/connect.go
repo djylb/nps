@@ -73,7 +73,7 @@ func DialConfig(cfg *config.CommonConfig, server string) (session.DialConfig, er
 			if d, ok := ctx.Deadline(); ok {
 				timeout = time.Until(d)
 			}
-			return client.GetProxyConn(proxyURL, addr, timeout, localIP)
+			return conn.DialProxy(proxyURL, addr, timeout, localIP)
 		},
 		DialQUIC: func(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
 			return conn.DialQuicWithLocalIP(ctx, addr, t, q, localIP)

@@ -65,6 +65,7 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 			slogx.Emit(ctx, log, &logevent.ConnectFailed, "server", d.Server(), "attempt", attempt, "reason", "establish", "err", err)
 		} else {
 			attempt = 0
+			NowStatus.Store(1)
 			slogx.Emit(ctx, log, &logevent.Connected, "server", d.Server(), "carrier", s.Carrier())
 			if after != nil {
 				if failed = after(ctx, s); failed != nil {
@@ -73,6 +74,7 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 			}
 			select {
 			case <-s.Done():
+				NowStatus.Store(0)
 				slogx.Emit(ctx, log, &logevent.Disconnected, "server", d.Server(), "carrier", s.Carrier(), "reason", "lost", "err", s.Err())
 			case <-ctx.Done():
 				_ = s.Close()

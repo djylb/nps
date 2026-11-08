@@ -39,7 +39,6 @@ type CommonConfig struct {
 // CoreSettings are the [common] keys of the new protocol; the zero value of
 // each is the protocol's own default.
 type CoreSettings struct {
-	NewProtocol   bool // new_protocol: connect with the new protocol
 	MaxLanes      int  // session_max_lanes: 0 is 16, 1 turns lanes off
 	RelayIdle     int  // relay_idle, seconds: 0 is 60
 	KeepServer    bool // p2p_visitor_keep_server
@@ -197,9 +196,6 @@ func buildConfig(content string, sections []section) (*Config, error) {
 	if c.CommonConfig == nil {
 		return nil, errors.New("missing [common] section")
 	}
-	if c.CommonConfig.NewProtocol {
-		convertFileTunnels(c)
-	}
 	if err := c.CommonConfig.checkConnection(); err != nil {
 		return nil, fmt.Errorf("[common]: %w", err)
 	}
@@ -288,8 +284,6 @@ func dealCommon(s string) *CommonConfig {
 			c.Pipes = item[1]
 		case "scheduler_up":
 			c.SchedulerUp = item[1]
-		case "new_protocol":
-			c.NewProtocol = parseBool(item)
 		case "session_max_lanes":
 			c.MaxLanes = textutil.GetIntNoErrByStr(item[1])
 		case "relay_idle":

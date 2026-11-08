@@ -22,7 +22,6 @@ func setCoreDefaults() {
 		Pipes:       *pipes,
 		SchedulerUp: *schedulerUp,
 		CoreSettings: config.CoreSettings{
-			NewProtocol:   *newProtocol,
 			MaxLanes:      *sessionMaxLanes,
 			RelayIdle:     *relayIdle,
 			KeepServer:    *p2pVisitorKeepServer,

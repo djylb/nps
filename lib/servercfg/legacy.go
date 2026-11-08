@@ -17,6 +17,7 @@ type legacyKey struct {
 
 var legacyKeys = []legacyKey{
 	{old: "tls_bridge_port", current: "bridge_tls_port"},
+	{old: "new_protocol", note: "new_protocol was removed: the core protocol is always on"},
 	{old: "log_color", note: "log_color was removed: log lines are plain logfmt or JSON (log_format)"},
 	{old: "ip_limit", note: "ip_limit was removed: it made every client accept only visitors whose address " +
 		"was registered (npc register). Registration-only access is now set per client, tunnel or host: " +

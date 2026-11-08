@@ -33,12 +33,8 @@ func (s coreStore) RangeClients(fn func(coreapi.ClientRecord) bool) {
 	})
 }
 
-// newCoreEntry builds the new protocol entry, nil while new_protocol is off,
-// and keeps it current with the store.
+// newCoreEntry builds the new protocol entry and keeps it current with the store.
 func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, error) {
-	if !cfg.Network.NewProtocol {
-		return nil, nil
-	}
 	resumeS := cfg.Runtime.SessionResumeTimeout
 	src, err := newShapingSource(cfg)
 	if err != nil {

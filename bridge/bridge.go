@@ -41,8 +41,8 @@ type Options struct {
 	// AllowedPorts are the ports the tunnels npc publishes may listen on;
 	// the zero value allows every port.
 	AllowedPorts ports.Allowed
-	// CoreEntry is the new protocol on the tcp and tls bridge ports; nil
-	// (the default, see new_protocol) leaves them to the old protocol.
+	// CoreEntry is the new protocol on the bridge ports; nil, in tests, leaves
+	// them to the old protocol.
 	CoreEntry coreapi.Entry
 }
 

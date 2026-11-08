@@ -132,7 +132,7 @@ func TestConfigFilesOnNewProtocol(t *testing.T) {
 	}
 	e := newCoreConfigEnv(t)
 	common := func(vkey string) string {
-		return "[common]\nserver_addr=" + e.f.addr + "\nvkey=" + vkey + "\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=false\n"
+		return "[common]\nserver_addr=" + e.f.addr + "\nvkey=" + vkey + "\nconn_type=tcp\nauto_reconnection=false\n"
 	}
 	relayPort, autoPort := freeLocalPort(t), freeLocalPort(t)
 	provider := writeConf(t, "provider.conf", common(e.prov))
@@ -155,7 +155,6 @@ func TestLaunchOnNewProtocol(t *testing.T) {
 		t.Skip("end-to-end")
 	}
 	old := config.CommonDefaults
-	config.CommonDefaults.NewProtocol = true
 	t.Cleanup(func() { config.CommonDefaults = old })
 	e := newCoreConfigEnv(t)
 	relayPort := freeLocalPort(t)
@@ -184,7 +183,7 @@ func TestConfigVisitorOnlyOnNewProtocol(t *testing.T) {
 	}
 	e := newCoreConfigEnv(t)
 	port := freeLocalPort(t)
-	head := "[common]\nserver_addr=" + e.f.addr + "\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=false\nvkey="
+	head := "[common]\nserver_addr=" + e.f.addr + "\nconn_type=tcp\nauto_reconnection=false\nvkey="
 	provider := writeConf(t, "provider.conf", head+e.prov+"\n")
 	visitor := writeConf(t, "visitor.conf", head+e.f.client.VerifyKey+"\n"+
 		"[secret_a]\nlocal_type=tcp\nconn_mode=relay\nlocal_ip=127.0.0.1\nlocal_port="+strconv.Itoa(port)+"\npassword="+e.secret+"\n")

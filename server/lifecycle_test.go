@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
-	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/connection"
@@ -59,7 +59,7 @@ func testServerLifecycle(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	rp := client.NewRPClient("127.0.0.1:"+strconv.Itoa(port), vkey, "tcp", "", "", "", nil, 30, nil)
+	rp := legacyclient.New("127.0.0.1:"+strconv.Itoa(port), vkey, "tcp", 30)
 	rpDone := make(chan struct{})
 	go func() {
 		defer close(rpDone)

@@ -71,12 +71,8 @@ func newPortMux(port int, managerHost, clientHost string) (*portMux, error) {
 	if err != nil {
 		return nil, err
 	}
-	var coreBytes []string
-	if Network().NewProtocol {
-		coreBytes = coreapi.FirstBytes
-	}
 	p := &portMux{
-		coreBytes: coreBytes,
+		coreBytes: coreapi.FirstBytes,
 		mux: portmux.New(
 			portmux.WithSniffTimeout(muxAcceptTimeout),
 			portmux.WithDispatchTimeout(muxAcceptTimeout),

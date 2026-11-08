@@ -195,10 +195,6 @@ type NetworkConfig struct {
 	BridgePath         string
 	BridgeTrustedIPs   string
 	BridgeRealIPHeader string
-	// NewProtocol turns on the core protocol on the tcp, tls, ws and wss
-	// bridge ports (nps.conf new_protocol), off by default. Temporary:
-	// removed once npc has moved to the core protocol.
-	NewProtocol bool
 	// NewProtocolTLSALPN is the ALPN list of the TLS bridge with NewProtocol
 	// (nps.conf new_protocol_tls_alpn, comma-separated); empty selects none.
 	NewProtocolTLSALPN []string
@@ -238,10 +234,10 @@ type NetworkConfig struct {
 	// Shaping source: shaping_url, shaping_token, shaping_pubkey and the
 	// local shaping_file. None is the default.
 	ShapingURL, ShapingToken, ShapingPubKey, ShapingFile string
-	CompressMaxRatio  int64
-	HTTPProxyIP       string
-	HTTPProxyPort     int
-	HTTPSProxyPort    int
+	CompressMaxRatio                                     int64
+	HTTPProxyIP                                          string
+	HTTPProxyPort                                        int
+	HTTPSProxyPort                                       int
 	// HTTPProxyAccessPort and HTTPSProxyAccessPort are the ports visitors
 	// reach the host proxy on from outside, behind a reverse proxy or port
 	// mapping; they default to the listen ports and only build links.
@@ -532,7 +528,6 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Network.BridgeIP = r.stringDefault(r.stringDefault("0.0.0.0", "bridge_tcp_ip"), "bridge_ip")
 	cfg.Network.BridgeHost = r.stringValue("bridge_host")
-	cfg.Network.NewProtocol = r.boolDefault(false, "new_protocol")
 	if _, err := lookupValue(r.values, "disconnect_timeout"); err == nil {
 		cfg.Runtime.DeadS = max(cfg.Runtime.DisconnectTimeout, 0)
 	}

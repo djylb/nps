@@ -8,13 +8,15 @@ import (
 	"context"
 
 	"github.com/djylb/nps/client"
+	"github.com/djylb/nps/internal/coreproto/connect"
 	"github.com/djylb/nps/internal/logsetup"
+	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/slogx"
 )
 
-var cl *client.TRPClient
+var stop context.CancelFunc
 
 func init() {
 	_ = logsetup.Apply(logsetup.Options{Output: "off", Level: "trace", Memory: 1000})
@@ -22,11 +24,17 @@ func init() {
 
 //export StartClientByVerifyKey
 func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) int {
-	if cl != nil {
-		cl.Close()
+	if stop != nil {
+		stop()
 	}
-	cl = client.NewRPClient(C.GoString(serverAddr), C.GoString(verifyKey), C.GoString(connType), C.GoString(proxyUrl), "", "", nil, 60, nil)
-	cl.Start(context.Background())
+	var ctx context.Context
+	ctx, stop = context.WithCancel(context.Background())
+	connect.Install()
+	cfg := config.NewCommonConfig()
+	cfg.Server, cfg.VKey, cfg.Tp, cfg.ProxyUrl = C.GoString(serverAddr), C.GoString(verifyKey), C.GoString(connType), C.GoString(proxyUrl)
+	if err := client.RunCoreProfile(ctx, cfg, false); err != nil {
+		return 0
+	}
 	return 1
 }
 
@@ -37,8 +45,8 @@ func GetClientStatus() int {
 
 //export CloseClient
 func CloseClient() {
-	if cl != nil {
-		cl.Close()
+	if stop != nil {
+		stop()
 	}
 }
 

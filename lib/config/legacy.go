@@ -20,6 +20,9 @@ type legacyCommon struct {
 // reporting whether item was one.
 func (l *legacyCommon) read(item [2]string) bool {
 	switch item[0] {
+	case "new_protocol":
+		log.Warn("legacy config setting ignored", "keys", "new_protocol", "detail", "npc always uses the core protocol")
+		return true
 	case "tls_enable":
 		// Up to 0.34, tls_enable=true made the connection type tls,
 		// whatever conn_type said.
@@ -171,10 +174,10 @@ func legacyTunnelMode(t *model.Tunnel) bool {
 // never released with them, refuse such a config.
 func (c *Config) UsesLegacyPointToPoint() bool { return c.legacy }
 
-// convertFileTunnels applies model.ConvertFileTunnel to the tunnels of c:
+// ConvertFileTunnels applies model.ConvertFileTunnel to the tunnels of c:
 // a file tunnel with a listening port becomes a virtual backend and a tcp
-// tunnel to it.
-func convertFileTunnels(c *Config) {
+// tunnel to it. It is idempotent.
+func (c *Config) ConvertFileTunnels() {
 	var out []*model.Tunnel
 	for _, t := range c.Tasks {
 		cs, ok := model.ConvertFileTunnel(t)

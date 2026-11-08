@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"io"
 	"net"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"
@@ -127,7 +127,7 @@ func (f *mixFixture) dialOld(t *testing.T, carrier string, want bool) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		client.NewRPClient(addr, f.client.VerifyKey, carrier, "", "", "", nil, 30, nil).Start(ctx)
+		legacyclient.New(addr, f.client.VerifyKey, carrier, 30).Start(ctx)
 	}()
 	defer func() {
 		cancel()
@@ -246,7 +246,7 @@ func TestMixVirtualTarget(t *testing.T) {
 }
 
 func TestGenericBridgePort(t *testing.T) {
-	n := servercfg.NetworkConfig{NewProtocol: true, NewProtocolWSPaths: []string{"/new"}}
+	n := servercfg.NetworkConfig{NewProtocolWSPaths: []string{"/new"}}
 	f := mixOn(t, mixGeneric, true, n)
 	t.Run("tcp new", func(t *testing.T) { f.dialCore(t, "tcp://"+f.addr, true) })
 	t.Run("tls new", func(t *testing.T) { f.dialCore(t, "tls://"+f.addr, true) })

@@ -367,17 +367,17 @@ func parseURL(s string) (Candidate, error) {
 	return c, nil
 }
 
-// DefaultQUICALPN is the ALPN of quic carriers of this version.
-const DefaultQUICALPN = "nps"
-
-// CoreQUICALPN is the default ALPN of quic carriers on the new protocol (§13).
-const CoreQUICALPN = "h3"
+// DefaultQUICALPN is the ALPN of quic carriers (§13).
+const DefaultQUICALPN = "h3"
 
 // UseCoreDefaults gives cands the defaults of the new protocol.
 func UseCoreDefaults(cands []Candidate) {
 	for i := range cands {
-		if cands[i].ALPNDefaulted {
-			cands[i].ALPN = []string{CoreQUICALPN}
+		if cands[i].Carrier == "kcp" {
+			// Not a carrier of the core protocol; the port of a kcp bridge
+			// also takes quic when only bridge_port is set.
+			log.Warn("kcp is not available, connecting with quic", "server", cands[i].Addr)
+			cands[i].Carrier, cands[i].ALPN = "quic", []string{DefaultQUICALPN}
 		}
 	}
 }

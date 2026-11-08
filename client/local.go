@@ -4,22 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
-	"io"
 	"net"
 	"runtime/pprof"
 	"strconv"
 	"sync"
-	"time"
 
-	"github.com/djylb/holepunch"
-	"github.com/djylb/holepunch/portmapper"
-	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
@@ -29,27 +22,19 @@ import (
 type Closer interface{ Close() error }
 
 // SecretManager runs the point-to-point access sections of a visitor: their
-// listeners, the relay tunnel to nps and one peerLink per secret task
-// (password), which the sections of that task share.
+// listeners and one visitor per secret task (password), which the sections of that task share.
 type SecretManager struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	pCancel    context.CancelFunc
-	mu         sync.Mutex
-	dialMu     sync.Mutex // serializes connecting the visitor tunnel
-	wg         sync.WaitGroup
-	cfg        *config.CommonConfig
-	uuid       string
-	secretConn legacy.Carrier
-	server     serverInfo           // of the bridge connection carrying secretConn
-	links      map[string]*peerLink // by task password
-	// coreVisitor makes the access of a password on the new protocol; nil
-	// is the old one.
+	ctx     context.Context
+	cancel  context.CancelFunc
+	pCancel context.CancelFunc
+	mu      sync.Mutex
+	wg      sync.WaitGroup
+	cfg     *config.CommonConfig
+	// coreVisitor makes the access of a password.
 	coreVisitor  func(password, mode string) coreapi.Visitor
 	coreRelease  func()                     // gives back the shared session of coreVisitor
 	visitors     map[string]coreapi.Visitor // by task password
 	proxyServers []Closer
-	mapper       *portmapper.Mapper
 }
 
 // NewSecretManager runs local servers until pCtx ends. With AutoReconnect
@@ -62,36 +47,12 @@ func NewSecretManager(pCtx context.Context, pCancel context.CancelFunc, cfg *con
 		cancel:  cancel,
 		pCancel: pCancel,
 		cfg:     cfg,
-		links:   make(map[string]*peerLink),
-		mapper:  portmapper.New(portmapper.Config{Network: holepunch.SystemNetwork()}),
 	}
 	go func() {
 		<-pCtx.Done()
 		mgr.Close()
 	}()
 	return mgr
-}
-
-// peerLink returns the link of l's task, created on first use, with a
-// direct path started when l's mode wants one.
-func (mgr *SecretManager) peerLink(l *config.LocalServer, mode string) *peerLink {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	p, ok := mgr.links[l.Password]
-	if !ok {
-		p = newPeerLink(mgr, l.Password, l.Type+":"+strconv.Itoa(l.Port))
-		mgr.links[l.Password] = p
-	}
-	if mode != config.ConnRelay {
-		p.wantDirect(mode == config.ConnAuto)
-	}
-	return p
-}
-
-func (mgr *SecretManager) getUUID() string {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	return mgr.uuid
 }
 
 func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Visitor {
@@ -109,10 +70,8 @@ func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Vi
 }
 
 // secretAccess is the bridge of one local section's listeners: it opens
-// every link on the section's peerLink in the section's mode, or on its
-// visitor over the new protocol.
+// every link on the section's visitor.
 type secretAccess struct {
-	link *peerLink
 	mode string
 	core coreapi.Visitor
 	ctx  context.Context
@@ -122,10 +81,7 @@ type secretAccess struct {
 func (a *secretAccess) Session(int) conn.ClientSession { return a }
 
 func (a *secretAccess) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
-	if a.core != nil {
-		return a.core.OpenLink(a.ctx, coreRequest(link))
-	}
-	return a.link.OpenLink(a.link.mgr.ctx, link, a.mode)
+	return a.core.OpenLink(a.ctx, coreRequest(link))
 }
 
 func (a *secretAccess) IsServer() bool { return false }
@@ -139,36 +95,15 @@ func (a *secretAccess) GlobalSource() *acl.Source { return nil }
 
 func (a *secretAccess) CliProcess(*conn.Conn, string) {}
 
-// connMode is l's connection mode, relay when this npc's protocol cannot
-// punch.
-func connMode(l *config.LocalServer) string {
-	mode := l.ConnMode
-	if mode == "" {
-		mode = config.ConnAuto
-	}
-	if mode != config.ConnRelay && !clientCaps().P2P {
-		p2pLog.Warn("direct path unavailable, relaying only", "reason", "version", "route", l.Type+":"+strconv.Itoa(l.Port),
-			"version", legacy.CoreVersion(protocolIndex), "min_version", legacy.CoreVersion(legacy.P2PMinIndex))
-		mode = config.ConnRelay
-	}
-	return mode
-}
-
 func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 	if mgr.ctx.Err() != nil {
 		return errors.New("parent context canceled")
 	}
-	var pb *secretAccess
-	if mgr.coreVisitor != nil {
-		mode := l.ConnMode
-		if mode == "" {
-			mode = config.ConnAuto
-		}
-		pb = &secretAccess{mode: mode, core: mgr.visitor(l, mode), ctx: mgr.ctx}
-	} else {
-		mode := connMode(l)
-		pb = &secretAccess{link: mgr.peerLink(l, mode), mode: mode}
+	mode := l.ConnMode
+	if mode == "" {
+		mode = config.ConnAuto
 	}
+	pb := &secretAccess{mode: mode, core: mgr.visitor(l, mode), ctx: mgr.ctx}
 	ip := l.Ip
 	if ip == "" {
 		ip = "0.0.0.0"
@@ -263,193 +198,13 @@ func (mgr *SecretManager) serve(mode, network, ip string, port int, srv localSer
 	return nil
 }
 
-var errNoTunnel = errors.New("no visitor tunnel")
-
-// tunnelStream opens a stream on the current visitor tunnel; a tunnel that
-// cannot open one is dropped and closed.
-func (mgr *SecretManager) tunnelStream() (net.Conn, serverInfo, error) {
-	mgr.mu.Lock()
-	tunnel, server := mgr.secretConn, mgr.server
-	mgr.mu.Unlock()
-	if tunnel == nil {
-		return nil, server, errNoTunnel
-	}
-	c, err := tunnel.OpenStream(mgr.ctx)
-	if err == nil {
-		return c, server, nil
-	}
-	mgr.mu.Lock()
-	if mgr.secretConn == tunnel {
-		mgr.secretConn = nil
-	}
-	mgr.mu.Unlock()
-	_ = tunnel.Close()
-	return nil, server, err
-}
-
-// openTunnelConn opens a stream to the bridge on the visitor tunnel,
-// connecting the tunnel first when there is none. Only one caller connects
-// at a time; the others wait and use the tunnel it installs.
-func (mgr *SecretManager) openTunnelConn() (net.Conn, serverInfo, error) {
-	if c, server, err := mgr.tunnelStream(); err == nil {
-		return c, server, nil
-	}
-	mgr.dialMu.Lock()
-	defer mgr.dialMu.Unlock()
-	if c, server, err := mgr.tunnelStream(); err == nil {
-		return c, server, nil
-	}
-	if err := mgr.ctx.Err(); err != nil {
-		return nil, serverInfo{}, err
-	}
-	// Every failure closes pc; otherwise it is returned or owned by the tunnel stored in mgr.
-	//noinspection GoResourceLeak
-	pc, uuid, server, err := dialServer(mgr.cfg.Tp, mgr.cfg.VKey, mgr.cfg.Server, mgr.cfg.ProxyUrl, mgr.cfg.LocalIP, nil)
-	if err != nil {
-		log.Debug("secret connection to server failed", "server", mgr.cfg.Server, "err", err)
-		if !AutoReconnect {
-			mgr.pCancel()
-		}
-		return nil, serverInfo{}, err
-	}
-	mgr.mu.Lock()
-	if mgr.uuid == "" {
-		mgr.uuid = uuid
-	} else {
-		uuid = mgr.uuid
-	}
-	mgr.mu.Unlock()
-	if !clientCaps().VisitorTunnel {
-		return pc, server, nil
-	}
-	if err = SendType(pc, legacy.WorkVisitor, uuid); err != nil {
-		log.Debug("secret send type failed", "err", err)
-		_ = pc.Close()
-		return nil, serverInfo{}, err
-	}
-	tunnel := legacy.NewTunnel(pc, server.via.Carrier, clientCaps(), mgr.cfg.DisconnectTime, true)
-	c, err := tunnel.OpenStream(mgr.ctx)
-	if err != nil {
-		log.Debug("secret open stream failed", "err", err)
-		_ = tunnel.Close()
-		_ = pc.Close()
-		return nil, serverInfo{}, err
-	}
-	mgr.mu.Lock()
-	if err := mgr.ctx.Err(); err != nil {
-		// Close ran meanwhile and will not see this tunnel.
-		mgr.mu.Unlock()
-		_ = c.Close()
-		_ = tunnel.Close()
-		return nil, serverInfo{}, err
-	}
-	mgr.secretConn, mgr.server = tunnel, server
-	mgr.mu.Unlock()
-	return c, server, nil
-}
-
-// attach proves password to nps on a new stream of the visitor tunnel and
-// returns the grant it answers with; the stream holds the grant until it
-// ends.
-func (mgr *SecretManager) attach(password string) (*visitorGrant, error) {
-	c, err := mgr.workStream(legacy.WorkSecretAttach)
-	if err != nil {
-		return nil, err
-	}
-	_ = c.SetDeadline(time.Now().Add(p2pControlTimeout))
-	var ch legacy.SecretChallenge
-	if err := legacy.ReadP2P(c, &ch); err != nil {
-		_ = c.Close()
-		return nil, fmt.Errorf("secret attach: %w", err)
-	}
-	req := legacy.SecretAttach{Index: crypt.SecretIndex(password), Proof: crypt.SecretProof(password, ch.Nonce, mgr.getUUID())}
-	var granted legacy.SecretGranted
-	if err := legacy.WriteP2P(c, req); err != nil {
-		_ = c.Close()
-		return nil, fmt.Errorf("secret attach: %w", err)
-	}
-	if err := legacy.ReadP2P(c, &granted); err != nil {
-		_ = c.Close()
-		return nil, fmt.Errorf("secret attach: %w", err)
-	}
-	if granted.Code != "" || granted.Grant == "" {
-		_ = c.Close()
-		return nil, &legacy.P2PRefusedError{Code: granted.Code, Message: granted.Message}
-	}
-	_ = c.SetDeadline(time.Time{})
-	g := &visitorGrant{SecretGranted: granted, stream: c, done: make(chan struct{})}
-	go func() {
-		defer close(g.done)
-		_, _ = io.Copy(io.Discard, c)
-		_ = c.Close()
-	}()
-	return g, nil
-}
-
-// relay opens a link under grant g over nps, which applies the task's
-// policy to it.
-func (mgr *SecretManager) relay(g *visitorGrant, link conn.Link, timeout time.Duration) (net.Conn, error) {
-	sc, err := mgr.workStream(legacy.WorkSecretLink)
-	if err != nil {
-		return nil, err
-	}
-	sendOK := false
-	defer func() {
-		if !sendOK {
-			_ = sc.Close()
-		}
-	}()
-	if err := legacy.WriteP2P(sc, legacy.SecretOpen{Grant: g.Grant}); err != nil {
-		log.Debug("secret open failed", "err", err)
-		return nil, err
-	}
-	// The wrapper only writes to sc, which the deferred cleanup closes on failure.
-	//noinspection GoResourceLeak
-	if err := legacy.WriteLink(sc, &link); err != nil {
-		log.Debug("secret send link failed", "err", err)
-		return nil, err
-	}
-	if link.Option.NeedAck {
-		if err := legacy.ReadAck(sc, timeout); err != nil {
-			log.Debug("secret read ack failed", "err", err)
-			return nil, err
-		}
-	}
-	sendOK = true
-	return sc, nil
-}
-
-// workStream opens a stream of workType on the visitor tunnel.
-func (mgr *SecretManager) workStream(workType string) (net.Conn, error) {
-	c, _, err := mgr.openTunnelConn()
-	if err != nil {
-		if AutoReconnect {
-			log.Debug("secret connection failed, retrying", "err", err)
-		} else {
-			log.Debug("secret connection failed", "err", err)
-			mgr.pCancel()
-		}
-		return nil, err
-	}
-	// The wrapper only writes to c, which is closed on failure and returned otherwise.
-	//noinspection GoResourceLeak
-	if err := SendType(conn.NewConn(c), workType, mgr.getUUID()); err != nil {
-		log.Debug("secret send type failed", "err", err)
-		_ = c.Close()
-		return nil, err
-	}
-	return c, nil
-}
-
 // Close stops the listeners, the direct paths and the relay tunnel, and
 // waits for the direct paths' goroutines.
 func (mgr *SecretManager) Close() {
 	mgr.cancel()
 	mgr.mu.Lock()
 	psList := mgr.proxyServers
-	secretConn := mgr.secretConn
 	mgr.proxyServers = nil
-	mgr.secretConn = nil
 	visitors := mgr.visitors
 	mgr.visitors = nil
 	release := mgr.coreRelease
@@ -464,11 +219,5 @@ func (mgr *SecretManager) Close() {
 	for _, srv := range psList {
 		_ = srv.Close()
 	}
-	if secretConn != nil {
-		_ = secretConn.Close()
-	}
 	mgr.wg.Wait()
-	if mgr.mapper != nil {
-		_ = mgr.mapper.Close()
-	}
 }

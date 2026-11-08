@@ -22,7 +22,7 @@ var allowedImporters = []string{
 	"bridge/legacy/",
 	"lib/crypt/crypt.go",
 	"lib/version/version.go",
-	"client/wire_golden_test.go",
+	"client/legacy/wire_golden_test.go",
 }
 
 func TestImportBoundary(t *testing.T) {

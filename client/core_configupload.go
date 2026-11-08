@@ -23,6 +23,7 @@ import (
 // upload ends the session and is the error, as a failed exchange is on the
 // old protocol. Like RunConfigOnce it returns when the session ends.
 func runCoreConfig(ctx context.Context, cnf *config.Config) error {
+	cnf.ConvertFileTunnels()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	fsm := NewFileServerManager(ctx)

@@ -68,8 +68,7 @@ type Config struct {
 	// AccessLog, if set, is called with every request to the domain proxy
 	// when it ends, whatever the log level (httpproxy.HttpProxy.AccessLog).
 	AccessLog func(httpproxy.AccessRecord)
-	// CoreEntry is the new protocol on the bridge ports, nil while
-	// new_protocol is off.
+	// CoreEntry is the new protocol on the bridge ports.
 	CoreEntry coreapi.Entry
 }
 

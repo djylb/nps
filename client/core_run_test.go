@@ -73,7 +73,7 @@ func coreTestConfig(t *testing.T, text string) *config.Config {
 // the same profile; the session is given up with its last user.
 func TestCoreSessionShared(t *testing.T) {
 	made, outers := useFakeOuters(t)
-	text := "[common]\nserver_addr=127.0.0.1:1;127.0.0.1:2\nvkey=k\nnew_protocol=true\nrelay_idle=5\nsession_max_lanes=3\npipes=multi\nscheduler_up=spread_eta\n" +
+	text := "[common]\nserver_addr=127.0.0.1:1;127.0.0.1:2\nvkey=k\nrelay_idle=5\nsession_max_lanes=3\npipes=multi\nscheduler_up=spread_eta\n" +
 		"[secret_a]\nlocal_type=tcp\nconn_mode=relay\nlocal_port=1\npassword=a\n" +
 		"[secret_b]\nlocal_type=udp\nconn_mode=auto\nlocal_port=2\npassword=b\n"
 	c := coreTestConfig(t, text)
@@ -154,7 +154,7 @@ func TestCoreSessionsDiffer(t *testing.T) {
 
 func TestCoreKeepServerSession(t *testing.T) {
 	_, outers := useFakeOuters(t)
-	c := coreTestConfig(t, "[common]\nserver_addr=127.0.0.1:1\nvkey=k\nnew_protocol=true\np2p_visitor_keep_server=true\n")
+	c := coreTestConfig(t, "[common]\nserver_addr=127.0.0.1:1\nvkey=k\np2p_visitor_keep_server=true\n")
 	e, err := acquireCore(c.CommonConfig, c.CommonConfig.Server)
 	if err != nil {
 		t.Fatal(err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"github.com/djylb/nps/lib/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/djylb/nps/internal/coreproto/connect"
+	"github.com/djylb/nps/lib/config"
 )
 
 const (
@@ -192,6 +194,7 @@ func TestFetchedPayloadIsUntrusted(t *testing.T) {
 }
 
 func TestRunStopsOnCancel(t *testing.T) {
+	connect.Install()
 	profiles, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?password=pw&target=127.0.0.1:2&local_port=0&local_type=tcp")
 	if err != nil {
 		t.Fatal(err)
@@ -254,6 +257,7 @@ func TestLocalPayloadKeepsLocalKeys(t *testing.T) {
 
 // Profiles that stop at once write their uuids while the next ones start.
 func TestRunUuidsWithManyProfiles(t *testing.T) {
+	connect.Install()
 	var profiles []Profile
 	for i := range 8 {
 		got, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?name=p"+string(rune('0'+i)))

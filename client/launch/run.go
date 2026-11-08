@@ -47,19 +47,8 @@ func Run(ctx context.Context, profiles []Profile, uuids map[string]string, opts 
 func (p Profile) run(ctx context.Context, uuid string, opts Options) (string, error) {
 	c := p.Config.CommonConfig
 	log.Info("launch profile starting", "name", p.Name, "server", c.Server, "carrier", c.Tp)
-	if !c.NewProtocol {
-		client.NotePipes(c.Pipes)
-	}
-	if p.Direct && c.NewProtocol {
-		return uuid, client.RunCoreProfile(ctx, c, false)
-	}
 	if p.Direct {
-		disconnect := c.DisconnectTime
-		if disconnect == 0 {
-			disconnect = opts.DisconnectTimeout
-		}
-		client.NewRPClient(c.Server, c.VKey, c.Tp, c.ProxyUrl, c.LocalIP, "", nil, disconnect, nil).Start(ctx)
-		return uuid, nil
+		return uuid, client.RunCoreProfile(ctx, c, false)
 	}
 	if c.DnsServer != "" {
 		netaddr.SetCustomDNS(c.DnsServer)

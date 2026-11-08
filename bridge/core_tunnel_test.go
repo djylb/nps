@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"io"
 	"net"
 	"net/http"
@@ -164,7 +165,7 @@ func (f *coreFixture) joinOld(tb testing.TB) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		client.NewRPClient(f.addr, f.client.VerifyKey, "tcp", "", "", "", nil, 30, nil).Start(ctx)
+		legacyclient.New(f.addr, f.client.VerifyKey, "tcp", 30).Start(ctx)
 	}()
 	tb.Cleanup(func() {
 		cancel()

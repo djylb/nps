@@ -28,6 +28,7 @@ var NPC = []Rule{
 		}
 		return []string{"--type=tls"}, "old spelling of -type=tls, used as -type=tls"
 	}},
+	ignore("new_protocol", true, "ignored: the core protocol is the only one npc speaks"),
 	ignore("proto_version", false, "ignored: npc only speaks the latest protocol; if the server is older, update the server first"),
 	ignore("stun_addr", false, "ignored: it no longer has an effect; STUN servers are now set on the server (p2p_stun_servers in nps.conf)"),
 	ignore("p2p_type", false, "ignored: it no longer has an effect; P2P picks its transport itself"),

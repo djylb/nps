@@ -15,7 +15,7 @@ func TestMain(m *testing.M) { lifecycletest.VerifyMain(m) }
 // whichever source they came.
 func TestDialConfig(t *testing.T) {
 	c, err := config.Parse("[common]\nserver_addr=tls://a.com:8025|wss://a.com:443/ws?tier=1\nvkey=k\nconn_type=tcp\npipes=multi\n" +
-		"scheduler_up=spread_eta\nnew_protocol=true\nsession_max_lanes=3\nsession_resume_timeout=-1\nlocal_ip=127.0.0.1\nproxy_url=socks5://127.0.0.1:1\n")
+		"scheduler_up=spread_eta\nsession_max_lanes=3\nsession_resume_timeout=-1\nlocal_ip=127.0.0.1\nproxy_url=socks5://127.0.0.1:1\n")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +18,6 @@ import (
 	"github.com/djylb/netx/socks5"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
-	"github.com/djylb/nps/lib/connprofile"
 )
 
 // serveOnce accepts one connection on a new listener and runs handle on it.
@@ -107,7 +104,7 @@ func TestGetProxyConnHttp(t *testing.T) {
 	got := make(chan *http.Request, 1)
 	ln := httpProxy(t, got)
 
-	c, err := GetProxyConn("http://user:pass@"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
+	c, err := conn.DialProxy("http://user:pass@"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
 	if err != nil {
 		t.Fatalf("GetProxyConn: %v", err)
 	}
@@ -131,7 +128,7 @@ func TestGetProxyConnWithoutSchemeIsHttp(t *testing.T) {
 	got := make(chan *http.Request, 1)
 	ln := httpProxy(t, got)
 
-	c, err := GetProxyConn(ln.Addr().String(), "example.com:443", 2*time.Second, "")
+	c, err := conn.DialProxy(ln.Addr().String(), "example.com:443", 2*time.Second, "")
 	if err != nil {
 		t.Fatalf("GetProxyConn: %v", err)
 	}
@@ -148,7 +145,7 @@ func TestGetProxyConnSocks5(t *testing.T) {
 			got := make(chan netx.Addr, 1)
 			ln := socks5Proxy(t, got)
 
-			c, err := GetProxyConn(scheme+"://"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
+			c, err := conn.DialProxy(scheme+"://"+ln.Addr().String(), "example.com:443", 2*time.Second, "")
 			if err != nil {
 				t.Fatalf("GetProxyConn: %v", err)
 			}
@@ -173,7 +170,7 @@ func TestGetProxyConnEnvironment(t *testing.T) {
 	t.Setenv("NO_PROXY", "127.0.0.1")
 
 	// example.com goes through ALL_PROXY.
-	c, err := GetProxyConn("", "example.com:443", 2*time.Second, "")
+	c, err := conn.DialProxy("", "example.com:443", 2*time.Second, "")
 	if err != nil {
 		t.Fatalf("GetProxyConn via ALL_PROXY: %v", err)
 	}
@@ -184,7 +181,7 @@ func TestGetProxyConnEnvironment(t *testing.T) {
 	}
 
 	// 127.0.0.1 is in NO_PROXY and is dialed directly.
-	c, err = GetProxyConn("", target.Addr().String(), 2*time.Second, "")
+	c, err = conn.DialProxy("", target.Addr().String(), 2*time.Second, "")
 	if err != nil {
 		t.Fatalf("GetProxyConn bypassing ALL_PROXY: %v", err)
 	}
@@ -225,26 +222,13 @@ func TestGetProxyConnTimesOutOnSilentProxy(t *testing.T) {
 
 	for _, scheme := range []string{"http", "https", "socks5", "socks5h", "socks4a"} {
 		start := time.Now()
-		_, err := GetProxyConn(scheme+"://"+ln.Addr().String(), "example.com:443", 200*time.Millisecond, "")
+		_, err := conn.DialProxy(scheme+"://"+ln.Addr().String(), "example.com:443", 200*time.Millisecond, "")
 		if err == nil {
 			t.Fatalf("%s: expected an error from a silent proxy", scheme)
 		}
 		if d := time.Since(start); d > 2*time.Second {
 			t.Fatalf("%s: proxy handshake not bounded by timeout, took %v", scheme, d)
 		}
-	}
-}
-
-func TestNewConnReturnsDialError(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := l.Addr().String()
-	_ = l.Close()
-	_, _, err = NewConn("tcp", "key", addr, "", "")
-	if err == nil || strings.Contains(err.Error(), "unexpected nil connection") {
-		t.Fatalf("NewConn error = %v, want the dial error", err)
 	}
 }
 
@@ -290,40 +274,5 @@ func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
 func TestStartFromFileReturnsConfigError(t *testing.T) {
 	if err := StartFromFile(context.Background(), filepath.Join(t.TempDir(), "missing.conf")); err == nil {
 		t.Fatal("StartFromFile with a missing config returned nil")
-	}
-}
-
-// dialServer tries the candidates of a profile in connprofile.Order, the
-// last one that connected first, and tells of each that fails.
-func TestDialServerTriesCandidatesInOrder(t *testing.T) {
-	var ports []string
-	for range 3 {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		ports = append(ports, l.Addr().String())
-		_ = l.Close()
-	}
-	server := "tcp://" + ports[0] + "?standby=1|" + ports[1] + "|tcp://" + ports[2] + "?tier=-1|tcp://" + ports[2] + "?tier=-9&dirs=up"
-	var tried []string
-	failed := func(c connprofile.Candidate, err error) { tried = append(tried, c.Addr+"/"+c.Carrier) }
-	_, _, _, err := dialServer("tcp", "key", server, "", "", failed)
-	if err == nil {
-		t.Fatal("no error")
-	}
-	want := []string{ports[2] + "/tcp", ports[1] + "/tcp", ports[0] + "/tcp"}
-	if !slices.Equal(tried, want) {
-		t.Fatalf("tried %v, want %v", tried, want)
-	}
-	lastCandidate.Store("tcp "+server, ports[1])
-	defer lastCandidate.Delete("tcp " + server)
-	tried = nil
-	_, _, _, _ = dialServer("tcp", "key", server, "", "", failed)
-	if want = []string{ports[1] + "/tcp", ports[2] + "/tcp", ports[0] + "/tcp"}; !slices.Equal(tried, want) {
-		t.Fatalf("after a success tried %v, want %v", tried, want)
-	}
-	if _, _, _, err := dialServer("tcp", "key", "ftp://x", "", "", nil); err == nil {
-		t.Fatal("bad profile accepted")
 	}
 }

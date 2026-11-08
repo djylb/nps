@@ -16,6 +16,7 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"github.com/djylb/nps/internal/cliargs"
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/clock"
@@ -87,7 +88,6 @@ var (
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 	autoReconnect  = flag.Bool("auto_reconnect", true, "Auto Reconnect")
 	// Temporary, until npc has moved to the core protocol: off by default.
-	newProtocol          = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss, quic)")
 	compressMaxWindow    = flag.Uint64("compress_max_window", 0, "New protocol: largest zstd window of a compressed link, bytes (default 8 MiB)")
 	compressMaxRatio     = flag.Int64("compress_max_ratio", 0, "New protocol: largest expansion of a compressed link (default 4096, negative: no check)")
 	sessionResumeTimeout = flag.Int("session_resume_timeout", 0, "New protocol: seconds a session that lost all its connections waits for one (0: 30, negative: no resume); a server's setting replaces it")
@@ -135,7 +135,7 @@ func main() {
 		return
 	}
 	install.RecoverUpdate()
-	client.SkipTLSVerify = *skipVerify
+	legacyclient.SkipTLSVerify = *skipVerify
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
@@ -230,13 +230,13 @@ func main() {
 	// 处理服务命令
 	switch cmd {
 	case "status":
-		if err := client.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP); err != nil {
+		if err := legacyclient.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP); err != nil {
 			log.Error("status failed", "err", err)
 			os.Exit(1)
 		}
 		return
 	case "register":
-		if err := client.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime); err != nil {
+		if err := legacyclient.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime); err != nil {
 			log.Error("register failed", "err", err)
 			os.Exit(1)
 		}
@@ -385,9 +385,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
 	}
-	if !*newProtocol {
-		client.NotePipes(mode)
-	}
+	_ = mode
 	if _, err := connprofile.ParseScheduler(*schedulerUp); err != nil {
 		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
@@ -423,12 +421,10 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		// with auto reconnection off.
 		p2pCtx, p2pCancel := context.WithCancel(ctx)
 		p2pm := client.NewSecretManager(p2pCtx, p2pCancel, commonConfig)
-		if commonConfig.NewProtocol {
-			commonConfig.ProxyUrl = *proxyUrl
-			if err := p2pm.UseCore(); err != nil {
-				cfgLog.Error("invalid command line", "err", err)
-				os.Exit(1)
-			}
+		commonConfig.ProxyUrl = *proxyUrl
+		if err := p2pm.UseCore(); err != nil {
+			cfgLog.Error("invalid command line", "err", err)
+			os.Exit(1)
 		}
 		go func() { _ = p2pm.StartLocalServer(localServer) }()
 		go func() {
@@ -494,25 +490,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 			connType = strings.ToLower(connType)
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
-				if *newProtocol {
-					runCoreProfile(ctx, serverAddr, verifyKey, connType, localIP)
-					return
-				}
-				for {
-					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
-					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
-					if *autoReconnect {
-						log.Info("reconnecting", "server", serverAddr)
-						if !client.WaitReconnect(ctx) {
-							return
-						}
-					} else {
-						log.Info("client closed", "server", serverAddr)
-						cancel()
-						os.Exit(1)
-						return
-					}
-				}
+				runCoreProfile(ctx, serverAddr, verifyKey, connType, localIP)
 			}(serverAddr, verifyKey, connType, localIP)
 		}
 	}

@@ -91,7 +91,7 @@ func TestConfigUploadOnNewProtocol(t *testing.T) {
 	echo := echoListener(t)
 	port := freeLocalPort(t)
 	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
-		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"\nconn_type=tcp\nauto_reconnection=true\n"+
 		"[echo]\nmode=tcp\ntarget_addr="+echo+"\nserver_port="+strconv.Itoa(port)+"\n"+
 		"[web]\nhost=upload.example.com\ntarget_addr="+echo+"\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
@@ -129,7 +129,7 @@ func TestFileTunnelIsVirtualService(t *testing.T) {
 	}
 	port := freeLocalPort(t)
 	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
-		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"\nconn_type=tcp\nauto_reconnection=true\n"+
 		"[files]\nmode=file\nserver_port="+strconv.Itoa(port)+"\nlocal_path="+dir+"\nstrip_pre=/\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
 	waitStored(t, f, 1, 0)
@@ -233,7 +233,7 @@ func TestFileTunnelPortTaken(t *testing.T) {
 	defer held.Close()
 	port := held.Addr().(*net.TCPAddr).Port
 	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
-		"\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\n"+
+		"\nconn_type=tcp\nauto_reconnection=true\n"+
 		"[files]\nmode=file\nserver_port="+strconv.Itoa(port)+"\nlocal_path="+t.TempDir()+"\nstrip_pre=/\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
 	for end := time.Now().Add(10 * time.Second); len(f.b.VirtualServices()) != 1; time.Sleep(20 * time.Millisecond) {
@@ -319,7 +319,7 @@ func TestConfigUploadPublicKey(t *testing.T) {
 	serveOpened(t, f)
 	echo := echoListener(t)
 	port := freeLocalPort(t)
-	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey=public-key\nconn_type=tcp\nnew_protocol=true\nauto_reconnection=true\ncompress=true\n"+
+	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey=public-key\nconn_type=tcp\nauto_reconnection=true\ncompress=true\n"+
 		"[echo]\nmode=tcp\ntarget_addr="+echo+"\nserver_port="+strconv.Itoa(port)+"\n")
 	runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, path) })
 	waitEcho(t, "tunnel of the issued key", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))

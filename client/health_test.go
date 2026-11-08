@@ -159,3 +159,10 @@ func TestTouchPostponesOnlyTCPChecks(t *testing.T) {
 		t.Fatalf("%d TCP probes during traffic", st.Checks-before)
 	}
 }
+
+// legacyHealthSink writes reports in a framing these tests read back.
+type legacyHealthSink struct{ signal *conn.Conn }
+
+func (s legacyHealthSink) ReportHealth(rep healthcheck.Report) error {
+	return legacy.WriteGroupHealth(s.signal, rep)
+}

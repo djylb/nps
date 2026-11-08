@@ -1,11 +1,11 @@
-package client
+package legacyclient
 
 // The golden vectors in testdata/wire are the wire format released clients
 // depend on. They were recorded from the code before the protocol moved to
 // its library: never update them to match a change, unless that change is
 // meant to alter the bytes on the wire, which breaks released clients.
 //
-//	WIRE_GOLDEN_UPDATE=1 go test ./client -run TestWireGolden
+//	WIRE_GOLDEN_UPDATE=1 go test ./client/legacy -run TestWireGolden
 
 import (
 	"bytes"
