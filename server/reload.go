@@ -72,6 +72,10 @@ func ApplyLimits(cfg *servercfg.Snapshot) {
 func (s *Server) builtinAppliers() []servercfg.Applier {
 	restart := servercfg.RestartRequired
 	return []servercfg.Applier{
+		{Name: "log secrets", Settings: []string{"log_secrets"}, Apply: func(_, cur *servercfg.Snapshot) error {
+			logevent.SetShowSecrets(cur.Log.Secrets)
+			return nil
+		}},
 		{Name: "log level", Settings: []string{"log_level"}, Apply: func(_, cur *servercfg.Snapshot) error {
 			return slogx.Default.Levels().Set(cur.Log.Level)
 		}},

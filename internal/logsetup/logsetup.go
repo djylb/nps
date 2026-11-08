@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/djylb/nps/lib/logevent" // registers the events
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 )
 
@@ -29,6 +29,9 @@ type Options struct {
 	Service bool
 	// Memory keeps the last entries in memory (npc SDK, a log viewer).
 	Memory int
+	// Secrets writes keys and passwords in lines, for development
+	// (logevent.Secret).
+	Secrets bool
 }
 
 // Config returns the slogx configuration of o.
@@ -99,5 +102,6 @@ func Apply(o Options) error {
 		return err
 	}
 	slogx.CaptureStdLog(slogx.Module("lib"), slog.LevelWarn)
+	logevent.SetShowSecrets(o.Secrets)
 	return nil
 }

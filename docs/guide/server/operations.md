@@ -31,7 +31,7 @@ sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 
 立即生效：
 
-- 日志级别与时间同步：`log_level`、`ntp_server`、`ntp_interval`
+- 日志级别与时间同步：`log_level`、`log_secrets`、`ntp_server`、`ntp_interval`
 - 统计与限制：`system_info_display`、`flow_limit_type`、`client_history_limit`
 - Webhook：`webhook_url`、`webhook_secret`、`webhook_timeout`、`webhook_retries`、`webhook_queue_size`、`webhook_report_interval`
 - Web 管理界面：`appname`、`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`instance_key_file`、`ip_register_max_hours`、`http_proxy_access_port`、`https_proxy_access_port`

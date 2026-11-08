@@ -38,6 +38,7 @@
 | `-log` | `stdout`、`file`、`both`、`off`；显式给出时总是生效 | `file`（OpenWrt 上为 `off`） |
 | `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |
 | `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn` | `info` |
+| `-log_secrets` | 开发调试用：日志里原样写出 vkey、口令等，生产环境不要开启 | `false` |
 | `-log_format` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）或 `json` | `auto` |
 | `-log_compress` | 压缩日志 | `false` |
 | `-log_max_days` | 保留天数，`0` 关闭 | `7` |

@@ -69,6 +69,7 @@ var (
 	logMaxDays     = flag.Int("log_max_days", 7, "Number of days to retain old log files (0 to disable)")
 	logMaxFiles    = flag.Int("log_max_files", defaultLogMaxFiles, "Maximum number of log files to retain (0 to disable)")
 	logCompress    = flag.Bool("log_compress", false, "Compress rotated log files (true or false)")
+	logSecrets     = flag.Bool("log_secrets", false, "Write keys and passwords in log lines, for development (never in production)")
 	logFormat      = flag.String("log_format", "auto", "Log line format (auto|text|json); auto is coloured on a terminal, logfmt elsewhere")
 	debug          = flag.Bool("debug", true, "Log to the console when -log is not given (false for services)")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
@@ -307,6 +308,7 @@ func configureLogging() {
 	err := logsetup.Apply(logsetup.Options{
 		Output: *logType, Format: *logFormat, Level: *logLevel, Path: *logPath, Dir: runenv.GetRunPath(),
 		MaxSize: *logMaxSize, MaxFiles: *logMaxFiles, MaxDays: *logMaxDays, Compress: *logCompress,
+		Secrets: *logSecrets,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "log:", err)
@@ -457,7 +459,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 
 			go func(serverAddr, verifyKey, connType, localIP string) {
 				for {
-					log.Info("connecting", "server", serverAddr, "vkey", slogx.Redacted(verifyKey), "carrier", connType, "local_ip", localIP)
+					log.Info("connecting", "server", serverAddr, "vkey", logevent.Secret(verifyKey), "carrier", connType, "local_ip", localIP)
 					client.NewRPClient(serverAddr, verifyKey, connType, *proxyUrl, localIP, "", nil, *disconnectTime, nil).Start(ctx)
 					if *autoReconnect {
 						log.Info("client closed, reconnecting", "server", serverAddr)

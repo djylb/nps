@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync/atomic"
 
 	"github.com/djylb/slogx"
 )
@@ -201,3 +202,29 @@ func NetReason(err error) string {
 	}
 	return "other"
 }
+
+// showSecrets makes Secret write the value itself: for development, where
+// the keys and passwords in lines help debugging. Off by default.
+var showSecrets atomic.Bool
+
+// SetShowSecrets sets whether Secret values are written as they are
+// (log_secrets). Turning it on writes a warning, since the log then holds
+// what it must not hold in production.
+func SetShowSecrets(on bool) {
+	if showSecrets.Swap(on) != on && on {
+		slogx.Module("server").Warn("log_secrets is on: log lines carry keys and passwords; turn it off in production")
+	}
+}
+
+// Secret is how a key, password or other secret goes into a line: as
+// [REDACTED], or as it is while log_secrets is on.
+func Secret(v string) any {
+	if showSecrets.Load() {
+		return v
+	}
+	return slogx.Redacted(v)
+}
+
+// SecretsShown reports whether log_secrets is on, for lines that include a
+// secret only then, such as an error whose text names a key.
+func SecretsShown() bool { return showSecrets.Load() }
