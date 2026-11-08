@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"net"
 	"os"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/coreproto/session"
+	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/version"
+	"github.com/quic-go/quic-go"
 )
 
 // runCoreProfile runs one server profile on the new protocol.
@@ -23,6 +26,9 @@ func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) 
 		log.Error("invalid server", "err", err)
 		return
 	}
+	connprofile.UseCoreDefaults(cands)
+	mode, _ := connprofile.ParsePipes(*pipes)
+	scheduler, _ := connprofile.ParseScheduler(*schedulerUp)
 	pin, err := hex.DecodeString(*newProtocolPin)
 	if err != nil {
 		log.Error("invalid pin", "err", err)
@@ -31,6 +37,8 @@ func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) 
 	label, _ := os.Hostname()
 	client.RunCore(ctx, session.NewDialer(session.DialConfig{
 		Candidates: cands,
+		Pipes:      mode,
+		Scheduler:  scheduler,
 		VKey:       vkey,
 		Pin:        pin,
 		Agent:      "npc/" + version.VERSION + " " + runtime.GOOS + "/" + runtime.GOARCH,
@@ -42,7 +50,10 @@ func runCoreProfile(ctx context.Context, server, vkey, carrier, localIP string) 
 			}
 			return client.GetProxyConn(*proxyUrl, addr, timeout, localIP)
 		},
-		Exit:           client.NewCoreExit(localIP),
+		DialQUIC: func(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
+			return conn.DialQuicWithLocalIP(ctx, addr, t, q, localIP)
+		},
+		Exit:           client.NewCoreExit(localIP, time.Duration(*udp5IdleTimeout)*time.Second),
 		CompressLimits: session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio},
 	}), *autoReconnect)
 }

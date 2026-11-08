@@ -4,7 +4,7 @@
 
 ## [common]
 
-`server_addr`、`conn_type`、`pipes`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
+`server_addr`、`conn_type`、`pipes`、`scheduler_up`、`vkey`、`auto_reconnection`、`proxy_url`、`local_ip`、`dns_server`、`ntp_server`、`ntp_interval`、`basic_username`、`basic_password`、`web_username`、`web_password`、`compress`、`crypt`、`rate_limit`、`flow_limit`、`time_limit`、`max_conn`、`remark`、`pprof_addr`、`disconnect_timeout`。
 
 `server_addr` 是一个连接（档案）：可以用 `|` 写多个承载候选，写法与命令行 `-server` 相同（见 [NPC 命令行参数](npc-cli.md#服务器地址)），不带方案的候选用 `conn_type`。`pipes` 为 `single`（默认）或 `multi`，同 `-pipes`。配置文件里不需要引号：
 

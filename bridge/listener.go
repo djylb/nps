@@ -10,12 +10,10 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"time"
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/server/connection"
-	"github.com/quic-go/quic-go"
 )
 
 // ErrClosed is returned by StartTunnel on a bridge that is closed.
@@ -44,7 +42,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	}
 	var err error
 	// tcp
-	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP, connection.KindBridgeTCP); err != nil {
+	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP && !n.BridgeGeneric, connection.KindBridgeTCP); err != nil {
 		return err
 	}
 	// tls
@@ -58,6 +56,24 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	// wss
 	if s.VirtualWssListener, err = s.virtualBridgeListener(t.WSS, connection.KindBridgeWSS); err != nil {
 		return err
+	}
+
+	if s.VirtualMixListener, err = s.virtualBridgeListener(false, 0); err != nil {
+		return err
+	}
+	if t.TCP && n.BridgeGeneric {
+		if err := s.serveMixPort(connection.KindBridgeTCP, s.newMixEntry(mixGeneric)); err != nil {
+			return err
+		}
+	}
+	if n.MixPort != 0 {
+		e := s.newMixEntry(mixPort)
+		if err := s.serveMixPort(connection.KindMix, e); err != nil {
+			return err
+		}
+		if err := s.listenQUIC(net.JoinHostPort(n.MixIP, strconv.Itoa(n.MixPort)), "mix", e); err != nil {
+			return err
+		}
 	}
 
 	// kcp
@@ -77,29 +93,14 @@ func (s *Bridge) StartTunnel(t Transports) error {
 
 	// quic
 	if t.QUIC {
-		quicConfig := &quic.Config{
-			KeepAlivePeriod:    time.Duration(n.QUICKeepAlivePeriod) * time.Second,
-			MaxIdleTimeout:     time.Duration(n.QUICMaxIdleTimeout) * time.Second,
-			MaxIncomingStreams: n.QUICMaxIncomingStreams,
+		if err := s.listenQUIC(net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort)), "quic", nil); err != nil {
+			return err
 		}
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{s.cert},
-			NextProtos:   n.QUICALPNList,
-		}
-		l, err := conn.ListenQUIC(net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort)), tlsCfg, quicConfig)
-		if err != nil {
-			return fmt.Errorf("quic bridge listener: %w", err)
-		}
-		slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", l.Addr().String(), "carrier", "quic")
-		s.addCloser(l)
-		_ = s.scope.Go("quic bridge listener", func(context.Context) error {
-			return conn.ServeQUIC(l, func(c net.Conn) {
-				s.serve(conn.NewConn(c), conn.TransportQUIC)
-			})
-		})
 	}
 
 	_ = s.scope.Go("ping", func(context.Context) error { s.ping(); return nil })
+	mixTarget := s.newMixEntry(mixVirtual)
+	s.acceptOn(s.VirtualMixListener, func(c net.Conn) { s.serveMix(c, mixTarget) })
 	s.acceptOn(s.VirtualTcpListener, func(c net.Conn) {
 		s.serveCarrier(c, conn.TransportTCP)
 	})

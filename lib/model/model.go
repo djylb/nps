@@ -287,6 +287,9 @@ type Config struct {
 	// compression (§7.1).
 	CompressAlg string `json:",omitempty"`
 	Crypt       bool
+	// SchedulerDown is how nps schedules sending to this client on the core
+	// protocol (connprofile.Schedulers); empty is affinity.
+	SchedulerDown string `json:",omitempty"`
 }
 
 // Tunnel and host override of the compression of a client; "" follows the
@@ -315,6 +318,15 @@ func compressOf(alg string) []string {
 		return compressOnlySnappy
 	}
 	return nil
+}
+
+// SchedulerDownName is the scheduler of sending to the client, "" on a client
+// without a configuration.
+func (c *Config) SchedulerDownName() string {
+	if c == nil {
+		return ""
+	}
+	return c.SchedulerDown
 }
 
 // CompressList is the default compression of a client: algorithms in order of

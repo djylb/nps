@@ -28,6 +28,7 @@ import (
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
+	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 )
 
@@ -120,7 +121,7 @@ func (f *coreFixture) joinCoreTrusted(tb testing.TB) {
 		tb.Fatal(err)
 	}
 	d := session.NewDialer(session.DialConfig{Candidates: cands, VKey: f.client.VerifyKey, Agent: "npc/9.8.7 test/x",
-		Exit: client.NewCoreExit(""), Timeout: 4 * time.Second})
+		Exit: client.NewCoreExit("", 0), Timeout: 4 * time.Second})
 	first, err := d.Dial(context.Background())
 	if err != nil {
 		tb.Fatal(err)
@@ -243,8 +244,8 @@ func TestTunnelEndToEndAndFlow(t *testing.T) {
 	}{
 		{"old", model.Config{}, func(f *coreFixture, tb testing.TB) { f.joinOld(tb) }},
 		{"old compressed", model.Config{Compress: true}, func(f *coreFixture, tb testing.TB) { f.joinOld(tb) }},
-		{"new", model.Config{}, func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("")) }},
-		{"new compressed", model.Config{Compress: true, CompressAlg: "zstd"}, func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("")) }},
+		{"new", model.Config{}, func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("", 0)) }},
+		{"new compressed", model.Config{Compress: true, CompressAlg: "zstd"}, func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("", 0)) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newCoreFixture(t, Primary, tc.cnf)
@@ -275,12 +276,15 @@ func (e *countExit) Dial(ctx context.Context, network, target string) (net.Conn,
 
 func TestSelectionAcrossSessionsAndProtocols(t *testing.T) {
 	f := newCoreFixture(t, RoundRobin, model.Config{})
-	a, b := &countExit{Exit: client.NewCoreExit("")}, &countExit{Exit: client.NewCoreExit("")}
+	a, b := &countExit{Exit: client.NewCoreExit("", 0)}, &countExit{Exit: client.NewCoreExit("", 0)}
 	f.joinCore(t, a)
 	f.joinCore(t, b)
 	old := joinRouteNode(t, f.b, f.client.Id, "old-node")
 	target := echoListener(t)
 	v, _ := f.b.Client.Load(f.client.Id)
+	// A session is the client's before the server has registered it.
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && v.(*Client).NodeCount() != 3; time.Sleep(5 * time.Millisecond) {
+	}
 	if n := v.(*Client).NodeCount(); n != 3 {
 		t.Fatalf("nodes: %d", n)
 	}
@@ -291,7 +295,7 @@ func TestSelectionAcrossSessionsAndProtocols(t *testing.T) {
 		}
 		_ = c.Close()
 	}
-	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && (a.n.Load() < 2 || b.n.Load() < 2); time.Sleep(5 * time.Millisecond) {
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && (a.n.Load() < 2 || b.n.Load() < 2 || len(old.links) < 2); time.Sleep(5 * time.Millisecond) {
 	}
 	if a.n.Load() != 2 || b.n.Load() != 2 || len(old.links) != 2 {
 		t.Fatalf("spread: %d %d old %d", a.n.Load(), b.n.Load(), len(old.links))
@@ -300,7 +304,7 @@ func TestSelectionAcrossSessionsAndProtocols(t *testing.T) {
 
 func TestClientDisabledMidSession(t *testing.T) {
 	f := newCoreFixture(t, Primary, model.Config{})
-	s := f.joinCore(t, client.NewCoreExit(""))
+	s := f.joinCore(t, client.NewCoreExit("", 0))
 	f.waitConnected(t)
 	f.client.Status = false
 	f.b.DelClient(f.client.Id)
@@ -332,7 +336,7 @@ func TestSessionVersionOfOldNode(t *testing.T) {
 
 func TestCoreOnlineIsAClientOnline(t *testing.T) {
 	f := newCoreFixture(t, Primary, model.Config{})
-	f.joinCore(t, client.NewCoreExit(""))
+	f.joinCore(t, client.NewCoreExit("", 0))
 	f.waitConnected(t)
 	v, _ := f.b.Client.Load(f.client.Id)
 	c := v.(*Client)
@@ -352,7 +356,7 @@ func TestCoreOnlineIsAClientOnline(t *testing.T) {
 
 func TestCorePingAndUDPThroughOpenLink(t *testing.T) {
 	f := newCoreFixture(t, Primary, model.Config{})
-	f.joinCore(t, client.NewCoreExit(""))
+	f.joinCore(t, client.NewCoreExit("", 0))
 	f.waitConnected(t)
 	ping := conn.NewLink(conn.LinkPing, "", false, false, "", false)
 	ping.Option.NeedAck = true
@@ -395,6 +399,8 @@ func TestCorePingAndUDPThroughOpenLink(t *testing.T) {
 }
 
 // fallbackRec answers with what it read of the request.
+func (fallbackRec) ServeHTTP3(*quic.Conn, *quic.ReceiveStream) bool { return false }
+
 type fallbackRec struct{ got chan string }
 
 func (f fallbackRec) ServeFallback(c net.Conn, _ *tls.ConnectionState) bool {
@@ -445,7 +451,7 @@ func BenchmarkTunnel(b *testing.B) {
 		cnf  model.Config
 	}{
 		{"old", func(f *coreFixture, tb testing.TB) { f.joinOld(tb) }, model.Config{}},
-		{"new_sealed", func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("")) }, model.Config{Crypt: true}},
+		{"new_sealed", func(f *coreFixture, tb testing.TB) { f.joinCore(tb, client.NewCoreExit("", 0)) }, model.Config{Crypt: true}},
 		{"new_trusted", func(f *coreFixture, tb testing.TB) { f.joinCoreTrusted(tb) }, model.Config{}},
 	} {
 		b.Run(tc.name, func(b *testing.B) {

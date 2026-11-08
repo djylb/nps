@@ -54,6 +54,18 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="form-group" id="scheduler_down">
+                                <label class="control-label font-bold" langtag="word-schedulerdown"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="scheduler_down">
+                                        <option {{if eq "affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="affinity">affinity</option>
+                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="session_affinity">session_affinity</option>
+                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_eta">spread_eta</option>
+                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_round_robin">spread_round_robin</option>
+                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_rate_weighted">spread_rate_weighted</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="form-group" id="crypt">
                                 <label class="control-label font-bold" langtag="word-crypt"></label>
                                 <div class="col-sm-12">

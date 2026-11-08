@@ -150,7 +150,11 @@ type RuntimeConfig struct {
 	PublicVKey         string
 	VisitorVKey        string
 	DisconnectTimeout  int
-	FlowStoreInterval  int
+	// DeadS and IdleS are dead_s and idle_s of the new protocol's sessions
+	// (§5, 0: not set): idle from session_idle_s, dead only from a
+	// disconnect_timeout the config names.
+	DeadS, IdleS      int
+	FlowStoreInterval int
 }
 
 // WebhookConfig configures the webhook; an empty URL turns it off.
@@ -195,6 +199,21 @@ type NetworkConfig struct {
 	// new_protocol_ws_paths, comma-separated, default none). On BridgePath
 	// the subprotocol decides: binary is the core protocol, none the old one.
 	NewProtocolWSPaths []string
+	// MixPort is the mixed port (nps.conf mix_port, 0 off; TCP and UDP on
+	// the same number), MixIP its address (mix_ip, default bridge_ip).
+	// MixPlain lets it take plaintext carriers (mix_plain, default off);
+	// MixLegacy the old protocol where the first bytes tell it (mix_legacy,
+	// default on), which also applies to bridge://mix.
+	MixIP     string
+	MixPort   int
+	MixPlain  bool
+	MixLegacy bool
+	// ClientMaxPipes limits the pipes of one client over all its sessions
+	// (client_max_pipes, 0 unlimited).
+	ClientMaxPipes int
+	// BridgeGeneric: the config names only the generic bridge_port, which
+	// is then a full mixed port (see legacy.go).
+	BridgeGeneric bool
 	// CompressMaxWindow and CompressMaxRatio are the receive limits of
 	// compressed links on the core protocol (nps.conf compress_max_window
 	// in bytes, compress_max_ratio; 0 is the default, a negative ratio
@@ -467,6 +486,10 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.BridgeIP = r.stringDefault(r.stringDefault("0.0.0.0", "bridge_tcp_ip"), "bridge_ip")
 	cfg.Network.BridgeHost = r.stringValue("bridge_host")
 	cfg.Network.NewProtocol = r.boolDefault(false, "new_protocol")
+	if _, err := lookupValue(r.values, "disconnect_timeout"); err == nil {
+		cfg.Runtime.DeadS = max(cfg.Runtime.DisconnectTimeout, 0)
+	}
+	cfg.Runtime.IdleS = max(r.intDefault(0, "session_idle_s"), 0)
 	cfg.Network.CompressMaxWindow = uint64(max(r.intDefault(0, "compress_max_window"), 0))
 	cfg.Network.CompressMaxRatio = int64(r.intDefault(0, "compress_max_ratio"))
 	for v := range strings.SplitSeq(r.stringValue("new_protocol_tls_alpn"), ",") {
@@ -485,6 +508,11 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Network.BridgeTLSIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_tls_ip")
 	cfg.Network.BridgeWSIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_ws_ip")
 	cfg.Network.BridgeWSSIP = r.stringDefault(cfg.Network.BridgeIP, "bridge_wss_ip")
+	cfg.Network.MixIP = r.stringDefault(cfg.Network.BridgeIP, "mix_ip")
+	cfg.Network.MixPort = r.intDefault(0, "mix_port")
+	cfg.Network.MixPlain = r.boolDefault(false, "mix_plain")
+	cfg.Network.MixLegacy = r.boolDefault(true, "mix_legacy")
+	cfg.Network.ClientMaxPipes = max(r.intDefault(0, "client_max_pipes"), 0)
 	cfg.Network.BridgePort = r.intDefault(r.intDefault(0, "bridge_tcp_port"), "bridge_port")
 	cfg.Network.BridgeTCPPort = r.intDefault(cfg.Network.BridgePort, "bridge_tcp_port")
 	cfg.Network.BridgeKCPPort = r.intDefault(cfg.Network.BridgePort, "bridge_kcp_port")
@@ -541,6 +569,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Bridge.ServerTLSEnabled = cfg.Bridge.TLSEnable && cfg.Network.BridgeTLSPort != 0 && cfg.Bridge.PrimaryType == "tcp"
 	cfg.Bridge.ServerWSEnabled = cfg.Bridge.WSEnable && cfg.Network.BridgeWSPort != 0 && cfg.Network.BridgePath != "" && cfg.Bridge.PrimaryType == "tcp"
 	cfg.Bridge.ServerWSSEnabled = cfg.Bridge.WSSEnable && cfg.Network.BridgeWSSPort != 0 && cfg.Network.BridgePath != "" && cfg.Bridge.PrimaryType == "tcp"
+	legacyGenericPort(r, cfg)
 	cfg.Bridge.Display = BridgeDisplayConfig{
 		Path: r.stringDefault(cfg.Network.BridgePath, "bridge_show_path"),
 		TCP: BridgeDisplayEndpoint{

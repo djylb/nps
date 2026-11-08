@@ -125,6 +125,10 @@ type Snapshot struct {
 	Session  SessionOptions
 	Record   uint64
 	Compress uint64 // the client's default algorithm, 0 for none
+	// SchedulerUp is the sending scheduler of npc (§5), HasSchedulerUp
+	// false when absent: npc then keeps its local one.
+	SchedulerUp    uint64
+	HasSchedulerUp bool
 }
 
 // AppendSnapshot appends the fields of s, default values omitted.
@@ -142,6 +146,9 @@ func AppendSnapshot(b []byte, s *Snapshot) []byte {
 	if len(so) > 0 {
 		b = AppendBytes(b, keyCfgSessionOptions, so)
 	}
+	if s.HasSchedulerUp {
+		b = AppendUint(b, keyCfgSchedulerUp, s.SchedulerUp)
+	}
 	if s.Record != RecordDefault {
 		b = AppendUint(b, keyCfgRecord, s.Record)
 	}
@@ -157,6 +164,10 @@ func ParseSnapshot(b []byte) (Snapshot, error) {
 	var s Snapshot
 	err := configSchema.Decode(b, func(f Field) error {
 		switch f.Key {
+		case keyCfgSchedulerUp:
+			if f.Value <= SchedulerSpreadRateWeighted {
+				s.SchedulerUp, s.HasSchedulerUp = f.Value, true
+			}
 		case keyCfgRecord:
 			if f.Value >= RecordBound && f.Value <= RecordTrusted {
 				s.Record = f.Value
@@ -311,6 +322,19 @@ func ParseStreamOpen(op Op, fields []byte) (StreamOpen, error) {
 
 // MaxUDPPacket bounds one packet of a UDP stream.
 const MaxUDPPacket = 1<<16 + 300
+
+// MaxUDPPayload bounds the Payload of one packet; a longer one is
+// NPS_MALFORMED (§4.5).
+const MaxUDPPayload = 65535
+
+// Values of scheduler_up (§5).
+const (
+	SchedulerAffinity uint64 = iota
+	SchedulerSessionAffinity
+	SchedulerSpreadETA
+	SchedulerSpreadRoundRobin
+	SchedulerSpreadRateWeighted
+)
 
 // AppendUDPBody appends what follows Len of an addressed packet (§4.5):
 // AddrLen Address Payload. A nil a is a fixed-target packet, Payload alone.

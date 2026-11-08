@@ -49,7 +49,8 @@ var (
 	serverAddr     = flag.StringP("server", "s", "", "Server profiles, separated by ',', each one or more carrier candidates separated by '|' (eg: \"tls://a.com:8025|wss://a.com:443/ws?tier=1\" or \"ip1:port1,ip2:port2\")")
 	verifyKey      = flag.StringP("vkey", "k", "", "Authentication key (eg: vkey1,vkey2)")
 	connType       = flag.StringP("type", "t", "tcp", "Connection type with the server (tcp|tls|kcp|quic|ws|wss) (eg: tcp,tls)")
-	pipes          = flag.String("pipes", connprofile.PipesSingle, "Pipes of a connection (single|multi); multi needs zmux, until then npc runs single")
+	pipes          = flag.String("pipes", connprofile.PipesSingle, "Pipes of a connection (single|multi); multi works on the new protocol, the old one runs single")
+	schedulerUp    = flag.String("scheduler_up", "", "New protocol: how npc schedules sending over its pipes (affinity|session_affinity|spread_eta|spread_round_robin|spread_rate_weighted)")
 	configPath     = flag.StringP("config", "c", "", "Configuration file path (path1,path2)")
 	proxyUrl       = flag.String("proxy", "", "Proxy URL: http, https, socks5, socks5h, socks4 or socks4a (eg: socks5://user:pass@127.0.0.1:9007)")
 	localIP        = flag.String("local_ip", "", "Local source IP for outbound connections")
@@ -86,9 +87,10 @@ var (
 	getTOTP        = flag.String("get2fa", "", "Get TOTP Code")
 	autoReconnect  = flag.Bool("auto_reconnect", true, "Auto Reconnect")
 	// Temporary, until npc has moved to the core protocol: off by default.
-	newProtocol       = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss)")
+	newProtocol       = flag.Bool("new_protocol", false, "Connect with the new protocol (tcp, tls, ws, wss, quic)")
 	compressMaxWindow = flag.Uint64("compress_max_window", 0, "New protocol: largest zstd window of a compressed link, bytes (default 8 MiB)")
 	compressMaxRatio  = flag.Int64("compress_max_ratio", 0, "New protocol: largest expansion of a compressed link (default 4096, negative: no check)")
+	udp5IdleTimeout   = flag.Int("socks5_udp_idle_timeout", 300, "New protocol: seconds a SOCKS5 UDP association of the exit stays without traffic, as a backstop to the entry's timeout")
 	newProtocolPin    = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
 	launchInputs      = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
 )
@@ -378,7 +380,13 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
 	}
-	client.NotePipes(mode)
+	if !*newProtocol {
+		client.NotePipes(mode)
+	}
+	if _, err := connprofile.ParseScheduler(*schedulerUp); err != nil {
+		cfgLog.Error("invalid command line", "err", err)
+		os.Exit(1)
+	}
 	if inputs := launchPayloads(); len(inputs) > 0 {
 		startLaunch(ctx, cancel, inputs)
 		return

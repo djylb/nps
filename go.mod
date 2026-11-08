@@ -88,6 +88,7 @@ require (
 	github.com/ugorji/go/codec v1.3.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
+	github.com/zmuxio/zmux-go/zmuxquic v1.4.2 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect

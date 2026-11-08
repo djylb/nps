@@ -31,11 +31,18 @@ const (
 	KindHTTPS
 	KindWeb
 	kindCount
+	// KindMix is the mixed port, never on the port multiplexer.
+	KindMix = kindCount + 1
 )
 
 // httpMethodPrefixes are the first three bytes of the HTTP methods that are
 // routed to the HTTP proxy, the web manager or the websocket bridge.
 var httpMethodPrefixes = []string{"GET", "POS", "HEA", "PUT", "DEL", "CON", "OPT", "TRA"}
+
+// IsHTTP reports whether b starts like an HTTP request.
+func IsHTTP(b []byte) bool {
+	return len(b) >= 3 && slices.Contains(httpMethodPrefixes, string(b[:3]))
+}
 
 // portMux shares one TCP port between the bridge, the web manager and the
 // HTTP/HTTPS proxies. Routing depends on which listeners are registered:

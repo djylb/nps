@@ -32,6 +32,28 @@ var legacyKeys = []legacyKey{
 // version.
 func legacySecretLink(r *valueReader) bool { return r.boolDefault(false, "allow_secret_link") }
 
+// legacyGenericPort applies the rule for a config of earlier versions that
+// only has the generic bridge_port: that port takes every TCP-class carrier
+// of both protocols (bridge.mixGeneric), whatever bridge_type says. A port
+// shared with the web manager or the domain proxy stays with the port
+// multiplexer. It goes with the next major version.
+func legacyGenericPort(r *valueReader, cfg *Snapshot) {
+	n := &cfg.Network
+	if n.BridgePort == 0 || n.HTTPProxyPort == n.BridgePort || n.HTTPSProxyPort == n.BridgePort || n.WebPort == n.BridgePort {
+		return
+	}
+	for _, key := range []string{"bridge_tcp_port", "bridge_tls_port", "tls_bridge_port", "bridge_ws_port", "bridge_wss_port"} {
+		if _, err := lookupValue(r.values, key); err == nil {
+			return
+		}
+	}
+	if _, err := lookupValue(r.values, "bridge_port"); err != nil {
+		return
+	}
+	n.BridgeGeneric = true
+	cfg.Bridge.ServerTCPEnabled = cfg.Bridge.TCPEnable
+}
+
 // names returns key followed by the old names it was read under, so that a
 // reader takes key first and an old name where key is unset.
 func names(key string) []string {

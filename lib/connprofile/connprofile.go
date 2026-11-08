@@ -48,6 +48,31 @@ func ParsePipes(s string) (string, error) {
 	}
 }
 
+// Sending schedulers of a session (§5 scheduler_up, scheduler_down), indexed
+// by their value on the wire.
+const (
+	SchedulerAffinity           = "affinity"
+	SchedulerSessionAffinity    = "session_affinity"
+	SchedulerSpreadETA          = "spread_eta"
+	SchedulerSpreadRoundRobin   = "spread_round_robin"
+	SchedulerSpreadRateWeighted = "spread_rate_weighted"
+)
+
+// Schedulers lists the schedulers by wire value.
+var Schedulers = []string{SchedulerAffinity, SchedulerSessionAffinity, SchedulerSpreadETA, SchedulerSpreadRoundRobin, SchedulerSpreadRateWeighted}
+
+// ParseScheduler returns the scheduler s names; "" is affinity.
+func ParseScheduler(s string) (string, error) {
+	m := strings.ToLower(strings.TrimSpace(s))
+	if m == "" {
+		return SchedulerAffinity, nil
+	}
+	if !slices.Contains(Schedulers, m) {
+		return "", fmt.Errorf("scheduler %q: want one of %s", s, strings.Join(Schedulers, ", "))
+	}
+	return m, nil
+}
+
 // Dirs is the set of directions a candidate carries (CARRIER_DIRS).
 type Dirs uint8
 
@@ -69,7 +94,7 @@ type Candidate struct {
 	Kinds   []string // HTTP carrier kinds, for http and https: websocket
 	Dirs    Dirs
 	Tier    int // lower is tried first
-	Weight  int // kept for multi pipes; unused by this version
+	Weight  int // share of a pipe in multi mode
 	Standby bool
 	Count   int // pipes in multi mode, at least 1
 
@@ -80,6 +105,9 @@ type Candidate struct {
 	Carrier string // tcp, tls, kcp, quic, ws, wss (scheme-less: the profile type as given)
 	Addr    string // host:port to dial
 	Path    string // WebSocket path, escaped
+
+	// ALPNDefaulted: no ALPN was written for this quic candidate.
+	ALPNDefaulted bool
 
 	Index int    // position in the profile, from 0
 	Raw   string // the candidate as written
@@ -160,12 +188,12 @@ func parseLegacy(s, carrier string) Candidate {
 	c := Candidate{Carrier: carrier, Dirs: DirBidi, Count: 1}
 	server, path := netaddr.SplitServerAndPath(s)
 	if carrier == "quic" {
-		c.ALPN = []string{DefaultQUICALPN}
+		c.ALPN, c.ALPNDefaulted = []string{DefaultQUICALPN}, true
 	}
 	if path == "" {
 		path = "/ws"
 	} else if carrier == "quic" {
-		c.ALPN = []string{strings.TrimSpace(strings.TrimPrefix(path, "/"))}
+		c.ALPN, c.ALPNDefaulted = []string{strings.TrimSpace(strings.TrimPrefix(path, "/"))}, false
 	}
 	c.Path = path
 	addr, host, sni := netaddr.SplitAddrAndHost(server)
@@ -330,7 +358,7 @@ func parseURL(s string) (Candidate, error) {
 		_, _, c.SNI = netaddr.SplitAddrAndHost(host)
 	}
 	if len(c.ALPN) == 0 && carrier == "quic" {
-		c.ALPN = []string{DefaultQUICALPN}
+		c.ALPN, c.ALPNDefaulted = []string{DefaultQUICALPN}, true
 	}
 	if httpKind && !slices.Contains(c.HTTP, HTTP11) {
 		warnOnce(s, "http versions other than http/1.1 need zmux; using http/1.1", "http", strings.Join(c.HTTP, ","))
@@ -341,6 +369,18 @@ func parseURL(s string) (Candidate, error) {
 
 // DefaultQUICALPN is the ALPN of quic carriers of this version.
 const DefaultQUICALPN = "nps"
+
+// CoreQUICALPN is the default ALPN of quic carriers on the new protocol (§13).
+const CoreQUICALPN = "h3"
+
+// UseCoreDefaults gives cands the defaults of the new protocol.
+func UseCoreDefaults(cands []Candidate) {
+	for i := range cands {
+		if cands[i].ALPNDefaulted {
+			cands[i].ALPN = []string{CoreQUICALPN}
+		}
+	}
+}
 
 // HTTP versions of http and https carriers.
 const (

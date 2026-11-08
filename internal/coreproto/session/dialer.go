@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quic-go/quic-go"
+
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/connprofile"
@@ -48,6 +50,15 @@ type DialConfig struct {
 	// Dial connects to the server, keeping -proxy and -local_ip; nil dials
 	// directly.
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// DialQUIC opens the QUIC connection of a quic carrier, keeping
+	// -local_ip; nil dials directly.
+	DialQUIC func(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error)
+	// Scheduler names the sending scheduler (connprofile.Schedulers);
+	// "" is affinity. A scheduler_up of CONFIG replaces it (§5).
+	Scheduler string
+	// Pipes is connprofile.PipesMulti for several pipes in a session; any
+	// other value is one pipe, the candidates tried in order.
+	Pipes string
 	// Exit serves the links the server opens; nil refuses them.
 	Exit coreapi.Exit
 	// CompressLimits are the receive limits of compressed streams (§7.4).
@@ -95,7 +106,11 @@ func (d *Dialer) Server() string {
 // establishes.
 func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 	d.mu.Lock()
-	cands := connprofile.Order(d.cfg.Candidates, d.last)
+	pool := d.cfg.Candidates
+	if d.multi() {
+		pool = connprofile.MultiMembers(pool)
+	}
+	cands := connprofile.Order(pool, d.last)
 	d.mu.Unlock()
 	var errs []error
 	for _, c := range cands {
@@ -164,10 +179,10 @@ func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*c
 	p := choose(d.record, ca.secure, d.boundFailedLocked(key))
 	d.mu.Unlock()
 	if p.mode != zmux.Bound {
-		return d.establish(ctx, ca, p.mode, c.Carrier)
+		return d.establish(ctx, ca, p.mode, c)
 	}
 	bctx, cancel := context.WithTimeout(ctx, boundLimit)
-	s, err := d.establish(bctx, ca, zmux.Bound, c.Carrier)
+	s, err := d.establish(bctx, ca, zmux.Bound, c)
 	cancel()
 	if err == nil || !p.fallback || ctx.Err() != nil {
 		return s, err
@@ -176,7 +191,7 @@ func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*c
 	if ca, err = d.dialCarrier(ctx, c); err != nil {
 		return nil, err
 	}
-	if s, err = d.establish(ctx, ca, zmux.Sealed, c.Carrier); err != nil {
+	if s, err = d.establish(ctx, ca, zmux.Sealed, c); err != nil {
 		return nil, err
 	}
 	d.mu.Lock()
@@ -228,6 +243,8 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		}
 		ca.pipe, ca.secure = zmux.SecureTLS(tc), true
 		return ca, nil
+	case "quic":
+		return d.dialQUIC(ctx, c, tlsCfg)
 	case "ws", "wss":
 		scheme := c.Carrier
 		// Only the old way of writing a candidate sends the subprotocol
@@ -283,20 +300,30 @@ func (d *captureDialer) network() string {
 // tell them apart, has no portable cheap source, so the one-hour limit
 // bounds that case).
 func localNetwork(c net.Conn) string {
-	a, ok := c.LocalAddr().(*net.TCPAddr)
-	if !ok {
+	return networkOf(c.LocalAddr())
+}
+
+// networkOf is localNetwork of a local address, TCP or UDP.
+func networkOf(addr net.Addr) string {
+	var ip net.IP
+	switch a := addr.(type) {
+	case *net.TCPAddr:
+		ip = a.IP
+	case *net.UDPAddr:
+		ip = a.IP
+	default:
 		return ""
 	}
 	ifaces, _ := net.Interfaces()
 	for _, ifc := range ifaces {
 		addrs, _ := ifc.Addrs()
 		for _, ia := range addrs {
-			if ipn, ok := ia.(*net.IPNet); ok && ipn.IP.Equal(a.IP) {
-				return fmt.Sprintf("%s@%s#%d/%s", a.IP, ifc.Name, ifc.Index, ifc.HardwareAddr)
+			if ipn, ok := ia.(*net.IPNet); ok && ipn.IP.Equal(ip) {
+				return fmt.Sprintf("%s@%s#%d/%s", ip, ifc.Name, ifc.Index, ifc.HardwareAddr)
 			}
 		}
 	}
-	return a.IP.String()
+	return ip.String()
 }
 
 func serverName(c connprofile.Candidate) string {
@@ -315,7 +342,7 @@ func serverName(c connprofile.Candidate) string {
 
 // establish runs Establish and starts the session on ca. On a failure ca is
 // closed.
-func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode, label string) (*clientSession, error) {
+func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode, c connprofile.Candidate) (*clientSession, error) {
 	handle, psk, err := wire.Derive(d.cfg.VKey)
 	if err != nil {
 		return nil, err
@@ -346,12 +373,12 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	if err != nil {
 		return nil, err
 	}
-	zc, err := zmux.Start(ctx, q, zmux.RoleClient, &zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks})
+	zc, err := zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig())
 	if err != nil {
 		return nil, err
 	}
-	s := &clientSession{d: d, zc: zc, mode: mode, carrier: label, done: make(chan struct{}), wg: &sync.WaitGroup{}}
-	s.start()
+	s := &clientSession{d: d, zc: zc, mode: mode, carrier: c.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
+	s.start(c)
 	return s, nil
 }
 
@@ -376,6 +403,9 @@ type clientSession struct {
 	done    chan struct{}
 	err     error
 
+	configured     chan struct{} // closed by the first snapshot
+	configuredOnce sync.Once
+
 	wg *sync.WaitGroup
 
 	mu      sync.Mutex
@@ -383,9 +413,12 @@ type clientSession struct {
 	onApply func(uint64, wire.Snapshot) // tests
 }
 
-func (s *clientSession) start() {
+func (s *clientSession) start(boot connprofile.Candidate) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.wg.Go(func() { s.serveStreams(ctx) })
+	if s.d.multi() {
+		s.wg.Go(func() { s.maintain(ctx, boot) })
+	}
 	s.wg.Go(func() {
 		for {
 			st, err := s.zc.AcceptUniStream(ctx)
@@ -460,21 +493,31 @@ func (s *clientSession) apply(seq uint64, snap wire.Snapshot) {
 	s.applied = seq
 	s.d.setRecord(snap.Record)
 	s.applySessionOptions(snap.Session)
+	if snap.HasSchedulerUp {
+		s.zc.SetScheduler(schedulerNamed(connprofile.Schedulers[snap.SchedulerUp]))
+	}
+	if s.configured != nil {
+		s.configuredOnce.Do(func() { close(s.configured) })
+	}
 	if s.onApply != nil {
 		s.onApply(seq, snap)
 	}
 }
 
-// applySessionOptions follows the server's timers (§5): idle_s is how often
-// the session checks an idle peer, dead_s when it gives up on one.
+// livenessOf is §5: idle_s is how often an idle pipe is checked, dead_s when
+// a suspect one is given up. Neither has a default of its own: without them
+// zmux uses its defaults.
+func livenessOf(o wire.SessionOptions) zmux.Liveness {
+	idle := time.Duration(o.IdleS) * time.Second
+	return zmux.Liveness{KeepAlivePeriod: idle, ProbeInterval: idle, DeadTimeout: time.Duration(o.DeadS) * time.Second}
+}
+
+// applySessionOptions follows the server's timers (§5).
 func (s *clientSession) applySessionOptions(o wire.SessionOptions) {
 	if o.IdleS == 0 && o.DeadS == 0 {
 		return
 	}
-	var l zmux.Liveness
-	l.KeepAlivePeriod = time.Duration(o.IdleS) * time.Second
-	l.DeadTimeout = time.Duration(o.DeadS) * time.Second
-	if err := s.zc.SetLiveness(l); err != nil {
+	if err := s.zc.SetLiveness(livenessOf(o)); err != nil {
 		log.Debug("session options not applied", "err", err)
 	}
 }

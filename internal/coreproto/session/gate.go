@@ -1,9 +1,11 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/netip"
+	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
@@ -69,7 +71,108 @@ func (g *gate) Commit(_ context.Context, a seal.Admission) (any, error) {
 			return refuse("malformed", "")
 		}
 	}
-	return &ticket{client: e.ID, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source}, nil
+	t := &ticket{client: e.ID, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source}
+	if !g.a.admitFirstPipe(t) {
+		return refuse("pipes", "")
+	}
+	return t, nil
+}
+
+// grantTTL is how long an admitted pipe is held against the limit while it
+// does not show up in its session, as when its join then fails.
+const grantTTL = 5 * time.Second
+
+// pipeGrant is a pipe admitted past client_max_pipes that its session does not
+// count yet: a first pipe until its session registers, a join until zmux has
+// attached it.
+type pipeGrant struct {
+	t    *ticket
+	zc   *zmux.Conn // nil for a first pipe
+	pipe uint64
+	at   time.Time
+}
+
+// admitFirstPipe checks the limit for the first pipe of a new session (§13).
+// The sessions it will replace, of the same instance, do not count.
+func (a *Acceptor) admitFirstPipe(t *ticket) bool {
+	if a.maxPipes <= 0 {
+		return true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.pipesLocked(t) >= a.maxPipes {
+		return false
+	}
+	a.grants[t.client] = append(a.grants[t.client], &pipeGrant{t: t, at: time.Now()})
+	return true
+}
+
+// authorizeJoin is zmux.Config.AuthorizeJoin: the limit for a further pipe.
+func (a *Acceptor) authorizeJoin(zc *zmux.Conn, pipe uint64) bool {
+	if a.maxPipes <= 0 {
+		return true
+	}
+	peer, ok := zc.Admitted().(*seal.Peer)
+	if !ok {
+		return false
+	}
+	t, ok := peer.Value.(*ticket)
+	if !ok {
+		return false
+	}
+	a.mu.Lock()
+	if a.pipesLocked(t) < a.maxPipes {
+		a.grants[t.client] = append(a.grants[t.client], &pipeGrant{t: t, zc: zc, pipe: pipe, at: time.Now()})
+		a.mu.Unlock()
+		return true
+	}
+	a.mu.Unlock()
+	a.authFailed(coreapi.AuthFailure{Source: t.src, Client: t.client, Reason: "pipes"})
+	return false
+}
+
+// pipesLocked counts the pipes of t's client against the limit: those of its
+// sessions and the grants still pending, leaving out the sessions of t's own
+// instance other than the one t belongs to (being taken over).
+func (a *Acceptor) pipesLocked(t *ticket) int {
+	n := 0
+	for _, s := range a.sess[t.client] {
+		if s.t == t || !bytes.Equal(s.t.static, t.static) {
+			n += len(s.zc.Pipes())
+		}
+	}
+	now := time.Now()
+	kept := a.grants[t.client][:0]
+	for _, g := range a.grants[t.client] {
+		attached := false
+		if g.zc != nil {
+			_, attached = g.zc.Pipe(g.pipe)
+		}
+		if attached || now.Sub(g.at) >= grantTTL {
+			continue
+		}
+		kept = append(kept, g)
+		n++
+	}
+	if len(kept) == 0 {
+		delete(a.grants, t.client)
+	} else {
+		a.grants[t.client] = kept
+	}
+	return n
+}
+
+// dropGrant ends the grant of a first pipe once its session counts it.
+func (a *Acceptor) dropGrant(t *ticket) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	l := a.grants[t.client]
+	for i, g := range l {
+		if g.t == t && g.zc == nil {
+			a.grants[t.client] = append(l[:i:i], l[i+1:]...)
+			return
+		}
+	}
 }
 
 // acceptAnyClient is the ClientAnchor: psk0 has proved the vkey by msg3, and

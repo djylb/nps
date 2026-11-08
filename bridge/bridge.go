@@ -77,6 +77,7 @@ type Bridge struct {
 	VirtualTlsListener *netx.ChanListener
 	VirtualWsListener  *netx.ChanListener
 	VirtualWssListener *netx.ChanListener
+	VirtualMixListener *netx.ChanListener
 	OpenHost           chan *model.Host
 	OpenTask           chan *model.Tunnel
 	CloseTask          chan *model.Tunnel

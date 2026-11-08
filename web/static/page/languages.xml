@@ -268,6 +268,10 @@
 		<zh-CN>在线时间</zh-CN>
 		<en-US>Uptime</en-US>
 	</lang>
+	<lang id="word-schedulerdown">
+		<zh-CN>下行调度（核心协议）</zh-CN>
+		<en-US>Downstream scheduler (new protocol)</en-US>
+	</lang>
 	<lang id="word-compress">
 		<zh-CN>压缩</zh-CN>
 		<en-US>Compress</en-US>

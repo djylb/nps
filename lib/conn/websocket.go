@@ -99,13 +99,39 @@ func newWSListener(base, ln net.Listener, path, trustedIps, realIpHeader string,
 		// An error only says "/" is taken: it is then the only path.
 		_ = handlePath(mux, "/", route.NotFound)
 	}
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: HandshakeTimeout}
+	srv := &http.Server{Handler: withTLSState(mux), ReadHeaderTimeout: HandshakeTimeout, ConnContext: tlsStateContext}
 	go func() { _ = srv.Serve(ln) }()
 	go func() {
 		<-hl.closeCh
 		_ = srv.Close()
 	}()
 	return hl
+}
+
+// TLSStateConn is a connection whose TLS this process already terminated, as
+// a replayed view that net/http cannot see through.
+type TLSStateConn struct {
+	net.Conn
+	State *tls.ConnectionState
+}
+
+type tlsStateKey struct{}
+
+func tlsStateContext(ctx context.Context, c net.Conn) context.Context {
+	if tc, ok := c.(*TLSStateConn); ok {
+		return context.WithValue(ctx, tlsStateKey{}, tc.State)
+	}
+	return ctx
+}
+
+// withTLSState shows the handlers the TLS of a TLSStateConn as r.TLS.
+func withTLSState(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if st, ok := r.Context().Value(tlsStateKey{}).(*tls.ConnectionState); ok && r.TLS == nil {
+			r.TLS = st
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // handlePath registers h on pattern; an invalid or taken pattern is an error

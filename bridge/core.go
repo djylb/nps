@@ -18,6 +18,7 @@ import (
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/slogx"
+	"github.com/quic-go/quic-go"
 )
 
 // coreHooks connects the new protocol entry to the bridge: a session is a
@@ -31,6 +32,9 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		AuthFailed: coreAuthFailed,
 		Legacy: func(c net.Conn, carrier string) {
 			s.serve(conn.NewConn(c), carrier)
+		},
+		LegacyQUIC: func(c net.Conn, qc *quic.Conn) {
+			s.serve(conn.NewConn(conn.NewQuicFirstConn(c, qc)), conn.TransportQUIC)
 		},
 		Fallback: s.coreFallback,
 	}
@@ -85,6 +89,12 @@ func (s *Bridge) coreOffline(cs coreapi.Session, reason string) {
 }
 
 func coreAuthFailed(f coreapi.AuthFailure) {
+	if f.Reason == "pipes" {
+		// A configured limit, not a failed authentication: fail2ban reads
+		// auth_failed.
+		slogx.Emit(context.Background(), log, &logevent.LimitExceeded, "client", f.Client, "route", "bridge", "kind", "pipes")
+		return
+	}
 	args := []any{"src_ip", f.Source.Addr().Unmap().String(), "src_port", int(f.Source.Port()), "role", "client", "client", f.Client}
 	if f.Carrier != "" {
 		args = append(args, "carrier", f.Carrier)
@@ -107,6 +117,10 @@ type Fallback interface {
 	// connection that asked for hello.ServerName, or nil, nil to present the
 	// bridge's own.
 	FallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
+	// ServeHTTP3 serves qc as HTTP/3 through the domain proxy until it
+	// ends; first is its control stream, already accepted. It returns false
+	// when there is no HTTP/3 engine.
+	ServeHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool
 }
 
 func (s *Bridge) coreFallback(c net.Conn, state *tls.ConnectionState) bool {
@@ -181,14 +195,7 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 	if s.core == nil {
 		return nil
 	}
-	denied := func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if addr, err := conn.ParseTCPAddr(r.RemoteAddr); err == nil && addr != nil && s.store.GlobalDenied(addr, "bridge") {
-				panic(http.ErrAbortHandler)
-			}
-			h.ServeHTTP(w, r)
-		})
-	}
+	denied := s.deniedHTTP
 	notFound := denied(http.HandlerFunc(s.serveHTTPFallback))
 	route := &conn.WSRoute{NotFound: notFound, Wrap: func(legacy http.Handler) http.Handler {
 		// A request that is no WebSocket on the bridge path is a visitor's.
@@ -218,6 +225,16 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		route.Paths[p] = denied(h)
 	}
 	return route
+}
+
+// deniedHTTP drops a request whose address the global lists deny.
+func (s *Bridge) deniedHTTP(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if addr, err := conn.ParseTCPAddr(r.RemoteAddr); err == nil && addr != nil && s.store.GlobalDenied(addr, "bridge") {
+			panic(http.ErrAbortHandler)
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // serveHTTPFallback gives a request of a WebSocket bridge port that is not a

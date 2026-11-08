@@ -16,7 +16,7 @@ func coreRecord(c *model.Client) (coreapi.ClientRecord, bool) {
 	if c.Id <= 0 || c.NoStore || c.KeyKind != model.KeyControl {
 		return coreapi.ClientRecord{}, false
 	}
-	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList()}, true
+	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName()}, true
 }
 
 // RangeClients implements session.Store.
@@ -36,8 +36,9 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 		return nil, nil
 	}
 	a, err := session.NewAcceptor(coreStore{db}, session.Options{
-		Session:  wire.SessionOptions{DeadS: uint64(max(cfg.Runtime.DisconnectTimeout, 0))},
+		Session:  wire.SessionOptions{DeadS: uint64(cfg.Runtime.DeadS), IdleS: uint64(cfg.Runtime.IdleS)},
 		Compress: session.CompressLimits{MaxWindow: cfg.Network.CompressMaxWindow, MaxRatio: cfg.Network.CompressMaxRatio},
+		MaxPipes: cfg.Network.ClientMaxPipes,
 	})
 	if err != nil {
 		return nil, err

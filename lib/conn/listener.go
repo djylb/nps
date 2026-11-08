@@ -54,11 +54,13 @@ func ServeQUIC(l *quic.Listener, f func(c net.Conn)) error {
 		if err != nil {
 			return err
 		}
-		go acceptQuicStream(sess, f)
+		go AcceptQuicStream(sess, f)
 	}
 }
 
-func acceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
+// AcceptQuicStream hands the first stream of sess to f, or closes sess when
+// none comes in time.
+func AcceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {
 	ctx, cancel := context.WithTimeout(sess.Context(), HandshakeTimeout)
 	stream, err := sess.AcceptStream(ctx)
 	cancel()

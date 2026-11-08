@@ -68,6 +68,8 @@ func (k Kind) String() string {
 		return "https proxy"
 	case KindWeb:
 		return "web manager"
+	case KindMix:
+		return "mixed bridge"
 	}
 	return fmt.Sprintf("kind(%d)", int(k))
 }
@@ -89,6 +91,8 @@ func address(n *servercfg.NetworkConfig, k Kind) (string, int, bool) {
 		return n.HTTPProxyIP, n.HTTPSProxyPort, true
 	case KindWeb:
 		return n.WebIP, n.WebPort, true
+	case KindMix:
+		return n.MixIP, n.MixPort, true
 	}
 	return "", 0, false
 }
@@ -132,6 +136,8 @@ func (k Kind) logNames() (route, carrier string, secure bool) {
 		return "bridge", "ws", false
 	case KindBridgeWSS:
 		return "bridge", "wss", true
+	case KindMix:
+		return "bridge", "mix", true
 	case KindHTTP:
 		return "http", "tcp", false
 	case KindHTTPS:

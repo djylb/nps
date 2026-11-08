@@ -109,7 +109,7 @@ var (
 	// (the old connection).
 	SessionTakeover = slogx.Def{Name: "session_takeover", Level: warn}
 	// LimitExceeded: a connection refused by a limit; client, route, kind
-	// (flow, conn, rate, expire).
+	// (flow, conn, rate, expire, pipes).
 	LimitExceeded = slogx.Def{Name: "limit_exceeded", Level: warn, Bus: true, Limit: "client"}
 	// QuotaReached: a client, tunnel or host used up its flow or time
 	// quota; client, tunnel, host, kind (flow, expire).

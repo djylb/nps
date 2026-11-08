@@ -55,6 +55,10 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 
 // checkOpen is what the exit decides before it dials (§7.2, §8).
 func (s *clientSession) checkOpen(o *wire.StreamOpen) uint64 {
+	if o.Op == wire.OpTCP && o.LinkID != 0 {
+		// Only the side that made a server-exit LINK takes these (§4.6).
+		return wire.CodeMalformed
+	}
 	if o.Compress != 0 && !localCompress(o.Compress) {
 		return wire.CodeUnsupported
 	}

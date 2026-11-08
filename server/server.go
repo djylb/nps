@@ -32,6 +32,7 @@ import (
 	"github.com/djylb/nps/server/httpproxy"
 	"github.com/djylb/nps/server/ports"
 	"github.com/djylb/slogx"
+	"github.com/quic-go/quic-go"
 )
 
 const pingTimeout = 15 * time.Second
@@ -159,6 +160,11 @@ func (f domainFallback) ServeFallback(c net.Conn, state *tls.ConnectionState) bo
 		return true
 	}
 	return f.s.notFound().ServeFallback(c, state)
+}
+
+// ServeHTTP3 implements bridge.Fallback.
+func (f domainFallback) ServeHTTP3(qc *quic.Conn, first *quic.ReceiveStream) bool {
+	return f.proxy(func(hp *httpproxy.HttpProxy) bool { return hp.ServeHTTP3(qc, first) })
 }
 
 // FallbackCert implements bridge.Fallback.

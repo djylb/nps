@@ -249,6 +249,7 @@ curl -X POST \
   | `vkey` | 客户端验证密钥（字符串） |
   | `config_conn_allow` | 是否允许客户端以配置文件模式连接（`0` 否，`1` 是） |
   | `compress` | 是否启用数据压缩（`0` 否，`1` 是） |
+  | `scheduler_down` | 核心协议下 nps 向该客户端发送的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
   | `crypt` | 是否启用加密（`0` 否，`1` 是） |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |

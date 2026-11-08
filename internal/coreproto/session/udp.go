@@ -64,6 +64,9 @@ func newUDPConn(lc *linkConn, addressed bool, zc *zmux.Conn) *udpConn {
 // for a packet that cannot be shown.
 func (c *udpConn) frame(body []byte) []byte {
 	if !c.addressed {
+		if len(body) > wire.MaxUDPPayload {
+			return nil
+		}
 		f := make([]byte, udpFrameHeader, udpFrameHeader+len(body))
 		binary.BigEndian.PutUint16(f, uint16(len(body)))
 		return append(f, body...)
@@ -106,8 +109,7 @@ func (c *udpConn) pumpStream() {
 			return
 		}
 		if n > wire.MaxUDPPacket {
-			c.setErr(wire.ErrMalformed)
-			c.lc.abort(wire.CodeMalformed)
+			c.malformed()
 			return
 		}
 		body := make([]byte, n)
@@ -115,10 +117,28 @@ func (c *udpConn) pumpStream() {
 			c.setErr(err)
 			return
 		}
+		if c.oversized(body) {
+			c.malformed()
+			return
+		}
 		if !c.deliver(body) {
 			return
 		}
 	}
+}
+
+// oversized reports a packet whose Payload is over the limit of §4.5.
+func (c *udpConn) oversized(body []byte) bool {
+	if !c.addressed {
+		return len(body) > wire.MaxUDPPayload
+	}
+	_, payload, err := wire.ParseUDPBody(body)
+	return err == nil && len(payload) > wire.MaxUDPPayload
+}
+
+func (c *udpConn) malformed() {
+	c.setErr(wire.ErrMalformed)
+	c.lc.abort(wire.CodeMalformed)
 }
 
 func (c *udpConn) pumpDatagrams() {

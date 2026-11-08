@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/netip"
 	"time"
+
+	"github.com/quic-go/quic-go"
 )
 
 // FirstBytes are the first bytes of a core protocol carrier on a port shared
@@ -27,6 +29,9 @@ type ClientRecord struct {
 	// Compress is the client's default compression, algorithms in order of
 	// preference (§7): the first the peer can decompress is used.
 	Compress []string
+	// SchedulerDown names the scheduler of sending to the client; "" is
+	// affinity.
+	SchedulerDown string
 }
 
 // Networks of a link.
@@ -92,7 +97,7 @@ type AuthFailure struct {
 	Source  netip.AddrPort
 	Carrier string
 	Client  int
-	Reason  string // bad_key, malformed, disabled, forbidden
+	Reason  string // bad_key, malformed, disabled, forbidden, pipes (client_max_pipes)
 	Flag    string // forbidden: what was refused
 }
 
@@ -110,6 +115,10 @@ type Hooks struct {
 	// Legacy takes over a carrier of the old protocol, every byte replayed.
 	// It owns c from then on.
 	Legacy func(c net.Conn, carrier string)
+	// LegacyQUIC takes over a QUIC connection of the old protocol: c is its
+	// first stream, every byte replayed. It returns once the connection is
+	// handed over; qc stays open until it ends.
+	LegacyQUIC func(c net.Conn, qc *quic.Conn)
 	// Fallback serves a carrier that is not ours (the domain proxy), every
 	// byte replayed; state is its TLS when this process terminated it. It
 	// returns false, leaving c to the caller, when there is no target.
@@ -125,6 +134,17 @@ type Entry interface {
 	// *tls.Conn before its handshake. It blocks while the carrier is
 	// admitted, so it runs on a goroutine the caller waits for.
 	Serve(ctx context.Context, c net.Conn, carrier string)
+	// ServeMixed is Serve for a port of several carriers: what is no carrier
+	// of the core protocol goes to other, every byte replayed, instead of
+	// Hooks.Legacy and Hooks.Fallback. state is c's TLS when this process
+	// terminated it. other returns false, leaving c to the entry to stall.
+	ServeMixed(ctx context.Context, c net.Conn, carrier string, other func(c net.Conn, state *tls.ConnectionState) bool)
+	// QUICConfig returns base with what QUIC carriers of this entry need.
+	QUICConfig(base *quic.Config) *quic.Config
+	// ServeQUIC runs one QUIC connection until it ends. With legacy, a
+	// connection whose first stream starts with the old protocol's magic
+	// goes to Hooks.LegacyQUIC; ALPN plays no part (§12).
+	ServeQUIC(ctx context.Context, qc *quic.Conn, legacy bool)
 	// WebSocket returns the handler of the WebSocket bridge path: requests
 	// of the core protocol go to it, every other request to legacy.
 	WebSocket(legacy http.Handler) (http.Handler, error)
@@ -156,7 +176,7 @@ type Exit interface {
 
 // ClientSession is an established session on npc.
 type ClientSession interface {
-	// Carrier names the carrier in use: tcp, tls, ws or wss.
+	// Carrier names the carrier in use: tcp, tls, quic, ws or wss.
 	Carrier() string
 	// Done is closed when the session ended; Err then says why.
 	Done() <-chan struct{}

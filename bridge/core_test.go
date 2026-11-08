@@ -9,6 +9,7 @@ import (
 
 	"github.com/djylb/netx/tlsconn"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
+	"github.com/quic-go/quic-go"
 )
 
 // stubFallback offers a certificate for one name only.
@@ -18,6 +19,8 @@ type stubFallback struct {
 }
 
 func (stubFallback) ServeFallback(net.Conn, *tls.ConnectionState) bool { return false }
+
+func (stubFallback) ServeHTTP3(*quic.Conn, *quic.ReceiveStream) bool { return false }
 
 func (f stubFallback) FallbackCert(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if h.ServerName == f.name {

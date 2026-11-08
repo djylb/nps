@@ -82,7 +82,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 				}
 				return s.TunnelConn(id, link.RemoteAddr)
 			case "bridge":
-				// bridge://tcp|tls|ws|wss|web|ipreg
+				// bridge://tcp|tls|ws|wss|mix|web|ipreg
 				ctx, cancel := context.WithTimeout(context.Background(), linkOpenTimeout(link))
 				defer cancel()
 				switch strings.ToLower(targetStr) {
@@ -94,6 +94,8 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 					return conn.DialVirtual(ctx, s.VirtualWsListener, link.RemoteAddr)
 				case conn.TransportWSS:
 					return conn.DialVirtual(ctx, s.VirtualWssListener, link.RemoteAddr)
+				case bridgeTargetMix:
+					return conn.DialVirtual(ctx, s.VirtualMixListener, link.RemoteAddr)
 				case bridgeTargetWeb:
 					return s.WebServerConn(ctx, link.RemoteAddr)
 				case bridgeTargetIPReg:
@@ -261,6 +263,7 @@ func closedConn() net.Conn {
 
 // Local targets of bridge:// addresses besides the bridge transports.
 const (
+	bridgeTargetMix   = "mix"
 	bridgeTargetWeb   = "web"
 	bridgeTargetIPReg = "ipreg"
 )

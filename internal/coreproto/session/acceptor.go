@@ -21,8 +21,10 @@ import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/slogx"
+	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/seal"
+	"github.com/zmuxio/zmux-go/zmuxquic"
 	"github.com/zmuxio/zmux-go/zmuxws"
 )
 
@@ -40,6 +42,13 @@ const (
 	// Shared bridge ports see many short carriers of old clients per source.
 	maxPending          = 4096
 	maxPendingPerSource = 64
+	// sessionMaxPipes is what the entry aims for per session. It is no
+	// policy (client_max_pipes is), only what zmux sizes its join replay
+	// window by.
+	sessionMaxPipes = 1024
+	// quicDetectPeek bounds the read of the first bytes of a QUIC stream
+	// that the admission passed on with fewer.
+	quicDetectPeek = 200 * time.Millisecond
 )
 
 type carrierKey struct{}
@@ -48,6 +57,7 @@ type carrierKey struct{}
 type carrierCtx struct {
 	label string
 	tls   *tls.Conn
+	other func(net.Conn, *tls.ConnectionState) bool // ServeMixed
 }
 
 // Acceptor is the core protocol entry of the server's bridge ports.
@@ -60,9 +70,11 @@ type Acceptor struct {
 
 	sessionOpts wire.SessionOptions
 	limits      CompressLimits
+	maxPipes    int // client_max_pipes, 0 unlimited
 
-	mu   sync.Mutex
-	sess map[int][]*serverSession
+	mu     sync.Mutex
+	sess   map[int][]*serverSession
+	grants map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -74,6 +86,9 @@ type Options struct {
 	Session wire.SessionOptions
 	// Compress are the receive limits of compressed streams (§7.4).
 	Compress CompressLimits
+	// MaxPipes limits the pipes of one client over all its sessions
+	// (client_max_pipes); 0 is no limit.
+	MaxPipes int
 }
 
 // NewAcceptor builds the entry over store, with a key of this process
@@ -84,9 +99,10 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		return nil, err
 	}
 	a := &Acceptor{table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
-		sessionOpts: opts.Session, limits: opts.Compress.normalized()}
+		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
-		Config:              &zmux.Config{AllowRecordMode: a.allowJoinMode, EnableDatagrams: true},
+		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin,
+			EnableDatagrams: true, MaxPipes: sessionMaxPipes},
 		MaxPending:          maxPending,
 		MaxPendingPerSource: maxPendingPerSource,
 		Admission: &zmux.Admission{
@@ -134,11 +150,14 @@ func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeH
 	return q, nil
 }
 
-// carrierLabel names a carrier for the log; the HTTP adapters give no label.
+// carrierLabel names a carrier for the log; the HTTP and QUIC adapters give
+// no label.
 func carrierLabel(p zmux.PipeIO) string {
 	switch _, ok := zmux.TerminatedTLS(p); {
 	case p.Label != "":
 		return p.Label
+	case p.Carrier == zmux.CarrierQUIC:
+		return "quic"
 	case ok:
 		return "wss"
 	}
@@ -214,8 +233,49 @@ func (a *Acceptor) Close() error {
 
 // Serve implements coreapi.Entry.
 func (a *Acceptor) Serve(ctx context.Context, c net.Conn, carrier string) {
+	a.serve(ctx, c, carrierCtx{label: carrier})
+}
+
+// ServeMixed implements coreapi.Entry.
+func (a *Acceptor) ServeMixed(ctx context.Context, c net.Conn, carrier string, other func(net.Conn, *tls.ConnectionState) bool) {
+	a.serve(ctx, c, carrierCtx{label: carrier, other: other})
+}
+
+// QUICConfig implements coreapi.Entry.
+func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.QUICConfig(base) }
+
+// ServeQUIC implements coreapi.Entry.
+func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn, legacy bool) {
+	_ = zmuxquic.ServeConn(ctx, qc, a.zl, func(ctx context.Context, qc *quic.Conn, p zmux.PipeIO) {
+		a.quicFallback(ctx, qc, p, legacy)
+	})
+}
+
+// quicFallback takes a QUIC connection whose first stream is no carrier: the
+// old protocol's magic goes to the old bridge, and the connection lasts as
+// long as that session. Anything else ends it. It returns only when qc may be
+// closed, which zmuxquic does next.
+func (a *Acceptor) quicFallback(ctx context.Context, qc *quic.Conn, p zmux.PipeIO, legacy bool) {
+	c := zmux.PipeConn(p)
+	head := make([]byte, len(legacyMagic))
+	_ = c.SetReadDeadline(time.Now().Add(quicDetectPeek))
+	n, _ := io.ReadFull(c, head)
+	_ = c.SetReadDeadline(time.Time{})
+	h := a.hooks.Load()
+	if !legacy || h == nil || h.LegacyQUIC == nil || n != len(head) || string(head) != legacyMagic {
+		_ = c.Close()
+		return
+	}
+	h.LegacyQUIC(zmux.PrefixedConn(c, head), qc)
+	select {
+	case <-qc.Context().Done():
+	case <-ctx.Done():
+	}
+}
+
+func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {
 	var p zmux.PipeIO
-	info := carrierCtx{label: carrier}
+	carrier := info.label
 	if tc, ok := c.(*tls.Conn); ok {
 		// A connection this process accepted itself: end to end.
 		p, info.tls = zmux.SecureTLS(tc), tc
@@ -307,20 +367,16 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	_ = c.SetReadDeadline(time.Time{})
 	nc := zmux.PrefixedConn(c, head[:n])
 	info, _ := ctx.Value(carrierKey{}).(carrierCtx)
+	if info.other != nil && info.other(nc, tlsState(info)) {
+		return
+	}
 	h := a.hooks.Load()
-	if h != nil && n == len(head) && string(head) == legacyMagic && h.Legacy != nil {
+	if info.other == nil && h != nil && n == len(head) && string(head) == legacyMagic && h.Legacy != nil {
 		h.Legacy(nc, info.label)
 		return
 	}
-	if h != nil && h.Fallback != nil {
-		var state *tls.ConnectionState
-		if info.tls != nil {
-			st := info.tls.ConnectionState()
-			state = &st
-		}
-		if h.Fallback(nc, state) {
-			return
-		}
+	if info.other == nil && h != nil && h.Fallback != nil && h.Fallback(nc, tlsState(info)) {
+		return
 	}
 	t := time.NewTimer(a.zl.StallDuration(addrPort(c.RemoteAddr())))
 	defer t.Stop()
@@ -329,6 +385,15 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	case <-ctx.Done():
 	}
 	_ = nc.Close()
+}
+
+// tlsState is the TLS of a carrier this process terminated, nil for none.
+func tlsState(info carrierCtx) *tls.ConnectionState {
+	if info.tls == nil {
+		return nil
+	}
+	st := info.tls.ConnectionState()
+	return &st
 }
 
 func addrPort(a net.Addr) netip.AddrPort {
@@ -361,7 +426,16 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		return
 	}
 	s := &serverSession{a: a, zc: zc, t: t, mode: peer.Mode, since: time.Now(), kicked: make(chan struct{}, 1)}
+	if e := a.table.get(t.client); e != nil {
+		zc.SetScheduler(schedulerNamed(e.SchedulerDown))
+	}
+	if a.sessionOpts.IdleS != 0 || a.sessionOpts.DeadS != 0 {
+		if err := zc.SetLiveness(livenessOf(a.sessionOpts)); err != nil {
+			log.Debug("session options not applied", "err", err)
+		}
+	}
 	replaced := a.register(s)
+	a.dropGrant(t)
 	h := a.hooks.Load()
 	for _, old := range replaced {
 		old.closing.Store("replaced")
@@ -464,6 +538,9 @@ func (a *Acceptor) drain(s *serverSession) {
 func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 	old := a.table.set(r)
 	sessions := a.sessionsOf(r.ID)
+	for _, s := range sessions {
+		s.zc.SetScheduler(schedulerNamed(r.SchedulerDown))
+	}
 	switch {
 	case !r.Enabled || old != nil && old.VKey != r.VKey:
 		for _, s := range sessions {

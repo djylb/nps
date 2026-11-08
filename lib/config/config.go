@@ -24,6 +24,7 @@ type CommonConfig struct {
 	VKey             string
 	Tp               string //bridgeType kcp or tcp
 	Pipes            string // connprofile.PipesSingle or PipesMulti
+	SchedulerUp      string // connprofile.Schedulers, new protocol
 	AutoReconnection bool
 	ProxyUrl         string
 	LocalIP          string
@@ -247,6 +248,8 @@ func dealCommon(s string) *CommonConfig {
 			c.Tp = item[1]
 		case "pipes":
 			c.Pipes = item[1]
+		case "scheduler_up":
+			c.SchedulerUp = item[1]
 		case "auto_reconnection":
 			c.AutoReconnection = parseBool(item)
 		case "basic_username":
@@ -301,6 +304,9 @@ func (c *CommonConfig) checkConnection() error {
 		return err
 	}
 	c.Pipes = pipes
+	if c.SchedulerUp, err = connprofile.ParseScheduler(c.SchedulerUp); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.Server) == "" {
 		return nil
 	}
