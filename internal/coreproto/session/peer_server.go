@@ -82,6 +82,18 @@ func (l *peerLink) addEnd(p *linkPath, c *linkConn) {
 	p.ends = append(p.ends, c)
 }
 
+// setAnchor records the link's anchor; false when the link was already
+// revoked, while its provider stream was still being opened.
+func (l *peerLink) setAnchor(c *linkConn) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ended {
+		return false
+	}
+	l.anchor = c
+	return true
+}
+
 // end stops the paths of the link and resets its anchor.
 func (l *peerLink) end(code uint64) {
 	l.mu.Lock()
@@ -92,8 +104,11 @@ func (l *peerLink) end(code uint64) {
 	l.ended = true
 	paths := l.paths
 	l.paths = nil
+	anchor := l.anchor
 	l.mu.Unlock()
-	l.anchor.abort(code)
+	if anchor != nil {
+		anchor.abort(code)
+	}
 	// The provider closes the nested session over the paths first, so the
 	// visitor learns at once; then they end whatever it does.
 	time.AfterFunc(linkPathGrace, func() {
@@ -276,7 +291,6 @@ func (a *Acceptor) openProviderLink(ctx context.Context, l *peerLink, mode uint6
 		return wire.CodeInternal, nil
 	}
 	l.provider = prov
-	l.anchor = &linkConn{}
 	if !a.newLink(l) {
 		return wire.CodeInternal, nil
 	}
@@ -293,7 +307,11 @@ func (a *Acceptor) openProviderLink(ctx context.Context, l *peerLink, mode uint6
 		return wire.CodeTunnelOffline, nil
 	}
 	lc := prov.conn(st)
-	l.anchor = lc
+	if !l.setAnchor(lc) {
+		lc.abort(wire.CodeNotAllowed)
+		a.dropLink(l)
+		return wire.CodeNotAllowed, nil
+	}
 	if err := st.SetPreamble(info); err != nil {
 		lc.abort(wire.CodeInternal)
 		a.dropLink(l)

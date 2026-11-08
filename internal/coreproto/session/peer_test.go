@@ -399,3 +399,13 @@ func TestPeerSpreadLanesOnDirect(t *testing.T) {
 	}
 	t.Logf("lanes out: %d over %d streams", most, len(conns))
 }
+
+// A link revoked while its provider stream is still being opened neither
+// panics nor gets an anchor.
+func TestLinkRevokedBeforeAnchor(t *testing.T) {
+	l := &peerLink{paths: map[wire.Op]*linkPath{}}
+	l.end(wire.CodeNotAllowed)
+	if l.setAnchor(&linkConn{}) {
+		t.Fatal("anchor set on an ended link")
+	}
+}
