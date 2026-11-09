@@ -86,23 +86,14 @@ func (d ManagementPageCommonData) Map() map[string]any {
 	if d.WindowsSuffix != "" {
 		data["win"] = d.WindowsSuffix
 	}
-	if d.TCPIP != "" {
-		data["tcp_ip"] = urlHost(d.TCPIP)
-	}
 	if d.TCPPort != "" {
 		data["tcp_p"] = d.TCPPort
 	}
 	if d.KCPPort != "" {
 		data["kcp_p"] = d.KCPPort
 	}
-	if d.TLSIP != "" {
-		data["tls_ip"] = urlHost(d.TLSIP)
-	}
 	if d.TLSPort != "" {
 		data["tls_p"] = d.TLSPort
-	}
-	if d.QUICIP != "" {
-		data["quic_ip"] = urlHost(d.QUICIP)
 	}
 	if d.QUICPort != "" {
 		data["quic_p"] = d.QUICPort
@@ -110,25 +101,18 @@ func (d ManagementPageCommonData) Map() map[string]any {
 	if d.QUICALPN != "" {
 		data["quic_alpn"] = d.QUICALPN
 	}
-	// the ALPN of the display address "host:port/alpn", as a URL query
-	if _, alpn, ok := strings.Cut(d.QUICAddr, "/"); ok && alpn != "" {
-		data["quic_query"] = "?alpn=" + url.QueryEscape(alpn)
-	}
 	if d.WSPath != "" {
 		data["ws_path"] = d.WSPath
-	}
-	if d.WSIP != "" {
-		data["ws_ip"] = urlHost(d.WSIP)
 	}
 	if d.WSPort != "" {
 		data["ws_p"] = d.WSPort
 	}
-	if d.WSSIP != "" {
-		data["wss_ip"] = urlHost(d.WSSIP)
-	}
 	if d.WSSPort != "" {
 		data["wss_p"] = d.WSSPort
 	}
+	urls := d.ServerURLs()
+	data["server_urls"] = urls
+	data["bridge_url"] = d.bridgeURL(urls)
 	return data
 }
 
@@ -138,4 +122,44 @@ func urlHost(host string) string {
 		return "[" + host + "]"
 	}
 	return host
+}
+
+// ServerURLs are the -server URLs of the enabled bridge carriers, by scheme
+// (tcp, tls, quic, ws, wss): the one place the start commands take them from.
+// A WebSocket URL carries the path, a QUIC URL the ALPN.
+func (d ManagementPageCommonData) ServerURLs() map[string]string {
+	urls := map[string]string{}
+	add := func(scheme, host, port, suffix string) {
+		if port != "" {
+			urls[scheme] = scheme + "://" + urlHost(host) + ":" + port + suffix
+		}
+	}
+	add("tcp", d.TCPIP, d.TCPPort, "")
+	add("tls", d.TLSIP, d.TLSPort, "")
+	add("quic", d.QUICIP, d.QUICPort, d.quicQuery())
+	add("ws", d.WSIP, d.WSPort, d.WSPath)
+	add("wss", d.WSSIP, d.WSSPort, d.WSPath)
+	return urls
+}
+
+// quicQuery is the ALPN of the display address "host:port/alpn" as a URL query.
+func (d ManagementPageCommonData) quicQuery() string {
+	if _, alpn, ok := strings.Cut(d.QUICAddr, "/"); ok && alpn != "" {
+		return "?alpn=" + url.QueryEscape(alpn)
+	}
+	return ""
+}
+
+// bridgeURL is the -server URL of the primary bridge carrier. kcp clients
+// connect over QUIC; the display address is the fallback when that carrier is
+// not enabled.
+func (d ManagementPageCommonData) bridgeURL(urls map[string]string) string {
+	scheme := d.BridgeType
+	if scheme == "kcp" {
+		scheme = "quic"
+	}
+	if u := urls[scheme]; u != "" {
+		return u
+	}
+	return d.BridgeAddr
 }

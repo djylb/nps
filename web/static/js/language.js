@@ -508,6 +508,12 @@ function changeunit(limit) {
     return sign + size;
 }
 
+// timeLimitText shows an expiry time, or "unlimited" when none is set (zero time).
+function timeLimitText(value) {
+    if (!value || String(value).indexOf('0001-01-01') === 0) return '<span langtag="word-timeunlimited"></span>';
+    return escapeHtml(String(value));
+}
+
 function getRemainingTime(str){
   if(str==='0001-01-01T00:00:00Z') return {totalMs:Infinity,days:Infinity,hours:Infinity,minutes:Infinity,seconds:Infinity,formatted:'∞'};
   const exp = new Date(str), diff = exp - Date.now();

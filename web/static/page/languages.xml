@@ -750,6 +750,10 @@
 		<zh-CN>0（不限速）</zh-CN>
 		<en-US>0 (Unlimited)</en-US>
 	</lang>
+	<lang id="word-timeunlimited">
+		<zh-CN>无限制</zh-CN>
+		<en-US>Unlimited</en-US>
+	</lang>
 	<lang id="word-globalratelimit">
 		<zh-CN>全局带宽限制 (KB/s)</zh-CN>
 		<en-US>Global Rate Limit (KB/s)</en-US>
