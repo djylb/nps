@@ -4,7 +4,7 @@
 ./npc -launch="npc://VKEY@host:8024?type=tls" -log=off -debug=false
 ```
 
-> **已弃用**：`-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`-config` 指向的 npc.conf 为旧写法，分别由 `-launch`、`-L`、`conf/npc.jsonc` 取代，仍可使用。
+> **已弃用**：`-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`-config` 指向的 npc.conf 为旧写法，分别由 `-launch`、`-L` 取代，仍可使用。
 
 一条连接用 `-launch`，一个本地访问用 `-L`，都可重复，写法见[快速启动](/guide/client/launch.md)，网页的“启动命令生成器”可以生成。`-server`、`-vkey`、`-type`、npc.conf 继续可用，转换成同一启动配置；`-launch` 与 `-server`、`-vkey` 互斥。
 

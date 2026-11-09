@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestLegacyLocalSections(t *testing.T) {
 	head := "[common]\nserver_addr=a:1\nvkey=k\n"
@@ -34,5 +39,33 @@ func TestLegacyP2PTask(t *testing.T) {
 	}
 	if c.Tasks[0].Mode != "secret" || c.Tasks[0].Password != "pw" {
 		t.Fatalf("%+v", c.Tasks[0])
+	}
+}
+
+// The shipped npc.conf, with its commented access example enabled, is read
+// without converting any key of an earlier version.
+func TestShippedNpcConfHasNoLegacy(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "conf", "npc.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, l := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(l, "#[") || strings.HasPrefix(l, "#local_") || strings.HasPrefix(l, "#conn_mode") ||
+			strings.HasPrefix(l, "#password") || strings.HasPrefix(l, "#target_addr") {
+			l = strings.TrimPrefix(l, "#")
+		}
+		lines = append(lines, l)
+	}
+	c, err := parseConfig(strings.Join(lines, "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.UsesLegacyPointToPoint() || len(c.LocalServer) != 1 || len(c.Tasks) != 0 || len(c.Hosts) != 0 {
+		t.Fatalf("%+v", c)
+	}
+	l := c.LocalServer[0]
+	if l.Type != LocalTCP || l.ConnMode != ConnAuto || l.Password == "" || l.Target == "" {
+		t.Fatalf("%+v", l)
 	}
 }

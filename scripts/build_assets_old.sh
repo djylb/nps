@@ -8,12 +8,12 @@ tar -czvf npc_sdk_old.tar.gz npc_sdk.dll npc_sdk.so npc_sdk.h
 
 CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -ldflags "-s -w -extldflags -static -extldflags -static -X 'github.com/djylb/nps/lib/install.BuildTarget=win7'" ./cmd/npc
 
-tar -czvf windows_386_client_old.tar.gz npc.exe conf/npc.jsonc
+tar -czvf windows_386_client_old.tar.gz npc.exe conf/npc.conf
 
 
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -extldflags -static -extldflags -static -X 'github.com/djylb/nps/lib/install.BuildTarget=win7'" ./cmd/npc
 
-tar -czvf windows_amd64_client_old.tar.gz npc.exe conf/npc.jsonc
+tar -czvf windows_amd64_client_old.tar.gz npc.exe conf/npc.conf
 
 
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -extldflags -static -extldflags -static -X 'github.com/djylb/nps/lib/install.BuildTarget=win7'" ./cmd/nps

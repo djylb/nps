@@ -753,9 +753,16 @@ func TestUsageIntervalSetting(t *testing.T) {
 }
 
 // The configuration file shipped in conf parses through the loader of
-// -config, and so does a JSONC file given as a default path.
-func TestShippedNpcJSONC(t *testing.T) {
-	path := filepath.Join("..", "..", "conf", "npc.jsonc")
+// -config without any legacy conversion.
+func TestShippedNpcConf(t *testing.T) {
+	path := filepath.Join("..", "..", "conf", "npc.conf")
+	cnf, err := config.NewConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnf.UsesLegacyPointToPoint() || len(cnf.Tasks) != 0 || len(cnf.Hosts) != 0 || len(cnf.LocalServer) != 0 {
+		t.Fatalf("%+v", cnf)
+	}
 	got, err := CommandLine{Config: []string{path}}.Sources()
 	if err != nil || len(got) != 1 {
 		t.Fatalf("%v %v", err, got)
@@ -764,8 +771,8 @@ func TestShippedNpcJSONC(t *testing.T) {
 	if err != nil || len(profiles) != 1 {
 		t.Fatalf("%v %+v", err, profiles)
 	}
-	p := profiles[0]
-	if p.Name != "default" || p.Config.CommonConfig.VKey == "" || !strings.HasPrefix(p.Config.CommonConfig.Server, "tls://") || len(p.Config.LocalServer) != 0 {
-		t.Fatalf("%+v %+v", p, p.Config.CommonConfig)
+	c := profiles[0].Config.CommonConfig
+	if c.VKey == "" || c.Server != "127.0.0.1:8024" || c.Tp != "tls" {
+		t.Fatalf("%+v", c)
 	}
 }

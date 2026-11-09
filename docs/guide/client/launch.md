@@ -128,6 +128,4 @@ JSON 或 JSONC（可写注释和尾逗号）。顶层 `profiles` 是以连接名
 
 `-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`npc.conf` 和早期版本写入的 JSON、YAML、INI 文件（`@文件`）继续可用，集中转换成同一启动配置。`-password` 这组只支持单条，和 `-launch`、`-L` 同时给出报错。
 
-新安装的 `conf/npc.jsonc` 是上面配置文件的写法，不带参数时 npc 读取它（没有它而有 `conf/npc.conf` 时读取旧文件）。
-
 此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。

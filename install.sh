@@ -321,10 +321,10 @@ install_npc() {
   fi
 
   mkdir -p /etc/nps/conf
-  if [ ! -f /etc/nps/conf/npc.jsonc ] && [ ! -f /etc/nps/conf/npc.conf ]; then
-    cp "$SRC/conf/npc.jsonc" /etc/nps/conf/npc.jsonc 2>/dev/null || true
+  if [ ! -f /etc/nps/conf/npc.conf ]; then
+    cp "$SRC/conf/npc.conf" /etc/nps/conf/npc.conf 2>/dev/null || true
   else
-    cp -f "$SRC/conf/npc.jsonc" /etc/nps/conf/npc.jsonc.default 2>/dev/null || true
+    cp -f "$SRC/conf/npc.conf" /etc/nps/conf/npc.conf.default 2>/dev/null || true
   fi
   echo "npc done"
 }

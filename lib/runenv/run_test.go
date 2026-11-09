@@ -115,8 +115,8 @@ func TestLogAndTmpPaths(t *testing.T) {
 		if got := GetNpcLogPath(); got != filepath.Join(appPath, "npc.log") {
 			t.Fatalf("GetNpcLogPath() = %q, want %q", got, filepath.Join(appPath, "npc.log"))
 		}
-		if got := GetConfigPath(); got != filepath.Join(appPath, "conf/npc.jsonc") {
-			t.Fatalf("GetConfigPath() = %q, want %q", got, filepath.Join(appPath, "conf/npc.jsonc"))
+		if got := GetConfigPath(); got != filepath.Join(appPath, "conf/npc.conf") {
+			t.Fatalf("GetConfigPath() = %q, want %q", got, filepath.Join(appPath, "conf/npc.conf"))
 		}
 		return
 	}
@@ -127,30 +127,8 @@ func TestLogAndTmpPaths(t *testing.T) {
 	if got := GetNpcLogPath(); got != "/var/log/npc.log" {
 		t.Fatalf("GetNpcLogPath() = %q, want %q", got, "/var/log/npc.log")
 	}
-	if got := GetConfigPath(); got != "conf/npc.jsonc" {
-		t.Fatalf("GetConfigPath() = %q, want %q", got, "conf/npc.jsonc")
-	}
-}
-
-func TestConfigPathFallsBackToExistingConf(t *testing.T) {
-	if IsWindows() {
-		t.Skip("relative to the application directory")
-	}
-	t.Chdir(t.TempDir())
-	if err := os.MkdirAll("conf", 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile("conf/npc.conf", []byte("[common]\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if got := GetConfigPath(); got != "conf/npc.conf" {
-		t.Fatalf("GetConfigPath() = %q, want conf/npc.conf", got)
-	}
-	if err := os.WriteFile("conf/npc.jsonc", []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := GetConfigPath(); got != "conf/npc.jsonc" {
-		t.Fatalf("GetConfigPath() = %q, want conf/npc.jsonc", got)
+		t.Fatalf("GetConfigPath() = %q, want %q", got, "conf/npc.conf")
 	}
 }
 

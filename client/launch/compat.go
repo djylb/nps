@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -285,8 +284,8 @@ func (f CommandLine) Sources() ([]Source, error) {
 		out = append(out, Source{Label: "-server", Load: f.serverProfiles})
 	}
 	for _, path := range f.Config {
-		out = append(out, Source{Label: "-config " + path, Load: func(ctx context.Context) ([]Profile, error) {
-			return configFile(ctx, path)
+		out = append(out, Source{Label: "-config " + path, Load: func(context.Context) ([]Profile, error) {
+			return configFile(path)
 		}})
 	}
 	return out, nil
@@ -337,12 +336,8 @@ func (f CommandLine) serverProfiles(context.Context) ([]Profile, error) {
 	return out, nil
 }
 
-// configFile reads a configuration file: JSON or JSONC of the profiles
-// schema, or an npc.conf.
-func configFile(ctx context.Context, path string) ([]Profile, error) {
-	if ext := strings.ToLower(filepath.Ext(path)); ext == ".jsonc" || ext == ".json" {
-		return Resolve(ctx, "@"+path)
-	}
+// configFile reads an npc.conf.
+func configFile(path string) ([]Profile, error) {
 	cnf, err := config.NewConfig(path)
 	if err == nil && cnf.CommonConfig == nil {
 		err = errors.New("no common section")
