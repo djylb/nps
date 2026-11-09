@@ -504,3 +504,65 @@ func BenchmarkTunnel(b *testing.B) {
 		})
 	}
 }
+
+// bannerListener is a server-first target: it speaks on accept, then echoes.
+func bannerListener(tb testing.TB, banner string) string {
+	tb.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			wg.Go(func() {
+				defer func() { _ = c.Close() }()
+				_, _ = io.WriteString(c, banner)
+				_, _ = io.Copy(c, c)
+			})
+		}
+	})
+	tb.Cleanup(func() { _ = ln.Close(); wg.Wait() })
+	return ln.Addr().String()
+}
+
+// A server-first target works through a tunnel: the visitor sends nothing
+// until it has read the banner, which must not wait on a first client byte.
+func TestTunnelServerFirstBanner(t *testing.T) {
+	const banner = "SSH-2.0-test\r\n"
+	for _, tc := range []struct {
+		name string
+		cnf  model.Config
+	}{
+		{"plain", model.Config{}},
+		{"compress and crypt", model.Config{Crypt: true, Compress: true, CompressAlg: "zstd"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newCoreFixture(t, Primary, tc.cnf)
+			f.joinCore(t, client.NewCoreExit("", 0))
+			f.waitConnected(t)
+			addr, _ := f.startTunnel(t, bannerListener(t, banner), model.CompressDefault)
+			c, err := net.Dial("tcp", addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+			_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+			got := make([]byte, len(banner))
+			if _, err := io.ReadFull(c, got); err != nil || string(got) != banner {
+				t.Fatalf("banner %q, %v", got, err)
+			}
+			if _, err := c.Write([]byte("ping")); err != nil {
+				t.Fatal(err)
+			}
+			echo := make([]byte, 4)
+			if _, err := io.ReadFull(c, echo); err != nil || string(echo) != "ping" {
+				t.Fatalf("echo %q, %v", echo, err)
+			}
+		})
+	}
+}

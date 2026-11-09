@@ -60,7 +60,11 @@ func startLink(t *testing.T, cfg DialConfig) *linkEnv {
 	return &linkEnv{e: e, server: <-e.online, client: s.(*clientSession)}
 }
 
-func listenEcho(t *testing.T) string {
+func listenEcho(t *testing.T) string { return listenBanner(t, "") }
+
+// listenBanner is listenEcho for a server-first protocol: it writes banner on
+// accept, before it reads anything.
+func listenBanner(t *testing.T, banner string) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -75,6 +79,9 @@ func listenEcho(t *testing.T) string {
 			}
 			wg.Go(func() {
 				defer func() { _ = c.Close() }()
+				if banner != "" {
+					_, _ = io.WriteString(c, banner)
+				}
 				_, _ = io.Copy(c, c)
 			})
 		}

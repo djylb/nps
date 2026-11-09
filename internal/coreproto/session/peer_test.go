@@ -123,7 +123,13 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 // traffic every usageEvery.
 func startPeerUsage(t *testing.T, serverExit bool, lanes int, usageEvery time.Duration) *peerEnv {
 	t.Helper()
-	p := &peerEnv{punch: &quicPuncher{t: t}, echo: listenEcho(t), usageEvery: usageEvery}
+	return startPeerTarget(t, serverExit, lanes, usageEvery, listenEcho(t))
+}
+
+// startPeerTarget is startPeerUsage with the provider's target at echo.
+func startPeerTarget(t *testing.T, serverExit bool, lanes int, usageEvery time.Duration, echo string) *peerEnv {
+	t.Helper()
+	p := &peerEnv{punch: &quicPuncher{t: t}, echo: echo, usageEvery: usageEvery}
 	p.valid.Store(true)
 	p.env = startHooks(t, coreapi.Hooks{
 		ResolveLink: func(client int, r coreapi.LinkResolve) (*coreapi.LinkGrant, error) {
@@ -692,4 +698,23 @@ func mustLive[T any](p *T) *T {
 		panic("no live session")
 	}
 	return p
+}
+
+// A server-first target (it speaks on accept) reaches a visitor that sends
+// nothing until it has read: the banner crosses the relay, then one echo.
+func TestPeerServerFirstBanner(t *testing.T) {
+	const banner = "220 hello\r\n"
+	p := startPeerTarget(t, false, 0, 0, listenBanner(t, banner))
+	v := p.visitor(t, wire.ConnRelay, 0)
+	c, err := v.OpenLink(peerCtx(t), coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	got := make([]byte, len(banner))
+	if _, err := io.ReadFull(c, got); err != nil || string(got) != banner {
+		t.Fatalf("banner %q, %v", got, err)
+	}
+	checkEcho(t, c, "ping")
 }
