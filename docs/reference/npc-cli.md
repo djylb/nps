@@ -81,11 +81,11 @@
   - `standby`：布尔，备用候选，默认 false（只写 `standby` 也算 true）；
   - `count`：多管道下这个候选的管道数，默认 1；
   - `dirs`：`bidi`（默认）、`up`、`down`，可用逗号组合，如 `dirs=up,down`。会话只能在含 `bidi` 的候选上建立，所以每个连接至少要有一个；单管道下跳过不含 `bidi` 的候选（告警一次：方向需要 zmux）；
-  - `kinds`：http/https 的种类列表，本版本只支持 `websocket`，其他取值告警并忽略；
+  - `kinds`：http/https 的 HTTP 种类，顺序即偏好，可选 `websocket`、`streaming`、`split`，默认全部；同一 URL 上按 `http` 的版本顺序、版本内按 `kinds` 的顺序依次尝试，不可用的自动换下一个（多管道下由内核做缓存并逐步升级到排在前面的种类）。`streaming`、`split` 经 CDN 或反向代理也可用，记录层用 Sealed。`exchange` 需要两端共享的准入密钥，本版本告警并忽略；`ws`/`wss` 固定为 `websocket`；
   - `host`：Host 头和默认 SNI，缺端口时沿用地址的端口；
   - `sni`：覆盖 TLS 服务器名（默认取 `host` 或地址的主机名，IP 地址时不发）；
   - `alpn`：外层 TLS 的 ALPN，逗号分隔，顺序即偏好，只用于 `tls`、`quic`（quic 默认 `nps`）；http/https/ws/wss 不接受，它们的 ALPN 由 `http` 决定。
-  - `http`：HTTP 版本，`http/1.1`、`h2`、`h3` 的逗号列表，顺序即偏好，只用于 http/https/ws/wss；ws/wss 只能用 `http/1.1`、`h2`。默认 https/wss 为 `h2,http/1.1`，http/ws 为 `http/1.1`。当前版本只走 http/1.1（列表里没有 http/1.1 时告警一次后仍用它）；后续版本按顺序自动选择，并在发现更优版本（如 Alt-Svc 声明 h3）时升级。
+  - `http`：HTTP 版本，`http/1.1`、`h2`、`h3` 的逗号列表，顺序即偏好，只用于 http/https/ws/wss；ws/wss 只能用 `http/1.1`、`h2`。默认 https/wss 为 `h2,http/1.1`，http/ws 为 `http/1.1`。http/https 的 `streaming`、`split` 用列表里的 `http/1.1`、`h2`（`h2` 经 TLS 协商，只用于 https）；`h3` 本版本不拨号，告警后跳过；ws/wss 走 `http/1.1`。
   - 以上参数名与后续版本的承载条目和加入链接相同，迁移时原样保留。
 
   参数名区分大小写；其他参数、重复的参数、未知方案、带用户名或 `#` 的 URL 都会报错。

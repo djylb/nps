@@ -817,7 +817,7 @@ func TestWebSocketRouting(t *testing.T) {
 		t.Fatal("binary went to the old protocol")
 	}
 	// A URL candidate sends none, and on the bridge path that is the old one.
-	url, err := connprofile.Parse("http://"+addr+"/ws", "ws")
+	url, err := connprofile.Parse("ws://"+addr+"/ws", "ws")
 	if err != nil {
 		t.Fatal(err)
 	}

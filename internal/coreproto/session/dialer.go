@@ -101,6 +101,7 @@ type Dialer struct {
 	last        string               // candidate that connected last
 	now         func() time.Time     // tests
 	limits      CompressLimits
+	kinds       zmux.CarrierCache // HTTP carrier kinds per candidate (§14)
 }
 
 // NewDialer returns a Dialer for cfg.
@@ -136,14 +137,14 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 	if d.multi() {
 		pool = connprofile.MultiMembers(pool)
 	}
-	cands := connprofile.Order(pool, d.last)
+	cands := d.attempts(pool)
 	d.mu.Unlock()
 	var errs []error
 	for _, c := range cands {
 		if !c.Starts() {
 			continue
 		}
-		dctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
+		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		s, err := d.dialCandidate(dctx, c)
 		cancel()
 		if err == nil {
@@ -271,6 +272,8 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		return ca, nil
 	case "quic":
 		return d.dialQUIC(ctx, c, tlsCfg)
+	case "http", "https":
+		return d.dialHTTP(ctx, c)
 	case "ws", "wss":
 		scheme := c.Carrier
 		// The old way of writing a candidate sends the subprotocol (§12);

@@ -123,9 +123,9 @@ func (d ManagementPageCommonData) Map() map[string]any {
 }
 
 // LinkURLs are the launch links of the enabled bridge carriers, by type
-// (tcp, tls, quic, ws, wss): the one place the start commands take them from.
+// (tcp, tls, quic, ws, wss, http, https): the one place the start commands take them from.
 // A link has no vkey yet, "npc://@host:port", for the page to put in with
-// npcLink (language.js); a WebSocket link carries the path, a QUIC link the
+// npcLink (language.js); an HTTP link carries the path, a QUIC link the
 // ALPN.
 func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	urls := map[string]string{}
@@ -139,6 +139,8 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	add("quic", d.QUICIP, d.QUICPort, "", d.quicQuery())
 	add("ws", d.WSIP, d.WSPort, d.WSPath, "")
 	add("wss", d.WSSIP, d.WSSPort, d.WSPath, "")
+	add("http", d.WSIP, d.WSPort, d.WSPath, "")
+	add("https", d.WSSIP, d.WSSPort, d.WSPath, "")
 	return urls
 }
 

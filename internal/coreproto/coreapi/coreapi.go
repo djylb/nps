@@ -387,6 +387,9 @@ type Entry interface {
 	// request goes to it, with the subprotocol it offered or none. Other
 	// requests go to next.
 	WebSocketAnyProtocol(next http.Handler, f Forwarding) (http.Handler, error)
+	// HTTPCarriers returns the handler of the HTTP carriers (streaming and
+	// split) of a path of the core protocol; other requests go to next.
+	HTTPCarriers(next http.Handler, f Forwarding) (http.Handler, error)
 	// Forwarding builds what the WebSocket routes take: the prefixes are the
 	// trusted intermediaries, header the field they report the client in.
 	// Nil for no prefixes.

@@ -79,11 +79,13 @@ func TestManagementPageLinkURLs(t *testing.T) {
 		WSIP: "nps.example.com", WSPort: "80", WSSIP: "nps.example.com", WSSPort: "443", WSPath: "/w s",
 	}
 	want := map[string]string{
-		"tcp":  "npc://@[2001:db8::1]:8024?type=tcp",
-		"tls":  "npc://@[::1]:8025?type=tls",
-		"quic": "npc://@[fe80::1]:8026?type=quic&alpn=n+ps",
-		"ws":   "npc://@nps.example.com:80/w%20s?type=ws",
-		"wss":  "npc://@nps.example.com:443/w%20s?type=wss",
+		"tcp":   "npc://@[2001:db8::1]:8024?type=tcp",
+		"tls":   "npc://@[::1]:8025?type=tls",
+		"quic":  "npc://@[fe80::1]:8026?type=quic&alpn=n+ps",
+		"ws":    "npc://@nps.example.com:80/w%20s?type=ws",
+		"wss":   "npc://@nps.example.com:443/w%20s?type=wss",
+		"http":  "npc://@nps.example.com:80/w%20s?type=http",
+		"https": "npc://@nps.example.com:443/w%20s?type=https",
 	}
 	got := d.LinkURLs()
 	for k, v := range want {

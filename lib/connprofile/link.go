@@ -37,7 +37,7 @@ type Link struct {
 }
 
 // Link types: those of a candidate that this version dials.
-var linkTypes = []string{"tcp", "tls", "ws", "wss", "quic"}
+var linkTypes = []string{"tcp", "tls", "ws", "wss", "http", "https", "quic"}
 
 // candidateKeys are the link parameters that belong to the first address;
 // they have the names of the candidate parameters of Parse.
@@ -273,14 +273,18 @@ func candidateParts(c Candidate) (typ, addr, path string, q url.Values) {
 	if typ == "kcp" {
 		typ = "quic" // what UseCoreDefaults dials
 	}
-	if (typ == "ws" || typ == "wss") && c.Path != "/ws" {
+	httpKind := typ == "ws" || typ == "wss" || typ == "http" || typ == "https"
+	if httpKind && c.Path != "/ws" {
 		path = c.Path
 	}
 	if !c.ALPNDefaulted && len(c.ALPN) > 0 {
 		q.Set("alpn", strings.Join(c.ALPN, ","))
 	}
-	if (typ == "ws" || typ == "wss") && !slices.Equal(c.HTTP, defaultHTTP(map[string]string{"ws": "http", "wss": "https"}[typ])) {
+	if httpKind && !slices.Equal(c.HTTP, defaultHTTP(map[string]string{"ws": "http", "wss": "https", "http": "http", "https": "https"}[typ])) {
 		q.Set("http", strings.Join(c.HTTP, ","))
+	}
+	if (typ == "http" || typ == "https") && !slices.Equal(c.Kinds, httpKinds) {
+		q.Set("kinds", strings.Join(c.Kinds, ","))
 	}
 	if c.Host != "" && c.Host != c.Addr {
 		q.Set("host", c.Host)

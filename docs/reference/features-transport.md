@@ -10,6 +10,7 @@
 | `quic` | 8025/udp | `bridge_quic_port` |
 | `ws` | 8026 | `bridge_ws_port`、`bridge_path` |
 | `wss` | 8027 | `bridge_wss_port`、`bridge_path` |
+| `http`、`https` | 与 `ws`/`wss` 相同 | 同 `ws`/`wss`、`bridge_path`（`streaming`、`split` 种类，含 WebSocket；可经 CDN、反向代理） |
 
 KCP 在网络质量非常好的环境（专线、内网）可以略微降低延迟。
 

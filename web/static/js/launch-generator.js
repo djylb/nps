@@ -2,12 +2,13 @@
 // the current keys into npc commands, for its page and for list details.
 (function (root) {
     'use strict';
-    var CARRIERS = ['tcp', 'tls', 'ws', 'wss', 'quic'];
+    var CARRIERS = ['tcp', 'tls', 'ws', 'wss', 'http', 'https', 'quic'];
     var SCHEDULERS = ['', 'affinity', 'session_affinity', 'spread_eta', 'spread_round_robin', 'spread_rate_weighted'];
     var PATH_FIELDS = {addr: '', port: '', path: '', alpn: '', sni: '', host: '', http: '', subprotocol: '', tier: '', weight: '', standby: false, count: '', dirs: '', kinds: ''};
 
     function trim(v) { return v == null ? '' : String(v).trim(); }
     function isWS(c) { return c === 'ws' || c === 'wss'; }
+    function isHTTP(c) { return isWS(c) || c === 'http' || c === 'https'; }
     function usesALPN(c) { return c === 'tls' || c === 'quic'; }
     function accountType(t) { return t === 'mixed' || t === 'socks5' || t === 'http'; }
     function proxyType(t) { return accountType(t) || t === 'transparent'; }
@@ -65,7 +66,7 @@
     function effective(p, ctx) {
         var d = ctx._def[p.carrier] || {};
         var usesDefault = !trim(p.addr);
-        var path = isWS(p.carrier) ? (trim(p.path) || d.path || '') : '';
+        var path = isHTTP(p.carrier) ? (trim(p.path) || d.path || '') : '';
         if (path && path.charAt(0) !== '/') path = '/' + path;
         return {carrier: p.carrier, host: trim(p.addr) || d.host || '', port: trim(p.port) || d.port || '', path: path,
             alpn: usesALPN(p.carrier) ? (trim(p.alpn) || (usesDefault ? d.alpn || '' : '')) : ''};
@@ -76,7 +77,7 @@
         var q = [];
         function add(k, v) { if (trim(v) !== '') q.push([k, trim(v)]); }
         add('host', p.host); add('sni', p.sni); add('alpn', e.alpn);
-        if (isWS(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); }
+        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); }
         if (multi) add('tier', p.tier);
         add('weight', p.weight); if (p.standby) q.push(['standby', 'true']);
         add('count', p.count); add('dirs', p.dirs);
@@ -295,10 +296,10 @@
                 + textField(b + 'addr', p.addr, at + 'addr', 'lg-addr', d.host || '')
                 + textField(b + 'port', p.port, at + 'port', 'lg-port', d.port || '');
             var adv = '';
-            if (isWS(c)) adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || '/ws');
+            if (isHTTP(c)) adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || '/ws');
             if (usesALPN(c)) adv += plain(b + 'alpn', p.alpn, at + 'alpn', 'alpn', d.alpn || '');
             adv += plain(b + 'sni', p.sni, at + 'sni', 'sni') + plain(b + 'host', p.host, at + 'host', 'host');
-            if (isWS(c)) adv += plain(b + 'http', p.http, at + 'http', 'http', 'http/1.1,h2') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol') + plain(b + 'kinds', p.kinds, at + 'kinds', 'kinds', 'websocket');
+            if (isHTTP(c)) adv += plain(b + 'http', p.http, at + 'http', 'http', 'http/1.1,h2') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol') + plain(b + 'kinds', p.kinds, at + 'kinds', 'kinds', isWS(c) ? 'websocket' : 'websocket,streaming,split');
             if (multi) adv += plain(b + 'tier', p.tier, at + 'tier', 'tier', '0');
             adv += plain(b + 'weight', p.weight, at + 'weight', 'weight', '0') + plain(b + 'count', p.count, at + 'count', 'count', '1')
                 + plain(b + 'dirs', p.dirs, at + 'dirs', 'dirs', 'bidi');

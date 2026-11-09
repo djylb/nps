@@ -22,17 +22,17 @@ func TestParseSchemes(t *testing.T) {
 		{"quic://a.com?alpn=h3", Candidate{URL: "quic://a.com:8025", Carrier: "quic", Addr: "a.com:8025", Host: "a.com", SNI: "a.com", Path: "/ws", ALPN: []string{"h3"}, Dirs: DirBidi, Count: 1}},
 		{"ws://a.com/p", Candidate{URL: "http://a.com/p", HTTP: []string{HTTP11}, Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/p", Kinds: ws, Dirs: DirBidi, Count: 1}},
 		{"wss://a.com:8443/api/v2/ws", Candidate{URL: "https://a.com:8443/api/v2/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:8443", Host: "a.com:8443", SNI: "a.com", Path: "/api/v2/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"http://a.com", Candidate{URL: "http://a.com", HTTP: []string{HTTP11}, Carrier: "ws", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"https://a.com/", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"https://a.com/x%7Cy%3Fz?kinds=websocket", Candidate{URL: "https://a.com/x%7Cy%3Fz", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/x%7Cy%3Fz", Kinds: ws, Dirs: DirBidi, Count: 1}},
-		{"HTTPS://a.com/ws?tier=1&weight=3&count=3&standby&dirs=up,down,bidi", Candidate{URL: "https://a.com/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Tier: 1, Weight: 3, Count: 3, Standby: true, Dirs: DirBidi | DirUp | DirDown}},
+		{"http://a.com", Candidate{URL: "http://a.com", HTTP: []string{HTTP11}, Carrier: "http", Addr: "a.com:80", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: httpKinds, Dirs: DirBidi, Count: 1}},
+		{"https://a.com/", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "https", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/", Kinds: httpKinds, Dirs: DirBidi, Count: 1}},
+		{"https://a.com/x%7Cy%3Fz?kinds=websocket", Candidate{URL: "https://a.com/x%7Cy%3Fz", HTTP: []string{HTTP2, HTTP11}, Carrier: "https", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/x%7Cy%3Fz", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"WSS://a.com/ws?tier=1&weight=3&count=3&standby&dirs=up,down,bidi", Candidate{URL: "https://a.com/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Tier: 1, Weight: 3, Count: 3, Standby: true, Dirs: DirBidi | DirUp | DirDown}},
 		{"wss://1.2.3.4:443/ws?host=b.com", Candidate{URL: "https://1.2.3.4/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:443", SNI: "b.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
 		{"wss://1.2.3.4/ws?host=b.com:8443&sni=c.com", Candidate{URL: "https://1.2.3.4/ws", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "1.2.3.4:443", Host: "b.com:8443", SNI: "c.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
 		{"tcp://[::1]:8024?standby=true&tier=-2", Candidate{URL: "tcp://[::1]:8024", Carrier: "tcp", Addr: "[::1]:8024", Host: "[::1]:8024", Path: "/ws", Tier: -2, Standby: true, Dirs: DirBidi, Count: 1}},
-		{"https://[::1]:443", Candidate{URL: "https://[::1]", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "[::1]:443", Host: "[::1]:443", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://[::1]:443", Candidate{URL: "https://[::1]", HTTP: []string{HTTP2, HTTP11}, Carrier: "https", Addr: "[::1]:443", Host: "[::1]:443", Path: "/ws", Kinds: httpKinds, Dirs: DirBidi, Count: 1}},
 		{"tls://[::1]", Candidate{URL: "tls://[::1]:8025", Carrier: "tls", Addr: "[::1]:8025", Host: "[::1]", Path: "/ws", Dirs: DirBidi, Count: 1}},
 		{"tcp://a.com:1/", Candidate{URL: "tcp://a.com:1", Carrier: "tcp", Addr: "a.com:1", Host: "a.com:1", SNI: "a.com", Path: "/ws", Dirs: DirBidi, Count: 1}},
-		{"https://a.com?kinds=websocket,streaming", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "wss", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: ws, Dirs: DirBidi, Count: 1}},
+		{"https://a.com?kinds=websocket,streaming", Candidate{URL: "https://a.com", HTTP: []string{HTTP2, HTTP11}, Carrier: "https", Addr: "a.com:443", Host: "a.com", SNI: "a.com", Path: "/ws", Kinds: []string{KindWebSocket, KindStreaming}, Dirs: DirBidi, Count: 1}},
 	}
 	for _, c := range cases {
 		got, err := Parse(c.in, "kcp")
@@ -224,7 +224,7 @@ func TestConnectionLists(t *testing.T) {
 		{"a.com:8024，b.com:8024", SepLegacy, 2},
 		{"tls://a.com:8025|https://a.com/ws?http=h2,http/1.1;tcp://b.com:8024", SepURL, 2},
 		{"tls://a.com:8025；a.com:8024", SepURL, 2},
-		{"https://a.com/ws?dirs=up,down|tcp://a.com:8024", SepURL, 1},
+		{"wss://a.com/ws?dirs=up,down|tcp://a.com:8024", SepURL, 1},
 	} {
 		if sep := ListSep(tc.server); sep != tc.sep {
 			t.Fatalf("%s: sep %q", tc.server, sep)
@@ -271,6 +271,69 @@ func TestWebStartCommandServers(t *testing.T) {
 		}
 		if g.Carrier != c.carrier || g.Addr != c.addr || g.Path != wantPath || g.URL != c.url {
 			t.Errorf("%s: carrier %s addr %s path %s url %s", c.in, g.Carrier, g.Addr, g.Path, g.URL)
+		}
+	}
+}
+
+func TestAttempts(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want []string
+	}{
+		{"http://a.com/x", []string{"#http/1.1/websocket", "#http/1.1/streaming", "#http/1.1/split"}},
+		{"https://a.com/x?http=http/1.1", []string{"#http/1.1/websocket", "#http/1.1/streaming", "#http/1.1/split"}},
+		{"https://a.com/x", []string{"#h2/streaming", "#h2/split", "#http/1.1/websocket", "#http/1.1/streaming", "#http/1.1/split"}},
+		{"https://a.com/x?kinds=split&http=h2", []string{"#h2/split"}},
+		{"http://a.com/x?http=h3,http/1.1&kinds=streaming", []string{"#http/1.1/streaming"}},
+		{"wss://a.com/x", []string{""}},
+	} {
+		c, err := Parse(tc.in, "")
+		if err != nil {
+			t.Fatalf("%s: %v", tc.in, err)
+		}
+		var got []string
+		for _, a := range Attempts(c) {
+			got = append(got, a.Attempt)
+			if a.Key() != c[0].Raw+a.Attempt {
+				t.Fatalf("%s: key %q", tc.in, a.Key())
+			}
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Fatalf("%s: %v, want %v", tc.in, got, tc.want)
+		}
+	}
+	if a := Attempts([]Candidate{mustParse(t, "https://a.com/x?kinds=websocket&http=http/1.1")})[0]; a.Carrier != "wss" {
+		t.Fatalf("websocket attempt carrier %q", a.Carrier)
+	}
+	for _, bad := range []string{"http://a.com?http=h2", "https://a.com?http=h3", "http://a.com?dirs=up", "https://a.com?kinds=websocket,websocket", "https://a.com?kinds=x"} {
+		if _, err := Parse(bad, ""); err == nil {
+			t.Fatalf("%s: no error", bad)
+		}
+	}
+}
+
+func mustParse(t *testing.T, s string) Candidate {
+	t.Helper()
+	c, err := Parse(s, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c[0]
+}
+
+func TestHTTPLinkRoundTrip(t *testing.T) {
+	for _, raw := range []string{"http://a.com:80/x", "https://a.com:443/x?kinds=streaming"} {
+		link, err := FormatLink("k", raw, "", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		l, err := ParseLink(link)
+		if err != nil {
+			t.Fatalf("%s: %v", link, err)
+		}
+		a, b := mustParse(t, raw), mustParse(t, l.Server)
+		if a.Carrier != b.Carrier || a.Path != b.Path || !slices.Equal(a.Kinds, b.Kinds) {
+			t.Fatalf("%s: %+v != %+v", link, b, a)
 		}
 	}
 }

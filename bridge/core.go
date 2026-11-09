@@ -346,14 +346,16 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 	denied := s.deniedHTTP
 	fw := s.coreForwarding()
 	notFound := denied(http.HandlerFunc(s.serveHTTPFallback))
+	rest := s.httpCarriers(http.HandlerFunc(s.serveHTTPFallback), fw)
 	route := &conn.WSRoute{NotFound: notFound, Wrap: func(legacy http.Handler) http.Handler {
-		// A request that is no WebSocket on the bridge path is a visitor's.
+		// A request that is no WebSocket on the bridge path is an HTTP
+		// carrier or a visitor's.
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 				legacy.ServeHTTP(w, r)
 				return
 			}
-			notFound.ServeHTTP(w, r)
+			rest.ServeHTTP(w, r)
 		})
 		h, err := s.core.WebSocket(next, fw)
 		if err != nil {
@@ -363,7 +365,7 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		return denied(h)
 	}}
 	for _, p := range connection.Network().NewProtocolWSPaths {
-		h, err := s.core.WebSocketAnyProtocol(notFound, fw)
+		h, err := s.core.WebSocketAnyProtocol(rest, fw)
 		if err != nil {
 			log.Error("new protocol websocket route", "path", p, "err", err)
 			continue
@@ -374,6 +376,18 @@ func (s *Bridge) coreWS() *conn.WSRoute {
 		route.Paths[p] = denied(h)
 	}
 	return route
+}
+
+// httpCarriers is the handler of the HTTP carriers of a core protocol path:
+// what is no carrier goes to next, which is the host's fallback. The caller
+// applies the global denial.
+func (s *Bridge) httpCarriers(next http.Handler, fw coreapi.Forwarding) http.Handler {
+	h, err := s.core.HTTPCarriers(next, fw)
+	if err != nil {
+		log.Error("new protocol http carriers", "err", err)
+		return next
+	}
+	return h
 }
 
 // coreForwarding is bridge_trusted_ips and bridge_real_ip_header for the

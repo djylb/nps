@@ -32,7 +32,9 @@ func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
 	cfg.Shaper, cfg.ShapingBudget = s.plan.sessionShaper(s.boot)
 	switch {
 	case d.multi():
-		cfg.MaxPipes = max(pipesOf(connprofile.MultiMembers(d.cfg.Candidates)), 2)
+		// Rotating to a preferred kind and adopting a first pipe of an HTTP
+		// candidate need room for one pipe more.
+		cfg.MaxPipes = max(pipesOf(connprofile.MultiMembers(d.cfg.Candidates))+1, 2)
 	case cfg.ResumeTimeout > 0:
 		cfg.Redial, cfg.RecordPolicy = s.redial, s.redialRecord
 	}
@@ -46,7 +48,7 @@ func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
 func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.PipeIO, error) {
 	d := s.d
 	d.mu.Lock()
-	cands := connprofile.Order(d.cfg.Candidates, d.last)
+	cands := d.attempts(d.cfg.Candidates)
 	d.mu.Unlock()
 	s.redialMu.Lock()
 	tried := s.redialKey
@@ -59,7 +61,7 @@ func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.Pipe
 		if !c.Starts() {
 			continue
 		}
-		dctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
+		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		ca, err := d.dialCarrier(dctx, c)
 		cancel()
 		if err == nil {
@@ -223,8 +225,12 @@ func (s *clientSession) maintain(ctx context.Context, boot connprofile.Candidate
 	members := connprofile.MultiMembers(s.d.cfg.Candidates)
 	best := bestTier(members)
 	for _, m := range members {
+		if m.HTTPCarrier() {
+			s.maintainHTTP(ctx, m, pipeOptions(m, best), m.Raw == boot.Raw)
+			continue
+		}
 		var first atomic.Bool
-		first.Store(m.Key() == boot.Key())
+		first.Store(m.Raw == boot.Raw)
 		pool := zmux.PipePool{Count: m.Count, Options: pipeOptions(m, best)}
 		pool.Join = func(ctx context.Context, _ *zmux.Conn, o zmux.PipeOptions) ([]*zmux.Pipe, error) {
 			if first.CompareAndSwap(true, false) {

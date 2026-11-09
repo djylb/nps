@@ -82,8 +82,17 @@ const (
 	DirDown Dirs = 4 // server to npc only
 )
 
-// KindWebSocket is the one HTTP carrier kind this version speaks.
-const KindWebSocket = "websocket"
+// HTTP carrier kinds of http and https candidates (zmux CarrierKind names).
+const (
+	KindWebSocket = "websocket"
+	KindStreaming = "streaming"
+	KindSplit     = "split"
+)
+
+// httpKinds are the kinds an http or https candidate tries, in order, when
+// it names none. The exchange kind is left out: it needs a key both ends
+// share before authentication, which this version does not hand out.
+var httpKinds = []string{KindWebSocket, KindStreaming, KindSplit}
 
 // Candidate is one way to reach the server of a profile.
 type Candidate struct {
@@ -91,7 +100,7 @@ type Candidate struct {
 	URL     string   // scheme://dial-address[/path], scheme tcp, tls, quic, http, https (kcp in this version only)
 	Host    string   // Host header and default SNI, host:port
 	SNI     string   // TLS server name, "" for none (an IP address)
-	Kinds   []string // HTTP carrier kinds, for http and https: websocket
+	Kinds   []string // HTTP carrier kinds of http and https, in order of preference
 	Dirs    Dirs
 	Tier    int // lower is tried first
 	Weight  int // share of a pipe in multi mode
@@ -105,19 +114,71 @@ type Candidate struct {
 	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
 
 	// How this version dials it.
-	Carrier string // tcp, tls, kcp, quic, ws, wss (scheme-less: the profile type as given)
+	Carrier string // tcp, tls, kcp, quic, ws, wss, http, https (scheme-less: the profile type as given)
 	Addr    string // host:port to dial
-	Path    string // WebSocket path, escaped
+	Path    string // HTTP path, escaped
 
 	// ALPNDefaulted: no ALPN was written for this quic candidate.
 	ALPNDefaulted bool
 
 	Index int    // position in the profile, from 0
 	Raw   string // the candidate as written
+
+	// Attempt names one (HTTP version, kind) of an http or https candidate
+	// (Attempts), "" for the candidate as written.
+	Attempt string
 }
 
-// Key identifies the candidate within its profile.
-func (c Candidate) Key() string { return c.Raw }
+// Key identifies the candidate, or one of its attempts, within its profile.
+func (c Candidate) Key() string { return c.Raw + c.Attempt }
+
+// HTTPCarrier reports whether c is an http or https candidate, which chooses
+// among carrier kinds.
+func (c Candidate) HTTPCarrier() bool { return c.Carrier == "http" || c.Carrier == "https" }
+
+// Attempts returns the ways to dial c: one per (HTTP version, kind) it can
+// carry, the versions in the order of its http list and the kinds in the
+// order of its kinds within each. Each is c with one version and one kind; a
+// websocket attempt is dialed as ws or wss. Any other candidate is its own
+// only attempt.
+func (c Candidate) Attempts() []Candidate {
+	if !c.HTTPCarrier() {
+		return []Candidate{c}
+	}
+	var out []Candidate
+	for _, v := range c.HTTP {
+		if !httpVersionDialable(v, c.Carrier) {
+			continue
+		}
+		for _, k := range c.Kinds {
+			if k == KindWebSocket && v != HTTP11 {
+				continue // WebSocket is dialed over HTTP/1.1
+			}
+			a := c
+			a.HTTP, a.Kinds, a.Attempt = []string{v}, []string{k}, "#"+v+"/"+k
+			if k == KindWebSocket {
+				a.Carrier = map[string]string{"http": "ws", "https": "wss"}[c.Carrier]
+			}
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// httpVersionDialable reports whether this version dials v on carrier: h3
+// has no carrier yet, and h2 needs TLS to be negotiated.
+func httpVersionDialable(v, carrier string) bool {
+	return v == HTTP11 || v == HTTP2 && carrier == "https"
+}
+
+// Attempts returns the attempts of every candidate, in order.
+func Attempts(cands []Candidate) []Candidate {
+	var out []Candidate
+	for _, c := range cands {
+		out = append(out, c.Attempts()...)
+	}
+	return out
+}
 
 // Starts reports whether a session can start on c (it carries both
 // directions).
@@ -127,11 +188,11 @@ func (c Candidate) Starts() bool { return c.Dirs&DirBidi != 0 }
 // of the next major version.
 var schemes = map[string][2]string{
 	"tcp": {"tcp", "tcp"}, "tls": {"tls", "tls"}, "quic": {"quic", "quic"}, "kcp": {"kcp", "kcp"},
-	"http": {"ws", "http"}, "https": {"wss", "https"}, "ws": {"ws", "http"}, "wss": {"wss", "https"},
+	"http": {"http", "http"}, "https": {"https", "https"}, "ws": {"ws", "http"}, "wss": {"wss", "https"},
 }
 
 var defaultPorts = map[string]string{
-	"tcp": "8024", "kcp": "8024", "tls": "8025", "quic": "8025", "ws": "80", "wss": "443",
+	"tcp": "8024", "kcp": "8024", "tls": "8025", "quic": "8025", "ws": "80", "wss": "443", "http": "80", "https": "443",
 }
 
 // EnsurePort adds the default port of carrier to addr when it has none.
@@ -264,8 +325,12 @@ func parseURL(s string) (Candidate, error) {
 	if path == "" || !httpKind {
 		path, c.Path = "", "/ws"
 	}
+	isWS := carrier == "ws" || carrier == "wss"
 	if httpKind {
 		c.Kinds = []string{KindWebSocket}
+		if !isWS {
+			c.Kinds = slices.Clone(httpKinds)
+		}
 		c.HTTP = defaultHTTP(scheme)
 	}
 	q, err := url.ParseQuery(u.RawQuery)
@@ -315,14 +380,26 @@ func parseURL(s string) (Candidate, error) {
 			if !httpKind {
 				return Candidate{}, fmt.Errorf("kinds is only used by http and https, not %s", u.Scheme)
 			}
-			var ignored []string
+			var ignored, kinds []string
 			for k := range strings.SplitSeq(v, ",") {
-				if k = strings.ToLower(strings.TrimSpace(k)); k != KindWebSocket && k != "" {
+				k = strings.ToLower(strings.TrimSpace(k))
+				switch {
+				case k == "":
+				case slices.Contains(kinds, k):
+					return Candidate{}, fmt.Errorf("kind %q given twice", k)
+				case k == KindWebSocket || !isWS && slices.Contains(httpKinds, k):
+					kinds = append(kinds, k)
+				default:
 					ignored = append(ignored, k)
 				}
 			}
 			if len(ignored) > 0 {
-				warnOnce(s, "carrier kinds other than websocket need zmux; ignored", "kinds", strings.Join(ignored, ","))
+				warnOnce(s, "carrier kinds this version does not dial; ignored", "kinds", strings.Join(ignored, ","))
+			}
+			if len(kinds) > 0 {
+				c.Kinds = kinds
+			} else if !isWS {
+				return Candidate{}, fmt.Errorf("kinds %q: want a comma list of %s", v, strings.Join(httpKinds, ", "))
 			}
 		case "host":
 			if v == "" {
@@ -344,8 +421,8 @@ func parseURL(s string) (Candidate, error) {
 				return Candidate{}, errors.New("alpn is empty")
 			}
 		case "subprotocol":
-			if carrier != "ws" && carrier != "wss" {
-				return Candidate{}, fmt.Errorf("subprotocol is used by ws and wss, not %s", u.Scheme)
+			if !httpKind {
+				return Candidate{}, fmt.Errorf("subprotocol is used by http, https, ws and wss, not %s", u.Scheme)
 			}
 			if v == "" {
 				return Candidate{}, errors.New("subprotocol is empty")
@@ -371,8 +448,16 @@ func parseURL(s string) (Candidate, error) {
 	if len(c.ALPN) == 0 && carrier == "quic" {
 		c.ALPN, c.ALPNDefaulted = []string{DefaultQUICALPN}, true
 	}
-	if httpKind && !slices.Contains(c.HTTP, HTTP11) {
-		warnOnce(s, "http versions other than http/1.1 need zmux; using http/1.1", "http", strings.Join(c.HTTP, ","))
+	if isWS && !slices.Contains(c.HTTP, HTTP11) {
+		warnOnce(s, "websocket runs over http/1.1 here; using http/1.1", "http", strings.Join(c.HTTP, ","))
+	}
+	if c.HTTPCarrier() {
+		if c.Dirs != DirBidi {
+			return Candidate{}, fmt.Errorf("dirs up and down are not available on %s, which is not Bound", u.Scheme)
+		}
+		if len(c.Attempts()) == 0 {
+			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds on this version (h3 is not dialed, h2 needs https)", strings.Join(c.HTTP, ","))
+		}
 	}
 	c.URL = entryURL(scheme, c.Addr, path)
 	return c, nil

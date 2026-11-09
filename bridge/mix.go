@@ -77,6 +77,7 @@ func (s *Bridge) mixRoute(kind mixKind) *conn.WSRoute {
 	n := connection.Network()
 	notFound := s.deniedHTTP(http.HandlerFunc(s.serveHTTPFallback))
 	fw := s.coreForwarding()
+	rest := s.httpCarriers(http.HandlerFunc(s.serveHTTPFallback), fw)
 	route := &conn.WSRoute{NotFound: notFound, Paths: map[string]http.Handler{}}
 	path := n.BridgePath
 	if path == "" {
@@ -84,7 +85,7 @@ func (s *Bridge) mixRoute(kind mixKind) *conn.WSRoute {
 	}
 	for _, p := range append(slices.Clone(n.NewProtocolWSPaths), path) {
 		route.Paths[p] = notFound
-		h, err := s.core.WebSocketAnyProtocol(notFound, fw)
+		h, err := s.core.WebSocketAnyProtocol(rest, fw)
 		if err != nil {
 			log.Error("new protocol websocket route", "path", p, "err", err)
 			continue
