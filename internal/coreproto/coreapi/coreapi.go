@@ -19,6 +19,10 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// ErrPlainRefused is matched by a dial error of the plain tcp carrier that the
+// server did not answer: its port may take only tls.
+var ErrPlainRefused = errors.New("no reply on the plain tcp carrier")
+
 // FirstBytes are the first bytes of a core protocol carrier on a port shared
 // with the old protocol: Establish Profiles 1 and 3, and Join.
 var FirstBytes = []string{"\x01", "\x02", "\x03"}

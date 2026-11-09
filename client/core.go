@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
@@ -62,6 +63,9 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 		s, err := d.Dial(ctx)
 		if err != nil {
 			attempt++
+			if attempt == 1 && errors.Is(err, coreapi.ErrPlainRefused) {
+				log.Warn("the server did not answer on the plain tcp carrier; if it takes only tls, use -type=tls or a launch link with type=tls (or auto)", "server", d.Server())
+			}
 			slogx.Emit(ctx, log, &logevent.ConnectFailed, "server", d.Server(), "attempt", attempt, "reason", "establish", "err", err)
 		} else {
 			attempt = 0

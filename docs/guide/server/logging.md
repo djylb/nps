@@ -32,8 +32,8 @@ nps 的日志相关配置都在 `nps.conf`，全部键见[服务端配置](/refe
 发布包自带的 `nps.conf` 把日志设成 `log=stdout`、`log_path=conf/nps.log`，轮转为 2 MB、10 份、7 天。要点：
 
 - **前台运行**（直接执行 `nps`）时，日志输出到终端。
-- **以服务运行**（`nps install` 之后由系统服务管理器启动，Docker 镜像也是这样启动的）时，没有控制台，`log=stdout` 会改为写 `log_path` 的文件。所以装成服务后要看日志，请去看这个文件，例如 `/etc/nps/conf/nps.log`；相对路径以 nps 的运行目录为基准（Linux 安装后是 `/etc/nps`）。
-- **Docker** 里想用 `docker logs` 查看，把 `log` 设为 `both`；只要控制台输出，则设 `log_path=off`。
+- **以服务运行**（`nps install` 之后由系统服务管理器启动）时，没有控制台，`log=stdout` 会改为写 `log_path` 的文件。所以装成服务后要看日志，请去看这个文件，例如 `/etc/nps/conf/nps.log`；相对路径以 nps 的运行目录为基准（Linux 安装后是 `/etc/nps`）。
+- **Docker** 里 `log=stdout` 输出到容器的标准输出，用 `docker logs nps` 查看；想同时写文件，把 `log` 设为 `both`。
 - 日志文件无法创建或写入时，nps 改写到标准错误，并记一条 `log_fallback`，不影响启动。
 - 新建的日志文件权限是 `0640`（属主可写，同组可读，例如给运行 fail2ban 的用户组）。
 

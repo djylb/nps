@@ -30,7 +30,7 @@ docker run -d --restart=always --name nps --net=host \
 
 默认配置还会占用 `80`、`443`（域名转发）和 `6000-6002/udp`（点对点访问）。这些端口被其他程序占用时，修改 `/opt/nps/nps.conf` 里的 `http_proxy_port`、`https_proxy_port`、`p2p_port`，然后 `docker restart nps`。设为 `0` 表示不启用该功能。
 
-日志在 `/opt/nps/nps.log`；要在 `docker logs` 里查看，把 `nps.conf` 里的 `log` 设为 `both`。日志里出现 `bridge certificate not loaded, using a generated one` 和 `cert_failed` 是正常现象：你还没有配置证书，nps 会自己生成，不影响下面的步骤。
+日志用 `docker logs nps` 查看（`nps.conf` 里 `log=stdout`）；想同时写文件 `/opt/nps/nps.log`，把 `log` 设为 `both`。日志里出现 `bridge certificate not loaded, using a generated one` 和 `cert_failed` 是正常现象：你还没有配置证书，nps 会自己生成，不影响下面的步骤。
 
 ## 2. 修改默认密码
 

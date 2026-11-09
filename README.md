@@ -61,7 +61,7 @@ Based on the original [NPS](https://github.com/ehang-io/nps) project, **NPS Enha
   Built-in features such as encrypted transmission, traffic limiting, access expiration controls, certificate management, and certificate renewal help improve security and manageability.
 
 - **Multiple Connection Protocols**  
-  Clients connect to the server over TLS, QUIC, or WSS, all on a single port.
+  Supports connecting to the server using TCP, KCP, TLS, QUIC, WS, and WSS protocols.
 
 ---
 
@@ -86,7 +86,7 @@ docker pull duan2001/nps
 docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /etc/localtime:/etc/localtime:ro duan2001/nps
 ```
 
-> **Tip:** The first start creates `nps.conf` in the mounted directory. Change the default Web admin password (`web_password`) there, then run `docker restart nps`.
+> **Tip:** After installing NPS, edit `nps.conf` (for example: listening ports and Web admin credentials) before starting the service.
 
 #### NPC Client
 
@@ -95,14 +95,14 @@ docker pull duan2001/npc
 docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 ```
 
-> **Tip:** Copy the command from the client's Start Command page in the NPS Web UI instead of typing it. `YOUR_VKEY` is the client's unique verify key shown there.
+> **Tip:** Get the `-launch` command from the client page in the NPS Web UI to avoid manual input mistakes.
 
 ### Server Installation
 
 #### Linux
 
 ```bash
-# Install (configuration file: /etc/nps/conf/nps.conf; binary: /usr/bin/nps)
+# Install (default configuration path: /etc/nps/; binary file path: /usr/bin/)
 wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.sh | sudo sh -s nps
 sudo nps install
 sudo nps start|stop|restart|uninstall
@@ -112,7 +112,7 @@ sudo nps update
 sudo nps update-force
 ```
 
-> **Tip:** For first-time setup, edit `/etc/nps/conf/nps.conf` and verify it before running `nps start`.
+> **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
 
 #### Windows
 
@@ -142,7 +142,7 @@ sudo npc update
 sudo npc update-force
 ```
 
-> **Tip:** On the client's Start Command page in the NPS Web UI, choose "Install as a service" and copy the generated command.
+> **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
 
 #### Windows
 

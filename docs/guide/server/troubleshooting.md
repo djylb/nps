@@ -11,7 +11,7 @@
 
 ## 先看日志
 
-**nps 的日志在哪**：直接在终端运行时在终端里；用 `nps install` 装成服务（Docker 也是）后写到文件，默认是安装目录下 `conf/nps.log`（Linux 上通常是 `/etc/nps/conf/nps.log`），具体看 `nps.conf` 的 `log_path`，详见[日志](/guide/server/logging.md)。**npc 的日志**默认写 `/var/log/npc.log`（Windows 在程序目录下的 `npc.log`），在终端里手动运行时直接显示在终端。
+**nps 的日志在哪**：直接在终端运行时在终端里；Docker 里用 `docker logs nps` 查看；用 `nps install` 装成服务后写到文件，默认是安装目录下 `conf/nps.log`（Linux 上通常是 `/etc/nps/conf/nps.log`），具体看 `nps.conf` 的 `log_path`，详见[日志](/guide/server/logging.md)。**npc 的日志**默认写 `/var/log/npc.log`（Windows 在程序目录下的 `npc.log`），在终端里手动运行时直接显示在终端。
 
 **按事件名搜索**，例如：
 
@@ -45,7 +45,7 @@ npc 用 `-log_level=info,client=debug`。模块名见[日志](/guide/server/logg
 
 连接方式（`type=`）要和服务端的监听对得上：
 
-- 0.35 的 nps 发布包默认只开混合端口 `mix_port=8024`，它接受 `tls`、`wss` 和 `quic`。`type=tcp`、`type=ws` 这类明文连接默认**会被忽略**（`mix_plain=false`），npc 表现为连接超时或握手失败；改用 `type=tls`，或在 nps 前面有自己的 TLS 反向代理时设 `mix_plain=true`。
+- 0.35 的 nps 发布包默认只开混合端口 `mix_port=8024`，它接受 `tls`、`wss` 和 `quic`。`type=tcp`、`type=ws` 这类明文连接默认**会被忽略**（`mix_plain=false`），npc 表现为连接超时或握手失败，并在日志里提示改用 `-type=tls`；改用 `type=tls`，或在 nps 前面有自己的 TLS 反向代理时设 `mix_plain=true`。
 - 0.34 及更早的 npc 通过混合端口连接时，`ws`、`wss` 不可用，请用 `tls` 或 `quic`，详见[升级到 0.35](/guide/server/upgrade.md)。
 - 如果连接要经过 CDN 或反向代理，确认它放行了 WebSocket。
 
@@ -157,6 +157,6 @@ sudo sysctl -p
 
 **获取访问者的真实 IP**：域名转发时设置 `http_add_origin_header=true`，后端读取 `X-Forwarded-For` 或 `X-Real-IP`；后端支持时也可以开启 Proxy Protocol，见 [HTTPS 与反向代理](/guide/server/https-and-proxy.md)。
 
-**Docker 里 `docker logs` 没有日志**：容器里的 nps 是以服务方式运行的，`log=stdout` 会改写到文件。把 `log` 设为 `both`，或设 `log_path=off`，见[日志](/guide/server/logging.md)。
+**Docker 里 `docker logs` 没有日志**：确认 `nps.conf` 里 `log=stdout`（或 `both`）。`log=file` 只写文件，不会出现在 `docker logs` 里，见[日志](/guide/server/logging.md)。
 
 **需要提交问题**：到 [GitHub Issues](https://github.com/djylb/nps/issues) 说明版本（`nps -version`、`npc -version`）、系统、相关日志和你已做过的排查。

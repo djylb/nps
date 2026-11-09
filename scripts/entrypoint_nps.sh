@@ -16,7 +16,7 @@ for name in geoip.dat geosite.dat; do
 done
 
 if [ -f /conf/nps.conf ]; then
-    /nps service -disable_remote_update
+    /nps -disable_remote_update
 else
     cp /nps.conf.sample /conf/nps.conf
 fi
