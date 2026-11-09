@@ -44,7 +44,8 @@ func (a Allowed) TestTunnelPort(t *model.Tunnel) bool {
 	if t == nil {
 		return false
 	}
-	return a.testPortUsage(t.Port, t.Mode, tunnelNeedsUDP(t))
+	_, udp := t.ListenKinds()
+	return a.testPortUsage(t.Port, t.Mode, udp)
 }
 
 func (a Allowed) testPortUsage(p int, m string, needUDP bool) (b bool) {
@@ -67,20 +68,6 @@ func (a Allowed) testPortUsage(p int, m string, needUDP bool) (b bool) {
 		return false
 	}
 	return true
-}
-
-func tunnelNeedsUDP(t *model.Tunnel) bool {
-	if t == nil {
-		return false
-	}
-	switch t.Mode {
-	case "udp", "socks5":
-		return true
-	case "mixProxy":
-		return t.Socks5Proxy
-	default:
-		return false
-	}
 }
 
 // GenerateServerPort picks a free allowed port for a listener of mode m, or
