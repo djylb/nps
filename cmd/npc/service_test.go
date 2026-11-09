@@ -29,7 +29,6 @@ func serviceFlags(t *testing.T, args ...string) *flag.FlagSet {
 	fs.String("local_type", "tcp_udp", "")
 	fs.String("conn_mode", "auto", "")
 	fs.Int("local_port", 2000, "")
-	fs.String("access", "", "")
 	fs.String("password", "", "")
 	fs.Bool("local_proxy", false, "")
 	fs.String("target", "", "")
@@ -38,6 +37,7 @@ func serviceFlags(t *testing.T, args ...string) *flag.FlagSet {
 	fs.Int("disconnect_timeout", 30, "")
 	fs.Bool("debug", true, "")
 	fs.StringArray("launch", nil, "")
+	fs.StringArrayP("local", "L", nil, "")
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestServiceArgumentsConfigOnly(t *testing.T) {
 }
 
 func TestServiceArgumentsLaunch(t *testing.T) {
-	payload := `{"server":"a:1","vkey":"k"}`
+	payload := "npc://k@a:1"
 	dir, svc := installArgs(t, "", "--launch="+payload, "--launch=@local.yaml")
 	file := filepath.Join(dir, "npc-service-launch-1.conf")
 	abs, _ := filepath.Abs("local.yaml")
@@ -237,22 +237,20 @@ func TestServiceArgumentsLaunchLink(t *testing.T) {
 	}
 }
 
-func TestServiceArgumentsLaunchAccess(t *testing.T) {
-	dir, svc := installArgs(t, "", "--launch=npc://k@a:1", "--access=p w", "--local_type=tcp", "--local_port=2001", "--conn_mode=relay", "install")
-	file := filepath.Join(dir, "npc-service-launch-1.conf")
-	if !slices.Equal(svc, []string{"--launch=@" + file, "-debug=false"}) {
+// -L values stay off the service definition, in a file for the owner only.
+func TestServiceArgumentsLocal(t *testing.T) {
+	dir, svc := installArgs(t, "", "--launch=npc://k@a:1", "-L", "tcp://:2001?access=p%20w&conn_mode=relay", "-L=udp://:2002?access=q&target=t:1", "install")
+	file, local := filepath.Join(dir, "npc-service-launch-1.conf"), filepath.Join(dir, serviceLocalFile)
+	if !slices.Equal(svc, []string{"--launch=@" + file, "--local=@" + local, "-debug=false"}) {
 		t.Fatalf("service args = %q (the access key must not be a service argument)", svc)
 	}
-	p := resolveFile(t, file)
-	l := p[0].Config.LocalServer[0]
-	if l.Password != "p w" || l.Type != "tcp" || l.Port != 2001 || l.ConnMode != "relay" {
-		t.Fatalf("%+v", l)
+	info, err := os.Stat(local)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("%v %v", info, err)
 	}
-	// the old name is the same setting
-	dir, _ = installArgs(t, "", "--launch=npc://k@a:1", "--password=pw")
-	l = resolveFile(t, filepath.Join(dir, "npc-service-launch-1.conf"))[0].Config.LocalServer[0]
-	if l.Password != "pw" || l.Port != 2000 {
-		t.Fatalf("%+v", l)
+	locals, err := launch.ParseLocals([]string{"@" + local})
+	if err != nil || len(locals) != 2 || locals[0].Access.Access != "p w" || locals[1].Access.Target != "t:1" {
+		t.Fatalf("%+v %v", locals, err)
 	}
 }
 
@@ -260,10 +258,13 @@ func TestServiceArgumentsLaunchRefusals(t *testing.T) {
 	for name, args := range map[string][]string{
 		"server":         {"--launch=npc://k@a:1", "-s", "x:1", "-k", "y"},
 		"vkey":           {"--launch=npc://k@a:1", "-k", "y"},
-		"both access":    {"--launch=npc://k@a:1", "--access=a", "--password=b"},
-		"access in link": {"--launch=npc://k@a:1?access=x", "--access=a"},
-		"access, json":   {`--launch={"server":"a:1","vkey":"k"}`, "--access=a"},
-		"command, both":  {"-s", "a:1", "-k", "k", "--access=a", "--password=b"},
+		"password":       {"--launch=npc://k@a:1", "--password=b"},
+		"password, -L":   {"-L=tcp://:1?access=a", "--password=b", "-s", "a:1", "-k", "k"},
+		"target, -L":     {"-L=tcp://:1?access=a", "--target=b"},
+		"local_port":     {"--launch=npc://k@a:1", "--local_port=3"},
+		"bad -L":         {"--launch=npc://k@a:1", "-L=tcp://:1"},
+		"access in link": {"--launch=npc://k@a:1?access=x"},
+		"inline json":    {`--launch={"server":"a:1","vkey":"k"}`},
 	} {
 		if _, _, err := serviceArguments(serviceFlags(t, args...), t.TempDir(), ""); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -272,7 +273,7 @@ func TestServiceArgumentsLaunchRefusals(t *testing.T) {
 }
 
 func TestServiceArgumentsAccessCommand(t *testing.T) {
-	dir, svc := installArgs(t, "", "-s", "a:1", "-k", "k", "--access=pw", "--local_port=2002")
+	dir, svc := installArgs(t, "", "-s", "a:1", "-k", "k", "--password=pw", "--local_port=2002")
 	conn := filepath.Join(dir, serviceConnFile)
 	if !slices.Equal(svc, []string{"--launch=@" + conn, "-debug=false"}) {
 		t.Fatalf("service args = %q", svc)

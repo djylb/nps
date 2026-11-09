@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"testing"
@@ -174,3 +175,95 @@ func (v compressVisitor) OpenLink(_ context.Context, r coreapi.LinkRequest) (net
 }
 
 func (compressVisitor) Close() error { return nil }
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func mixedProxy(t *testing.T, accounts map[string]string) string {
+	t.Helper()
+	mgr := NewSecretManager(t.Context(), func() {}, config.NewCommonConfig())
+	t.Cleanup(mgr.Close)
+	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
+		return stubVisitor(func(_ string, c net.Conn) {
+			_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+		})
+	}
+	port := freePort(t)
+	if err := mgr.StartLocalServer(&config.LocalServer{Type: config.LocalMixed, Ip: "127.0.0.1", Port: port, Auth: accounts}); err != nil {
+		t.Fatal(err)
+	}
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+}
+
+// socks5Connect does a SOCKS5 handshake and reports whether it was accepted.
+func socks5Connect(t *testing.T, addr, user, pass string) bool {
+	t.Helper()
+	c, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+	method := byte(0)
+	if user != "" {
+		method = 2
+	}
+	_, _ = c.Write([]byte{5, 1, method})
+	reply := make([]byte, 2)
+	if _, err := io.ReadFull(c, reply); err != nil || reply[1] != method {
+		return false
+	}
+	if user != "" {
+		_, _ = c.Write(append(append(append([]byte{1, byte(len(user))}, user...), byte(len(pass))), pass...))
+		if _, err := io.ReadFull(c, reply); err != nil || reply[1] != 0 {
+			return false
+		}
+	}
+	_, _ = c.Write([]byte{5, 1, 0, 3, 8, 'w', 'e', 'b', '.', 't', 'e', 's', 't', 0, 80})
+	head := make([]byte, 2)
+	_, err = io.ReadFull(c, head)
+	return err == nil && head[1] == 0
+}
+
+// httpStatus sends a proxy request with the given Basic credentials.
+func httpStatus(t *testing.T, addr, user, pass string) int {
+	t.Helper()
+	proxy, _ := url.Parse("http://" + addr)
+	if user != "" {
+		proxy.User = url.UserPassword(user, pass)
+	}
+	c := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{Proxy: http.ProxyURL(proxy), DisableKeepAlives: true}}
+	defer c.CloseIdleConnections()
+	resp, err := c.Get("http://web.test/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestMixedAccounts(t *testing.T) {
+	addr := mixedProxy(t, map[string]string{"a": "1", "b": "2"})
+	for _, tc := range []struct {
+		user, pass string
+		ok         bool
+	}{{"a", "1", true}, {"b", "2", true}, {"a", "2", false}, {"c", "1", false}, {"", "", false}} {
+		if got := socks5Connect(t, addr, tc.user, tc.pass); got != tc.ok {
+			t.Errorf("socks5 %q: %v", tc.user, got)
+		}
+		if got := httpStatus(t, addr, tc.user, tc.pass) == http.StatusOK; got != tc.ok {
+			t.Errorf("http %q: %v", tc.user, got)
+		}
+	}
+	open := mixedProxy(t, nil)
+	if !socks5Connect(t, open, "", "") || httpStatus(t, open, "", "") != http.StatusOK {
+		t.Error("a listener without accounts refused a visitor")
+	}
+}

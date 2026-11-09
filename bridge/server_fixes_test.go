@@ -81,6 +81,18 @@ func accessOf(password string) coreapi.LinkResolve {
 		Verify: func(p []byte) bool { return string(p) == password }}
 }
 
+// The provider gets the default target and no limit without a list.
+func TestLinkPolicyDefaultOpen(t *testing.T) {
+	b, _ := secretFixture(t)
+	g, err := b.coreResolveLink(1, accessOf("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Policy.NameDest || g.Policy.Scope != "" || len(g.Policy.Targets) != 1 {
+		t.Fatalf("%+v", g.Policy)
+	}
+}
+
 func TestPipeAdmissionTakesConnectionSlots(t *testing.T) {
 	b, task := secretFixture(t)
 	task.Client.MaxConn = 1

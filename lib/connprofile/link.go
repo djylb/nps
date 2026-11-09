@@ -4,8 +4,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -21,21 +23,17 @@ func IsLink(s string) bool {
 }
 
 // Link is a launch link, npc://vkey@host:port[/path]?type=tls&...#label,
-// read as the settings of one connection profile. Its keys are those of
-// npc.conf, and the server is in the candidate form of Parse, so a link is
-// only another way to write what -server, -vkey and npc.conf say.
+// read as the settings of one connection profile. A link describes the
+// connection only; what is reached over it is written with -L. Its keys are
+// those of npc.conf, and the server is in the candidate form of Parse.
 type Link struct {
 	VKey   string
 	Server string // candidates joined by "|", for Parse
 	// Name is the #label, else the name parameter: the profile name.
 	Name string
 	// Common holds the other [common] keys of the link: pipes, proxy_url,
-	// local_ip, new_protocol_pin and the core settings.
+	// local_ip (written source=), new_protocol_pin and the core settings.
 	Common map[string]string
-	// Local holds the keys of one local server (point-to-point visitor):
-	// password, target_addr, local_type, local_port, conn_mode, local_proxy.
-	// It is empty for a link that connects only.
-	Local map[string]string
 }
 
 // Link types: those of a candidate that this version dials.
@@ -49,16 +47,12 @@ var candidateKeys = []string{"host", "sni", "alpn", "http", "subprotocol", "tier
 var commonKeys = map[string]string{
 	"pipes": "pipes", "scheduler_up": "scheduler_up", "session_max_lanes": "session_max_lanes",
 	"relay_idle": "relay_idle", "p2p_visitor_keep_server": "p2p_visitor_keep_server",
-	"session_resume_timeout": "session_resume_timeout", "proxy": "proxy_url", "proxy_url": "proxy_url",
-	"local_ip": "local_ip", "pin": "new_protocol_pin",
+	"session_resume_timeout": "session_resume_timeout", "proxy": "proxy_url",
+	"source": "local_ip", "pin": "new_protocol_pin",
 }
 
-// localKeys maps link parameters to local server keys; access is the
-// spelling of the key password.
-var localKeys = map[string]string{
-	"access": "password", "password": "password", "target": "target_addr", "target_addr": "target_addr",
-	"local_type": "local_type", "local_port": "local_port", "conn_mode": "conn_mode", "local_proxy": "local_proxy",
-}
+// accessKeys are settings of a local access, which a link does not describe.
+var accessKeys = []string{"access", "password", "target", "target_addr", "local_type", "local_port", "local_ip", "conn_mode", "local_proxy"}
 
 // ParseLink reads a launch link. Errors never contain the link: it holds
 // the vkey. A parameter this version does not know is ignored with a
@@ -78,7 +72,7 @@ func ParseLink(raw string) (Link, error) {
 	}
 	switch {
 	case u.User == nil || u.User.Username() == "":
-		return l, errors.New("after npc:// there is neither vkey@host nor valid base64: write npc://<vkey>@host:port")
+		return l, errors.New("launch link has no vkey: write npc://<vkey>@host:port")
 	case u.Hostname() == "":
 		return l, errors.New("launch link has no server address")
 	}
@@ -126,8 +120,7 @@ func ParseLink(raw string) (Link, error) {
 		return l, err
 	}
 
-	l.Common, l.Local = map[string]string{}, map[string]string{}
-	local := make(map[string]string) // link key that set each local key
+	l.Common = map[string]string{}
 	for _, key := range sortedKeys(q) {
 		v := strings.TrimSpace(q[key][0])
 		switch ck, isCommon := commonKeys[key]; {
@@ -141,22 +134,17 @@ func ParseLink(raw string) (Link, error) {
 				}
 			}
 			l.Common[ck] = v
-		case localKeys[key] != "":
-			lk := localKeys[key]
-			if prev, dup := local[lk]; dup {
-				return l, fmt.Errorf("launch link: %s and %s name the same setting", prev, key)
+		case slices.Contains(accessKeys, key):
+			if key == "local_ip" {
+				return l, errors.New("launch link: the outbound address is written source=, a listen address belongs in -L")
 			}
-			local[lk] = key
-			l.Local[lk] = v
+			return l, fmt.Errorf("launch link: %s is not part of a connection, write it in -L", key)
 		default:
 			log.Warn("launch link parameter ignored", "param", key)
 		}
 	}
 	if label := u.Fragment; label != "" {
 		l.Name = label
-	}
-	if len(l.Local) > 0 && l.Local["password"] == "" {
-		return l, errors.New("launch link: a local server needs access (the key of the tunnel)")
 	}
 	return l, nil
 }
@@ -229,22 +217,103 @@ func altCandidate(alt string) (string, error) {
 	return out, nil
 }
 
-// AppendQuery adds the parameters vals to the query of link, before its
-// fragment. A parameter the link already has makes ParseLink fail, so a
-// value on the command line never silently overrides the link or the other
-// way round.
-func AppendQuery(link string, vals url.Values) string {
-	if len(vals) == 0 {
-		return link
+// commonNames maps [common] keys to their link parameter.
+var commonNames = func() map[string]string {
+	out := make(map[string]string, len(commonKeys))
+	for link, common := range commonKeys {
+		out[common] = link
 	}
-	body, frag, hasFrag := strings.Cut(link, "#")
-	sep := "?"
-	if strings.Contains(body, "?") {
-		sep = "&"
+	return out
+}()
+
+// FormatLink writes the launch link of a connection: its server and carrier
+// as Parse takes them, common keys as in Link.Common. A vkey of "" is written
+// as the mask ***, for display. It is the inverse of ParseLink.
+func FormatLink(vkey, server, carrier, name string, common map[string]string) (string, error) {
+	cands, err := Parse(server, carrier)
+	if err != nil {
+		return "", err
 	}
-	body += sep + vals.Encode()
-	if hasFrag {
-		body += "#" + frag
+	user := "***"
+	if vkey != "" {
+		user = url.QueryEscape(vkey)
+		user = strings.ReplaceAll(user, "+", "%20")
 	}
-	return body
+	var b, alts strings.Builder
+	q := make(url.Values)
+	for i, c := range cands {
+		typ, addr, path, params := candidateParts(c)
+		if i == 0 {
+			b.WriteString(LinkScheme + user + "@" + addr + path)
+			q = params
+			q.Set("type", typ)
+			continue
+		}
+		alts.WriteString("&alt=" + typ + "://" + addr + path)
+		if len(params) > 0 {
+			alts.WriteString("?" + strings.ReplaceAll(params.Encode(), "&", ";"))
+		}
+	}
+	for key, v := range common {
+		if n := commonNames[key]; n != "" {
+			q.Set(n, v)
+		}
+	}
+	b.WriteString("?" + q.Encode() + alts.String())
+	if name != "" {
+		b.WriteString("#" + url.PathEscape(name))
+	}
+	return b.String(), nil
+}
+
+// candidateParts splits c into what a link writes: the type, the address,
+// the escaped path and the parameters different from the defaults.
+func candidateParts(c Candidate) (typ, addr, path string, q url.Values) {
+	typ, addr, q = c.Carrier, c.Addr, url.Values{}
+	if typ == "kcp" {
+		typ = "quic" // what UseCoreDefaults dials
+	}
+	if (typ == "ws" || typ == "wss") && c.Path != "/ws" {
+		path = c.Path
+	}
+	if !c.ALPNDefaulted && len(c.ALPN) > 0 {
+		q.Set("alpn", strings.Join(c.ALPN, ","))
+	}
+	if (typ == "ws" || typ == "wss") && !slices.Equal(c.HTTP, defaultHTTP(map[string]string{"ws": "http", "wss": "https"}[typ])) {
+		q.Set("http", strings.Join(c.HTTP, ","))
+	}
+	if c.Host != "" && c.Host != c.Addr {
+		q.Set("host", c.Host)
+	}
+	if h, _, err := net.SplitHostPort(c.Host); (err != nil || c.SNI != h) && c.SNI != "" {
+		q.Set("sni", c.SNI)
+	}
+	if c.Subprotocol != "" {
+		q.Set("subprotocol", c.Subprotocol)
+	}
+	if c.Tier != 0 {
+		q.Set("tier", strconv.Itoa(c.Tier))
+	}
+	if c.Weight != 0 {
+		q.Set("weight", strconv.Itoa(c.Weight))
+	}
+	if c.Standby {
+		q.Set("standby", "true")
+	}
+	if c.Count != 1 {
+		q.Set("count", strconv.Itoa(c.Count))
+	}
+	if c.Dirs != DirBidi {
+		var d []string
+		for _, x := range []struct {
+			bit Dirs
+			s   string
+		}{{DirBidi, "bidi"}, {DirUp, "up"}, {DirDown, "down"}} {
+			if c.Dirs&x.bit != 0 {
+				d = append(d, x.s)
+			}
+		}
+		q.Set("dirs", strings.Join(d, ","))
+	}
+	return typ, addr, path, q
 }

@@ -126,12 +126,8 @@ type FeatureConfig struct {
 	AllowLocalProxy         bool
 	AllowUserLocal          bool
 	AllowSecretLocal        bool
-	// LegacySecretLink is allow_secret_link of earlier versions, read in
-	// legacy.go: secret tunnels without a destination list let visitors
-	// name any destination. It goes with the next major version.
-	LegacySecretLink  bool
-	SystemInfoDisplay bool
-	AllowPorts        string
+	SystemInfoDisplay       bool
+	AllowPorts              string
 }
 
 type SecurityConfig struct {
@@ -481,7 +477,6 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		SystemInfoDisplay:       r.boolDefault(false, "system_info_display"),
 		AllowPorts:              r.stringValue("allow_ports"),
 	}
-	cfg.Feature.LegacySecretLink = legacySecretLink(r)
 	cfg.Feature.AllowUserLocal = r.boolDefault(cfg.Feature.AllowLocalProxy, "allow_user_local")
 	cfg.Feature.AllowUserVkeyLogin = r.boolDefault(cfg.Feature.AllowUserLogin, "allow_user_vkey_login")
 

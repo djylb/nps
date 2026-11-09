@@ -24,10 +24,8 @@ import (
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/install"
 	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/runenv"
-	"github.com/djylb/nps/lib/textutil"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/slogx"
 	"github.com/kardianos/service"
@@ -58,9 +56,8 @@ var (
 	localType      = flag.String("local_type", config.LocalTCPUDP, "Point-to-point access listener (tcp|udp|tcp_udp|mixed|transparent)")
 	connMode       = flag.String("conn_mode", config.ConnAuto, "Point-to-point access connection (auto|relay|direct)")
 	localPort      = flag.Int("local_port", 2000, "Point-to-point access local port")
-	access         = flag.String("access", "", "Point-to-point access key of the tunnel (with -launch or -server and -vkey)")
-	password       = flag.String("password", "", "Point-to-point access key, the old name of -access")
-	target         = flag.String("target", "", "Point-to-point access target, when the server allows it")
+	password       = flag.String("password", "", "Earlier form of one point-to-point access: its key (write -L instead)")
+	target         = flag.String("target", "", "Earlier form of one point-to-point access: its destination (write -L instead)")
 	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
@@ -96,7 +93,9 @@ var (
 	p2pVisitorKeepServer = flag.Bool("p2p_visitor_keep_server", false, "Keep the server connection of a point-to-point visitor while it is idle (new protocol)")
 	relayIdle            = flag.Int("relay_idle", 0, "Seconds a relay stands by once the direct path is up, then it closes (new protocol; 0: 60)")
 	newProtocolPin       = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
-	launchInputs         = flag.StringArray("launch", nil, "Quick start, repeatable: npc:// launch link, http(s) URL, @file, base64, JSON, YAML or INI; also NPC_LAUNCH, one per line")
+	launchInputs         = flag.StringArray("launch", nil, "A connection, repeatable: npc:// launch link, @file, http(s) URL of a configuration, or base64 (npc launch pack); also NPC_LAUNCH, one per line")
+	localInputs          = flag.StringArrayP("local", "L", nil, "A local point-to-point access, repeatable: \"tcp://:2000?access=KEY&target=10.0.0.5:53&conn_mode=auto&via=NAME\" (tcp, udp, tcp_udp, mixed, transparent; mixed takes auth=user:pass), or @file with one per line")
+	reveal               = flag.Bool("reveal", false, "npc launch show: print vkeys, access keys and proxy passwords")
 )
 
 func main() {
@@ -109,7 +108,7 @@ func main() {
 	flag.CommandLine.SetInterspersed(true)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	localArgs, warnings := cliargs.NPCLocal(os.Args[1:])
-	prepared, prepWarnings := cliargs.Prepare(flag.CommandLine, localArgs, cliargs.NPC, "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version")
+	prepared, prepWarnings := cliargs.Prepare(flag.CommandLine, localArgs, cliargs.NPC, "install", "start", "stop", "uninstall", "restart", "status", "register", "update", "update-force", "version", "launch")
 	os.Args = append(os.Args[:1], prepared...)
 	argWarnings = append(warnings, prepWarnings...)
 	flag.Parse()
@@ -133,6 +132,10 @@ func main() {
 	if *ver || cmd == "version" {
 		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
+	}
+	if cmd == "launch" {
+		setCoreDefaults()
+		os.Exit(launchCommand(flag.CommandLine, args[1:]))
 	}
 	install.RecoverUpdate()
 	client.AutoReconnect = *autoReconnect
@@ -387,133 +390,12 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
 	}
-	if inputs := launchPayloads(); len(inputs) > 0 {
-		startLaunch(ctx, cancel, inputs)
-		return
-	}
-	accessKey, err := accessValue(flag.CommandLine)
+	sources, locals, err := launchSpec(flag.CommandLine, launchPayloads())
 	if err != nil {
 		cfgLog.Error("invalid command line", "err", err)
 		os.Exit(1)
 	}
-	// point-to-point access command
-	if accessKey != "" {
-		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
-		clock.Sync()
-		commonConfig := config.NewCommonConfig()
-		commonConfig.Server = *serverAddr
-		commonConfig.VKey = *verifyKey
-		commonConfig.Tp = strings.ToLower(*connType)
-		if _, err := connprofile.Parse(commonConfig.Server, commonConfig.Tp); err != nil {
-			cfgLog.Error("invalid command line", "err", err)
-			os.Exit(1)
-		}
-		commonConfig.LocalIP = strings.TrimSpace(*localIP)
-		localServer := new(config.LocalServer)
-		localServer.Type = strings.ToLower(strings.TrimSpace(*localType))
-		localServer.ConnMode = strings.ToLower(strings.TrimSpace(*connMode))
-		localServer.Password = accessKey
-		localServer.Target = *target
-		localServer.Port = *localPort
-		localServer.LocalProxy = *localProxy
-		commonConfig.Client = new(model.Client)
-		commonConfig.Client.Cnf = new(model.Config)
-		commonConfig.DisconnectTime = *p2pTime
-		// The manager cancels p2pCtx when it gives up, which only happens
-		// with auto reconnection off.
-		p2pCtx, p2pCancel := context.WithCancel(ctx)
-		p2pm := client.NewSecretManager(p2pCtx, p2pCancel, commonConfig)
-		commonConfig.ProxyUrl = *proxyUrl
-		if err := p2pm.UseCore(); err != nil {
-			cfgLog.Error("invalid command line", "err", err)
-			os.Exit(1)
-		}
-		go func() { _ = p2pm.StartLocalServer(localServer) }()
-		go func() {
-			<-p2pCtx.Done()
-			if ctx.Err() == nil {
-				fail(cancel, errors.New("the connection to the server ended and auto reconnection is off"))
-			}
-		}()
-		return
-	}
-	env := runenv.GetEnvMap()
-	if *serverAddr == "" {
-		*serverAddr = env["NPC_SERVER_ADDR"]
-	}
-	if *verifyKey == "" {
-		*verifyKey = env["NPC_SERVER_VKEY"]
-	}
-	if *configPath == "" {
-		*configPath = env["NPC_CONFIG_PATH"]
-	}
-	if *localIP == "" {
-		*localIP = env["NPC_LOCAL_IP"]
-	}
-	hasCommand, err := commandLineMode(*serverAddr, *verifyKey)
-	if err != nil {
-		cfgLog.Error("invalid command line", "err", err)
-		os.Exit(1)
-	}
-	if hasCommand {
-		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
-		clock.Sync()
-		*serverAddr = strings.ReplaceAll(*serverAddr, "：", ":")
-		// connections are separated by "," in the old syntax and by ";"
-		// once a URL candidate is used (connprofile.ListSep)
-		sep := connprofile.ListSep(*serverAddr)
-		serverAddrs := connprofile.SplitList(*serverAddr, sep)
-		verifyKeys := connprofile.SplitList(*verifyKey, sep)
-		connTypes := connprofile.SplitList(*connType, sep)
-		localIPs := connprofile.SplitList(*localIP, sep)
-
-		if len(connTypes) == 0 {
-			connTypes = append(connTypes, "tcp")
-		}
-
-		if len(serverAddrs) == 0 || len(verifyKeys) == 0 {
-			cfgLog.Error("server and vkey must not be empty")
-			os.Exit(1)
-		}
-
-		maxLength := textutil.ExtendArrs(&serverAddrs, &verifyKeys, &connTypes, &localIPs)
-		if err := connprofile.CheckList(*serverAddr, connTypes); err != nil {
-			cfgLog.Error("invalid command line", "err", err)
-			os.Exit(1)
-		}
-		if flag.CommandLine.Changed("type") && !connprofile.UsesType(*serverAddr) {
-			cfgLog.Warn("-type has no effect", "detail", "every server candidate is a URL, whose scheme names the carrier")
-		}
-		for i := range maxLength {
-			serverAddr := serverAddrs[i]
-			verifyKey := verifyKeys[i]
-			connType := connTypes[i]
-			localIP := localIPs[i]
-			connType = strings.ToLower(connType)
-
-			go func(serverAddr, verifyKey, connType, localIP string) {
-				runCoreProfile(ctx, cancel, serverAddr, verifyKey, connType, localIP)
-			}(serverAddr, verifyKey, connType, localIP)
-		}
-	}
-	if *configPath != "" || !hasCommand {
-		if *configPath == "" {
-			*configPath = runenv.GetConfigPath()
-		}
-
-		configPaths := strings.Split(*configPath, ",")
-		for i := range configPaths {
-			configPaths[i] = strings.TrimSpace(configPaths[i])
-		}
-
-		for _, path := range configPaths {
-			go func() {
-				if err := client.StartFromFile(ctx, path); err != nil {
-					fail(cancel, err)
-				}
-			}()
-		}
-	}
+	startLaunch(ctx, cancel, sources, locals)
 }
 
 // fail stops every client of this process and exits with a non-zero code.

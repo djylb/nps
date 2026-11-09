@@ -11,6 +11,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/model"
 )
 
 // spyExit records what it was asked to dial or relay.
@@ -239,5 +240,36 @@ func TestSectionsDifferByConnMode(t *testing.T) {
 	}
 	if mgr.visitor(l, "relay"); n != 2 {
 		t.Fatal("same mode not shared")
+	}
+}
+
+// The targets are only the default; the limit is the scope.
+func TestPeerTargetRules(t *testing.T) {
+	ctx := context.Background()
+	spy := &spyExit{}
+	e := peerExitOf(t, spy, coreapi.LinkPolicy{NameDest: true, Targets: []string{"10.0.0.1:1"}}, nil)
+	if _, err := e.Dial(ctx, "tcp", "9.9.9.9:80"); err != nil {
+		t.Fatalf("no scope, named: %v", err)
+	}
+	if _, err := e.Dial(ctx, "tcp", ""); err != nil {
+		t.Fatalf("default: %v", err)
+	}
+	if len(spy.dialed) != 2 || spy.dialed[0] != "9.9.9.9:80" || spy.dialed[1] != "10.0.0.1:1" {
+		t.Fatalf("%v", spy.dialed)
+	}
+	e = peerExitOf(t, &spyExit{}, coreapi.LinkPolicy{NameDest: true}, nil)
+	if _, err := e.Dial(ctx, "tcp", ""); !errors.Is(err, model.ErrNoTarget) {
+		t.Fatalf("no default: %v", err)
+	}
+	e = peerExitOf(t, &spyExit{}, coreapi.LinkPolicy{NameDest: true, Scope: "allow 10.0.0.0/8"}, nil)
+	if _, err := e.Dial(ctx, "tcp", "9.9.9.9:80"); !errors.Is(err, acl.ErrScopeDenied) {
+		t.Fatalf("whitelist: %v", err)
+	}
+	if _, err := e.Dial(ctx, "tcp", "10.1.1.1:80"); err != nil {
+		t.Fatalf("whitelist inside: %v", err)
+	}
+	e = peerExitOf(t, &spyExit{}, coreapi.LinkPolicy{NameDest: true, Scope: "deny 9.9.9.9"}, nil)
+	if _, err := e.Dial(ctx, "tcp", "9.9.9.9:80"); !errors.Is(err, acl.ErrScopeDenied) {
+		t.Fatalf("blacklist: %v", err)
 	}
 }

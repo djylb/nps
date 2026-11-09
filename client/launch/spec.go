@@ -1,28 +1,30 @@
-// Package launch resolves npc quick start payloads into runnable profiles.
+// Package launch resolves what npc is told to start into one model, a list
+// of Profile: launch links, configuration files, -L accesses and the flags
+// and file forms of earlier versions (compat.go) all end there and run the
+// same way.
 //
-// Every form ends as npc configuration text parsed by lib/config, so that
-// package stays the only definition of the configuration keys.
+// A connection is configuration text parsed by lib/config, so that package
+// stays the only definition of the configuration keys.
 package launch
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/connprofile"
-	"github.com/djylb/nps/lib/textutil"
-	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -36,33 +38,74 @@ type Profile struct {
 	Name   string
 	Direct bool
 	Config *config.Config
+	// Source says where the profile was written, for messages; it holds no secret.
+	Source string
+	// written names the session keys the source set itself. nil means the
+	// form cannot tell: those different from the defaults count.
+	written map[string]bool
+	// aliases are further names of a connection written several times.
+	aliases []string
+	// auto: Name was assigned, the source wrote none.
+	auto bool
+	// by records which source wrote each session key, for messages.
+	by map[string]string
+	// combined: more than one writing or a -L went into this connection.
+	combined bool
 }
 
-// Resolve turns a payload given by the local user into profiles. Payloads
-// fetched from a URL are untrusted and may not refer to anything local.
+var errNotLaunch = errors.New("不是启动链接、@文件或 base64，文件请写 @路径 (not a launch link, @file or base64; write a file as @path)")
+
+// Resolve turns one -launch value into profiles.
 func Resolve(ctx context.Context, input string) ([]Profile, error) {
 	return resolve(ctx, input, true, 0)
 }
 
+// CheckValue checks the form of a -launch value without reading or fetching
+// what it refers to.
+func CheckValue(input string) error {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return errors.New("launch payload is empty")
+	}
+	if connprofile.IsLink(input) {
+		_, err := connprofile.ParseLink(input)
+		return err
+	}
+	if input[0] == '@' || isURL(input) {
+		return nil
+	}
+	if _, ok := decodeBase64(input); !ok {
+		return errNotLaunch
+	}
+	return nil
+}
+
+func isURL(s string) bool {
+	if len(s) < 8 {
+		return false
+	}
+	lower := strings.ToLower(s[:8])
+	return strings.HasPrefix(lower, "http://") || lower == "https://"
+}
+
 func resolve(ctx context.Context, raw string, trusted bool, depth int) ([]Profile, error) {
 	raw = strings.TrimSpace(strings.TrimPrefix(raw, "\xef\xbb\xbf"))
-	if raw == "" {
-		return nil, errors.New("launch payload is empty")
-	}
-	if depth > maxDepth {
-		return nil, errors.New("launch payload is nested too deeply")
-	}
-	lower := strings.ToLower(raw)
-	isURL := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
 	switch {
-	case (isURL || raw[0] == '@') && !trusted:
-		return nil, errors.New("a fetched payload may not refer to a URL or file")
-	case isURL:
+	case raw == "":
+		return nil, errors.New("launch payload is empty")
+	case depth > maxDepth:
+		return nil, errors.New("launch payload is nested too deeply")
+	case (isURL(raw) || raw[0] == '@') && !trusted:
+		return nil, errors.New("fetched content may not refer to a URL or file")
+	case isURL(raw):
 		body, err := fetch(ctx, raw)
 		if err != nil {
 			return nil, err
 		}
-		profiles, err := resolve(ctx, body, false, depth+1)
+		profiles, err := parseContent(ctx, body, false, depth+1)
+		if err == nil {
+			err = connectionsOnly(profiles)
+		}
 		if err != nil {
 			return nil, &RemoteError{Err: err}
 		}
@@ -72,54 +115,74 @@ func resolve(ctx context.Context, raw string, trusted bool, depth int) ([]Profil
 		if err != nil {
 			return nil, err
 		}
-		return resolve(ctx, body, true, depth+1)
-	case strings.HasPrefix(lower, "npc://"):
-		if rest := raw[len("npc://"):]; rest != "" && !strings.ContainsAny(rest, "@?#/:") {
-			return resolveBase64Link(ctx, rest, trusted, depth)
-		}
+		return parseContent(ctx, body, true, depth+1)
+	case connprofile.IsLink(raw):
 		return parseNPC(raw, trusted)
-	case looksLikeINI(raw):
-		return parseText("", raw, trusted, false, nil)
-	case raw[0] == '{' || raw[0] == '[':
-		dec := json.NewDecoder(strings.NewReader(raw))
-		dec.UseNumber() // keeps large integers out of exponent form
-		var root any
-		if err := dec.Decode(&root); err != nil {
-			return nil, fmt.Errorf("invalid launch JSON: %w", err)
-		}
-		return parseStructured(root, trusted)
 	}
-	if decoded, ok := decodeBase64(raw); ok {
-		return resolve(ctx, decoded, trusted, depth+1)
+	text, ok := decodeBase64(raw)
+	if !ok {
+		return nil, errNotLaunch
 	}
-	var root any
-	if err := yaml.Unmarshal([]byte(raw), &root); err != nil {
-		return nil, fmt.Errorf("invalid launch YAML: %w", err)
+	profiles, err := parseContent(ctx, text, trusted, depth+1)
+	if err != nil && !structured(strings.TrimSpace(text)) {
+		return nil, errNotLaunch
 	}
-	return parseStructured(root, trusted)
+	return profiles, err
 }
 
-// resolveBase64Link reads npc://<base64>: one server instance, written in
-// any form a payload takes (a launch link, JSON, YAML, INI). Unlike plain
-// base64 it may not hold line breaks, and it may not decode to several
-// connections: those take several -launch, plain base64 or a file.
-func resolveBase64Link(ctx context.Context, rest string, trusted bool, depth int) ([]Profile, error) {
-	invalid := errors.New("after npc:// there is neither vkey@host nor valid base64")
-	if strings.IndexFunc(rest, unicode.IsSpace) >= 0 {
-		return nil, fmt.Errorf("%w (base64 after npc:// may not contain white space)", invalid)
+// structured reports whether text is plainly meant as launch content, so
+// that an error in it says more than "not base64".
+func structured(text string) bool {
+	return text != "" && (strings.ContainsRune("{[@/", rune(text[0])) || connprofile.IsLink(text) || isURL(text))
+}
+
+// parseContent reads the text of a file, a URL body or decoded base64:
+// the configuration schema in JSON or JSONC, a single -launch value (an
+// install keeps those in a file), or a form of earlier versions.
+func parseContent(ctx context.Context, text string, trusted bool, depth int) ([]Profile, error) {
+	text = strings.TrimSpace(strings.TrimPrefix(text, "\xef\xbb\xbf"))
+	if text == "" {
+		return nil, errors.New("launch content is empty")
 	}
-	decoded, ok := decodeBase64(rest)
-	if !ok {
-		return nil, invalid
+	if looksLikeINI(text) {
+		return parseLegacyINI(text, trusted)
 	}
-	profiles, err := resolve(ctx, decoded, trusted, depth+1)
-	if err != nil {
-		return nil, err
+	if text[0] == '{' || text[0] == '[' || strings.HasPrefix(text, "//") || strings.HasPrefix(text, "/*") {
+		return parseJSON(text, trusted)
 	}
-	if len(profiles) != 1 {
-		return nil, fmt.Errorf("npc://<base64> stands for one connection, it holds %d: give several -launch, or use plain base64 or an @file", len(profiles))
+	if connprofile.IsLink(text) || isURL(text) || text[0] == '@' {
+		return resolve(ctx, text, trusted, depth)
 	}
-	return profiles, nil
+	if decoded, ok := decodeBase64(text); ok {
+		return parseContent(ctx, decoded, trusted, depth+1)
+	}
+	return parseLegacyYAML(text, trusted)
+}
+
+// parseJSON reads JSON or JSONC: the schema of a configuration file, or
+// the one of earlier versions.
+func parseJSON(text string, trusted bool) ([]Profile, error) {
+	plain := stripJSONC([]byte(text))
+	if trimmed := bytes.TrimSpace(plain); len(trimmed) > 0 && trimmed[0] == '{' {
+		var keys map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &keys); err != nil {
+			return nil, fmt.Errorf("invalid launch JSON: %w", err)
+		}
+		if isDocument(keys) {
+			return parseDocument(trimmed, trusted)
+		}
+	}
+	return parseLegacyJSON(plain, trusted)
+}
+
+// connectionsOnly refuses fetched content defining anything but connections.
+func connectionsOnly(profiles []Profile) error {
+	for _, p := range profiles {
+		if c := p.Config; len(c.LocalServer)+len(c.Hosts)+len(c.Tasks) > 0 {
+			return errors.New("fetched content may only define connections, not access, hosts or tasks")
+		}
+	}
+	return nil
 }
 
 func readFile(path string) (string, error) {
@@ -143,209 +206,28 @@ func looksLikeINI(raw string) bool {
 	return false
 }
 
+// decodeBase64 reads standard or URL-safe base64, padded or not, ignoring
+// white space; decoded gzip is decompressed, up to maxPayloadSize.
 func decodeBase64(raw string) (string, bool) {
 	s := strings.Join(strings.Fields(raw), "")
 	s = strings.NewReplacer("-", "+", "_", "/").Replace(strings.TrimRight(s, "="))
 	b, err := base64.RawStdEncoding.DecodeString(s)
-	if err != nil || len(b) == 0 || !utf8.Valid(b) {
+	if err != nil || len(b) == 0 {
+		return "", false
+	}
+	if len(b) >= 2 && b[0] == 0x1f && b[1] == 0x8b {
+		z, err := gzip.NewReader(bytes.NewReader(b))
+		if err != nil {
+			return "", false
+		}
+		if b, err = io.ReadAll(io.LimitReader(z, maxPayloadSize+1)); err != nil || len(b) > maxPayloadSize {
+			return "", false
+		}
+	}
+	if !utf8.Valid(b) {
 		return "", false
 	}
 	return string(b), true
-}
-
-func parseStructured(root any, trusted bool) ([]Profile, error) {
-	items, isList := root.([]any)
-	if !isList {
-		m, ok := root.(map[string]any)
-		if !ok {
-			return nil, errors.New("unsupported launch payload")
-		}
-		items = []any{m}
-		if list, ok := m["profiles"]; ok {
-			if len(m) != 1 {
-				return nil, errors.New(`"profiles" cannot be combined with other keys`)
-			}
-			if items, ok = list.([]any); !ok {
-				return nil, errors.New(`"profiles" must be a list`)
-			}
-		}
-	}
-	if len(items) == 0 {
-		return nil, errors.New("launch payload has no profiles")
-	}
-	var out []Profile
-	seen := make(map[string]bool)
-	for i, item := range items {
-		m, ok := item.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("profile %d is not a mapping", i+1)
-		}
-		profiles, err := parseProfile(m, fmt.Sprintf("profile-%d", i+1), trusted)
-		if err != nil {
-			return nil, fmt.Errorf("profile %d: %w", i+1, err)
-		}
-		for _, p := range profiles {
-			if seen[p.Name] {
-				return nil, fmt.Errorf("duplicate profile name %q", p.Name)
-			}
-			seen[p.Name] = true
-		}
-		out = append(out, profiles...)
-	}
-	return out, nil
-}
-
-var shorthand = map[string]string{
-	"server": "server_addr", "vkey": "vkey", "type": "conn_type",
-	"proxy": "proxy_url", "local_ip": "local_ip", "pipes": "pipes",
-}
-
-type sectionKind struct {
-	key  string
-	name func(m map[string]any, i int) string
-}
-
-// sections are rendered in this order, each with its section name rule.
-var sectionKinds = []sectionKind{
-	{"hosts", namedOr("host")},
-	{"tasks", namedOr("task")},
-	{"locals", func(m map[string]any, i int) string {
-		// a payload spells local servers the current way: give the defaults
-		// of the current spelling, so the section is not read as an old one
-		for key, def := range map[string]string{"local_type": config.LocalTCPUDP, "conn_mode": config.ConnAuto} {
-			if _, ok := m[key]; !ok {
-				m[key] = def
-			}
-		}
-		return fmt.Sprintf("secret_%d", i)
-	}},
-}
-
-func namedOr(prefix string) func(map[string]any, int) string {
-	return func(m map[string]any, i int) string {
-		if name, ok := m["remark"].(string); ok && name != "" {
-			delete(m, "remark")
-			return name
-		}
-		return fmt.Sprintf("%s_%d", prefix, i)
-	}
-}
-
-func parseProfile(m map[string]any, fallback string, trusted bool) ([]Profile, error) {
-	name := fallback
-	if v, ok := m["name"]; ok {
-		if name, ok = v.(string); !ok || name == "" {
-			return nil, errors.New(`"name" must be a non-empty string`)
-		}
-	}
-	base := make(map[string]any)
-	direct := true
-	for key, value := range m {
-		if iniKey, ok := shorthand[key]; ok {
-			base[iniKey] = value
-			continue
-		}
-		if key == "common" {
-			direct = false
-			continue
-		}
-		if key == "name" {
-			continue
-		}
-		if !slices.ContainsFunc(sectionKinds, func(k sectionKind) bool { return k.key == key }) {
-			return nil, fmt.Errorf("unknown key %q", key)
-		}
-		direct = false
-	}
-	if v, ok := m["common"]; ok {
-		cm, ok := v.(map[string]any)
-		if !ok {
-			return nil, errors.New(`"common" must be a mapping`)
-		}
-		maps.Copy(base, cm)
-	}
-	if direct {
-		return expandDirect(name, base, trusted)
-	}
-
-	var b strings.Builder
-	if err := writeSection(&b, "common", base); err != nil {
-		return nil, err
-	}
-	want := make(map[string]int)
-	for _, kind := range sectionKinds {
-		v, ok := m[kind.key]
-		if !ok {
-			continue
-		}
-		list, ok := v.([]any)
-		if !ok {
-			return nil, fmt.Errorf("%q must be a list", kind.key)
-		}
-		for i, item := range list {
-			section, ok := item.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("%s[%d] is not a mapping", kind.key, i)
-			}
-			section = maps.Clone(section)
-			if kind.key == "locals" {
-				if err := checkLocal(section); err != nil {
-					return nil, fmt.Errorf("locals[%d]: %w", i, err)
-				}
-			}
-			if err := writeSection(&b, kind.name(section, i+1), section); err != nil {
-				return nil, err
-			}
-		}
-		want[kind.key] = len(list)
-	}
-	return parseText(name, b.String(), trusted, false, want)
-}
-
-// expandDirect runs one profile per server, with the list rules of the
-// command line flags: shorter lists repeat their last value.
-func expandDirect(name string, values map[string]any, trusted bool) ([]Profile, error) {
-	lists := make(map[string]*[]string)
-	var ptrs []*[]string
-	server, err := scalar(values["server_addr"])
-	if err != nil {
-		return nil, fmt.Errorf("server_addr: %w", err)
-	}
-	sep := connprofile.ListSep(server)
-	for _, key := range []string{"server_addr", "vkey", "conn_type", "local_ip"} {
-		text, err := scalar(values[key])
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", key, err)
-		}
-		list := connprofile.SplitList(text, sep)
-		lists[key] = &list
-		ptrs = append(ptrs, &list)
-	}
-	count := textutil.ExtendArrs(ptrs...)
-	var out []Profile
-	for i := range count {
-		node := maps.Clone(values)
-		for key, list := range lists {
-			node[key] = (*list)[i]
-		}
-		if node["conn_type"] == "" {
-			delete(node, "conn_type")
-		}
-		var b strings.Builder
-		if err := writeSection(&b, "common", node); err != nil {
-			return nil, err
-		}
-		nodeName := name
-		if count > 1 {
-			nodeName = name + "#" + strconv.Itoa(i+1)
-		}
-		profiles, err := parseText(nodeName, b.String(), trusted, true, nil)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, profiles...)
-	}
-	return out, nil
 }
 
 var (
@@ -448,63 +330,30 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 			return nil, errors.New("a local server requires a password")
 		}
 	}
-	if name == "" {
-		name = "profile-1"
-	}
 	return []Profile{{Name: name, Direct: direct, Config: cfg}}, nil
 }
 
-// parseNPC reads a launch link (connprofile.ParseLink) as one profile: a
-// connection alone runs as a direct profile, one with local server keys
-// is a point-to-point visitor.
+// parseNPC reads a launch link (connprofile.ParseLink) as one direct profile.
 func parseNPC(raw string, trusted bool) ([]Profile, error) {
 	l, err := connprofile.ParseLink(raw)
 	if err != nil {
 		return nil, err
 	}
-	name := l.Name
-	if name == "" {
-		name = "profile-1"
-	}
 	base := map[string]any{"server_addr": l.Server, "vkey": l.VKey}
+	written := make(map[string]bool, len(l.Common))
 	for k, v := range l.Common {
 		base[k] = v
+		written[k] = true
 	}
-	if len(l.Local) == 0 {
-		// the vkey and the server are written as they are: they are not
-		// lists, so expandDirect's separators do not apply
-		var b strings.Builder
-		if err := writeSection(&b, "common", base); err != nil {
-			return nil, err
-		}
-		return parseText(name, b.String(), trusted, true, nil)
+	// the vkey and the server are written as they are: they are not lists
+	var b strings.Builder
+	if err := writeSection(&b, "common", base); err != nil {
+		return nil, err
 	}
-	local := make(map[string]any, len(l.Local))
-	for k, v := range l.Local {
-		local[k] = v
+	out, err := parseText(l.Name, b.String(), trusted, true, nil)
+	if err != nil {
+		return nil, err
 	}
-	return parseProfile(map[string]any{"name": name, "common": base, "locals": []any{local}}, name, trusted)
-}
-
-// checkLocal refuses a local server with keys or values npc.conf accepts only
-// from earlier versions: launch payloads take the current ones alone.
-func checkLocal(m map[string]any) error {
-	for key, value := range m {
-		var allowed []string
-		switch key {
-		case "local_type":
-			allowed = config.LocalTypes
-		case "conn_mode":
-			allowed = config.ConnModes
-		case "local_port", "local_ip", "password", "target_addr", "local_proxy":
-			continue
-		default:
-			return fmt.Errorf("unknown key %q", key)
-		}
-		v, _ := value.(string)
-		if !slices.Contains(allowed, strings.ToLower(strings.TrimSpace(v))) {
-			return fmt.Errorf("%s must be one of %s", key, strings.Join(allowed, ", "))
-		}
-	}
-	return nil
+	out[0].written = written
+	return out, nil
 }

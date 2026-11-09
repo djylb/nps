@@ -5,133 +5,131 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
-	"github.com/djylb/nps/lib/connprofile"
 )
 
-func goodProfiles(t *testing.T, name string) []launch.Profile {
+func goodProfiles(t *testing.T, links ...string) []launch.Profile {
 	t.Helper()
-	p, err := launch.Resolve(context.Background(), `{"name":"`+name+`","server":"a:1","vkey":"k"}`)
-	if err != nil {
-		t.Fatal(err)
+	var out []launch.Profile
+	for _, l := range links {
+		p, err := launch.Resolve(context.Background(), l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, p...)
 	}
-	return p
+	return out
 }
 
 func fastLaunchDelays(t *testing.T) {
 	t.Helper()
-	r, p, w, a := launchSourceRetry, launchSourcePause, launchRelaunchWait, client.AutoReconnect
-	launchSourceRetry, launchSourcePause, launchRelaunchWait, client.AutoReconnect = time.Millisecond, time.Millisecond, time.Millisecond, true
-	t.Cleanup(func() {
-		launchSourceRetry, launchSourcePause, launchRelaunchWait, client.AutoReconnect = r, p, w, a
-	})
+	w, a := launchRelaunchWait, client.AutoReconnect
+	launchRelaunchWait, client.AutoReconnect = time.Millisecond, true
+	t.Cleanup(func() { launchRelaunchWait, client.AutoReconnect = w, a })
 }
 
-// script runs each step of a source's answers, repeating the last one.
-func script(steps ...func() ([]launch.Profile, error)) func(context.Context, string) ([]launch.Profile, error) {
-	i := 0
-	return func(context.Context, string) ([]launch.Profile, error) {
-		s := steps[min(i, len(steps)-1)]
-		i++
-		return s()
-	}
-}
-
-func TestSuperviseFallsBackToLastGood(t *testing.T) {
+func TestSuperviseRestartsOnlyTheConnectionThatStopped(t *testing.T) {
 	fastLaunchDelays(t)
-	launchSourceRetry = time.Hour // the second run must not ask the source again
-	good := goodProfiles(t, "good")
-	resolves := 0
-	resolve := script(
-		func() ([]launch.Profile, error) { resolves++; return good, nil },
-		func() ([]launch.Profile, error) {
-			resolves++
-			return nil, &launch.RemoteError{Err: errors.New("down")}
-		},
-	)
+	profiles := goodProfiles(t, "npc://k@a:1#stay", "npc://k@b:1#flap")
+	load := func(context.Context) (launch.Plan, error) { return launch.Plan{Profiles: profiles}, nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	runs := 0
-	run := func(_ context.Context, p []launch.Profile) error {
-		if p[0].Name != "good" {
-			t.Errorf("ran %q", p[0].Name)
+	var mu sync.Mutex
+	runs := map[string]int{}
+	run := func(ctx context.Context, p launch.Profile) error {
+		mu.Lock()
+		runs[p.Name]++
+		n := runs[p.Name]
+		mu.Unlock()
+		if p.Name == "flap" && n < 3 {
+			return errors.New("lost")
 		}
-		if runs++; runs == 3 {
+		if p.Name == "flap" {
 			cancel()
 		}
+		<-ctx.Done()
 		return nil
 	}
-	if err := superviseLaunch(ctx, 1, "x", resolve, run); err != nil {
+	if err := superviseLaunch(ctx, load, run); err != nil {
 		t.Fatal(err)
 	}
-	if runs != 3 || resolves != 2 {
-		t.Fatalf("runs=%d resolves=%d", runs, resolves)
+	if runs["stay"] != 1 || runs["flap"] != 3 {
+		t.Fatalf("%v", runs)
 	}
 }
 
-func TestSuperviseRevokedDropsLastGood(t *testing.T) {
-	fastLaunchDelays(t)
-	good, next := goodProfiles(t, "good"), goodProfiles(t, "next")
-	resolve := script(
-		func() ([]launch.Profile, error) { return good, nil },
-		func() ([]launch.Profile, error) {
-			return nil, &launch.RemoteError{Revoked: true, Err: errors.New("gone")}
-		},
-		func() ([]launch.Profile, error) { return next, nil },
-	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var ran []string
-	run := func(_ context.Context, p []launch.Profile) error {
-		ran = append(ran, p[0].Name)
-		if len(ran) == 2 {
-			cancel()
-		}
-		return nil
-	}
-	if err := superviseLaunch(ctx, 1, "x", resolve, run); err != nil {
-		t.Fatal(err)
-	}
-	if ran[0] != "good" || ran[1] != "next" {
-		t.Fatalf("%v", ran)
-	}
-}
-
-func TestSuperviseStopsOnInvalidLocalInput(t *testing.T) {
-	fastLaunchDelays(t)
+func TestSuperviseFirstLoadInvalid(t *testing.T) {
 	want := errors.New("bad")
-	resolve := script(func() ([]launch.Profile, error) { return nil, want })
-	err := superviseLaunch(context.Background(), 1, "x", resolve, func(context.Context, []launch.Profile) error { return nil })
+	err := superviseLaunch(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{}, want },
+		func(context.Context, launch.Profile) error { return nil })
 	if !errors.Is(err, want) {
 		t.Fatal(err)
+	}
+}
+
+func TestSuperviseLaterInvalidLoadKeepsGoing(t *testing.T) {
+	fastLaunchDelays(t)
+	r := launch.SourceRetry
+	launch.SourceRetry = time.Millisecond
+	t.Cleanup(func() { launch.SourceRetry = r })
+	profiles := goodProfiles(t, "npc://k@a:1")
+	var loads atomic.Int32
+	load := func(context.Context) (launch.Plan, error) {
+		if loads.Add(1) == 2 {
+			return launch.Plan{}, errors.New("bad now")
+		}
+		return launch.Plan{Profiles: profiles}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var runs atomic.Int32
+	run := func(ctx context.Context, _ launch.Profile) error {
+		if runs.Add(1) == 2 {
+			cancel()
+			<-ctx.Done()
+		}
+		return nil
+	}
+	if err := superviseLaunch(ctx, load, run); err != nil {
+		t.Fatal(err)
+	}
+	if loads.Load() < 3 {
+		t.Fatal(loads.Load())
 	}
 }
 
 func TestSuperviseStopsWithoutReconnect(t *testing.T) {
 	fastLaunchDelays(t)
 	client.AutoReconnect = false
-	good := goodProfiles(t, "good")
-	resolve := script(func() ([]launch.Profile, error) { return good, nil })
-	if err := superviseLaunch(context.Background(), 1, "x", resolve, func(context.Context, []launch.Profile) error { return nil }); err == nil {
+	profiles := goodProfiles(t, "npc://k@a:1")
+	err := superviseLaunch(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{Profiles: profiles}, nil },
+		func(context.Context, launch.Profile) error { return nil })
+	if err == nil {
 		t.Fatal("expected an error")
 	}
 }
 
-func TestSuperviseCancelDuringWait(t *testing.T) {
+func TestSupervisePendingRetries(t *testing.T) {
 	fastLaunchDelays(t)
-	launchSourceRetry = time.Hour
+	profiles := goodProfiles(t, "npc://k@a:1")
+	var loads atomic.Int32
+	load := func(context.Context) (launch.Plan, error) {
+		if loads.Add(1) == 1 {
+			return launch.Plan{Retry: time.Millisecond}, nil
+		}
+		return launch.Plan{Profiles: profiles}, nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	resolve := script(func() ([]launch.Profile, error) {
-		time.AfterFunc(10*time.Millisecond, cancel)
-		return nil, &launch.RemoteError{Err: errors.New("down")}
-	})
+	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- superviseLaunch(ctx, 1, "x", resolve, func(context.Context, []launch.Profile) error { return nil })
+		done <- superviseLaunch(ctx, load, func(ctx context.Context, _ launch.Profile) error { cancel(); <-ctx.Done(); return nil })
 	}()
 	select {
 	case err := <-done:
@@ -139,48 +137,6 @@ func TestSuperviseCancelDuringWait(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("supervise did not stop")
-	}
-}
-
-func TestAccessAlias(t *testing.T) {
-	for _, tc := range []struct {
-		args []string
-		want string
-		fail bool
-	}{
-		{nil, "", false},
-		{[]string{"--access", "a"}, "a", false},
-		{[]string{"--password", "p"}, "p", false},
-		{[]string{"--access=a", "--password=p"}, "", true},
-		{[]string{"--access=a", "--password="}, "", true},
-	} {
-		got, err := accessValue(serviceFlags(t, tc.args...))
-		if (err != nil) != tc.fail || got != tc.want {
-			t.Errorf("%q: %q, %v", tc.args, got, err)
-		}
-	}
-}
-
-func TestWithAccess(t *testing.T) {
-	got, err := withAccess(serviceFlags(t, "--access=pw", "--local_type=tcp", "--target=t:22"), []string{"npc://k@a:1?type=tls#home"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	l, err := connprofile.ParseLink(got[0])
-	if err != nil || l.Name != "home" || l.Local["password"] != "pw" || l.Local["local_type"] != "tcp" ||
-		l.Local["local_port"] != "2000" || l.Local["target_addr"] != "t:22" || l.Local["conn_mode"] != "" {
-		t.Fatalf("%s: %+v %v", got[0], l, err)
-	}
-	// a link's own port wins over the flag default, and nothing is added without -access
-	got, _ = withAccess(serviceFlags(t, "--access=pw"), []string{"npc://k@a:1?local_port=9"})
-	if l, _ = connprofile.ParseLink(got[0]); l.Local["local_port"] != "9" {
-		t.Fatalf("%+v", l)
-	}
-	if got, err = withAccess(serviceFlags(t), []string{"@file"}); err != nil || got[0] != "@file" {
-		t.Fatalf("%v %v", got, err)
-	}
-	if _, err = withAccess(serviceFlags(t, "--access=pw"), []string{"@file"}); err == nil {
-		t.Fatal("--access accepted for a file")
+		t.Fatal("supervise did not retry")
 	}
 }

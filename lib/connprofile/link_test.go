@@ -15,7 +15,6 @@ func TestParseLink(t *testing.T) {
 		server  string
 		name    string
 		common  map[string]string
-		local   map[string]string
 		carrier string
 	}{
 		{in: "npc://k@a.com:8024", vkey: "k", server: "tcp://a.com:8024", carrier: "tcp"},
@@ -29,11 +28,9 @@ func TestParseLink(t *testing.T) {
 		{in: "npc://p%40ss%3A%2F%3B%2C%20w@a.com:1", vkey: "p@ss:/;, w", server: "tcp://a.com:1", carrier: "tcp"},
 		{in: "npc://k@a.com:1?type=tls&tier=1&weight=3&standby&count=2&alt=tcp://b.com:2&alt=" + url.QueryEscape("wss://c.com:443@front.com/ws?tier=2") + "#home", vkey: "k",
 			server: "tls://a.com:1?count=2&standby=&tier=1&weight=3|tcp://b.com:2|wss://c.com:443/ws?host=front.com&tier=2", name: "home", carrier: "tls"},
-		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&local_ip=10.0.0.2", vkey: "k", server: "tcp://a.com:1", name: "nas", carrier: "tcp",
+		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&source=10.0.0.2", vkey: "k", server: "tcp://a.com:1", name: "nas", carrier: "tcp",
 			common: map[string]string{"new_protocol_pin": pin, "proxy_url": "socks5://p:1", "pipes": "multi", "session_max_lanes": "4", "local_ip": "10.0.0.2"}},
-		{in: "npc://k@a.com:1?access=pw&target=t:22&local_type=tcp&local_port=2000&conn_mode=auto&local_proxy=true", vkey: "k", server: "tcp://a.com:1", carrier: "tcp",
-			local: map[string]string{"password": "pw", "target_addr": "t:22", "local_type": "tcp", "local_port": "2000", "conn_mode": "auto", "local_proxy": "true"}},
-		{in: "npc://k@a.com:1?password=pw&future=1&exp=5", vkey: "k", server: "tcp://a.com:1", carrier: "tcp", local: map[string]string{"password": "pw"}},
+		{in: "npc://k@a.com:1?future=1&exp=5", vkey: "k", server: "tcp://a.com:1", carrier: "tcp"},
 	}
 	for _, tt := range tests {
 		l, err := ParseLink(tt.in)
@@ -43,10 +40,10 @@ func TestParseLink(t *testing.T) {
 		if l.VKey != tt.vkey || l.Server != tt.server || l.Name != tt.name {
 			t.Fatalf("%s: got %+v", tt.in, l)
 		}
-		if len(tt.common) > 0 && !reflect.DeepEqual(l.Common, tt.common) || len(tt.local) > 0 && !reflect.DeepEqual(l.Local, tt.local) {
-			t.Fatalf("%s: common %v local %v", tt.in, l.Common, l.Local)
+		if len(tt.common) > 0 && !reflect.DeepEqual(l.Common, tt.common) {
+			t.Fatalf("%s: common %v", tt.in, l.Common)
 		}
-		if len(tt.common) == 0 && len(l.Common) != 0 || len(tt.local) == 0 && len(l.Local) != 0 {
+		if len(tt.common) == 0 && len(l.Common) != 0 {
 			t.Fatalf("%s: stray settings %+v", tt.in, l)
 		}
 		cands, err := Parse(l.Server, "")
@@ -92,8 +89,14 @@ func TestParseLinkRejects(t *testing.T) {
 		"alt no scheme": "npc://k@a:1?alt=b:2",
 		"alt kcp":       "npc://k@a:1?alt=kcp://b:2",
 		"bad pin":       "npc://k@a:1?pin=abcd",
-		"access twice":  "npc://k@a:1?access=a&password=b",
-		"local no key":  "npc://k@a:1?target=t:22",
+		"access":        "npc://k@a:1?access=a",
+		"password":      "npc://k@a:1?password=a",
+		"target":        "npc://k@a:1?target=t:22",
+		"local type":    "npc://k@a:1?local_type=tcp",
+		"local port":    "npc://k@a:1?local_port=1",
+		"local ip":      "npc://k@a:1?local_ip=1.1.1.1",
+		"conn mode":     "npc://k@a:1?conn_mode=auto",
+		"local proxy":   "npc://k@a:1?local_proxy=true",
 		"bad port":      "npc://k@a:99999",
 		"too long":      "npc://k@a:1?name=" + strings.Repeat("x", MaxLinkSize),
 	} {
@@ -108,19 +111,35 @@ func TestParseLinkRejects(t *testing.T) {
 	}
 }
 
-func TestAppendQuery(t *testing.T) {
-	v := url.Values{"access": {"p w"}}
-	for in, want := range map[string]string{
-		"npc://k@a:1":          "npc://k@a:1?access=p+w",
-		"npc://k@a:1?type=tls": "npc://k@a:1?type=tls&access=p+w",
-		"npc://k@a:1#home":     "npc://k@a:1?access=p+w#home",
+// A formatted link reads back as the same connection.
+func TestFormatLinkRoundTrip(t *testing.T) {
+	for _, tc := range [][3]string{
+		{"tls://a.com:1?alpn=h2&count=2&tier=1|wss://b.com:443/x?http=h2&weight=3|tcp://c.com:2?standby=true", "tls", "p@ss w"},
+		{"a.com:8024", "tcp", "k"},
+		{"a.com:8025/h3x", "quic", "k"},
 	} {
-		if got := AppendQuery(in, v); got != want {
-			t.Errorf("%s: %s", in, got)
+		link, err := FormatLink(tc[2], tc[0], tc[1], "home", map[string]string{"pipes": "multi", "local_ip": "10.0.0.1"})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if _, err := ParseLink(AppendQuery("npc://k@a:1?access=x", v)); err == nil {
-		t.Error("a repeated access was accepted")
+		l, err := ParseLink(link)
+		if err != nil {
+			t.Fatalf("%s: %v", link, err)
+		}
+		if l.VKey != tc[2] || l.Name != "home" || l.Common["pipes"] != "multi" || l.Common["local_ip"] != "10.0.0.1" {
+			t.Fatalf("%s: %+v", link, l)
+		}
+		want, _ := Parse(tc[0], tc[1])
+		got, err := Parse(l.Server, "")
+		if err != nil || len(got) != len(want) {
+			t.Fatalf("%s: %v %+v", link, err, got)
+		}
+		for i := range got {
+			got[i].Raw, want[i].Raw, got[i].Path = "", "", want[i].Path
+			if !reflect.DeepEqual(got[i], want[i]) {
+				t.Fatalf("%d: %+v, want %+v", i, got[i], want[i])
+			}
+		}
 	}
 }
 

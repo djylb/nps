@@ -94,7 +94,7 @@ func TestSecretGrantRevokedWithTunnel(t *testing.T) {
 	b := newTestP2PBridge(t, useTestDb(t))
 	task := newSecretTestTask(t, b)
 	granted, stream := attachTest(t, b, "pw", "node-1", nil)
-	if granted.Grant == "" || granted.Tunnel != task.Id || granted.Peer != 2 || granted.NameDest || !granted.Direct {
+	if granted.Grant == "" || granted.Tunnel != task.Id || granted.Peer != 2 || !granted.NameDest || !granted.Direct {
 		t.Fatalf("attach = %+v", granted)
 	}
 	if b.secrets.get(granted.Grant, 1, "node-1") == nil {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/connprofile"
 	flag "github.com/spf13/pflag"
 )
@@ -24,6 +25,7 @@ import (
 const (
 	serviceConnFile   = "npc-service.json"
 	serviceLaunchFile = "npc-service-launch-%d.conf"
+	serviceLocalFile  = "npc-service-local.conf"
 )
 
 // connFlags are the flags a connection from the command line is made of,
@@ -32,15 +34,15 @@ var connFlags = map[string]string{
 	"server": "server", "vkey": "vkey", "type": "type", "proxy": "proxy", "local_ip": "local_ip", "pipes": "pipes",
 }
 
-// localFlags make the local server of -access (or -password), with its npc.conf key.
+// localFlags make the local server of -password, with its npc.conf key.
 var localFlags = map[string]string{
-	"local_type": "local_type", "local_port": "local_port", "password": "password", "access": "password",
+	"local_type": "local_type", "local_port": "local_port", "password": "password",
 	"target": "target_addr", "conn_mode": "conn_mode", "local_proxy": "local_proxy",
 }
 
 // serviceOnly are left out of the service arguments: they choose what runs
 // or are replaced by the files written.
-var serviceOnly = map[string]bool{"launch": true, "config": true, "service": true, "debug": true}
+var serviceOnly = map[string]bool{"launch": true, "local": true, "reveal": true, "config": true, "service": true, "debug": true}
 
 type serviceFile struct {
 	path string
@@ -55,6 +57,7 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	var (
 		args, inputs []string
 		files        []serviceFile
+		launchFiles  int
 	)
 	changed := func(name string) (*flag.Flag, bool) {
 		f := fs.Lookup(name)
@@ -73,7 +76,11 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 			inputs = append(inputs, "@"+path)
 			return nil
 		}
-		path := filepath.Join(confDir, fmt.Sprintf(serviceLaunchFile, len(files)+1))
+		if err := launch.CheckValue(input); err != nil {
+			return err
+		}
+		path := filepath.Join(confDir, fmt.Sprintf(serviceLaunchFile, launchFiles+1))
+		launchFiles++
 		files = append(files, serviceFile{path, []byte(input + "\n")})
 		inputs = append(inputs, "@"+path)
 		return nil
@@ -85,13 +92,10 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	} else {
 		launchInputs = splitLaunchEnv(launchEnv)
 	}
-	if len(launchInputs) > 0 {
-		if err := checkLaunchFlags(fs); err != nil {
-			return nil, nil, err
-		}
+	if err := checkLaunchFlags(fs, len(launchInputs) > 0); err != nil {
+		return nil, nil, err
 	}
-	// the visitor flags go into the links, out of the service arguments
-	launchInputs, err := withAccess(fs, launchInputs)
+	localArgs, err := serviceLocals(fs, confDir, &files)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,10 +111,7 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	if err != nil {
 		return nil, nil, err
 	}
-	access, err := accessValue(fs)
-	if err != nil {
-		return nil, nil, err
-	}
+	access, _ := fs.GetString("password")
 	p2p := access != ""
 	launchMode := len(inputs) > 0
 	if !launchMode && hasCommand {
@@ -173,6 +174,7 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 		}
 		args = append(args, "--config="+strings.Join(paths, ","))
 	}
+	args = append(args, localArgs...)
 	var flagErr error
 	fs.Visit(func(f *flag.Flag) {
 		name := f.Name
@@ -191,6 +193,35 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	return append(args, "-debug=false"), files, nil
 }
 
+// serviceLocals keeps the -L values off the service definition, which may
+// be readable by others: they go into one file, and an @file stays a
+// reference by absolute path. It returns the service arguments.
+func serviceLocals(fs *flag.FlagSet, confDir string, files *[]serviceFile) ([]string, error) {
+	values, _ := fs.GetStringArray("local")
+	if _, err := launch.ParseLocals(values); err != nil {
+		return nil, err
+	}
+	var args, inline []string
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if !strings.HasPrefix(v, "@") {
+			inline = append(inline, v)
+			continue
+		}
+		path, err := filepath.Abs(strings.TrimSpace(v[1:]))
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "--local=@"+path)
+	}
+	if len(inline) > 0 {
+		path := filepath.Join(confDir, serviceLocalFile)
+		*files = append(*files, serviceFile{path, []byte(strings.Join(inline, "\n") + "\n")})
+		args = append(args, "--local=@"+path)
+	}
+	return args, nil
+}
+
 // writeServiceFiles writes files readable by the owner only and removes
 // launch files of an earlier install that are no longer used.
 func writeServiceFiles(confDir string, files []serviceFile) error {
@@ -199,9 +230,7 @@ func writeServiceFiles(confDir string, files []serviceFile) error {
 		keep[f.path] = true
 	}
 	old, _ := filepath.Glob(filepath.Join(confDir, strings.Replace(serviceLaunchFile, "%d", "*", 1)))
-	if p := filepath.Join(confDir, serviceConnFile); !keep[p] {
-		old = append(old, p)
-	}
+	old = append(old, filepath.Join(confDir, serviceConnFile), filepath.Join(confDir, serviceLocalFile))
 	for _, p := range old {
 		if !keep[p] {
 			if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {

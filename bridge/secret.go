@@ -270,7 +270,7 @@ func (s *Bridge) newSecretGrant(t *model.Tunnel, visitor int, node string, carri
 		return nil, err
 	}
 	feature := servercfg.Current().Feature
-	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal, feature.LegacySecretLink)
+	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal)
 	wire, err := json.Marshal(p)
 	if err != nil {
 		return nil, err

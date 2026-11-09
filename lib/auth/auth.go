@@ -4,6 +4,7 @@ package auth
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"net/netip"
@@ -70,27 +71,30 @@ func CheckAuthWithAccountMap(u, p, user, passwd string, accountMap, authMap map[
 	noAccountMap := len(accountMap) == 0
 	noAuthMap := len(authMap) == 0
 	if noAccountMap && noAuthMap {
-		return u == user && p == passwd
+		return equal(u, user) && equal(p, passwd)
 	}
 	// Multi-account authentication check
 	if len(u) == 0 {
 		return false
 	}
-	if u == user && p == passwd {
+	if equal(u, user) && equal(p, passwd) {
 		return true
 	}
 	if !noAccountMap {
-		if P, ok := accountMap[u]; ok && p == P {
+		if P, ok := accountMap[u]; ok && equal(p, P) {
 			return true
 		}
 	}
 	if !noAuthMap {
-		if P, ok := authMap[u]; ok && p == P {
+		if P, ok := authMap[u]; ok && equal(p, P) {
 			return true
 		}
 	}
 	return false
 }
+
+// equal compares two credentials in constant time.
+func equal(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
 
 // NeedsAuth reports whether any credential is configured. A username or a
 // password on its own is enough to require authentication.

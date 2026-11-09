@@ -6,9 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
@@ -17,17 +17,13 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/logevent"
+	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/slogx"
-	"github.com/djylb/timeshim"
 	flag "github.com/spf13/pflag"
 )
 
-var (
-	launchSourceRetry  = 30 * time.Second
-	launchSourcePause  = 5 * time.Minute
-	launchRelaunchWait = 5 * time.Second
-)
+var launchRelaunchWait = 5 * time.Second
 
 // launchPayloads are the inputs of -launch, or, when the command line gives
 // none, those of NPC_LAUNCH.
@@ -57,159 +53,231 @@ func splitLaunchEnv(env string) []string {
 	return inputs
 }
 
-// accessFlags are the point-to-point visitor flags with the launch link
-// parameter each one is.
-var accessFlags = map[string]string{
-	"local_type": "local_type", "local_port": "local_port", "conn_mode": "conn_mode",
-	"target": "target", "local_proxy": "local_proxy",
-}
+// legacyAccessFlags are the single-access flags of earlier versions.
+var legacyAccessFlags = []string{"password", "local_type", "local_port", "target", "local_proxy", "conn_mode"}
 
-// accessValue is the access key of a point-to-point visitor: -access, or its
-// alias -password. Giving both is an error.
-func accessValue(fs *flag.FlagSet) (string, error) {
-	access, _ := fs.GetString("access")
-	password, _ := fs.GetString("password")
-	if fs.Changed("access") && fs.Changed("password") {
-		return "", errors.New("-access and -password are the same setting: give one")
-	}
-	if access == "" {
-		access = password
-	}
-	return access, nil
-}
-
-// checkLaunchFlags refuses -server or -vkey together with -launch: they are
-// two ways to say which server to connect to.
-func checkLaunchFlags(fs *flag.FlagSet) error {
-	if fs.Changed("server") || fs.Changed("vkey") {
+// checkLaunchFlags refuses two ways of saying the same thing: -server or
+// -vkey with -launch, and the single-access flags with -launch or -L.
+func checkLaunchFlags(fs *flag.FlagSet, hasLaunch bool) error {
+	if hasLaunch && (fs.Changed("server") || fs.Changed("vkey")) {
 		return errors.New("-launch cannot be combined with -server or -vkey: give the connection in one of them")
+	}
+	if hasLaunch || fs.Changed("local") {
+		for _, name := range legacyAccessFlags {
+			if fs.Changed(name) {
+				return fmt.Errorf("-%s cannot be combined with -launch or -L: write the access as -L", name)
+			}
+		}
 	}
 	return nil
 }
 
-// withAccess adds the point-to-point visitor flags of fs to each launch
-// link in inputs. They only apply to links; a link that already sets a
-// parameter the flags set is an error, and so is any other input.
-func withAccess(fs *flag.FlagSet, inputs []string) ([]string, error) {
-	access, err := accessValue(fs)
-	if err != nil || access == "" {
-		return inputs, err
+// launchSpec turns the command line into the launch model: the -launch
+// inputs or the flags of earlier versions, and the -L accesses.
+func launchSpec(fs *flag.FlagSet, inputs []string) ([]launch.Source, []launch.Local, error) {
+	if err := checkLaunchFlags(fs, len(inputs) > 0); err != nil {
+		return nil, nil, err
 	}
-	out := make([]string, len(inputs))
-	for i, in := range inputs {
-		if !connprofile.IsLink(in) {
-			return nil, errors.New("-access applies to npc:// launch links only")
-		}
-		vals := url.Values{"access": {access}}
-		l, err := connprofile.ParseLink(connprofile.AppendQuery(in, vals))
-		if err != nil {
-			return nil, fmt.Errorf("-access with the launch link: %w", err)
-		}
-		for name, key := range accessFlags {
-			if f := fs.Lookup(name); f != nil && (f.Changed || name == "local_port" && l.Local["local_port"] == "") {
-				if v := f.Value.String(); v != "" {
-					vals.Set(key, v)
-				}
+	values, _ := fs.GetStringArray("local")
+	locals, err := launch.ParseLocals(values)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(inputs) > 0 {
+		for _, name := range []string{"type", "config", "proxy", "local_ip"} {
+			if f := fs.Lookup(name); f != nil && f.Changed {
+				cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
 			}
 		}
-		out[i] = connprofile.AppendQuery(in, vals)
-		if _, err := connprofile.ParseLink(out[i]); err != nil {
-			return nil, fmt.Errorf("-access and the other visitor flags with the launch link: %w", err)
-		}
+		return launch.LaunchSources(inputs), locals, nil
 	}
-	return out, nil
+	sources, err := commandLineSources(fs)
+	return sources, locals, err
 }
 
-func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string) {
-	if err := checkLaunchFlags(flag.CommandLine); err != nil {
-		fail(cancel, err)
+// commandLineSources collects the connection flags of earlier versions and
+// their environment variables for launch.CommandLine.
+func commandLineSources(fs *flag.FlagSet) ([]launch.Source, error) {
+	env := runenv.GetEnvMap()
+	or := func(v, key string) string {
+		if v == "" {
+			return env[key]
+		}
+		return v
 	}
-	inputs, err := withAccess(flag.CommandLine, inputs)
-	if err != nil {
-		fail(cancel, err)
+	get := func(name string) string { v, _ := fs.GetString(name); return v }
+	port, _ := fs.GetInt("local_port")
+	proxy, _ := fs.GetBool("local_proxy")
+	cl := launch.CommandLine{
+		Server: or(get("server"), "NPC_SERVER_ADDR"), VKey: or(get("vkey"), "NPC_SERVER_VKEY"), Type: get("type"),
+		Proxy: get("proxy"), LocalIP: or(get("local_ip"), "NPC_LOCAL_IP"),
+		Password: get("password"), LocalType: get("local_type"), ConnMode: get("conn_mode"), Target: get("target"),
+		LocalPort: port, LocalProxy: proxy,
 	}
-	for _, name := range []string{"type", "config", "proxy", "local_ip"} {
-		if f := flag.CommandLine.Lookup(name); f != nil && f.Changed {
-			cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
+	if cl.Password == "" {
+		hasCommand, err := commandLineMode(cl.Server, cl.VKey)
+		if err != nil {
+			return nil, err
+		}
+		if fs.Changed("type") && hasCommand && !connprofile.UsesType(cl.Server) {
+			cfgLog.Warn("-type has no effect", "detail", "every server candidate is a URL, whose scheme names the carrier")
+		}
+		paths := or(get("config"), "NPC_CONFIG_PATH")
+		if paths == "" && !hasCommand {
+			paths = runenv.GetConfigPath()
+		}
+		for p := range strings.SplitSeq(paths, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				cl.Config = append(cl.Config, p)
+			}
 		}
 	}
+	return cl.Sources()
+}
+
+func startLaunch(ctx context.Context, cancel context.CancelFunc, sources []launch.Source, locals []launch.Local) {
 	slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 	clock.Sync()
 	opts := launch.Options{DisconnectTimeout: *disconnectTime, P2PTimeout: *p2pTime}
-	for i, input := range inputs {
-		uuids := make(map[string]string)
-		run := func(ctx context.Context, profiles []launch.Profile) error {
-			return launch.Run(ctx, profiles, uuids, opts)
-		}
-		go func() {
-			if err := superviseLaunch(ctx, i+1, input, launch.Resolve, run); err != nil {
-				log.Error("launch input stopped", "input", i+1, "err", err)
-				cancel()
-				os.Exit(1)
-			}
-		}()
+	var mu sync.Mutex
+	issued := make(map[string]string)
+	run := func(ctx context.Context, p launch.Profile) error {
+		key := p.Key()
+		mu.Lock()
+		prev := issued[key]
+		mu.Unlock()
+		next, err := p.Run(ctx, prev, opts)
+		mu.Lock()
+		issued[key] = next
+		mu.Unlock()
+		return err
 	}
+	composer := launch.NewComposer(sources, locals)
+	go func() {
+		if err := superviseLaunch(ctx, composer.Load, run); err != nil {
+			fail(cancel, err)
+		}
+	}()
 }
 
-// superviseLaunch keeps one input running: it resolves the payload, runs its
-// profiles and starts over when they stop. A source that fails falls back to
-// the last good profiles and is asked again after launchSourceRetry. It
-// returns nil when ctx ends and an error when the input cannot continue.
+// superviseLaunch keeps each connection of the plan running, independently
+// of the others: when one stops the plan is loaded again after
+// launchRelaunchWait and whatever is not running is started. The first load
+// must be valid; a later invalid one is logged and tried again. It returns
+// nil when ctx ends and an error when npc cannot continue.
 func superviseLaunch(
 	ctx context.Context,
-	index int,
-	input string,
-	resolve func(context.Context, string) ([]launch.Profile, error),
-	run func(context.Context, []launch.Profile) error,
+	load func(context.Context) (launch.Plan, error),
+	run func(context.Context, launch.Profile) error,
 ) error {
-	var good []launch.Profile
-	var nextResolve time.Time
-	for ctx.Err() == nil {
-		if good == nil || !time.Now().Before(nextResolve) {
-			profiles, err := resolve(ctx, input)
-			var remote *launch.RemoteError
-			switch {
-			case err == nil:
-				good = profiles
-			case ctx.Err() != nil:
-				return nil
-			case !errors.As(err, &remote):
-				return err
-			case remote.Revoked:
-				log.Warn("launch input revoked", "input", index, "retry_in_ms", launchSourcePause.Milliseconds())
-				good = nil
-				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourcePause)
-				continue
-			case good == nil:
-				log.Warn("launch input failed", "input", index, "retry_in_ms", launchSourceRetry.Milliseconds(), "err", err)
-				_ = timeshim.Sleep(ctx, timeshim.Real, launchSourceRetry)
-				continue
-			default:
-				log.Warn("launch input failed", "input", index, "detail", "using the last good payload", "err", err)
-				nextResolve = time.Now().Add(launchSourceRetry)
-			}
-		}
-		err := run(ctx, good)
-		if ctx.Err() != nil {
+	ctx, stop := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	defer func() { stop(); wg.Wait() }()
+	type end struct {
+		profile launch.Profile
+		err     error
+	}
+	ended := make(chan end)
+	running := make(map[string]bool)
+	started := false
+	var wait <-chan time.Time
+	reload := func() error {
+		plan, err := load(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case err != nil && !started:
+			return err
+		case err != nil:
+			log.Warn("launch reload failed", "retry_in_ms", launch.SourceRetry.Milliseconds(), "err", err)
+			wait = time.After(launch.SourceRetry)
 			return nil
 		}
-		if err == nil {
-			err = errors.New("client closed")
+		started = true
+		for _, p := range plan.Profiles {
+			key := p.Key()
+			if running[key] {
+				continue
+			}
+			running[key] = true
+			wg.Go(func() {
+				err := run(ctx, p)
+				select {
+				case ended <- end{p, err}:
+				case <-ctx.Done():
+				}
+			})
 		}
-		if !launchReconnects(good) {
-			return err
+		if plan.Retry > 0 {
+			wait = time.After(plan.Retry)
 		}
-		log.Info("launch input restarting", "input", index, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
-		_ = timeshim.Sleep(ctx, timeshim.Real, launchRelaunchWait)
+		return nil
 	}
-	return nil
+	if err := reload(); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case e := <-ended:
+			delete(running, e.profile.Key())
+			err := e.err
+			if err == nil {
+				err = errors.New("client closed")
+			}
+			if !launchReconnects(e.profile) {
+				return err
+			}
+			log.Info("launch connection restarting", "name", e.profile.Name, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
+			wait = time.After(launchRelaunchWait)
+		case <-wait:
+			wait = nil
+			if err := reload(); err != nil {
+				return err
+			}
+		}
+	}
 }
 
-func launchReconnects(profiles []launch.Profile) bool {
-	for _, p := range profiles {
-		if !p.Config.CommonConfig.AutoReconnection {
-			return false
+func launchReconnects(p launch.Profile) bool {
+	return p.Config.CommonConfig.AutoReconnection && client.AutoReconnect
+}
+
+const launchUsage = `npc launch pack <file>
+    Print the file as a value for -launch (gzip and base64).
+    The value contains every key of the file in clear text: treat it as a secret.
+npc launch show [-launch=... ...] [-L=... ...] [--reveal]
+    Print what the arguments amount to in the current form. Also takes the
+    flags of earlier versions (-server, -vkey, -password, ...) and prints
+    their current form. vkeys, access keys and proxy passwords are masked
+    unless --reveal is given.
+`
+
+// launchCommand runs npc launch <args> and returns the exit code.
+func launchCommand(fs *flag.FlagSet, args []string) int {
+	ctx := context.Background()
+	var (
+		out string
+		err error
+	)
+	switch {
+	case len(args) == 2 && args[0] == "pack":
+		out, err = launch.Pack(ctx, args[1])
+	case len(args) == 1 && args[0] == "show":
+		var sources []launch.Source
+		var locals []launch.Local
+		if sources, locals, err = launchSpec(fs, launchPayloads()); err == nil {
+			out, err = launch.Show(ctx, sources, locals, *reveal)
 		}
+	default:
+		fmt.Fprint(os.Stderr, launchUsage)
+		return 2
 	}
-	return client.AutoReconnect
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "npc launch:", err)
+		return 1
+	}
+	fmt.Println(out)
+	return 0
 }

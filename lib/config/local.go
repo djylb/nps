@@ -10,8 +10,9 @@ type LocalServer struct {
 	Port       int
 	Ip         string // listen address; empty for all
 	Password   string
-	Target     string // the target the visitor names: within the tunnel's destination list, or one of its targets
+	Target     string // the destination the visitor names, within the tunnel's destination list; empty for the tunnel's default target
 	LocalProxy bool
+	Auth       map[string]string // proxy accounts of a mixed listener, none for no authentication
 }
 
 // Listener types of a LocalServer.

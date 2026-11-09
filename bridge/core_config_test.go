@@ -29,9 +29,10 @@ import (
 type coreConfigEnv struct {
 	f      *coreFixture
 	echo   string
-	tunnel string // the visitor client's tunnel port
-	secret string // password of the secret tunnel
-	prov   string // vkey of the provider
+	tunnel string        // the visitor client's tunnel port
+	secret string        // password of the secret tunnel
+	prov   string        // vkey of the provider
+	task   *model.Tunnel // the secret tunnel
 }
 
 func newCoreConfigEnv(t *testing.T) *coreConfigEnv {
@@ -45,6 +46,7 @@ func newCoreConfigEnv(t *testing.T) *coreConfigEnv {
 	if err := e.f.db.NewTask(task); err != nil {
 		t.Fatal(err)
 	}
+	e.task = task
 	e.tunnel, _ = e.f.startTunnel(t, e.echo, "")
 	return e
 }
@@ -169,20 +171,43 @@ func TestLaunchOnNewProtocol(t *testing.T) {
  {"name":"visitor","common":{"server_addr":%q,"vkey":%q,"auto_reconnection":false},
   "locals":[{"local_type":"tcp","conn_mode":"relay","local_ip":"127.0.0.1","local_port":%d,"password":%q}]}
 ]`, e.f.addr, e.prov, e.f.addr, e.f.client.VerifyKey, e.f.addr, e.f.client.VerifyKey, relayPort, e.secret)
-	profiles, err := launch.Resolve(context.Background(), payload)
+	profiles, err := launch.Resolve(context.Background(), "@"+writeConf(t, "launch.json", payload))
 	if err != nil {
 		t.Fatal(err)
 	}
-	runClient(t, func(ctx context.Context) error {
-		return launch.Run(ctx, profiles, map[string]string{}, launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})
-	})
+	runClient(t, func(ctx context.Context) error { return runProfiles(ctx, profiles) })
 	waitEcho(t, "hosted tunnel", e.tunnel)
 	waitEcho(t, "relay section", net.JoinHostPort("127.0.0.1", strconv.Itoa(relayPort)))
 }
 
-// The same through launch links: a provider, a host and a visitor of the
-// tunnel, each one link as the web command and the command line write them,
-// with the visitor's access key as a link parameter.
+// runProfiles runs each profile until ctx ends.
+func runProfiles(ctx context.Context, profiles []launch.Profile) error {
+	var wg sync.WaitGroup
+	for _, p := range profiles {
+		wg.Go(func() {
+			_, _ = p.Run(ctx, "", launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})
+		})
+	}
+	wg.Wait()
+	return nil
+}
+
+// composedProfiles is what npc runs for these -launch and -L values.
+func composedProfiles(t *testing.T, links, accesses []string) []launch.Profile {
+	t.Helper()
+	locals, err := launch.ParseLocals(accesses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := launch.NewComposer(launch.LaunchSources(links), locals).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan.Profiles
+}
+
+// The same through launch links and -L, as the web command and the command
+// line write them: the provider and the host on one npc, a visitor on another.
 func TestLaunchLinksOnNewProtocol(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end")
@@ -191,26 +216,40 @@ func TestLaunchLinksOnNewProtocol(t *testing.T) {
 	t.Cleanup(func() { config.CommonDefaults = old })
 	e := newCoreConfigEnv(t)
 	relayPort := freeLocalPort(t)
-	link := func(vkey, query string) string {
-		return "npc://" + url.PathEscape(vkey) + "@" + e.f.addr + "?type=tcp" + query
+	link := func(vkey, name string) string {
+		return "npc://" + url.PathEscape(vkey) + "@" + e.f.addr + "?type=tcp#" + name
 	}
-	var profiles []launch.Profile
-	for _, l := range []string{
-		link(e.prov, "&name=provider"),
-		link(e.f.client.VerifyKey, "&name=host"),
-		link(e.f.client.VerifyKey, "&name=visitor&local_type=tcp&conn_mode=relay&local_port="+strconv.Itoa(relayPort)+"&access="+url.QueryEscape(e.secret)),
-	} {
-		p, err := launch.Resolve(context.Background(), l)
-		if err != nil {
-			t.Fatal(err)
-		}
-		profiles = append(profiles, p...)
+	hosting := composedProfiles(t, []string{link(e.prov, "provider"), link(e.f.client.VerifyKey, "host")}, nil)
+	visiting := composedProfiles(t, []string{link(e.f.client.VerifyKey, "home")},
+		[]string{"tcp://127.0.0.1:" + strconv.Itoa(relayPort) + "?conn_mode=relay&via=home&access=" + url.QueryEscape(e.secret)})
+	if visiting[0].Direct || len(visiting[0].Config.LocalServer) != 1 {
+		t.Fatalf("%+v", visiting[0])
 	}
-	runClient(t, func(ctx context.Context) error {
-		return launch.Run(ctx, profiles, map[string]string{}, launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})
-	})
+	runClient(t, func(ctx context.Context) error { return runProfiles(ctx, append(hosting, visiting...)) })
 	waitEcho(t, "hosted tunnel", e.tunnel)
 	waitEcho(t, "relay section", net.JoinHostPort("127.0.0.1", strconv.Itoa(relayPort)))
+}
+
+// A visitor names any destination on a tunnel without a list; naming none
+// on a tunnel without a default target fails.
+func TestLaunchAccessTargets(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	e := newCoreConfigEnv(t)
+	e.task.Target = &model.Target{}
+	named, none := freeLocalPort(t), freeLocalPort(t)
+	access := "&conn_mode=relay&access=" + url.QueryEscape(e.secret)
+	hosting := composedProfiles(t, []string{"npc://" + e.prov + "@" + e.f.addr + "?type=tcp"}, nil)
+	visiting := composedProfiles(t, []string{"npc://" + url.PathEscape(e.f.client.VerifyKey) + "@" + e.f.addr + "?type=tcp"}, []string{
+		"tcp://127.0.0.1:" + strconv.Itoa(named) + "?target=" + e.echo + access,
+		"tcp://127.0.0.1:" + strconv.Itoa(none) + "?" + access[1:],
+	})
+	runClient(t, func(ctx context.Context) error { return runProfiles(ctx, append(hosting, visiting...)) })
+	waitEcho(t, "named destination", net.JoinHostPort("127.0.0.1", strconv.Itoa(named)))
+	if err := echoOnce(net.JoinHostPort("127.0.0.1", strconv.Itoa(none)), "x"); err == nil {
+		t.Fatal("a link naming nothing reached something on a tunnel without a target")
+	}
 }
 
 // A file with only local sections is a pure visitor: it reaches the secret
@@ -294,6 +333,8 @@ func TestMixedVisitorRepliesAfterExit(t *testing.T) {
 		t.Skip("end-to-end")
 	}
 	e := newCoreConfigEnv(t)
+	e.task.DestAclMode, e.task.DestAclRules = model.AclBlacklist, "10.1.2.3"
+	e.task.CompileDestACL()
 	port := freeLocalPort(t)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	head := "[common]\nserver_addr=" + e.f.addr + "\nconn_type=tcp\nauto_reconnection=false\nvkey="
@@ -331,7 +372,7 @@ func TestMixedVisitorRepliesAfterExit(t *testing.T) {
 	}
 	echoed(c, "through connect")
 
-	// outside the tunnel's targets: the provider's policy refuses
+	// outside the tunnel's destination list: the provider's policy refuses
 	const denied = "10.1.2.3:4567"
 	if rep, _ := socks5Connect(t, addr, denied); rep != 2 {
 		t.Fatalf("denied destination: socks5 reply %d, want 2", rep)

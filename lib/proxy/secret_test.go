@@ -115,7 +115,7 @@ func TestSecretLocalProxySendsProxyHeaderToBackend(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.Addr().String(), LocalProxy: true, ProxyProtocol: 1},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false, false), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
@@ -186,7 +186,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.LocalAddr().String(), ProxyProtocol: 2},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false, false), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
@@ -223,7 +223,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 func TestSecretLinkDestinationDenied(t *testing.T) {
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
 	task := &model.Tunnel{Client: &model.Client{Id: 1, Cnf: &model.Config{}, Flow: &model.Flow{}}, Flow: &model.Flow{}, Target: &model.Target{}, DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, true, false), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, true), true)
 	_, srv := tcpConnPair(t)
 	if err := s.Serve(srv, conn.NewLink("tcp", "denied.example:80", false, false, "", false), legacy.WriteAck); !errors.Is(err, ErrSecretDestDenied) {
 		t.Fatalf("link to a denied destination: %v", err)
@@ -237,8 +237,8 @@ func TestSecretLinkDestinationDenied(t *testing.T) {
 
 // The policy decides the same after a trip over the wire, as the provider
 // applies it on the direct path. The task's destination list is the
-// visitor's scope: without one only the task's targets, with one the
-// destinations it allows; a refused destination is never replaced.
+// visitor's scope: without one any destination, with one those it allows;
+// the targets are only a default; a refused destination is never replaced.
 func TestSecretPolicyAdmit(t *testing.T) {
 	listed := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "all", DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
 	unlisted := &model.Tunnel{Client: &model.Client{Id: 1}, TargetType: "tcp"}
@@ -246,20 +246,19 @@ func TestSecretPolicyAdmit(t *testing.T) {
 	target := &model.Target{TargetStr: "127.0.0.1:80\n127.0.0.1:81"}
 	link := func(typ, host string, local bool) *conn.Link { return conn.NewLink(typ, host, false, false, "", local) }
 	for _, tc := range []struct {
-		name                            string
-		task                            *model.Tunnel
-		allowLocalProxy, local, anyDest bool
-		lk                              *conn.Link
-		want                            SecretRoute
-		denied, refused                 bool
+		name                   string
+		task                   *model.Tunnel
+		allowLocalProxy, local bool
+		lk                     *conn.Link
+		want                   SecretRoute
+		denied, refused        bool
 	}{
 		{name: "no list: no link info", task: unlisted, lk: nil, want: SecretRoute{ConnType: "tcp"}},
 		{name: "no list: no host", task: unlisted, lk: link("tcp", "", false), want: SecretRoute{ConnType: "tcp"}},
 		{name: "no list: network outside", task: unlisted, lk: link("udp", "", false), denied: true},
-		{name: "no list: addressed udp", task: unlisted, lk: link(conn.LinkUDP5, "", false), denied: true},
+		{name: "no list: addressed udp outside the network", task: unlisted, lk: link(conn.LinkUDP5, "", false), denied: true},
 		{name: "no list: a target", task: unlisted, lk: link("tcp", "127.0.0.1:81", false), want: SecretRoute{ConnType: "tcp", Host: "127.0.0.1:81"}},
-		{name: "no list: other host", task: unlisted, lk: link("tcp", "other:1", false), denied: true},
-		{name: "no list, legacy any", task: unlisted, anyDest: true, lk: link("tcp", "other:1", false), want: SecretRoute{ConnType: "tcp", Host: "other:1"}},
+		{name: "no list: other host", task: unlisted, lk: link("tcp", "other:1", false), want: SecretRoute{ConnType: "tcp", Host: "other:1"}},
 		{name: "list: host", task: listed, lk: link("udp", "other:1", false), want: SecretRoute{ConnType: "udp", Host: "other:1"}},
 		{name: "list: denied host", task: listed, lk: link("tcp", "denied.example:80", false), denied: true},
 		{name: "list: network outside", task: tcpOnly, lk: link("udp", "a:1", false), denied: true},
@@ -269,7 +268,7 @@ func TestSecretPolicyAdmit(t *testing.T) {
 		{name: "local allowed", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := NewSecretPolicy(tc.task, target, tc.allowLocalProxy, tc.local, tc.anyDest)
+			p := NewSecretPolicy(tc.task, target, tc.allowLocalProxy, tc.local)
 			b, err := json.Marshal(p)
 			if err != nil {
 				t.Fatal(err)
@@ -295,7 +294,7 @@ func TestSecretPolicyAdmit(t *testing.T) {
 			}
 		})
 	}
-	own := NewSecretPolicy(&model.Tunnel{Client: &model.Client{Id: -1}}, target, false, true, true)
+	own := NewSecretPolicy(&model.Tunnel{Client: &model.Client{Id: -1}}, target, false, true)
 	if own.Direct() {
 		t.Fatal("a task of the server's own client offers a direct path")
 	}

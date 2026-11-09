@@ -4,7 +4,7 @@
 
 | 模式 | 运行位置 | 启用 |
 | --- | --- | --- |
-| `transparent` | 点对点访问的访问端 npc | `npc ... -password=xx -local_type=transparent -local_port=2000` |
+| `transparent` | 点对点访问的访问端 npc | `npc -launch=… -L="transparent://:2000?access=xx"` |
 | `tcpTrans` | nps 服务端 | npc.conf 隧道段 `mode=tcpTrans`、`server_port=...` |
 
 ## 导流方式

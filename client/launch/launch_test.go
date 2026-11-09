@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -10,9 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/djylb/nps/internal/coreproto/connect"
 	"github.com/djylb/nps/lib/config"
 )
 
@@ -24,124 +24,271 @@ const (
 		 "hosts":[{"remark":"web","host":"x.test","target_addr":["1.1.1.1:80","2.2.2.2:80"],"headers":{"X-A":"b"}}],
 		 "tasks":[{"mode":"tcp","server_port":2222,"target_addr":"1.1.1.1:22"}]}]}`
 	yamlPayload = "name: y\nserver: a:1\nvkey: k\n"
+	docPayload  = `// a comment
+	{ "name": "home", "vkey": "k", /* inline */
+	  "paths": [ {"url":"tls://a:1","alpn":"h2","tier":1,"count":2},
+	             {"url":"wss://b:443/ws","http":"h2","standby":true}, ],
+	  "session": {"max_pipes":2,"scheduler_up":"spread_eta","max_lanes":3,"resume_timeout":9},
+	  "access": [ {"access":"p","target":"t:1","local_type":"tcp","local_port":2000,"local_ip":"127.0.0.1","conn_mode":"relay"},
+	              {"access":"q","local_type":"mixed","local_port":1080,"auth":[{"user":"u","pass":"1"},{"user":"v","pass":"2"}]} ] }`
 )
 
-func TestResolveForms(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "p.yaml")
-	if err := os.WriteFile(file, []byte(yamlPayload), 0o600); err != nil {
+func writeFile(t *testing.T, name, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tests := []struct {
-		name, input string
-		names       []string
-		direct      bool
-		check       func(*testing.T, []Profile)
-	}{
-		{name: "npc", input: "npc://k@a:1?type=tls&local_ip=10.0.0.1&session_max_lanes=3&pin=00112233445566778899aabbccddeeff#home", names: []string{"home"}, direct: true,
-			check: func(t *testing.T, p []Profile) {
-				c := p[0].Config.CommonConfig
-				if c.Server != "tls://a:1" || c.VKey != "k" || c.LocalIP != "10.0.0.1" || c.MaxLanes != 3 || c.Pin != "00112233445566778899aabbccddeeff" {
-					t.Fatalf("%+v", c)
-				}
-			}},
-		{name: "npc vkey with list separators", input: "npc://a%3Bb%2Cc@a:1?type=tls", names: []string{"profile-1"}, direct: true,
-			check: func(t *testing.T, p []Profile) {
-				if c := p[0].Config.CommonConfig; c.VKey != "a;b,c" || c.Server != "tls://a:1" {
-					t.Fatalf("%+v", c)
-				}
-			}},
-		{name: "npc local", input: "npc://k@a:1?access=pw&target=t:22&local_port=2000&name=v", names: []string{"v"},
-			check: func(t *testing.T, p []Profile) {
-				l := p[0].Config.LocalServer[0]
-				if l.Password != "pw" || l.Target != "t:22" || l.Port != 2000 || l.Type != config.LocalTCPUDP || l.ConnMode != config.ConnAuto {
-					t.Fatalf("%+v", l)
-				}
-			}},
-		{name: "ini", input: iniPayload, names: []string{"profile-1"},
-			check: func(t *testing.T, p []Profile) {
-				if len(p[0].Config.Tasks) != 1 || p[0].Config.Tasks[0].Remark != "ssh" {
-					t.Fatalf("%+v", p[0].Config.Tasks)
-				}
-			}},
-		{name: "yaml", input: yamlPayload, names: []string{"y"}, direct: true},
-		{name: "file", input: "@" + file, names: []string{"y"}, direct: true},
-		{name: "base64", input: base64.StdEncoding.EncodeToString([]byte(iniPayload)), names: []string{"profile-1"}},
-		{name: "base64 url unpadded", input: base64.RawURLEncoding.EncodeToString([]byte(yamlPayload)), names: []string{"y"}, direct: true},
-		{name: "yaml sections", input: "common: {server_addr: a:1, vkey: k}\nlocals:\n  - {password: pw, local_type: udp, conn_mode: relay, local_port: 9}\n", names: []string{"profile-1"},
-			check: func(t *testing.T, p []Profile) {
-				if p[0].Config.LocalServer[0].Type != config.LocalUDP || p[0].Config.LocalServer[0].ConnMode != config.ConnRelay {
-					t.Fatalf("%+v", p[0].Config.LocalServer[0])
-				}
-			}},
-		{name: "list", input: `[{"server":"a:1","vkey":"k"},{"server":"b:1","vkey":"k"}]`, names: []string{"profile-1", "profile-2"}, direct: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Resolve(context.Background(), tt.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(got) != len(tt.names) {
-				t.Fatalf("got %d profiles", len(got))
-			}
-			for i, p := range got {
-				if p.Name != tt.names[i] || p.Direct != tt.direct {
-					t.Fatalf("profile %d: %q direct=%v", i, p.Name, p.Direct)
-				}
-			}
-			if tt.check != nil {
-				tt.check(t, got)
-			}
-		})
-	}
+	return p
 }
 
-func TestResolveJSON(t *testing.T) {
-	got, err := Resolve(context.Background(), jsonPayload)
+func gz(t *testing.T, s string) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	z := gzip.NewWriter(&b)
+	_, _ = z.Write([]byte(s))
+	_ = z.Close()
+	return b.Bytes()
+}
+
+func TestResolveLink(t *testing.T) {
+	got, err := Resolve(context.Background(), "npc://a%3Bb@a:1?type=tls&source=10.0.0.1&session_max_lanes=3&pin=00112233445566778899aabbccddeeff#home")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 || got[0].Name != "d#1" || got[1].Config.CommonConfig.Server != "b:2" || got[1].Config.CommonConfig.Tp != "tls" {
-		t.Fatalf("%+v", got)
+	c := got[0].Config.CommonConfig
+	if got[0].Name != "home" || !got[0].Direct || c.Server != "tls://a:1" || c.VKey != "a;b" || c.LocalIP != "10.0.0.1" || c.MaxLanes != 3 {
+		t.Fatalf("%+v %+v", got[0], c)
 	}
-	c := got[2].Config
-	if got[2].Direct || c.CommonConfig.Client.Flow.FlowLimit != 1000000 {
-		t.Fatalf("%+v", c.CommonConfig.Client.Flow)
+}
+
+func TestResolveDocument(t *testing.T) {
+	got, err := Resolve(context.Background(), "@"+writeFile(t, "a.jsonc", docPayload))
+	if err != nil {
+		t.Fatal(err)
 	}
-	h := c.Hosts[0]
-	if h.Remark != "web" || h.Target.TargetStr != "1.1.1.1:80\n2.2.2.2:80" || h.HeaderChange != "X-A:b\n" {
-		t.Fatalf("%+v", h)
+	p := got[0]
+	c := p.Config.CommonConfig
+	if p.Name != "home" || p.Direct || c.VKey != "k" || c.Pipes != "multi" || c.SchedulerUp != "spread_eta" || c.MaxLanes != 3 || c.ResumeTimeout != 9 {
+		t.Fatalf("%+v %+v", p, c)
 	}
-	if c.Tasks[0].Remark != "task_1" || c.Tasks[0].Ports != "2222" {
-		t.Fatalf("%+v", c.Tasks[0])
+	if !strings.Contains(c.Server, "tls://a:1?") || !strings.Contains(c.Server, "|wss://b:443/ws?") {
+		t.Fatal(c.Server)
+	}
+	l := p.Config.LocalServer
+	if l[0].Password != "p" || l[0].Ip != "127.0.0.1" || l[0].ConnMode != "relay" || l[1].Type != "mixed" || l[1].Auth["v"] != "2" {
+		t.Fatalf("%+v %+v", l[0], l[1])
+	}
+	list := `{"connections":[{"vkey":"a","paths":[{"url":"tcp://a:1"}]},{"vkey":"b","paths":[{"url":"tcp://b:1"}]}]}`
+	if got, err = Resolve(context.Background(), "@"+writeFile(t, "l.json", list)); err != nil || len(got) != 2 {
+		t.Fatalf("%v %+v", err, got)
+	}
+}
+
+// Files of installs of earlier versions keep working.
+func TestResolveEarlierFiles(t *testing.T) {
+	ctx := context.Background()
+	for name, body := range map[string]string{
+		"ini": iniPayload, "yaml": yamlPayload, "json": `{"server":"a:1","vkey":"k"}`,
+		"locals": `{"server":"a:1","vkey":"k","locals":[{"password":"p","local_port":"2000"}]}`,
+		"link":   "npc://k@a:1\n", "base64": base64.StdEncoding.EncodeToString([]byte(iniPayload)),
+	} {
+		if got, err := Resolve(ctx, "@"+writeFile(t, "f", body)); err != nil || len(got) != 1 {
+			t.Errorf("%s: %v %+v", name, err, got)
+		}
+	}
+	got, err := Resolve(ctx, "@"+writeFile(t, "f", jsonPayload))
+	if err != nil || len(got) != 3 || got[1].Config.CommonConfig.Tp != "tls" || got[2].Config.Tasks[0].Ports != "2222" {
+		t.Fatalf("%v %+v", err, got)
+	}
+}
+
+func TestResolveBase64(t *testing.T) {
+	ctx := context.Background()
+	plain := `{"vkey":"k","paths":[{"url":"tcp://a:1"}]}`
+	wrapped := base64.StdEncoding.EncodeToString([]byte(plain))
+	wrapped = wrapped[:10] + "\r\n  " + wrapped[10:]
+	for name, in := range map[string]string{
+		"std": base64.StdEncoding.EncodeToString([]byte(plain)), "url raw": base64.RawURLEncoding.EncodeToString([]byte(plain)),
+		"wrapped": wrapped, "gzip": base64.StdEncoding.EncodeToString(gz(t, plain)),
+		"link": base64.StdEncoding.EncodeToString([]byte("npc://k@a:1")),
+	} {
+		if got, err := Resolve(ctx, in); err != nil || got[0].Config.CommonConfig.VKey != "k" {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	bomb := base64.StdEncoding.EncodeToString(gz(t, strings.Repeat(" ", maxPayloadSize+10)))
+	if _, err := Resolve(ctx, bomb); !errors.Is(err, errNotLaunch) {
+		t.Errorf("bomb: %v", err)
 	}
 }
 
 func TestResolveRejects(t *testing.T) {
+	ctx := context.Background()
 	for name, input := range map[string]string{
-		"empty":            " ",
-		"no vkey":          "npc://a:1",
-		"newer format":     "npc://7:k@a:1",
-		"link type":        "npc://k@a:1?type=kcp",
-		"link pin":         "npc://k@a:1?pin=zz",
-		"link twice":       "npc://k@a:1?access=a&password=b",
-		"unknown key":      `{"server":"a:1","vkey":"k","x":1}`,
-		"duplicate name":   `[{"name":"a","server":"a:1","vkey":"k"},{"name":"a","server":"b:1","vkey":"k"}]`,
-		"line break":       `{"server":"a:1","vkey":"k\n[x]\nmode=file"}`,
-		"reserved remark":  `{"common":{"server_addr":"a:1","vkey":"k"},"tasks":[{"remark":"p2p1","password":"p"}]}`,
-		"local without pw": "npc://k@a:1?target=t:22",
-		"old link type":    "npc://k@a:1?access=pw&local_type=p2ps",
-		"old local type":   `{"common":{"server_addr":"a:1","vkey":"k"},"locals":[{"password":"pw","local_type":"p2ps"}]}`,
-		"old ini local":    "[common]\nserver_addr=a:1\nvkey=k\n[p2p_a]\npassword=pw\n",
-		"bad conn mode":    `{"common":{"server_addr":"a:1","vkey":"k"},"locals":[{"password":"pw","conn_mode":"p2p"}]}`,
-		"plain word":       "hello",
+		"inline json": `{"server":"a:1","vkey":"k"}`,
+		"inline yaml": yamlPayload,
+		"inline ini":  iniPayload,
+		"npc base64":  "npc://" + base64.RawURLEncoding.EncodeToString([]byte("npc://k@a:1")),
+		"plain file":  "config.json",
+		"word":        "hello",
+		"garbage":     base64.StdEncoding.EncodeToString([]byte{0xff, 0xfe}),
 	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := Resolve(context.Background(), input); err == nil {
-				t.Fatal("expected an error")
+		_, err := Resolve(ctx, input)
+		if err == nil || name != "npc base64" && !errors.Is(err, errNotLaunch) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, body := range map[string]string{
+		"unknown key":   `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"x":1}`,
+		"no vkey":       `{"paths":[{"url":"tcp://a:1"}]}`,
+		"no scheme":     `{"vkey":"k","paths":[{"url":"a:1"}]}`,
+		"mixed target":  `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"access":[{"access":"a","local_type":"mixed","target":"t:1"}]}`,
+		"auth on tcp":   `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"access":[{"access":"a","local_type":"tcp","auth":[{"user":"u"}]}]}`,
+		"connections+":  `{"connections":[],"vkey":"k"}`,
+		"old link":      "npc://k@a:1?access=pw",
+		"old ini local": "[common]\nserver_addr=a:1\nvkey=k\n[p2p_a]\npassword=pw\n",
+		"dup name":      `[{"name":"a","server":"a:1","vkey":"k"},{"name":"a","server":"b:1","vkey":"k"}]`,
+	} {
+		if _, err := Resolve(ctx, "@"+writeFile(t, "f", body)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestParseLocal(t *testing.T) {
+	for _, tc := range []struct {
+		in        string
+		typ, ip   string
+		port      int
+		target    string
+		via, mode string
+		accounts  map[string]string
+	}{
+		{in: "tcp://:2000?access=p1&conn_mode=auto&target=10.0.0.5:53&via=home", typ: "tcp", port: 2000, target: "10.0.0.5:53", via: "home", mode: "auto"},
+		{in: "udp://127.0.0.1:53?access=p", typ: "udp", ip: "127.0.0.1", port: 53, mode: "auto"},
+		{in: "tcp_udp://[::1]:9?access=p&conn_mode=direct", typ: "tcp_udp", ip: "::1", port: 9, mode: "direct"},
+		{in: "transparent://:7?access=p", typ: "transparent", port: 7, mode: "auto"},
+		{in: "mixed://0.0.0.0:1080?access=p", typ: "mixed", ip: "0.0.0.0", port: 1080, mode: "auto"},
+		{in: "mixed://a%40b:p%3Aq@:1080?access=p&auth=u:x:y&auth=v:2", typ: "mixed", port: 1080, mode: "auto",
+			accounts: map[string]string{"a@b": "p:q", "u": "x:y", "v": "2"}},
+	} {
+		l, err := ParseLocal(tc.in)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.in, err)
+		}
+		s, err := l.Access.compile()
+		if err != nil || s.Type != tc.typ || s.Ip != tc.ip || s.Port != tc.port || s.Target != tc.target || s.ConnMode != tc.mode || l.Via != tc.via {
+			t.Fatalf("%s: %+v via=%q %v", tc.in, s, l.Via, err)
+		}
+		if len(s.Auth) != len(tc.accounts) {
+			t.Fatalf("%s: %v", tc.in, s.Auth)
+		}
+		for u, p := range tc.accounts {
+			if s.Auth[u] != p {
+				t.Fatalf("%s: %v", tc.in, s.Auth)
 			}
-		})
+		}
+	}
+	for name, in := range map[string]string{
+		"no access": "tcp://:1", "scheme": "socks5://:1?access=p", "no port": "tcp://a?access=p", "unknown": "tcp://:1?access=p&x=1",
+		"twice": "tcp://:1?access=p&access=q", "mode": "tcp://:1?access=p&conn_mode=p2p", "port": "tcp://:70000?access=p",
+		"mixed target": "mixed://:1?access=p&target=t:1", "transparent target": "transparent://:1?access=p&target=t:1",
+		"tcp userinfo": "tcp://u:p@:1?access=p", "tcp auth": "tcp://:1?access=p&auth=u:p", "auth form": "mixed://:1?access=p&auth=u",
+		"auth clash": "mixed://u:1@:1?access=p&auth=u:2",
+	} {
+		if _, err := ParseLocal(in); err == nil {
+			t.Errorf("%s: accepted", name)
+		} else if strings.Contains(err.Error(), "access=p") {
+			t.Errorf("%s: the error shows the value: %v", name, err)
+		}
+	}
+}
+
+func sources(values ...string) []Source { return LaunchSources(values) }
+
+func locals(t *testing.T, values ...string) []Local {
+	t.Helper()
+	l, err := ParseLocals(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+func TestComposeVia(t *testing.T) {
+	ctx := context.Background()
+	plan, err := NewComposer(sources("npc://k@a:1"), locals(t, "tcp://:1?access=p")).Load(ctx)
+	if err != nil || len(plan.Profiles) != 1 || plan.Profiles[0].Direct || plan.Profiles[0].Config.LocalServer[0].Password != "p" {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	two := sources("npc://k@a:1#home", "npc://k@b:1#work")
+	plan, err = NewComposer(two, locals(t, "tcp://:1?access=p&via=work")).Load(ctx)
+	if err != nil || !plan.Profiles[0].Direct || len(plan.Profiles[1].Config.LocalServer) != 1 {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	if _, err = NewComposer(two, locals(t, "tcp://:1?access=p")).Load(ctx); err == nil || !strings.Contains(err.Error(), "via") {
+		t.Fatal(err)
+	}
+	if _, err = NewComposer(two, locals(t, "tcp://:1?access=p&via=nope")).Load(ctx); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Fatal(err)
+	}
+	if _, err = NewComposer(nil, locals(t, "tcp://:1?access=p")).Load(ctx); err == nil {
+		t.Fatal("no connection accepted")
+	}
+}
+
+func TestComposeMerge(t *testing.T) {
+	ctx := context.Background()
+	a := writeFile(t, "a", `{"vkey":"k","paths":[{"url":"tls://a:1"}],"session":{"max_pipes":2},"access":[{"access":"x","local_port":1}]}`)
+	b := writeFile(t, "b", `{"name":"n","vkey":"k","paths":[{"url":"tls://a:1"}],"session":{"max_lanes":5},"access":[{"access":"y","local_port":2}]}`)
+	plan, err := NewComposer(sources("@"+a, "@"+b, "npc://k@a:1?type=tls"), nil).Load(ctx)
+	if err != nil || len(plan.Profiles) != 1 {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	p := plan.Profiles[0]
+	if c := p.Config.CommonConfig; c.Pipes != "multi" || c.MaxLanes != 5 || len(p.Config.LocalServer) != 2 || p.Name != "n" {
+		t.Fatalf("%+v %+v", p, c)
+	}
+	// a repeated load must not pile up
+	c := NewComposer(sources("@"+a, "@"+b), nil)
+	_, _ = c.Load(ctx)
+	if plan, _ = c.Load(ctx); len(plan.Profiles[0].Config.LocalServer) != 2 {
+		t.Fatalf("%+v", plan.Profiles[0].Config.LocalServer)
+	}
+	_, err = NewComposer(sources("npc://k@a:1?pipes=multi", "npc://k@a:1?pipes=single"), nil).Load(ctx)
+	if err == nil || !strings.Contains(err.Error(), "-launch #1") || !strings.Contains(err.Error(), "-launch #2") {
+		t.Fatal(err)
+	}
+	_, err = NewComposer(sources("npc://k@a:1?tier=1", "npc://k@a:1?tier=2"), nil).Load(ctx)
+	if err == nil || !strings.Contains(err.Error(), "paths") {
+		t.Fatal(err)
+	}
+	if _, err = NewComposer(sources("npc://k@a:1#s", "npc://j@b:1#s"), nil).Load(ctx); err == nil {
+		t.Fatal("duplicate name accepted")
+	}
+}
+
+func TestComposePortConflict(t *testing.T) {
+	ctx := context.Background()
+	link := sources("npc://k@a:1")
+	for name, tc := range map[string]struct {
+		l    []string
+		fail bool
+	}{
+		"same":      {[]string{"tcp://:1?access=a", "tcp://:1?access=b"}, true},
+		"tcp_udp":   {[]string{"tcp_udp://:1?access=a", "udp://:1?access=b"}, true},
+		"wildcard":  {[]string{"tcp://127.0.0.1:1?access=a", "mixed://:1?access=b"}, true},
+		"networks":  {[]string{"tcp://:1?access=a", "udp://:1?access=b"}, false},
+		"addresses": {[]string{"tcp://127.0.0.1:1?access=a", "tcp://127.0.0.2:1?access=b"}, false},
+	} {
+		_, err := NewComposer(link, locals(t, tc.l...)).Load(ctx)
+		if (err != nil) != tc.fail {
+			t.Errorf("%s: %v", name, err)
+		}
+		if tc.fail && (err == nil || !strings.Contains(err.Error(), "-L #1") || !strings.Contains(err.Error(), "-L #2")) {
+			t.Errorf("%s: sources not named: %v", name, err)
+		}
 	}
 }
 
@@ -157,7 +304,10 @@ func serve(t *testing.T, status int, body string) string {
 
 func TestFetch(t *testing.T) {
 	ctx := context.Background()
-	if got, err := Resolve(ctx, serve(t, 200, yamlPayload)); err != nil || got[0].Name != "y" {
+	if got, err := Resolve(ctx, serve(t, 200, `{"name":"y","vkey":"k","paths":[{"url":"tcp://a:1"}]}`)); err != nil || got[0].Name != "y" {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got, err := Resolve(ctx, serve(t, 200, "npc://k@a:1#l")); err != nil || got[0].Name != "l" {
 		t.Fatalf("%v %v", got, err)
 	}
 	var remote *RemoteError
@@ -172,17 +322,19 @@ func TestFetch(t *testing.T) {
 	}
 }
 
-func TestFetchedPayloadIsUntrusted(t *testing.T) {
+func TestFetchedContentOnlyDefinesConnections(t *testing.T) {
 	t.Setenv("LAUNCH_TEST_SECRET", "s3cret")
-	common := `[common]` + "\nserver_addr=a:1\nvkey=k\n"
+	common := "[common]\nserver_addr=a:1\nvkey=k\n"
+	conn := `"vkey":"k","paths":[{"url":"tcp://a:1"}]`
 	for name, body := range map[string]string{
+		"access":        `{` + conn + `,"access":[{"access":"a","local_port":1}]}`,
+		"locals":        `{"server":"a:1","vkey":"k","locals":[{"password":"p"}]}`,
+		"tasks":         common + "[w]\nmode=tcp\nserver_port=80\ntarget_addr=1.1.1.1:80\n",
+		"hosts":         common + "[w]\nhost=a.test\ntarget_addr=1.1.1.1:80\n",
 		"template":      common + "remark={{.LAUNCH_TEST_SECRET}}\n",
 		"file":          "@/etc/passwd",
 		"url":           "http://127.0.0.1:1/x",
-		"cert":          common + "[w]\nhost=a\ncert_file=/etc/passwd\n",
-		"multi account": common + "[w]\nmode=tcp\nmulti_account=/etc/passwd\n",
-		"pprof":         `{"common":{"server_addr":"a:1","vkey":"k","pprof_addr":"0.0.0.0:6060"},"tasks":[]}`,
-		"file tunnel":   `{"common":{"server_addr":"a:1","vkey":"k"},"tasks":[{"mode":"file","local_path":"/"}]}`,
+		"plain dns":     common + "dns_server=1.1.1.1\n",
 		"base64 nested": base64.StdEncoding.EncodeToString([]byte("@/etc/passwd")),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -194,60 +346,9 @@ func TestFetchedPayloadIsUntrusted(t *testing.T) {
 	}
 }
 
-func TestRunStopsOnCancel(t *testing.T) {
-	connect.Install()
-	profiles, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?access=pw&target=127.0.0.1:2&local_port=0&local_type=tcp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	uuids := make(map[string]string)
-	go func() { done <- Run(ctx, profiles, uuids, Options{P2PTimeout: 1}) }()
-	time.Sleep(50 * time.Millisecond)
-	select {
-	case err := <-done:
-		t.Fatalf("returned before cancel: %v", err)
-	default:
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Run did not stop")
-	}
-}
-
-// A bare carriage return ends a line for the configuration parser, so it must
-// not hide a key from the checks on fetched payloads.
-func TestFetchedPayloadCannotUseLineEndings(t *testing.T) {
-	secret := filepath.Join(t.TempDir(), "accounts")
-	if err := os.WriteFile(secret, []byte("user=pass\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	head := "[common]\nserver_addr=a:1\nvkey=k\n"
-	web := head + "[web]\nmode=tcp\nserver_port=80\ntarget_addr=1.1.1.1:80\n"
-	for name, body := range map[string]string{
-		"multi_account": web + "x=y\rmulti_account=" + secret + "\n",
-		"local_path":    web + "x=y\rlocal_path=/etc\n",
-		"mode file":     head + "[web]\nserver_port=80\rmode=file\n",
-		"dns_server":    head + "x=y\rdns_server=1.1.1.1\n",
-		"plain dns":     head + "dns_server=1.1.1.1\n",
-		"pprof":         head + "x=y\rpprof_addr=127.0.0.1:0\n",
-		"host cert":     head + "[h]\nhost=x.test\rcert_file=" + secret + "\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			got, err := resolve(context.Background(), body, false, 0)
-			if err == nil || !strings.Contains(err.Error(), "may not") {
-				t.Fatalf("got %v, %+v", err, got)
-			}
-		})
-	}
-}
-
-// Keys only the local user may set stay allowed in a local payload.
-func TestLocalPayloadKeepsLocalKeys(t *testing.T) {
-	got, err := Resolve(context.Background(), "[common]\nserver_addr=a:1\nvkey=k\ndns_server=1.1.1.1\n[web]\nmode=file\nserver_port=80\nlocal_path=/srv\n")
+// Keys only the local user may set stay allowed in a local file.
+func TestLocalFileKeepsLocalKeys(t *testing.T) {
+	got, err := Resolve(context.Background(), "@"+writeFile(t, "f", "[common]\nserver_addr=a:1\nvkey=k\ndns_server=1.1.1.1\n[web]\nmode=file\nserver_port=80\nlocal_path=/srv\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,94 +357,124 @@ func TestLocalPayloadKeepsLocalKeys(t *testing.T) {
 	}
 }
 
-// Profiles that stop at once write their uuids while the next ones start.
-func TestRunUuidsWithManyProfiles(t *testing.T) {
-	connect.Install()
-	var profiles []Profile
-	for i := range 8 {
-		got, err := Resolve(context.Background(), "npc://k@127.0.0.1:1?name=p"+string(rune('0'+i)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		profiles = append(profiles, got...)
+func TestComposerRemoteFallback(t *testing.T) {
+	r, p := SourceRetry, SourcePause
+	SourceRetry, SourcePause = 0, 0
+	t.Cleanup(func() { SourceRetry, SourcePause = r, p })
+	status, body := 200, "npc://k@a:1#remote"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+	c := NewComposer(sources(srv.URL), locals(t, "tcp://:1?access=p&via=remote"))
+	if plan, err := c.Load(ctx); err != nil || len(plan.Profiles) != 1 || len(plan.Profiles[0].Config.LocalServer) != 1 {
+		t.Fatalf("%v %+v", err, plan)
 	}
-	uuids := map[string]string{}
-	if err := Run(context.Background(), profiles, uuids, Options{}); err != nil {
-		t.Fatal(err)
+	status = 500
+	if plan, err := c.Load(ctx); err != nil || len(plan.Profiles) != 1 {
+		t.Fatalf("last good: %v %+v", err, plan)
 	}
-	if len(uuids) != len(profiles) {
-		t.Fatalf("%v", uuids)
+	status = 410
+	if plan, err := c.Load(ctx); err != nil || len(plan.Profiles) != 0 {
+		t.Fatalf("revoked: %v %+v", err, plan)
 	}
 }
 
-func TestResolveBase64(t *testing.T) {
-	b64 := base64.RawURLEncoding.EncodeToString
-	link := "npc://k@a:1?type=tls"
-	wrapped := base64.StdEncoding.EncodeToString([]byte(iniPayload))
-	var lines []string
-	for len(wrapped) > 20 {
-		lines, wrapped = append(lines, wrapped[:20]), wrapped[20:]
+// A remote source not fetched yet does not stop the local connections, and
+// an access that may belong to it waits.
+func TestComposerPendingRemote(t *testing.T) {
+	c := NewComposer(sources("npc://k@a:1#local", serve(t, 500, "")), locals(t, "tcp://:1?access=p&via=later"))
+	plan, err := c.Load(context.Background())
+	if err != nil || len(plan.Profiles) != 1 || plan.Retry <= 0 || len(plan.Profiles[0].Config.LocalServer) != 0 {
+		t.Fatalf("%v %+v", err, plan)
 	}
-	lines = append(lines, wrapped)
+}
 
-	// plain base64 tolerates line breaks and padding, and may hold many connections
-	for name, in := range map[string]string{
-		"wrapped":  strings.Join(lines, "\n"),
-		"crlf":     strings.Join(lines, "\r\n  "),
-		"unpadded": strings.TrimRight(base64.StdEncoding.EncodeToString([]byte(iniPayload)), "="),
-	} {
-		if got, err := Resolve(context.Background(), in); err != nil || len(got) != 1 || len(got[0].Config.Tasks) != 1 {
-			t.Errorf("plain %s: %v %+v", name, err, got)
+func TestPack(t *testing.T) {
+	ctx := context.Background()
+	out, err := Pack(ctx, writeFile(t, "a.jsonc", docPayload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Resolve(ctx, out)
+	if err != nil || got[0].Name != "home" || len(got[0].Config.LocalServer) != 2 {
+		t.Fatalf("%v %+v", err, got)
+	}
+	if _, err = Pack(ctx, writeFile(t, "b", "@/etc/passwd")); err == nil {
+		t.Fatal("packed a reference")
+	}
+	if _, err = Pack(ctx, writeFile(t, "c", "{nonsense")); err == nil {
+		t.Fatal("packed nonsense")
+	}
+}
+
+func TestShow(t *testing.T) {
+	ctx := context.Background()
+	src := sources("npc://k%40x@a:1?type=tls&pipes=multi&source=1.1.1.1#home")
+	loc := locals(t, "mixed://u:s3@127.0.0.1:1080?access=key", "tcp://:2?access=key&target=t:1&conn_mode=relay")
+	masked, err := Show(ctx, src, loc, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"k%40x", "s3", "=key"} {
+		if strings.Contains(masked, secret) {
+			t.Errorf("masked output shows %s: %s", secret, masked)
 		}
 	}
-	if got, err := Resolve(context.Background(), base64.StdEncoding.EncodeToString([]byte(jsonPayload))); err != nil || len(got) != 3 {
-		t.Errorf("plain, many connections: %v %d", err, len(got))
+	shown, err := Show(ctx, src, loc, true)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// npc://<base64> is one connection in any form
-	for name, in := range map[string]string{
-		"link": link, "ini": iniPayload, "yaml": yamlPayload,
-		"json":   `{"server":"a:1","vkey":"k"}`,
-		"nested": "npc://" + b64([]byte(link)),
-	} {
-		got, err := Resolve(context.Background(), "npc://"+b64([]byte(in)))
-		if err != nil || len(got) != 1 {
-			t.Errorf("%s: %v %+v", name, err, got)
+	if !strings.Contains(shown, `-launch="npc://k%40x@a:1?`) || !strings.Contains(shown, "source=1.1.1.1") || !strings.Contains(shown, "auth=u:s3") || !strings.Contains(shown, "access=key") {
+		t.Fatal(shown)
+	}
+	// the printed form is accepted and means the same
+	var links, ls []string
+	for _, f := range strings.Fields(shown)[1:] {
+		v := strings.Trim(f[strings.Index(f, "=")+1:], `"`)
+		if strings.HasPrefix(f, "-launch") {
+			links = append(links, v)
+		} else {
+			ls = append(ls, v)
 		}
 	}
-	// one instance may have several paths
-	paths := "npc://k@a:1?type=tls&pipes=multi&count=2&alt=tcp://b:2?tier=1;weight=2"
-	if got, err := Resolve(context.Background(), "npc://"+b64([]byte(paths))); err != nil || len(got) != 1 ||
-		got[0].Config.CommonConfig.Server != "tls://a:1?count=2|tcp://b:2?tier=1&weight=2" || got[0].Config.CommonConfig.Pipes != "multi" {
-		t.Errorf("several paths: %v %+v", err, got)
+	again, err := Show(ctx, sources(links...), locals(t, ls...), true)
+	if err != nil || again != shown {
+		t.Fatalf("%v\n%s\n%s", err, shown, again)
 	}
-	got, _ := Resolve(context.Background(), "npc://"+b64([]byte(link)))
-	if c := got[0].Config.CommonConfig; c.Server != "tls://a:1" || c.VKey != "k" || !got[0].Direct {
-		t.Errorf("%+v", c)
-	}
+}
 
-	for name, in := range map[string]string{
-		"many":        "npc://" + b64([]byte(jsonPayload)),
-		"many urls":   "npc://" + b64([]byte(`{"server":"a:1,b:1","vkey":"k"}`)),
-		"white space": "npc://" + b64([]byte(link))[:8] + "\n" + b64([]byte(link))[8:],
-		"not base64":  "npc://%%%",
-		"word":        "npc://hello",
-		"garbage":     "npc://" + b64([]byte{0xff, 0xfe, 0x00}),
-	} {
-		_, err := Resolve(context.Background(), in)
-		if err == nil {
-			t.Errorf("%s: accepted", name)
-		} else if name != "many" && name != "many urls" && !strings.Contains(err.Error(), "neither vkey@host nor valid base64") && name != "garbage" {
-			t.Errorf("%s: %v", name, err)
+func TestCommandLine(t *testing.T) {
+	ctx := context.Background()
+	load := func(f CommandLine, l []Local) ([]Profile, error) {
+		src, err := f.Sources()
+		if err != nil {
+			return nil, err
 		}
+		plan, err := NewComposer(src, l).Load(ctx)
+		return plan.Profiles, err
 	}
-
-	// the decoded content keeps the trust of the payload that held it
-	body := "npc://" + b64([]byte("[common]\nserver_addr=a:1\nvkey=k\ndns_server=1.1.1.1\n"))
-	if _, err := resolve(context.Background(), body, false, 0); err == nil || !strings.Contains(err.Error(), "may not") {
-		t.Errorf("a fetched payload set dns_server: %v", err)
+	p, err := load(CommandLine{Server: "a:1,b:2", VKey: "k1,k2", Type: "tls", Proxy: "socks5://x:1"}, nil)
+	if err != nil || len(p) != 2 || !p[0].Direct || p[1].Config.CommonConfig.VKey != "k2" || p[1].Config.CommonConfig.Tp != "tls" {
+		t.Fatalf("%v %+v", err, p)
 	}
-	if _, err := resolve(context.Background(), body, true, 0); err != nil {
-		t.Errorf("a local payload could not: %v", err)
+	p, err = load(CommandLine{Server: "a:1", VKey: "k", Type: "tcp", Password: "pw", LocalType: "tcp", ConnMode: "auto", LocalPort: 2000, Target: "t:1"}, nil)
+	if l := p[0].Config.LocalServer[0]; err != nil || p[0].Direct || l.Password != "pw" || l.Port != 2000 || l.Target != "t:1" || l.Type != config.LocalTCP {
+		t.Fatalf("%v %+v", err, l)
+	}
+	p, err = load(CommandLine{Config: []string{writeFile(t, "n.conf", iniPayload)}}, nil)
+	if err != nil || len(p[0].Config.Tasks) != 1 {
+		t.Fatalf("%v %+v", err, p)
+	}
+	p, err = load(CommandLine{Server: "a:1", VKey: "k", Type: "tcp"}, locals(t, "tcp://:1?access=x"))
+	if err != nil || p[0].Direct || len(p[0].Config.LocalServer) != 1 {
+		t.Fatalf("%v %+v", err, p)
+	}
+	src, _ := CommandLine{Server: "a:1", VKey: "k", Type: "tls", Password: "pw", LocalType: "mixed", ConnMode: "relay", LocalPort: 9}.Sources()
+	out, err := Show(ctx, src, nil, true)
+	if err != nil || !strings.Contains(out, `-launch="npc://k@a:1?type=tls"`) || !strings.Contains(out, `-L="mixed://:9?access=pw&conn_mode=relay"`) {
+		t.Fatalf("%v %s", err, out)
 	}
 }

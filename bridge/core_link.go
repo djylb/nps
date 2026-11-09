@@ -99,7 +99,7 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 		return nil, refused
 	}
 	feature := servercfg.Current().Feature
-	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal, feature.LegacySecretLink)
+	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal)
 	server := proxy.NewSecretServer(s, t, p, feature.AllowLocalProxy)
 	// The LINK is admitted as a link would be; each PIPE then holds its slot.
 	release, err := server.AcquireForwarding(t.Client, t.ControlGroup())

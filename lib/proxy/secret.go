@@ -23,19 +23,19 @@ import (
 // hands it to the provider npc, which applies it to every link the visitor
 // sends over that path: both paths follow the same rules.
 //
-// The scope is the task's destination list. Without one the visitor reaches
-// the task's targets only: a link naming no destination goes to one of
-// them, one naming a destination that is not a target is refused. With one
-// the visitor may name a destination and its network within the list
-// (mixed and transparent visitors always do).
+// The task's targets are only the default of a link naming no destination;
+// the limit is the task's destination list. Without a list the visitor may
+// name any destination; with one, those the list allows. A link naming no
+// destination on a task without targets fails.
 type SecretPolicy struct {
 	// Targets are the task's target addresses, one per line, used when the
-	// visitor names none, and the only ones it may name without NameDest.
+	// visitor names none.
 	Targets string `json:"targets,omitempty"`
 	// TargetType is the task's network for its targets: tcp, udp or all.
 	TargetType string `json:"target_type,omitempty"`
 	// NameDest lets the visitor name destinations, within the destination
-	// list when the task has one.
+	// list when the task has one. nps always sets it (SecretPolicy above);
+	// false on the wire leaves only the targets.
 	NameDest bool `json:"name_dest,omitempty"`
 	// AllowLocal lets a visitor naming destinations choose whether nps
 	// reaches them itself (allow_secret_local and allow_local_proxy).
@@ -67,17 +67,14 @@ var (
 )
 
 // NewSecretPolicy is the policy of task t reaching target, with the
-// server's allow_local_proxy and allow_secret_local. anyDest is the legacy
-// allow_secret_link: a task without a destination list lets the visitor
-// name any destination.
-func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy, allowLocal, anyDest bool) *SecretPolicy {
-	scoped := t.DestAclMode == model.AclWhitelist || t.DestAclMode == model.AclBlacklist
+// server's allow_local_proxy and allow_secret_local.
+func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy, allowLocal bool) *SecretPolicy {
 	p := &SecretPolicy{
 		TargetType: t.TargetType,
-		NameDest:   scoped || anyDest,
+		NameDest:   true,
+		AllowLocal: allowLocal && allowLocalProxy,
 	}
-	p.AllowLocal = p.NameDest && allowLocal && allowLocalProxy
-	if scoped {
+	if t.DestAclMode == model.AclWhitelist || t.DestAclMode == model.AclBlacklist {
 		p.DestAclMode, p.DestAclRules, p.allows = t.DestAclMode, t.DestAclRules, t.AllowsDestination
 	}
 	if target != nil {
@@ -252,11 +249,9 @@ func (s *SecretServer) Serve(src net.Conn, lk *conn.Link, ack func(net.Conn, tim
 		target, err = s.Bridge.Session(s.Task.Client.Id).OpenLink(link, s.Task.Id)
 		return localProxy, err
 	}
-	if host == "" {
+	if host == "" && connType != conn.LinkUDP5 {
+		// A link naming nothing takes the default; without one it fails.
 		err = route.Target.Dial(dial)
-		if errors.Is(err, model.ErrNoTarget) {
-			_, err = dial("")
-		}
 	} else {
 		_, err = dial(host)
 	}

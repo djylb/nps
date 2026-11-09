@@ -132,9 +132,10 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 			RateLimit: 0,
 			Flow:      &model.Flow{},
 		},
-		HttpProxy:   true,
-		Socks5Proxy: true,
-		Flow:        &model.Flow{},
+		MultiAccount: localAccounts(l),
+		HttpProxy:    true,
+		Socks5Proxy:  true,
+		Flow:         &model.Flow{},
 		Target: &model.Target{
 			TargetStr:  l.Target,
 			LocalProxy: l.LocalProxy,
@@ -166,6 +167,15 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 		errs = append(errs, mgr.serve(l.Type, "udp", ip, l.Port, proxy.NewUdpModeServer(pb, task, true)))
 	}
 	return errors.Join(errs...)
+}
+
+// localAccounts is the proxy accounts of a mixed section as the proxy reads
+// them, nil for none.
+func localAccounts(l *config.LocalServer) *model.MultiAccount {
+	if len(l.Auth) == 0 {
+		return nil
+	}
+	return &model.MultiAccount{AccountMap: l.Auth}
 }
 
 // localServer is a listener of a local section.

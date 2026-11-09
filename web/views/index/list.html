@@ -157,7 +157,7 @@
             if (row.Mode == "secret") {
                 var cmd = function (localType) {
                     return '<code tabindex="0" onclick="oCopy(this)" ' + copyKeys() + '>' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{.bridge_url}}, {{.visitor_vkey}} || row.Client.VerifyKey))
-                        + "\" -access=\"" + escapeHtml(row.Password) + "\" -local_type=\"" + localType + "\" -local_port=\"2000\" -conn_mode=\"auto\"</code>"
+                        + "\" -L=\"" + localType + "://:2000?access=" + escapeHtml(encodeURIComponent(row.Password)) + "&amp;conn_mode=auto\"</code>"
                 }
                 return tmp + resourceDetailSection('section-commands', ''
                     + '<b langtag="word-commandaccessp2p"></b>: ' + cmd("tcp_udp") + "<br/><br>"

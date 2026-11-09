@@ -5,14 +5,14 @@
 **场景：** 从本机的 `2000` 端口访问内网 `10.2.50.2:22`。
 
 1. 要直连时，在 `nps.conf` 设置 `p2p_port`，防火墙开放 UDP `p2p_port`..`p2p_port+2`（设为 `6000` 时开放 `6000-6002`）。必要时设置 `p2p_ip`，留空自动识别 IPv4 和 IPv6，可填 IP 或 DDNS 域名。服务端在路由器后时，把这 3 个 UDP 端口一并映射。只用中转时不需要。
-2. 在客户端中添加点对点访问隧道，设置唯一密钥 `sshkey` 和内网目标 `10.2.50.2:22`。
+2. 在客户端中添加点对点访问隧道，设置唯一密钥 `sshkey`。
 3. 在本机运行（具体命令可从 Web 复制）：
 
 ```bash
-./npc -launch="npc://123@1.1.1.1:8024?type=tcp" -access=sshkey -local_type=tcp_udp -local_port=2000 -conn_mode=auto
+./npc -launch="npc://123@1.1.1.1:8024?type=tcp" -L="tcp_udp://:2000?access=sshkey&target=10.2.50.2:22&conn_mode=auto"
 ```
 
-`-local_port` 指定本地端口，默认 `2000`。然后：
+`-L` 的写法见[快速启动](/guide/client/launch.md#本地访问--l)。然后：
 
 ```bash
 ssh -p 2000 root@127.0.0.1
@@ -22,7 +22,7 @@ ssh -p 2000 root@127.0.0.1
 
 ## 连接方式
 
-`-conn_mode`（npc.conf 为 `conn_mode`）：
+`-L` 的 `conn_mode` 参数（npc.conf 为 `conn_mode`）：
 
 | 取值 | 行为 |
 | --- | --- |
@@ -34,7 +34,7 @@ ssh -p 2000 root@127.0.0.1
 
 ## 本地监听
 
-`-local_type`（npc.conf 为 `local_type`）：
+`-L` 的 scheme（npc.conf 为 `local_type`）：
 
 | 取值 | 本地提供 |
 | --- | --- |
@@ -48,14 +48,13 @@ ssh -p 2000 root@127.0.0.1
 
 ## 访问范围
 
-隧道的目标访问控制（`dest_acl_mode`、`dest_acl_rules`）就是访问端的访问范围，中转和直连都按它检查：
+访问端可以自己指定目标和网络（`-L` 的 `target`，以及 `mixed`、`transparent` 访问端连接的地址）。隧道里已存的目标只是默认目标，访问端没指定时使用；隧道也没有目标时连接失败。
 
-- 关闭（默认）：访问端只能连到隧道的目标。访问端用 `-target` 指定隧道目标之外的地址时，连接被拒绝。
-- 白名单或黑名单：访问端可以自己指定目标和网络（`-target=ip:port`，以及 `mixed`、`transparent` 访问端连接的地址），只能连到名单允许的目标；网络受隧道 `target_type` 限制。不指定目标时连到隧道的目标。
+限制只来自隧道的目标访问控制（`dest_acl_mode`、`dest_acl_rules`），中转和直连都按它检查：没有名单时全部放行，白名单或黑名单时只能连到名单允许的目标。已存的隧道 `target_type` 继续限制网络。
 
 被拒绝的连接不会改连到隧道目标，日志记 `tunnel_denied`（`reason=dest_acl`）：中转时在 nps，直连时在提供端 npc。
 
-`allow_secret_local=true`（同时需要 `allow_local_proxy=true`）允许指定目标的访问端用 `-local_proxy=true` 由服务端自己连接目标，只走中转。
+`allow_secret_local=true`（同时需要 `allow_local_proxy=true`）允许指定目标的访问端用 `local_proxy=true` 由服务端自己连接目标，只走中转。
 
 访问端每个隧道密钥只向 nps 证明一次（挑战应答，线路上不传可重放的密钥摘要），得到的授权供之后的中转连接和直连共用。隧道停用、修改或删除，服务端相关配置重载，访问端或提供端下线时，授权失效，经它中转的连接和直连随之关闭，访问端下次连接时重新授权。
 
@@ -87,7 +86,7 @@ P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filteri
 | `fallback_secret=false` | `conn_mode=direct` |
 | `-disable_p2p` | `-conn_mode=relay` |
 
-`nps.conf` 中的 `allow_secret_link` 已弃用：设为 `true` 时，没有目标访问控制的点对点访问隧道允许访问端指定任意目标，启动时告警。请给这些隧道设置目标访问控制名单后删除该键。
+`nps.conf` 中的 `allow_secret_link` 已移除：访问范围只由隧道的目标访问控制决定，设置该键只告警。
 
 0.35 起点对点访问的协议不兼容旧版 npc：访问端和提供端都需要 0.35 或更新的 npc。
 

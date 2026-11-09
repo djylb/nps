@@ -136,7 +136,7 @@ func TestManagementPageBridgeURL(t *testing.T) {
 func TestStartCommandsUseLaunchLinks(t *testing.T) {
 	for file, want := range map[string][]string{
 		"client/list.html": {`{{.npc_bin}} -launch=\"`, `{{.npc_bin}} install -launch=\"`, `npcLink(`},
-		"index/list.html":  {`{{.npc_bin}} -launch=\"`, `-access=\"`, `-local_port=\"2000\"`, `escapeHtml(row.Password)`},
+		"index/list.html":  {`{{.npc_bin}} -launch=\"`, `-L=\"`, `encodeURIComponent(row.Password)`},
 	} {
 		b, err := os.ReadFile(filepath.Join("..", "views", file))
 		if err != nil {
