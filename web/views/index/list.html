@@ -69,6 +69,41 @@
     }
 
     var clientScoped = new URLSearchParams(location.search).has('client_id')
+    // A list opened for one client shows that client in its title.
+    function scopedColumn(c) {
+        return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
+    }
+
+    // A virtual backend is reported by a client and listens nowhere: the
+    // client, what it calls the service, its kind and network, and the target
+    // to copy into the target of a tunnel.
+    var serviceColumns = [
+        {
+            field: 'Client.Id',
+            title: '<span langtag="word-clientid"></span>',
+            halign: 'center',
+            formatter: function (value, row) {
+                var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
+                return '<span role="button" tabindex="0" style="cursor:pointer" data-copy="' + escapeHtml(row.Client.VerifyKey) + '" onclick="copyText(this.dataset.copy)" ' + copyKeys() + '>' + escapeHtml(text) + '</span>'
+            }
+        },
+        {field: 'Remark', title: '<span langtag="word-remark"></span>', halign: 'center', formatter: function (value) { return copyable(value) }},
+        {field: 'ServiceKind', title: '<span langtag="word-servicekind"></span>', halign: 'center',
+            formatter: function (value) { return escapeHtml(String(value == null ? '' : value).toUpperCase()) }},
+        {field: 'TargetType', title: '<span langtag="word-network"></span>', halign: 'center',
+            formatter: function (value) { return escapeHtml(String(value == null ? '' : value).toUpperCase()) }},
+        {field: 'Target.TargetStr', title: '<span langtag="word-target"></span>', halign: 'center', formatter: function (value) { return copyable(value) }},
+        {
+            field: 'option',
+            title: '<span langtag="word-option"></span>',
+            align: 'center',
+            halign: 'center',
+            formatter: function (value, row) {
+                // a backend a client reports has nothing to stop, delete or edit
+                return '<div class="btn-group">' + actionBtn('btn-secondary', 'fa-copy', "copyText('" + escapeHtml(row.Target.TargetStr) + "')") + '</div>'
+            }
+        }
+    ].filter(scopedColumn)
 
     npsList.init('#table', {
         toolbar: "#toolbar",
@@ -104,7 +139,7 @@
         // Only the layout is kept across visits; a search or page left over
         // from another list or client would hide rows without notice.
         cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
-        detailView: true,
+        detailView: {{ if and .type (eq .type "service") }}false{{ else }}true{{ end }},
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function (index, row, $el) { $('body').setLang('.detail-view'); if (row.Mode == 'secret') LaunchGen.fill(launchBase, 'tunnel', row, $el); },
         onLoadSuccess:function (data) { $('body').setLang('.detail-view'); },
@@ -154,12 +189,6 @@
                     + '<b langtag="word-auth"></b>: ' + escapeHtml(row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
                     ) + resourceDetailSection('section-destination', destAclInfo)
             }
-            if (row.Mode == "service") {
-                return tmp + resourceDetailSection('section-target', ''
-                    + '<b langtag="word-servicekind"></b>: ' + escapeHtml(row.ServiceKind) + '&emsp;'
-                    + '<b langtag="word-servicename"></b>: ' + escapeHtml(row.ServiceName) + '&emsp;<br/><br>'
-                    + '<b langtag="word-target"></b>: ' + copyable(row.Target.TargetStr) + '&emsp;')
-            }
             if (row.Mode == "secret") {
                 var scope = {1: 'word-whitelist', 2: 'word-blacklist'}[Number(row.DestAclMode || 0)] || 'word-disable'
                 return tmp + resourceDetailSection('section-destination', '<b langtag="word-destacl"></b>: <span langtag="' + scope + '"></span>')
@@ -168,10 +197,8 @@
             return '<div class="resource-details">' + tmp + '</div>'
         },
         // 表格的列
-        columns: [
-            {{ if or (not .type) (ne .type "service") }}
+        columns: {{ if and .type (eq .type "service") }}serviceColumns{{ else }}[
             {field: '_selected', checkbox: true, switchable: false, clickToSelect: false},
-            {{ end }}
 
             {
                 field: 'Id', //域值
@@ -187,7 +214,8 @@
                 field: 'Client.Id', //域值
                 title: '<span langtag="word-clientid"></span>', //标题
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
@@ -208,8 +236,8 @@
                 field: 'Client.VerifyKey', //域值
                 title: '<span langtag="word-verifykey"></span>', //标题
                 halign: 'center',
-                detail: false, // a column of the table
-                visible: true, //false表示不显示
+                detail: false, // the key of the client is not part of a tunnel's details
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -231,7 +259,7 @@
                 field: 'Port', //域值
                 title: '<span langtag="word-port"></span>', //标题
                 halign: 'center',
-                visible: {{ if and .type (or (eq .type "service") (eq .type "secret")) }}false{{ else }}true{{ end }}, //false表示不显示
+                visible: {{ if and .type (eq .type "secret") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var generated = row.Generated || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
@@ -240,7 +268,7 @@
                         + (generated ? ' <span class="badge badge-secondary" langtag="word-generatedtunnel"></span>' : '')
                 }
             },
-            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") (eq .type "service") }}
+            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") }}
             {
                 field: 'Target.TargetStr', //域值
                 title: '<span langtag="word-target"></span>', //标题
@@ -252,12 +280,11 @@
                 }
             },
             {{ end }}
-            {{ if or (not .type) (eq .type "secret") (eq .type "service") }}
+            {{ if or (not .type) (eq .type "secret") }}
             {
                 field: 'TargetType', //域值
                 title: '<span langtag="word-targettype"></span>', //标题
                 halign: 'center',
-                detail: false, // the key of the client is not part of a tunnel's details
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
@@ -273,22 +300,6 @@
                 formatter: function (value, row, index) {
                     return copyable(value)
                 }
-            },
-            {{ end }}
-            {{ if and .type (eq .type "service") }}
-            {
-                field: 'ServiceKind', //域值
-                title: '<span langtag="word-servicekind"></span>', //标题
-                halign: 'center',
-                visible: false, //false表示不显示
-                formatter: function (value) { return escapeHtml(value == null ? '' : value) }
-            },
-            {
-                field: 'ServiceName', //域值
-                title: '<span langtag="word-servicename"></span>', //标题
-                halign: 'center',
-                visible: false, //false表示不显示
-                formatter: function (value) { return escapeHtml(value == null ? '' : value) }
             },
             {{ end }}
             {{ if and .type (eq .type "mixProxy") }}
@@ -534,9 +545,6 @@
                 visible: {{ if and .type (eq .type "secret") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    if (row.Mode === "service") {
-                        return '<span class="badge badge-primary" langtag="word-online"></span>'
-                    }
                     if (value) {
                         if (row.Mode && row.Mode == "tcp") {
                             return '<a href="' + 'http://{{.ip}}:' + row.Port + '" target="_blank"><span class="badge badge-primary" langtag="word-open"></span></a>'
@@ -575,10 +583,6 @@
                 halign: 'center',
                 visible: true, //false表示不显示
                 formatter: function (value, row, index) {
-                    if (row.Mode === "service") {
-                        // a backend a client reports has nothing to stop, delete or edit
-                        return ''
-                    }
                     var btn_group = '<div class="btn-group">'
                     var idArg = "{'id':" + row.Id + "})"
                     if (row.Status) {
@@ -597,10 +601,7 @@
                     return btn_group
                 }
             }
-        ].filter(function (c) {
-            // A list opened for one client shows that client in its title.
-            return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
-        })
+        ].filter(scopedColumn){{ end }}
     }, {key: 'tunnel-{{if .type}}{{.type}}{{else}}all{{end}}'});
     initListLive('tunnel', '{{.web_base_url}}');
     {{ if or (not .type) (ne .type "service") }}

@@ -1322,12 +1322,12 @@
 		<en-US>Virtual backends reported by clients. Copy the target (service://…) into the target of another tunnel or host to expose it.</en-US>
 	</lang>
 	<lang id="word-servicekind">
-		<zh-CN>种类</zh-CN>
-		<en-US>Kind</en-US>
+		<zh-CN>类型</zh-CN>
+		<en-US>Type</en-US>
 	</lang>
-	<lang id="word-servicename">
-		<zh-CN>名称</zh-CN>
-		<en-US>Name</en-US>
+	<lang id="word-network">
+		<zh-CN>网络</zh-CN>
+		<en-US>Network</en-US>
 	</lang>
 	<lang id="info-casehttpproxy">
 		<zh-CN>将公网服务器1.1.1.1的8004端口作为HTTP代理，访问内网网站。</zh-CN>
