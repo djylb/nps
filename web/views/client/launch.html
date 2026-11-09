@@ -2,13 +2,32 @@
     <div class="col-md-12 col-md-auto">
         <div class="ibox float-e-margins">
             <h3 class="ibox-title" langtag="page-launch"></h3>
-            <div class="ibox-content"><div id="launch-root"></div></div>
+            <div class="ibox-content">
+                <p class="lg-back"><a id="launch-back" class="btn btn-outline btn-secondary btn-sm" href="{{.web_base_url}}/client/list"><i class="fa fa-arrow-left" aria-hidden="true"></i> <span langtag="lg-back"></span></a></p>
+                <div id="launch-root"></div>
+            </div>
         </div>
     </div>
 </div>
 <script src="{{.web_base_url}}/static/js/launch-generator.js?v={{.version}}"></script>
 <script>
-    LaunchGen.mount(document.getElementById('launch-root'), Object.assign(
-        {{.launch_ctx}},
-        {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}}));
+    (function () {
+        var ctx = Object.assign(
+            {{.launch_ctx}},
+            {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}});
+        LaunchGen.mount(document.getElementById('launch-root'), ctx);
+        // Back goes to the page the generator was opened from, with its search,
+        // page and sort as they were; without one (a link opened directly) to the
+        // list of what the commands are for, which the link points to.
+        var back = document.getElementById('launch-back');
+        if (ctx.kind !== 'client') back.setAttribute('href', ctx.base + '/index/secret');
+        back.addEventListener('click', function (e) {
+            var from = null;
+            try { from = document.referrer ? new URL(document.referrer) : null; } catch (err) { from = null; }
+            if (from && from.origin === location.origin && from.pathname !== location.pathname && window.history.length > 1) {
+                e.preventDefault();
+                window.history.back();
+            }
+        });
+    })();
 </script>
