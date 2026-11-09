@@ -80,16 +80,16 @@ func certCovers(cert *tls.Certificate, name string) certMatch {
 //
 // The default certificate is never served for a name it does not cover, so
 // arbitrary server names cannot fetch it. It fails if no certificate fits.
-func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate, error) {
+func (s *HttpsServer) selectCert(host *model.Host, hv model.HostView, sni string) (*tls.Certificate, error) {
 	var own *tls.Certificate
-	if host.HasCert() {
-		cert, err := s.loadCert(host.CertFile, host.KeyFile, host.CertType)
+	if hv.HasCert() {
+		cert, err := s.loadCert(hv.CertFile, hv.KeyFile, hv.CertType)
 		if err != nil {
 			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, "route", host.Host, "host", host.Id, "domain", host.Host, "reason", "load_failed", "err", err)
 		} else if old, loaded := s.hostCerts.Swap(host.Id, cert); !loaded || old != cert {
 			file := ""
-			if host.CertType == "file" {
-				file = host.CertFile
+			if hv.CertType == "file" {
+				file = hv.CertFile
 			}
 			LogCertLoaded(host.Host, host.Host, file, cert)
 		}
@@ -106,7 +106,8 @@ func (s *HttpsServer) selectCert(host *model.Host, sni string) (*tls.Certificate
 			if v.Id == host.Id {
 				return true
 			}
-			cert, err := s.loadCert(v.CertFile, v.KeyFile, v.CertType)
+			vv := v.View()
+			cert, err := s.loadCert(vv.CertFile, vv.KeyFile, vv.CertType)
 			if err != nil {
 				return true
 			}
@@ -148,8 +149,8 @@ func (s *HttpsServer) defaultCertFor(sni string) *tls.Certificate {
 // autoSSL reports whether TLS for host is terminated with certificates
 // obtained by AutoSSL: the entry enables it and the server listens on the
 // standard HTTP or HTTPS port, or AutoSSL is forced.
-func (s *HttpProxy) autoSSL(host *model.Host) bool {
-	return host.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl)
+func (s *HttpProxy) autoSSL(hv model.HostView) bool {
+	return hv.AutoSSL && (s.HttpPort == 80 || s.HttpsPort == 443 || s.ForceAutoSsl)
 }
 
 // serverTLSConfig returns the configuration to terminate TLS for sni with:
@@ -159,13 +160,15 @@ func (s *HttpProxy) autoSSL(host *model.Host) bool {
 // is no fitting certificate.
 func (s *HttpsServer) serverTLSConfig(host *model.Host, sni string) (cfg *tls.Config, autoSSL bool) {
 	var cert *tls.Certificate
-	switch {
-	case host == nil:
+	if host == nil {
 		return nil, false
-	case s.autoSSL(host):
+	}
+	hv := host.View()
+	switch {
+	case s.autoSSL(hv):
 		return s.certMagicTls, true
 	default:
-		c, err := s.selectCert(host, sni)
+		c, err := s.selectCert(host, hv, sni)
 		if err != nil {
 			return nil, false
 		}

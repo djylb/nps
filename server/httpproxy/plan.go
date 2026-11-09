@@ -89,31 +89,30 @@ func requestOf(ctx context.Context) *proxyRequest {
 }
 
 func (s *HttpServer) compilePlan(h *model.Host) *hostPlan {
-	h.RLock()
-	defer h.RUnlock()
+	hv := h.View()
 	p := &hostPlan{
 		host:                  h,
-		acme:                  s.autoSSL(h),
-		autoHttps:             h.AutoHttps,
+		acme:                  s.autoSSL(hv),
+		autoHttps:             hv.AutoHttps,
 		location:              h.Location,
-		pathRewrite:           h.PathRewrite,
-		originalPath:          !h.CompatMode,
-		hostChange:            h.HostChange,
-		headerRules:           parseHeaderRules(h.HeaderChange),
-		respRules:             parseHeaderRules(h.RespHeaderChange),
-		autoCORS:              h.AutoCORS,
+		pathRewrite:           hv.PathRewrite,
+		originalPath:          !hv.CompatMode,
+		hostChange:            hv.HostChange,
+		headerRules:           parseHeaderRules(hv.HeaderChange),
+		respRules:             parseHeaderRules(hv.RespHeaderChange),
+		autoCORS:              hv.AutoCORS,
 		backendScheme:         "http",
-		backendTLS:            h.TargetIsHttps,
-		upgradeForwardHeaders: !h.CompatMode,
-		transports:            s.newTransports(h.CompatMode),
+		backendTLS:            hv.TargetIsHttps,
+		upgradeForwardHeaders: !hv.CompatMode,
+		transports:            s.newTransports(hv.CompatMode),
 	}
-	if h.RedirectURL != "" {
-		p.redirect = compileRedirectURL(h.RedirectURL)
+	if hv.RedirectURL != "" {
+		p.redirect = compileRedirectURL(hv.RedirectURL)
 	}
-	if h.TargetIsHttps {
+	if hv.TargetIsHttps {
 		p.backendScheme = "https"
 	}
-	if s.Http3Port > 0 && !h.HttpsJustProxy && !h.CompatMode {
+	if s.Http3Port > 0 && !hv.HttpsJustProxy && !hv.CompatMode {
 		p.altSvc = `h3=":` + s.Http3PortStr + `"; ma=86400`
 	}
 	p.proxy = s.newReverseProxy(p)

@@ -68,7 +68,7 @@ loop:
 			if !isPub && s.hasNodeBesides(id, uuid) {
 				s.store.RangeHosts(func(v *model.Host) bool {
 					if v.Client.Id == id {
-						remarks = append(remarks, v.Remark)
+						remarks = append(remarks, v.View().Remark)
 					}
 					return true
 				})

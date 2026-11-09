@@ -184,7 +184,7 @@ func TestIndexRateListHandlers(t *testing.T) {
 		t.Fatalf("total=%d", table.Total)
 	}
 	hosts := table.Rows.([]*hostRateRow)
-	if len(hosts) != 1 || hosts[0].Host != s.host {
+	if len(hosts) != 1 || hosts[0].Id != s.host.Id || hosts[0].Host.Host != s.host.Host {
 		t.Fatal("host fields changed")
 	}
 	u, d = s.host.CurrentRates()

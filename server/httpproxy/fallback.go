@@ -219,12 +219,16 @@ func (s *HttpProxy) FallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 func (s *HttpsServer) fallbackCert(hello *tls.ClientHelloInfo) *tls.Certificate {
 	sni := hello.ServerName
 	host, err := s.store.FindCertByHost(sni)
-	if err != nil || host == nil || host.HttpsJustProxy {
-		// no route, or one whose TLS the backend ends, which a bridge
-		// connection cannot pass through
+	if err != nil || host == nil {
 		return nil
 	}
-	if s.autoSSL(host) {
+	hv := host.View()
+	if hv.HttpsJustProxy {
+		// a route whose TLS the backend ends, which a bridge connection
+		// cannot pass through
+		return nil
+	}
+	if s.autoSSL(hv) {
 		cert, err := s.certMagicTls.GetCertificate(hello)
 		if err != nil {
 			proxyLog.Debug("auto ssl certificate for a bridge connection failed", "route", host.Host, "domain", sni, "err", err)
@@ -232,7 +236,7 @@ func (s *HttpsServer) fallbackCert(hello *tls.ClientHelloInfo) *tls.Certificate 
 		}
 		return cert
 	}
-	cert, err := s.selectCert(host, sni)
+	cert, err := s.selectCert(host, hv, sni)
 	if err != nil {
 		return nil
 	}

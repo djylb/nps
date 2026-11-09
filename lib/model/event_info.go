@@ -52,12 +52,13 @@ func NewTunnelInfo(t *Tunnel) TunnelInfo {
 
 // NewHostInfo snapshots h.
 func NewHostInfo(h *Host) HostInfo {
-	info := HostInfo{ID: h.Id, Host: h.Host, Location: h.Location, Scheme: h.Scheme, Remark: h.Remark, Enabled: !h.IsClose, FromClient: h.NoStore}
+	hv := h.View()
+	info := HostInfo{ID: h.Id, Host: h.Host, Location: h.Location, Scheme: h.Scheme, Remark: hv.Remark, Enabled: !h.IsClose, FromClient: h.NoStore}
 	if h.Client != nil {
 		info.ClientID = h.Client.Id
 	}
-	if h.Target != nil {
-		info.Target = h.Target.TargetStr
+	if hv.Target != nil {
+		info.Target = hv.Target.TargetStr
 	}
 	return info
 }

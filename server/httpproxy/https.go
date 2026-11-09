@@ -165,7 +165,7 @@ func (s *HttpsServer) Start() error {
 			host = nil
 		}
 
-		if host != nil && host.HttpsJustProxy {
+		if host != nil && host.View().HttpsJustProxy {
 			proxyLog.Debug("certificate handled by backend", "route", host.Host, "host", host.Id)
 			_ = c.SetDeadline(time.Time{})
 			s.handleHttpsProxy(host, c, rb, serverName)

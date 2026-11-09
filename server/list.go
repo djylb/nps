@@ -264,6 +264,10 @@ func (s *Server) ListHosts(start, length, clientId int, search, sortField, order
 	list, cnt = s.db.GetHost(0, 0, clientId, search)
 	defer func() { list = page(list, start, length) }()
 	fv := flowSnapshots(list, func(h *model.Host) *model.Flow { return h.Flow })
+	views := make(map[*model.Host]model.HostView, len(list)) // settings as read when listed, so sorting sees one state
+	for _, h := range list {
+		views[h] = h.View()
+	}
 
 	// sort by field, asc or desc
 	switch sortField {
@@ -286,9 +290,9 @@ func (s *Server) ListHosts(start, length, clientId int, search, sortField, order
 
 	case "Remark":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Remark < list[j].Remark })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].Remark < views[list[j]].Remark })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Remark > list[j].Remark })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].Remark > views[list[j]].Remark })
 		}
 
 	case "Client.VerifyKey":
@@ -314,16 +318,16 @@ func (s *Server) ListHosts(start, length, clientId int, search, sortField, order
 
 	case "TargetIsHttps":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].TargetIsHttps && !list[j].TargetIsHttps })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].TargetIsHttps && !views[list[j]].TargetIsHttps })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].TargetIsHttps && list[j].TargetIsHttps })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].TargetIsHttps && views[list[j]].TargetIsHttps })
 		}
 
 	case "Target.TargetStr":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Target.TargetStr < list[j].Target.TargetStr })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].Target.TargetStr < views[list[j]].Target.TargetStr })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Target.TargetStr > list[j].Target.TargetStr })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].Target.TargetStr > views[list[j]].Target.TargetStr })
 		}
 
 	case "Location":
@@ -335,51 +339,51 @@ func (s *Server) ListHosts(start, length, clientId int, search, sortField, order
 
 	case "PathRewrite":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].PathRewrite < list[j].PathRewrite })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].PathRewrite < views[list[j]].PathRewrite })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].PathRewrite > list[j].PathRewrite })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].PathRewrite > views[list[j]].PathRewrite })
 		}
 
 	case "CertType":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].CertType < list[j].CertType })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].CertType < views[list[j]].CertType })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].CertType > list[j].CertType })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].CertType > views[list[j]].CertType })
 		}
 
 	case "AutoSSL":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].AutoSSL && !list[j].AutoSSL })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].AutoSSL && !views[list[j]].AutoSSL })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].AutoSSL && list[j].AutoSSL })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].AutoSSL && views[list[j]].AutoSSL })
 		}
 
 	case "AutoHttps":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].AutoHttps && !list[j].AutoHttps })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].AutoHttps && !views[list[j]].AutoHttps })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].AutoHttps && list[j].AutoHttps })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].AutoHttps && views[list[j]].AutoHttps })
 		}
 
 	case "AutoCORS":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].AutoCORS && !list[j].AutoCORS })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].AutoCORS && !views[list[j]].AutoCORS })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].AutoCORS && list[j].AutoCORS })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].AutoCORS && views[list[j]].AutoCORS })
 		}
 
 	case "CompatMode":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].CompatMode && !list[j].CompatMode })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].CompatMode && !views[list[j]].CompatMode })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].CompatMode && list[j].CompatMode })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].CompatMode && views[list[j]].CompatMode })
 		}
 
 	case "HttpsJustProxy":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].HttpsJustProxy && !list[j].HttpsJustProxy })
+			sort.SliceStable(list, func(i, j int) bool { return views[list[i]].HttpsJustProxy && !views[list[j]].HttpsJustProxy })
 		} else {
-			sort.SliceStable(list, func(i, j int) bool { return !list[i].HttpsJustProxy && list[j].HttpsJustProxy })
+			sort.SliceStable(list, func(i, j int) bool { return !views[list[i]].HttpsJustProxy && views[list[j]].HttpsJustProxy })
 		}
 
 	case "TlsOffload":

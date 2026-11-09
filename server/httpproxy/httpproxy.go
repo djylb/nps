@@ -110,7 +110,7 @@ func (s *HttpProxy) Start() error {
 			if err != nil {
 				return fmt.Errorf("unknown host %q", name)
 			}
-			if !h.AutoSSL {
+			if !h.View().AutoSSL {
 				return fmt.Errorf("AutoSSL disabled for %q", name)
 			}
 			return nil

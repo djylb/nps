@@ -449,6 +449,14 @@ func storeSyncMapToFile(m *sync.Map, filePath string) error {
 					return true
 				}
 			}
+			// Tunnels and hosts are rewritten by updates while stored, so
+			// marshal a copy taken under their lock.
+			switch v := value.(type) {
+			case *model.Tunnel:
+				value = v.Clone()
+			case *model.Host:
+				value = v.Clone()
+			}
 			data, err := json.Marshal(value)
 			if err != nil {
 				rangeErr = err

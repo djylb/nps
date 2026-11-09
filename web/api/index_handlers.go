@@ -395,7 +395,7 @@ func hostRateRows(rows []*model.Host) []*hostRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &hostRateRow{Host: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
+		result[i] = &hostRateRow{Host: row.Clone(), NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }

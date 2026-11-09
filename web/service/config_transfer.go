@@ -81,7 +81,7 @@ func (s DefaultConfigTransferService) Export() ([]byte, error) {
 	})
 	repo.RangeHosts(func(h *model.Host) bool {
 		if !h.NoStore && ownerExported(h.Client) {
-			bundle.Hosts = append(bundle.Hosts, h)
+			bundle.Hosts = append(bundle.Hosts, h.Clone())
 		}
 		return true
 	})

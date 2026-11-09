@@ -313,10 +313,12 @@ func applyTunnelForm(tunnel, form *model.Tunnel, input TunnelInput, clientID int
 // applyHostForm sets on host the settings of the submitted form other than
 // its target and flow limits, which adding and editing set differently.
 func applyHostForm(host, form *model.Host) {
-	model.CopyFormSettings(model.HostSettings, host, form)
-	host.Compress = model.NormalizeCompress(form.Compress)
-	host.Scheme = normalizeScheme(form.Scheme)
-	host.UserAuth = formAccounts(form.UserAuth)
+	host.Modify(func(h *model.Host) {
+		model.CopyFormSettings(model.HostSettings, h, form)
+		h.Compress = model.NormalizeCompress(form.Compress)
+		h.Scheme = normalizeScheme(form.Scheme)
+		h.UserAuth = formAccounts(form.UserAuth)
+	})
 	host.SetHealthCheck(formHealthCheck(form.HealthConfig))
 	host.SetMaxConn(form.MaxConn)
 	host.SetRateLimits(form.UploadLimit, form.DownloadLimit)
@@ -457,12 +459,13 @@ func (s DefaultIndexService) SuggestCert(host string, excludeID, clientID int) *
 	if err != nil || source == nil {
 		return nil
 	}
+	sv := source.View()
 	return &CertSuggestion{
 		SourceID:       source.Id,
 		SourceHost:     source.Host,
 		SourceLocation: source.Location,
-		CertFile:       html.UnescapeString(source.CertFile), // stored escaped by the form handler
-		KeyFile:        html.UnescapeString(source.KeyFile),
+		CertFile:       html.UnescapeString(sv.CertFile), // stored escaped by the form handler
+		KeyFile:        html.UnescapeString(sv.KeyFile),
 	}
 }
 
@@ -588,8 +591,8 @@ func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 		return HostMutation{}, err
 	}
 	targetFallback := ""
-	if host.Target != nil {
-		targetFallback = host.Target.TargetStr
+	if cur := host.View().Target; cur != nil {
+		targetFallback = cur.TargetStr
 	}
 
 	target := formTarget(form.Target, input.IsAdmin, input.AllowUserLocal, client.Id, targetFallback)
@@ -602,9 +605,11 @@ func (s DefaultIndexService) EditHost(input HostInput) (HostMutation, error) {
 		host.Flow.ResetTraffic()
 	}
 
-	host.CertType = crypt.GetCertType(host.CertFile)
-	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
-	lists.applyTo(&host.SourceLists, "host "+strconv.Itoa(host.Id)+" ("+host.Host+")")
+	host.Modify(func(h *model.Host) {
+		h.CertType = crypt.GetCertType(h.CertFile)
+		h.CertHash = crypt.FNV1a64(h.CertType, h.CertFile, h.KeyFile)
+		lists.applyTo(&h.SourceLists, "host "+strconv.Itoa(h.Id)+" ("+h.Host+")")
+	})
 	if err := s.Backend.Repository.SaveHost(host, oldHost); err != nil {
 		return HostMutation{}, err
 	}

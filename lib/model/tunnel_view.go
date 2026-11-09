@@ -78,6 +78,70 @@ func (t *Tunnel) viewLocked() TunnelView {
 	}
 }
 
+// HostView is an immutable copy of the settings of a host that an update from
+// the client's configuration can replace while the host is serving. Target
+// and MultiAccount are replaced by an update, never modified, so the view may
+// keep reading through them.
+//
+// Code that reads these fields on a host other than one it is still building
+// takes a view and reads the view; the fields themselves are only touched
+// under the host's lock, here and in Update.
+type HostView struct {
+	HeaderChange     string
+	RespHeaderChange string
+	HostChange       string
+	PathRewrite      string
+	Remark           string
+	RedirectURL      string
+	HttpsJustProxy   bool
+	AutoSSL          bool
+	CertType         string
+	CertHash         string
+	CertFile         string
+	KeyFile          string
+	AutoHttps        bool
+	AutoCORS         bool
+	CompatMode       bool
+	TargetIsHttps    bool
+	Target           *Target
+	MultiAccount     *MultiAccount
+	Source           SourceView
+}
+
+// View returns the current settings of s.
+func (s *Host) View() HostView {
+	s.RLock()
+	defer s.RUnlock()
+	return s.viewLocked()
+}
+
+func (s *Host) viewLocked() HostView {
+	return HostView{
+		HeaderChange:     s.HeaderChange,
+		RespHeaderChange: s.RespHeaderChange,
+		HostChange:       s.HostChange,
+		PathRewrite:      s.PathRewrite,
+		Remark:           s.Remark,
+		RedirectURL:      s.RedirectURL,
+		HttpsJustProxy:   s.HttpsJustProxy,
+		AutoSSL:          s.AutoSSL,
+		CertType:         s.CertType,
+		CertHash:         s.CertHash,
+		CertFile:         s.CertFile,
+		KeyFile:          s.KeyFile,
+		AutoHttps:        s.AutoHttps,
+		AutoCORS:         s.AutoCORS,
+		CompatMode:       s.CompatMode,
+		TargetIsHttps:    s.TargetIsHttps,
+		Target:           s.Target,
+		MultiAccount:     s.MultiAccount,
+		Source:           s.SourceLists.View(),
+	}
+}
+
+// HasCert reports whether the host has a certificate configured.
+func (v HostView) HasCert() bool { return v.CertFile != "" && v.KeyFile != "" }
+
 // ListenIP returns the address t listens on, setting the wildcard address if
 // none is set.
 func (t *Tunnel) ListenIP() string {
@@ -89,17 +153,18 @@ func (t *Tunnel) ListenIP() string {
 	return t.ServerIp
 }
 
-// SourceView returns the current source lists of s.
-func (s *Host) SourceView() SourceView {
-	s.RLock()
-	defer s.RUnlock()
-	return s.SourceLists.View()
-}
-
 // Modify runs fn with t locked for writing, for an edit of the settings of a
 // tunnel that is serving. fn must not call methods of t that take its lock.
 func (t *Tunnel) Modify(fn func(t *Tunnel)) {
 	t.Lock()
 	defer t.Unlock()
 	fn(t)
+}
+
+// Modify runs fn with s locked for writing, for an edit of the settings of a
+// host that is serving. fn must not call methods of s that take its lock.
+func (s *Host) Modify(fn func(s *Host)) {
+	s.Lock()
+	defer s.Unlock()
+	fn(s)
 }

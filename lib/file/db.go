@@ -458,13 +458,14 @@ func (s *DbUtils) IsHostModify(h *model.Host) bool {
 		return true
 	}
 
+	cur := existingHost.View()
 	if existingHost.IsClose != h.IsClose ||
 		existingHost.Host != h.Host ||
 		existingHost.Location != h.Location ||
 		existingHost.Scheme != h.Scheme ||
-		existingHost.HttpsJustProxy != h.HttpsJustProxy ||
-		existingHost.CertFile != h.CertFile ||
-		existingHost.KeyFile != h.KeyFile {
+		cur.HttpsJustProxy != h.HttpsJustProxy ||
+		cur.CertFile != h.CertFile ||
+		cur.KeyFile != h.KeyFile {
 		return true
 	}
 
@@ -513,7 +514,7 @@ func (s *DbUtils) GetHost(start, length int, id int, search string) ([]*model.Ho
 	for _, key := range keys {
 		if value, ok := s.JsonDb.Hosts.Load(key); ok {
 			v := value.(*model.Host)
-			if search != "" && v.Id != searchId && !textutil.ContainsFold(v.Host, search) && !textutil.ContainsFold(v.Remark, search) && !textutil.ContainsFold(v.Client.VerifyKey, search) {
+			if search != "" && v.Id != searchId && !textutil.ContainsFold(v.Host, search) && !textutil.ContainsFold(v.View().Remark, search) && !textutil.ContainsFold(v.Client.VerifyKey, search) {
 				continue
 			}
 			if id == 0 || v.Client.Id == id {
@@ -804,7 +805,7 @@ func (s *DbUtils) FindCertByHost(host string) (*model.Host, error) {
 // out the entry excludeID and, unless clientID is 0, entries of other clients.
 func (s *DbUtils) FindReusableCert(host string, excludeID, clientID int) (*model.Host, error) {
 	return s.findCertHost(host, func(v *model.Host) bool {
-		return v.HasCert() && v.Id != excludeID && (clientID == 0 || (v.Client != nil && v.Client.Id == clientID))
+		return v.View().HasCert() && v.Id != excludeID && (clientID == 0 || (v.Client != nil && v.Client.Id == clientID))
 	})
 }
 
@@ -864,7 +865,8 @@ func (r certHostRank) better(o certHostRank) bool {
 // at any depth, but never example.com itself.
 func rankCertHost(v *model.Host, host string) (certHostRank, bool) {
 	name := strings.TrimSuffix(strings.ToLower(v.Host), ".")
-	r := certHostRank{id: v.Id, location: len(v.Location), tls: v.HasCert() || v.AutoSSL}
+	hv := v.View()
+	r := certHostRank{id: v.Id, location: len(v.Location), tls: hv.HasCert() || hv.AutoSSL}
 	if v.Location == "" {
 		r.location = 1
 	}
@@ -885,7 +887,7 @@ func rankCertHost(v *model.Host, host string) (certHostRank, bool) {
 func (s *DbUtils) RangeClientCertHosts(clientID int, fn func(*model.Host) bool) {
 	s.JsonDb.Hosts.Range(func(_, value any) bool {
 		v := value.(*model.Host)
-		if v.Client == nil || v.Client.Id != clientID || !v.HasCert() {
+		if v.Client == nil || v.Client.Id != clientID || !v.View().HasCert() {
 			return true
 		}
 		return fn(v)

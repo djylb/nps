@@ -131,7 +131,8 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(s.ErrorContent)
 		return
 	}
-	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, host.SourceView(), host.Host) {
+	hv := host.View()
+	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, hv.Source, host.Host) {
 		abortRequest()
 	}
 	if a := accessOf(r.Context()); a != nil {
@@ -167,7 +168,7 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 	// clients cannot send Basic credentials, so they proceed unauthenticated;
 	// such a request only reaches the client if the backend completes the
 	// handshake.
-	req.authed = s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, host.MultiAccount, host.UserAuth) == nil
+	req.authed = s.Auth(r, nil, host.Client.Cnf.U, host.Client.Cnf.P, hv.MultiAccount, host.UserAuth) == nil
 	if !req.authed && !isTunnelRequest(r) {
 		emitAuthDenied(host, r.RemoteAddr)
 		writeUnauthorized(w)

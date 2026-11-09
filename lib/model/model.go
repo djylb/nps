@@ -761,6 +761,8 @@ func PortTaskTarget(host string, port int) string {
 }
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {
+	host.RLock()
+	hv := host.viewLocked()
 	t := &Tunnel{
 		RateLimits:   host.RateLimits.shared(),
 		ServerIp:     "0.0.0.0",
@@ -771,14 +773,15 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 		Client:       host.Client,
 		Flow:         host.Flow,
 		NoStore:      true,
-		Target:       host.Target,
+		Target:       hv.Target,
 		Routes:       host.Routes,
 		Compress:     host.Compress,
 		UserAuth:     host.UserAuth,
-		MultiAccount: host.MultiAccount,
+		MultiAccount: hv.MultiAccount,
 		hostRoute:    host.Host,
 	}
 	t.CopySourceLists(&host.SourceLists)
+	host.RUnlock()
 	return t
 }
 
@@ -1015,9 +1018,56 @@ type Host struct {
 	sync.RWMutex
 }
 
-// HasCert reports whether the entry has a certificate configured.
-func (s *Host) HasCert() bool {
-	return s.CertFile != "" && s.KeyFile != ""
+// Clone returns a copy of s that holds every stored field, taken under the
+// lock, so it can be marshaled while s is being updated. Flow is copied by
+// value; Client, Target and the account settings are shared.
+func (s *Host) Clone() *Host {
+	s.RLock()
+	c := &Host{
+		RateLimits:       s.RateLimits.copyConfig(),
+		Compress:         s.Compress,
+		Id:               s.Id,
+		Host:             s.Host,
+		HeaderChange:     s.HeaderChange,
+		RespHeaderChange: s.RespHeaderChange,
+		HostChange:       s.HostChange,
+		Location:         s.Location,
+		PathRewrite:      s.PathRewrite,
+		Remark:           s.Remark,
+		Scheme:           s.Scheme,
+		RedirectURL:      s.RedirectURL,
+		HttpsJustProxy:   s.HttpsJustProxy,
+		TlsOffload:       s.TlsOffload,
+		AutoSSL:          s.AutoSSL,
+		CertType:         s.CertType,
+		CertHash:         s.CertHash,
+		CertFile:         s.CertFile,
+		KeyFile:          s.KeyFile,
+		NoStore:          s.NoStore,
+		IsClose:          s.IsClose,
+		AutoHttps:        s.AutoHttps,
+		AutoCORS:         s.AutoCORS,
+		CompatMode:       s.CompatMode,
+		MaxConn:          s.MaxConn,
+		NowConn:          atomic.LoadInt32(&s.NowConn),
+		Client:           s.Client,
+		TargetIsHttps:    s.TargetIsHttps,
+		Target:           s.Target,
+		Routes:           s.Routes,
+		UserAuth:         s.UserAuth,
+		MultiAccount:     s.MultiAccount,
+		HealthConfig:     s.HealthConfig,
+	}
+	c.CopySourceLists(&s.SourceLists)
+	flow := s.Flow
+	s.RUnlock()
+
+	if flow != nil {
+		v := flow.Values()
+		c.Flow = &Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit,
+			DirectIn: v.DirectIn, DirectOut: v.DirectOut}
+	}
+	return c
 }
 
 func (s *Host) Update(h *Host) {

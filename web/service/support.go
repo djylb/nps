@@ -158,11 +158,15 @@ func changeHostStatus(repo Repository, id int, name, action string) error {
 		}
 		host.Flow.SetTimeLimit(textutil.GetTimeNoErrByStr(""))
 	case "auto_ssl":
-		if err := applyBoolAction(&host.AutoSSL, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.AutoSSL, action) })
+		if err != nil {
 			return err
 		}
 	case "https_just_proxy":
-		if err := applyBoolAction(&host.HttpsJustProxy, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.HttpsJustProxy, action) })
+		if err != nil {
 			return err
 		}
 	case "tls_offload":
@@ -170,27 +174,37 @@ func changeHostStatus(repo Repository, id int, name, action string) error {
 			return err
 		}
 	case "auto_https":
-		if err := applyBoolAction(&host.AutoHttps, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.AutoHttps, action) })
+		if err != nil {
 			return err
 		}
 	case "auto_cors":
-		if err := applyBoolAction(&host.AutoCORS, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.AutoCORS, action) })
+		if err != nil {
 			return err
 		}
 	case "compat_mode":
-		if err := applyBoolAction(&host.CompatMode, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.CompatMode, action) })
+		if err != nil {
 			return err
 		}
 	case "target_is_https":
-		if err := applyBoolAction(&host.TargetIsHttps, action); err != nil {
+		var err error
+		host.Modify(func(h *model.Host) { err = applyBoolAction(&h.TargetIsHttps, action) })
+		if err != nil {
 			return err
 		}
 	default:
 		return fmt.Errorf("unknown name: %q", name)
 	}
 
-	host.CertType = crypt.GetCertType(host.CertFile)
-	host.CertHash = crypt.FNV1a64(host.CertType, host.CertFile, host.KeyFile)
+	host.Modify(func(h *model.Host) {
+		h.CertType = crypt.GetCertType(h.CertFile)
+		h.CertHash = crypt.FNV1a64(h.CertType, h.CertFile, h.KeyFile)
+	})
 	return repo.SaveHost(host, "")
 }
 

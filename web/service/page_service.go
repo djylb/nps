@@ -138,6 +138,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 		if err != nil {
 			return PageBuildResult{}, ErrPageNotFound
 		}
+		host = host.Clone()
 		data["h"] = host
 		setAccessListData(data, &host.SourceLists)
 		if host.UserAuth == nil {

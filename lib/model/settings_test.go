@@ -118,6 +118,20 @@ func TestCloneCopiesFields(t *testing.T) {
 	}
 }
 
+// TestHostCloneCopiesFields fails for a field added to Host that Clone does
+// not copy.
+func TestHostCloneCopiesFields(t *testing.T) {
+	src := new(Host)
+	fieldtest.Fill(src, 0)
+	c := src.Clone()
+	sv, cv := reflect.ValueOf(src).Elem(), reflect.ValueOf(c).Elem()
+	for _, name := range fieldtest.Fields(reflect.TypeFor[Host](), "Flow") {
+		if !reflect.DeepEqual(fieldtest.Value(cv, name).Interface(), fieldtest.Value(sv, name).Interface()) {
+			t.Errorf("Clone does not copy %s", name)
+		}
+	}
+}
+
 // TestUpdateCopiesFields fails for a field added to Tunnel or Host that
 // Update, which takes the settings a client sends again, does not copy and
 // that is not listed here.

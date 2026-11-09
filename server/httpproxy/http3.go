@@ -180,7 +180,7 @@ func (s *Http3Server) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config
 	}
 	// TLS offload hosts forward the decrypted stream as raw TCP, which an
 	// HTTP/3 server cannot provide.
-	if host != nil && (host.HttpsJustProxy || host.TlsOffload) {
+	if host != nil && (host.View().HttpsJustProxy || host.TlsOffload) {
 		return nil, nil
 	}
 
