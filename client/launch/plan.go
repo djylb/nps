@@ -162,7 +162,7 @@ func (p Profile) identity() (key, paths string) {
 
 // sessionKeys are the [common] keys that apply to the whole connection.
 var sessionKeys = []string{"pipes", "scheduler_up", "session_max_lanes", "relay_idle", "p2p_visitor_keep_server",
-	"session_resume_timeout", "new_protocol_pin", "proxy_url", "local_ip"}
+	"session_resume_timeout", "session_usage_interval", "new_protocol_pin", "proxy_url", "local_ip"}
 
 func sessionValue(c *config.CommonConfig, key string) string {
 	switch key {
@@ -178,6 +178,8 @@ func sessionValue(c *config.CommonConfig, key string) string {
 		return strconv.FormatBool(c.KeepServer)
 	case "session_resume_timeout":
 		return strconv.Itoa(c.ResumeTimeout)
+	case "session_usage_interval":
+		return strconv.Itoa(c.UsageInterval)
 	case "new_protocol_pin":
 		return c.Pin
 	case "proxy_url":
@@ -202,6 +204,8 @@ func setSession(dst, src *config.CommonConfig, key string) {
 		dst.KeepServer = src.KeepServer
 	case "session_resume_timeout":
 		dst.ResumeTimeout = src.ResumeTimeout
+	case "session_usage_interval":
+		dst.UsageInterval = src.UsageInterval
 	case "new_protocol_pin":
 		dst.Pin = src.Pin
 	case "proxy_url":

@@ -45,7 +45,7 @@ npc://<vkey>@host:port[/path]?type=tls&alpn=…&sni=…&host=…&alt=tcp://addr:
 | `tier`、`weight`、`standby`、`count`、`dirs`、`kinds` | 第一个地址的多承载参数，见 [NPC 命令行参数](/reference/npc-cli.md#服务器地址) |
 | `alt` | 更多路径，可重复：`scheme://host:port[/path][?k=v;k=v]`，参数同上，用 `;` 分隔 |
 | `pin` | 服务端密钥标识（32 位十六进制） |
-| `pipes`、`scheduler_up`、`session_max_lanes`、`session_resume_timeout`、`relay_idle`、`p2p_visitor_keep_server` | 会话设置，含义同 [npc.conf](/reference/npc-config.md) |
+| `pipes`、`scheduler_up`、`session_max_lanes`、`session_resume_timeout`、`session_usage_interval`、`relay_idle`、`p2p_visitor_keep_server` | 会话设置，含义同 [npc.conf](/reference/npc-config.md) |
 | `proxy` | 连接服务端使用的代理 |
 | `source_addr` | 出站连接的本地源地址（npc.conf 的 `local_ip`） |
 
@@ -93,7 +93,7 @@ JSON 或 JSONC（可写注释和尾逗号）。顶层 `profiles` 是以连接名
         {"url": "tls://a.example.com:8025", "alpn": "h2", "count": 2},
         {"url": "wss://a.example.com:443/ws", "tier": 1, "weight": 2, "standby": false}
       ],
-      "session": {"max_pipes": 2, "scheduler_up": "spread_eta", "max_lanes": 0, "resume_timeout": 0},
+      "session": {"max_pipes": 2, "scheduler_up": "spread_eta", "max_lanes": 0, "resume_timeout": 0, "usage_interval": 0},
       "access": [
         {"access": "sshkey", "target": "10.0.0.5:22", "local_type": "tcp", "local_port": 2000, "local_ip": "127.0.0.1", "conn_mode": "auto"},
         {"access": "lan", "local_type": "mixed", "local_port": 1080, "auth": [{"user": "a", "pass": "b"}]}

@@ -65,7 +65,7 @@
     };
     var dependencies = {
         Speed: ['Speed'], UploadRate: ['UploadRate'], DownloadRate: ['DownloadRate'],
-        InletFlow: ['Flow.InletFlow'], ExportFlow: ['Flow.ExportFlow'],
+        InletFlow: ['Flow.InletFlow'], ExportFlow: ['Flow.ExportFlow'], DirectFlow: ['Flow.DirectIn', 'Flow.DirectOut'],
         TotalFlow: ['TotalFlow'], ActualFlow: ['ActualFlow'],
         FlowRemain: ['FlowRemain'], TimeRemain: [],
         NowConn: ['NowConn'], IsConnect: ['IsConnect'], 'Client.IsConnect': ['Client.IsConnect'],

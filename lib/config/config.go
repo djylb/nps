@@ -43,6 +43,7 @@ type CoreSettings struct {
 	RelayIdle     int    // relay_idle, seconds: 0 is 60
 	KeepServer    bool   // p2p_visitor_keep_server
 	ResumeTimeout int    // session_resume_timeout, seconds: 0 is 30, negative no resume
+	UsageInterval int    // session_usage_interval, seconds between reports of direct traffic: 0 is 60, negative never
 	Pin           string // new_protocol_pin: hex key id the server must have, "" for none
 }
 
@@ -293,6 +294,8 @@ func dealCommon(s string) *CommonConfig {
 			c.KeepServer = parseBool(item)
 		case "session_resume_timeout":
 			c.ResumeTimeout = textutil.GetIntNoErrByStr(item[1])
+		case "session_usage_interval":
+			c.UsageInterval = textutil.GetIntNoErrByStr(item[1])
 		case "new_protocol_pin":
 			c.Pin = item[1]
 		case "auto_reconnection":

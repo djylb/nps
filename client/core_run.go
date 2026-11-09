@@ -24,7 +24,7 @@ var errNoCore = errors.New("the new protocol is not available in this build")
 // server: the same dial and the same session settings.
 type coreKey struct {
 	server, vkey, carrier, localIP, proxy, pipes, scheduler string
-	maxLanes, resume                                        int
+	maxLanes, resume, usage                                 int
 	keep                                                    bool
 }
 
@@ -123,7 +123,7 @@ func acquireCore(cfg *config.CommonConfig, server string) (*coreEntry, error) {
 		return nil, errNoCore
 	}
 	key := coreKey{server, cfg.VKey, strings.ToLower(cfg.Tp), cfg.LocalIP, cfg.ProxyUrl, cfg.Pipes, cfg.SchedulerUp,
-		cfg.MaxLanes, cfg.ResumeTimeout, cfg.KeepServer}
+		cfg.MaxLanes, cfg.ResumeTimeout, cfg.UsageInterval, cfg.KeepServer}
 	coreOuters.mu.Lock()
 	defer coreOuters.mu.Unlock()
 	if e := coreOuters.m[key]; e != nil {

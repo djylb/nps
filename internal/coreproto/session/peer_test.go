@@ -89,6 +89,13 @@ type peerEnv struct {
 	exitTarget atomic.Pointer[string]
 	echo       string
 	// Set before the LINK that should see them.
+	// directIn and directOut add up what the grant's AddDirect received.
+	directIn, directOut atomic.Uint64
+	// usageEvery is the provider's DialConfig.UsageInterval, set by
+	// startPeerUsage.
+	usageEvery time.Duration
+	// onDirect, when set, also takes what AddDirect is given.
+	onDirect atomic.Pointer[func(in, out uint64)]
 	admit    func(stop func()) (func(), error)
 	limiters func() (coreapi.Limiter, coreapi.Limiter)
 	exitErr  error
@@ -107,7 +114,14 @@ func startPeerLanes(t *testing.T, lanes int) *peerEnv {
 
 func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 	t.Helper()
-	p := &peerEnv{punch: &quicPuncher{t: t}, echo: listenEcho(t)}
+	return startPeerUsage(t, serverExit, lanes, 0)
+}
+
+// startPeerUsage is startPeerOpts with the provider reporting its direct
+// traffic every usageEvery.
+func startPeerUsage(t *testing.T, serverExit bool, lanes int, usageEvery time.Duration) *peerEnv {
+	t.Helper()
+	p := &peerEnv{punch: &quicPuncher{t: t}, echo: listenEcho(t), usageEvery: usageEvery}
 	p.valid.Store(true)
 	p.env = startHooks(t, coreapi.Hooks{
 		ResolveLink: func(client int, r coreapi.LinkResolve) (*coreapi.LinkGrant, error) {
@@ -118,6 +132,13 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
 				Admit:  p.admit, Limiters: p.limiters,
+				AddDirect: func(in, out uint64) {
+					p.directIn.Add(in)
+					p.directOut.Add(out)
+					if f := p.onDirect.Load(); f != nil {
+						(*f)(in, out)
+					}
+				},
 				ServeExit: func(ctx context.Context, c net.Conn, _, target string, ack func() error) error {
 					if p.exitErr != nil {
 						return p.exitErr
@@ -141,7 +162,7 @@ func startPeerOpts(t *testing.T, serverExit bool, lanes int) *peerEnv {
 		},
 	}, rec(1, "prov", true), rec(2, "vis", true), rec(3, "other", true))
 	d := func(vkey string) DialConfig {
-		return DialConfig{Candidates: p.cands(p.addr), VKey: vkey, Agent: "t", Timeout: 3 * time.Second, Puncher: p.punch, Exit: plainExit{}, MaxLanes: lanes,
+		return DialConfig{Candidates: p.cands(p.addr), VKey: vkey, Agent: "t", Timeout: 3 * time.Second, Puncher: p.punch, Exit: plainExit{}, MaxLanes: lanes, UsageInterval: usageEvery,
 			PeerExit: func(coreapi.LinkPolicy) (coreapi.Exit, error) { return fixedExit{plainExit{}, p.echo}, nil }}
 	}
 	p.provider = p.dial(NewDialer(d("prov")))

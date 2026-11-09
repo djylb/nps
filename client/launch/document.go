@@ -63,6 +63,7 @@ type session struct {
 	SchedulerUp   string `json:"scheduler_up"`
 	MaxLanes      int    `json:"max_lanes"`
 	ResumeTimeout int    `json:"resume_timeout"`
+	UsageInterval int    `json:"usage_interval"`
 }
 
 // common is the session as [common] keys, only those written.
@@ -86,6 +87,9 @@ func (s *session) common() (map[string]any, error) {
 	}
 	if s.ResumeTimeout != 0 {
 		out["session_resume_timeout"] = s.ResumeTimeout
+	}
+	if s.UsageInterval != 0 {
+		out["session_usage_interval"] = s.UsageInterval
 	}
 	return out, nil
 }

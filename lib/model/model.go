@@ -44,6 +44,12 @@ type Flow struct {
 	InletFlow  int64     // inbound traffic
 	FlowLimit  int64     // traffic limit
 	TimeLimit  time.Time // expire time
+	// DirectIn and DirectOut are the bytes of a point-to-point tunnel that
+	// went over direct paths, as its providers reported them: statistics
+	// only, outside the quota and the rates (Over, the budget and the
+	// counter never see them). Only tunnels record them.
+	DirectIn  int64 `json:",omitempty"`
+	DirectOut int64 `json:",omitempty"`
 	// client marks a client's flow, whose limit FlowLimitFactor scales;
 	// the limits of tunnels and hosts always count the in/out traffic.
 	client bool
@@ -177,14 +183,40 @@ func (s *Flow) MarshalJSON() ([]byte, error) {
 		InletFlow  int64
 		FlowLimit  int64
 		TimeLimit  time.Time
-	}{v.ExportFlow, v.InletFlow, v.FlowLimit, v.TimeLimit})
+		DirectIn   int64 `json:",omitempty"`
+		DirectOut  int64 `json:",omitempty"`
+	}{v.ExportFlow, v.InletFlow, v.FlowLimit, v.TimeLimit, v.DirectIn, v.DirectOut})
 }
 
-// ResetTraffic zeroes the inbound and outbound traffic.
+// AddDirect counts bytes of direct traffic reported by a provider: in were
+// received and out sent by it. It is not charged to the budget.
+func (s *Flow) AddDirect(in, out int64) {
+	if s == nil {
+		return
+	}
+	s.Lock()
+	s.DirectIn, s.DirectOut = satAdd(s.DirectIn, in), satAdd(s.DirectOut, out)
+	s.Unlock()
+}
+
+// satAdd is a+b for non-negative values, MaxInt64 at most.
+func satAdd(a, b int64) int64 {
+	if b < 0 {
+		return a
+	}
+	if a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	return a + b
+}
+
+// ResetTraffic zeroes the inbound and outbound traffic, the direct traffic
+// included.
 func (s *Flow) ResetTraffic() {
 	s.Lock()
 	s.startLocked()
 	s.InletFlow, s.ExportFlow = 0, 0
+	s.DirectIn, s.DirectOut = 0, 0
 	s.traffic.Set(0, 0)
 	s.budget.Reset()
 	s.Unlock()
@@ -226,7 +258,9 @@ func (s *Flow) SetLimits(flowLimit int64, timeLimit time.Time) {
 // the inbound and outbound traffic, scaled by FlowLimitFactor for a client.
 type FlowValues struct {
 	InletFlow, ExportFlow, FlowLimit, Used int64
-	TimeLimit                              time.Time
+	// DirectIn and DirectOut are Flow.DirectIn and Flow.DirectOut.
+	DirectIn, DirectOut int64
+	TimeLimit           time.Time
 }
 
 // Values returns a snapshot of the flow; a nil flow gives zero values.
@@ -244,7 +278,8 @@ func (s *Flow) Values() FlowValues {
 	} else {
 		used *= s.factor
 	}
-	return FlowValues{InletFlow: in, ExportFlow: out, FlowLimit: s.FlowLimit, Used: used, TimeLimit: s.TimeLimit}
+	return FlowValues{InletFlow: in, ExportFlow: out, FlowLimit: s.FlowLimit, Used: used, TimeLimit: s.TimeLimit,
+		DirectIn: s.DirectIn, DirectOut: s.DirectOut}
 }
 
 // Over reports whether the flow is over its traffic limit (FlowLimit MiB of
@@ -793,7 +828,8 @@ func (t *Tunnel) Clone() *Tunnel {
 
 	if flow != nil {
 		v := flow.Values()
-		c.Flow = &Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit}
+		c.Flow = &Flow{ExportFlow: v.ExportFlow, InletFlow: v.InletFlow, FlowLimit: v.FlowLimit, TimeLimit: v.TimeLimit,
+			DirectIn: v.DirectIn, DirectOut: v.DirectOut}
 	}
 
 	return c

@@ -742,6 +742,10 @@
 		<zh-CN>入口流量</zh-CN>
 		<en-US>Inlet Flow</en-US>
 	</lang>
+	<lang id="word-directflow">
+		<zh-CN>直连流量（入/出）</zh-CN>
+		<en-US>Direct Flow (In/Out)</en-US>
+	</lang>
 	<lang id="word-actualflow">
 		<zh-CN>实际消耗</zh-CN>
 		<en-US>Actual Usage</en-US>

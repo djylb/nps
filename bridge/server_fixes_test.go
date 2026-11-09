@@ -349,3 +349,30 @@ func TestDeletedSessionKeepsClientWithAnotherLive(t *testing.T) {
 		t.Fatal("the last session left the client")
 	}
 }
+
+// A provider's direct traffic is counted on the tunnel alone, as a statistic:
+// not on its client, and outside the quota.
+func TestGrantCountsDirectTrafficOnTunnel(t *testing.T) {
+	b, task := secretFixture(t)
+	task.Flow.FlowLimit = 1
+	task.Client.Flow.FlowLimit = 1
+	g, err := b.coreResolveLink(1, accessOf("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.AddDirect(5<<20, 7<<20)
+	g.AddDirect(1, 2)
+	if v := task.Flow.Values(); v.DirectIn != 5<<20+1 || v.DirectOut != 7<<20+2 || v.InletFlow != 0 || v.ExportFlow != 0 || v.Used != 0 {
+		t.Fatalf("tunnel flow %+v", v)
+	}
+	if v := task.Client.Flow.Values(); v.DirectIn != 0 || v.DirectOut != 0 {
+		t.Fatalf("client flow %+v", v)
+	}
+	if flowOver(task.Flow) || flowOver(task.Client.Flow) || !g.Valid() {
+		t.Fatal("direct traffic ended the grant")
+	}
+	g.AddDirect(1<<63, 0) // larger than a counter holds
+	if v := task.Flow.Values(); v.DirectIn < 0 {
+		t.Fatalf("overflow %+v", v)
+	}
+}

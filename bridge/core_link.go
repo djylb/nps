@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"slices"
@@ -137,6 +138,7 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 			unwatch := watchExpiry(stop, t.Flow, t.Client.Flow)
 			return func() { unwatch(); release() }, nil
 		},
+		AddDirect: func(in, out uint64) { t.Flow.AddDirect(clampInt64(in), clampInt64(out)) },
 		Limiters: func() (coreapi.Limiter, coreapi.Limiter) {
 			g := t.ControlGroup()
 			flows := []*model.Flow{t.Flow, t.Client.Flow}
@@ -146,6 +148,9 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 		},
 	}, nil
 }
+
+// clampInt64 is n as the int64 a Flow counts in.
+func clampInt64(n uint64) int64 { return int64(min(n, math.MaxInt64)) }
 
 func flowOver(f *model.Flow) bool {
 	traffic, expired := f.Over()

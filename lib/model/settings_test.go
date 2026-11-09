@@ -13,7 +13,7 @@ var settingStructs = []string{"Target", "Flow", "UserAuth", "MultiAccount", "Hea
 
 // Fields of tunnels and hosts that no setting sets, and why.
 var (
-	serverState = []string{"Id", "Client", "NowConn", "NoStore", "Routes", "Flow.ExportFlow", "Flow.InletFlow"}
+	serverState = []string{"Id", "Client", "NowConn", "NoStore", "Routes", "Flow.ExportFlow", "Flow.InletFlow", "Flow.DirectIn", "Flow.DirectOut"}
 	// Read as access lists, the same way for clients (web/api requestAccessLists).
 	accessLists = []string{"IpListPriority", "BlackIpList", "WhiteIpList", "RegisteredOnly"}
 	// Derived from the Content beside them; npc.conf multi_account is a file

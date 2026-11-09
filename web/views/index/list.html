@@ -125,7 +125,7 @@
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
                 + (row.Mode == "secret" ? '<br/><br>' : '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>')
-            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
+            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
             var access = row.Mode != "secret" ? accessListDetail(row) : ''
@@ -380,6 +380,22 @@
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>'
+                }
+            },
+            {
+                field: 'DirectFlow',
+                title: '<span langtag="word-directflow"></span>',
+                align: 'center',
+                halign: 'center',
+                visible: false,
+                sortable: false,
+                // Only a point-to-point tunnel has direct paths.
+                detail: function (row) { return row.Mode == 'secret'; },
+                formatter: function (value, row, index) {
+                    if (row.Mode != 'secret') return '-'
+                    var flow = row.Flow || {}
+                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">'
+                        + changeunit(flow.DirectIn || 0) + ' / ' + changeunit(flow.DirectOut || 0) + '</span>'
                 }
             },
             {

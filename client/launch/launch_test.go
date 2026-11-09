@@ -730,3 +730,21 @@ func TestLocalViaFileProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// session_usage_interval is a session setting in every form.
+func TestUsageIntervalSetting(t *testing.T) {
+	ctx := context.Background()
+	got, err := Resolve(ctx, "npc://k@a:1?session_usage_interval=30")
+	if err != nil || got[0].Config.CommonConfig.UsageInterval != 30 || !got[0].written["session_usage_interval"] {
+		t.Fatalf("link: %v %+v", err, got)
+	}
+	doc := writeFile(t, "u", `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"session":{"usage_interval":-1}}`)
+	if got, err = Resolve(ctx, "@"+doc); err != nil || got[0].Config.CommonConfig.UsageInterval != -1 {
+		t.Fatalf("file: %v %+v", err, got)
+	}
+	// written twice and different is the usual session conflict
+	_, err = NewComposer(sources("npc://k@a:1?session_usage_interval=30", "npc://k@a:1?session_usage_interval=40"), nil).Load(ctx)
+	if err == nil || !strings.Contains(err.Error(), "session_usage_interval") {
+		t.Fatal(err)
+	}
+}

@@ -184,10 +184,11 @@ func (a *Acceptor) newLink(l *peerLink) bool {
 
 func (a *Acceptor) dropLink(l *peerLink) {
 	a.linkMu.Lock()
-	defer a.linkMu.Unlock()
 	if a.links[l.id] == l {
 		delete(a.links, l.id)
 	}
+	a.linkMu.Unlock()
+	a.endUsage(l.id)
 }
 
 func (a *Acceptor) linkOf(id uint64) *peerLink {
@@ -264,6 +265,8 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		s.serveExitStream(ctx, lc, op, fields)
 	case wire.OpHealth:
 		s.serveHealth(lc)
+	case wire.OpP2PUsage:
+		s.serveUsage(lc)
 	case wire.OpService:
 		s.serveServices(lc, fields)
 	case wire.OpConfigUpload:
@@ -373,6 +376,7 @@ func (a *Acceptor) openProviderLink(ctx context.Context, l *peerLink, mode uint6
 	if !a.newLink(l) {
 		return wire.CodeInternal, nil
 	}
+	a.trackUsage(l)
 	info, err := wire.AppendPathOpen(&wire.PathOpen{Op: wire.OpLink, LinkID: l.id})
 	if err != nil {
 		a.dropLink(l)

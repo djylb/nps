@@ -107,6 +107,11 @@ type providerLink struct {
 	zl    *zmux.Listener
 	exit  coreapi.Exit
 	shape *nestedShaping
+	// meter counts the bytes of the link's direct pipes (§9.6); reported is
+	// what the server was last told, under usageMu.
+	meter    directMeter
+	usageMu  sync.Mutex
+	reported usageReport
 	// ctx ends the nested session (revocation); paths outlive it on pctx,
 	// so that the close reaches the visitor over them.
 	ctx     context.Context
@@ -245,19 +250,28 @@ func (p *providerLink) run(lc *linkConn) {
 		return
 	}
 	defer zc.Close()
+	// The last report goes before the nested session and the LINK close.
+	defer p.finalUsage(zc)
 	p.shape.attach(zc)
 	defer p.shape.detach()
-	stop := context.AfterFunc(p.ctx, func() { _ = zc.Close() })
+	stop := context.AfterFunc(p.ctx, func() {
+		p.sampleUsage(zc) // a revoked link's pipes end with the close
+		_ = zc.Close()
+	})
 	defer stop()
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	wg.Go(func() { p.runUsage(zc) })
 	wg.Go(func() {
 		for {
 			st, err := zc.AcceptStream(p.ctx)
 			if err != nil {
 				return
 			}
-			wg.Go(func() { p.serveNested(st, zc) })
+			wg.Go(func() {
+				p.serveNested(st, zc)
+				p.sampleUsage(zc)
+			})
 		}
 	})
 	_ = zc.Wait()

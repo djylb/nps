@@ -504,3 +504,35 @@ func TestMatchTargetPorts(t *testing.T) {
 		t.Error("two targets for three ports must not match")
 	}
 }
+
+// Direct traffic is a statistic: persisted, cleared with the traffic, and
+// outside the quota.
+func TestFlowDirect(t *testing.T) {
+	f := &Flow{FlowLimit: 1}
+	f.AddDirect(5<<20, 5<<20)
+	if v := f.Values(); v.DirectIn != 5<<20 || v.DirectOut != 5<<20 || v.Used != 0 || v.InletFlow != 0 || v.ExportFlow != 0 {
+		t.Fatalf("%+v", v)
+	}
+	if traffic, expired := f.Over(); traffic || expired {
+		t.Fatal("direct traffic counted against the quota")
+	}
+	b, err := json.Marshal(f)
+	if err != nil || !strings.Contains(string(b), `"DirectIn":5242880,"DirectOut":5242880`) {
+		t.Fatalf("%s %v", b, err)
+	}
+	var back Flow
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if v := back.Values(); v.DirectIn != 5<<20 || v.DirectOut != 5<<20 {
+		t.Fatalf("after reload %+v", v)
+	}
+	f.ResetTraffic()
+	if v := f.Values(); v.DirectIn != 0 || v.DirectOut != 0 {
+		t.Fatalf("after clear %+v", v)
+	}
+	if b, _ := json.Marshal(f); strings.Contains(string(b), "Direct") {
+		t.Fatalf("zero direct traffic written: %s", b)
+	}
+	(*Flow)(nil).AddDirect(1, 1)
+}

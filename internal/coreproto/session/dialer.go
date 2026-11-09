@@ -84,6 +84,9 @@ type DialConfig struct {
 	// one (§3.8); 0 is 30 s, negative is no resume. A resume_timeout_ms of
 	// CONFIG replaces it from the next session on (§5).
 	ResumeTimeout time.Duration
+	// UsageInterval is how often a provider reports the direct traffic of
+	// its links (§9.6); 0 is DefaultUsageInterval, negative is never.
+	UsageInterval time.Duration
 }
 
 // Dialer establishes the sessions of a profile.

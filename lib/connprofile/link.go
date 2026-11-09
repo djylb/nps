@@ -47,7 +47,7 @@ var candidateKeys = []string{"host", "sni", "alpn", "http", "subprotocol", "tier
 var commonKeys = map[string]string{
 	"pipes": "pipes", "scheduler_up": "scheduler_up", "session_max_lanes": "session_max_lanes",
 	"relay_idle": "relay_idle", "p2p_visitor_keep_server": "p2p_visitor_keep_server",
-	"session_resume_timeout": "session_resume_timeout", "proxy": "proxy_url",
+	"session_resume_timeout": "session_resume_timeout", "session_usage_interval": "session_usage_interval", "proxy": "proxy_url",
 	"source_addr": "local_ip", "pin": "new_protocol_pin",
 }
 

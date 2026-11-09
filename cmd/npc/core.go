@@ -28,6 +28,7 @@ func setCoreDefaults() {
 			RelayIdle:     *relayIdle,
 			KeepServer:    *p2pVisitorKeepServer,
 			ResumeTimeout: *sessionResumeTimeout,
+			UsageInterval: *sessionUsageInterval,
 			Pin:           *newProtocolPin,
 		},
 	}

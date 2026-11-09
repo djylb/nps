@@ -25,7 +25,7 @@ func (a *App) LiveStatus(c Context) {
 		c.RespondJSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "LastOnlineTime": kind == "client"}
+	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "Flow.DirectIn": kind == "tunnel", "Flow.DirectOut": kind == "tunnel", "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "LastOnlineTime": kind == "client"}
 	type item struct {
 		ID     int      `json:"id"`
 		Fields []string `json:"fields"`
@@ -133,7 +133,7 @@ func (a *App) LiveStatus(c Context) {
 				} else {
 					row[f] = down
 				}
-			case "Flow.InletFlow", "Flow.ExportFlow", "TotalFlow", "ActualFlow", "FlowRemain":
+			case "Flow.InletFlow", "Flow.ExportFlow", "Flow.DirectIn", "Flow.DirectOut", "TotalFlow", "ActualFlow", "FlowRemain":
 				if !flowRead {
 					values = flow.Values()
 					flowRead = true
@@ -143,6 +143,10 @@ func (a *App) LiveStatus(c Context) {
 					row[f] = values.InletFlow
 				case "Flow.ExportFlow":
 					row[f] = values.ExportFlow
+				case "Flow.DirectIn":
+					row[f] = values.DirectIn
+				case "Flow.DirectOut":
+					row[f] = values.DirectOut
 				case "TotalFlow":
 					row[f] = values.InletFlow + values.ExportFlow
 				case "ActualFlow":

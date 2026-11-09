@@ -281,6 +281,10 @@ type LinkGrant struct {
 	Admit func(stop func()) (release func(), err error)
 	// Limiters limit and meter a relayed PIPE: from the visitor and to it.
 	Limiters func() (up, down Limiter)
+	// AddDirect counts the direct traffic its provider reported (§9.6): the
+	// bytes it received and sent since its last report. A statistic only,
+	// outside quota and rates. It returns promptly; nil counts nothing.
+	AddDirect func(in, out uint64)
 }
 
 // LinkPolicy is a link's policy at its provider (§9.1).

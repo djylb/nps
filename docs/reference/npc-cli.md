@@ -34,6 +34,7 @@
 | `-p2p_timeout` | 打洞超时（秒） | `5` |
 | `-disable_remote_update` | 忽略服务端下发的远程更新 | `false` |
 | `-session_resume_timeout` | 核心协议：会话失去所有连接后等待恢复的秒数，`0` 为 30 秒，负数不恢复；服务端配置了 `session_resume_timeout` 时以服务端为准（下次会话生效） | `0` |
+| `-session_usage_interval` | 核心协议：提供点对点隧道时，上报直连流量的间隔秒数，没有变化不报；`0` 为 60，负数不上报 | `0` |
 | `-session_max_lanes` | 核心协议：每条 QUIC 管道接受的车道数，`0` 为 16，`1` 关闭车道 | `0` |
 | `-relay_idle` | 核心协议：直连建立后中继保留的秒数，之后关闭；`0` 为 60 秒 | `0` |
 | `-p2p_visitor_keep_server` | 核心协议：点对点访问者空闲时也保持与服务端的连接 | `false` |

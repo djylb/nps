@@ -88,6 +88,7 @@ var (
 	compressMaxWindow    = flag.Uint64("compress_max_window", 0, "New protocol: largest zstd window of a compressed link, bytes (default 8 MiB)")
 	compressMaxRatio     = flag.Int64("compress_max_ratio", 0, "New protocol: largest expansion of a compressed link (default 4096, negative: no check)")
 	sessionResumeTimeout = flag.Int("session_resume_timeout", 0, "New protocol: seconds a session that lost all its connections waits for one (0: 30, negative: no resume); a server's setting replaces it")
+	sessionUsageInterval = flag.Int("session_usage_interval", 0, "New protocol: seconds between the reports of the direct traffic of the links this client provides (0: 60, negative: never)")
 	udp5IdleTimeout      = flag.Int("socks5_udp_idle_timeout", 300, "New protocol: seconds a SOCKS5 UDP association of the exit stays without traffic, as a backstop to the entry's timeout")
 	sessionMaxLanes      = flag.Int("session_max_lanes", 0, "Lanes accepted per QUIC pipe on the new protocol: 0 is 16, 1 turns lanes off")
 	p2pVisitorKeepServer = flag.Bool("p2p_visitor_keep_server", false, "Keep the server connection of a point-to-point visitor while it is idle (new protocol)")

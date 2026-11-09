@@ -100,6 +100,10 @@ type Acceptor struct {
 	linkMu sync.Mutex
 	links  map[uint64]*peerLink
 
+	usageMu sync.Mutex
+	usage   map[uint64]*linkUsage // direct usage reported per link (§9.6)
+	clock   func() time.Time
+
 	mu     sync.Mutex
 	sess   map[int][]*serverSession
 	grants map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
@@ -139,7 +143,7 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Acceptor{links: map[uint64]*peerLink{}, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
+	a := &Acceptor{links: map[uint64]*peerLink{}, usage: map[uint64]*linkUsage{}, clock: time.Now, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource,
 		stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
 	base := &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),

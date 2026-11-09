@@ -86,5 +86,6 @@ func DialConfig(cfg *config.CommonConfig, server string) (session.DialConfig, er
 		Update:         client.AcceptUpdate,
 		CompressLimits: Process.Compress,
 		ResumeTimeout:  time.Duration(cfg.ResumeTimeout) * time.Second,
+		UsageInterval:  time.Duration(cfg.UsageInterval) * time.Second,
 	}, nil
 }
