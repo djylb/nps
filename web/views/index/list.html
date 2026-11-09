@@ -167,7 +167,9 @@
         },
         // 表格的列
         columns: [
+            {{ if or (not .type) (ne .type "service") }}
             {field: '_selected', checkbox: true, switchable: false, clickToSelect: false},
+            {{ end }}
 
             {
                 field: 'Id', //域值
@@ -576,5 +578,7 @@
         })
     });
     initListLive('tunnel', '{{.web_base_url}}');
+    {{ if or (not .type) (ne .type "service") }}
     initListBatch('tunnel', '{{.web_base_url}}');
+    {{ end }}
 </script>

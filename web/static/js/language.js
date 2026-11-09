@@ -108,6 +108,8 @@
     };
 
     $.fn.setLang = function (dom) {
+        // Before the strings arrive; their arrival translates the whole page.
+        if (!languages['content']) return this;
         languages['current'] = $('#languagemenu').attr('lang');
         if (dom == '') {
             $('#languagemenu span').text(' ' + languages['menu'][languages['current']]);
