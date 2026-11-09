@@ -4,6 +4,7 @@
 
 ### Main
 - 待定，优先修BUG，新功能随缘更新
+- `nps update` 更新 `web/views`、`web/static` 改为覆盖：包内文件新增或覆盖，用户放入的自定义文件保留
 
 ## Stable
 

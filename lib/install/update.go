@@ -151,6 +151,11 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 	u.Journal = selfupdate.JournalFor(targets[0])
 	u.Files = updateFiles(bin, targets)
 	u.Verify = func(ctx context.Context, c *selfupdate.Candidate, paths []string, artifact io.ReaderAt) error {
+		// The web directories are installed as a whole; carry over what the
+		// user keeps in them before the old ones are swapped out.
+		if err := keepUserFiles(u.Files, paths, filepath.Dir(targets[0])); err != nil {
+			return err
+		}
 		// Running the new executable proves it starts on this system, for
 		// example that it was built for this CPU variant.
 		v, err := executableVersion(paths[0])
@@ -207,6 +212,17 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 			fmt.Printf("NOTE: service %s runs %s, which this update leaves alone; run \"%s update\" to update it\n", service, p, p)
 		}
 	}
+	// A directory that is not there yet, such as conf or web of a bare run
+	// directory, is made for the update to install into.
+	for _, f := range u.Files {
+		dir := filepath.Dir(f.Target)
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(filepath.Dir(targets[0]), dir)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
 	if o.Pending {
 		err = u.Apply(ctx, c)
 	} else {
@@ -229,16 +245,21 @@ func Update(ctx context.Context, bin, service string, o UpdateOptions) (_ *Updat
 	return &UpdateResult{Version: c.Version, Replaced: targets, Running: running, Services: services}, nil
 }
 
+// updateRunPath is the run directory whose web assets an update of nps
+// replaces; tests replace it.
+var updateRunPath = runenv.GetRunPath
+
 // updateFiles lists the files an update of bin replaces as one set: the
 // executable at each of targets and, for nps, the web assets and the reference
-// config of the run directory.
+// config of the run directory. The web directories are installed as whole
+// trees, so keepUserFiles gives them overwrite semantics.
 func updateFiles(bin string, targets []string) []selfupdate.File {
 	files := make([]selfupdate.File, 0, len(targets)+3)
 	for _, t := range targets {
 		files = append(files, selfupdate.File{Member: executableName(bin), Target: t, Mode: 0o755})
 	}
 	if bin == "nps" {
-		run := runenv.GetRunPath()
+		run := updateRunPath()
 		files = append(files,
 			selfupdate.File{Member: "web/views", Target: filepath.Join(run, "web", "views"), Dir: true},
 			selfupdate.File{Member: "web/static", Target: filepath.Join(run, "web", "static"), Dir: true},

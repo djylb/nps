@@ -85,7 +85,21 @@ func tarGzOf(t *testing.T, name, body string) []byte {
 func (rs *releaseServer) publish(v, body string, tamper bool) {
 	rs.t.Helper()
 	archive := tarGzOf(rs.t, "npc", body)
-	file := runtime.GOOS + "_" + runtime.GOARCH + "_client.tar.gz"
+	if tamper {
+		defer func() { rs.files[rs.mirrorPath(v, "client")] = tarGzOf(rs.t, "npc", body+"#") }()
+	}
+	rs.publishArchive("npc", v, "client", archive)
+}
+
+func (rs *releaseServer) mirrorPath(v, kind string) string {
+	return "/gh/nps-mirror@v" + v + "/" + runtime.GOOS + "_" + runtime.GOARCH + "_" + kind + ".tar.gz"
+}
+
+// publishArchive signs a manifest listing release v of bin, whose archive is
+// the given bytes, of the file kind ("client" or "server").
+func (rs *releaseServer) publishArchive(bin, v, kind string, archive []byte) {
+	rs.t.Helper()
+	file := runtime.GOOS + "_" + runtime.GOARCH + "_" + kind + ".tar.gz"
 	sum := sha256.Sum256(archive)
 	m := &selfupdate.Manifest{
 		Format:    selfupdate.ManifestFormat,
@@ -95,7 +109,7 @@ func (rs *releaseServer) publish(v, body string, tamper bool) {
 		Expires:   time.Now().Add(time.Hour),
 		Baseline:  []selfupdate.Rule{},
 		Releases: []selfupdate.Release{{Version: v, Artifacts: []selfupdate.Artifact{{
-			Name: artifactName("npc"), OS: runtime.GOOS, Arch: runtime.GOARCH,
+			Name: artifactName(bin), OS: runtime.GOOS, Arch: runtime.GOARCH,
 			URL:    githubReleases + "v" + v + "/" + file,
 			SHA256: hex.EncodeToString(sum[:]), Size: int64(len(archive)),
 			Format: selfupdate.FormatTarGzip,
@@ -104,9 +118,6 @@ func (rs *releaseServer) publish(v, body string, tamper bool) {
 	signed, err := selfupdate.SignManifest(m, rs.priv)
 	if err != nil {
 		rs.t.Fatal(err)
-	}
-	if tamper {
-		archive = tarGzOf(rs.t, "npc", body+"#")
 	}
 	rs.files = map[string][]byte{
 		"/gh/nps@manifest-channel/manifest.json": signed,
