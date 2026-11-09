@@ -230,14 +230,22 @@ func main() {
 	switch cmd {
 	case "status":
 		setCoreDefaults()
-		if err := client.GetTaskStatus(commandConfig()); err != nil {
+		conns, err := commandConns(flag.CommandLine, launchPayloads())
+		if err == nil {
+			err = runCommand(conns, client.GetTaskStatus)
+		}
+		if err != nil {
 			log.Error("status failed", "err", err)
 			os.Exit(1)
 		}
 		return
 	case "register":
 		setCoreDefaults()
-		if err := client.RegisterLocalIP(commandConfig(), *registerTime); err != nil {
+		conns, err := commandConns(flag.CommandLine, launchPayloads())
+		if err == nil {
+			err = runCommand(conns, func(cfg *config.CommonConfig) error { return client.RegisterLocalIP(cfg, *registerTime) })
+		}
+		if err != nil {
 			log.Error("register failed", "err", err)
 			os.Exit(1)
 		}

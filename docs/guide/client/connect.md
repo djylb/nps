@@ -30,7 +30,7 @@
 | `auto` | 不确定用哪种时使用。npc 在混合端口上依次尝试 `tls`、`quic`、`wss`、`https`。不写 `type` 就是它 |
 | `tls` | 大多数情况的首选，走 TCP |
 | `quic` | 走 UDP。需要放行服务端端口的 UDP |
-| `wss`、`https` | 只放行 HTTPS，或者前面有 CDN、反向代理时使用，路径和参数建议用网页生成 |
+| `wss`、`https` | 只放行 HTTPS，或者前面有反向代理时使用，路径和参数建议用网页生成 |
 | `tcp`、`ws`、`http` | 明文方式。只有服务端打开了 `mix_plain` 才能用，用于前面已经有 TLS 反向代理的情况 |
 
 想要一条连接有多条备选路径，在“启动命令”页面点“添加路径”，生成的命令会自动带上。参数含义见[启动链接与配置格式](/reference/npc-launch.md)。
@@ -96,13 +96,13 @@ sudo npc uninstall  # 卸载
 
 ## 查询状态与登记 IP
 
-这两个命令执行一次就退出，需要把连接信息写在命令行上：
+这两个命令执行一次就退出，连接用 `-launch` 给出（可重复，也可以用 `NPC_LAUNCH`），给出多个连接时依次执行：
 
 ```bash
 # 查询这个 vkey 的隧道和域名转发状态
-./npc status -server=203.0.113.10:8024 -vkey=YOUR_VKEY -type=tls
+./npc status -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 # 登记本机当前 IP，2 小时内有效
-./npc register -server=203.0.113.10:8024 -vkey=YOUR_VKEY -type=tls -time=2
+./npc register -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" -time=2
 ```
 
 登记 IP 的用途见[访问控制](/guide/server/access-control.md)。

@@ -12,7 +12,7 @@ npc 与 nps 之间的连接叫“载体”。服务端只需要一个统一监�
 | --- | --- | --- |
 | `tls` | TCP + TLS | `mix_port` |
 | `quic` | UDP + QUIC | `mix_port`（同端口号的 UDP 要放行） |
-| `wss`、`https` | WebSocket / HTTP 载体加 TLS，可经 CDN、反向代理；路径默认 `/ws` | `mix_port` |
+| `wss`、`https` | WebSocket / HTTP 载体加 TLS，可经反向代理；路径默认 `/ws` | `mix_port` |
 | `tcp`、`ws`、`http` | 明文 | `mix_port` 且 `mix_plain=true` |
 | `auto` | npc 依次尝试 `tls`、`quic`、`wss`、`https`，不写 `type` 就是它 | `mix_port` |
 

@@ -24,8 +24,8 @@ npc [子命令] [参数]
 | `stop` | 停止系统服务 |
 | `restart` | 重启系统服务。修改配置文件后用它生效 |
 | `uninstall` | 卸载系统服务，`conf` 目录里的文件保留 |
-| `status` | 向服务端查询这个 vkey 的隧道和域名转发状态，打印后退出。只读 `-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，不读 `-launch` 和环境变量 |
-| `register` | 向服务端登记本机当前 IP，有效期由 `-time` 决定，登记后退出。读取的参数同 `status`。登记的用途见[访问控制](/guide/server/access-control.md) |
+| `status` | 向服务端查询这个 vkey 的隧道和域名转发状态，打印后退出。连接用 `-launch`（可重复，也读 `NPC_LAUNCH`）给出，用其中的服务端、vkey、承载方式、代理和源地址；给出多个连接时依次查询。`-launch` 里定义的本机访问忽略。仍可用已弃用的 `-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，它们和 `-launch` 同时给出时的规则同启动连接 |
+| `register` | 向服务端登记本机当前 IP，有效期由 `-time` 决定，登记后退出。连接的给法同 `status`，给出多个连接时依次登记，任一个失败则以非零状态退出并指出是哪个连接。例：`npc register -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" -time=2`。登记的用途见[访问控制](/guide/server/access-control.md) |
 | `update` | 更新到最新发布版本，已是最新时什么也不做。见[更新与维护](/guide/client/maintenance.md) |
 | `update-force` | 无论当前版本如何，都安装最新发布版本 |
 | `version` | 打印版本，同 `-version` |
@@ -41,11 +41,11 @@ npc [子命令] [参数]
 | `-launch` | 无 | 一条连接，可重复。可以是 `npc://` 启动链接、`@文件`、`http(s)://` 网址或 base64，格式见[启动链接与配置格式](/reference/npc-launch.md)。不给时读环境变量 `NPC_LAUNCH`。不能和 `-server`、`-vkey` 同时使用 |
 | `-L`、`--local` | 无 | 一个本地点对点访问，可重复，也可写 `@文件`（每行一条）。格式见[启动链接与配置格式](/reference/npc-launch.md) |
 | `-config`、`-c` | 见说明 | INI 配置文件路径，多个用逗号分隔，格式见 [npc.conf 配置](/reference/npc-config.md)。没有 `-config`，也没有 `-launch`、`-server`、`-vkey` 时，读 `conf/npc.conf`（Linux、macOS 相对当前目录，Windows 相对 npc.exe 所在目录）。可以和 `-server`、`-vkey` 同时使用，两边都运行。和 `-launch` 同时给出时被忽略并报警告 |
-| `-server`、`-s` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。服务端地址，详见下文[已弃用的写法](#已弃用的写法)。`status` 和 `register` 仍然用它。必须和 `-vkey` 成对给出，只给一个时 npc 报错退出。和 `-launch` 同时给出时报错 |
-| `-vkey`、`-k` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。客户端密钥，在网页“客户端”列表的“唯一验证密钥”处查看。`status` 和 `register` 仍然用它 |
-| `-type`、`-t` | `tcp` | **已弃用（用于启动连接时）**，改用链接的 `type=`。取值 `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`。只对不带 `://` 的地址起作用，所有地址都带 `://` 时报警告；`kcp` 报警告后按 `quic` 连接。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
-| `-proxy` | 无 | **已弃用（用于启动连接时）**，改用链接的 `proxy=`。经代理连接服务端，支持 `http`、`https`、`socks5`、`socks5h`、`socks4`、`socks4a`，如 `socks5://user:pass@127.0.0.1:1080`；不写协议的 `host:port` 按 HTTP 代理处理。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
-| `-local_ip` | 无 | **已弃用（用于启动连接时）**，改用链接的 `source_addr=`。连接服务端时使用的本机源地址。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
+| `-server`、`-s` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。服务端地址，详见下文[已弃用的写法](#已弃用的写法)。必须和 `-vkey` 成对给出，只给一个时 npc 报错退出。和 `-launch` 同时给出时报错 |
+| `-vkey`、`-k` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。客户端密钥，在网页“客户端”列表的“唯一验证密钥”处查看 |
+| `-type`、`-t` | `tcp` | **已弃用（用于启动连接时）**，改用链接的 `type=`。取值 `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`。只对不带 `://` 的地址起作用，所有地址都带 `://` 时报警告；`kcp` 报警告后按 `quic` 连接。和 `-launch` 同时给出时被忽略并报警告 |
+| `-proxy` | 无 | **已弃用（用于启动连接时）**，改用链接的 `proxy=`。经代理连接服务端，支持 `http`、`https`、`socks5`、`socks5h`、`socks4`、`socks4a`，如 `socks5://user:pass@127.0.0.1:1080`；不写协议的 `host:port` 按 HTTP 代理处理。和 `-launch` 同时给出时被忽略并报警告 |
+| `-local_ip` | 无 | **已弃用（用于启动连接时）**，改用链接的 `source_addr=`。连接服务端时使用的本机源地址。和 `-launch` 同时给出时被忽略并报警告 |
 | `-local_ip_forward` | `false` | 让出站源地址同时用于隧道转发（只对公网 IP 和域名目标生效） |
 | `-auto_reconnect` | `true` | 断线后自动重连。`false` 时任一连接结束后 npc 退出 |
 | `-skip_verify` | `false` | 跳过服务端证书校验 |
@@ -129,7 +129,7 @@ npc [子命令] [参数]
 | `NPC_CONFIG_PATH` | `-config` 的默认值 |
 | `ALL_PROXY`、`NO_PROXY` | 没有配置代理时使用，见上文 |
 
-`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_LOCAL_IP`、`NPC_CONFIG_PATH` 只在启动连接时读取，`status`、`register`、`install` 不读取。变量的值不能包含 `=`。
+`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_LOCAL_IP`、`NPC_CONFIG_PATH` 只在启动连接时读取，`install` 不读取。变量的值不能包含 `=`。
 
 ## 已弃用的写法
 

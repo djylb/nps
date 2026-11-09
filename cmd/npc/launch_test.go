@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
+	flag "github.com/spf13/pflag"
 )
 
 func goodProfiles(t *testing.T, links ...string) []launch.Profile {
@@ -138,5 +140,33 @@ func TestSupervisePendingRetries(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("supervise did not retry")
+	}
+}
+
+func TestCommandConnsFromLaunch(t *testing.T) {
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	fs.String("server", "", "")
+	fs.String("vkey", "", "")
+	conns, err := commandConns(fs, []string{
+		"npc://k1@203.0.113.10:8024?type=tls#a",
+		"npc://k2@203.0.113.11:8024?type=auto#b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conns) != 2 || conns[0].name != "a" || conns[1].name != "b" {
+		t.Fatalf("connections: %+v", conns)
+	}
+	if c := conns[0].cfg; c.VKey != "k1" || !strings.HasPrefix(c.Server, "tls://203.0.113.10") {
+		t.Fatalf("first connection: %+v", c)
+	}
+	if conns[1].cfg.VKey != "k2" || !strings.HasPrefix(conns[1].cfg.Server, "auto://") {
+		t.Fatalf("second connection: %+v", conns[1].cfg)
+	}
+	if err := fs.Set("vkey", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := commandConns(fs, []string{"npc://k@a:1"}); err == nil {
+		t.Fatal("-launch with -vkey must be refused")
 	}
 }

@@ -47,7 +47,7 @@ npc 用 `-log_level=info,client=debug`。模块名见[日志](/guide/server/logg
 
 - 0.35 的 nps 发布包默认只开混合端口 `mix_port=8024`，它接受 `tls`、`wss` 和 `quic`。`type=tcp`、`type=ws` 这类明文连接默认**会被忽略**（`mix_plain=false`），npc 表现为连接超时或握手失败，并在日志里提示改用 `-type=tls`；改用 `type=tls`，或在 nps 前面有自己的 TLS 反向代理时设 `mix_plain=true`。
 - 0.34 及更早的 npc 通过混合端口连接时，`ws`、`wss` 不可用，请用 `tls` 或 `quic`，详见[升级到 0.35](/guide/server/upgrade.md)。
-- 如果连接要经过 CDN 或反向代理，确认它放行了 WebSocket。
+- 如果连接要经过反向代理，确认它放行了 WebSocket。
 
 Windows 7 上 npc 无法启动，或前台能连接、服务却显示离线，见 [Windows 7](/getting-started/install-windows.md?id=windows7)。
 

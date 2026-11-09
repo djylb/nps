@@ -69,10 +69,10 @@ login_acl_rules=127.0.0.1,10.0.0.0/8
 **方式一：** 在需要访问的机器上运行 npc：
 
 ```bash
-npc register -server=203.0.113.10:8024 -vkey=YOUR_VKEY -type=tls -time=2
+npc register -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" -time=2
 ```
 
-`-vkey` 的值在网页“客户端”列表的“唯一验证密钥”处查看；`-time` 是有效小时数。用客户端的 vkey 登记时只对该客户端有效，用公钥（`public_vkey`）登记时对所有客户端有效。
+链接里的 `YOUR_VKEY` 在网页“客户端”列表的“唯一验证密钥”处查看；`-time` 是有效小时数。用客户端的 vkey 登记时只对该客户端有效，用公钥（`public_vkey`）登记时对所有客户端有效。
 
 **方式二：** 打开 IP 登记页面，输入客户端的**登记口令**或 vkey，即可为当前 IP 登记该客户端；输入公钥（`public_vkey`）则相当于管理员登录，对所有客户端有效。
 

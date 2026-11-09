@@ -4,62 +4,48 @@
 
 ### Main
 - 待定，优先修BUG，新功能随缘更新
-- `nps update` 更新 `web/views`、`web/static` 改为覆盖：包内文件新增或覆盖，用户放入的自定义文件保留
 
 ## Stable
 
 ### v0.35.0
-- 初始 `conf/nps.conf` 重写为按用途分组的精简文件（运行、混合端口、域名代理、网页管理、安全、限制、日志），行为不变，其余设置用默认值，见 docs/reference/server-config.md；初始 `conf/npc.conf` 缩减为 `[common]` 和一个注释掉的点对点访问示例
-- 新安装只用可延续到下一大版本的形式：初始 `nps.conf` 只开混合端口 `mix_port=8024`（不再含 `bridge_*_port`，不启用 KCP），初始 `conf/npc.conf` 只含 `[common]`（`conn_type=tls`）和点对点访问示例，不再附带 `multi_account.conf`，升级不覆盖已有文件；`bridge_port`、各协议端口、npc.conf 与 `-server`/`-vkey`/`-type` 照常读取，在文档中标为已弃用
-- 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`）：访问端用 `local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`socks5`、`http`、`transparent`）选本地监听，`conn_mode`（`auto` 默认、`relay`、`direct`）选经 nps 中转、打洞直连或自动。旧配置自动换算并告警：npc.conf 的 `mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值，nps 存储与面板导入里的 p2p 隧道（密钥不变，访问端照常可用），以及 npc 命令行的 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p`。**不兼容**：Web/API 不再接受 `mode=p2p`；`-launch` 只接受新写法；旧版 npc 不能与新版互通点对点访问。对照表见 docs/guide/tunnels/secret.md
-- 点对点访问的 `local_proxy`（由服务端连接目标）：隧道开启“代理到本地”且 `allow_local_proxy=true` 时，访问端的 `local_proxy=true` 才生效，中转走服务端；隧道没开时访问端写了也不报错，仍由提供端 npc 连接。移除 `allow_secret_local`（写了 true 告警）。核心协议的 LINK 请求带 `server_exit=1` 表示访问端要求服务端作出口
-- `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
-- **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
-- npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法
-- 日志重写：一个事件一行的 logfmt（`log_format=json` 可选 JSON），固定字段 `time level event module`，按模块设级别（`log_level=info,p2p=debug`，nps 热生效），固定事件名与 webhook 共用，`security_log` 单独输出安全事件供 fail2ban 使用；自动证书、HTTP 服务器与第三方库的日志一并接入。默认级别由 `trace` 改为 `info`；`log_color` 已无作用，忽略并告警。见 docs/guide/server/logging.md
-- 管理 API 新增日志查看（`/api/v1/logs/entries`，按级别、模块、事件、关键字筛选，可按序号增量跟随）和按模块临时调级（`/api/v1/logs/override`，到期恢复），仅管理员；`log_memory` 设置保留条数，默认 1000
-- 新增 `log_secrets`（npc `-log_secrets`），开发调试时在日志中原样写出密钥和口令，默认关闭
-- webhook 新增 `client_created`、`client_updated`、`client_deleted` 事件
-- npc 在 OpenWrt 上默认不写日志（`-log=off`），避免占满闪存和内存盘；需要时用 `-log=file` 等参数开启。nps 仍按配置文件
-- npc 的 `-stun_addr`、`-p2p_type`、`-log_daily` 已无作用，忽略并告警
-- nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动
-- nps.conf 仍设 `ip_limit` 时告警，说明改用按客户端、隧道、域名开启的“仅允许已登记的IP”
-- `npc install` 不再把 `vkey` 等连接参数写进服务定义：改写到安装目录下仅属主可读的 `conf/npc-service.json`（`-launch` 内容写到 `conf/npc-service-launch-N.conf`），服务以 `-launch=@文件` 运行，运行方式不变；只用 `-config` 安装时不变，相对路径转为绝对路径。已安装的服务需重新 install 才生效
-- nps、npc 新增 `version` 子命令，与 `-version` 相同
-- npc 只给了 `-server`、`-vkey` 其中一个时报错退出并指出缺哪个，不再静默改读配置文件；两个都不给时仍读配置文件
-- 健康检查不再兼容旧版 npc：旧版自配检查的报告会被忽略
-- npc 新增 `-launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
-- 启动链接 `npc://<vkey>@host:port[/path]?type=…`：`-launch` 的 `npc://` 输入改为这种写法（vkey 百分号编码，不带客户端编号），查询参数 `type`、`host`、`sni`、`alpn`、`http`、`subprotocol`、`tier`、`weight`、`standby`、`count`、`dirs`、`kinds`、`pin`、`alt`（可重复，自身参数用 `;` 分隔）、`name`、`pipes` 等，以及点对点访问者的 `access`、`target`、`local_type`、`local_port`、`conn_mode`、`local_proxy`；不认识的参数告警后忽略。`npc://<base64>` 表示一个服务端实例；纯 Base64 解码前去掉空白，可折行；`NPC_LAUNCH` 按换行分多组，命令行给了 `-launch` 时不生效
-- npc 的 `-launch` 与 `-server`/`-vkey` 同时给出时报错；`-launch` 时点对点访问者参数（`-access`、`-local_type` 等）并入链接；`npc install -launch=…` 把链接写进 `conf/npc-service-launch-N.conf`
-- npc 新增 `-access`（点对点访问隧道的密钥），`-password` 作为别名保留，两者同时给出报错
-- 新增 `new_protocol_pin` 配置键（与 `-new_protocol_pin` 同一设置，按连接给出）；WebSocket 候选支持 `subprotocol` 参数
-- 网页上客户端的启动命令和点对点访问命令改为 `-launch="npc://…"`，客户端详情增加安装命令
-- 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错
-- 新增 `visitor_vkey`：只能访问 secret/P2P 隧道，设置后网页上的访问命令使用此密钥
-- 域名支持最大连接数限制（Web、API、npc 配置 `max_conn`）
-- 新增 `login_acl_mode`、`login_acl_rules` 限制登录和注册的来源
-- 重载配置时提示需要重启才生效的变更
-- HTTP/3 关闭时等待 QUIC 连接处理结束
-- 移除 `nps reload` 命令，改为发送 `SIGUSR1`（`kill -USR1` 或服务管理器）或在网页全局参数页、`POST /api/v1/global/reload` 重载，Windows 也可用；重载结果列出已生效和需要重启的配置键，哪些配置热生效见运维文档
-- 修复运行时 `SetLevel` 不影响证书等组件日志级别
-- 带 PROXY 头的域名后端连接不再复用，避免后续访问者地址错误；是否复用按每个请求选中的实例判断。未带 PROXY 头的实例之间，复用的连接仍留在原实例上
-- HTTP/HTTPS/HTTP3 监听失败时不再退出整个 nps：记录错误并停止这组监听中已启动的部分，其他功能继续运行
-- HTTPS 在 TLS 握手前检查全局来源名单
-- 配置模式下单个端口冲突只让该隧道或域名失败，不再断开整个客户端
-- 客户端重连时不再加入正在关闭的客户端记录
-- 编辑隧道后继续累计流量；数据文件解析失败时保留 `.bad` 备份，保存时同步目录
-- Secret 读取密钥增加超时，允许指定目标的 Secret 连接遵守目标名单
-- npc 连接失败时返回真实错误，重连等待可被取消
-- npc 每次重连都重新解析服务器地址，不再因一次失败固定使用某个 IP；KCP、QUIC 依次尝试域名的所有地址
-- npc 配置交换增加总超时，读取失败时重连，不再在静默断开的链路上永久阻塞
-- `dns_server` 不可达时回退到系统 DNS；该服务器有应答（包括域名不存在）时不回退
-- systemd 服务增加 `Wants=network-online.target`，已安装的服务需重新安装才生效
-- `nps` 遇到未知命令时打印用法并以非零状态退出，不再启动第二个服务端
-- 移除未使用的 pid 文件式 daemon 代码
-- 同一 `vkey` 的多个 npc 用配置文件发布相同隧道或域名时，请求在这些实例间轮询，并使用各实例自己的目标；一个实例离线只移除它的路由，最后一个离线才移除条目；新实例加入不重启正在运行的隧道。配置文件发布的条目只走发布它的实例，Web 管理的条目仍按 `bridge_select_mode` 选择；线协议不变
-- 一个实例的配置交换失败时只断开该实例，不再断开同一 `vkey` 的其他实例
-- 打开 mux 连接时遵守连接选项中的超时，未设置时不变
-- 修复 HTTP 代理启动与关闭并发访问
+
+**升级必读**
+- 只升级 nps 时，旧版 npc 在兼容范围内继续可用（保证 `tcp`、`tls` 连接和 TCP 隧道，范围见 docs/reference/versioning.md）；npc 0.35 只使用新协议，不能连接旧版服务端，请先升级 nps，再升级 npc；步骤和回退见 docs/guide/server/upgrade.md
+- **不兼容**：npc 移除 `-proto_version`（带着时忽略并告警）；`nps reload` 命令移除；Web/API 不再接受 `mode=p2p`，`-launch` 只接受新写法；`ip_limit`、`allow_secret_local`、`allow_secret_link` 移除；健康检查改由服务端配置，旧版 npc 自配的检查被忽略；旧版 npc 不能参与新的点对点访问（访问端被拒绝，提供端只能被中转）
+- 已弃用但照常读取：`bridge_port` 与各协议端口（`bridge_*_port` 等）、KCP（npc 写 `kcp` 时告警并改用 `quic`）、在客户端配置里定义隧道（含 `file`、`p2p` 段）、`-server`/`-vkey`/`-type`/`-config`、`-password` 与单条点对点访问的旧参数；新配置请用 `mix_port`、`-launch`、`-L`
+- 旧配置自动换算并在日志里告警：`mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值、`-disable_p2p`、`-tls_enable`，以及 nps 存储和面板导入里的 `p2p`、`socks5`、`httpProxy`、`file` 隧道（点对点密钥不变）。第一次启动会把换算结果写回数据文件，升级前请备份 `conf`；对照表见 docs/guide/tunnels/secret.md
+- nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，已安装的服务升级后不会因旧参数起不来；已无作用的 `-stun_addr`、`-p2p_type`、`-log_daily`、`-log_color`、`new_protocol` 同样忽略并告警
+
+**新增**
+- 新的核心协议，建立在 zmux 之上：支持一条连接内多条路径同时传输（`pipes=multi`）和连接中断后的会话恢复（`session_resume_timeout`）；上行分配方式 `scheduler_up`、服务端 `client_max_pipes` 等见 docs/reference/features-transport.md
+- 混合端口 `mix_port`：一个端口号的 TCP 承接 `tls`、`wss`、`https` 与域名转发，同号 UDP 承接 `quic`；明文载体需 `mix_plain=true`；`mix_legacy` 控制是否同时接受 0.34 及更早的 npc
+- 承载方式新增 HTTP（`http`、`https`，含 WebSocket、流式、分段等多种形态）和 `type=auto`（依次尝试 `tls`、`quic`、`wss`、`https`）；可为一条连接写多条备选路径（`alt`），并支持 `proxy`、`pin` 等参数
+- npc 新增 `-launch` 快速启动，支持 `npc://` 链接、`@文件`、http(s) 网址、Base64、JSON、YAML、INI 与多条连接；环境变量 `NPC_LAUNCH` 每行一条；远程来源失败时继续使用最后一份有效内容；`npc launch pack` 生成单行 Base64，`npc launch show` 把旧参数换算成新写法；`npc install` 同样支持，见 docs/reference/npc-launch.md
+- npc 新增 `-L`/`--local`：在本机开启点对点访问监听（`tcp`、`udp`、`tcp_udp`、`mixed`、`socks5`、`http`、`transparent`），用 `access=` 指定访问密钥、`conn_mode=` 选择方式，可重复，也可写 `@文件`
+- 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`），中转与直连由访问端 `conn_mode` 选择：`auto`（默认，打洞成功直连，否则中转并在后台重试）、`relay`、`direct`；`local_proxy=true` 在隧道开启“代理到服务器本地”且 `allow_local_proxy=true` 时让服务端连接目标；隧道详情和列表显示直连流量（入/出），中转流量单独计；新增 `visitor_vkey`，只能访问点对点隧道，设置后网页上的访问命令使用它，不必交出客户端自己的 vkey
+- 流量整形：配置 `shaping_url`（或本地 `shaping_file`）并在客户端“高级设置”开启后生效，可用 `shaping_pubkey` 校验签名；客户端页显示整形统计，见 docs/reference/server-config.md
+- 虚拟后端：npc 在本机提供的服务（如文件共享）上报到服务端，以 `service://标识` 作为 TCP 隧道或域名转发的目标；网页新增“虚拟后端”页；`file` 隧道自动变成虚拟后端加 TCP 隧道，见 docs/guide/tunnels/virtual-backend.md
+- 新增 `npc register -launch=… -time=小时`：用命令行为本机当前 IP 登记；“仅允许已登记的 IP”可在客户端、隧道、域名上单独开启，也可用登记页面和登记口令
+- 网页管理界面全面更新，客户端与点对点隧道页提供启动命令和安装命令（`-launch="npc://…"`），见 docs/reference/web-ui.md
+- 新增 `login_acl_mode`、`login_acl_rules` 限制登录和注册的来源；管理 API 新增日志查看（`/api/v1/logs/entries`）和按模块临时调级（`/api/v1/logs/override`），仅管理员；`log_memory` 设置保留条数
+- webhook 新增 `client_created`、`client_updated`、`client_deleted` 事件；域名新增最大连接数限制 `max_conn`；透明代理支持 `TPROXY`；新增调试用 `log_secrets`（npc `-log_secrets`），默认关闭
+- npc 动态库新增 `StartClient`（按 `-launch`、`-L` 同一套规则启动）和 `LastError`（取启动失败或结束的原因），见 docs/reference/npc-sdk.md
+
+**变更**
+- 日志重写：一个事件一行的 logfmt（`log_format=json` 可选 JSON），固定字段 `time level event module`，按模块设级别（如 `log_level=info,p2p=debug`），`security_log` 单独输出安全事件；默认级别由 `trace` 改为 `info`；`log_color` 无作用，忽略并告警；npc 在 OpenWrt 上默认不写日志（`-log=off`）。见 docs/guide/server/logging.md
+- 更新机制：`nps update` 验证签名与新程序可运行后一次性替换，失败自动回滚；`web/views`、`web/static` 改为覆盖，包内文件新增或覆盖，用户放入的自定义文件保留；`update`、`update-force`、网页更新不跨大版本，大版本升级需手动进行
+- 重载配置改为发送 `SIGUSR1`，或在网页“全局参数”页、`POST /api/v1/global/reload`（Windows 用后两种）；结果列出已生效和需重启的配置键
+- 初始 `conf/nps.conf` 重写为精简文件，只开混合端口 `mix_port=8024`，不再含 `bridge_*_port`，不启用 KCP；初始 `conf/npc.conf` 仍是默认配置文件，只含 `[common]`（`conn_type=tls`）和一个注释掉的点对点访问示例；不再附带 `multi_account.conf`；升级不覆盖已有文件
+- `npc install` 不再把 vkey 等写进服务定义，改写到安装目录 `conf/` 下仅属主可读的文件，服务以 `-launch=@文件` 运行；已安装的服务需重新 install 才生效
+- npc 只给了 `-server`、`-vkey` 其中之一时报错并指出缺哪个；nps 遇到未知子命令时打印用法并以状态码 2 退出；nps、npc 新增 `version` 子命令；systemd 服务增加 `Wants=network-online.target`，需重新安装生效
+
+**修复**
+- 带 PROXY 头的域名后端连接不再复用，避免后续访问者地址错误
+- HTTP/HTTPS/HTTP3 监听失败时不再退出整个 nps；配置模式下单个端口冲突只让该隧道或域名失败，不再断开整个客户端
+- 同一 `vkey` 的多个 npc 发布相同隧道或域名时在实例间轮询，一个实例离线或配置交换失败只影响它自己
+- 编辑隧道后继续累计流量；数据文件解析失败时保留 `.bad` 备份
+- npc 重连时重新解析服务器地址，配置交换不再在静默断开的链路上永久阻塞；`dns_server` 不可达时回退到系统 DNS
+- HTTPS 在 TLS 握手前检查全局来源名单；点对点访问遵守目标名单
 
 ### v0.34.10 (2026-10-20)
 - 新增`update-force`命令强制更新至最新发布版本
