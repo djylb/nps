@@ -6,7 +6,9 @@ package main
 import (
 	"C"
 	"context"
+	"errors"
 	"strings"
+	"sync/atomic"
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
@@ -17,7 +19,20 @@ import (
 	"github.com/djylb/slogx"
 )
 
-var stop context.CancelFunc
+var (
+	stop    context.CancelFunc
+	lastErr atomic.Pointer[string]
+)
+
+// setLastError records what LastError returns; nil clears it.
+func setLastError(err error) {
+	if err == nil {
+		lastErr.Store(nil)
+		return
+	}
+	msg := err.Error()
+	lastErr.Store(&msg)
+}
 
 func init() {
 	_ = logsetup.Apply(logsetup.Options{Output: "off", Level: "trace", Memory: 1000})
@@ -36,13 +51,16 @@ func run(sources []launch.Source, locals []launch.Local) int {
 	client.AutoReconnect = false
 	composer := launch.NewComposer(sources, locals)
 	if _, err := composer.Load(ctx); err != nil {
+		setLastError(err)
 		return 0
 	}
 	profileRun := func(ctx context.Context, p launch.Profile) error {
 		_, err := p.Run(ctx, "", launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})
 		return err
 	}
-	_ = launch.Supervise(ctx, composer.Load, profileRun)
+	if err := launch.Supervise(ctx, composer.Load, profileRun); err != nil && !errors.Is(err, context.Canceled) {
+		setLastError(err)
+	}
 	return 1
 }
 
@@ -62,8 +80,10 @@ func splitLines(s string) []string {
 //
 //export StartClient
 func StartClient(launchValues, localValues *C.char) int {
+	setLastError(nil)
 	locals, err := launch.ParseLocals(splitLines(C.GoString(localValues)))
 	if err != nil {
+		setLastError(err)
 		return 0
 	}
 	return run(launch.Sources(splitLines(C.GoString(launchValues))), locals)
@@ -74,9 +94,14 @@ func StartClient(launchValues, localValues *C.char) int {
 //
 //export StartClientByVerifyKey
 func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) int {
+	setLastError(nil)
 	sources, err := launch.CommandLine{Server: C.GoString(serverAddr), VKey: C.GoString(verifyKey),
 		Type: C.GoString(connType), Proxy: C.GoString(proxyUrl)}.Sources()
-	if err != nil || len(sources) == 0 {
+	if err == nil && len(sources) == 0 {
+		err = errors.New("no server given")
+	}
+	if err != nil {
+		setLastError(err)
 		return 0
 	}
 	return run(sources, nil)
@@ -97,6 +122,16 @@ func CloseClient() {
 //export Version
 func Version() *C.char {
 	return C.CString(version.VERSION)
+}
+
+// LastError returns why the last start failed or the client ended, or "".
+//
+//export LastError
+func LastError() *C.char {
+	if msg := lastErr.Load(); msg != nil {
+		return C.CString(*msg)
+	}
+	return C.CString("")
 }
 
 //export SetLogsLevel
