@@ -307,6 +307,28 @@ func TestRequestFailsAtBound(t *testing.T) {
 	resumeEventually(t, "goroutines to go", func() bool { return runtime.NumGoroutine() <= base+2 })
 }
 
+// A request whose connection left stops waiting for the suspended session.
+func TestRequestEndsWhenSourceLeaves(t *testing.T) {
+	f := newCoreFixtureOpts(t, Primary, model.Config{}, resumeOpts(30*time.Second))
+	p := newResumeProxy(t, f.addr)
+	f.joinVia(t, p.ln.Addr().String(), newCountingExit(), 30*time.Second)
+	f.waitNodes(t, 1)
+	p.down()
+	f.waitSuspended(t, 1)
+	var left atomic.Bool
+	link := tcpLink("127.0.0.1:1", 20*time.Second)
+	link.Option.Gone = left.Load
+	time.AfterFunc(200*time.Millisecond, func() { left.Store(true) })
+	start := time.Now()
+	_, err := f.b.Session(f.client.Id).OpenLink(link, 0)
+	if !errors.Is(err, errSourceGone) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("waited %v", d)
+	}
+}
+
 // While one session is suspended, requests go to another one of the client.
 func TestRequestMovesToAnotherSession(t *testing.T) {
 	f := newCoreFixtureOpts(t, RoundRobin, model.Config{}, resumeOpts(30*time.Second))

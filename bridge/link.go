@@ -186,21 +186,34 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	}
 
 	if node.suspended() {
-		if path, err = s.awaitPath(client, pick, linkOpenTimeout(link)); err != nil {
+		if path, err = s.awaitPath(client, pick, linkOpenTimeout(link), link.Option.Gone); err != nil {
 			return nil, err
 		}
 	}
 	return path.open(clientId, link)
 }
 
+// sourceGonePoll is how often a waiting link looks at its connection.
+const sourceGonePoll = 100 * time.Millisecond
+
+// errSourceGone ends a wait whose connection left.
+var errSourceGone = errors.New("the connection went away while waiting for the client")
+
 // awaitPath waits, up to timeout, for a way to the client that is not on a
 // suspended session (§3.8): pick may find another session, or the one it
 // finds resumes. It holds no lock and starts nothing: it sleeps on the
 // client's change channel, which every session change closes. It fails at
-// once when no session is left to wait for.
-func (s *Bridge) awaitPath(client *Client, pick func() *Node, timeout time.Duration) (linkPath, error) {
+// once when no session is left to wait for, or when gone, which may be nil,
+// says the connection it is waiting for has left.
+func (s *Bridge) awaitPath(client *Client, pick func() *Node, timeout time.Duration, gone func() bool) (linkPath, error) {
 	t := time.NewTimer(timeout)
 	defer t.Stop()
+	var goneTick <-chan time.Time
+	if gone != nil {
+		tick := time.NewTicker(sourceGonePoll)
+		defer tick.Stop()
+		goneTick = tick.C
+	}
 	for {
 		changed := client.changes()
 		node := pick()
@@ -216,6 +229,10 @@ func (s *Bridge) awaitPath(client *Client, pick func() *Node, timeout time.Durat
 		}
 		select {
 		case <-changed:
+		case <-goneTick:
+			if gone() {
+				return nil, errSourceGone
+			}
 		case <-t.C:
 			return nil, coreapi.TunnelOffline()
 		case <-s.scope.Done():

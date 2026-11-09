@@ -37,6 +37,9 @@ type Options struct {
 	// Compress is the compression of a link carried by the core protocol,
 	// algorithms in order of preference; the old protocol uses Link.Compress.
 	Compress []string `json:"-"`
+	// Gone reports that the connection this link is for went away, so that
+	// a wait for the client need not last; nil is never.
+	Gone func() bool `json:"-"`
 }
 
 var defaultTimeOut = time.Second * 5

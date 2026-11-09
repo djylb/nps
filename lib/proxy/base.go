@@ -218,6 +218,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
 	link.Option.Node = node
+	link.Option.Gone = func() bool { return conn.SourceGone(c.Conn) }
 	taskID := 0
 	override := model.CompressDefault
 	if task != nil {
