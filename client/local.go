@@ -77,13 +77,18 @@ type secretAccess struct {
 	mode string
 	core coreapi.Visitor
 	ctx  context.Context
+	// compress is what the visitor asks of its nested streams, algorithms
+	// in order of preference; the provider's Hello decides (§7.2).
+	compress []string
 }
 
 // Session returns the access itself: there is one target whatever the client.
 func (a *secretAccess) Session(int) conn.ClientSession { return a }
 
 func (a *secretAccess) OpenLink(link *conn.Link, _ int) (net.Conn, error) {
-	return a.core.OpenLink(a.ctx, coreRequest(link))
+	r := coreRequest(link)
+	r.Compress = a.compress
+	return a.core.OpenLink(a.ctx, r)
 }
 
 func (a *secretAccess) IsServer() bool { return false }
@@ -105,7 +110,9 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 	if mode == "" {
 		mode = config.ConnAuto
 	}
-	pb := &secretAccess{mode: mode, core: mgr.visitor(l, mode), ctx: mgr.ctx}
+	// The nested stream compresses, not the listener: its Client asks for none.
+	pb := &secretAccess{mode: mode, core: mgr.visitor(l, mode), ctx: mgr.ctx,
+		compress: model.ResolveCompress(mgr.cfg.Client, model.CompressDefault)}
 	ip := l.Ip
 	if ip == "" {
 		ip = "0.0.0.0"
@@ -117,9 +124,8 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 		Status:   true,
 		Client: &model.Client{
 			Cnf: &model.Config{
-				U:        "",
-				P:        "",
-				Compress: mgr.cfg.Client.Cnf.Compress,
+				U: "",
+				P: "",
 			},
 			Status:    true,
 			IsConnect: true,

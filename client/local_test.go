@@ -6,12 +6,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/model"
 )
 
 // stubVisitor serves every link it opens with fn, on the far end of a pipe.
@@ -126,3 +128,49 @@ func TestP2PLocalAddr(t *testing.T) {
 		}
 	}
 }
+
+// [common] compress is what the visitor asks of its nested streams, and the
+// listener does not compress on its own.
+func TestLocalCompressAsksNestedStream(t *testing.T) {
+	cfg := config.NewCommonConfig()
+	cfg.Client.Cnf.Compress = true
+	asked := make(chan []string, 1)
+	mgr := NewSecretManager(t.Context(), func() {}, cfg)
+	t.Cleanup(mgr.Close)
+	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
+		return compressVisitor{asked}
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+	if err := mgr.StartLocalServer(&config.LocalServer{Type: config.LocalTCP, ConnMode: config.ConnRelay, Ip: "127.0.0.1", Port: port, Password: "pw", Target: "10.0.0.1:80"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+	assertEcho(t, c, "plain bytes")
+	if got := <-asked; !slices.Equal(got, []string{model.CompressSnappy}) {
+		t.Fatalf("asked compression %v", got)
+	}
+}
+
+type compressVisitor struct{ asked chan<- []string }
+
+func (v compressVisitor) OpenLink(_ context.Context, r coreapi.LinkRequest) (net.Conn, error) {
+	v.asked <- r.Compress
+	a, b := net.Pipe()
+	go func() {
+		defer b.Close()
+		_, _ = io.Copy(b, b)
+	}()
+	return a, nil
+}
+
+func (compressVisitor) Close() error { return nil }
