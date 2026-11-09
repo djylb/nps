@@ -159,8 +159,8 @@
 		<en-US>Password</en-US>
 	</lang>
 	<lang id="lg-local-proxy">
-		<zh-CN>由服务端连接目标</zh-CN>
-		<en-US>Server reaches the target</en-US>
+		<zh-CN>由服务端连接目标（隧道开启“代理到服务器本地”才生效，否则仍由提供端连接）</zh-CN>
+		<en-US>Server reaches the target (only when the tunnel has "Proxy to server local" on; otherwise the provider does)</en-US>
 	</lang>
 	<lang id="lg-up">
 		<zh-CN>上移</zh-CN>
