@@ -140,7 +140,27 @@ func dialError(err error) uint64 {
 
 // serveLink dials the target of a stream, replies when asked, and relays.
 func (s *clientSession) serveLink(ctx context.Context, lc *linkConn, o *wire.StreamOpen) {
-	serveExitLink(ctx, s.d.cfg.Exit, s.zc, s.d.limits, lc, o)
+	exit := s.d.cfg.Exit
+	s.mu.Lock()
+	observer, ok := s.healthRunner.(coreapi.DialObserver)
+	s.mu.Unlock()
+	if ok {
+		exit = observedExit{Exit: exit, observer: observer}
+	}
+	serveExitLink(ctx, exit, s.zc, s.d.limits, lc, o)
+}
+
+// observedExit tells the session's health checks how the dials of its links
+// went.
+type observedExit struct {
+	coreapi.Exit
+	observer coreapi.DialObserver
+}
+
+func (e observedExit) Dial(ctx context.Context, network, target string) (net.Conn, error) {
+	c, err := e.Exit.Dial(ctx, network, target)
+	e.observer.ObserveDial(network, target, err)
+	return c, err
 }
 
 // serveExitLink is the exit's work on one stream of zc, outer or nested.

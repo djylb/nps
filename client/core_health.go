@@ -6,6 +6,7 @@ import (
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/healthcheck"
+	"github.com/djylb/nps/lib/netaddr"
 )
 
 // coreHealth runs the checks of the groups a session's snapshots list.
@@ -44,6 +45,18 @@ func (h *coreHealth) Set(groups []healthcheck.Group) {
 			h.hc.setGroup(g)
 			h.groups[name] = g
 		}
+	}
+}
+
+// ObserveDial implements coreapi.DialObserver: a failed dial has the target
+// checked now, a TCP connection made postpones its TCP checks. A UDP dial
+// reaches nothing, so it says nothing about the target.
+func (h *coreHealth) ObserveDial(network, addr string, err error) {
+	addr = netaddr.FormatAddress(addr)
+	if err != nil {
+		h.hc.dialFailed(addr)
+	} else if network != coreapi.NetworkUDP {
+		h.hc.touch(addr)
 	}
 }
 

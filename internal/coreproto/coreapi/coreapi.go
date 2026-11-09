@@ -197,6 +197,12 @@ type HealthRunner interface {
 	Stop()
 }
 
+// DialObserver is a HealthRunner that wants the outcome of the exit's dials:
+// real traffic says as much about a target as a check does.
+type DialObserver interface {
+	ObserveDial(network, addr string, err error)
+}
+
 // LinkResolve is the request of a LINK.
 type LinkResolve struct {
 	Tunnel int // 0 when AccessID names it

@@ -208,3 +208,46 @@ func TestHealthReporterSurvivesFailedReport(t *testing.T) {
 	}
 	t.Fatal("report never delivered")
 }
+
+// The dials of a session's links reach its checks: a failure checks the target
+// now, a UDP dial that succeeded says nothing.
+func TestCoreHealthObservesDials(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	addr := ln.Addr().String()
+	h := NewCoreHealth(&flakySink{}).(*coreHealth)
+	defer h.Stop()
+	h.Set([]healthcheck.Group{{Name: "g", Type: "tcp", Interval: 3600, Timeout: 1, Fall: 3, Targets: []string{addr}}})
+	key := h.hc.checker.GroupKeys("g")[0]
+	checks := func() int { st, _ := h.hc.checker.Status(key); return int(st.Checks) }
+	deadline := time.Now().Add(3 * time.Second)
+	for checks() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	before := checks()
+	h.ObserveDial("udp", addr, nil)
+	h.ObserveDial("tcp", addr, nil)
+	time.Sleep(50 * time.Millisecond)
+	if checks() != before {
+		t.Fatal("a successful dial caused a check")
+	}
+	h.ObserveDial("tcp", addr, errors.New("refused"))
+	for checks() == before && time.Now().Before(deadline.Add(2*time.Second)) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if checks() == before {
+		t.Fatal("a failed dial did not check the target")
+	}
+}
