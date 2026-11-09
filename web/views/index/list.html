@@ -166,16 +166,14 @@
                 + '<b langtag="word-downloadlimit"></b>: ' + downloadLimitValue(row) + '&emsp;'
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
-                + proxyprotocol
                 + (row.Mode == "secret" ? '<br/><br>' : '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>')
-            // Speed and traffic belong to the limits, the proxy switches to the
-            // forwarding settings; the overview keeps what has no other place.
+            // Speed and traffic belong to the limits; the overview keeps what has no other place.
             usage += '<br/><br>' + npsList.detailColumns('#table', row, index, ['Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn'])
-            usage += npsList.detailColumns('#table', row, index, ['Target.LocalProxy'])
-            transport += npsList.detailColumns('#table', row, index, ['HttpProxy', 'Socks5Proxy'])
-            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['TargetType', 'Password']))
+            var backend = proxyprotocol + npsList.detailColumns('#table', row, index, ['Target.LocalProxy'])
+            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['HttpProxy', 'Socks5Proxy', 'TargetType', 'Password']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
+                + resourceDetailSection('section-backend', backend)
             var access = row.Mode != "secret" ? accessListDetail(row) : ''
             if (row.Mode != "mixProxy") {
                 tmp += resourceDetailSection('section-access', access)

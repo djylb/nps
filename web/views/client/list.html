@@ -165,14 +165,14 @@
             if (row.WebUserName && row.WebTotpSecret) {
                 account += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
             }
-            var access = accessListDetail(row)
+            var access = '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>' + accessListDetail(row)
             if (row.Cnf.U || row.Cnf.P) {
                 access += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
                 + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
             }
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: ' + (row.Cnf.Compress ? (row.Cnf.CompressAlg ? row.Cnf.CompressAlg : 'snappy') : '<span langtag="word-compressoff"></span>') + '&emsp;'
-                + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
+                + '<br/><br/>'
             var shaped = ''
             if (row.Cnf && row.Cnf.Shaping) {
                 var st = row.Shaped

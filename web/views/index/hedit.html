@@ -209,6 +209,65 @@
                             </div>
                         </div>
                     </details>
+                    <details class="resource-section resource-advanced" data-section="proxy">
+                        <summary><span langtag="section-backend"></span></summary>
+                        <div class="resource-section-body">
+                            {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
+                            <div class="form-group" id="local_proxy">
+                                <label class="control-label font-bold" langtag="word-proxytolocal"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="local_proxy">
+                                        <option {{if eq false .h.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
+                                        <option {{if eq true .h.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            {{end}}
+                            <div class="form-group" id="proxy_protocol">
+                                <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="proxy_protocol">
+                                        <option value="0" {{if eq .h.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
+                                        <option value="1" {{if eq .h.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
+                                        <option value="2" {{if eq .h.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" id="health_check">
+                                <label class="control-label font-bold" langtag="word-healthcheck"></label>
+                                <div class="col-sm-12">
+                                    <label><input name="health_check" type="checkbox" value="1" {{if .h.HealthCheck.Enabled}}checked{{end}} onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
+                                    <span class="help-block m-b-none" langtag="info-healthcheck"></span>
+                                </div>
+                                <div class="health-check-fields">
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktype"></label>
+                                        <select class="form-control" name="health_check_type" onchange="toggleHealthCheck(this)">
+                                            <option value="tcp" {{if eq .h.HealthCheck.Type "tcp"}}selected{{end}}>TCP</option>
+                                            <option value="http" {{if eq .h.HealthCheck.Type "http"}}selected{{end}}>HTTP</option>
+                                            <option value="https" {{if eq .h.HealthCheck.Type "https"}}selected{{end}}>HTTPS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-12 health-check-path">
+                                        <label class="control-label" langtag="word-healthcheckpath"></label>
+                                        <input class="form-control" name="health_check_path" type="text" value="{{if .h.HealthCheck.Path}}{{.h.HealthCheck.Path}}{{else}}/{{end}}">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckinterval"></label>
+                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Interval}}">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthchecktimeout"></label>
+                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Timeout}}">
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <label class="control-label" langtag="word-healthcheckmaxfail"></label>
+                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.MaxFail}}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                     <details class="resource-section resource-advanced" data-section="auth">
                         <summary><span langtag="section-auth"></span></summary>
                         <div class="resource-section-body">
@@ -313,65 +372,6 @@
                                 </div>
                             </div>
                             {{end}}
-                        </div>
-                    </details>
-                    <details class="resource-section resource-advanced" data-section="proxy">
-                        <summary><span langtag="section-backend"></span></summary>
-                        <div class="resource-section-body">
-                            {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
-                            <div class="form-group" id="local_proxy">
-                                <label class="control-label font-bold" langtag="word-proxytolocal"></label>
-                                <div class="col-sm-12">
-                                    <select class="form-control selectpicker" name="local_proxy">
-                                        <option {{if eq false .h.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
-                                        <option {{if eq true .h.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
-                                    </select>
-                                </div>
-                            </div>
-                            {{end}}
-                            <div class="form-group" id="proxy_protocol">
-                                <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
-                                <div class="col-sm-12">
-                                    <select class="form-control selectpicker" name="proxy_protocol">
-                                        <option value="0" {{if eq .h.Target.ProxyProtocol 0}}selected{{end}} langtag="word-disable"></option>
-                                        <option value="1" {{if eq .h.Target.ProxyProtocol 1}}selected{{end}} langtag="word-proxyprotocolv1"></option>
-                                        <option value="2" {{if eq .h.Target.ProxyProtocol 2}}selected{{end}} langtag="word-proxyprotocolv2"></option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group" id="health_check">
-                                <label class="control-label font-bold" langtag="word-healthcheck"></label>
-                                <div class="col-sm-12">
-                                    <label><input name="health_check" type="checkbox" value="1" {{if .h.HealthCheck.Enabled}}checked{{end}} onchange="toggleHealthCheck(this)"> <span langtag="word-healthcheckenable"></span></label>
-                                    <span class="help-block m-b-none" langtag="info-healthcheck"></span>
-                                </div>
-                                <div class="health-check-fields">
-                                    <div class="col-sm-12">
-                                        <label class="control-label" langtag="word-healthchecktype"></label>
-                                        <select class="form-control" name="health_check_type" onchange="toggleHealthCheck(this)">
-                                            <option value="tcp" {{if eq .h.HealthCheck.Type "tcp"}}selected{{end}}>TCP</option>
-                                            <option value="http" {{if eq .h.HealthCheck.Type "http"}}selected{{end}}>HTTP</option>
-                                            <option value="https" {{if eq .h.HealthCheck.Type "https"}}selected{{end}}>HTTPS</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-sm-12 health-check-path">
-                                        <label class="control-label" langtag="word-healthcheckpath"></label>
-                                        <input class="form-control" name="health_check_path" type="text" value="{{if .h.HealthCheck.Path}}{{.h.HealthCheck.Path}}{{else}}/{{end}}">
-                                    </div>
-                                    <div class="col-sm-12">
-                                        <label class="control-label" langtag="word-healthcheckinterval"></label>
-                                        <input class="form-control" name="health_check_interval" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Interval}}">
-                                    </div>
-                                    <div class="col-sm-12">
-                                        <label class="control-label" langtag="word-healthchecktimeout"></label>
-                                        <input class="form-control" name="health_check_timeout" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.Timeout}}">
-                                    </div>
-                                    <div class="col-sm-12">
-                                        <label class="control-label" langtag="word-healthcheckmaxfail"></label>
-                                        <input class="form-control" name="health_check_max_fail" type="number" inputmode="numeric" min="1" step="1" value="{{.h.HealthCheck.MaxFail}}">
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </details>
                     <div class="hr-line-dashed"></div>

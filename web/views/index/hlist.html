@@ -113,7 +113,7 @@
                 + '<b langtag="word-downloadlimit"></b>: ' + downloadLimitValue(row) + '&emsp;'
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
-                + '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
+            var backend = '<b langtag="word-proxyprotocoltitle"></b>: <span langtag="word-proxyprotocolv' + row.Target.ProxyProtocol + '"></span>&emsp;'
                 + '<b langtag="word-targettype"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'target_is_https\'})" langtag="word-ishttps' + row.TargetIsHttps + '"></span>&emsp;<br/><br>'
             var tls = '<b langtag="word-autohttps"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'auto_https\'})" langtag="word-' + row.AutoHttps + '"></span>&emsp;'
                 + '<b langtag="word-httpsjustproxytitle"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'https_just_proxy\'})" langtag="word-' + row.HttpsJustProxy + '"></span>&emsp;'
@@ -152,6 +152,7 @@
                 + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Scheme', 'PathRewrite']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
+                + resourceDetailSection('section-backend', backend)
                 + resourceDetailSection('section-tls', tls)
                 + resourceDetailSection('section-access', access)
                 + resourceDetailSection('section-routing', routing)
