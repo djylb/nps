@@ -41,11 +41,11 @@ type TunnelView struct {
 	TargetType   string
 	HttpProxy    bool
 	Socks5Proxy  bool
+	ReadOnly     bool
 	DestAclMode  int
 	DestAclRules string
 	LocalPath    string
 	StripPre     string
-	ReadOnly     bool
 	Target       *Target
 	MultiAccount *MultiAccount
 	Source       SourceView
@@ -93,12 +93,12 @@ type HostView struct {
 	PathRewrite      string
 	Remark           string
 	RedirectURL      string
-	HttpsJustProxy   bool
-	AutoSSL          bool
 	CertType         string
 	CertHash         string
 	CertFile         string
 	KeyFile          string
+	HttpsJustProxy   bool
+	AutoSSL          bool
 	AutoHttps        bool
 	AutoCORS         bool
 	CompatMode       bool
