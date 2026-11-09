@@ -56,7 +56,7 @@
 
 ## Windows 7 系统更新与证书
 
-Windows 7 请先安装 **Service Pack 1（SP1）** 并补齐系统更新，再使用上面的 `old` 包：32 位系统选择 `windows_386_*_old`，64 位系统选择 `windows_amd64_*_old`。`old` 表示使用兼容旧系统的 Go 工具链，不代表无需系统补丁。建议优先使用仍受支持的 Windows 版本。
+Windows 7 请先安装 **Service Pack 1（SP1）** 并补齐系统更新，再使用上面的 `old` 包：32 位系统选择 `windows_386_*_old`，64 位系统选择 `windows_amd64_*_old`。`old` 包专为 Windows 7 等旧系统提供，同样需要这些系统更新。建议优先使用仍受支持的 Windows 版本。
 
 ### 1. 程序打不开，提示 `fatal error: bcrypt.dll not found`
 

@@ -59,7 +59,7 @@ KCP 已弃用。0.34 及更早的 npc 的 `-type kcp` 仍能连到服务端的 K
 | `bridge://类型` | 转发到 nps 自己的客户端连接入口，类型有 `tcp`、`tls`、`ws`、`wss`、`mix`、`web`、`ipreg` | 管理员创建，开启“代理到服务器本地” |
 | `service://标识` | 转发到客户端上报的虚拟后端，标识从“虚拟后端”页复制 | **不要**开启“代理到服务器本地”；发起的客户端必须与上报该虚拟后端的客户端相同 |
 
-`bridge://mix` 接受全部 TCP 类载体，包括明文，不受 `mix_plain` 影响。`bridge://web` 是网页管理界面，`bridge://ipreg` 是 IP 登记页面（见[访问控制](/guide/server/access-control.md)），例如在域名转发里把目标设为 `bridge://ipreg`，就能用自己的域名提供登记页面。经 `bridge://` 进来的 WebSocket 或 HTTP 载体只按域名和 URL 路由匹配，不再要求路径等于 `bridge_path`。
+`bridge://mix` 接受全部 TCP 类载体，包括明文，不受 `mix_plain` 影响。`bridge://web` 是网页管理界面，`bridge://ipreg` 是 IP 登记页面（见[访问控制](/guide/server/access-control.md)），例如在域名转发里把目标设为 `bridge://ipreg`，就能用自己的域名提供登记页面。经 `bridge://` 进来的 WebSocket 或 HTTP 载体，路径由域名转发的 URL 路由决定。
 
 这就是在一个端口上同时提供客户端连接、网站和管理界面的办法：用域名转发区分域名，客户端连接走 `mix_port`，管理界面通过 `bridge://web` 挂在某个域名下。
 

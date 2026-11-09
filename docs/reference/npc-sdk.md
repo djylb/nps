@@ -40,7 +40,7 @@ extern GoInt StartClientByVerifyKey(char* server, char* vkey, char* type, char* 
 只描述一条连接的简化写法。新代码请用 `StartClient`。会阻塞，直到连接结束才返回。
 
 - `server`：服务端地址，如 `203.0.113.10:8024`。
-- `vkey`：客户端密钥（网页“客户端”页里的验证密钥）。
+- `vkey`：客户端密钥（网页“客户端”页里的“唯一验证密钥”）。
 - `type`：连接方式，如 `tcp`、`tls`、`quic`、`ws`、`wss`；取值范围见[传输与连接](/reference/features-transport.md)。
 - `proxy`：连接服务端时使用的代理，如 `socks5://user:password@127.0.0.1:9007`；不用代理传空字符串。
 - 返回：与 `StartClient` 相同，`0` 表示输入无效或没给服务端地址，`1` 表示运行过并已结束。
@@ -111,7 +111,7 @@ extern void SetDnsServer(char* dns);
 #include "npc_sdk.h"
 
 static void *client_thread(void *arg) {
-    // YOUR_VKEY 在网页“客户端”页的“验证密钥”列取得
+    // YOUR_VKEY 在网页“客户端”页的“唯一验证密钥”取得
     int rc = StartClient("npc://YOUR_VKEY@203.0.113.10:8024?type=tls", "");
     if (rc == 0) {
         char *err = LastError();

@@ -54,7 +54,7 @@ curl -X POST "http://203.0.113.10:8081/client/list?auth_key=$SIGN&timestamp=$TS"
 | --- | --- |
 | `/index/index` | 仪表盘 |
 | `/index/tcp`、`/index/udp`、`/index/mix`、`/index/secret`、`/index/service` | TCP 隧道、UDP 隧道、混合代理、点对点访问、虚拟后端（只读）列表 |
-| `/index/socks5`、`/index/http` | 只显示 SOCKS5、HTTP 代理的列表（左侧菜单不再单列，用混合代理页管理） |
+| `/index/socks5`、`/index/http` | 只显示 SOCKS5、HTTP 代理的列表（在混合代理页管理） |
 | `/index/host`、`/index/hostlist` | 域名转发列表 |
 | `/index/all` | 按客户端展示的隧道列表（参数 `client_id`） |
 | `/index/add`、`/index/edit`、`/index/launch` | 新增、编辑隧道，隧道的启动命令（`edit`、`launch` 带参数 `id`） |
@@ -65,7 +65,7 @@ curl -X POST "http://203.0.113.10:8081/client/list?auth_key=$SIGN&timestamp=$TS"
 | `/login/index`、`/login/register` | 登录、注册（注册需 `allow_user_register`） |
 | `/app` | 管理界面外壳 |
 
-各页面的内容见 [管理页面说明](/reference/web-ui.md)。另有 `/auth/page/<控制器>/<页面>` 和 `/auth/render/<控制器>/<页面>`（也可用 `/api/` 开头）以 JSON 或 HTML 形式返回同一页面的数据。
+各页面的内容见 [管理页面说明](/reference/web-ui.md)。
 
 ## 仪表盘
 

@@ -97,8 +97,6 @@ alt=<协议>://<地址>:<端口>[@主机[:端口]][/路径][?k=v;k=v]
 
 不写 `type` 时就是 `auto`，它在一个混合端口上依次尝试 `tls`、`quic`、`wss`、`https`，全部是加密协议，不会尝试明文。没有写路径时跳过 `wss` 和 `https`。
 
-每隔 250 毫秒加入一个尝试，最终只有一个成为连接。建立后 30 秒内断开的，不算成功。
-
 `auto` 必须写端口。`alpn` 只给 `tls`、`quic`，`http`、`kinds`、`admit_key` 只给 `https`，`subprotocol` 只给 `wss`、`https`，其他路径参数给所有尝试。
 
 ## 本地访问 -L

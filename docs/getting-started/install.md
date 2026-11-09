@@ -26,7 +26,7 @@ docker run -d --restart=always --name nps --net=host \
 
 - `/conf` 保存配置、数据和实例密钥，必须挂载到宿主机。
 - 第一次启动时，如果 `/conf/nps.conf` 不存在，容器只复制默认配置就退出，`--restart=always` 让它再次按这份配置启动。
-- 镜像自带 Geo 数据（IP 和域名归属库）。镜像里的版本更新时会覆盖 `/conf` 中的旧文件；`nps update-geo` 下载的更新文件会保留。
+- 镜像自带 Geo 数据（IP 和域名归属库）。镜像里的 Geo 数据版本更新时，会替换 `/conf` 中的 Geo 文件，`nps.conf` 不受影响；`nps update-geo` 下载的更新文件会保留。
 - 镜像不能从网页更新，升级请换新镜像。
 
 客户端：在网页“启动命令”页把“运行方式”选成 Docker，复制生成的命令。形如（网页生成的链接通常是 `type=auto`，还带路径和其他参数，以网页显示为准）：

@@ -135,7 +135,7 @@ npc 命令行的旧参数：
 | --- | --- |
 | `-tls_enable` | 当作 `-type=tls` 并告警 |
 | `-local_type=p2p/p2ps/p2pt/secret`、`-target_type`、`-fallback_secret`、`-disable_p2p` | 按上表换算成 `-local_type` 和 `-conn_mode` 并告警，`-disable_p2p` 得到 `relay` |
-| `-new_protocol`、`-proto_version` | 忽略并告警。npc 只使用最新协议，服务端比它旧时请先升级服务端 |
+| `-new_protocol`、`-proto_version` | 忽略并告警。请先升级服务端，再升级 npc |
 | `-stun_addr`、`-p2p_type`、`-log_daily`、`-log_color` | 已无作用，忽略并告警；STUN 服务器改在 nps.conf 的 `p2p_stun_servers` 设置 |
 | `-server`、`-vkey`、`-type`、`-config` | 继续可用，已弃用，由 `-launch` 取代；只给了 `-server`、`-vkey` 之一会报错并指出缺哪个 |
 | `-password` | 已弃用，改用 `-L` 的 `access=`；与 `-launch`、`-L` 同时给出时报错 |

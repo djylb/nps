@@ -67,14 +67,14 @@
 | `bridge_ws_ip` | 同 `bridge_ip` | 已弃用，改用 `mix_ip`。`ws` 端口的监听地址 | 重启 |
 | `bridge_wss_ip` | 同 `bridge_ip` | 已弃用，改用 `mix_ip`。`wss` 端口的监听地址 | 重启 |
 | `bridge_quic_ip` | 同 `bridge_ip` | 已弃用，改用 `mix_ip`。`quic` 端口的监听地址 | 重启 |
-| `bridge_kcp_ip` | 同 `bridge_ip` | 已弃用，随 KCP 一起移除。KCP 端口的监听地址 | 重启 |
+| `bridge_kcp_ip` | 同 `bridge_ip` | 已弃用。KCP 端口的监听地址 | 重启 |
 | `bridge_type` | `both` | 已弃用，改用 `mix_port`。取值 `tcp`、`kcp`、`quic`、`udp`、`both`，决定上面哪些端口生效 | 重启 |
 | `tcp_enable` | `true` | 已弃用。设为 `false` 单独关闭 `bridge_tcp_port` | 重启 |
 | `tls_enable` | `true` | 已弃用。设为 `false` 单独关闭 `bridge_tls_port` | 重启 |
 | `ws_enable` | `true` | 已弃用。设为 `false` 单独关闭 `bridge_ws_port` | 重启 |
 | `wss_enable` | `true` | 已弃用。设为 `false` 单独关闭 `bridge_wss_port` | 重启 |
 | `quic_enable` | `true` | 已弃用。设为 `false` 单独关闭 `bridge_quic_port`，也让 KCP 端口不再接 `quic` | 重启 |
-| `kcp_enable` | `true` | 已弃用，随 KCP 一起移除。设为 `false` 关闭 KCP 端口 | 重启 |
+| `kcp_enable` | `true` | 已弃用。设为 `false` 关闭 KCP 端口 | 重启 |
 | `bridge_tcp_show` | 对应端口启用时为 `true` | 已弃用。网页上是否显示 `tcp` 连接命令 | 立即 |
 | `bridge_tcp_show_ip` | 空 | 已弃用。`tcp` 命令里显示的地址，空则用 `bridge_addr` | 立即 |
 | `bridge_tcp_show_port` | 对应监听端口 | 已弃用。`tcp` 命令里显示的端口 | 立即 |
@@ -91,9 +91,9 @@
 | `bridge_quic_show_ip` | 空 | 已弃用。`quic` 命令里显示的地址 | 立即 |
 | `bridge_quic_show_port` | 对应监听端口 | 已弃用。`quic` 命令里显示的端口 | 立即 |
 | `bridge_quic_show_alpn` | `quic_alpn` 的第一项 | 已弃用。`quic` 命令里显示的 ALPN 名称 | 立即 |
-| `bridge_kcp_show` | 对应端口启用时为 `true` | 已弃用，随 KCP 一起移除。网页上是否显示 `kcp` 连接命令 | 立即 |
-| `bridge_kcp_show_ip` | 空 | 已弃用，随 KCP 一起移除。`kcp` 命令里显示的地址 | 立即 |
-| `bridge_kcp_show_port` | 对应监听端口 | 已弃用，随 KCP 一起移除。`kcp` 命令里显示的端口 | 立即 |
+| `bridge_kcp_show` | 对应端口启用时为 `true` | 已弃用。网页上是否显示 `kcp` 连接命令 | 立即 |
+| `bridge_kcp_show_ip` | 空 | 已弃用。`kcp` 命令里显示的地址 | 立即 |
+| `bridge_kcp_show_port` | 对应监听端口 | 已弃用。`kcp` 命令里显示的端口 | 立即 |
 | `bridge_show_path` | 同 `bridge_path` | 已弃用。`ws`、`wss` 命令里显示的路径 | 立即 |
 
 ## 域名代理
@@ -113,7 +113,7 @@
 | `ssl_zerossl_api` | 空 | 使用 `ZeroSSL` 时的 API 密钥 | 重启 |
 | `ssl_path` | `ssl`（示例文件 `conf/ssl`） | 自动申请的证书的保存目录 | 重启 |
 | `ssl_cache_reload` | `0`（示例文件 `3600`） | 秒。每隔多久检查一次证书文件有没有更换，`0` 不检查 | 重启 |
-| `http_add_origin_header` | `false`（示例文件 `true`） | `true`：转发给内网服务的请求带上访问者的真实 IP（`X-Forwarded-For`、`X-Real-IP`）。已在运行的域名转发服务以启动时的值为准 | 立即 |
+| `http_add_origin_header` | `false`（示例文件 `true`） | `true`：转发给内网服务的请求带上访问者的真实 IP（`X-Forwarded-For`、`X-Real-IP`） | 立即 |
 | `x_nps_http_only` | 空 | 前面的反向代理在请求头 `X-NPS-Http-Only` 里带上这个值时，nps 信任它：不再把 HTTP 请求跳转到 HTTPS，登录时也采信它传来的真实 IP。空为不启用 | 重启 |
 
 ## 网页管理
@@ -253,8 +253,8 @@
 | `compress_max_window` | `0` | 字节。压缩传输时解压窗口的上限，`0` 为 8 MiB | 重启 |
 | `compress_max_ratio` | `0` | 压缩传输时解压后与压缩前的大小比上限，`0` 为 4096，负数不检查 | 重启 |
 | `new_protocol_tls_alpn` | 空 | 当前版本 npc 的 `tls` 连接上通告的 ALPN 名称，逗号分隔；空则不通告 | 重启 |
-| `new_protocol_quic_alpn` | `h3` | 当前版本 npc 的 `quic` 连接使用的 ALPN 名称，逗号分隔。服务端靠 ALPN 区分当前版本和 0.34 及更早的 npc，所以它与 `quic_alpn` 不能有相同的名字，否则启动报错；`http3_proxy_port` 等于 `mix_port` 时两个列表都不能含 `h3` | 重启 |
-| `new_protocol_ws_paths` | 空 | 逗号分隔的路径。这些路径上的 WebSocket 连接一律按当前版本 npc 处理；`bridge_path` 上仍按子协议区分 | 重启 |
+| `new_protocol_quic_alpn` | `h3` | 当前版本 npc 的 `quic` 连接使用的 ALPN 名称，逗号分隔。它与 `quic_alpn` 不能有相同的名字，否则启动报错；`http3_proxy_port` 等于 `mix_port` 时两个列表都不能含 `h3` | 重启 |
+| `new_protocol_ws_paths` | 空 | 逗号分隔的路径。当前版本 npc 的 WebSocket 连接可以使用这些路径 | 重启 |
 | `quic_alpn` | `nps` | 0.34 及更早的 npc 的 `quic` 连接使用的 ALPN 名称，逗号分隔 | 重启 |
 | `quic_keep_alive_period` | `10` | 秒。`quic` 保活包的间隔 | 重启 |
 | `quic_max_idle_timeout` | `30` | 秒。`quic` 连接空闲多久后断开 | 重启 |

@@ -30,8 +30,6 @@ docker kill -s USR1 nps           # Docker 部署，nps 是容器名
 sudo kill -USR1 <pid>             # 前台运行或其他方式，<pid> 是 nps 进程号
 ```
 
-`nps reload` 命令已经移除。
-
 重载的规则：
 
 - 每次重载在日志里写一条结果（事件 `config_applied` 或 `config_failed`，带 `file`、`keys`、`restart` 等字段），网页上直接列出“已生效”“需要重启”“失败”三组配置键，接口返回同样内容。
