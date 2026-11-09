@@ -2067,6 +2067,22 @@
 		<zh-CN>连接信息</zh-CN>
 		<en-US>Connection Information</en-US>
 	</lang>
+	<lang id="word-details">
+		<zh-CN>详情</zh-CN>
+		<en-US>Details</en-US>
+	</lang>
+	<lang id="word-selectall">
+		<zh-CN>全选（当前页）</zh-CN>
+		<en-US>Select all (current page)</en-US>
+	</lang>
+	<lang id="word-sortby">
+		<zh-CN>排序方式</zh-CN>
+		<en-US>Sort by</en-US>
+	</lang>
+	<lang id="word-sortdirection">
+		<zh-CN>切换升降序</zh-CN>
+		<en-US>Reverse sort order</en-US>
+	</lang>
 	<lang id="word-expandadvanced">
 		<zh-CN>全部展开</zh-CN>
 		<en-US>Expand All</en-US>

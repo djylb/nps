@@ -12832,3 +12832,120 @@ body.md-skin {
 .npslist-hbar::-webkit-scrollbar-thumb { background: var(--active-color); border-radius: 6px; }
 .npslist-hbar::-webkit-scrollbar-track { background: var(--bg-mid); }
 .detail-column { white-space: nowrap; }
+
+/* Lists in card view (narrow screens, see list-table.js): one bordered card
+ * per row, long values wrap inside it, touch-sized controls. */
+.npslist-card-bar { display: none; }
+.npslist-card .npslist-card-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    margin: 0 0 8px;
+}
+.npslist-card .npslist-card-sort { display: inline-flex; gap: 6px; flex: 1 1 180px; min-width: 0; }
+.npslist-card .npslist-sort { flex: 1 1 auto; min-width: 0; height: 44px; }
+.npslist-card .npslist-sort-dir {
+    min-width: 44px;
+    min-height: 44px;
+    color: var(--text);
+    background-color: var(--bg);
+    border-color: var(--border-color);
+}
+.npslist-card .npslist-card-all { display: inline-flex; align-items: center; }
+.npslist-card .npslist-card-all label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin: 0;
+    font-weight: normal;
+}
+.npslist-card .npslist-card-all label:first-child { min-width: 44px; }
+.npslist-card .fixed-table-body { overflow-x: hidden; }
+.npslist-card .fixed-table-body > .table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+}
+.npslist-card .table > tbody > tr[data-index] > td {
+    padding: 8px 12px;
+    background-color: var(--bg-mid);
+    color: var(--text);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+.npslist-card .table-striped > tbody > tr:nth-of-type(odd) > td { background-color: var(--bg-mid); }
+.npslist-card .card-views { min-width: 0; }
+.npslist-card .card-view {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    padding: 3px 0;
+    border: 0;
+}
+.npslist-card .card-view-title {
+    flex: 0 0 30%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.npslist-card .card-view-value {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.npslist-card .card-view-value .client-version { white-space: normal !important; }
+.npslist-card .card-view-field-_selected label {
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+}
+.npslist-card .card-view-field-option .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.npslist-card .card-view-field-option .btn-group > .btn {
+    float: none;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+.npslist-card .client-kick-btn,
+.npslist-card .client-update-btn { min-width: 44px !important; min-height: 44px !important; }
+.npslist-card .npslist-card-more { display: block; padding-top: 6px; }
+.npslist-card .npslist-expand {
+    width: 100%;
+    min-height: 44px;
+    color: var(--text);
+    background-color: var(--bg);
+    border-color: var(--border-color);
+}
+.npslist-card .table > tbody > tr.detail-view > td {
+    padding: 8px 12px;
+    margin-top: -6px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+.npslist-card .detail-view .detail-column { white-space: normal; }
+.npslist-card .detail-view code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+.npslist-card .detail-view .btn { min-height: 44px; }
+
+.npslist-card input[type="checkbox"] { width: 20px; height: 20px; margin: 0; }
+.npslist-card .card-view-field-_selected label span:empty,
+.npslist-card .npslist-card-all label span:empty { display: none; }
+.npslist-card .npslist-expand:hover,
+.npslist-card .npslist-expand:focus,
+.npslist-card .npslist-sort-dir:hover,
+.npslist-card .npslist-sort-dir:focus {
+    color: var(--color);
+    background-color: var(--bg-title);
+    border-color: var(--active-color);
+}
