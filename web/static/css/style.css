@@ -12906,8 +12906,10 @@ body.md-skin {
     display: inline-flex;
     align-items: center;
 }
-.npslist-card .card-view-field-option .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
-.npslist-card .card-view-field-option .btn-group > .btn {
+.npslist-card .card-view-field-option .btn-group,
+.npslist-card .card-view-field-show .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.npslist-card .card-view-field-option .btn-group > .btn,
+.npslist-card .card-view-field-show .btn-group > .btn {
     float: none;
     min-width: 44px;
     min-height: 44px;
@@ -12916,6 +12918,7 @@ body.md-skin {
     justify-content: center;
     border-radius: 4px;
 }
+.list-entry-btn { min-width: 32px; }
 .npslist-card .client-kick-btn,
 .npslist-card .client-update-btn { min-width: 44px !important; min-height: 44px !important; }
 .npslist-card .npslist-card-more { display: block; padding-top: 6px; }

@@ -102,13 +102,17 @@
 
     // detailColumns renders the given columns of a row for the detail view, with
     // the formatter of the column, so that a column hidden from the table is
-    // still readable there. Fields without a column on this page are skipped.
+    // still readable there. Fields without a column on this page are skipped,
+    // and so are columns the page leaves out of the detail view: detail: false,
+    // or a function(row, index) returning false for a row whose value is shown
+    // elsewhere. The caller shows no heading when nothing is left.
     function detailColumns(table, row, index, fields) {
         table = $(table);
         var columns = leafColumns(table), html = '';
         fields.forEach(function (field) {
             var column = columns.filter(function (c) { return c.field === field; })[0];
-            if (!column) return;
+            if (!column || column.detail === false) return;
+            if (typeof column.detail === 'function' && !column.detail(row, index)) return;
             var value = fieldValue(row, field);
             var text = typeof column.formatter === 'function' ? column.formatter.call(column, value, row, index, field) : escapeHtml(value == null ? '' : value);
             html += '<span class="detail-column" data-detail-column="' + escapeHtml(field) + '"><b>' + column.title + '</b>: <span class="detail-column-value">' + text + '</span></span>&emsp;';

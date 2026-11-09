@@ -137,6 +137,13 @@
             }
         });
 
+        // langtitle names a string for the title attribute of the element
+        $.each($(dom + ' [langtitle]'), function (i, item) {
+            var string = languages['content'][$(item).attr('langtitle').toLowerCase()];
+            if ($.type(string) == 'object') string = string[languages['current']] || string[languages['default']] || null;
+            if ($.type(string) == 'string') $(item).attr('title', string);
+        });
+
         if (!$.isEmptyObject(chartdatas)) {
             setchartlang(languages['content']['charts'], chartdatas);
             for (var key in chartdatas) {

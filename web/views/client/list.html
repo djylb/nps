@@ -84,6 +84,7 @@
 
 <script>
     /*bootstrap table*/
+    var hasCommands = {{if or (index .server_urls "tcp") (index .server_urls "tls") (index .server_urls "quic") (index .server_urls "ws") (index .server_urls "wss")}}true{{else}}false{{end}};
     npsList.init('#table', {
         toolbar: "#toolbar",
         idField: "Id",
@@ -201,7 +202,7 @@
                 + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "wss"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
             return '<div class="resource-details">'
-                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Mode', 'VerifyKey', 'Status', 'UploadRate', 'DownloadRate', 'InletFlow', 'ExportFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'show']))
+                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Mode', 'VerifyKey', 'Status', 'UploadRate', 'DownloadRate', 'InletFlow', 'ExportFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain']))
                 + resourceDetailSection('section-status', status)
                 + resourceDetailSection('section-commands', commands)
                 + resourceDetailSection('section-quotas', quotas)
@@ -268,6 +269,8 @@
                 field: 'VerifyKey',//域值
                 title: '<span langtag="word-verifykey"></span>',//标题
                 halign: 'center',
+                // the commands section carries the key when the server has addresses
+                detail: function (row) { return !hasCommands || !!row.NoStore; },
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
@@ -467,6 +470,7 @@
                 title: '<span langtag="word-status"></span>',//内容
                 align: 'center',
                 halign: 'center',
+                detail: false, // the pause/start button shows it; the column stays for sorting
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
@@ -480,8 +484,8 @@
             {
                 field: 'IsConnect',//域值
                 title: '<span langtag="word-connect"></span>',//内容
-                align: 'center',
-                halign: 'center',
+                align: 'left',
+                halign: 'left',
                 visible: true,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
@@ -504,12 +508,14 @@
                 title: '<span langtag="word-show"></span>',//内容
                 align: 'center',
                 halign: 'center',
-                visible: false,//false表示不显示
+                visible: true,
                 formatter: function (value, row, index) {
-                    return '<div class="btn-group"><a href="{{.web_base_url}}/index/all?client_id=' + row.Id
-                        + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>'
+                    return '<div class="btn-group">'
+                        + '<a href="{{.web_base_url}}/index/all?client_id=' + row.Id
+                        + '" class="btn btn-outline btn-primary list-entry-btn" langtitle="word-tunnel"><i class="fa fa-exchange-alt" aria-hidden="true"></i><span class="sr-only" langtag="word-tunnel"></span></a>'
                         + '<a href="{{.web_base_url}}/index/hostlist?client_id=' + row.Id
-                        + '" class="btn btn-outline btn-success" langtag="word-host"></a></div>'
+                        + '" class="btn btn-outline btn-info list-entry-btn" langtitle="word-host"><i class="fa fa-globe" aria-hidden="true"></i><span class="sr-only" langtag="word-host"></span></a>'
+                        + '</div>'
                 }
             },
             {

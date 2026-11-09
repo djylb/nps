@@ -123,7 +123,7 @@
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
-            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Status', 'Client.IsConnect']))
+            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
             var access = row.Mode != "secret" ? accessListDetail(row) : ''
@@ -496,6 +496,7 @@
                 title: '<span langtag="word-status"></span>', //内容
                 align: 'center',
                 halign: 'center',
+                detail: false, // the pause/start button shows it; the column stays for sorting
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
