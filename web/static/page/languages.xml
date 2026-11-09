@@ -202,6 +202,114 @@
 		<zh-CN>复制</zh-CN>
 		<en-US>Copy</en-US>
 	</lang>
+	<lang id="lg-cancel">
+		<zh-CN>取消</zh-CN>
+		<en-US>Cancel</en-US>
+	</lang>
+	<lang id="lg-restore-hint">
+		<zh-CN>只重置上面的表单，点“保存”后才生效。</zh-CN>
+		<en-US>Resets the form above only; it takes effect after you save.</en-US>
+	</lang>
+	<lang id="lg-f-http">
+		<zh-CN>HTTP 版本（http）</zh-CN>
+		<en-US>HTTP versions (http)</en-US>
+	</lang>
+	<lang id="lg-f-kinds">
+		<zh-CN>承载方式（kinds）</zh-CN>
+		<en-US>Carrier kinds (kinds)</en-US>
+	</lang>
+	<lang id="lg-f-tier">
+		<zh-CN>优先级（tier）</zh-CN>
+		<en-US>Tier (tier)</en-US>
+	</lang>
+	<lang id="lg-f-weight">
+		<zh-CN>权重（weight）</zh-CN>
+		<en-US>Weight (weight)</en-US>
+	</lang>
+	<lang id="lg-f-count">
+		<zh-CN>管道数（count）</zh-CN>
+		<en-US>Pipes (count)</en-US>
+	</lang>
+	<lang id="lg-f-dirs">
+		<zh-CN>方向（dirs）</zh-CN>
+		<en-US>Directions (dirs)</en-US>
+	</lang>
+	<lang id="lg-hint-order">
+		<zh-CN>按勾选的先后顺序尝试；都不勾选用默认。当前顺序：</zh-CN>
+		<en-US>Tried in the order ticked; tick none for the default. Order now:</en-US>
+	</lang>
+	<lang id="lg-hint-kinds">
+		<zh-CN>按勾选的先后顺序尝试；都不勾选用默认（全部）。exchange 需要准入密钥。当前顺序：</zh-CN>
+		<en-US>Tried in the order ticked; tick none for the default (all). exchange needs the admit key. Order now:</en-US>
+	</lang>
+	<lang id="lg-hint-tier">
+		<zh-CN>数字越小越先尝试。</zh-CN>
+		<en-US>A lower number is tried first.</en-US>
+	</lang>
+	<lang id="lg-hint-weight">
+		<zh-CN>多路径同时使用时，这条路径分得的份额。</zh-CN>
+		<en-US>Share of this path when all paths are used together.</en-US>
+	</lang>
+	<lang id="lg-hint-count">
+		<zh-CN>多路径同时使用时，这条路径的管道数，至少 1。</zh-CN>
+		<en-US>Pipes on this path when all paths are used together, at least 1.</en-US>
+	</lang>
+	<lang id="lg-hint-dirs">
+		<zh-CN>双向：可建立会话；仅上行：只用于客户端到服务器；仅下行：只用于服务器到客户端。至少一条路径要双向，http/https 只能双向。</zh-CN>
+		<en-US>Both: can start a session; Up only: client to server; Down only: server to client. At least one path must be both; http and https carry both only.</en-US>
+	</lang>
+	<lang id="lg-hint-standby">
+		<zh-CN>备用路径只在其它路径都不可用时使用。</zh-CN>
+		<en-US>A standby path is used only when the others are unavailable.</en-US>
+	</lang>
+	<lang id="lg-hint-local-proxy">
+		<zh-CN>是：访问端从本机经本地代理出站。</zh-CN>
+		<en-US>Yes: the access side connects out through the local proxy.</en-US>
+	</lang>
+	<lang id="lg-dirs-bidi">
+		<zh-CN>双向（默认）</zh-CN>
+		<en-US>Both directions (default)</en-US>
+	</lang>
+	<lang id="lg-dirs-up">
+		<zh-CN>仅上行</zh-CN>
+		<en-US>Up only</en-US>
+	</lang>
+	<lang id="lg-dirs-down">
+		<zh-CN>仅下行</zh-CN>
+		<en-US>Down only</en-US>
+	</lang>
+	<lang id="lg-cm-auto">
+		<zh-CN>auto 自动（先中继，打洞成功后转直连）</zh-CN>
+		<en-US>auto (relay first, direct once hole punching succeeds)</en-US>
+	</lang>
+	<lang id="lg-cm-relay">
+		<zh-CN>relay 仅经服务端中继</zh-CN>
+		<en-US>relay (through the server only)</en-US>
+	</lang>
+	<lang id="lg-cm-direct">
+		<zh-CN>direct 仅 P2P 直连</zh-CN>
+		<en-US>direct (P2P only)</en-US>
+	</lang>
+	<lang id="lg-sch-affinity">
+		<zh-CN>affinity 固定路径（默认）</zh-CN>
+		<en-US>affinity (stay on one path, default)</en-US>
+	</lang>
+	<lang id="lg-sch-session_affinity">
+		<zh-CN>session_affinity 每个会话固定一条路径</zh-CN>
+		<en-US>session_affinity (one path per session)</en-US>
+	</lang>
+	<lang id="lg-sch-spread_eta">
+		<zh-CN>spread_eta 按预计到达时间分流</zh-CN>
+		<en-US>spread_eta (spread by estimated arrival)</en-US>
+	</lang>
+	<lang id="lg-sch-spread_round_robin">
+		<zh-CN>spread_round_robin 轮流使用各路径</zh-CN>
+		<en-US>spread_round_robin (take paths in turn)</en-US>
+	</lang>
+	<lang id="lg-sch-spread_rate_weighted">
+		<zh-CN>spread_rate_weighted 按速率加权分流</zh-CN>
+		<en-US>spread_rate_weighted (spread by rate)</en-US>
+	</lang>
 	<lang id="lg-save">
 		<zh-CN>保存</zh-CN>
 		<en-US>Save</en-US>
@@ -247,16 +355,20 @@
 		<en-US>Must be an integer of at least 1.</en-US>
 	</lang>
 	<lang id="lg-err-http">
-		<zh-CN>ws/wss 的 HTTP 版本只能是 http/1.1、h2。</zh-CN>
-		<en-US>The HTTP versions of ws/wss are http/1.1 and h2.</en-US>
+		<zh-CN>HTTP 版本：ws/wss 为 http/1.1、h2，http 为 http/1.1，https 为 http/1.1、h2、h3。</zh-CN>
+		<en-US>HTTP versions: http/1.1 and h2 for ws/wss, http/1.1 for http, http/1.1, h2 and h3 for https.</en-US>
 	</lang>
 	<lang id="lg-err-kinds">
-		<zh-CN>当前只支持 websocket。</zh-CN>
-		<en-US>Only websocket is available.</en-US>
+		<zh-CN>ws/wss 只有 websocket；http/https 可选 websocket、streaming、split、exchange。</zh-CN>
+		<en-US>ws/wss carry websocket only; http/https take websocket, streaming, split and exchange.</en-US>
 	</lang>
 	<lang id="lg-err-dirs">
 		<zh-CN>dirs 取 bidi、up、down 或逗号组合。</zh-CN>
 		<en-US>dirs is bidi, up, down or a comma list of them.</en-US>
+	</lang>
+	<lang id="lg-err-dirs-http">
+		<zh-CN>http/https 只能双向。</zh-CN>
+		<en-US>http and https carry both directions only.</en-US>
 	</lang>
 	<lang id="lg-err-bidi">
 		<zh-CN>至少一条路径要能建立会话（dirs 含 bidi）。</zh-CN>
@@ -745,6 +857,18 @@
 	<lang id="word-inletflow">
 		<zh-CN>入口流量</zh-CN>
 		<en-US>Inlet Flow</en-US>
+	</lang>
+	<lang id="word-localproxycol">
+		<zh-CN>代理到本地</zh-CN>
+		<en-US>Proxy to local</en-US>
+	</lang>
+	<lang id="word-relayflow">
+		<zh-CN>中继流量（上下行）</zh-CN>
+		<en-US>Relayed Flow (In/Out)</en-US>
+	</lang>
+	<lang id="word-accesskey">
+		<zh-CN>访问密钥</zh-CN>
+		<en-US>Access Key</en-US>
 	</lang>
 	<lang id="word-directflow">
 		<zh-CN>直连流量（入/出）</zh-CN>

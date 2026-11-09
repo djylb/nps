@@ -35,6 +35,15 @@ const cases = {
   'service named': [tunnel(), o => { o.run = 'service'; o.named = true; o.name = 'ho me'; accounts(o); }],
   // the shared bridge path carries the subprotocol by default; a custom address or path does not, and a typed one wins
   'bridge path default': [tunnel(), o => { o.paths[0].carrier = 'wss'; o.paths.push(Object.assign({}, o.paths[0], {carrier: 'auto'}), Object.assign({}, o.paths[0], {carrier: 'https'}), Object.assign({}, o.paths[0], {carrier: 'ws', path: '/own'}), Object.assign({}, o.paths[0], {carrier: 'ws', subprotocol: 'other'})); }],
+  // fixed-value fields as the page sets them: ordered lists, a one-way path, standby, local proxy
+  'path choices': [tunnel(), o => {
+    o.pipes = 'multi'; o.scheduler = 'spread_round_robin';
+    o.paths[0].carrier = 'quic'; o.paths[0].weight = '2'; o.paths[0].count = '3';
+    o.paths.push(Object.assign({}, o.paths[0], {carrier: 'https', http: 'h3,h2,http/1.1', kinds: 'exchange,websocket', tier: '1', weight: '', count: ''}));
+    o.paths.push(Object.assign({}, o.paths[0], {carrier: 'tcp', dirs: 'up', standby: true, tier: '2', weight: '', count: ''}));
+    o.paths.push(Object.assign({}, o.paths[0], {carrier: 'tls', dirs: 'down', tier: '2', weight: '', count: ''}));
+    o.access[0].mode = 'direct'; o.access[0].local_proxy = true;
+  }],
   'docker': [client(), o => { o.run = 'docker'; o.os = 'cmd'; }],
 };
 const out = Object.keys(cases).sort().map(name => {

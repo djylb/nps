@@ -13013,4 +13013,9 @@ body.md-skin {
 .lg-field .form-control::placeholder, .lg-account .form-control::placeholder { color: var(--text); opacity: .5; }
 .lg-adv summary { color: var(--text); }
 .lg-adv summary:focus-visible, .lg-back .btn:focus-visible { outline: 2px solid var(--active-color); outline-offset: 2px; }
-.lg-actions { margin-top: 14px; }
+.lg-actions { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lg-actions .btn { min-height: 34px; }
+.lg-restore-hint { flex: 1 1 220px; }
+.lg-checks label { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0 14px 0 0; font-weight: normal; }
+.lg-checks input[type=checkbox] { margin: 0; }
+.lg-field .small.text-muted { margin-top: 2px; }

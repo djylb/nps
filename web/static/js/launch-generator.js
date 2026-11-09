@@ -14,6 +14,12 @@
     function usesALPN(c) { return c === 'tls' || c === 'quic'; }
     function accountType(t) { return t === 'mixed' || t === 'socks5' || t === 'http'; }
     function proxyType(t) { return accountType(t) || t === 'transparent'; }
+    // list splits a comma list into its trimmed, non-empty items.
+    function list(v) { return trim(v).split(',').map(trim).filter(Boolean); }
+    // the values a field offers: what the profile of the connection accepts (lib/connprofile)
+    var KINDS_HTTP = ['websocket', 'streaming', 'split', 'exchange'];
+    function httpOptions(c) { return c === 'https' ? ['http/1.1', 'h2', 'h3'] : c === 'http' ? ['http/1.1'] : ['http/1.1', 'h2']; }
+    function kindOptions(c) { return isWS(c) ? ['websocket'] : KINDS_HTTP; }
     function assign(a, b) { for (var k in b) if (Object.prototype.hasOwnProperty.call(b, k)) a[k] = b[k]; return a; }
 
     // enc percent-encodes a value, leaving what is safe and easier to read.
@@ -60,7 +66,12 @@
         if (!s || typeof s !== 'object') return form;
         ['run', 'os', 'bin', 'binPath', 'pipes', 'scheduler', 'name'].forEach(function (k) { if (typeof s[k] === 'string') form[k] = s[k]; });
         form.named = !!s.named;
-        if (Array.isArray(s.paths) && s.paths.length) form.paths = s.paths.map(function (p) { return assign(newPath(CARRIERS.indexOf(p.carrier) >= 0 ? p.carrier : ctx._primary), p); });
+        if (Array.isArray(s.paths) && s.paths.length) form.paths = s.paths.map(function (p) {
+            var o = assign(newPath(CARRIERS.indexOf(p.carrier) >= 0 ? p.carrier : ctx._primary), p);
+            // bidi alone is what no dirs means
+            if (trim(o.dirs) === 'bidi') o.dirs = '';
+            return o;
+        });
         if (Array.isArray(s.access)) form.access = s.access.map(function (a) { var o = assign(newAccess(ctx), a); o.auth = Array.isArray(a.auth) ? a.auth : []; return o; });
         return form;
     }
@@ -213,10 +224,11 @@
             int(p.tier, at + 'tier', -1e9, 'lg-err-number');
             int(p.weight, at + 'weight', 0, 'lg-err-number');
             int(p.count, at + 'count', 1, 'lg-err-count');
-            if (isWS(p.carrier) && trim(p.http) && trim(p.http).split(',').some(function (h) { return ['http/1.1', 'h2'].indexOf(trim(h)) < 0; })) errs.push({at: at + 'http', id: 'lg-err-http'});
-            if (isWS(p.carrier) && trim(p.kinds) && trim(p.kinds) !== 'websocket') errs.push({at: at + 'kinds', id: 'lg-err-kinds'});
+            if (isHTTP(p.carrier) && list(p.http).some(function (h) { return httpOptions(p.carrier).indexOf(h) < 0; })) errs.push({at: at + 'http', id: 'lg-err-http'});
+            if (isHTTP(p.carrier) && list(p.kinds).some(function (k) { return kindOptions(p.carrier).indexOf(k) < 0; })) errs.push({at: at + 'kinds', id: 'lg-err-kinds'});
             var dirs = trim(p.dirs);
             if (dirs && dirs.split(',').some(function (d) { return ['bidi', 'up', 'down'].indexOf(trim(d)) < 0; })) errs.push({at: at + 'dirs', id: 'lg-err-dirs'});
+            else if (dirs && (p.carrier === 'http' || p.carrier === 'https') && dirs !== 'bidi') errs.push({at: at + 'dirs', id: 'lg-err-dirs-http'});
             if (!dirs || dirs.split(',').map(trim).indexOf('bidi') >= 0) bidi = true;
         });
         if (!bidi) errs.push({at: 'p0.dirs', id: 'lg-err-bidi'});
@@ -284,6 +296,25 @@
             return '<option value="' + esc(v) + '"' + (v === value ? ' selected' : '') + (lang ? ' langtag="' + lang + '">' : '>' + esc(o[2] != null ? o[2] : v)) + '</option>';
         }).join('') + '</select>';
     }
+    function boolSelect(bind, value) {
+        return '<select class="form-control" data-type="bool" data-bind="' + bind + '">'
+            + '<option value="false" langtag="word-no"' + (value ? '' : ' selected') + '></option><option value="true" langtag="word-yes"' + (value ? ' selected' : '') + '></option></select>';
+    }
+    function hint(lang) { return '<div class="small text-muted" langtag="' + lang + '"></div>'; }
+    function numField(bind, value, at, label, ph, min, hintLang) {
+        return field(label, '<input class="form-control" type="number" step="1"' + (min != null ? ' min="' + min + '"' : '') + ' data-bind="' + bind + '" value="' + esc(value) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>'
+            + (hintLang ? hint(hintLang) : ''), at);
+    }
+    // checks is a field of fixed values to tick; the value is the comma list of the
+    // ticked ones in the order they were ticked. Values the page does not offer but
+    // the form holds stay in view, so that they can be unticked.
+    function checks(bind, value, options, at, label, hintLang) {
+        var chosen = list(value), all = options.concat(chosen.filter(function (v) { return options.indexOf(v) < 0; }));
+        return '<div class="lg-field lg-wide lg-checks" data-multi="' + bind + '"><div class="control-label font-bold"><span langtag="' + label + '"></span></div><div>'
+            + all.map(function (v) { return '<label><input type="checkbox" data-multi-value="' + esc(v) + '"' + (chosen.indexOf(v) >= 0 ? ' checked' : '') + '> ' + esc(v) + '</label>'; }).join('')
+            + '</div><div class="small text-muted"><span langtag="' + hintLang + '"></span> <b class="lg-order">' + esc(chosen.join(' → ')) + '</b></div>'
+            + '<div class="text-danger small" data-err="' + at + '"></div></div>';
+    }
     function textField(bind, value, at, label, ph) { return field(label, input(bind, value, ph), at); }
 
     function mount(rootEl, ctx) {
@@ -311,12 +342,20 @@
             if (isHTTP(c)) adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || '/ws');
             if (usesALPN(c)) adv += plain(b + 'alpn', p.alpn, at + 'alpn', 'alpn', d.alpn || '');
             adv += plain(b + 'sni', p.sni, at + 'sni', 'sni') + plain(b + 'host', p.host, at + 'host', 'host');
-            if (isHTTP(c)) adv += plain(b + 'http', p.http, at + 'http', 'http', 'http/1.1,h2') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol', effective(p, ctx).subprotocol) + plain(b + 'kinds', p.kinds, at + 'kinds', 'kinds', isWS(c) ? 'websocket' : 'websocket,streaming,split');
-            if (multi) adv += plain(b + 'tier', p.tier, at + 'tier', 'tier', '0');
-            adv += plain(b + 'weight', p.weight, at + 'weight', 'weight', '0') + plain(b + 'count', p.count, at + 'count', 'count', '1')
-                + plain(b + 'dirs', p.dirs, at + 'dirs', 'dirs', 'bidi');
-            adv += '<div class="lg-field"><label><input type="checkbox" data-bind="' + b + 'standby"' + (p.standby ? ' checked' : '') + '> <span langtag="lg-standby"></span></label></div>';
+            if (isHTTP(c)) adv += checks(b + 'http', p.http, httpOptions(c), at + 'http', 'lg-f-http', 'lg-hint-order') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol', effective(p, ctx).subprotocol)
+                + checks(b + 'kinds', p.kinds, kindOptions(c), at + 'kinds', 'lg-f-kinds', 'lg-hint-kinds');
+            if (multi) adv += numField(b + 'tier', p.tier, at + 'tier', 'lg-f-tier', '0', null, 'lg-hint-tier');
+            adv += numField(b + 'weight', p.weight, at + 'weight', 'lg-f-weight', '0', 0, 'lg-hint-weight') + numField(b + 'count', p.count, at + 'count', 'lg-f-count', '1', 1, 'lg-hint-count')
+                + field('lg-f-dirs', dirsSelect(b + 'dirs', p) + hint('lg-hint-dirs'), at + 'dirs')
+                + field('lg-standby', boolSelect(b + 'standby', p.standby) + hint('lg-hint-standby'), at + 'standby');
             return '<div class="lg-card">' + toolbar('path', i, form.paths.length) + '<div class="lg-grid">' + top + '</div>' + advanced(p, 'path', i, adv) + '</div>';
+        }
+        function dirsSelect(bind, p) {
+            var v = trim(p.dirs), opts = [['', 'lg-dirs-bidi'], ['up', 'lg-dirs-up'], ['down', 'lg-dirs-down']];
+            // http and https carry both directions only
+            if (p.carrier === 'http' || p.carrier === 'https') opts = opts.slice(0, 1);
+            else if (v && ['up', 'down'].indexOf(v) < 0) opts.push([v, '', v]);
+            return select(bind, p.carrier === 'http' || p.carrier === 'https' ? '' : v, opts);
         }
         function plain(bind, value, at, name, ph) {
             return '<div class="lg-field"><label class="control-label font-bold">' + esc(name) + '</label>' + input(bind, value, ph) + '<div class="text-danger small" data-err="' + at + '"></div></div>';
@@ -332,8 +371,8 @@
                 var ph = ctx.kind === 'tunnel' && ctx.defaultTarget ? langDefault() + ctx.defaultTarget : '';
                 top += textField(b + 'target', a.target, at + 'target', 'lg-target', ph);
             }
-            var adv = field('lg-conn-mode', select(b + 'mode', a.mode, [['auto', '', 'auto'], ['relay', '', 'relay'], ['direct', '', 'direct']]), at + 'mode')
-                + '<div class="lg-field"><label><input type="checkbox" data-bind="' + b + 'local_proxy"' + (a.local_proxy ? ' checked' : '') + '> <span langtag="lg-local-proxy"></span></label></div>';
+            var adv = field('lg-conn-mode', select(b + 'mode', a.mode, [['auto', 'lg-cm-auto'], ['relay', 'lg-cm-relay'], ['direct', 'lg-cm-direct']]), at + 'mode')
+                + field('lg-local-proxy', boolSelect(b + 'local_proxy', a.local_proxy) + hint('lg-hint-local-proxy'), at + 'local_proxy');
             if (accountType(a.type)) {
                 adv += '<div class="lg-field lg-wide"><label class="control-label font-bold"><span langtag="lg-accounts"></span></label>'
                     + (a.auth || []).map(function (u, j) {
@@ -385,7 +424,7 @@
                 + '<button type="button" class="btn btn-outline btn-primary btn-sm" data-act="path-add"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-path"></span></button>'
                 + '<details class="lg-adv" data-adv="form" data-i="0"' + (open.get(form) ? ' open' : '') + '><summary><span langtag="lg-advanced"></span></summary><div class="lg-grid">'
                 + field('lg-usage', select('pipes', form.pipes, [['single', 'lg-mode-single'], ['multi', 'lg-mode-multi']]))
-                + field('lg-scheduler', select('scheduler', form.scheduler, SCHEDULERS.map(function (s) { return [s, s ? '' : 'lg-default', s]; })))
+                + field('lg-scheduler', select('scheduler', form.scheduler, SCHEDULERS.map(function (s) { return [s, s ? 'lg-sch-' + s : 'lg-default', s]; })))
                 + '<div class="lg-field"><label><input type="checkbox" data-bind="named"' + (form.named ? ' checked' : '') + '> <span langtag="lg-named"></span></label>'
                 + (form.named ? input('name', form.name, '') : '') + '</div>'
                 + '</div></details>';
@@ -393,7 +432,9 @@
                 + '<button type="button" class="btn btn-outline btn-primary btn-sm" data-act="access-add"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-access"></span></button>';
             html += '<h4 class="lg-title"><span langtag="lg-output"></span></h4><p class="text-warning small" langtag="lg-note-secret"></p><div id="lg-outputs"></div>';
             html += '<div class="lg-actions"><button type="button" class="btn btn-primary" data-act="save"><span langtag="lg-save"></span></button> '
-                + '<button type="button" class="btn btn-outline btn-secondary" data-act="restore"><span langtag="lg-restore"></span></button></div></form>';
+                + '<button type="button" class="btn btn-outline btn-secondary" data-act="cancel"><span langtag="lg-cancel"></span></button> '
+                + '<button type="button" class="btn btn-outline btn-secondary" data-act="restore"><span langtag="lg-restore"></span></button>'
+                + '<span class="small text-muted lg-restore-hint" langtag="lg-restore-hint"></span></div></form>';
             $root.html(html);
             refresh();
             if ($.fn.setLang) $('body').setLang('#launch-root');
@@ -437,15 +478,28 @@
         }
         var structural = /^(run|os|bin|named|paths\.\d+\.carrier|access\.\d+\.type|pipes|scheduler)$/;
         $root.on('input change', '[data-bind]', function (ev) {
-            var bind = this.getAttribute('data-bind'), value = this.type === 'checkbox' ? this.checked : this.value;
+            var bind = this.getAttribute('data-bind'), value = this.type === 'checkbox' ? this.checked : this.getAttribute('data-type') === 'bool' ? this.value === 'true' : this.value;
             setBind(bind, value);
             if (ev.type === 'change' && structural.test(bind)) {
                 var m = /^access\.(\d+)\.type$/.exec(bind);
                 if (m) afterType(+m[1]);
+                var c = /^paths\.(\d+)\.carrier$/.exec(bind);
+                if (c && (value === 'http' || value === 'https')) form.paths[+c[1]].dirs = '';
                 if (bind === 'os' && form.os !== 'linux') form.access.forEach(function (a) { if (a.type === 'transparent') a.type = 'mixed'; });
                 render();
                 return;
             }
+            refresh();
+        });
+        $root.on('change', '[data-multi-value]', function () {
+            var group = $(this).closest('[data-multi]'), bind = group.attr('data-multi'), v = this.getAttribute('data-multi-value');
+            var o = form;
+            bind.split('.').forEach(function (k) { o = o[k]; });
+            var cur = list(o), at = cur.indexOf(v);
+            if (this.checked && at < 0) cur.push(v);
+            else if (!this.checked && at >= 0) cur.splice(at, 1);
+            setBind(bind, cur.join(','));
+            group.find('.lg-order').text(cur.join(' → '));
             refresh();
         });
         // toggle does not bubble: it is caught on the way down. The state is kept
@@ -480,7 +534,9 @@
                 case 'auth-add': form.access[i].auth.push({user: '', pass: ''}); open.set(form.access[i], true); break;
                 case 'auth-del': form.access[i].auth.splice(j, 1); break;
                 case 'save': post({id: ctx.id, form: JSON.stringify(form)}); return;
-                case 'restore': post({id: ctx.id, form: ''}, function () { form = defaultForm(ctx); render(); }); return;
+                // restore only resets the form on the page; it takes effect when saved
+                case 'restore': form = defaultForm(ctx); open = new WeakMap(); render(); return;
+                case 'cancel': if (typeof ctx.cancel === 'function') ctx.cancel(); else window.history.back(); return;
             }
             render(focus);
         });

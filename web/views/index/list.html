@@ -36,6 +36,7 @@
 
 <script src="{{.web_base_url}}/static/js/launch-generator.js?v={{.version}}"></script>
 <script>
+    {{ $p2p := and .type (eq .type "secret") }}
     var launchBase = {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}, visitor: {{.visitor_vkey}}};
     name = '{{.name}}:'.replace(/\s*/g, "")
     $('#langtag').attr('langtag', 'page-list' + name.replace(/:.*/, "")).next().text(name.split(":")[1])
@@ -60,6 +61,13 @@
 
     function copyable(v) {
         return '<span role="button" tabindex="0" style="cursor:pointer" onclick="oCopy(this)" ' + copyKeys() + '>' + escapeHtml(v == null ? '' : v) + '</span>';
+    }
+
+    // clearFlow wraps a traffic value that clears the traffic counters of the
+    // tunnel (the direct traffic of a point-to-point tunnel included) when
+    // clicked, touched or activated from the keyboard.
+    function clearFlow(row, html) {
+        return '<span role="button" tabindex="0" style="cursor:pointer;white-space:nowrap" onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})" ' + copyKeys() + '>' + html + '</span>'
     }
 
     // actionBtn is a button of the option column that mouse, touch and keyboard can use.
@@ -293,9 +301,10 @@
             },
             {
                 field: 'Password', //域值
-                title: '<span langtag="word-identificationkey"></span>', //标题
+                title: '<span langtag="{{ if $p2p }}word-accesskey{{ else }}word-identificationkey{{ end }}"></span>', //标题
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: {{ if $p2p }}false{{ else }}true{{ end }}, // a column of the table on the point-to-point list
+                visible: {{ if $p2p }}true{{ else }}false{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -308,7 +317,8 @@
                 title: '<span langtag="word-httpproxy"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var btn_group = '<div class="btn-group">'
@@ -327,7 +337,8 @@
                 title: '<span langtag="word-socks5proxy"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var btn_group = '<div class="btn-group">'
@@ -385,7 +396,7 @@
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.InletFlow) + '</span>'
+                    return clearFlow(row, changeunit(row.Flow.InletFlow))
                 }
             },
             {
@@ -396,7 +407,7 @@
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(row.Flow.ExportFlow) + '</span>'
+                    return clearFlow(row, changeunit(row.Flow.ExportFlow))
                 }
             },
             {
@@ -404,26 +415,26 @@
                 title: '<span langtag="word-directflow"></span>',
                 align: 'center',
                 halign: 'center',
-                visible: false,
+                visible: {{ if $p2p }}true{{ else }}false{{ end }},
                 sortable: false,
                 // Only a point-to-point tunnel has direct paths.
-                detail: function (row) { return row.Mode == 'secret'; },
+                detail: {{ if $p2p }}false{{ else }}function (row) { return row.Mode == 'secret'; }{{ end }},
                 formatter: function (value, row, index) {
                     if (row.Mode != 'secret') return '-'
                     var flow = row.Flow || {}
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">'
-                        + changeunit(flow.DirectIn || 0) + ' / ' + changeunit(flow.DirectOut || 0) + '</span>'
+                    return clearFlow(row, changeunit(flow.DirectIn || 0) + ' / ' + changeunit(flow.DirectOut || 0))
                 }
             },
             {
                 field: 'TotalFlow', //域值
-                title: '<span langtag="word-totalflow"></span>', //内容
+                title: '<span langtag="{{ if $p2p }}word-relayflow{{ else }}word-totalflow{{ end }}"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: {{ if $p2p }}false{{ else }}true{{ end }}, // a column of the table on the point-to-point list
+                visible: {{ if $p2p }}true{{ else }}false{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
+                    return clearFlow(row, changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow))
                 }
             },
             {
@@ -515,12 +526,26 @@
                 title: '<span langtag="word-nowconn"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: {{ if $p2p }}false{{ else }}true{{ end }}, // a column of the table on the point-to-point list
+                visible: {{ if $p2p }}true{{ else }}false{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
                 }
             },
+            {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") }}
+            {
+                field: 'Target.LocalProxy',
+                title: '<span langtag="word-localproxycol"></span>',
+                align: 'center',
+                halign: 'center',
+                detail: false, // a column of the table; the details do not repeat it
+                visible: {{ if $p2p }}true{{ else }}false{{ end }},
+                formatter: function (value, row, index) {
+                    return value ? '<span class="badge badge-primary" langtag="word-yes"></span>' : '<span class="badge badge-badge" langtag="word-no"></span>'
+                }
+            },
+            {{ end }}
             {
                 field: 'Status', //域值
                 title: '<span langtag="word-status"></span>', //内容
@@ -542,7 +567,8 @@
                 title: '<span langtag="word-runstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: {{ if and .type (eq .type "secret") }}false{{ else }}true{{ end }}, //false表示不显示
+                detail: false, // the pause/start button shows it
+                visible: false, // the switch of the option column shows it; the column is there to be chosen
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     if (value) {
@@ -559,10 +585,10 @@
             {
                 field: 'Client.IsConnect', //域值
                 title: '<span langtag="word-clientstatus"></span>', //内容
-                align: 'center',
-                halign: 'center',
-                detail: false, // the client list shows it
-                visible: false, //false表示不显示
+                align: 'left',
+                halign: 'left',
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     if (value) {

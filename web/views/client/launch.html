@@ -15,19 +15,23 @@
         var ctx = Object.assign(
             {{.launch_ctx}},
             {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}});
-        LaunchGen.mount(document.getElementById('launch-root'), ctx);
-        // Back goes to the page the generator was opened from, with its search,
-        // page and sort as they were; without one (a link opened directly) to the
-        // list of what the commands are for, which the link points to.
+        // Back and Cancel go to the page the generator was opened from, with its
+        // search, page and sort as they were; without one (a link opened
+        // directly) to the list of what the commands are for, which the link
+        // points to. Neither saves.
         var back = document.getElementById('launch-back');
         if (ctx.kind !== 'client') back.setAttribute('href', ctx.base + '/index/secret');
-        back.addEventListener('click', function (e) {
+        function leave() {
             var from = null;
             try { from = document.referrer ? new URL(document.referrer) : null; } catch (err) { from = null; }
             if (from && from.origin === location.origin && from.pathname !== location.pathname && window.history.length > 1) {
-                e.preventDefault();
                 window.history.back();
+            } else {
+                window.location.href = back.getAttribute('href');
             }
-        });
+        }
+        ctx.cancel = leave;
+        LaunchGen.mount(document.getElementById('launch-root'), ctx);
+        back.addEventListener('click', function (e) { e.preventDefault(); leave(); });
     })();
 </script>
