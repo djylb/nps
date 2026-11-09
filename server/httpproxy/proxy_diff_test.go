@@ -994,6 +994,7 @@ func TestDiffUpstreamFailures(t *testing.T) {
 	b := newBackend(t, "a", false)
 	e.addHost("limit.test", b.addr, nil)
 	flowMsg := "Client 1 flow limit exceeded"
+	//noinspection GoErrorStringFormat
 	e.bridge.setFail(errors.New(flowMsg))
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Client 1 flow limit exceeded\n" {
 		t.Fatalf("limit: %d %q", r.StatusCode, r.body)
@@ -1003,6 +1004,7 @@ func TestDiffUpstreamFailures(t *testing.T) {
 		t.Fatalf("limit page: %d %q", r.StatusCode, r.body)
 	}
 	timeMsg := "Task 1 time limit exceeded"
+	//noinspection GoErrorStringFormat
 	e.bridge.setFail(errors.New(timeMsg))
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Task 1 time limit exceeded\n" {
 		t.Fatalf("time limit: %d %q", r.StatusCode, r.body)

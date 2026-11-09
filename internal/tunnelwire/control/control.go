@@ -94,6 +94,12 @@ type Health struct {
 
 // Client describes a client sent with FlagNewConf.
 type Client struct {
+	NowConn         int32
+	Status          bool
+	IsConnect       bool
+	NoStore         bool
+	NoDisplay       bool
+	ConfigConnAllow bool
 	Cnf             *Config
 	Id              int
 	VerifyKey       string
@@ -101,21 +107,15 @@ type Client struct {
 	Addr            string
 	LocalAddr       string
 	Remark          string
-	Status          bool
-	IsConnect       bool
 	RateLimit       int
 	Flow            *Flow
 	ExportFlow      int64
 	InletFlow       int64
 	Rate            *Rate
-	NoStore         bool
-	NoDisplay       bool
 	MaxConn         int
-	NowConn         int32
 	WebUserName     string
 	WebPassword     string
 	WebTotpSecret   string
-	ConfigConnAllow bool
 	MaxTunnelNum    int
 	Version         string
 	SourceLists

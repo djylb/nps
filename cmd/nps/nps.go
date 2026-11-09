@@ -400,6 +400,7 @@ func run() (*server.Server, error) {
 	if err != nil {
 		cfgLog.Warn("invalid client select mode, using default", "value", cfg.Bridge.SelectMode)
 	}
+	//noinspection GoDfaErrorMayBeNotNil
 	log.Info("client select mode", "mode", selectMode.String())
 	accessLog, closeLog, err := openAccessLog(cfg.Log)
 	if err != nil {
