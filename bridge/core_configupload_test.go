@@ -396,3 +396,24 @@ func (s *Bridge) mustOnlyNode(t *testing.T, id int) string {
 	t.Fatal("no node")
 	return ""
 }
+
+type serviceSession struct {
+	coreapi.Session
+	id int
+}
+
+func (s serviceSession) ClientID() int { return s.id }
+
+// A restarted npc reports from a new session while the old one is suspended:
+// the service is one row.
+func TestVirtualServicesOneEntryPerService(t *testing.T) {
+	f := newCoreFixture(t, 0, model.Config{})
+	a := []coreapi.ServiceInfo{{Kind: "file", Name: "b", Network: "tcp"}, {Kind: "file", Name: "a", Network: "tcp"}}
+	f.b.coreServicesOf.Store(serviceSession{id: 1}, a)
+	f.b.coreServicesOf.Store(&serviceSession{id: 1}, a)
+	f.b.coreServicesOf.Store(&serviceSession{id: 2}, a[:1])
+	got := f.b.VirtualServices()
+	if len(got) != 3 || got[0].Client != 1 || got[0].Name != "a" || got[1].Name != "b" || got[2].Client != 2 {
+		t.Fatalf("%+v", got)
+	}
+}

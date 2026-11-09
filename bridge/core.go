@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -129,16 +130,31 @@ type VirtualService struct {
 	Target              string // what a tunnel's target names it with
 }
 
-// VirtualServices lists what the sessions report now.
+// VirtualServices lists what the sessions report now, one entry per service
+// of a client, in a stable order: a restarted npc reports from a new session
+// while its old one is suspended, and several npc of a key may offer the same
+// service. Links are routed among them by service id.
 func (s *Bridge) VirtualServices() []VirtualService {
+	type key struct {
+		client int
+		target string
+	}
+	seen := map[key]bool{}
 	var out []VirtualService
 	s.coreServicesOf.Range(func(k, v any) bool {
 		cs := k.(coreapi.Session)
 		for _, e := range v.([]coreapi.ServiceInfo) {
-			out = append(out, VirtualService{Client: cs.ClientID(), Kind: e.Kind, Name: e.Name, Network: e.Network,
-				Target: model.ServiceTarget(e.Kind, e.Name)})
+			vs := VirtualService{Client: cs.ClientID(), Kind: e.Kind, Name: e.Name, Network: e.Network,
+				Target: model.ServiceTarget(e.Kind, e.Name)}
+			if ek := (key{vs.Client, vs.Target}); !seen[ek] {
+				seen[ek] = true
+				out = append(out, vs)
+			}
 		}
 		return true
+	})
+	slices.SortFunc(out, func(a, b VirtualService) int {
+		return cmp.Or(cmp.Compare(a.Client, b.Client), cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Name, b.Name))
 	})
 	return out
 }
