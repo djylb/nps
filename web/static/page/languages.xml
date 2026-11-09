@@ -1166,6 +1166,38 @@
 		<zh-CN>运行状态</zh-CN>
 		<en-US>Run Status</en-US>
 	</lang>
+	<lang id="word-enabledstatus">
+		<zh-CN>启用状态</zh-CN>
+		<en-US>Enable Status</en-US>
+	</lang>
+	<lang id="word-enabled">
+		<zh-CN>已启用</zh-CN>
+		<en-US>Enabled</en-US>
+	</lang>
+	<lang id="word-paused">
+		<zh-CN>已暂停</zh-CN>
+		<en-US>Paused</en-US>
+	</lang>
+	<lang id="word-listenstatus">
+		<zh-CN>监听状态</zh-CN>
+		<en-US>Listen Status</en-US>
+	</lang>
+	<lang id="word-listening">
+		<zh-CN>监听中</zh-CN>
+		<en-US>Listening</en-US>
+	</lang>
+	<lang id="word-notlistening">
+		<zh-CN>未监听</zh-CN>
+		<en-US>Not listening</en-US>
+	</lang>
+	<lang id="word-resetpage">
+		<zh-CN>恢复默认页面设置</zh-CN>
+		<en-US>Restore default page settings</en-US>
+	</lang>
+	<lang id="info-resetpageconfirm">
+		<zh-CN>清除此浏览器保存的页面设置（列选择、排序、分页大小、侧栏布局），恢复默认？主题、语言和登录状态不受影响。</zh-CN>
+		<en-US>Clear the page settings saved in this browser (columns, sorting, page size, sidebar layout) and restore the defaults? Theme, language and sign-in are kept.</en-US>
+	</lang>
 	<lang id="word-save">
 		<zh-CN>保存</zh-CN>
 		<en-US>Save</en-US>

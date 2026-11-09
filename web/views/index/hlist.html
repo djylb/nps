@@ -518,16 +518,17 @@
             },
             {
                 field: 'IsClose', //域值
-                title: '<span langtag="word-runstatus"></span>', //内容
+                title: '<span langtag="word-enabledstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (value) {
-                        return '<span class="badge badge-badge" langtag="word-close"></span>'
+                        return '<span class="badge badge-badge" langtag="word-paused"></span>'
                     } else {
-                        return '<span class="badge badge-primary" langtag="word-open"></span>'
+                        return '<span class="badge badge-primary" langtag="word-enabled"></span>'
                     }
                 }
             },

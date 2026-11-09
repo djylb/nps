@@ -171,6 +171,7 @@
             // Speed and traffic belong to the limits, the proxy switches to the
             // forwarding settings; the overview keeps what has no other place.
             usage += '<br/><br>' + npsList.detailColumns('#table', row, index, ['Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn'])
+            usage += npsList.detailColumns('#table', row, index, ['Target.LocalProxy'])
             transport += npsList.detailColumns('#table', row, index, ['HttpProxy', 'Socks5Proxy'])
             var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['TargetType', 'Password']))
                 + resourceDetailSection('section-limits', usage)
@@ -303,8 +304,7 @@
                 field: 'Password', //域值
                 title: '<span langtag="{{ if $p2p }}word-accesskey{{ else }}word-identificationkey{{ end }}"></span>', //标题
                 halign: 'center',
-                detail: {{ if $p2p }}false{{ else }}true{{ end }}, // a column of the table on the point-to-point list
-                visible: {{ if $p2p }}true{{ else }}false{{ end }}, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -526,8 +526,7 @@
                 title: '<span langtag="word-nowconn"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                detail: {{ if $p2p }}false{{ else }}true{{ end }}, // a column of the table on the point-to-point list
-                visible: {{ if $p2p }}true{{ else }}false{{ end }}, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -539,8 +538,8 @@
                 title: '<span langtag="word-localproxycol"></span>',
                 align: 'center',
                 halign: 'center',
-                detail: false, // a column of the table; the details do not repeat it
-                visible: {{ if $p2p }}true{{ else }}false{{ end }},
+                detail: {{ if $p2p }}true{{ else }}false{{ end }}, // shown in the details of the point-to-point list only
+                visible: false,
                 formatter: function (value, row, index) {
                     return value ? '<span class="badge badge-primary" langtag="word-yes"></span>' : '<span class="badge badge-badge" langtag="word-no"></span>'
                 }
@@ -548,23 +547,23 @@
             {{ end }}
             {
                 field: 'Status', //域值
-                title: '<span langtag="word-status"></span>', //内容
+                title: '<span langtag="word-enabledstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                detail: false, // the pause/start button shows it; the column stays for sorting
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     if (value) {
-                        return '<span class="badge badge-primary" langtag="word-open"></span>'
+                        return '<span class="badge badge-primary" langtag="word-enabled"></span>'
                     } else {
-                        return '<span class="badge badge-badge" langtag="word-close"></span>'
+                        return '<span class="badge badge-badge" langtag="word-paused"></span>'
                     }
                 }
             },
             {
                 field: 'RunStatus', //域值
-                title: '<span langtag="word-runstatus"></span>', //内容
+                title: '<span langtag="word-listenstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
                 detail: false, // the pause/start button shows it
@@ -573,12 +572,12 @@
                 formatter: function (value, row, index) {
                     if (value) {
                         if (row.Mode && row.Mode == "tcp") {
-                            return '<a href="' + 'http://{{.ip}}:' + row.Port + '" target="_blank"><span class="badge badge-primary" langtag="word-open"></span></a>'
+                            return '<a href="' + 'http://{{.ip}}:' + row.Port + '" target="_blank"><span class="badge badge-primary" langtag="word-listening"></span></a>'
                         } else {
-                            return '<span class="badge badge-primary" langtag="word-open"></span>'
+                            return '<span class="badge badge-primary" langtag="word-listening"></span>'
                         }
                     } else {
-                        return '<span class="badge badge-badge" langtag="word-close"></span>'
+                        return '<span class="badge badge-badge" langtag="word-notlistening"></span>'
                     }
                 }
             },

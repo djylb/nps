@@ -635,6 +635,33 @@ function toggleTheme() {
     }
 }
 
+// npsClearLocal empties the page settings this browser keeps for the site:
+// the column choice, sort and page size of the lists (nps.list.columns.*
+// and the bootstrap-table keys <table>.bs.table.*), and the sidebar layout.
+// Keys named in keep stay; logout keeps none.
+function npsClearLocal(keep) {
+    try {
+        var kept = {};
+        (keep || []).forEach(function (key) {
+            var value = localStorage.getItem(key);
+            if (value !== null) kept[key] = value;
+        });
+        localStorage.clear();
+        Object.keys(kept).forEach(function (key) { localStorage.setItem(key, kept[key]); });
+    } catch (e) { /* storage unavailable: nothing was saved */ }
+}
+
+// resetPageSettings restores the default page settings after a confirmation.
+// The theme and the language are kept, and so is the sign-in (not stored here).
+function resetPageSettings() {
+    var entry = languages.content && languages.content['info-resetpageconfirm'];
+    var question = entry && (entry[languages.current] || entry[languages.default]) ||
+        'Clear the page settings saved in this browser and restore the defaults? Theme, language and sign-in are kept.';
+    if (!confirm(question)) return;
+    npsClearLocal(['nps-theme', 'nps-lang']);
+    location.reload();
+}
+
 // accessListDetail summarizes source access lists without expanding their rules.
 function accessListDetail(row) {
     var list = function (items) {

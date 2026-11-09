@@ -128,6 +128,9 @@
                             <button id="theme-toggle" class="btn btn-outline-secondary" onclick="toggleTheme()">
                                 <i class="fa fa-moon"></i>
                             </button>
+                            <button type="button" id="reset-page" class="btn btn-outline-secondary" onclick="resetPageSettings()" langtitle="word-resetpage">
+                                <i class="fa fa-undo" aria-hidden="true"></i><span class="sr-only" langtag="word-resetpage">Restore default page settings</span>
+                            </button>
                             <span class="btn-group dropdown">
                                 <button id="languagemenu" class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                     <i class="fa fa-globe-asia fa-lg"></i>
@@ -138,7 +141,7 @@
                         </div>
                     </li>
                     <li>
-                        <a href="{{.web_base_url}}/login/out" onclick="localStorage.clear(); return true;">
+                        <a href="{{.web_base_url}}/login/out" onclick="npsClearLocal(); return true;">
                             <i class="fa fa-sign-in-alt"></i><span langtag="word-logout"></span>
                         </a>
                     </li>
