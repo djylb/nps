@@ -1,90 +1,76 @@
 # 传输与连接
 
-## 连接协议
+## 连接方式与混合端口
 
-新安装只使用混合端口 `mix_port`（初始配置 `8024`）：TCP 接 `tls`、`wss`、`https`，UDP 同端口号接 `quic`；`tcp`、`ws` 等明文承载需打开 `mix_plain`。下表的各协议单独端口（`bridge_*_port`）已弃用，旧配置照常读取。
+npc 与 nps 之间的连接叫“载体”。服务端只需要一个统一监听端口 `mix_port`（初始配置是 `8024`，`0` 关闭）：
 
-| `-type` | 旧配置的默认端口（已弃用） | 配置（已弃用） |
+- TCP 端口接 `tls`、`wss`、`https` 载体和域名转发；
+- 同一个端口号的 UDP 接 `quic`；
+- `tcp`、`ws`、`http` 这类明文载体默认不接，打开 `mix_plain` 才接受，用于前面已经有自己的 TLS 反向代理的情况。
+
+| npc 的 `type` | 走什么 | 需要服务端 |
 | --- | --- | --- |
-| `tcp` | 8024 | `bridge_tcp_port` |
-| `kcp` | 8024/udp | `bridge_kcp_port` |
-| `tls` | 8025 | `bridge_tls_port` |
-| `quic` | 8025/udp | `bridge_quic_port` |
-| `ws` | 8026 | `bridge_ws_port`、`bridge_path` |
-| `wss` | 8027 | `bridge_wss_port`、`bridge_path` |
-| `http`、`https` | 与 `ws`/`wss` 相同 | 同 `ws`/`wss`、`bridge_path`（`streaming`、`split` 种类，含 WebSocket；可经 CDN、反向代理） |
+| `tls` | TCP + TLS | `mix_port` |
+| `quic` | UDP + QUIC | `mix_port`（同端口号的 UDP 要放行） |
+| `wss`、`https` | WebSocket / HTTP 载体加 TLS，可经 CDN、反向代理；路径默认 `/ws` | `mix_port` |
+| `tcp`、`ws`、`http` | 明文 | `mix_port` 且 `mix_plain=true` |
+| `auto` | npc 依次尝试 `tls`、`quic`、`wss`、`https`，不写 `type` 就是它 | `mix_port` |
 
-KCP 在网络质量非常好的环境（专线、内网）可以略微降低延迟。
+怎么选、怎么写启动命令见[连接方式](/guide/client/connect.md)。链接和 `-server` 的完整格式见[启动链接与配置格式](/reference/npc-launch.md)。配置键的取值和默认值见[服务端配置](/reference/server-config.md)。
 
-`-server` 完整格式：`addr:port[@host_or_sni[:port]][/ws_path_or_quic_alpn]`。
+`mix_legacy`（默认开启）决定混合端口是否也接受 0.34 及更早的 npc；没有这类老客户端后可以关闭。
 
-TLS 证书校验失败时可用 `-skip_verify` 跳过。
+### 已弃用：KCP
 
-## 数据压缩支持
+KCP 已弃用。0.34 及更早的 npc 的 `-type kcp` 仍能连到服务端的 KCP 端口；新版 npc 写 `kcp` 时会提示并改用 `quic` 连接。新部署请用 `quic`。
 
-由于是内网穿透，内网客户端与服务端之间的隧道存在大量的数据交换，为节省流量，加快传输速度，由此本程序支持Snappy形式的压缩。
+### 已弃用：各协议单独端口
 
-- 所有模式均支持数据压缩
-- 在Web管理或客户端配置文件中设置
+下面这些配置是 0.34 及更早版本的写法，现有配置照常读取，新配置不要再用，统一改用 `mix_port`。各自的默认值和相互关系见[服务端配置](/reference/server-config.md)。
 
-## 加密传输
+| 配置 | 原来的作用 |
+| --- | --- |
+| `bridge_port` | TCP、KCP 端口的默认值 |
+| `bridge_tcp_port`、`bridge_kcp_port`、`bridge_tls_port`、`bridge_quic_port`、`bridge_ws_port`、`bridge_wss_port` | 每种载体单独的端口 |
+| `bridge_tcp_ip` 等各协议的监听地址 | 改用 `mix_ip` |
+| `bridge_type`、`tcp_enable`、`kcp_enable`、`quic_enable`、`tls_enable`、`ws_enable`、`wss_enable` | 选择开哪些协议 |
 
-如果内网防火墙对外网访问进行了流量识别与屏蔽，例如禁止了ssh协议等，通过设置配置文件，将服务端与客户端之间的通信内容加密传输，将会有效防止流量被拦截。
+怎么把旧配置换成新写法见[升级与旧配置迁移](/guide/server/upgrade.md)。`bridge_path`（WebSocket 路径，默认 `/ws`）不在弃用之列，`wss`、`https` 载体默认使用这个路径。
 
-- nps现在默认每次启动时随机生成tls证书，用于加密传输
+## 数据压缩
 
-> 注意：当底层传输已经使用了安全协议（tls、quic、wss）时，建议关闭该选项
+客户端与服务端之间的数据可以压缩，节省流量、加快传输。算法有 `snappy`、`zstd`、`flate`，也可以不压缩。
 
-## 嵌套转发支持
+- 在网页“客户端”的“压缩”里设置整个客户端的默认算法；
+- 隧道和域名转发可以单独指定“压缩算法”，默认“跟随客户端”，也可以选“不压缩”；
+- 点对点直连的流量不经过服务端，不受这些设置影响。
 
-可在隧道的 **目标** 中配置其他隧道，实现链式转发。
+## 加密
 
-- 转发到隧道：在目标填写 `tunnel://[隧道ID]`（如 `tunnel://11`）
-  - 需开启 **“代理到服务器本地”**
-  - **支持类型**：TCP 相关隧道（TCP 隧道、混合代理（HTTP/SOCKS5）、文件隧道等）
+“客户端”的“加密”决定客户端与服务端之间的数据是否加密。底层载体已经是 `tls`、`quic`、`wss` 时不需要再加密一遍，可以关闭。服务端证书留空时自动生成（`bridge_cert_file`、`bridge_key_file` 可指定自己的证书）。
 
-- 转发到桥接：在目标填写 `bridge://[桥接类型]`（如 `bridge://tcp`）；`bridge://mix` 接受全部 TCP 类承载（含明文，不受 `mix_plain` 影响），旧协议只在首字节能区分时接受（`tcp`、`tls` 内层），`ws`、`wss` 只走核心协议
-  - 经 `bridge://ws`、`wss`、`mix` 路由进来的 HTTP 类承载（WebSocket、streaming、split、exchange，h2、h3 同）不再校验路径：域名与 Location（含路径重写之后）匹配上就接受，多级路径也行，路径只在路由上配置，与 `bridge_path` 无关；路由上 WebSocket 的新旧协议靠子协议 `binary` 或 `new_protocol_ws_paths` 判定，不是承载的普通请求照旧回落。直连端口上的 `bridge_path` 仍精确匹配
-  - 需**管理员权限**且开启 **“代理到服务器本地”**
-  - **支持类型**：tcp|tls|ws|wss|web|ipreg
-    - `web`：Web 管理界面；`ipreg`：IP 登记页面（见“仅允许已登记的 IP”），例如在域名转发中把目标设为 `bridge://ipreg`，即可用自己的域名提供登记页面
+## 嵌套转发
 
-此外 **虚拟后端** 还支持下面方式嵌套：
-- 转发到虚拟后端：在目标填写虚拟后端的 `service://<标识>`（从管理页面虚拟后端列表复制）。标识由服务种类和名称决定，修改备注不会变化
-  - **不要** 开启 “代理到服务器本地”
-  - 发起嵌套的隧道客户端 **必须与上报该虚拟后端的客户端相同**
+隧道或域名转发的“目标”可以填特殊地址，把流量交给 nps 自己的其他部分：
 
-## 端口复用
+| 目标写法 | 含义 | 条件 |
+| --- | --- | --- |
+| `tunnel://隧道ID`（如 `tunnel://11`） | 转发到另一条隧道 | 开启“代理到服务器本地”；目标隧道要处于运行状态，且自己的目标不能再是 `tunnel://` |
+| `bridge://类型` | 转发到 nps 自己的客户端连接入口，类型有 `tcp`、`tls`、`ws`、`wss`、`mix`、`web`、`ipreg` | 管理员创建，开启“代理到服务器本地” |
+| `service://标识` | 转发到客户端上报的虚拟后端，标识从“虚拟后端”页复制 | **不要**开启“代理到服务器本地”；发起的客户端必须与上报该虚拟后端的客户端相同 |
 
-在端口受限的环境，可以把 `mix_port`（旧配置的 `bridge_tcp_port` 已弃用）、`http_proxy_port`、`https_proxy_port`、`web_port` 设为同一端口，nps 自动识别。
+`bridge://mix` 接受全部 TCP 类载体，包括明文，不受 `mix_plain` 影响。`bridge://web` 是网页管理界面，`bridge://ipreg` 是 IP 登记页面（见[访问控制](/guide/server/access-control.md)），例如在域名转发里把目标设为 `bridge://ipreg`，就能用自己的域名提供登记页面。经 `bridge://` 进来的 WebSocket 或 HTTP 载体只按域名和 URL 路由匹配，不再要求路径等于 `bridge_path`。
 
-- 客户端连接用 `bridge_host` 区分。
-- 复用 Web 管理时需要配置 `web_host`（一个二级域名）。
-- `bridge_http3` 允许经 HTTP/3 端口连接。
+这就是在一个端口上同时提供客户端连接、网站和管理界面的办法：用域名转发区分域名，客户端连接走 `mix_port`，管理界面通过 `bridge://web` 挂在某个域名下。
 
-## 多路复用
+虚拟后端的用法见[虚拟后端](/guide/tunnels/virtual-backend.md)。
 
-nps主要通信默认基于多路复用，无需开启。
+> 0.34 及更早版本靠 `bridge_port` 与 `web_port`、`http_proxy_port`、`https_proxy_port` 设成同一个端口来复用，这种写法已弃用。
 
-多路复用基于TCP滑动窗口原理设计，动态计算延迟以及带宽来算出应该往网络管道中打入的流量。
-由于主要通信大多采用TCP协议，并无法探测其实时丢包情况，对于产生丢包重传的情况，采用较大的宽容度，
-5分钟的等待时间，超时将会关闭当前隧道连接并重新建立，这将会抛弃当前所有的连接。
-在Linux上，可以通过调节内核参数来适应不同应用场景。
+## 断线判定与心跳
 
-对于需求大带宽又有一定的丢包的场景，可以保持默认参数不变，尽可能少抛弃连接
-高并发下可根据[Linux 系统限制](/reference/notes.md) 调整
+- `disconnect_timeout`（单位秒，默认 `30`）：客户端断开后等待多久才判定离线。写在 `nps.conf`。
+- `mux_ping_interval`（单位秒，默认 `5`）：多路复用的心跳间隔，写在 `nps.conf`。
+- 客户端断开后是否自动重连由 npc 的 `-auto_reconnect` 决定，默认开启。
 
-对于延迟敏感而又有一定丢包的场景，可以适当调整TCP重传次数
-`tcp_syn_retries`, `tcp_retries1`, `tcp_retries2`
-高并发同上
-nps会在系统主动关闭连接的时候拿到报错，进而重新建立隧道连接
-
-## 自定义客户端超时检测断开时间
-
-客户端与服务端间会间隔5s相互发送延迟测量包，这个时间间隔不可修改。
-可修改延迟测量包丢包的次数，默认为60也就是5分钟都收不到一个延迟测量回包，则会断开客户端连接。
-值得注意的是需要客户端的socket关闭，才会进行重连，也就是当客户端无法收到服务端的fin包时，只有客户端自行关闭socket才行。
-也就是假如服务端设置为较低值，而客户端设置较高值，而此时服务端断开连接而客户端无法收到服务端的fin包，客户端也会继续等着直到触发客户端的超时设置。
-
-在`nps.conf`或`npc.conf`中设置`disconnect_timeout`即可，客户端还可附带`-disconnect_timeout=60`参数启动
-
+其他连接相关配置（QUIC 的 `quic_alpn`、`quic_keep_alive_period`、`quic_max_idle_timeout` 等）见[服务端配置](/reference/server-config.md)。

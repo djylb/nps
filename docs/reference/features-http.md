@@ -1,170 +1,116 @@
 # 站点与 HTTP
 
-## 自动证书
-开启后如果NPS监听80或443端口则自动申请SSL证书管理并续签
+这些功能用在“域名转发”上（个别也用于 TCP、UDP 隧道）。字段在网页里的位置见[管理页面说明](/reference/web-ui.md)，操作步骤见[域名转发](/guide/tunnels/domain-forwarding.md)。
 
-## 自动HTTPS (301)
-开启后如果浏览器使用http请求会自动跳转为https访问
+## 自动证书
+
+开启后，nps 为这个域名自动申请并续签 HTTPS 证书。要求 nps 监听 80 或 443 端口，并且这两个端口能从公网访问。证书颁发机构、邮箱和缓存位置用 `ssl_ca`、`ssl_email`、`ssl_path` 设置；`force_auto_ssl=true` 时对所有域名强制申请，见[服务端配置](/reference/server-config.md)。证书和 HTTPS 的整体用法见[HTTPS 与反向代理](/guide/server/https-and-proxy.md)。
+
+## 自动 HTTPS (301)
+
+开启后，浏览器用 http 访问会被 301 跳转到 https。
 
 ## 自动修复 CORS
-当浏览器访问服务存在跨域问题时，开启该功能会将当前请求的 `Origin` 插入到服务器返回头部避免浏览器报 CORS 错误。但该功能最好由后端来实现。
-注意该功能当后端返回 `Access-Control-Allow-Origin` 时不会强制覆盖
+
+开启后，把当前请求的 `Origin` 写进响应头，避免浏览器报跨域错误。后端已经返回 `Access-Control-Allow-Origin` 时不会覆盖。这类问题最好由后端自己解决。
 
 ## TLS 直通（由后端解密）
-根据首个 TLS 握手（ClientHello）的 **SNI** 分流，不在前端解密，**数据原样转给后端**，由后端完成 TLS 握手与证书校验。
 
-注意：当后端开启 HTTP/2 且多个站点共享同一证书/IP，浏览器可能把不同域名复用到同一条连接，造成网站显示不正确。
+按首个 TLS 握手里的域名（SNI）分流，nps 不解密，数据原样交给后端，由后端完成握手和证书校验。后端启用 HTTP/2 且多个站点共用同一证书和 IP 时，浏览器可能把不同域名复用到同一条连接，造成站点串页。
 
 ## TLS 终止（解密转发）
-根据 **SNI** 分流；在前端完成 TLS 握手与证书，随后把解密后的**明文数据**原样转发给选定后端（仅做解密传输，不做应用层处理）。
+
+按 SNI 分流，在 nps 完成 TLS 握手并用这里配置的证书，再把解密后的明文原样转给后端。只做解密传输，不做应用层处理。
 
 ## Proxy Protocol
-该功能用于 **TCP隧道** 、 **UDP隧道** 和 **域名转发** 向后端传递真实 IP 时使用，需要后端服务支持。
 
-## Host 修改
+向后端传递访问者真实 IP 的协议，后端要支持。TCP 隧道、UDP 隧道和域名转发都可以设置：关闭、V1（字符串格式）、V2（二进制格式）。
 
-由于内网站点需要的Host可能与公网域名不一致，域名代理支持host修改功能，即修改Request的Header中的host字段。
+## 修改 Host
 
-**使用方法：在Web管理中设置**
+内网站点需要的 `Host` 可能和公网域名不同。在“请求域名信息修改”里填写，nps 会把发往后端的请求的 `Host` 改成这个值。
 
-## 自定义重定向地址
+## 请求头与响应头修改
 
-支持对请求进行307重定向。
+“请求头部信息修改”和“返回头部信息修改”里，一行写一条 `名称: 值`，值里可以使用变量，写法是 `${变量名}`：
 
-使用示例：
-```
-https://xxx.com${request_uri}
-```
-
-| 占位符                            | 含义                                     |
-|--------------------------------|----------------------------------------|
-| `${scheme}`                    | 请求协议，`http` 或 `https`                  |
-| `${ssl}`                       | TLS 状态，`on`（HTTPS）或 `off`（HTTP）        |
-| `${forwarded_ssl}`             | 同 `${ssl}`                             |
-| `${host}`                      | 不带端口的主机名（等同 Nginx 的 `$host`）           |
-| `${http_host}`                 | 原始 `Host:` 头值（等同 Nginx 的 `$http_host`） |
-| `${server_port}`               | 服务监听端口号（等同 Nginx 的 `$server_port`）     |
-| `${remote_addr}`               | 客户端真实地址（含端口）                           |
-| `${remote_ip}`                 | 客户端真实 IP （IPv6不含方括号）                   |
-| `${remote_port}`               | 客户端源端口                                 |
-| `${proxy_add_x_forwarded_for}` | 完整的 `X-Forwarded-For` 链（追加了当前客户端 IP）   |
-| `${request_uri}`               | 完整请求路径及查询字符串（含 `?` 及后续部分）              |
-| `${uri}`                       | 请求路径，不含查询字符串                           |
-| `${args}`                      | 查询字符串，不含前导 `?`                         |
-| `${query_string}`              | 同 `${args}`                            |
-| `${scheme_host}`               | 协议 + 主机（含非标端口），如 `https://example.com` |
-
-## 自定义请求 Header
-
-支持对请求Header进行新增或者修改，以配合服务的需要。
-
-使用示例：
 ```
 X-Original-URL: ${scheme_host}${request_uri}
 X-Client-IP: ${remote_ip}
-X-Client-Port: ${remote_port}
-X-Forwarded-Proto: ${scheme}
-X-Forwarded-Ssl: ${ssl}
 ```
 
-| 占位符                            | 含义                                     |
-|--------------------------------|----------------------------------------|
-| `${scheme}`                    | 请求协议，`http` 或 `https`                  |
-| `${ssl}`                       | TLS 状态，`on`（HTTPS）或 `off`（HTTP）        |
-| `${forwarded_ssl}`             | 同 `${ssl}`                             |
-| `${host}`                      | 不带端口的主机名（等同 Nginx 的 `$host`）           |
-| `${http_host}`                 | 原始 `Host:` 头值（等同 Nginx 的 `$http_host`） |
-| `${server_port}`               | 服务监听端口号（等同 Nginx 的 `$server_port`）     |
-| `${remote_addr}`               | 客户端真实地址（含端口）                           |
-| `${remote_ip}`                 | 客户端真实 IP （IPv6不含方括号）                   |
-| `${remote_port}`               | 客户端源端口                                 |
-| `${proxy_add_x_forwarded_for}` | 完整的 `X-Forwarded-For` 链（追加了当前客户端 IP）   |
-| `${request_uri}`               | 完整请求路径及查询字符串（含 `?` 及后续部分）              |
-| `${uri}`                       | 请求路径，不含查询字符串                           |
-| `${args}`                      | 查询字符串，不含前导 `?`                         |
-| `${query_string}`              | 同 `${args}`                            |
-| `${scheme_host}`               | 协议 + 主机（含非标端口），如 `https://example.com` |
-| `${http_upgrade}`              | 原始请求的 `Upgrade` 头                      |
-| `${http_connection}`           | 原始请求的 `Connection` 头                   |
-| `${http_range}`                | 原始请求的 `Range` 头                        |
-| `${http_if_range}`             | 原始请求的 `If-Range` 头                     |
-| `${unset}`                     | 删除该头                                   |
+名称写 `名称: ${unset}` 表示删除该头。变量名写错或不认识时，那一行会被忽略并在日志里提示。
 
-## 自定义响应 Header
+下面的变量在请求头、响应头和重定向地址里都能用：
 
-支持对 HTTP 响应头进行新增或修改，以配合服务的需要。
+| 变量 | 含义 |
+| --- | --- |
+| `${scheme}` | `http` 或 `https` |
+| `${ssl}`、`${forwarded_ssl}` | 请求走 TLS 为 `on`，否则 `off` |
+| `${https}` | 走 TLS 为 `on`，否则为空 |
+| `${host}` | 不带端口的小写主机名 |
+| `${http_host}`、`${request_host}` | 原始 `Host` 头 |
+| `${scheme_host}` | 协议加主机，如 `https://www.example.com` |
+| `${request_method}` | 请求方法 |
+| `${request_uri}` | 原始请求路径加查询串 |
+| `${uri}`、`${request_path}` | 解码后的路径，不含查询串 |
+| `${args}`、`${query_string}` | 查询串，不含 `?` |
+| `${is_args}` | 有查询串时为 `?` |
+| `${remote_addr}` | 访问者地址，带端口 |
+| `${remote_ip}`、`${remote_port}` | 访问者 IP、端口 |
+| `${peer_addr}`、`${peer_port}` | 直接连到 nps 的对端地址、端口 |
+| `${server_addr}` | 请求进来的本地地址 |
+| `${server_port}`、`${server_port_http}`、`${server_port_https}`、`${server_port_http3}` | 当前、HTTP、HTTPS、HTTP/3 监听端口 |
+| `${forwarded_proto}`、`${forwarded_host}` | 访问者看到的协议、主机 |
+| `${proxy_add_x_forwarded_for}` | 原有的 `X-Forwarded-For` 加上当前对端地址 |
+| `${proxy_add_forwarded}` | 原有的 `Forwarded` 加上本跳 |
+| `${http_头名}` | 请求头的值，`-` 写成 `_`，如 `${http_user_agent}`、`${http_upgrade}`、`${http_range}` |
+| `${cookie_名}`、`${arg_名}` | 某个 Cookie、某个查询参数的值 |
+| `${origin}`、`${user_agent}` | 请求头 `Origin`、`User-Agent` |
+| `${date}`、`${timestamp}`、`${timestamp_ms}`、`${msec}`、`${time_iso8601}`、`${time_http}` | 当前时间的各种写法 |
 
-使用示例：
+只在响应头里有值的变量（请求头和重定向里为空）：
+
+| 变量 | 含义 |
+| --- | --- |
+| `${status}` | 后端响应状态行，如 `200 OK` |
+| `${status_code}` | 状态码，如 `200` |
+| `${content_length}` | 响应体长度，未知为 `-1` |
+| `${content_type}`、`${via}` | 响应头 `Content-Type`、`Via` 的值 |
+| `${upstream_http_头名}` | 后端响应头的值 |
+
+## 自定义重定向地址
+
+“重定向地址”填写后，匹配的请求会得到 307 临时重定向。地址里可以使用上面的变量：
+
 ```
-Access-Control-Allow-Origin: ${origin}
-Access-Control-Allow-Credentials: true
+https://www.example.com${request_uri}
 ```
 
-| 占位符                    | 含义                                        |
-|------------------------|-------------------------------------------|
-| `${scheme}`            | 请求协议，值为 `http` 或 `https`                  |
-| `${ssl}`               | 是否启用 SSL，值为 `on`（HTTPS）或 `off`（HTTP）      |
-| `${server_port}`       | 当前代理监听的端口                                 |
-| `${server_port_http}`  | HTTP 监听端口                                 |
-| `${server_port_https}` | HTTPS 监听端口                                |
-| `${server_port_http3}` | HTTP/3 监听端口                               |
-| `${host}`              | 不含端口的原始主机名（类似 Nginx 的 `$host`）            |
-| `${http_host}`         | 原始 Host 头部内容（类似 Nginx 的 `$http_host`）     |
-| `${remote_addr}`       | 客户端 IP 和端口（例如 `192.168.1.10:52345`）       |
-| `${remote_ip}`         | 客户端 IP 地址（不含端口）                           |
-| `${remote_port}`       | 客户端源端口                                    |
-| `${request_method}`    | 请求方法，例如 `GET`、`POST`                      |
-| `${request_host}`      | 请求的 Host                                  |
-| `${request_uri}`       | 完整的请求 URI，包含查询字符串，如 `/foo/bar?name=value` |
-| `${request_path}`      | 请求路径（不含查询字符串），如 `/foo/bar`                |
-| `${uri}`               | 与 `${request_path}` 相同                    |
-| `${query_string}`      | 查询字符串（不含 `?`），与 `${args}` 相同              |
-| `${args}`              | 同 `${query_string}`                       |
-| `${origin}`            | 请求头 `Origin` 的值                           |
-| `${user_agent}`        | 请求头 `User-Agent` 的值                       |
-| `${http_referer}`      | 请求头 `Referer` 的值                          |
-| `${scheme_host}`       | 协议和主机拼接，如 `https://example.com`           |
-| `${status}`            | 后端响应状态行，例如 `200 OK`                       |
-| `${status_code}`       | 后端响应状态码，例如 `200`                          |
-| `${content_length}`    | 响应体长度（字节数）。若未知为 `-1`                      |
-| `${content_type}`      | 响应头 `Content-Type` 的值                     |
-| `${via}`               | 响应头 `Via` 的值                              |
-| `${date}`              | 当前 UTC 时间，格式符合 HTTP Date（RFC 1123）        |
-| `${timestamp}`         | 当前时间戳（秒）                                  |
-| `${timestamp_ms}`      | 当前时间戳（毫秒）                                 |
-| `${unset}`             | 删除该头                                      |
+## URL 路由与 URL 重写
 
-## 404页面配置
+“URL 路由”让一个域名下不同路径转发到不同目标：填写路径前缀，只有以它开头的请求走这条规则，留空则不限。同一个域名可以建多条规则，路由更长的优先匹配。
 
-支持域名解析模式的自定义404页面，修改 `web/static/page/error.html` 中内容即可（路径可用 `error_page` 修改），暂不支持静态文件等内容
+“URL 重写”把请求路径里匹配到的 URL 路由前缀替换成填写的内容；nps 会自动加上 `X-Original-Path` 请求头，告诉后端浏览器请求的原始路径。例如：
 
-## 域名泛解析
+| URL 路由 | URL 重写 | 请求 | 到达后端 |
+| --- | --- | --- | --- |
+| `/path/` | `/` | `/path/index.html` | `/index.html` |
+| `/xml` | `/path/list.xml` | `/xml` | `/path/list.xml` |
+| `/ws` | `/websocket` | `/ws` | `/websocket` |
 
-支持域名泛解析，例如将host设置为*.proxy.com，a.proxy.com、b.proxy.com等都将解析到同一目标，在web管理中或客户端配置文件中将host设置为此格式即可。
+## 泛域名
 
-## URL 重写
-填写后自动替换请求路径里 **URL 路由** 的前缀为填写的内容，适用于前后端访问不同路径的情况
-
-NPS 会自动添加 `X-Original-Path` 请求头用于识别浏览器请求的实际地址
-
-例如：
-- 当**URL 路由**配置为`/path/`，当**URL 重写**配置为`/`。请求`xx.com/path/index.html`将返回`127.0.0.1:80/index.html`
-- 当**URL 路由**配置为`/xml`，当**URL 重写**配置为`/path/list.xml`。请求`xx.com/xml`将下载`127.0.0.1:80/path/list.xml`
-- 当**URL 路由**配置为`/ws`，当**URL 重写**配置为`/websocket`。请求`xx.com/ws`将转发到`127.0.0.1:80/websocket`
+域名写成 `*.proxy.com`，`a.proxy.com`、`b.proxy.com` 等都会转发到同一目标。
 
 ## 站点保护
 
-域名代理模式所有客户端共用一个http服务端口，在知道域名后任何人都可访问，一些开发或者测试环境需要保密，所以可以设置用户名和密码，nps将通过
-Http Basic Auth 来保护，访问时需要输入正确的用户名和密码。
-
-- 在web管理或客户端配置文件中设置
+给域名转发设置“密码认证”（一行一个 `用户名=密码`），访问者要用 HTTP Basic 认证输入正确的账号密码才能访问。适合保护开发、测试环境。
 
 ## 负载均衡
 
-域名转发和 TCP 隧道支持负载均衡，在内网目标中分行填写多个目标即可轮询。配合[健康检查](/guide/tunnels/health-check.md)自动摘除故障目标。
+域名转发和 TCP 隧道的“目标”分行填写多个地址即可。按加权轮询分配连接，同一个地址写几次，权重就是几。配合[健康检查](/guide/tunnels/health-check.md)可以自动摘除故障目标；nps 自己拨号连续失败的目标也会被暂时剔除，一段时间后重新尝试。
 
-带 PROXY 头的域名后端连接不复用，避免后续访问者地址错误。
+## 自定义错误页
 
-## URL 路由
-
-见[配置文件模式](/guide/client/config-file.md)，也可以在 Web 上设置。
+域名转发返回的错误页可以替换：`error_page` 指定错误页文件（默认 `web/static/page/error.html`），`error_page_time_limit`、`error_page_flow_limit` 可分别指定到期和超流量时的页面。错误页是单个 HTML 文件，不能另带图片等静态文件。

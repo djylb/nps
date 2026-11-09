@@ -1,372 +1,295 @@
-# NPS Web API 文档
+# Web API
 
-**注意：**  
-在使用 Web API 前，请确保在 `nps.conf` 中配置了有效的 `auth_key`，并取消其注释。
+网页管理界面用的接口，也可以直接拿来写脚本：增删改客户端、隧道、域名转发，查看状态，重新加载配置。网页上每个操作都对应这里的一个接口。
 
-## Web API 验证机制
+## 开启与认证
 
-每次 API 请求都需在 **URL 查询参数**中附带两个参数（放在表单里不会通过认证）：
+脚本调用需要先在 `nps.conf` 里设置 `auth_key`（见[服务端配置](/reference/server-config.md)），留空则脚本认证关闭。设置后每次请求在 **URL 查询参数**里带上两个值（放在表单或 JSON 里不会被认证）：
 
-所有接口也可通过 `/api/v1` 前缀访问，例如 `/api/v1/client/list`；配置了 `web_base_url` 时带上该前缀。
+| 参数 | 含义 |
+| --- | --- |
+| `timestamp` | 当前 Unix 时间戳（秒） |
+| `auth_key` | `md5(配置的auth_key + timestamp)`，32 位小写十六进制 |
 
-- **`auth_key`** ：
-  - 生成规则：`auth_key = md5(配置文件中的auth_key + 当前时间戳)`
-  - 示例（Java Hutool工具）：
-
-```java
-Long time = new Date().getTime() / 1000;
-String authKey = MD5.create().digestHex("your_auth_key_here" + time.toString());
-System.out.println(authKey);
-```
-
-- **`timestamp`** ：当前 Unix 时间戳（秒级）。
-
-**示例请求：**
+时间戳和服务端时间相差不能超过 20 秒。通过认证的请求按管理员处理。
 
 ```bash
-curl -X POST \
-  --url 'http://127.0.0.1:8081/client/list?auth_key=your_generated_auth_key&timestamp=current_unix_timestamp' \
+# 在 Linux/macOS 上
+KEY=YOUR_AUTH_KEY
+TS=$(date +%s)
+SIGN=$(printf '%s%s' "$KEY" "$TS" | md5sum | cut -d' ' -f1)   # macOS 用 md5 -q
+curl -X POST "http://203.0.113.10:8081/client/list?auth_key=$SIGN&timestamp=$TS" \
   --data 'offset=0&limit=10'
 ```
 
-**安全提醒：** 为保障安全性，每次请求的时间戳有效范围为 20 秒内。
+不带 `auth_key` 的请求要求已登录的会话（网页登录后的 Cookie）。
 
-## 获取服务端时间
+## 路径与格式
 
-**接口：** `GET /auth/gettime`
+- 每个接口有两个等价的路径：原路径（如 `/client/list`）和 `/api/v1` 前缀路径（如 `/api/v1/client/list`）。配置了 `web_base_url` 时，所有路径前面再加这个前缀。
+- 两种路径都接受表单（`application/x-www-form-urlencoded`）。`/api/v1` 前缀路径还接受 JSON 请求体（`Content-Type: application/json`），字段名与表单参数相同。
+- `/api/v1` 路径出错时返回 JSON（401 `unauthorized`、403 `forbidden`）；原路径未登录时会跳转到登录页。
+- 返回 JSON 的形式有几种：
+  - 操作类：`{"status":1,"msg":"..."}`，`status` 为 `1` 成功、`0` 失败；新增类还带 `id`。
+  - 查询单个：`{"code":1,"data":{...}}`，失败为 `{"code":0}`。
+  - 列表：`{"rows":[...],"total":N}`。
+- 非管理员（客户端用户，需 `allow_user_login`）只能操作自己名下的客户端及其隧道、域名转发；标注“仅管理员”的接口对他们返回 403。
 
-- **返回值**：当前服务端 Unix 时间戳（单位：秒）。
+## 获取服务端信息（无需认证）
 
-## 获取服务端 authKey
+| 接口 | 方法 | 返回 |
+| --- | --- | --- |
+| `/auth/gettime` | GET | `{"time": 当前Unix秒}` |
+| `/auth/getauthkey` | GET | `{"status":1,"crypt_auth_key":"...","crypt_type":"aes cbc"}`：用 `auth_crypt_key`（必须正好 16 个字符）加密后的 `auth_key`；没配置 `auth_crypt_key` 时 `status` 为 `0` |
+| `/auth/getcert` | GET | `{"status":1,"cert":"..."}`：登录时加密密码用的 RSA 公钥（PEM） |
+| `/auth/bootstrap` | GET | 当前会话、可见的页面和接口清单、功能开关，网页前端启动时读取 |
 
-**接口：** `GET /auth/getauthkey`
+`crypt_auth_key` 的解密方式：AES-128-CBC，密钥为 `auth_crypt_key`，偏移量（IV）与密钥相同，PKCS5 补码，密文为十六进制。
 
-- **返回值**：AES CBC 加密后的 authKey。
-- **注意事项**：
-  - 需使用配置文件中的 `auth_crypt_key`（必须为16位字符）解密。
-  - AES CBC 解密（128位，pkcs5padding，十六进制编码）。
-    - 解密密钥长度128
-    - 偏移量与密钥相同
-    - 补码方式pkcs5padding
-    - 解密串编码方式 十六进制
+## 页面（仅网页前端使用）
 
-## 获取服务端证书
+这些 GET 路径渲染网页，脚本一般不用：
 
-**接口：** `GET /auth/getcert`
+| 路径 | 页面 |
+| --- | --- |
+| `/index/index` | 仪表盘 |
+| `/index/tcp`、`/index/udp`、`/index/mix`、`/index/secret`、`/index/service` | TCP 隧道、UDP 隧道、混合代理、点对点访问、虚拟后端（只读）列表 |
+| `/index/socks5`、`/index/http` | 只显示 SOCKS5、HTTP 代理的列表（左侧菜单不再单列，用混合代理页管理） |
+| `/index/host`、`/index/hostlist` | 域名转发列表 |
+| `/index/all` | 按客户端展示的隧道列表（参数 `client_id`） |
+| `/index/add`、`/index/edit`、`/index/launch` | 新增、编辑隧道，隧道的启动命令（`edit`、`launch` 带参数 `id`） |
+| `/index/addhost`、`/index/edithost` | 新增、编辑域名转发 |
+| `/index/help` | 使用说明 |
+| `/client/list`、`/client/add`、`/client/edit`、`/client/launch` | 客户端列表、新增、编辑、启动命令 |
+| `/global/index`、`/global/banlist` | 全局参数、封禁管理（仅管理员） |
+| `/login/index`、`/login/register` | 登录、注册（注册需 `allow_user_register`） |
+| `/app` | 管理界面外壳 |
 
-- **返回值**：NPS的证书公钥。
+各页面的内容见 [管理页面说明](/reference/web-ui.md)。另有 `/auth/page/<控制器>/<页面>` 和 `/auth/render/<控制器>/<页面>`（也可用 `/api/` 开头）以 JSON 或 HTML 形式返回同一页面的数据。
 
-## 仪表盘与导航接口
+## 仪表盘
 
-### 仪表盘页面
+- `GET /index/stats`（仅管理员）：仪表盘数据，`{"code":1,"data":{...}}`；非管理员返回 `{"code":0}`。
 
-- **接口：** `GET /index/index`
-- **功能**：渲染仪表盘页面，展示服务概览。
-
-### 仪表盘数据（仅管理员）
-
-- **接口：** `GET /index/stats`
-- **返回示例：**
-  - 成功：`{"code":1,"data":{...}}`
-  - 失败（非管理员）：`{"code":0}`
-
-### 帮助页面
-
-- **接口：** `GET /index/help`
-- **功能**：提供使用帮助信息。
-
-### 隧道导航页面
-
-以下接口均使用 `GET` 请求渲染对应隧道类型页面：
-
-| URL             | 类型说明              |
-|-----------------|-------------------|
-| `/index/tcp`    | TCP 隧道            |
-| `/index/udp`    | UDP 隧道            |
-| `/index/socks5` | Socks5 隧道         |
-| `/index/http`   | HTTP 代理           |
-| `/index/mix`    | 混合代理（HTTP+SOCKS5） |
-| `/index/service` | 虚拟后端（客户端上报，只读） |
-| `/index/secret` | 点对点访问            |
-| `/index/host`   | 域名解析              |
-| `/index/all`    | 按客户端展示            |
-
-## 隧道管理接口
+## 隧道
 
 ### 获取隧道列表
 
-- **接口：** `POST /index/gettunnel`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `client_id` | 需要查询的客户端 ID（整数） |
-  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`） |
-  | `search` | 关键词搜索（字符串） |
-  | `sort` | 排序字段（如 `id`） |
-  | `order` | 排序方式（`asc` 或 `desc`） |
-  | `offset` | 分页起始位置（整数） |
-  | `limit` | 每页显示条数（整数） |
+`POST /index/gettunnel`
 
-### 添加/修改隧道
+| 参数 | 说明 |
+| --- | --- |
+| `client_id` | 只看某个客户端的隧道（整数，0 或不传为全部） |
+| `type` | 隧道类型：`tcp`、`udp`、`mixProxy`、`httpProxy`、`socks5`、`secret`、`service` |
+| `search` | 关键词 |
+| `sort`、`order` | 排序字段，`asc` 或 `desc` |
+| `offset`、`limit` | 分页 |
 
-- **添加接口：** `POST /index/add`
-- **修改接口：** `POST /index/edit`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `client_id` | 关联客户端 ID（整数） |
-  | `port` | 服务器监听端口，若 ≤0 则自动分配 |
-  | `port`（仅添加，`tcp`、`udp`） | 也可写端口范围，如 `8000-8100,9000`：每个端口新建一条独立隧道，备注为“备注-端口”（备注为空时为端口）。`target` 只能一行：`host:端口` 表示所有端口转发到它，或 `host:8000-8100,9000` 与监听端口一一对应，其他数量报错；多行负载均衡目标不能与范围同用。整批要么全部创建，要么全不创建，失败时返回出错的端口。一次最多展开的条数由 `web_tunnel_port_range_max` 限制（默认 1000，`0` 不限）；其他类型不支持范围。成功时多条的响应带 `count`（条数），`id` 为第一条的 ID |
-  | `server_ip` | 服务器 IP 地址 |
-  | `type` | 隧道类型（`tcp`, `udp`, `mixProxy`, `httpProxy`, `socks5`, `secret`） |
-  | `target` | 目标地址（如 `127.0.0.1:8080`，支持多行换行 `\n`） |
-  | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
-  | `flow_limit` | 流量限制（单位 MB，空则不限制） |
-  | `time_limit` | 时间限制（字符串，空则不限制） |
-  | `max_conn` | 最大连接数（`0` 不限） |
-  | `upload_limit` / `download_limit` | 上行、下行限速（KB/s，`0` 不限） |
-  | `health_check` | 启用健康检查（`0/1`，TCP、Secret 隧道） |
-  | `health_check_type` | `tcp`、`http`、`https` |
-  | `health_check_path` | HTTP、HTTPS 检查路径 |
-  | `health_check_interval` / `health_check_timeout` | 间隔、超时（秒） |
-  | `health_check_max_fail` | 失败阈值（次） |
-  | `proxy_protocol` | 代理协议标识（整数） |
-  | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
-  | `target_type` | 目标类型（字符串） |
-  | `auth` | 多用户认证信息（多行 `账号:密码`） |
-  | `enable_http` | 是否启用 HTTP 代理能力（`0/1` 或 `true/false`） |
-  | `enable_socks5` | 是否启用 SOCKS5 代理能力（`0/1` 或 `true/false`） |
-  | `dest_acl_mode` | 出站 ACL 模式（`0` 关闭，`1` 白名单，`2` 黑名单）；Secret 隧道上是访问端的访问范围，`0` 时只能连到隧道目标 |
-  | `dest_acl_rules` | 出站 ACL 规则（多行，语法见[混合代理](/guide/tunnels/mixed-proxy.md)） |
-  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
-  | `blackiplist` | 来源 IP 黑名单（多行，语法见[访问控制](/guide/server/access-control.md)） |
-  | `whiteiplist` | 来源 IP 白名单（多行） |
-  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
-  | `remark` | 隧道备注（字符串） |
-  | `compress` | 核心协议下这条隧道的压缩算法：空跟随客户端，`snappy`、`zstd`、`flate`，`off` 不压缩 |
-  | `password` | 访问隧道的密码（字符串） |
-  | `id` | 隧道 ID（修改时必填） |
+返回 `{"rows":[...],"total":N}`。
 
-### 单个隧道操作
+### 新增、修改隧道
 
-- **获取详情**：`POST /index/getonetunnel`，参数 `id`（隧道 ID）
-- **启动隧道**：`POST /index/start`，参数 `id`（隧道 ID）
-- **停止隧道**：`POST /index/stop`，参数 `id`（隧道 ID）
-- **删除隧道**：`POST /index/del`，参数 `id`（隧道 ID）
-- **清理/切换隧道属性**：`POST /index/clear`，参数：
-  - `id`：隧道 ID
-  - `mode`：`http` / `socks5` / `flow` / `flow_limit` / `time_limit`
+新增 `POST /index/add`，修改 `POST /index/edit`（多一个必填的 `id`）。下面是表单里隧道可设置的全部参数。
 
-## 域名解析管理接口
+| 参数 | 说明 |
+| --- | --- |
+| `client_id` | 所属客户端 ID |
+| `type` | 隧道类型：`tcp`、`udp`、`mixProxy`、`httpProxy`、`socks5`、`secret`。虚拟后端由客户端上报，不能从这里新增 |
+| `server_ip` | 服务端监听地址，留空为所有地址 |
+| `port` | 服务端监听端口，`0` 或留空自动分配。新增 `tcp`、`udp` 隧道时可写端口范围，见下 |
+| `target` | 目标地址，一行一个 `ip:端口`；多行即负载均衡（仅 TCP 隧道） |
+| `target_type` | 默认目标使用的网络：`all`、`tcp`、`udp`；网页的新增、编辑页不显示这一项，接口仍接受 |
+| `password` | 点对点访问的唯一标识密钥，访问端凭它连接（`secret` 类型用） |
+| `enable_http` | 混合代理是否启用 HTTP 代理（`0`/`1`） |
+| `enable_socks5` | 混合代理是否启用 SOCKS5 代理（`0`/`1`） |
+| `dest_acl_mode` | 目标访问控制：`0` 关闭，`1` 白名单，`2` 黑名单；点对点访问隧道上是访问端的访问范围，关闭时不限制 |
+| `dest_acl_rules` | 目标访问控制条目，多行，写法见[混合代理](/guide/tunnels/mixed-proxy.md) |
+| `auth` | 代理的账号认证，多行，每行 `账号=密码`；留空不启用 |
+| `proxy_protocol` | 向目标发送 Proxy Protocol：`0` 关闭，`1` V1，`2` V2 |
+| `local_proxy` | 代理到服务器本地（`0`/`1`），受 `allow_local_proxy` 约束 |
+| `remark` | 备注 |
+| `compress` | 这条隧道的压缩算法：空为跟随客户端，`snappy`、`zstd`、`flate`，`off` 不压缩 |
+| `max_conn` | 最大连接数，`0` 不限 |
+| `upload_limit`、`download_limit` | 上行、下行限速，KB/s，`0` 不限 |
+| `flow_limit` | 流量限制，MB，空为不限 |
+| `time_limit` | 到期时间，空为不限，格式自由，见[限制与统计](/reference/features-limits.md) |
+| `flow_reset` | 为 `1` 时清空这条隧道已统计的流量 |
+| `health_check` | 启用健康检查（`0`/`1`），见[健康检查](/guide/tunnels/health-check.md) |
+| `health_check_type` | 检查方式：`tcp`、`http`、`https` |
+| `health_check_path` | `http`、`https` 检查的路径 |
+| `health_check_interval`、`health_check_timeout` | 间隔、超时，秒 |
+| `health_check_max_fail` | 连续失败多少次判定下线 |
+| `iplistpriority` | 来源名单优先级：`0` 黑名单优先，`1` 白名单优先 |
+| `blackiplist`、`whiteiplist` | 来源 IP 黑、白名单，多行，写法见[访问控制](/guide/server/access-control.md) |
+| `registered_only` | 仅允许已登记的 IP（`0`/`1`） |
+| `id` | 隧道 ID（修改时必填） |
 
-### 获取域名解析列表
+**端口范围**：新增 `tcp`、`udp` 隧道时，`port` 可以写成 `8000-8100,9000`，每个端口新建一条独立隧道，备注为“备注-端口”（备注为空时就是端口）。此时 `target` 只能一行：`host:端口` 表示所有端口转发到它，`host:8000-8100,9000` 则与监听端口一一对应，数量不一致报错；多行负载均衡目标不能与范围同用。整批要么全部创建，要么一条都不创建，失败时消息里带出错的端口。一次最多展开的条数由 `web_tunnel_port_range_max` 限制（默认 1000，`0` 不限）。成功创建多条时返回里有 `count`，`id` 是第一条的 ID。其他类型不支持范围。
 
-- **接口：** `POST /index/hostlist`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `search` | 搜索关键词（可以搜索域名、备注等） |
-  | `offset` | 分页起始位置（整数） |
-  | `limit` | 每页显示条数（整数） |
-  | `client_id` | 需要查询的客户端 ID（整数） |
+### 单条隧道操作
 
-### 添加/修改域名解析
+| 接口 | 参数 | 说明 |
+| --- | --- | --- |
+| `POST /index/getonetunnel` | `id` | 取详情 |
+| `POST /index/start`、`POST /index/stop` | `id`；可选 `mode`（`http`、`socks5`） | 启动、停止隧道；带 `mode` 时是开、关该隧道上的 HTTP 或 SOCKS5 代理 |
+| `POST /index/clear` | `id`、`mode` | `mode` 为 `flow`（清空流量统计）、`flow_limit`（取消流量限制）、`time_limit`（取消时间限制）、`http`、`socks5`（切换代理开关） |
+| `POST /index/del` | `id` | 删除 |
+| `POST /index/launchform` | `id` | 取这条隧道已保存的启动命令表单 |
+| `POST /index/savelaunch` | `id`、`form` | 保存启动命令表单，`form` 为空则恢复默认 |
 
-- **添加接口：** `POST /index/addhost`
-- **修改接口：** `POST /index/edithost`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `client_id` | 关联的客户端 ID（整数） |
-  | `host` | 域名（如 `example.com`） |
-  | `target` | 内网目标（`ip:端口`，支持多个，用\n分隔） |
-  | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
-  | `flow_limit` | 流量限制（单位 MB，空则不限制） |
-  | `time_limit` | 时间限制（字符串，空则不限制） |
-  | `max_conn` | 最大连接数（`0` 不限） |
-  | `upload_limit` / `download_limit` | 上行、下行限速（KB/s，`0` 不限） |
-  | `health_check`、`health_check_type`、`health_check_path`、`health_check_interval`、`health_check_timeout`、`health_check_max_fail` | 健康检查，含义同隧道 |
-  | `proxy_protocol` | 代理协议标识（整数） |
-  | `local_proxy` | 是否启用本地代理（`0` 否，`1` 是） |
-  | `header` | 修改的请求头（字符串） |
-  | `resp_header` | 修改的响应头（字符串） |
-  | `auth` | 多用户认证信息（多行 `账号:密码`） |
-  | `hostchange` | 修改的 `Host` 值（字符串） |
-  | `remark` | 备注信息（字符串） |
-  | `compress` | 核心协议下这条域名转发的压缩算法，取值同隧道的 `compress` |
-  | `location` | URL 路由（字符串，空则不限制） |
-  | `path_rewrite` | 路径重写规则（字符串） |
-  | `redirect_url` | 重定向 URL（字符串） |
-  | `scheme` | 协议类型（`all`、`http`、`https`） |
-  | `https_just_proxy` | 是否仅代理 HTTPS（`0` 否，`1` 是） |
-  | `tls_offload` | 是否启用 TLS 卸载（`0` 否，`1` 是） |
-  | `auto_ssl` | 是否启用自动 SSL（`0` 否，`1` 是） |
-  | `key_file` | HTTPS 证书密钥文本或路径（字符串） |
-  | `cert_file` | HTTPS 证书公钥文本或路径（字符串） |
-  | `auto_https` | 是否自动启用 HTTPS（`0` 否，`1` 是） |
-  | `auto_cors` | 是否自动添加 CORS 头（`0` 否，`1` 是） |
-  | `compat_mode` | 是否启用兼容模式（`0` 否，`1` 是） |
-  | `target_is_https` | 目标是否为 HTTPS（`0` 否，`1` 是） |
-  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
-  | `blackiplist` | 来源 IP 黑名单（多行） |
-  | `whiteiplist` | 来源 IP 白名单（多行） |
-  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
-  | `id` | 域名解析 ID（修改时必填） |
+## 域名转发
 
-### 单个域名解析操作
+### 获取列表
 
-- **获取详情**：`POST /index/gethost`（参数 `id`）
-- **启动**：`POST /index/starthost`（参数 `id`）
-- **停止**：`POST /index/stophost`（参数 `id`）
-- **清理/切换属性**：`POST /index/clearhost`，参数：
-  - `id`：域名解析 ID
-  - `mode`：`flow` / `flow_limit` / `time_limit` / `auto_ssl` / `https_just_proxy` / `tls_offload` / `auto_https` / `auto_cors` / `compat_mode` / `target_is_https`
-- **删除域名解析**：`POST /index/delhost`（参数 `id`）
-- **证书建议**：`POST /index/certsuggestion`，参数 `host`、`exclude_id`（排除的条目）、`client_id`（非管理员必填）；有可复用证书时返回 `code: 1` 和来源条目、证书内容
+`POST /index/hostlist`，参数 `client_id`、`search`、`sort`、`order`、`offset`、`limit`，返回 `{"rows":[...],"total":N}`。
 
-## 客户端管理接口
+### 新增、修改域名转发
 
-### 获取客户端列表
+新增 `POST /index/addhost`，修改 `POST /index/edithost`（多一个必填的 `id`）。
 
-- **接口：** `POST /client/list`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `search` | 搜索关键字（字符串） |
-  | `order` | 排序方式（`asc` 正序，`desc` 倒序） |
-  | `offset` | 分页起始位置（整数） |
-  | `limit` | 每页显示条数（整数） |
+| 参数 | 说明 |
+| --- | --- |
+| `client_id` | 所属客户端 ID |
+| `host` | 域名，如 `www.example.com`，可用泛域名 `*.example.com` |
+| `scheme` | 接受的协议：`all`、`http`、`https` |
+| `target` | 内网目标，一行一个 `ip:端口`，多行即负载均衡 |
+| `target_is_https` | 目标是 HTTPS（`0`/`1`） |
+| `location` | URL 路由，空为不限 |
+| `path_rewrite` | URL 重写 |
+| `redirect_url` | 307 重定向地址，空为关闭 |
+| `hostchange` | 改写发往目标的 `Host` |
+| `header` | 请求头修改，一行一个 `名称: 值` |
+| `resp_header` | 响应头修改，写法同 `header` |
+| `auth` | 站点保护的账号认证，多行，每行 `账号=密码` |
+| `https_just_proxy` | TLS 直通（`0`/`1`） |
+| `tls_offload` | TLS 终止（`0`/`1`） |
+| `auto_ssl` | 自动证书（`0`/`1`） |
+| `cert_file`、`key_file` | HTTPS 证书和私钥，PEM 文本或文件路径 |
+| `auto_https` | 自动跳转 HTTPS（`0`/`1`） |
+| `auto_cors` | 自动修复 CORS（`0`/`1`） |
+| `compat_mode` | 兼容模式（`0`/`1`） |
+| `proxy_protocol`、`local_proxy`、`remark`、`compress`、`max_conn`、`upload_limit`、`download_limit`、`flow_limit`、`time_limit`、`flow_reset` | 含义同隧道 |
+| `health_check`、`health_check_type`、`health_check_path`、`health_check_interval`、`health_check_timeout`、`health_check_max_fail` | 健康检查，含义同隧道 |
+| `iplistpriority`、`blackiplist`、`whiteiplist`、`registered_only` | 来源名单，含义同隧道 |
+| `id` | 域名转发 ID（修改时必填） |
 
-### 添加/修改客户端
+各选项的用法见[域名转发](/guide/tunnels/domain-forwarding.md)和[站点与 HTTP](/reference/features-http.md)。
 
-- **添加接口：** `POST /client/add`
-- **修改接口：** `POST /client/edit`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `remark` | 备注信息（字符串） |
-  | `u` | Basic 认证用户名（字符串） |
-  | `p` | Basic 认证密码（字符串） |
-  | `vkey` | 客户端验证密钥（字符串） |
-  | `config_conn_allow` | 是否允许客户端以配置文件模式连接（`0` 否，`1` 是） |
-  | `compress` | 压缩：`0` 关闭，`1` 开启（算法由 `compress_alg` 定，默认 snappy），或直接给算法 `snappy`、`zstd`、`flate`（开启并使用该算法） |
-  | `compress_alg` | `compress=1` 时 npc 使用的算法：空（snappy）、`snappy`、`zstd`、`flate`；`off` 等同 `compress=0`；隧道和域名的 `compress` 可单独覆盖 |
-  | `shaping` | 是否对该客户端启用流量整形（`0` 否，`1` 是）；服务端配置了整形来源（`shaping_url` 等）才生效 |
-  | `scheduler_down` | 核心协议下 nps 向该客户端发送的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
-  | `scheduler_up` | 核心协议下 npc 向 nps 发送的调度，取值同 `scheduler_down`；空不下发，npc 保留本地 `-scheduler_up` |
-  | `crypt` | 是否启用加密（`0` 否，`1` 是）；新建时不传按开启，有 `crypt=0` 才关闭；编辑时不传保持原值 |
-  | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
-  | `flow_limit` | 流量限制（单位 MB，空则不限制） |
-  | `time_limit` | 时间限制（字符串，空则不限制） |
-  | `rate_limit` | 带宽限制（单位 KB/s，空则不限制） |
-  | `max_conn` | 最大连接数量（整数，空则不限制） |
-  | `max_tunnel` | 最大隧道数量（整数，空则不限制） |
-  | `web_username` | 客户端 Web 登录用户名（字符串） |
-  | `web_password` | 客户端 Web 登录密码（字符串） |
-  | `web_totp_secret` | 客户端 Web 登录 TOTP 密钥（字符串） |
-  | `iplistpriority` | 来源名单优先级（`0` 黑名单优先，`1` 白名单优先） |
-  | `blackiplist` | 来源 IP 黑名单（多行，语法见[访问控制](/guide/server/access-control.md)） |
-  | `whiteiplist` | 来源 IP 白名单（多行） |
-  | `registered_only` | 仅允许已登记的 IP（`0` 否，`1` 是） |
-  | `register_key` | IP 登记口令（字符串，留空则只能用 vkey 登记） |
-  | `register_max_hours` | 登记页面登记的最长有效期（小时，`0` 为 2 小时） |
-  | `id` | 客户端 ID（修改时必填） |
+### 单条域名转发操作
+
+| 接口 | 参数 | 说明 |
+| --- | --- | --- |
+| `POST /index/gethost` | `id` | 取详情 |
+| `POST /index/starthost`、`POST /index/stophost` | `id` | 启动、停止 |
+| `POST /index/clearhost` | `id`、`mode` | `mode` 为 `flow`、`flow_limit`、`time_limit`（同隧道），或 `auto_ssl`、`https_just_proxy`、`tls_offload`、`auto_https`、`auto_cors`、`compat_mode`、`target_is_https`（切换对应开关） |
+| `POST /index/delhost` | `id` | 删除 |
+| `POST /index/certsuggestion` | `host`、`exclude_id`（排除的条目）、`client_id`（非管理员必填） | 有可复用的证书时返回 `code: 1` 和来源条目、证书内容 |
+
+## 客户端
+
+### 获取列表
+
+`POST /client/list`，参数 `search`、`sort`、`order`、`offset`、`limit`。除 `rows`、`total` 外还返回 `ip`、`addr`、`bridgeType`、`bridgePort`（网页生成启动命令用的服务端连接信息），管理员还有 `traffic`（服务端总转发流量与速率）。
+
+### 新增、修改客户端
+
+新增 `POST /client/add`，修改 `POST /client/edit`（多一个必填的 `id`）。
+
+| 参数 | 说明 |
+| --- | --- |
+| `remark` | 备注 |
+| `vkey` | 唯一验证密钥，新增时不填自动生成 |
+| `u`、`p` | Basic 认证用户名、密码（用于该客户端的 SOCKS5、HTTP 代理和域名转发） |
+| `config_conn_allow` | 允许客户端通过配置文件方式连接（`0`/`1`） |
+| `compress` | 压缩：`0` 关闭，`1` 开启（算法默认 snappy），或直接写算法 `snappy`、`zstd`、`flate` |
+| `compress_alg` | `compress=1` 时的算法；`off` 等同关闭。隧道和域名转发的 `compress` 可单独覆盖 |
+| `crypt` | 加密（`0`/`1`）；新增时不传按开启，编辑时不传保持原值 |
+| `shaping` | 对该客户端启用流量整形（`0`/`1`），服务端配置了整形来源才生效 |
+| `scheduler_down` | nps 向该客户端发送数据的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
+| `scheduler_up` | 客户端向 nps 发送数据的调度，取值同上；空为不下发，npc 用本地的 `-scheduler_up` |
+| `flow_limit` | 流量限制，MB，空为不限 |
+| `time_limit` | 到期时间，空为不限 |
+| `rate_limit` | 带宽限制，KB/s，空为不限 |
+| `max_conn` | 最大连接数，空为不限 |
+| `max_tunnel` | 最大隧道数，空为不限 |
+| `flow_reset` | 修改时：为 `1` 清空流量统计 |
+| `web_username`、`web_password`、`web_totp_secret` | 该客户端的网页登录账号、密码、TOTP 密钥 |
+| `iplistpriority`、`blackiplist`、`whiteiplist`、`registered_only` | 来源名单，含义同隧道 |
+| `register_key` | IP 登记口令，留空则只能用 vkey 登记 |
+| `register_max_hours` | 登记页面登记的最长有效时间（小时），`0` 为 2 小时 |
+| `id` | 客户端 ID（修改时必填） |
 
 ### 单个客户端操作
 
-- **获取详情**：`POST /client/getclient`（参数 `id`）
-- **延迟检查**：`POST /client/pingclient`（参数 `id`）
-- **修改状态**：`POST /client/changestatus`（参数 `id`、`status`）（`0` 否，`1` 是）
-- **清理客户端配额/统计**：`POST /client/clear`，参数：
-  - `id`：客户端 ID，传 `0` 表示对所有客户端生效
-  - `mode`：`flow` / `flow_limit` / `time_limit` / `rate_limit` / `conn_limit` / `tunnel_limit`
-- **踢下线**：`POST /client/kick`（参数 `id`，仅管理员）；配置不变，客户端可重连
-- **远程更新**：`POST /client/update`（参数 `id`，仅管理员）
-- **删除客户端**：`POST /client/del`（参数 `id`）
+| 接口 | 参数 | 说明 |
+| --- | --- | --- |
+| `POST /client/getclient` | `id` | 取详情 |
+| `POST /client/pingclient` | `id` | 延迟检测，返回 `{"code":1,"rtt":毫秒}` |
+| `POST /client/changestatus` | `id`、`status`（`0`/`1`） | 启用或停用客户端 |
+| `POST /client/clear` | `id`、`mode` | 仅管理员。`mode` 为 `flow`、`flow_limit`、`time_limit`、`rate_limit`、`conn_limit`、`tunnel_limit`；`id` 为 `0` 对所有客户端生效 |
+| `POST /client/kick` | `id` | 仅管理员。踢下线，配置不变，客户端可重连 |
+| `POST /client/update` | `id` | 仅管理员。请求在线客户端自我更新 |
+| `POST /client/del` | `id` | 删除 |
+| `POST /client/launchform` | `id` | 取已保存的启动命令表单 |
+| `POST /client/savelaunch` | `id`、`form` | 保存启动命令表单，空则恢复默认 |
+| `GET /client/qr` | `text`，或 `account` + `secret` | 返回 PNG 二维码；后者由服务端生成 TOTP 的 otpauth 链接 |
 
-### 二维码接口
+## 登录与注册
 
-- **接口：** `GET /client/qr`
-- **用途：** 返回 PNG 图片（常用于 TOTP 二维码）。
-- **参数（两种方式二选一）**：
-  1. `text`：完整二维码内容（URL 编码字符串）。
-  2. `account` + `secret`：由服务端生成 otpauth URL。
+| 接口 | 说明 |
+| --- | --- |
+| `POST /login/verify` | 登录。参数 `username`；`password` 是用 `/auth/getcert` 的公钥加密的 JSON（`n` 随机串、`t` 毫秒时间戳、`p` 明文密码）；`captcha_id`、`captcha`（开启验证码时必填，开启 TOTP 时 6 位动态码接在明文密码后面，也可接在验证码后面）；`powx`、`bits`（强制工作量证明或触发风控时必填） |
+| `POST /login/register` | 注册（需 `allow_user_register`）。参数 `username`、`password`（加密方式同登录）、`captcha_id`、`captcha` |
+| `GET /login/out` 或 `POST /api/v1/login/logout` | 登出 |
+| `GET /captcha/new` | 取新验证码，`/captcha/<id>` 取图片 |
 
-## 用户认证接口
+登录来源受 `login_acl_mode` 限制，连续失败会被封禁，见[访问控制](/guide/server/access-control.md)。脚本调用一般用上面的 `auth_key`，不需要登录。
 
-### 用户登录
+## IP 登记（无需登录）
 
-- **接口：** `POST /login/verify`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `username` | 登录用户名（字符串） |
-  | `password` | 通过 RSA 公钥加密的 JSON 字符串（包含 `n`=nonce、`t`=毫秒级时间戳、`p`=明文密码） |
-  | `captcha_id` / `captcha` | 验证码 ID 与验证码（启用验证码时必填） |
-  | `powx` / `bits` | PoW 参数（启用强制 PoW 或命中风控时必填） |
+- 页面 `GET /ip/register`，可带 `key` 预填口令。登记服务也可以单独监听（`ip_register_port`），或用域名转发的目标 `bridge://ipreg` 挂到自己的域名上；这两种方式不带 `web_base_url` 前缀，根路径就是登记页面。
+- 登记 `POST /ip/register`：`key`（客户端的登记口令或 vkey；`public_vkey` 对所有客户端生效）、`hours`（有效小时数，留空或超过上限按上限）、`captcha_id`、`captcha`（开启验证码时必填）。返回 `status`、`msg`、`ip`、`until`。输错口令计入登录失败次数。
 
-### 用户登出
+用法见[访问控制](/guide/server/access-control.md)。
 
-- **接口：** `GET /login/out`，或 `POST /api/v1/login/logout`
+## 全局管理（仅管理员）
 
-### 用户注册
+| 接口 | 说明 |
+| --- | --- |
+| `POST /global/save` | 保存全局参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`、`globalWhiteIpList`（多行）、`globalRateLimit`（全局带宽，KB/s）、`globalMaxConn`（全局最大转发连接数）。名单有误时 `status` 为 `0`，`msg` 给出名单和行号 |
+| `POST /global/updategeo` | 更新 Geo 数据，参数 `name`（`geoip` 或 `geosite`） |
+| `POST /global/reload` | 重新加载 `nps.conf`，效果同 `SIGUSR1`，见[运维](/guide/server/operations.md)。返回 `status`（`1` 新配置已生效）、`msg`、`report` |
+| `GET /global/export` | 导出配置为 JSON 文件，含明文密钥，见[备份与恢复](/guide/server/backup.md) |
+| `POST /global/import` | 导入配置，表单字段 `data` 为文件内容 |
+| `POST /global/banlist` | 登录封禁列表 |
+| `POST /global/unban` | 解除一条封禁，参数 `key` |
+| `POST /global/unbanall` | 清除所有封禁记录 |
+| `POST /global/banclean` | 立即清理过期的封禁 |
+| `POST /index/updateserver` | 更新 nps 自身 |
 
-- **接口：** `POST /login/register`
-- **请求参数**：
-  | 参数 | 说明 |
-  |------|------|
-  | `username` | 注册用户名（字符串） |
-  | `password` | 通过 RSA 公钥加密的 JSON 字符串（与登录接口一致） |
-  | `captcha_id` / `captcha` | 验证码 ID 与验证码（启用验证码时必填） |
-
-## IP 登记接口（无需登录）
-
-- **登记页面：** `GET /ip/register`（可带 `key` 参数预填口令；配置了 `web_base_url` 时带上该前缀；单独监听的登记服务和 `bridge://ipreg` 不带前缀，根路径即为登记页面）
-- **登记：** `POST /ip/register`
-  - 参数：`key`（客户端登记口令或 vkey，公钥则对所有客户端生效）、`hours`（有效小时数，留空或超过上限时按上限）、`captcha_id` / `captcha`（启用验证码时必填）
-  - 返回：`status`、`msg`、`ip`（登记的 IP）、`until`（到期时间）
-  - 输错口令计入登录失败次数
-
-## 全局管理接口（仅管理员）
-
-### 全局黑白名单
-
-- **查看页面：** `GET /global/index`
-- **保存配置：** `POST /global/save`
-  - 参数：`globalIpListPriority`（`0` 黑名单优先，`1` 白名单优先）、`globalBlackIpList`（多行）、`globalWhiteIpList`（多行）、`globalRateLimit`（全局带宽，KB/s）、`globalMaxConn`（全局最大转发连接数）
-  - 规则有误时返回 `status: 0`，`msg` 中给出名单和行号
-- **更新 Geo 数据：** `POST /global/updategeo`
-- **重新加载配置：** `POST /global/reload`，与 `SIGUSR1` 相同，见[重载配置](/guide/server/operations.md)
-  - 返回：`status`（`1` 新配置已生效，`0` 未生效）、`msg`（结果摘要，同日志）、`report`
-  - `report`：`path`（配置文件）、`error`（读取失败的原因，此时什么都不变）、`applied`（已生效的设置）、`restart`（需要重启的设置）、`failed`（失败项：`name`、`settings`、`error`；有失败时整次重载撤销）、`rollback_failed`（撤销时未能应用回去的项，通常为空）
-- **导出配置：** `GET /global/export`；含明文密钥，见[导出与导入配置](/guide/server/config-transfer.md)
-- **导入配置：** `POST /global/import`（表单字段 `data` 为文件内容）
-- **更新服务端：** `POST /index/updateserver`
-
-### 登录封禁管理
-
-- **获取封禁列表：** `POST /global/banlist`
-- **解除指定封禁：** `POST /global/unban`（参数：`key`）
-- **解除全部封禁：** `POST /global/unbanall`
-- **立即清理过期封禁：** `POST /global/banclean`
+`/global/reload` 的 `report` 含：`path`（配置文件）、`error`（读取失败的原因，此时什么都没变）、`applied`（已生效的设置）、`restart`（需要重启才生效的设置）、`failed`（失败项，有失败时整次重载撤销）、`rollback_failed`（撤销时未能还原的项，通常为空）。
 
 ## 实时状态
 
-**接口：** `POST /live/status`。参数 `resource=client|tunnel|host` 和 `items`（JSON 数组，例如 `[{"id":1,"fields":["Speed","NowConn"]}]`，每次最多 500 项）。逐项按资源归属和读取权限过滤，只返回 ID 和允许且请求的运行字段，不返回配置、密钥或名单内容。全局流量仅管理员可请求。
+`POST /live/status`：只取运行中会变的数据，供页面定时刷新。
 
-事件推送见 [Webhook](/guide/server/webhook.md)。
+- `resource`：`client`、`tunnel` 或 `host`。
+- `items`：JSON 数组，如 `[{"id":1,"fields":["Speed","NowConn"]}]`，最多 500 项，每项最多 16 个字段。可用字段：`Speed`、`UploadRate`、`DownloadRate`、`Flow.InletFlow`、`Flow.ExportFlow`、`TotalFlow`、`ActualFlow`、`FlowRemain`、`NowConn`；隧道还有 `Flow.DirectIn`、`Flow.DirectOut`、`RunStatus`；客户端还有 `IsConnect`、`ConnectionHistory`、`LastOnlineTime`；隧道和域名转发还有 `Client.IsConnect`；隧道和客户端有 `Status`，域名转发有 `IsClose`。
+- `global`：只有 `resource=client` 且是管理员时可用，逗号分隔的 `In`、`Out`、`InBps`、`OutBps`。
+
+按资源归属和读取权限逐项过滤，不返回配置、密钥或名单。事件推送见 [Webhook](/guide/server/webhook.md)。
 
 ## 日志（仅管理员）
 
-内存中保留最近 `log_memory` 条日志（默认 1000），格式见[日志](/guide/server/logging.md)。
+内存中保留最近 `log_memory` 条日志（默认 1000），格式见[日志](/guide/server/logging.md)。这些接口只有 `/api/v1` 路径。
 
-- **查询日志：** `GET /api/v1/logs/entries`，参数均可选：
+- `GET /api/v1/logs/entries`，参数均可选：
   - `after`：只返回序号大于它的条目；
   - `level`：最低级别（`trace`、`debug`、`info`、`warn`、`error`）；
   - `module`、`event`：逗号分隔的模块名、事件名；
   - `text`：消息或字段中包含的文字，不区分大小写；
   - `limit`：最多返回多少条，默认和上限都是 1000。
 
-  返回 `{"enabled":true,"entries":[{"seq":..,"time":..,"level":"WARN","module":..,"event":..,"msg":..,"attrs":[{"key":..,"value":..}]}],"seq":..,"size":..}`。把返回的 `seq` 作为下次的 `after` 反复查询，即可持续跟随新日志；`log_memory=0` 时 `enabled` 为 `false`。
-- **查看级别：** `GET /api/v1/logs/levels`，返回 `{"level":"info,p2p=debug"}`，即当前 `log_level`。
-- **临时调级：** `POST /api/v1/logs/override`，参数 `module`（留空表示所有模块）、`level`、`ttl`（秒）。在 `ttl` 秒内让该模块输出到指定级别，到期自动恢复，不修改 nps.conf；`ttl=0` 立即结束。
+  返回 `{"enabled":true,"entries":[{"seq":..,"time":..,"level":"WARN","module":..,"event":..,"msg":..,"attrs":[{"key":..,"value":..}]}],"seq":..,"size":..}`。把返回的 `seq` 作为下次的 `after` 反复查询即可持续跟随；`log_memory=0` 时 `enabled` 为 `false`。
+- `GET /api/v1/logs/levels`：返回 `{"level":"info,p2p=debug"}`，即当前 `log_level`。
+- `POST /api/v1/logs/override`：参数 `module`（留空表示所有模块）、`level`、`ttl`（秒）。在 `ttl` 秒内让该模块输出到指定级别，到期自动恢复，不修改 `nps.conf`；`ttl=0` 立即结束。

@@ -1,158 +1,172 @@
-# NPC 命令行参数
+# npc 命令行参数
+
+本页列出 npc 的全部子命令、参数和环境变量。第一次使用请看[连接与系统服务](/guide/client/connect.md)。启动链接和 `-L` 的格式见[启动链接与配置格式](/reference/npc-launch.md)。
+
+## 参数的写法
 
 ```bash
-./npc -launch="npc://VKEY@host:8024?type=tls" -log=off -debug=false
+npc [子命令] [参数]
 ```
 
-> **已弃用**：`-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`-config` 指向的 npc.conf 为旧写法，分别由 `-launch`、`-L` 取代，仍可使用。
+- `-name=value`、`--name=value`、`-name value`、`--name value` 都可以。布尔参数写 `-name` 表示 `true`，要关闭写 `-name=false`。
+- 参数名里的 `-`、`.` 和 `_` 等价，`-log-level` 就是 `-log_level`。
+- 参数和子命令的先后顺序不限。
+- 不认识的参数不会让 npc 启动失败：npc 忽略它（连同紧跟的值）并在日志里写一条警告。参数拼错时请留意这条警告。
+- 值里有 `|`、`&`、`?`、`;` 时必须加引号，建议一律用双引号。Windows cmd 只认双引号；`.bat`、`.cmd` 脚本里 `%` 要写成 `%%`。
+- PowerShell 会把不加引号的 `-launch=1.2.3.4` 这类值在第一个 `.` 处拆开，npc 会重新拼接，但仍建议加引号。
 
-一条连接用 `-launch`，一个本地访问用 `-L`，都可重复，写法见[快速启动](/guide/client/launch.md)，网页的“启动命令生成器”可以生成。`-server`、`-vkey`、`-type`、npc.conf 继续可用，转换成同一启动配置；`-launch` 与 `-server`、`-vkey` 互斥。
+## 子命令
 
-## 命令
+| 子命令 | 作用 |
+| --- | --- |
+| `install` | 把 npc 安装为系统服务，并记下本次给出的参数。再次执行会先卸载旧服务再安装。参数如何保存见[连接与系统服务](/guide/client/connect.md) |
+| `start` | 启动系统服务 |
+| `stop` | 停止系统服务 |
+| `restart` | 重启系统服务。修改配置文件后用它生效 |
+| `uninstall` | 卸载系统服务，`conf` 目录里的文件保留 |
+| `status` | 向服务端查询这个 vkey 的隧道和域名转发状态，打印后退出。只读 `-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，不读 `-launch` 和环境变量 |
+| `register` | 向服务端登记本机当前 IP，有效期由 `-time` 决定，登记后退出。读取的参数同 `status`。登记的用途见[访问控制](/guide/server/access-control.md) |
+| `update` | 更新到最新发布版本，已是最新时什么也不做。见[更新与维护](/guide/client/maintenance.md) |
+| `update-force` | 无论当前版本如何，都安装最新发布版本 |
+| `version` | 打印版本，同 `-version` |
+| `launch pack <文件>` | 把文件内容压缩（gzip + base64）成一行，可作 `-launch` 的值。输出里含明文密钥，请当作密钥保管。文件只是引用另一个文件或网址时报错 |
+| `launch show` | 打印当前参数相当于的 `-launch` 和 `-L` 写法后退出。默认遮盖 vkey、访问密钥和代理密码，加 `--reveal` 才显示。也接受已弃用的参数，可用来换算旧命令 |
 
-`install`、`uninstall`、`start`、`stop`、`restart`、`status`、`register`、`update`、`update-force`、`version`（同 `-version`）。
+不带子命令时，npc 在前台运行。`-h`、`--help` 打印全部参数。
 
-## 参数
+## 连接
 
-| 参数 | 说明 | 默认 |
+| 参数 | 默认值 | 取值与说明 |
 | --- | --- | --- |
-| `-server`, `-s` | 服务器连接：多个连接（档案）之间用逗号分隔（旧写法），使用 URL 写法时改用分号；每个连接内用 `\|` 分隔多个承载候选，见下文“服务器地址” | 无 |
-| `-pipes` | 每个连接的管道模式：`single`、`multi`（`multi` 需要 zmux，当前告警一次后按 `single` 运行） | `single` |
-| `-vkey`, `-k` | 认证密钥，与 `-server` 的连接一一对应，分隔符与 `-server` 相同 | 无 |
-| `-type`, `-t` | 旧写法（不带 `://`）候选的承载：`tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同。`kcp` 告警后按 QUIC 连接，服务端的 KCP 端口同时接受 QUIC。URL 写法的候选由方案名决定承载，不需要 `-type`；全部是 URL 时给出 `-type` 会告警它不起作用 | `tcp` |
-| `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
-| `-launch` | 一条连接，可重复：`npc://` 启动链接、`@文件`、`http(s)://` 配置内容，或 base64（`npc launch pack` 生成）。解析失败报错。环境变量 `NPC_LAUNCH` 见下 | 无 |
-| `-L`、`--local` | 一个本地点对点访问，可重复：`tcp://:2000?access=KEY&target=10.0.0.5:53&conn_mode=auto&via=NAME`；`@文件` 为每行一条 | 无 |
-| `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
-| `-local_ip` | 出站绑定的本地 IP，与 `-server` 对应，分隔符与 `-server` 相同 | 无 |
-| `-local_ip_forward` | `local_ip` 同时作用于隧道转发出口（仅公网 IP 与域名目标） | `false` |
-| `-local_type` | 旧写法（只支持单条，改用 `-L`）：点对点访问的本地监听 | `tcp_udp` |
-| `-conn_mode` | 点对点访问的连接方式：`auto`、`relay`、`direct` | `auto` |
-| `-local_port` | 旧写法：访问端本地端口 | `2000` |
-| `-password` | 旧写法：点对点访问密钥；与 `-launch`、`-L` 同时给出报错 | 无 |
-| `-target` | 旧写法：点对点访问的目标 | 无 |
-| `-local_proxy` | 旧写法：点对点访问连到服务端本地 | `false` |
-| `-p2p_timeout` | 打洞超时（秒） | `5` |
-| `-disable_remote_update` | 忽略服务端下发的远程更新 | `false` |
-| `-session_resume_timeout` | 核心协议：会话失去所有连接后等待恢复的秒数，`0` 为 30 秒，负数不恢复；服务端配置了 `session_resume_timeout` 时以服务端为准（下次会话生效） | `0` |
-| `-session_usage_interval` | 核心协议：提供点对点隧道时，上报直连流量的间隔秒数，没有变化不报；`0` 为 60，负数不上报 | `0` |
-| `-session_max_lanes` | 核心协议：每条 QUIC 管道接受的车道数，`0` 为 16，`1` 关闭车道 | `0` |
-| `-relay_idle` | 核心协议：直连建立后中继保留的秒数，之后关闭；`0` 为 60 秒 | `0` |
-| `-p2p_visitor_keep_server` | 核心协议：点对点访问者空闲时也保持与服务端的连接 | `false` |
-| `-auto_reconnect` | 断线自动重连 | `true` |
-| `-disconnect_timeout` | 连接超时（秒） | `30` |
-| `-keepalive` | 保活周期（秒），`0` 用默认 | `0` |
-| `-skip_verify` | 跳过服务器证书校验 | `false` |
-| `-debug` | 没有给出 `-log` 时输出到控制台；安装的服务会带 `-debug=false`，按 `-log` 输出。不再改变日志级别，级别用 `-log_level` | `true` |
-| `-log` | `stdout`、`file`、`both`、`off`；显式给出时总是生效 | `file`（OpenWrt 上为 `off`） |
-| `-log_path` | 日志路径，空为默认，`off` 禁用 | 系统默认 |
-| `-log_level` | `trace`、`debug`、`info`、`warn`、`error`、`off`；可按模块单独设置，如 `info,p2p=debug,acme=warn` | `info` |
-| `-log_instance` | 每行末尾加 `instance=`，多个 npc 的日志汇总时区分来源 | 空 |
-| `-log_secrets` | 开发调试用：日志里原样写出 vkey、口令等，生产环境不要开启 | `false` |
-| `-log_format` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）或 `json` | `auto` |
-| `-log_compress` | 压缩日志 | `false` |
-| `-log_max_days` | 保留天数，`0` 关闭 | `7` |
-| `-log_max_files` | 文件数，`0` 关闭 | `10` |
-| `-log_max_size` | 单文件 MB，`0` 关闭 | `5` |
-| `-pprof` | PProf 地址 `ip:port` | 无 |
-| `-dns_server` | 优先 DNS，不可达时回退到系统 DNS | `8.8.8.8` |
-| `-ntp_server` | NTP 服务器 | 无 |
-| `-ntp_interval` | NTP 最小查询间隔（分钟） | `5` |
-| `-timezone` | 时区，如 `Asia/Shanghai` | 无 |
-| `-time` | `register` 的有效小时数 | `2` |
-| `-gen2fa` | 生成 TOTP 密钥 | `false` |
-| `-get2fa` | 根据密钥输出当前验证码 | 无 |
-| `-version`, `-v` | 显示版本 | |
+| `-launch` | 无 | 一条连接，可重复。可以是 `npc://` 启动链接、`@文件`、`http(s)://` 网址或 base64，格式见[启动链接与配置格式](/reference/npc-launch.md)。不给时读环境变量 `NPC_LAUNCH`。不能和 `-server`、`-vkey` 同时使用 |
+| `-L`、`--local` | 无 | 一个本地点对点访问，可重复，也可写 `@文件`（每行一条）。格式见[启动链接与配置格式](/reference/npc-launch.md) |
+| `-config`、`-c` | 见说明 | INI 配置文件路径，多个用逗号分隔，格式见 [npc.conf 配置](/reference/npc-config.md)。没有 `-config`，也没有 `-launch`、`-server`、`-vkey` 时，读 `conf/npc.conf`（Linux、macOS 相对当前目录，Windows 相对 npc.exe 所在目录）。可以和 `-server`、`-vkey` 同时使用，两边都运行。和 `-launch` 同时给出时被忽略并报警告 |
+| `-server`、`-s` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。服务端地址，详见下文[已弃用的写法](#已弃用的写法)。`status` 和 `register` 仍然用它。必须和 `-vkey` 成对给出，只给一个时 npc 报错退出。和 `-launch` 同时给出时报错 |
+| `-vkey`、`-k` | 无 | **已弃用（用于启动连接时）**，改用 `-launch`。客户端密钥，在网页“客户端”列表的“唯一验证密钥”处查看。`status` 和 `register` 仍然用它 |
+| `-type`、`-t` | `tcp` | **已弃用（用于启动连接时）**，改用链接的 `type=`。取值 `tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`。只对不带 `://` 的地址起作用，所有地址都带 `://` 时报警告；`kcp` 报警告后按 `quic` 连接。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
+| `-proxy` | 无 | **已弃用（用于启动连接时）**，改用链接的 `proxy=`。经代理连接服务端，支持 `http`、`https`、`socks5`、`socks5h`、`socks4`、`socks4a`，如 `socks5://user:pass@127.0.0.1:1080`；不写协议的 `host:port` 按 HTTP 代理处理。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
+| `-local_ip` | 无 | **已弃用（用于启动连接时）**，改用链接的 `source_addr=`。连接服务端时使用的本机源地址。`status` 和 `register` 仍然用它。和 `-launch` 同时给出时被忽略并报警告 |
+| `-local_ip_forward` | `false` | 让出站源地址同时用于隧道转发（只对公网 IP 和域名目标生效） |
+| `-auto_reconnect` | `true` | 断线后自动重连。`false` 时任一连接结束后 npc 退出 |
+| `-skip_verify` | `false` | 跳过服务端证书校验 |
+| `-disable_remote_update` | `false` | 忽略网页发来的远程更新请求 |
+| `-disconnect_timeout` | `30` | 保留项，无需设置 |
+| `-keepalive` | `0` | 秒。连接保活周期，`0` 使用内置默认值 |
+| `-p2p_timeout` | `5` | 保留项，无需设置 |
 
-## 服务器地址
+未配置 `-proxy` 或 `proxy=` 时，npc 读取环境变量 `ALL_PROXY`，并按 `NO_PROXY` 跳过匹配的地址。
+
+## 连接的高级设置
+
+这些参数是所有连接的默认值：启动链接或配置文件里写了同名设置时，以它们自己写的为准。一般不需要修改。
+
+| 参数 | 默认值 | 取值与说明 |
+| --- | --- | --- |
+| `-pipes` | `single` | `single` 或 `multi`。一条连接里同时使用一条还是多条路径。写错时 npc 报错退出 |
+| `-scheduler_up` | 空（即 `affinity`） | 多条路径时上行流量的分配方式：`affinity` 固定路径、`session_affinity` 每个会话固定一条路径、`spread_eta` 按预计到达时间分流、`spread_round_robin` 轮流使用各路径、`spread_rate_weighted` 按速率加权分流。写错时 npc 报错退出 |
+| `-session_max_lanes` | `0` | 每条 QUIC 路径接受的并行通道数，`0` 表示 16，`1` 表示关闭 |
+| `-session_resume_timeout` | `0` | 秒。连接全部断开后，等待恢复的时间。`0` 表示 30，负数表示不恢复。服务端也设置了时以服务端为准 |
+| `-session_usage_interval` | `0` | 秒。上报本客户端提供的点对点直连流量的间隔。`0` 表示 60，负数表示不上报 |
+| `-relay_idle` | `0` | 秒。点对点直连建立后，中转通道继续保留的时间。`0` 表示 60 |
+| `-p2p_visitor_keep_server` | `false` | 点对点访问端空闲时也保持与服务端的连接 |
+| `-new_protocol_pin` | 无 | 服务端密钥标识（十六进制）。填写后只连接持有这个密钥的服务端 |
+| `-compress_max_window` | `0` | 字节。压缩连接允许的最大 zstd 窗口，`0` 表示 8 MiB |
+| `-compress_max_ratio` | `0` | 压缩连接允许的最大膨胀倍数，`0` 表示 4096，负数表示不检查 |
+| `-socks5_udp_idle_timeout` | `300` | 秒。作为出口时，SOCKS5 UDP 关联没有流量后保留的时间 |
+
+## 点对点访问（单条，已弃用）
+
+这组参数只能描述一个访问，已弃用，请改用 [`-L`](/reference/npc-launch.md)。它们和 `-launch` 或 `-L` 同时给出时 npc 报错退出。设置了 `-password` 时，`-config` 不再读取。
+
+| 参数 | 默认值 | 取值与说明 | 替代写法 |
+| --- | --- | --- | --- |
+| `-password` | 无 | **已弃用。** 点对点隧道的访问密钥 | `-L` 的 `access=` |
+| `-local_type` | `tcp_udp` | **已弃用。** `tcp`、`udp`、`tcp_udp`、`mixed`、`socks5`、`http`、`transparent` | `-L` 的协议名 |
+| `-local_port` | `2000` | **已弃用。** 本地监听端口 | `-L` 的端口 |
+| `-target` | 无 | **已弃用。** 要访问的目标 | `-L` 的 `target=` |
+| `-conn_mode` | `auto` | **已弃用。** `auto`、`relay`、`direct` | `-L` 的 `conn_mode=` |
+| `-local_proxy` | `false` | **已弃用。** 让服务端连接目标 | `-L` 的 `local_proxy=` |
+
+## 日志
+
+| 参数 | 默认值 | 取值与说明 |
+| --- | --- | --- |
+| `-log` | `file`（OpenWrt 上为 `off`） | `stdout`、`file`、`both`、`off`（`false` 同 `off`）。写了就按写的输出 |
+| `-debug` | `true` | 没有写 `-log` 时，让 npc 输出到控制台。安装的服务固定带 `-debug=false`，按 `-log` 输出。它不影响日志级别 |
+| `-log_level` | `info` | `trace`、`debug`、`info`、`warn`、`error`、`off`，可以按模块单独设置，如 `info,p2p=debug` |
+| `-log_format` | `auto` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）、`json` |
+| `-log_path` | 空 | 日志文件路径。空、`on`、`true` 表示默认位置：Linux、macOS 为 `/var/log/npc.log`，Windows 为 npc.exe 所在目录下的 `npc.log`。`off`、`false`、`docker`、`/dev/null` 表示不写文件，此时 `file`、`both` 改为输出到控制台 |
+| `-log_max_size` | `5`（OpenWrt 上为 `1`） | MB。单个日志文件的大小上限，`0` 表示不按大小切分 |
+| `-log_max_days` | `7` | 旧日志保留天数，`0` 表示不限 |
+| `-log_max_files` | `10`（OpenWrt 上为 `1`） | 保留的文件数，`0` 表示不限 |
+| `-log_compress` | `false` | 压缩切分后的日志 |
+| `-log_instance` | 空 | 每行日志写上 `instance=名称`，用于区分多个 npc |
+| `-log_secrets` | `false` | 在日志里写出密钥和口令，仅供调试，生产环境不要打开 |
+
+## 其他
+
+| 参数 | 默认值 | 取值与说明 |
+| --- | --- | --- |
+| `-dns_server` | `8.8.8.8` | 解析域名用的 DNS 服务器，不可达时使用系统 DNS |
+| `-ntp_server` | 无 | NTP 服务器，用于校准时间 |
+| `-ntp_interval` | `5` | 分钟。两次 NTP 同步的间隔 |
+| `-timezone` | 无 | 时区，如 `Asia/Shanghai` |
+| `-pprof` | 无 | PProf 调试地址 `ip:port` |
+| `-time` | `2` | 小时。`register` 登记的有效期 |
+| `-reveal` | `false` | 只用于 `npc launch show`：显示 vkey、访问密钥和代理密码 |
+| `-gen2fa` | `false` | 生成一个 TOTP 密钥后退出 |
+| `-get2fa` | 无 | 根据 TOTP 密钥打印当前验证码后退出 |
+| `-version`、`-v` | `false` | 打印版本后退出 |
+
+## 环境变量
+
+| 变量 | 说明 |
+| --- | --- |
+| `NPC_LAUNCH` | 命令行没有 `-launch` 时读取，不和命令行合并。每行一个输入，只按换行分隔，空行忽略。详见[启动链接与配置格式](/reference/npc-launch.md)。`npc install` 也读取它 |
+| `NPC_SERVER_ADDR` | **已弃用。** `-server` 的默认值 |
+| `NPC_SERVER_VKEY` | **已弃用。** `-vkey` 的默认值 |
+| `NPC_LOCAL_IP` | **已弃用。** `-local_ip` 的默认值 |
+| `NPC_CONFIG_PATH` | `-config` 的默认值 |
+| `ALL_PROXY`、`NO_PROXY` | 没有配置代理时使用，见上文 |
+
+`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_LOCAL_IP`、`NPC_CONFIG_PATH` 只在启动连接时读取，`status`、`register`、`install` 不读取。变量的值不能包含 `=`。
+
+## 已弃用的写法
+
+### -server 的地址格式
 
 `-server` 的值分两层：
 
-- **连接（档案）**：每个是一条独立的连接，各自对应 `-vkey`、`-type`、`-local_ip` 列表中同一位置的值（较短的列表重复最后一个值）。分隔符：
-  - `-server` 里没有 `://` 时是旧写法，用逗号分隔：`-server="a.com:8024,b.com:8024" -vkey="k1,k2"`；
-  - 只要用了 URL 写法，就用分号分隔，逗号只用于参数里的列表：`-server="tls://a.com:8025|https://a.com/ws?http=h2,http/1.1;tcp://b.com:8024" -vkey="k1;k2"`。`-vkey`、`-type`、`-local_ip` 随之用分号。URL 写法里用逗号分隔连接会报错并提示改用分号。
-  - 分号在 shell 里是命令分隔符，必须加引号。
-- **承载候选**：一个连接内用 `|` 分隔，是到同一服务端的几种走法。单管道（`-pipes=single`）每次连接和重连按顺序尝试，一个失败就换下一个：上次成功的候选最先，其余按 `tier` 升序、同 tier 按书写顺序，`standby` 候选排在最后（只在其他候选都失败后才用）。每个失败的候选记一条 `connect_failed`，成功时 `connected` 记下实际用的承载。
+- 一个 `-server` 可以写多条**连接**，每条连接各自对应 `-vkey`、`-type`、`-local_ip` 中同一位置的值，较短的列表重复最后一个值。没有 `://` 时用逗号分隔；只要出现 `://`，就改用分号分隔，这几个列表也随之用分号。
+- 一条连接里可以写多个**路径**，用 `|` 分隔。每个路径可以是 URL（格式和参数见[启动链接与配置格式](/reference/npc-launch.md)，此处多接受 `kcp://`，报警告后按 `quic` 连接），也可以是不带协议的 `地址:端口[@主机[:端口]][/路径]`，此时协议取 `-type`。
 
-候选有两种写法：
-
-- **URL**：方案即承载：`tcp://`、`tls://`、`quic://`、`http://`、`https://`（后续版本的承载条目同样只有这五种），另外本版本还接受 `kcp://`（按 QUIC 连接）、`ws://`（= `http://` 只用 websocket）、`wss://`（= `https://` 只用 websocket）。URL 里写**拨号地址**；未写端口时用默认端口（tcp/kcp 8024，tls/quic 8025，http/ws 80，https/wss 443），IPv6 写成 `tcp://[::1]:8024`。路径是 http/https/ws/wss 的端点路径（默认 `/ws`），多级路径直接写，如 `/api/v2/ws`；其他方案不能带路径。路径或参数里的 `|` 写成 `%7C`，`?` 写成 `%3F`。查询参数（与后续版本的承载条目同名）：
-  - `tier`：整数，越小越先尝试，默认 0；
-  - `weight`：非负整数，多管道的权重，本版本只解析保存；
-  - `standby`：布尔，备用候选，默认 false（只写 `standby` 也算 true）；
-  - `count`：多管道下这个候选的管道数，默认 1；
-  - `dirs`：`bidi`（默认）、`up`、`down`，可用逗号组合，如 `dirs=up,down`。会话只能在含 `bidi` 的候选上建立，所以每个连接至少要有一个；单管道下跳过不含 `bidi` 的候选（告警一次：方向需要 zmux）；
-  - `kinds`：http/https 的 HTTP 种类，顺序即偏好，可选 `websocket`、`streaming`、`split`，默认全部；同一 URL 上按 `http` 的版本顺序、版本内按 `kinds` 的顺序依次尝试，不可用的自动换下一个（多管道下由内核做缓存并逐步升级到排在前面的种类）。`streaming`、`split` 经 CDN 或反向代理也可用，记录层用 Sealed。`exchange` 需要两端共享的准入密钥，本版本告警并忽略；`ws`/`wss` 固定为 `websocket`；
-  - `subprotocol`：http/https/ws/wss 的 WebSocket 子协议。旧写法（不带 `://`，`-type ws/wss`）默认发 `binary`；URL 写法和启动链接默认不发。服务端的共用 bridge 路径（旧 npc 也在用的路径）靠 `binary` 判定新协议，所以连共用 bridge 路径要写 `subprotocol=binary`（网页生成的链接已带）；服务端 `new_protocol_ws_paths` 里的专用路径不需要。URL 写法的 ws/wss 没写子协议、握手没有回应时，错误信息会提示这一点；
-  - `host`：Host 头和默认 SNI，缺端口时沿用地址的端口；
-  - `sni`：覆盖 TLS 服务器名（默认取 `host` 或地址的主机名，IP 地址时不发）；
-  - `alpn`：外层 TLS 的 ALPN，逗号分隔，顺序即偏好，只用于 `tls`、`quic`（quic 默认 `nps`）；http/https/ws/wss 不接受，它们的 ALPN 由 `http` 决定。
-  - `http`：HTTP 版本，`http/1.1`、`h2`、`h3` 的逗号列表，顺序即偏好，只用于 http/https/ws/wss；ws/wss 只能用 `http/1.1`、`h2`。默认 https/wss 为 `h2,http/1.1`，http/ws 为 `http/1.1`。http/https 的 `streaming`、`split` 用列表里的 `http/1.1`、`h2`（`h2` 经 TLS 协商，只用于 https）；`h3` 本版本不拨号，告警后跳过；ws/wss 走 `http/1.1`。
-  - 以上参数名与后续版本的承载条目和加入链接相同，迁移时原样保留。
-
-  参数名区分大小写；其他参数、重复的参数、未知方案、带用户名或 `#` 的 URL 都会报错。
-- **不带方案**：旧写法 `addr:port[@host[:port]][/path]`，承载取该连接在 `-type` 中对应的值。与 URL 一一对应：`1.2.3.4:443@a.com:443/ws`（`-type=wss`）就是 `wss://1.2.3.4:443/ws?host=a.com:443`；quic 的旧写法把 ALPN 放在路径里（`a.com/h3`），照旧可用，URL 写法用 `?alpn=`。两种写法可以在一个连接里混用。
+替代写法：每条连接写一个 `-launch`。用 `npc launch show` 可以换算：
 
 ```bash
-# 一个连接，三个候选：先 tls，失败换 wss，最后才用 b.com 的 tcp
-./npc -server="tls://a.com:8025|wss://a.com:443/ws?tier=1|tcp://b.com:8024?standby=1" -vkey="xxx"
-# 两个连接：第一个两种候选，第二个用旧写法和 -type 中的 kcp
-./npc -server="tls://a.com|a.com:8024,c.com:8024" -vkey="k1,k2" -type="tcp,kcp"
+npc launch show -server="203.0.113.10:8024" -vkey="YOUR_VKEY" -type=tls --reveal
 ```
 
-多管道（`-pipes=multi`）的语义与后续版本一致，当前版本只解析、校验并保存这些参数，运行时仍是单管道：
+### 已移除的参数
 
-- 只有 `tier` 不超过最优 tier + 1 的非 standby 候选参与，每个候选按 `count` 建管道；
-- 会话先在一个含 `bidi` 的候选上建立，只有 `up` 或 `down` 的候选只承载那个方向；
-- `standby` 候选也建好管道，但只在非 standby 管道全部失效时才承载流量（单管道下 standby 只是排在最后）。
+服务升级后会保留当初安装时的参数，所以下面这些参数不会导致启动失败。除非另有说明，所有处理都会在日志里写一条警告。
 
-```bash
-./npc -pipes=multi -server="tls://a.com:8025?tier=0&count=5|wss://b.com/ws?tier=0&dirs=up&count=3|tcp://c.com:8024?tier=1&dirs=down&count=5" -vkey="xxx"
-```
+| 参数 | 处理方式 | 替代写法 |
+| --- | --- | --- |
+| `-tls_enable`、`-tls_enable=true` | 被翻译为 `-type=tls`，覆盖 `-type` | 链接的 `type=tls` |
+| `-tls_enable=false` | 被忽略 | 删除 |
+| `-new_protocol` | 被忽略 | 删除 |
+| `-proto_version` | 被忽略 | 删除；服务端版本较旧时先升级服务端 |
+| `-stun_addr` | 被忽略 | 在服务端设置 `p2p_stun_servers`，见[服务端配置](/reference/server-config.md) |
+| `-p2p_type` | 被忽略 | 删除，npc 自动选择 |
+| `-log_color` | 被忽略 | `-log_format` |
+| `-log_daily` | 被忽略 | `-log_max_size`、`-log_max_days` |
+| `-local_type=p2p` | 被翻译：`-local_type` 取决于 `-target_type`，`-conn_mode=auto`（`-fallback_secret=false` 时为 `direct`） | `-L` |
+| `-local_type=p2ps` | 被翻译为 `-local_type=mixed`，`-conn_mode` 同上 | `-L="mixed://…"` |
+| `-local_type=p2pt` | 被翻译为 `-local_type=transparent`，`-conn_mode` 同上 | `-L="transparent://…"` |
+| `-local_type=secret` | 被翻译为 `-conn_mode=relay`，`-local_type` 取决于 `-target_type` | `-L` 的 `conn_mode=relay` |
+| `-target_type` | 被翻译：`tcp` 为 `-local_type=tcp`，`udp` 为 `-local_type=udp`，其他为 `tcp_udp` | `-L` 的协议名 |
+| `-fallback_secret`、`-fallback_secret=true` | 被翻译：`-conn_mode=auto` | `-L` 的 `conn_mode=auto` |
+| `-fallback_secret=false` | 被翻译：`-conn_mode=direct` | `-L` 的 `conn_mode=direct` |
+| `-disable_p2p`、`-disable_p2p=true` | 被翻译为 `-conn_mode=relay`，优先于上面几项 | `-L` 的 `conn_mode=relay` |
 
-### 引号
-
-值里有 `|`、`&`、`?` 等字符时必须加引号，建议所有值都用**双引号**：
-
-- Linux/macOS shell、PowerShell：双引号或单引号都可以；
-- Windows cmd 只认双引号（`|`、`&` 在双引号外会被 cmd 解释）；
-- `.bat`/`.cmd` 脚本中 `%` 要写成 `%%`（例如 URL 里的 `%2F`）。
-
-PowerShell 会把不加引号的 `-server=1.2.3.4:8024` 在第一个 `.` 处拆成两个参数，npc 和 nps 会把它们重新拼起来，但仍建议加引号。
-
-## 旧写法
-
-旧版安装的服务会保留当时的参数，更新后照常启动：
-
-| 参数 | 处理 |
-| --- | --- |
-| `-tls_enable`（含 `=true`） | 旧写法，等同 `-type=tls`，覆盖 `-type`；`=false` 无作用 |
-| `-proto_version` | 忽略并告警：npc 只使用最新协议，服务端较旧时请先升级服务端 |
-| `-stun_addr` | 忽略并告警：STUN 服务器改在服务端 `p2p_stun_servers` 设置 |
-| `-p2p_type`、`-log_daily` | 忽略并告警，已无作用 |
-
-其他不认识的参数忽略并告警。
-
-环境变量：`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_CONFIG_PATH`、`NPC_LOCAL_IP`、`NPC_LAUNCH`。
-
-`NPC_LAUNCH` 只在命令行没有 `-launch` 时读取，不与命令行合并。多组只按换行分隔（空行忽略），不按逗号，因为链接的查询里有 `alpn=h3,nps`、`http=h2,h3` 这样的逗号；每行可以是启动链接、URL 或 `@文件`。折行的 Base64 不能放在里面，用 `npc launch pack` 生成一行，或用 `@文件`。
-
-## 安装为服务
-
-```bash
-./npc install -launch="npc://VKEY@host:8024?type=tls" -log=off
-```
-
-链接写入安装目录下仅属主可读的 `conf/npc-service-launch-N.conf`，`-L` 写入 `conf/npc-service-local.conf`，服务定义只带 `@文件`。`-server`/`-vkey` 的安装写到 `conf/npc-service.json`，服务定义同样是 `-launch=@文件`。
-
-旧参数 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p` 仍可使用，自动换算为 `-local_type` 和 `-conn_mode` 并告警，对照表见[点对点访问](/guide/tunnels/secret.md#旧版写法)。
-
-## launch 子命令
-
-```bash
-npc launch pack npc.jsonc                # 输出 gzip+base64，可作 -launch 的值；含明文密钥
-npc launch show -launch=… -L=… [--reveal]  # 规范化打印，默认遮盖 vkey、access 和代理密码；也接受旧参数并输出新写法
-```
-
-
-启动链接不写 `type` 时等于 `type=auto`：在混合端口上依次试 `tls`、`quic`、`wss`、`https`（没有路径时跳过后两种，不试明文），每 250 ms 并行加一个，只有一条成为连接；握手后 30 秒内断开的不算成功，下次排到后面。
+同时写了现行的 `-local_type` 或 `-conn_mode` 时，以现行写法为准。

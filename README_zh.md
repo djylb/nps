@@ -33,7 +33,7 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
 ## 主要特性
 
 - **多协议支持**  
-  TCP/UDP 转发、HTTP/HTTPS 转发、HTTP/SOCKS5 代理、P2P 模式、Proxy Protocol支持、HTTP/3支持等，满足各种内网访问场景。
+  TCP/UDP 转发、HTTP/HTTPS 转发、HTTP/SOCKS5 代理、点对点访问、Proxy Protocol支持、HTTP/3支持等，满足各种内网访问场景。
 
 - **跨平台部署**  
   支持 Linux、Windows 等主流平台，可轻松安装为系统服务。
@@ -45,13 +45,13 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
   内置加密传输、流量限制、到期限制、证书管理续签等多重功能，保障数据安全。
 
 - **多连接协议**  
-  支持 TCP、KCP、TLS、QUIC、WS、WSS 协议连接服务器。
+  客户端通过 TLS、QUIC 或 WSS 连接服务器，共用一个端口。
 
 ---
 
 ## 安装与使用
 
-更多详细配置请参考 [文档](https://d-jy.net/docs/nps/)（部分内容可能未更新）。
+更多详细配置请参考 [文档](https://d-jy.net/docs/nps/)。
 
 ### [Android](https://github.com/djylb/npsclient) | [OpenWrt](https://github.com/djylb/nps-openwrt)
 
@@ -69,31 +69,31 @@ docker pull duan2001/nps
 docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /etc/localtime:/etc/localtime:ro duan2001/nps
 ```
 
-> **提示：** NPS 安装完成后，请先修改 `nps.conf`（如监听端口、Web 管理账号等）再启动服务。
+> **提示：** 首次启动会在挂载目录生成 `nps.conf`，请修改默认管理密码（`web_password`），然后执行 `docker restart nps`。
 
 #### NPC 客户端
 ```bash
 docker pull duan2001/npc
-docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:123,yyy:456 -vkey=key1,key2 -type=tls,tcp -log=off
+docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 ```
 
-> **提示：** `-server`、`-vkey`、`-type` 等参数请从 NPS Web 管理端的客户端页面复制，避免手动填写错误。
+> **提示：** 请从网页管理端客户端的“启动命令”页复制命令，避免手动填写错误。`YOUR_VKEY` 是该页显示的唯一验证密钥。
 
 ### 服务端安装
 
 #### Linux
 ```bash
-# 安装（默认配置路径：/etc/nps/；二进制文件路径：/usr/bin/）
+# 安装（配置文件：/etc/nps/conf/nps.conf；程序：/usr/bin/nps）
 wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s nps
-nps install
-nps start|stop|restart|uninstall
+sudo nps install
+sudo nps start|stop|restart|uninstall
 
 # 更新
-nps update
-nps update-force
+sudo nps update
+sudo nps update-force
 ```
 
-> **提示：** 首次安装后请先编辑 `/etc/nps/nps.conf`，确认配置无误后再执行 `nps start`。
+> **提示：** 首次安装后请先编辑 `/etc/nps/conf/nps.conf`，确认配置无误后再执行 `nps start`。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
@@ -112,21 +112,21 @@ nps update-force
 #### Linux
 ```bash
 wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s npc
-/usr/bin/npc install -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls -log=off
-npc start|stop|restart|uninstall
+sudo /usr/bin/npc install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
+sudo npc start|stop|restart|uninstall
 
 # 更新
-npc update
-npc update-force
+sudo npc update
+sudo npc update-force
 ```
 
-> **提示：** `npc install` 命令中的参数请以 NPS Web 管理端客户端页面生成的命令为准。
+> **提示：** 在网页管理端客户端的“启动命令”页，把“运行方式”选成“安装为服务”，复制生成的命令。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_client_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
 > 请先补齐 SP1、系统补丁和根证书，详见 [Windows 7 系统更新与证书说明](docs/getting-started/install-windows.md#windows7)。
 ```powershell
-.\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
+.\npc.exe install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 .\npc.exe start|stop|restart|uninstall
 
 # 更新
@@ -134,8 +134,6 @@ npc update-force
 .\npc.exe update-force
 ```
 
-> **提示：** 客户端支持同时连接多个服务器，示例：  
-> `npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`  
-> 这里 `xxx:123` 使用 tcp, `yyy:456` 和 `zzz:789` 使用tls
+> **提示：** 客户端支持同时连接多个服务器：重复 `-launch`，每个服务器一条。
 
 ---

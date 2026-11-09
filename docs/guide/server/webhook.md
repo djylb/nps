@@ -1,6 +1,6 @@
 # Webhook
 
-默认关闭。设置 `webhook_url` 后，nps 把客户端上下线、隧道和域名的变更以 JSON POST 发送。修改后[重载](/guide/server/operations.md)即生效。
+Webhook 让 nps 在发生事件时主动通知你的程序：客户端上下线、隧道和域名变更、登录失败、证书申请失败等，都以 JSON 用 HTTP POST 发到你指定的地址。默认关闭，设置 `webhook_url` 后启用，修改后[重载](/guide/server/operations.md)即生效，不用重启。
 
 ```ini
 webhook_url=https://example.com/nps-events
@@ -30,7 +30,7 @@ webhook_secret=换成随机字符串
 | `host_created`、`host_updated`、`host_started`、`host_stopped`、`host_deleted` | 域名变更 | 域名 |
 | `tunnels_report` | 周期全量上报 | `tunnels` 和 `hosts` 列表 |
 
-另外，日志里标记为推送的事件也会发到 webhook，事件名与[日志](/guide/server/logging.md#固定事件)相同：`auth_failed`、`login_failed`、`login_ok`、`ban_added`、`ban_removed`、`admin_action`、`limit_exceeded`、`quota_reached`、`target_down`、`target_up`、`listen_failed`、`config_applied`、`config_failed`、`update_available`、`update_applied`、`update_failed`、`cert_issued`、`cert_failed`、`cert_revoked`、`p2p_connected`、`p2p_failed`。它们的 `data` 是这一行日志的字段（键名同日志，数字是数字，错误是文本），另有 `level`、`module` 和 `msg`；密钥始终是 `[REDACTED]`。这类事件不经过日志级别过滤，但 `auth_failed`、`login_failed` 等仍按来源限频。
+另外，日志里标记为推送的事件也会发到 webhook，事件名与[日志](/guide/server/logging.md?id=固定事件)相同：`auth_failed`、`login_failed`、`login_ok`、`ban_added`、`ban_removed`、`admin_action`、`limit_exceeded`、`quota_reached`、`target_down`、`target_up`、`listen_failed`、`config_applied`、`config_failed`、`update_available`、`update_applied`、`update_failed`、`cert_issued`、`cert_failed`、`cert_revoked`、`p2p_connected`、`p2p_failed`。它们的 `data` 是这一行日志的字段（键名同日志，数字是数字，错误是文本），另有 `level`、`module` 和 `msg`；密钥始终是 `[REDACTED]`。这类事件不经过日志级别过滤，但 `auth_failed`、`login_failed` 等仍按来源限频。
 
 ```json
 {"id":"…","type":"auth_failed","time":"2026-11-08T03:17:14Z",
@@ -108,5 +108,3 @@ func verify(secret string, r *http.Request, body []byte) bool {
 	return hmac.Equal([]byte(want), []byte(r.Header.Get("X-NPS-Signature")))
 }
 ```
-
-此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。

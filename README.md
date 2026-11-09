@@ -61,7 +61,7 @@ Based on the original [NPS](https://github.com/ehang-io/nps) project, **NPS Enha
   Built-in features such as encrypted transmission, traffic limiting, access expiration controls, certificate management, and certificate renewal help improve security and manageability.
 
 - **Multiple Connection Protocols**  
-  Supports connecting to the server using TCP, KCP, TLS, QUIC, WS, and WSS protocols.
+  Clients connect to the server over TLS, QUIC, or WSS, all on a single port.
 
 ---
 
@@ -86,33 +86,33 @@ docker pull duan2001/nps
 docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /etc/localtime:/etc/localtime:ro duan2001/nps
 ```
 
-> **Tip:** After installing NPS, edit `nps.conf` (for example: listening ports and Web admin credentials) before starting the service.
+> **Tip:** The first start creates `nps.conf` in the mounted directory. Change the default Web admin password (`web_password`) there, then run `docker restart nps`.
 
 #### NPC Client
 
 ```bash
 docker pull duan2001/npc
-docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://key1@xxx:8024?type=tls" -log=off
+docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 ```
 
-> **Tip:** Get the `-launch` command from the client page in the NPS Web UI to avoid manual input mistakes.
+> **Tip:** Copy the command from the client's Start Command page in the NPS Web UI instead of typing it. `YOUR_VKEY` is the client's unique verify key shown there.
 
 ### Server Installation
 
 #### Linux
 
 ```bash
-# Install (default configuration path: /etc/nps/; binary file path: /usr/bin/)
+# Install (configuration file: /etc/nps/conf/nps.conf; binary: /usr/bin/nps)
 wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.sh | sudo sh -s nps
-nps install
-nps start|stop|restart|uninstall
+sudo nps install
+sudo nps start|stop|restart|uninstall
 
 # Update
-nps update
-nps update-force
+sudo nps update
+sudo nps update-force
 ```
 
-> **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
+> **Tip:** For first-time setup, edit `/etc/nps/conf/nps.conf` and verify it before running `nps start`.
 
 #### Windows
 
@@ -134,15 +134,15 @@ nps update-force
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.sh | sudo sh -s npc
-/usr/bin/npc install -launch="npc://xxx@xxx:8024?type=tls" -log=off
-npc start|stop|restart|uninstall
+sudo /usr/bin/npc install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
+sudo npc start|stop|restart|uninstall
 
 # Update
-npc update
-npc update-force
+sudo npc update
+sudo npc update-force
 ```
 
-> **Tip:** For `npc install`, use the command generated on the client page in the NPS Web UI.
+> **Tip:** On the client's Start Command page in the NPS Web UI, choose "Install as a service" and copy the generated command.
 
 #### Windows
 
@@ -150,7 +150,7 @@ npc update-force
 > Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/getting-started/install-windows.md#windows7).
 
 ```powershell
-.\npc.exe install -launch="npc://xxx@xxx:8024?type=tls" -log="off"
+.\npc.exe install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 .\npc.exe start|stop|restart|uninstall
 
 # Update

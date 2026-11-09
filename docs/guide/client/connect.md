@@ -1,97 +1,108 @@
 # 连接与系统服务
 
-## 无配置文件模式（推荐）
+## 用网页给出的命令连接
 
-所有配置在 Web 管理界面完成，客户端只需一条命令。
+最简单的方式是复制网页生成的命令：
+
+1. 打开管理网址，如 `http://203.0.113.10:8081`，进入左侧菜单“客户端”。
+2. 在客户端那一行点“启动命令”按钮（终端图标），打开“启动命令”页面。展开这一行也能看到一条可复制的“客户端命令”。
+3. 选择“运行方式”（“临时启动”“安装为服务”“Docker”）和“系统”。
+4. 复制“单行命令”，在内网机器上运行。
+
+命令大致是这样（网页生成的链接通常是 `type=auto`，还带路径和其他参数，以网页显示为准）：
 
 ```bash
-./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8024?type=tls"
+./npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 ```
 
-启动链接的参数见[快速启动 -launch](/guide/client/launch.md)。
+`YOUR_VKEY` 是这个客户端的密钥（vkey），就是“客户端”列表里展开后看到的“唯一验证密钥”。`npc://` 开头的这段叫启动链接，它写清了连接哪个服务端、用什么方式。
 
-初始配置的混合端口 `8024` 接受 `tls`、`quic`、`wss`（TCP 与 UDP 同号）。`tcp`、`ws` 需要服务端打开 `mix_plain`。
+运行后网页上客户端显示在线，就是连上了。接下来去[创建隧道](/guide/tunnels/README.md)。
 
-> **已弃用**：`-server`、`-vkey`、`-type` 仍可使用，改用 `-launch`；各协议单独端口（8025、8026、8027 等）是旧配置的默认值。下文以 `-server` 书写的示例同属旧写法，其中的多承载参数（`tier`、`weight` 等）在 `-launch` 的 `alt` 与配置文件的 `paths` 里同样可用。
+命令里含明文密钥，不要公开。
 
-## 连接多个服务端
+## 选择连接方式
 
-一个进程可以同时连接多个服务端，较短的列表重复最后一个值。旧写法用逗号分隔（下例）；使用 URL 写法的承载候选时改用分号，见下文：
+连接方式就是链接里的 `type`，也是“启动命令”页面的“载体”。服务端默认的混合端口是 `8024`，一个端口同时接受几种方式。
+
+| `type` | 适用情况 |
+| --- | --- |
+| `auto` | 不确定用哪种时使用。npc 在混合端口上依次尝试 `tls`、`quic`、`wss`、`https`。不写 `type` 就是它 |
+| `tls` | 大多数情况的首选，走 TCP |
+| `quic` | 走 UDP。需要放行服务端端口的 UDP |
+| `wss`、`https` | 只放行 HTTPS，或者前面有 CDN、反向代理时使用，路径和参数建议用网页生成 |
+| `tcp`、`ws`、`http` | 明文方式。只有服务端打开了 `mix_plain` 才能用，用于前面已经有 TLS 反向代理的情况 |
+
+想要一条连接有多条备选路径，在“启动命令”页面点“添加路径”，生成的命令会自动带上。参数含义见[启动链接与配置格式](/reference/npc-launch.md)。
+
+## 经代理连接服务端
+
+内网机器不能直接访问外网时，在链接上加 `proxy` 参数：
 
 ```bash
-npc -server="xxx:123,yyy:456,zzz:789" -vkey="key1,key2,key3" -type="tcp,tls"
+./npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls&proxy=socks5://user:pass@127.0.0.1:1080"
 ```
 
-这里 `xxx:123` 使用 tcp，`yyy:456` 和 `zzz:789` 使用 tls。`-vkey`、`-type`、`-local_ip` 都可以省略填写。
+支持 `http`、`https`、`socks5`、`socks5h`、`socks4`、`socks4a`。
 
-## 一个连接的多个承载（候选）
+## 安装为系统服务
 
-分隔符分开的是**不同的连接**（各自的服务端、vkey、承载；旧写法用逗号，URL 写法用分号，如 `-server="tls://a.com:8025|wss://a.com/ws;tls://b.com:8025" -vkey="k1;k2"`）；同一个连接到同一服务端的几种走法用 `|` 分开，叫**承载候选**。候选可以写成 URL，方案就是承载：
+系统服务会开机自启，退出登录也继续运行。在“启动命令”页面把“运行方式”选为“安装为服务”，复制命令运行，然后启动服务。
 
-```bash
-./npc -server="tls://a.com:8025|wss://a.com:443/ws?tier=1|tcp://b.com:8024?standby=1" -vkey="YOUR_CLIENT_VKEY"
-```
-
-每次连接和断线重连时，npc 先试上次成功的候选，再按 `tier` 从小到大、同 tier 按书写顺序，`standby` 的放到最后；一个失败就换下一个。不带方案的候选仍是旧写法，承载取 `-type`。参数 `tier`、`weight`、`standby`、`count`、`dirs`、`kinds`、`host`、`sni`、`alpn`、`http` 及 `-pipes=multi` 的含义见 [NPC 命令行参数](/reference/npc-cli.md#服务器地址)。多管道写法（当前版本按单管道运行，告警一次）：
+Linux、macOS：
 
 ```bash
-./npc -pipes=multi -server="tls://a.com:8025?tier=0&count=5|wss://b.com/ws?tier=0&dirs=up&count=3|tcp://c.com:8024?tier=1&dirs=down&count=5" -vkey="YOUR_CLIENT_VKEY"
-```
-
-**引号**：值里有 `|`、`&`、`?` 时必须加引号，建议一律用双引号。Windows cmd 只认双引号；`.bat` 脚本里 `%` 要写成 `%%`。
-
-也可以用环境变量代替参数：`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_CONFIG_PATH`、`NPC_LOCAL_IP`、`NPC_LAUNCH`。
-
-## 注册系统服务
-
-```bash
-sudo ./npc install -launch="npc://xxx@ip:8024?type=tcp" -log=off
+sudo ./npc install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 sudo npc start
-sudo npc stop
-sudo npc uninstall  # 修改参数后重新 install
 ```
+
+Windows（以管理员身份打开 PowerShell）：
 
 ```powershell
-npc.exe install -launch="npc://xxx@ip:8024?type=tcp" -log=off
-npc.exe start
-npc.exe stop
-npc.exe install -server="xx,yy" -vkey="xx,yy" -type="tcp,tls" -config="xxx,yyy" -log=off
-npc.exe uninstall
+.\npc.exe install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
+.\npc.exe start
 ```
 
-安装时连接参数（`-server`、`-vkey`、`-type`、`-pipes`、`-proxy`、`-local_ip`，带旧写法 `-password` 时连同 `-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`）不写进服务定义，而是写到安装目录下的 `conf/npc-service.json`（仅属主可读写，Linux/macOS 为 `/etc/nps/conf/`），服务以 `-launch=@<该文件>` 运行（`-launch` 的输入写在 `conf/npc-service-launch-N.conf`）；同时给的 `-config` 文件也改为 `-launch=@<绝对路径>`。`-launch` 或 `NPC_LAUNCH` 的内容写到 `conf/npc-service-launch-N.conf`，`@文件` 只转为绝对路径；`-L` 写到 `conf/npc-service-local.conf`，服务以 `-L=@<该文件>` 运行。只用 `-config` 安装时服务仍用 `-config`，路径转为绝对路径。不会改动已有的 `conf/npc.conf`。
-
-日志默认位置：Windows 为程序目录下的 `npc.log`，Linux/macOS 为 `/var/log/npc.log`，可用 `-log_path` 修改。
-
-## 通过代理连接 NPS
-
-机器无法直接访问外网时，可以经代理连接：
+常用操作：
 
 ```bash
-./npc -server=xxx:123 -vkey=xxx -proxy=socks5://111:222@127.0.0.1:8024
+sudo npc stop       # 停止
+sudo npc restart    # 重启
+sudo npc uninstall  # 卸载
 ```
 
-```ini
-[common]
-proxy_url=socks5://111:222@127.0.0.1:8024
-```
+要修改参数，重新执行一次 `npc install` 并带上新参数即可，旧服务会先被卸载。然后再执行 `npc start`。
 
-| 类型 | 格式 |
-| --- | --- |
-| SOCKS5 | `socks5://username:password@ip:port`（`socks5h://` 同义，均由代理解析域名） |
-| SOCKS4 | `socks4://userid@ip:port`（本地解析域名）、`socks4a://userid@ip:port`（代理解析域名） |
-| HTTP | `http://username:password@ip:port`；省略协议的 `ip:port` 视为 HTTP 代理 |
-| HTTPS | `https://username:password@host:port`（与代理之间使用 TLS，并校验代理证书） |
+### 参数保存在哪里
 
-未配置时读取环境变量 `ALL_PROXY`（或 `all_proxy`），并按 `NO_PROXY` 跳过匹配的服务器地址。
+服务定义可能被其他用户读到，所以 `install` 不把密钥写进去，而是写进安装目录的 `conf` 文件夹。文件只有属主可读。安装目录在 Linux、macOS 上是 `/etc/nps`，在 Windows 上是 `C:\Program Files\nps`。
 
-## 查看状态与登记
+| 你写的内容 | 保存到 | 服务实际的参数 |
+| --- | --- | --- |
+| `-launch` 的链接、网址或 base64，或者环境变量 `NPC_LAUNCH` | `conf/npc-service-launch-1.conf`（第几条就是几） | `--launch=@该文件` |
+| `-launch=@文件` | 不复制 | `--launch=@文件的绝对路径` |
+| `-L` | `conf/npc-service-local.conf` | `--local=@该文件` |
+| `-L=@文件` | 不复制 | `--local=@文件的绝对路径` |
+| `-config` | 不复制 | `--config=文件的绝对路径` |
+| 日志等其他参数 | 不单独保存 | 原样带在服务定义里 |
+
+几点说明：
+
+- 用 `@文件` 时，安装后这个文件不能移动，修改后执行 `npc restart` 生效。
+- 服务固定带 `-debug=false`，日志按 `-log` 输出，默认写文件，位置见[更新与维护](/guide/client/maintenance.md)。
+- 重新安装会清理不再使用的 `npc-service*` 文件，不会改动 `conf/npc.conf`。
+- 连接相关的 `-pipes` 不会带到服务里，需要时写进链接：`&pipes=multi`。
+- 用配置文件时请写 `-config=绝对路径`，不要依赖服务的当前目录。
+
+## 查询状态与登记 IP
+
+这两个命令执行一次就退出，需要把连接信息写在命令行上：
 
 ```bash
-# 查询此 vkey 的连接和隧道状态
-./npc status -server=ip:8024 -vkey=xxx -type=tcp
-# 登记当前 IP，见“仅允许已登记的 IP”
-./npc register -server=ip:8024 -vkey=xxx -time=2
+# 查询这个 vkey 的隧道和域名转发状态
+./npc status -server=203.0.113.10:8024 -vkey=YOUR_VKEY -type=tls
+# 登记本机当前 IP，2 小时内有效
+./npc register -server=203.0.113.10:8024 -vkey=YOUR_VKEY -type=tls -time=2
 ```
 
-`npc restart` 重启系统服务，配置文件的修改由此生效。
+登记 IP 的用途见[访问控制](/guide/server/access-control.md)。

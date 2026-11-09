@@ -1,97 +1,103 @@
 # 点对点访问
 
-**适用范围：** 不占用公网端口、防止他人连接的服务，例如 SSH、远程桌面、大流量传输、游戏联机（TCP 和 UDP）。提供端 npc 上建一条点对点访问隧道，访问端 npc 用隧道密钥在本机开一个端口；流量经 nps 中转，或打洞成功后直连，由访问端的 `conn_mode` 决定。
+## 这能解决什么
 
-**场景：** 从本机的 `2000` 端口访问内网 `10.2.50.2:22`。
+不在公网服务器上开放端口，也能访问内网的服务，并且只有拿到访问密钥的人才能连。适合 SSH、远程桌面、大流量传输、游戏联机（TCP 和 UDP 都支持）等。
 
-1. 要直连时，在 `nps.conf` 设置 `p2p_port`，防火墙开放 UDP `p2p_port`..`p2p_port+2`（设为 `6000` 时开放 `6000-6002`）。必要时设置 `p2p_ip`，留空自动识别 IPv4 和 IPv6，可填 IP 或 DDNS 域名。服务端在路由器后时，把这 3 个 UDP 端口一并映射。只用中转时不需要。
-2. 在客户端中添加点对点访问隧道，设置唯一密钥 `sshkey`。
-3. 在本机运行（具体命令可从 Web 复制）：
+它由两端配合：
+
+- **提供端**：内网机器上的 npc，也就是隧道所属的客户端，负责连到真正的目标。
+- **访问端**：你要用服务的那台机器，运行一个 npc，用访问密钥在本机打开一个端口（或代理）。
+
+流量可以经 nps 中转，也可以在两端打洞成功后直连，由访问端的连接模式决定（见下文）。
+
+示例：在本机的 `2000` 端口访问内网 `192.168.1.10:22` 的 SSH。
+
+## 操作步骤
+
+### 1. 放行直连需要的端口（只中转可跳过）
+
+要尝试直连，服务器要放行 UDP `p2p_port` 起的 3 个端口。随安装包的 `nps.conf` 默认 `p2p_port=6000`，即放行 UDP `6000-6002`；服务器在路由器后面时，这三个端口也要一并映射。`p2p_port=0` 表示关闭。相关设置见[服务端配置](/reference/server-config.md)。
+
+### 2. 在网页上新增隧道
+
+1. 左侧菜单点“点对点访问”，点“新增”。
+2. 填写：
+   - 客户端 ID：提供端（内网机器）的客户端；
+   - 唯一标识密钥：例如 `YOUR_ACCESS_KEY`，留空则自动生成。这个密钥就是访问端要用的访问密钥，不能与其他点对点隧道重复。
+3. 点“新增”。
+
+隧道里不需要填目标，访问端自己指定要连哪里（见“访问范围”）。
+
+### 3. 在访问端运行 npc
+
+回到“点对点访问”列表，点这条隧道“选项”列里的终端图标按钮（打开“启动命令”页），或展开这一行看“访问命令”。在“启动命令”页的“点对点访问”里选“本地类型”、填“监听地址”、端口、“目标”和“连接模式”，页面会生成可以直接复制的命令，也可以选“安装为服务”或“Docker”的运行方式。
+
+命令形如：
 
 ```bash
-./npc -launch="npc://123@1.1.1.1:8024?type=tcp" -L="tcp_udp://:2000?access=sshkey&target=10.2.50.2:22&conn_mode=auto"
+./npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" \
+  -L="tcp_udp://:2000?access=YOUR_ACCESS_KEY&target=192.168.1.10:22&conn_mode=auto"
 ```
 
-`-L` 的写法见[快速启动](/guide/client/launch.md#本地访问--l)。然后：
+其中 `YOUR_VKEY` 是访问端连接 nps 用的密钥，网页上生成的命令里已经填好。服务端配置了 `visitor_vkey` 时，命令里用的是这个只能访问点对点隧道的密钥，访问端不会拿到客户端自己的密钥；没有配置时用的是该客户端的密钥。
+
+`-L` 的完整写法见 [npc 启动参数](/reference/npc-launch.md)。
+
+**不要公开这条命令**，里面含有明文密钥，拿到的人可以访问提供端所在内网。
+
+## 怎么验证
+
+npc 启动后，在访问端本机：
 
 ```bash
-ssh -p 2000 root@127.0.0.1
+ssh -p 2000 user@127.0.0.1
 ```
 
-**不要公开访问命令**，这会把提供端 npc 所在内网暴露给对方。访问方不需要客户端自己的密钥：配置 `visitor_vkey` 后，网页上的访问命令使用这个只能访问隧道的密钥。
+能登录内网机器即为成功。要确认是不是直连：在隧道的详情里看“直连流量（入/出）”，直连成功后这个数字会增长；列表里也可以把它作为可选列显示。中转的流量不计入这一项。
 
-## 连接方式
+## 常见选项
 
-`-L` 的 `conn_mode` 参数（npc.conf 为 `conn_mode`）：
+### 连接模式 conn_mode
 
 | 取值 | 行为 |
 | --- | --- |
-| `auto`（默认） | 先经 nps 中转，打洞成功后转为直连；打洞失败时继续中转，并在后台以低速率重试直连 |
+| `auto`（默认） | 先经 nps 中转，打洞成功后转为直连；打洞失败时继续中转，并在后台低速重试直连 |
 | `relay` | 始终经 nps 中转，不打洞 |
 | `direct` | 只直连，打洞失败时连接失败 |
 
-隧道的限速只对中转流量生效，直连流量不经过服务端。
+两端都在对称型 NAT 之后时通常打洞不成功，`auto` 会继续中转。隧道的限速、最大连接数只对中转的流量生效，直连的流量不经过服务器。
 
-提供端 npc 会累计每条链路直连管道收发的字节，按周期（默认 60 秒，`-session_usage_interval`，没有变化不报）和链路结束前上报给 nps，nps 只在隧道上累计，显示为“直连流量（入/出）”：详情页里显示，列表里是默认隐藏的可选列。入是提供端收到的，出是提供端发出的，中继流量不计入。它只是统计，和中继流量分开，不计入流量额度和限速，也不计入客户端；清空隧道（或其客户端）的流量时一起归零，之后只累计新增的部分。
+### 本地类型 local_type
 
-## 本地监听
-
-`-L` 的 scheme（npc.conf 为 `local_type`）：
+决定访问端在本机提供什么：
 
 | 取值 | 本地提供 |
 | --- | --- |
-| `tcp_udp`（默认） | TCP 和 UDP 端口映射 |
-| `tcp` | 只有 TCP 端口映射 |
-| `udp` | 只有 UDP 端口映射 |
-| `mixed` | HTTP/SOCKS5 代理 |
-| `socks5` | 只有 SOCKS5 代理（`mixed` 关掉 HTTP） |
-| `http` | 只有 HTTP 代理（`mixed` 关掉 SOCKS5） |
+| `tcp` | TCP 端口映射 |
+| `udp` | UDP 端口映射 |
+| `tcp_udp`（默认） | 同一个端口号上同时提供 TCP 和 UDP 端口映射 |
+| `mixed` | HTTP 加 SOCKS5 代理 |
+| `socks5` | 只有 SOCKS5 代理 |
+| `http` | 只有 HTTP 代理 |
 | `transparent` | [透明代理](/guide/tunnels/transparent.md) |
 
-配置文件写法见 [npc.conf](/reference/npc-config.md)。
+`tcp`、`udp`、`tcp_udp` 需要用 `target` 指定要连的地址；`mixed`、`socks5`、`http`、`transparent` 不写 `target`，要连哪里由使用代理的程序决定。代理类型可以用 `auth=用户名:密码` 设置账号，监听地址不写时对本机以外也开放，没有账号认证时请把监听地址写成 `127.0.0.1`。
 
-## 访问范围
+### 访问范围
 
-访问端可以自己指定目标和网络（`-L` 的 `target`，以及 `mixed`、`socks5`、`http`、`transparent` 访问端连接的地址）。隧道里已存的目标只是默认目标，访问端没指定时使用；隧道也没有目标时连接失败。
+- 隧道上的“目标访问控制”决定访问端能连到哪里：选“关闭”不限制，选“白名单”只能连名单内的目标，选“黑名单”不能连名单内的目标。名单写法与[混合代理](/guide/tunnels/mixed-proxy.md)的目标访问控制条目相同。中转和直连都按它检查，被拒绝的连接记为 `tunnel_denied`，日志里的原因是 `dest_acl`。
+- 访问端没有写 `target` 时，用隧道里保存的默认目标；隧道也没有目标则连接失败。
+- “代理到服务器本地”：隧道选“是”，且服务端 `allow_local_proxy=true`，访问端再加 `local_proxy=true`，目标就由服务器自己去连（只走中转）。其余情况都由提供端 npc 去连。
+- 隧道停用、修改、删除，或提供端、访问端下线，已建立的连接会被关闭，访问端下次连接时重新验证密钥。
 
-限制只来自隧道的目标访问控制（`dest_acl_mode`、`dest_acl_rules`），中转和直连都按它检查：没有名单时全部放行，白名单或黑名单时只能连到名单允许的目标。隧道的 `target_type`（tcp、udp、all）只决定默认目标用于哪种网络，访问端自己指定目标时不受它限制。
+### 限制
 
-被拒绝的连接不会改连到隧道目标，日志记 `tunnel_denied`（`reason=dest_acl`）：中转时在 nps，直连时在提供端 npc。
+隧道的“最大连接数”“上行限速”“下行限速”“流量限制”“时间限制”照常设置，限速和连接数只统计经过服务器的流量。
 
-访问端的 `local_proxy=true` 让服务端自己连接目标（只走中转），只有隧道开启了“代理到本地”（`local_proxy`）且服务端 `allow_local_proxy=true` 时才生效；隧道没开时访问端写了也不报错，照常由提供端 npc 连接目标（日志记一条 debug）。隧道开了而访问端没写 `local_proxy`，也由提供端 npc 连接。提供端是服务端自己的隧道（客户端编号为负）总是由服务端连接。
+## 相关页面
 
-访问端每个隧道密钥只向 nps 证明一次（挑战应答，线路上不传可重放的密钥摘要），得到的授权供之后的中转连接和直连共用。隧道停用、修改或删除，服务端相关配置重载，访问端或提供端下线时，授权失效，经它中转的连接和直连随之关闭，访问端下次连接时重新授权。
-
-## NAT 类型与排查
-
-NAT 类型由 nps 的观测端在每次打洞时测量，访问端与提供端都会在日志中输出本端结果，例如：
-
-```
-P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filtering=pdf ports=preserving
-```
-
-打洞失败时日志给出原因与下一次尝试的时间。两端都是随机端口分配的对称型 NAT 时通常无法直连，`auto` 下继续中转。
-
-直连仅使用 QUIC，支持 IPv4/IPv6 双栈。全局名单不限制 `p2p_port`。相关配置：`p2p_stun_servers`、`p2p_probe_timeout_ms`、`p2p_handshake_timeout_ms`、`p2p_transport_timeout_ms`，以及默认关闭的端口映射 `p2p_enable_upnp_portmap`、`p2p_enable_pcp_portmap`、`p2p_enable_natpmp_portmap`、`p2p_portmap_lease_seconds`。见[服务端配置](/reference/server-config.md)。
-
-## 旧版写法
-
-0.34 及以前的“私密代理”（secret）和“P2P”合并为点对点访问。旧配置照常读取，自动换算并在日志中告警，给出新写法：
-
-| 旧写法 | 新写法 |
-| --- | --- |
-| 隧道 `mode=p2p`（npc.conf 任务、nps 存储、面板导入） | `mode=secret`，密钥不变 |
-| `[p2p...]` 节 | `[secret...]` 节 |
-| `local_type=p2p` 或不写（`[p2p...]` 节、命令行） | `local_type` 由 `target_type` 定，`conn_mode=auto` |
-| `local_type=secret`，或 `[secret...]` 节里的 `target_type` | `conn_mode=relay`，`local_type` 由 `target_type` 定 |
-| `target_type=all` / `tcp` / `udp` | `local_type=tcp_udp` / `tcp` / `udp` |
-| `local_type=p2ps` | `local_type=mixed` |
-| `local_type=p2pt` | `local_type=transparent` |
-| `fallback_secret=false` | `conn_mode=direct` |
-| `-disable_p2p` | `-conn_mode=relay` |
-
-`nps.conf` 中的 `allow_secret_link` 已移除：访问范围只由隧道的目标访问控制决定，设置该键只告警。
-
-0.35 起点对点访问的协议不兼容旧版 npc：访问端和提供端都需要 0.35 或更新的 npc。
-
-显式写出的新键优先于换算结果。既没有 `local_type` 也没有 `conn_mode` 的 `[secret...]` 节是旧写法，保持原来的中转（`relay`）并告警；写上 `conn_mode=auto` 即可尝试直连。新写法只要给出 `local_type` 或 `conn_mode`，默认就是 `auto`。`-launch` 只接受新写法。Web 和 API 不再接受 `mode=p2p`。
+- [启动链接与多条连接、-L](/guide/client/launch.md)
+- [npc 启动参数](/reference/npc-launch.md)
+- [透明代理](/guide/tunnels/transparent.md)
+- [服务端配置](/reference/server-config.md)：`p2p_port`、`p2p_ip`、`visitor_vkey` 等

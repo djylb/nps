@@ -19,7 +19,7 @@ NPS 是一款**轻量级**、**高性能**、**功能强大**的**内网穿透�
 - **HTTP/SOCKS5 代理**：像 VPN 一样访问内网资源；混合代理支持目标黑白名单。
 - **点对点访问**：TCP/UDP 映射、HTTP/SOCKS5、透明代理，端口不暴露在公网；经 NPS 中转或打洞直连（直连时流量**不走服务器**），默认打洞失败时继续中转。
 - **Web 管理界面**：实时展示隧道状态和流量，支持多用户和细粒度访问控制。
-- **多种连接协议**：客户端可通过 TCP、KCP、TLS、QUIC、WS、WSS 连接服务器。
+- **多种连接方式**：客户端可通过 TLS、QUIC、WSS 连接服务器，共用一个端口。
 
 ## 从哪里开始
 
@@ -27,9 +27,9 @@ NPS 是一款**轻量级**、**高性能**、**功能强大**的**内网穿透�
 | --- | --- |
 | 第一次部署和验证 | [10 分钟快速开始](/getting-started/quick-start.md) |
 | 选择安装方式 | [安装指南](/getting-started/install.md) |
-| 按用途选择转发方式 | [选择隧道类型](/getting-started/tunnel-types.md) |
-| 查询服务端配置 | [服务端配置 nps.conf](/reference/server-config.md) |
-| 查询客户端参数 | [NPC 命令行参数](/reference/npc-cli.md)、[npc.conf（已弃用）](/reference/npc-config.md) |
+| 按用途选择转发方式 | [选择隧道](/guide/tunnels/README.md) |
+| 查询服务端配置 | [服务端配置](/reference/server-config.md) |
+| 查询客户端参数 | [npc 命令行参数](/reference/npc-cli.md)、[npc 配置文件](/reference/npc-config.md) |
 | 用脚本管理 | [Web API](/reference/web-api.md)、[Webhook](/guide/server/webhook.md) |
-| 升级前确认兼容性 | [版本规则与兼容范围](/getting-started/versioning.md) |
-| 遇到问题 | [FAQ](/reference/faq.md) |
+| 升级 | [升级与旧配置迁移](/guide/server/upgrade.md)、[版本规则](/reference/versioning.md) |
+| 遇到问题 | [排错](/guide/server/troubleshooting.md) |

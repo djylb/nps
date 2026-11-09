@@ -16,26 +16,35 @@
 - [32 位（Server）](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
 - [32 位（Client）](https://github.com/djylb/nps/releases/latest/download/windows_386_client_old.tar.gz)
 
-**安装方式（解压后进入文件夹）**
+解压后进入文件夹，**以管理员身份**打开 PowerShell。
+
+## 安装服务端
+
 ```powershell
-# NPS 服务端
 .\nps.exe install
-.\nps.exe start|stop|restart|uninstall
-
-# Support custom config path
-.\nps.exe -conf_path="D:\test\nps"
-.\nps.exe install -conf_path="D:\test\nps"
-
-# Update
-.\nps.exe update
-
-# NPC 客户端
-.\npc.exe install -launch="npc://VKEY@xxx:123?type=tls" -log="off"
-.\npc.exe start|stop|restart|uninstall
-
-# Update
-.\npc.exe update
+.\nps.exe start
 ```
+
+配置文件在 `C:\Program Files\nps\conf\nps.conf`。其他命令：`.\nps.exe stop|restart|uninstall`，更新用 `.\nps.exe update`。
+
+不要删除或移动解压目录里的 `nps.exe`，服务依赖它运行。
+
+要把配置放在别的目录：
+
+```powershell
+.\nps.exe install -conf_path="D:\test\nps"
+```
+
+## 安装客户端
+
+先在网页“客户端”页点开“启动命令”，把“系统”选成 PowerShell 或 cmd，“运行方式”选“安装为服务”，复制生成的命令运行。命令形如（网页生成的链接通常是 `type=auto`，还带路径和其他参数，以网页显示为准）：
+
+```powershell
+.\npc.exe install -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
+.\npc.exe start
+```
+
+`YOUR_VKEY` 是网页“客户端”列表里的唯一验证密钥。PowerShell 里参数要用双引号括起来。
 
 ## 客户端退出后自动重启
 
@@ -51,7 +60,7 @@ Windows 7 请先安装 **Service Pack 1（SP1）** 并补齐系统更新，再�
 
 ### 1. 程序打不开，提示 `fatal error: bcrypt.dll not found`
 
-此前 Win7 32 位测试中遇到过这个错误，补齐系统更新后程序可以启动。该提示不一定表示磁盘上真的没有 DLL：旧系统缺少安全 DLL 加载接口支持，也可能导致 Go 运行时加载系统库失败。
+补齐系统更新后程序可以启动。该提示不一定表示磁盘上真的没有 DLL：旧系统缺少安全 DLL 加载接口支持，也可能导致 Go 运行时加载系统库失败。
 
 - 检查 **KB2533623** 或包含同等功能的后续更新。该更新为 Win7 提供 `LoadLibraryEx` 的 `LOAD_LIBRARY_SEARCH_*` 支持，参见 [Microsoft DLL 加载接口说明](https://learn.microsoft.com/zh-cn/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexa)。已安装替代更新时，无需强行重复安装旧补丁。
 - 更新基础系统时，按微软要求安装 **KB4490628（服务堆栈更新）**、**KB4474419（SHA-2 签名支持更新）**，按要求重启，然后继续安装适用更新。这两项用于支持后续更新和签名验证，不等同于根证书包，也不能替代 DLL 加载接口更新。参见 [Microsoft SHA-2 更新要求](https://support.microsoft.com/en-us/servicing/os/windows/2020/09/2019-sha-2-code-signing-support-requirement-for-windows-and-wsus)。
@@ -86,7 +95,7 @@ certutil -addstore Root root-ca.cer
 
 ```bat
 npc.exe stop
-npc.exe -launch="npc://你的vkey@nps.example.com:8024?type=tls"
+npc.exe -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 REM 确认连接成功后按 Ctrl+C 退出，再执行以下命令
 npc.exe start
 sc query Npc
