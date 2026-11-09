@@ -10,6 +10,7 @@ import (
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
+	"github.com/djylb/nps/lib/connprofile"
 )
 
 func goodProfiles(t *testing.T, name string) []launch.Profile {
@@ -139,5 +140,47 @@ func TestSuperviseCancelDuringWait(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("supervise did not stop")
+	}
+}
+
+func TestAccessAlias(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+		fail bool
+	}{
+		{nil, "", false},
+		{[]string{"--access", "a"}, "a", false},
+		{[]string{"--password", "p"}, "p", false},
+		{[]string{"--access=a", "--password=p"}, "", true},
+		{[]string{"--access=a", "--password="}, "", true},
+	} {
+		got, err := accessValue(serviceFlags(t, tc.args...))
+		if (err != nil) != tc.fail || got != tc.want {
+			t.Errorf("%q: %q, %v", tc.args, got, err)
+		}
+	}
+}
+
+func TestWithAccess(t *testing.T) {
+	got, err := withAccess(serviceFlags(t, "--access=pw", "--local_type=tcp", "--target=t:22"), []string{"npc://k@a:1?type=tls#home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := connprofile.ParseLink(got[0])
+	if err != nil || l.Name != "home" || l.Local["password"] != "pw" || l.Local["local_type"] != "tcp" ||
+		l.Local["local_port"] != "2000" || l.Local["target_addr"] != "t:22" || l.Local["conn_mode"] != "" {
+		t.Fatalf("%s: %+v %v", got[0], l, err)
+	}
+	// a link's own port wins over the flag default, and nothing is added without -access
+	got, _ = withAccess(serviceFlags(t, "--access=pw"), []string{"npc://k@a:1?local_port=9"})
+	if l, _ = connprofile.ParseLink(got[0]); l.Local["local_port"] != "9" {
+		t.Fatalf("%+v", l)
+	}
+	if got, err = withAccess(serviceFlags(t), []string{"@file"}); err != nil || got[0] != "@file" {
+		t.Fatalf("%v %v", got, err)
+	}
+	if _, err = withAccess(serviceFlags(t, "--access=pw"), []string{"@file"}); err == nil {
+		t.Fatal("--access accepted for a file")
 	}
 }

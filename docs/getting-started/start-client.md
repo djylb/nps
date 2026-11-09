@@ -2,24 +2,26 @@
 
 ## 获取启动命令
 
-进入 Web 管理界面，点击客户端前的 `+` 号，复制启动命令。命令里的 `-server` 是 URL 形式（如 `tls://host:8025`），协议写在地址前；旧的 `-server=host:port -type=tls` 写法仍可使用，下文示例沿用旧写法。
+进入 Web 管理界面，点击客户端前的 `+` 号，复制启动命令。命令里是启动链接 `-launch="npc://密钥@host:8025?type=tls"`，承载写在 `type`，vkey 已按百分号编码；写法见[快速启动 -launch](/guide/client/launch.md)。`-server`、`-vkey` 仍可使用（多个连接共用一组列表、`tier`、`weight` 等多承载参数的组合只能用 `-server`），两种写法不能同时给出。
 
 ## 直接运行
 
 ```bash
-./npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off
+./npc -launch="npc://VKEY@xxx:123?type=tls" -log=off
 ```
 
 ```powershell
-npc.exe -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tcp,tls" -log="off"
+npc.exe -launch="npc://VKEY@xxx:123?type=tls" -log="off"
 ```
+
+多个服务端重复 `-launch`；旧写法：`./npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off`。
 
 > PowerShell 中请用双引号括起参数。
 
 ## 安装服务
 
 ```bash
-./npc install -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off
+./npc install -launch="npc://VKEY@xxx:123?type=tls" -log=off
 ./npc start
 npc stop
 npc restart
@@ -27,7 +29,7 @@ npc uninstall
 ```
 
 ```powershell
-npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tcp,tls" -log="off"
+npc.exe install -launch="npc://VKEY@xxx:123?type=tls" -log="off"
 npc.exe start
 ```
 
@@ -42,7 +44,7 @@ npc.exe start
 
 ## 手动注册系统服务（多开）
 
-一个进程可以用逗号连接多个服务端，也可以重复 `--launch` 或给 `-config` 传多个文件，通常不需要手动多开。确有需要时：
+一个进程可以用逗号连接多个服务端，也可以重复 `-launch` 或给 `-config` 传多个文件，通常不需要手动多开。确有需要时：
 
 ### Linux（systemd）
 

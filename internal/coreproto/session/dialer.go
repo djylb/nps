@@ -270,10 +270,13 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		return d.dialQUIC(ctx, c, tlsCfg)
 	case "ws", "wss":
 		scheme := c.Carrier
-		// Only the old way of writing a candidate sends the subprotocol
-		// (§12); URL candidates send none.
+		// The old way of writing a candidate sends the subprotocol (§12);
+		// a URL candidate sends the one it names, else none.
 		protocols := []string{zmuxws.NoSubprotocol}
-		if !strings.Contains(c.Raw, "://") {
+		switch {
+		case c.Subprotocol != "":
+			protocols = []string{c.Subprotocol}
+		case !strings.Contains(c.Raw, "://"):
 			protocols = []string{legacySubprotocol}
 		}
 		cd := &captureDialer{dial: d.cfg.Dial}

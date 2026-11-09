@@ -8,7 +8,7 @@
 ## Stable
 
 ### v0.35.0
-- 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`）：访问端用 `local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`transparent`）选本地监听，`conn_mode`（`auto` 默认、`relay`、`direct`）选经 nps 中转、打洞直连或自动。旧配置自动换算并告警：npc.conf 的 `mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值，nps 存储与面板导入里的 p2p 隧道（密钥不变，访问端照常可用），以及 npc 命令行的 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p`。**不兼容**：Web/API 不再接受 `mode=p2p`；`--launch` 只接受新写法；旧版 npc 不能与新版互通点对点访问。对照表见 docs/guide/tunnels/secret.md
+- 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`）：访问端用 `local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`transparent`）选本地监听，`conn_mode`（`auto` 默认、`relay`、`direct`）选经 nps 中转、打洞直连或自动。旧配置自动换算并告警：npc.conf 的 `mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值，nps 存储与面板导入里的 p2p 隧道（密钥不变，访问端照常可用），以及 npc 命令行的 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p`。**不兼容**：Web/API 不再接受 `mode=p2p`；`-launch` 只接受新写法；旧版 npc 不能与新版互通点对点访问。对照表见 docs/guide/tunnels/secret.md
 - `update`、`update-force`、网页更新和远程更新不再跨大版本（如 0.x.x 到 1.x.x），大版本升级需手动进行
 - **不兼容**：npc 移除 `-proto_version`，只使用最新协议，不再能连接旧版服务端（请先更新服务端）；仍带该参数时忽略并告警
 - npc 的 `-tls_enable` 与 npc.conf 的 `tls_enable=true` 照旧生效，翻译为 `-type=tls`/`conn_type=tls`（与旧版一样覆盖连接类型），并告警建议改用新写法
@@ -20,11 +20,16 @@
 - npc 的 `-stun_addr`、`-p2p_type`、`-log_daily` 已无作用，忽略并告警
 - nps、npc 遇到不认识的命令行参数时忽略并告警，不再拒绝启动，避免更新后因旧参数无法启动
 - nps.conf 仍设 `ip_limit` 时告警，说明改用按客户端、隧道、域名开启的“仅允许已登记的IP”
-- `npc install` 不再把 `vkey` 等连接参数写进服务定义：改写到安装目录下仅属主可读的 `conf/npc-service.json`（`--launch` 内容写到 `conf/npc-service-launch-N.conf`），服务以 `--launch=@文件` 运行，运行方式不变；只用 `-config` 安装时不变，相对路径转为绝对路径。已安装的服务需重新 install 才生效
+- `npc install` 不再把 `vkey` 等连接参数写进服务定义：改写到安装目录下仅属主可读的 `conf/npc-service.json`（`-launch` 内容写到 `conf/npc-service-launch-N.conf`），服务以 `-launch=@文件` 运行，运行方式不变；只用 `-config` 安装时不变，相对路径转为绝对路径。已安装的服务需重新 install 才生效
 - nps、npc 新增 `version` 子命令，与 `-version` 相同
 - npc 只给了 `-server`、`-vkey` 其中一个时报错退出并指出缺哪个，不再静默改读配置文件；两个都不给时仍读配置文件
 - 健康检查不再兼容旧版 npc：旧版自配检查的报告会被忽略
-- npc 新增 `--launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
+- npc 新增 `-launch` 快速启动：支持 `npc://`、http(s) URL、`@文件`、Base64、JSON、YAML、INI 和多配置；远程来源失败时继续使用最后一份有效内容，远程内容不能引用本地文件，也不能设置 `dns_server`
+- 启动链接 `npc://<vkey>@host:port[/path]?type=…`：`-launch` 的 `npc://` 输入改为这种写法（vkey 百分号编码，不带客户端编号），查询参数 `type`、`host`、`sni`、`alpn`、`http`、`subprotocol`、`tier`、`weight`、`standby`、`count`、`dirs`、`kinds`、`pin`、`alt`（可重复，自身参数用 `;` 分隔）、`name`、`pipes` 等，以及点对点访问者的 `access`、`target`、`local_type`、`local_port`、`conn_mode`、`local_proxy`；不认识的参数告警后忽略。`npc://<base64>` 表示一个服务端实例；纯 Base64 解码前去掉空白，可折行；`NPC_LAUNCH` 按换行分多组，命令行给了 `-launch` 时不生效
+- npc 的 `-launch` 与 `-server`/`-vkey` 同时给出时报错；`-launch` 时点对点访问者参数（`-access`、`-local_type` 等）并入链接；`npc install -launch=…` 把链接写进 `conf/npc-service-launch-N.conf`
+- npc 新增 `-access`（点对点访问隧道的密钥），`-password` 作为别名保留，两者同时给出报错
+- 新增 `new_protocol_pin` 配置键（与 `-new_protocol_pin` 同一设置，按连接给出）；WebSocket 候选支持 `subprotocol` 参数
+- 网页上客户端的启动命令和点对点访问命令改为 `-launch="npc://…"`，客户端详情增加安装命令
 - 透明代理（`tcpTrans`、`p2pt`）支持 `TPROXY`：监听 socket 设置透明选项；权限不足时退回普通监听并告警，`REDIRECT` 不受影响；不支持的平台启动时直接报错
 - 新增 `visitor_vkey`：只能访问 secret/P2P 隧道，设置后网页上的访问命令使用此密钥
 - 域名支持最大连接数限制（Web、API、npc 配置 `max_conn`）

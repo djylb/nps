@@ -29,7 +29,9 @@ func serviceFlags(t *testing.T, args ...string) *flag.FlagSet {
 	fs.String("local_type", "tcp_udp", "")
 	fs.String("conn_mode", "auto", "")
 	fs.Int("local_port", 2000, "")
+	fs.String("access", "", "")
 	fs.String("password", "", "")
+	fs.Bool("local_proxy", false, "")
 	fs.String("target", "", "")
 	fs.String("log", "file", "")
 	fs.String("pprof", "", "")
@@ -140,7 +142,7 @@ func TestServiceArgumentsConfigOnly(t *testing.T) {
 
 func TestServiceArgumentsLaunch(t *testing.T) {
 	payload := `{"server":"a:1","vkey":"k"}`
-	dir, svc := installArgs(t, "", "--launch="+payload, "--launch=@local.yaml", "-s", "x:1", "-k", "y")
+	dir, svc := installArgs(t, "", "--launch="+payload, "--launch=@local.yaml")
 	file := filepath.Join(dir, "npc-service-launch-1.conf")
 	abs, _ := filepath.Abs("local.yaml")
 	if !slices.Equal(svc, []string{"--launch=@" + file, "--launch=@" + abs, "-debug=false"}) {
@@ -209,5 +211,83 @@ func TestServiceKeepsCandidates(t *testing.T) {
 	}
 	if _, _, err := serviceArguments(serviceFlags(t, "--server=ftp://a.com", "--vkey=k"), t.TempDir(), ""); err == nil {
 		t.Fatal("bad candidate accepted")
+	}
+}
+
+func TestServiceArgumentsLaunchLink(t *testing.T) {
+	const link = "npc://k%3B1@a.example:8025?type=tls&alpn=h3,nps&alt=tcp://b.example:8024#home"
+	dir, svc := installArgs(t, "", "--launch="+link, "--log=off", "install")
+	file := filepath.Join(dir, "npc-service-launch-1.conf")
+	if !slices.Equal(svc, []string{"--launch=@" + file, "--log=off", "-debug=false"}) {
+		t.Fatalf("service args = %q", svc)
+	}
+	p := resolveFile(t, file)
+	if len(p) != 1 || p[0].Name != "home" || p[0].Config.CommonConfig.VKey != "k;1" ||
+		p[0].Config.CommonConfig.Server != "tls://a.example:8025?alpn=h3%2Cnps|tcp://b.example:8024" {
+		t.Fatalf("profiles = %+v", p[0].Config.CommonConfig)
+	}
+
+	// two links from NPC_LAUNCH, one per line, commas stay in the query
+	dir, svc = installArgs(t, link+"\n\n npc://k2@c.example:1?http=h2,http/1.1&type=wss \n")
+	if len(svc) != 3 || svc[2] != "-debug=false" {
+		t.Fatalf("NPC_LAUNCH service args = %q", svc)
+	}
+	if p := resolveFile(t, filepath.Join(dir, "npc-service-launch-2.conf")); p[0].Config.CommonConfig.VKey != "k2" {
+		t.Fatalf("%+v", p)
+	}
+}
+
+func TestServiceArgumentsLaunchAccess(t *testing.T) {
+	dir, svc := installArgs(t, "", "--launch=npc://k@a:1", "--access=p w", "--local_type=tcp", "--local_port=2001", "--conn_mode=relay", "install")
+	file := filepath.Join(dir, "npc-service-launch-1.conf")
+	if !slices.Equal(svc, []string{"--launch=@" + file, "-debug=false"}) {
+		t.Fatalf("service args = %q (the access key must not be a service argument)", svc)
+	}
+	p := resolveFile(t, file)
+	l := p[0].Config.LocalServer[0]
+	if l.Password != "p w" || l.Type != "tcp" || l.Port != 2001 || l.ConnMode != "relay" {
+		t.Fatalf("%+v", l)
+	}
+	// the old name is the same setting
+	dir, _ = installArgs(t, "", "--launch=npc://k@a:1", "--password=pw")
+	l = resolveFile(t, filepath.Join(dir, "npc-service-launch-1.conf"))[0].Config.LocalServer[0]
+	if l.Password != "pw" || l.Port != 2000 {
+		t.Fatalf("%+v", l)
+	}
+}
+
+func TestServiceArgumentsLaunchRefusals(t *testing.T) {
+	for name, args := range map[string][]string{
+		"server":         {"--launch=npc://k@a:1", "-s", "x:1", "-k", "y"},
+		"vkey":           {"--launch=npc://k@a:1", "-k", "y"},
+		"both access":    {"--launch=npc://k@a:1", "--access=a", "--password=b"},
+		"access in link": {"--launch=npc://k@a:1?access=x", "--access=a"},
+		"access, json":   {`--launch={"server":"a:1","vkey":"k"}`, "--access=a"},
+		"command, both":  {"-s", "a:1", "-k", "k", "--access=a", "--password=b"},
+	} {
+		if _, _, err := serviceArguments(serviceFlags(t, args...), t.TempDir(), ""); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestServiceArgumentsAccessCommand(t *testing.T) {
+	dir, svc := installArgs(t, "", "-s", "a:1", "-k", "k", "--access=pw", "--local_port=2002")
+	conn := filepath.Join(dir, serviceConnFile)
+	if !slices.Equal(svc, []string{"--launch=@" + conn, "-debug=false"}) {
+		t.Fatalf("service args = %q", svc)
+	}
+	if l := resolveFile(t, conn)[0].Config.LocalServer[0]; l.Password != "pw" || l.Port != 2002 {
+		t.Fatalf("%+v", l)
+	}
+}
+
+func TestSplitLaunchEnv(t *testing.T) {
+	got := splitLaunchEnv("\n npc://k@a:1?alpn=h3,nps \r\n\n@/etc/npc/b.json\n")
+	if !slices.Equal(got, []string{"npc://k@a:1?alpn=h3,nps", "@/etc/npc/b.json"}) {
+		t.Fatalf("%q", got)
+	}
+	if len(splitLaunchEnv("  ")) != 0 {
+		t.Fatal("blank value gave inputs")
 	}
 }

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"html/template"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -86,6 +87,11 @@ func (d ManagementPageCommonData) Map() map[string]any {
 	if d.WindowsSuffix != "" {
 		data["win"] = d.WindowsSuffix
 	}
+	// ./npc runs in a shell of Linux and PowerShell; cmd.exe has no ./
+	data["npc_bin"] = "./npc"
+	if d.WindowsSuffix != "" {
+		data["npc_bin"] = "npc" + d.WindowsSuffix
+	}
 	if d.TCPPort != "" {
 		data["tcp_p"] = d.TCPPort
 	}
@@ -110,47 +116,54 @@ func (d ManagementPageCommonData) Map() map[string]any {
 	if d.WSSPort != "" {
 		data["wss_p"] = d.WSSPort
 	}
-	urls := d.ServerURLs()
-	data["server_urls"] = urls
+	urls := d.LinkURLs()
+	data["link_urls"] = urls
 	data["bridge_url"] = d.bridgeURL(urls)
 	return data
 }
 
-// urlHost writes host as the host of a URL: an IPv6 address in brackets.
-func urlHost(host string) string {
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		return "[" + host + "]"
-	}
-	return host
-}
-
-// ServerURLs are the -server URLs of the enabled bridge carriers, by scheme
+// LinkURLs are the launch links of the enabled bridge carriers, by type
 // (tcp, tls, quic, ws, wss): the one place the start commands take them from.
-// A WebSocket URL carries the path, a QUIC URL the ALPN.
-func (d ManagementPageCommonData) ServerURLs() map[string]string {
+// A link has no vkey yet, "npc://@host:port", for the page to put in with
+// npcLink (language.js); a WebSocket link carries the path, a QUIC link the
+// ALPN.
+func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	urls := map[string]string{}
-	add := func(scheme, host, port, suffix string) {
+	add := func(typ, host, port, path, query string) {
 		if port != "" {
-			urls[scheme] = scheme + "://" + urlHost(host) + ":" + port + suffix
+			urls[typ] = linkURL(typ, net.JoinHostPort(strings.Trim(host, "[]"), port), path, query)
 		}
 	}
-	add("tcp", d.TCPIP, d.TCPPort, "")
-	add("tls", d.TLSIP, d.TLSPort, "")
-	add("quic", d.QUICIP, d.QUICPort, d.quicQuery())
-	add("ws", d.WSIP, d.WSPort, d.WSPath)
-	add("wss", d.WSSIP, d.WSSPort, d.WSPath)
+	add("tcp", d.TCPIP, d.TCPPort, "", "")
+	add("tls", d.TLSIP, d.TLSPort, "", "")
+	add("quic", d.QUICIP, d.QUICPort, "", d.quicQuery())
+	add("ws", d.WSIP, d.WSPort, d.WSPath, "")
+	add("wss", d.WSSIP, d.WSSPort, d.WSPath, "")
 	return urls
 }
 
-// quicQuery is the ALPN of the display address "host:port/alpn" as a URL query.
+// linkURL writes a launch link without its vkey. addr is host:port.
+func linkURL(typ, addr, path, query string) string {
+	if path != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	u := url.URL{Path: path}
+	q := "type=" + typ
+	if query != "" {
+		q += "&" + query
+	}
+	return "npc://@" + addr + u.EscapedPath() + "?" + q
+}
+
+// quicQuery is the ALPN of the display address "host:port/alpn" as a link parameter.
 func (d ManagementPageCommonData) quicQuery() string {
 	if _, alpn, ok := strings.Cut(d.QUICAddr, "/"); ok && alpn != "" {
-		return "?alpn=" + url.QueryEscape(alpn)
+		return "alpn=" + url.QueryEscape(alpn)
 	}
 	return ""
 }
 
-// bridgeURL is the -server URL of the primary bridge carrier. kcp clients
+// bridgeURL is the launch link of the primary bridge carrier. kcp clients
 // connect over QUIC; the display address is the fallback when that carrier is
 // not enabled.
 func (d ManagementPageCommonData) bridgeURL(urls map[string]string) string {
@@ -161,5 +174,17 @@ func (d ManagementPageCommonData) bridgeURL(urls map[string]string) string {
 	if u := urls[scheme]; u != "" {
 		return u
 	}
-	return d.BridgeAddr
+	addr, rest, _ := strings.Cut(d.BridgeAddr, "/")
+	switch scheme {
+	case "quic":
+		if rest == "" {
+			return linkURL(scheme, addr, "", "")
+		}
+		return linkURL(scheme, addr, "", "alpn="+url.QueryEscape(rest))
+	case "ws", "wss":
+		return linkURL(scheme, addr, rest, "")
+	case "tcp", "tls":
+		return linkURL(scheme, addr, "", "")
+	}
+	return linkURL("tcp", addr, "", "")
 }

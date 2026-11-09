@@ -84,7 +84,7 @@
 
 <script>
     /*bootstrap table*/
-    var hasCommands = {{if or (index .server_urls "tcp") (index .server_urls "tls") (index .server_urls "quic") (index .server_urls "ws") (index .server_urls "wss")}}true{{else}}false{{end}};
+    var hasCommands = {{if or (index .link_urls "tcp") (index .link_urls "tls") (index .link_urls "quic") (index .link_urls "ws") (index .link_urls "wss")}}true{{else}}false{{end}};
     npsList.init('#table', {
         toolbar: "#toolbar",
         idField: "Id",
@@ -186,20 +186,23 @@
             }
             transport += shaped
             var commands = ''
-                {{if index .server_urls "tcp"}}
-                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "tcp"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
+                {{if index .link_urls "tcp"}}
+                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "tcp"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
                 {{end}}
-                {{if index .server_urls "tls"}}
-                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "tls"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
+                {{if index .link_urls "tls"}}
+                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "tls"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
                 {{end}}
-                {{if index .server_urls "quic"}}
-                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "quic"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
+                {{if index .link_urls "quic"}}
+                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "quic"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
                 {{end}}
-                {{if index .server_urls "ws"}}
-                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "ws"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
+                {{if index .link_urls "ws"}}
+                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "ws"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
                 {{end}}
-                {{if index .server_urls "wss"}}
-                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "wss"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
+                {{if index .link_urls "wss"}}
+                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "wss"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
+                {{end}}
+                {{if .bridge_url}}
+                + '<b langtag="word-commandclient-install"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} install -launch=\"" + escapeHtml(npcLink({{.bridge_url}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
                 {{end}}
             return '<div class="resource-details">'
                 + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Mode', 'VerifyKey', 'Status', 'UploadRate', 'DownloadRate', 'InletFlow', 'ExportFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain']))

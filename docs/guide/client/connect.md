@@ -6,10 +6,14 @@
 
 ```bash
 # TCP
-./npc -server="ip:8024" -vkey="YOUR_CLIENT_VKEY" -type="tcp"
+./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8024?type=tcp"
 # TLS
+./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8025?type=tls"
+# 旧写法，仍可使用，与 -launch 不能同时给出
 ./npc -server="ip:8025" -vkey="YOUR_CLIENT_VKEY" -type="tls"
 ```
+
+启动链接的参数见[快速启动 -launch](/guide/client/launch.md)；下文多承载、多管道等需要 `tier`、`weight` 的组合用 `-server`。
 
 默认端口 `8024` 用于 TCP 和 KCP，`8025` 用于 TLS 和 QUIC，`8026` 用于 WS，`8027` 用于 WSS。
 
@@ -44,21 +48,21 @@ npc -server="xxx:123,yyy:456,zzz:789" -vkey="key1,key2,key3" -type="tcp,tls"
 ## 注册系统服务
 
 ```bash
-sudo ./npc install -server="ip:8024" -vkey="xxx" -type="tcp" -log=off
+sudo ./npc install -launch="npc://xxx@ip:8024?type=tcp" -log=off
 sudo npc start
 sudo npc stop
 sudo npc uninstall  # 修改参数后重新 install
 ```
 
 ```powershell
-npc.exe install -server="ip:8024" -vkey="xxx" -type="tcp" -log=off
+npc.exe install -launch="npc://xxx@ip:8024?type=tcp" -log=off
 npc.exe start
 npc.exe stop
 npc.exe install -server="xx,yy" -vkey="xx,yy" -type="tcp,tls" -config="xxx,yyy" -log=off
 npc.exe uninstall
 ```
 
-安装时连接参数（`-server`、`-vkey`、`-type`、`-pipes`、`-proxy`、`-local_ip`，带 `-password` 时连同 `-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`）不写进服务定义，而是写到安装目录下的 `conf/npc-service.json`（仅属主可读写，Linux/macOS 为 `/etc/nps/conf/`），服务以 `--launch=@<该文件>` 运行；同时给的 `-config` 文件也改为 `--launch=@<绝对路径>`。`--launch` 或 `NPC_LAUNCH` 的内容写到 `conf/npc-service-launch-N.conf`，`@文件` 只转为绝对路径。只用 `-config` 安装时服务仍用 `-config`，路径转为绝对路径。不会改动已有的 `conf/npc.conf`。
+安装时连接参数（`-server`、`-vkey`、`-type`、`-pipes`、`-proxy`、`-local_ip`，带 `-access`（或别名 `-password`）时连同 `-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`）不写进服务定义，而是写到安装目录下的 `conf/npc-service.json`（仅属主可读写，Linux/macOS 为 `/etc/nps/conf/`），服务以 `-launch=@<该文件>` 运行（`-launch` 的输入写在 `conf/npc-service-launch-N.conf`）；同时给的 `-config` 文件也改为 `-launch=@<绝对路径>`。`-launch` 或 `NPC_LAUNCH` 的内容写到 `conf/npc-service-launch-N.conf`，`@文件` 只转为绝对路径。只用 `-config` 安装时服务仍用 `-config`，路径转为绝对路径。不会改动已有的 `conf/npc.conf`。
 
 日志默认位置：Windows 为程序目录下的 `npc.log`，Linux/macOS 为 `/var/log/npc.log`，可用 `-log_path` 修改。
 

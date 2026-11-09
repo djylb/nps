@@ -9,7 +9,7 @@
 3. 在本机运行（具体命令可从 Web 复制）：
 
 ```bash
-./npc -server=1.1.1.1:8024 -vkey=123 -password=sshkey
+./npc -launch="npc://123@1.1.1.1:8024?type=tcp" -access=sshkey -local_type=tcp_udp -local_port=2000 -conn_mode=auto
 ```
 
 `-local_port` 指定本地端口，默认 `2000`。然后：
@@ -91,4 +91,4 @@ P2P local port 2000: punched public path ...; local NAT udp4 mapping=eim filteri
 
 0.35 起点对点访问的协议不兼容旧版 npc：访问端和提供端都需要 0.35 或更新的 npc。
 
-显式写出的新键优先于换算结果。既没有 `local_type` 也没有 `conn_mode` 的 `[secret...]` 节是旧写法，保持原来的中转（`relay`）并告警；写上 `conn_mode=auto` 即可尝试直连。新写法只要给出 `local_type` 或 `conn_mode`，默认就是 `auto`。`--launch` 只接受新写法。Web 和 API 不再接受 `mode=p2p`。
+显式写出的新键优先于换算结果。既没有 `local_type` 也没有 `conn_mode` 的 `[secret...]` 节是旧写法，保持原来的中转（`relay`）并告警；写上 `conn_mode=auto` 即可尝试直连。新写法只要给出 `local_type` 或 `conn_mode`，默认就是 `auto`。`-launch` 只接受新写法。Web 和 API 不再接受 `mode=p2p`。

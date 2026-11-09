@@ -28,9 +28,9 @@ func setCoreDefaults() {
 			RelayIdle:     *relayIdle,
 			KeepServer:    *p2pVisitorKeepServer,
 			ResumeTimeout: *sessionResumeTimeout,
+			Pin:           *newProtocolPin,
 		},
 	}
-	connect.Process.Pin = *newProtocolPin
 	connect.Process.UDP5Idle = time.Duration(*udp5IdleTimeout) * time.Second
 	connect.Process.Compress = session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio}
 }

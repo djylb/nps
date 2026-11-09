@@ -36,7 +36,7 @@ nps update
 
 # NPC Client
 ./npc install
-/usr/bin/npc install -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tcp,tls -log=off
+/usr/bin/npc install -launch="npc://VKEY@xxx:123?type=tls" -log=off
 npc start|stop|restart|uninstall
 
 # Update
@@ -65,7 +65,7 @@ nps update
 
 # NPC Client
 ./npc install
-/usr/bin/npc install -server=xxx:123,yyy:123 -vkey=xxx,yyy -type=tcp,tls -log=off
+/usr/bin/npc install -launch="npc://VKEY@xxx:123?type=tls" -log=off
 npc start|stop|restart|uninstall
 
 # Update

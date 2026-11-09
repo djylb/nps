@@ -68,7 +68,7 @@
 
 | 能力 | 到 1.0 的结果 |
 | --- | --- |
-| `npc --launch` 的 JSON、YAML、INI 配置和远程下发 hosts、tasks | 取消，没有迁移路径 |
+| `npc -launch` 的 JSON、YAML、INI 配置和远程下发 hosts、tasks | 取消，没有迁移路径 |
 | 同一 vkey 的多实例按实例路由 | 取消，不同目标改用多个成员 |
 | Webhook 的事件名和负载 | 改变，接收方需要重写 |
 | 全局 `visitor_vkey` | 改为按客户端签发的凭据，需要重新签发 |

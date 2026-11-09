@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/clock"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/version"
 	"github.com/djylb/slogx"
@@ -26,6 +29,8 @@ var (
 	launchRelaunchWait = 5 * time.Second
 )
 
+// launchPayloads are the inputs of -launch, or, when the command line gives
+// none, those of NPC_LAUNCH.
 func launchPayloads() []string {
 	var inputs []string
 	for _, input := range *launchInputs {
@@ -34,15 +39,96 @@ func launchPayloads() []string {
 		}
 	}
 	if len(inputs) == 0 {
-		if env := strings.TrimSpace(os.Getenv("NPC_LAUNCH")); env != "" {
-			inputs = append(inputs, env)
+		inputs = splitLaunchEnv(os.Getenv("NPC_LAUNCH"))
+	}
+	return inputs
+}
+
+// splitLaunchEnv splits the value of NPC_LAUNCH into inputs, one per line:
+// a launch link has commas of its own (alpn=h3,nps), so only a line break
+// separates them. Empty lines are ignored; a line may be @file.
+func splitLaunchEnv(env string) []string {
+	var inputs []string
+	for line := range strings.SplitSeq(strings.ReplaceAll(env, "\r", "\n"), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			inputs = append(inputs, line)
 		}
 	}
 	return inputs
 }
 
+// accessFlags are the point-to-point visitor flags with the launch link
+// parameter each one is.
+var accessFlags = map[string]string{
+	"local_type": "local_type", "local_port": "local_port", "conn_mode": "conn_mode",
+	"target": "target", "local_proxy": "local_proxy",
+}
+
+// accessValue is the access key of a point-to-point visitor: -access, or its
+// alias -password. Giving both is an error.
+func accessValue(fs *flag.FlagSet) (string, error) {
+	access, _ := fs.GetString("access")
+	password, _ := fs.GetString("password")
+	if fs.Changed("access") && fs.Changed("password") {
+		return "", errors.New("-access and -password are the same setting: give one")
+	}
+	if access == "" {
+		access = password
+	}
+	return access, nil
+}
+
+// checkLaunchFlags refuses -server or -vkey together with -launch: they are
+// two ways to say which server to connect to.
+func checkLaunchFlags(fs *flag.FlagSet) error {
+	if fs.Changed("server") || fs.Changed("vkey") {
+		return errors.New("-launch cannot be combined with -server or -vkey: give the connection in one of them")
+	}
+	return nil
+}
+
+// withAccess adds the point-to-point visitor flags of fs to each launch
+// link in inputs. They only apply to links; a link that already sets a
+// parameter the flags set is an error, and so is any other input.
+func withAccess(fs *flag.FlagSet, inputs []string) ([]string, error) {
+	access, err := accessValue(fs)
+	if err != nil || access == "" {
+		return inputs, err
+	}
+	out := make([]string, len(inputs))
+	for i, in := range inputs {
+		if !connprofile.IsLink(in) {
+			return nil, errors.New("-access applies to npc:// launch links only")
+		}
+		vals := url.Values{"access": {access}}
+		l, err := connprofile.ParseLink(connprofile.AppendQuery(in, vals))
+		if err != nil {
+			return nil, fmt.Errorf("-access with the launch link: %w", err)
+		}
+		for name, key := range accessFlags {
+			if f := fs.Lookup(name); f != nil && (f.Changed || name == "local_port" && l.Local["local_port"] == "") {
+				if v := f.Value.String(); v != "" {
+					vals.Set(key, v)
+				}
+			}
+		}
+		out[i] = connprofile.AppendQuery(in, vals)
+		if _, err := connprofile.ParseLink(out[i]); err != nil {
+			return nil, fmt.Errorf("-access and the other visitor flags with the launch link: %w", err)
+		}
+	}
+	return out, nil
+}
+
 func startLaunch(ctx context.Context, cancel context.CancelFunc, inputs []string) {
-	for _, name := range []string{"server", "vkey", "type", "config", "proxy", "local_ip", "password", "target"} {
+	if err := checkLaunchFlags(flag.CommandLine); err != nil {
+		fail(cancel, err)
+	}
+	inputs, err := withAccess(flag.CommandLine, inputs)
+	if err != nil {
+		fail(cancel, err)
+	}
+	for _, name := range []string{"type", "config", "proxy", "local_ip"} {
 		if f := flag.CommandLine.Lookup(name); f != nil && f.Changed {
 			cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
 		}

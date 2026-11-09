@@ -1,8 +1,11 @@
 # NPC 命令行参数
 
 ```bash
+./npc -launch="npc://VKEY@host:8025?type=tls" -log=off -debug=false
 ./npc -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log=off -debug=false
 ```
+
+`-launch` 的启动链接是推荐写法（网页上的启动命令就是它）；`-server`、`-vkey` 继续可用，需要 `tier`、`weight` 等多承载参数的组合、多个连接共用一组列表时用 `-server`。两者互斥，同时给出会报错。链接的写法见[快速启动 -launch](/guide/client/launch.md)。
 
 ## 命令
 
@@ -17,14 +20,15 @@
 | `-vkey`, `-k` | 认证密钥，与 `-server` 的连接一一对应，分隔符与 `-server` 相同 | 无 |
 | `-type`, `-t` | 旧写法（不带 `://`）候选的承载：`tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同。`kcp` 告警后按 QUIC 连接，服务端的 KCP 端口同时接受 QUIC。URL 写法的候选由方案名决定承载，不需要 `-type`；全部是 URL 时给出 `-type` 会告警它不起作用 | `tcp` |
 | `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
-| `--launch` | [快速启动](/guide/client/launch.md)内容，可重复 | 无 |
+| `-launch` | [快速启动](/guide/client/launch.md)：`npc://` 启动链接、`npc://<base64>`、http(s) URL、`@文件`、Base64、内联 JSON/YAML/INI，可重复；与 `-server`、`-vkey` 同时给出时报错。写成 `--launch` 也可以；环境变量 `NPC_LAUNCH` 见下 | 无 |
 | `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
 | `-local_ip` | 出站绑定的本地 IP，与 `-server` 对应，分隔符与 `-server` 相同 | 无 |
 | `-local_ip_forward` | `local_ip` 同时作用于隧道转发出口（仅公网 IP 与域名目标） | `false` |
 | `-local_type` | 点对点访问的本地监听：`tcp_udp`、`tcp`、`udp`、`mixed`、`transparent` | `tcp_udp` |
 | `-conn_mode` | 点对点访问的连接方式：`auto`、`relay`、`direct` | `auto` |
 | `-local_port` | 访问端本地端口 | `2000` |
-| `-password` | 点对点访问隧道的唯一密钥 | 无 |
+| `-access` | 点对点访问隧道的唯一密钥，配合 `-launch` 或 `-server`/`-vkey` 使用；服务端定义的监听不用这些参数 | 无 |
+| `-password` | `-access` 的别名；两个同时给出会报错 | 无 |
 | `-target` | 点对点访问的目标，如 `10.2.50.2:22`（隧道目标之外的地址需隧道设置目标访问控制） | 无 |
 | `-local_proxy` | 点对点访问连到服务端本地 | `false` |
 | `-p2p_timeout` | 打洞超时（秒） | `5` |
@@ -127,5 +131,15 @@ PowerShell 会把不加引号的 `-server=1.2.3.4:8024` 在第一个 `.` 处拆�
 其他不认识的参数忽略并告警。
 
 环境变量：`NPC_SERVER_ADDR`、`NPC_SERVER_VKEY`、`NPC_CONFIG_PATH`、`NPC_LOCAL_IP`、`NPC_LAUNCH`。
+
+`NPC_LAUNCH` 只在命令行没有 `-launch` 时读取，不与命令行合并。多组只按换行分隔（空行忽略），不按逗号，因为链接的查询里有 `alpn=h3,nps`、`http=h2,h3` 这样的逗号；每行可以是启动链接、URL 或 `@文件`。折行的 Base64 不能放在里面，用 `base64 -w0` 生成一行，或用 `@文件`。
+
+## 安装为服务
+
+```bash
+./npc install -launch="npc://VKEY@host:8025?type=tls" -log=off
+```
+
+链接写入安装目录下仅属主可读的 `conf/npc-service-launch-N.conf`，服务定义只带 `-launch=@文件`。`-server`/`-vkey` 的安装写到 `conf/npc-service.json`，服务定义同样是 `-launch=@文件`。
 
 旧参数 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p` 仍可使用，自动换算为 `-local_type` 和 `-conn_mode` 并告警，对照表见[点对点访问](/guide/tunnels/secret.md#旧版写法)。

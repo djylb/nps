@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -171,6 +172,39 @@ func TestLaunchOnNewProtocol(t *testing.T) {
 	profiles, err := launch.Resolve(context.Background(), payload)
 	if err != nil {
 		t.Fatal(err)
+	}
+	runClient(t, func(ctx context.Context) error {
+		return launch.Run(ctx, profiles, map[string]string{}, launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})
+	})
+	waitEcho(t, "hosted tunnel", e.tunnel)
+	waitEcho(t, "relay section", net.JoinHostPort("127.0.0.1", strconv.Itoa(relayPort)))
+}
+
+// The same through launch links: a provider, a host and a visitor of the
+// tunnel, each one link as the web command and the command line write them,
+// with the visitor's access key as a link parameter.
+func TestLaunchLinksOnNewProtocol(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	old := config.CommonDefaults
+	t.Cleanup(func() { config.CommonDefaults = old })
+	e := newCoreConfigEnv(t)
+	relayPort := freeLocalPort(t)
+	link := func(vkey, query string) string {
+		return "npc://" + url.PathEscape(vkey) + "@" + e.f.addr + "?type=tcp" + query
+	}
+	var profiles []launch.Profile
+	for _, l := range []string{
+		link(e.prov, "&name=provider"),
+		link(e.f.client.VerifyKey, "&name=host"),
+		link(e.f.client.VerifyKey, "&name=visitor&local_type=tcp&conn_mode=relay&local_port="+strconv.Itoa(relayPort)+"&access="+url.QueryEscape(e.secret)),
+	} {
+		p, err := launch.Resolve(context.Background(), l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		profiles = append(profiles, p...)
 	}
 	runClient(t, func(ctx context.Context) error {
 		return launch.Run(ctx, profiles, map[string]string{}, launch.Options{DisconnectTimeout: 30, P2PTimeout: 5})

@@ -39,10 +39,11 @@ type CommonConfig struct {
 // CoreSettings are the [common] keys of the new protocol; the zero value of
 // each is the protocol's own default.
 type CoreSettings struct {
-	MaxLanes      int  // session_max_lanes: 0 is 16, 1 turns lanes off
-	RelayIdle     int  // relay_idle, seconds: 0 is 60
-	KeepServer    bool // p2p_visitor_keep_server
-	ResumeTimeout int  // session_resume_timeout, seconds: 0 is 30, negative no resume
+	MaxLanes      int    // session_max_lanes: 0 is 16, 1 turns lanes off
+	RelayIdle     int    // relay_idle, seconds: 0 is 60
+	KeepServer    bool   // p2p_visitor_keep_server
+	ResumeTimeout int    // session_resume_timeout, seconds: 0 is 30, negative no resume
+	Pin           string // new_protocol_pin: hex key id the server must have, "" for none
 }
 
 // Defaults are the values a [common] section starts from. The command line
@@ -292,6 +293,8 @@ func dealCommon(s string) *CommonConfig {
 			c.KeepServer = parseBool(item)
 		case "session_resume_timeout":
 			c.ResumeTimeout = textutil.GetIntNoErrByStr(item[1])
+		case "new_protocol_pin":
+			c.Pin = item[1]
 		case "auto_reconnection":
 			c.AutoReconnection = parseBool(item)
 		case "basic_username":

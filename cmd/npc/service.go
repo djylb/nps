@@ -32,9 +32,9 @@ var connFlags = map[string]string{
 	"server": "server", "vkey": "vkey", "type": "type", "proxy": "proxy", "local_ip": "local_ip", "pipes": "pipes",
 }
 
-// localFlags make the local server of -password, with its npc.conf key.
+// localFlags make the local server of -access (or -password), with its npc.conf key.
 var localFlags = map[string]string{
-	"local_type": "local_type", "local_port": "local_port", "password": "password",
+	"local_type": "local_type", "local_port": "local_port", "password": "password", "access": "password",
 	"target": "target_addr", "conn_mode": "conn_mode", "local_proxy": "local_proxy",
 }
 
@@ -82,8 +82,18 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	var launchInputs []string
 	if f, ok := changed("launch"); ok {
 		launchInputs, _ = fs.GetStringArray(f.Name)
-	} else if strings.TrimSpace(launchEnv) != "" {
-		launchInputs = []string{launchEnv}
+	} else {
+		launchInputs = splitLaunchEnv(launchEnv)
+	}
+	if len(launchInputs) > 0 {
+		if err := checkLaunchFlags(fs); err != nil {
+			return nil, nil, err
+		}
+	}
+	// the visitor flags go into the links, out of the service arguments
+	launchInputs, err := withAccess(fs, launchInputs)
+	if err != nil {
+		return nil, nil, err
 	}
 	for _, in := range launchInputs {
 		if err := addInput(in); err != nil {
@@ -97,7 +107,11 @@ func serviceArguments(fs *flag.FlagSet, confDir, launchEnv string) ([]string, []
 	if err != nil {
 		return nil, nil, err
 	}
-	_, p2p := changed("password")
+	access, err := accessValue(fs)
+	if err != nil {
+		return nil, nil, err
+	}
+	p2p := access != ""
 	launchMode := len(inputs) > 0
 	if !launchMode && hasCommand {
 		tp, _ := fs.GetString("type")

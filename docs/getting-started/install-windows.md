@@ -30,7 +30,7 @@
 .\nps.exe update
 
 # NPC 客户端
-.\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tcp,tls" -log="off"
+.\npc.exe install -launch="npc://VKEY@xxx:123?type=tls" -log="off"
 .\npc.exe start|stop|restart|uninstall
 
 # Update
@@ -86,7 +86,7 @@ certutil -addstore Root root-ca.cer
 
 ```bat
 npc.exe stop
-npc.exe -server="tls://nps.example.com:8025" -vkey="你的vkey"
+npc.exe -launch="npc://你的vkey@nps.example.com:8025?type=tls"
 REM 确认连接成功后按 Ctrl+C 退出，再执行以下命令
 npc.exe start
 sc query Npc

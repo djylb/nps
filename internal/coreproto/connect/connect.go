@@ -25,7 +25,6 @@ import (
 // Process holds the settings that are the same for every profile of the
 // process and have no npc.conf key. The command line sets them at start-up.
 var Process struct {
-	Pin      string // hex key id the server must have
 	UDP5Idle time.Duration
 	Compress session.CompressLimits
 }
@@ -53,7 +52,7 @@ func DialConfig(cfg *config.CommonConfig, server string) (session.DialConfig, er
 	connprofile.UseCoreDefaults(cands)
 	mode, _ := connprofile.ParsePipes(cfg.Pipes)
 	scheduler, _ := connprofile.ParseScheduler(cfg.SchedulerUp)
-	pin, err := hex.DecodeString(Process.Pin)
+	pin, err := hex.DecodeString(cfg.Pin)
 	if err != nil {
 		return dc, err
 	}

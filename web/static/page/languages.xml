@@ -228,6 +228,10 @@
 		<zh-CN>WSS 启动命令</zh-CN>
 		<en-US>WSS Command</en-US>
 	</lang>
+	<lang id="word-commandclient-install">
+		<zh-CN>安装为服务命令</zh-CN>
+		<en-US>Install as Service Command</en-US>
+	</lang>
 	<lang id="word-tcpport">
 		<zh-CN>TCP 端口</zh-CN>
 		<en-US>TCP Port</en-US>

@@ -58,7 +58,8 @@ var (
 	localType      = flag.String("local_type", config.LocalTCPUDP, "Point-to-point access listener (tcp|udp|tcp_udp|mixed|transparent)")
 	connMode       = flag.String("conn_mode", config.ConnAuto, "Point-to-point access connection (auto|relay|direct)")
 	localPort      = flag.Int("local_port", 2000, "Point-to-point access local port")
-	password       = flag.String("password", "", "Point-to-point access password")
+	access         = flag.String("access", "", "Point-to-point access key of the tunnel (with -launch or -server and -vkey)")
+	password       = flag.String("password", "", "Point-to-point access key, the old name of -access")
 	target         = flag.String("target", "", "Point-to-point access target, when the server allows it")
 	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
@@ -95,7 +96,7 @@ var (
 	p2pVisitorKeepServer = flag.Bool("p2p_visitor_keep_server", false, "Keep the server connection of a point-to-point visitor while it is idle (new protocol)")
 	relayIdle            = flag.Int("relay_idle", 0, "Seconds a relay stands by once the direct path is up, then it closes (new protocol; 0: 60)")
 	newProtocolPin       = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
-	launchInputs         = flag.StringArray("launch", nil, "Quick start payload, repeatable: npc:// URL, http(s) URL, @file, base64, JSON, YAML or INI")
+	launchInputs         = flag.StringArray("launch", nil, "Quick start, repeatable: npc:// launch link, http(s) URL, @file, base64, JSON, YAML or INI; also NPC_LAUNCH, one per line")
 )
 
 func main() {
@@ -390,8 +391,13 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		startLaunch(ctx, cancel, inputs)
 		return
 	}
+	accessKey, err := accessValue(flag.CommandLine)
+	if err != nil {
+		cfgLog.Error("invalid command line", "err", err)
+		os.Exit(1)
+	}
 	// point-to-point access command
-	if *password != "" {
+	if accessKey != "" {
 		slogx.Emit(context.Background(), log, &logevent.Started, "version", version.VERSION, "role", "npc", "core_version", legacy.CoreVersion(legacy.LatestIndex))
 		clock.Sync()
 		commonConfig := config.NewCommonConfig()
@@ -406,7 +412,7 @@ func run(ctx context.Context, cancel context.CancelFunc) {
 		localServer := new(config.LocalServer)
 		localServer.Type = strings.ToLower(strings.TrimSpace(*localType))
 		localServer.ConnMode = strings.ToLower(strings.TrimSpace(*connMode))
-		localServer.Password = *password
+		localServer.Password = accessKey
 		localServer.Target = *target
 		localServer.Port = *localPort
 		localServer.LocalProxy = *localProxy

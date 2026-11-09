@@ -99,6 +99,9 @@ type Candidate struct {
 	Count   int // pipes in multi mode, at least 1
 
 	ALPN []string // TLS ALPN of tls and quic, in order of preference
+	// Subprotocol is the WebSocket subprotocol of ws and wss, "" for none.
+	Subprotocol string
+
 	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
 
 	// How this version dials it.
@@ -340,6 +343,14 @@ func parseURL(s string) (Candidate, error) {
 			if c.ALPN = list(v); len(c.ALPN) == 0 {
 				return Candidate{}, errors.New("alpn is empty")
 			}
+		case "subprotocol":
+			if carrier != "ws" && carrier != "wss" {
+				return Candidate{}, fmt.Errorf("subprotocol is used by ws and wss, not %s", u.Scheme)
+			}
+			if v == "" {
+				return Candidate{}, errors.New("subprotocol is empty")
+			}
+			c.Subprotocol = v
 		case "http":
 			if !httpKind {
 				return Candidate{}, fmt.Errorf("http is used by http, https, ws and wss, not %s", u.Scheme)
@@ -348,7 +359,7 @@ func parseURL(s string) (Candidate, error) {
 				return Candidate{}, err
 			}
 		default:
-			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn or http)", key)
+			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn, http or subprotocol)", key)
 		}
 	}
 	c.Host = host

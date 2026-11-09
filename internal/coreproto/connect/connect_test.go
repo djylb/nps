@@ -38,12 +38,11 @@ func TestDialConfig(t *testing.T) {
 	if dc, err = DialConfig(&moved, moved.Server); err != nil || dc.ResumeTimeout != 12*time.Second {
 		t.Fatalf("%v %v", dc.ResumeTimeout, err)
 	}
-	Process.Pin = "zz"
-	t.Cleanup(func() { Process.Pin = "" })
+	moved.Pin = "zz"
 	if _, err = DialConfig(&moved, moved.Server); err == nil {
 		t.Fatal("bad pin accepted")
 	}
-	Process.Pin = ""
+	moved.Pin = ""
 	moved.Server = "tls://"
 	if _, err = DialConfig(&moved, moved.Server); err == nil {
 		t.Fatal("bad server accepted")

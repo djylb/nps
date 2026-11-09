@@ -547,6 +547,15 @@ function oCopy(obj){
     showMsg(langreply('Copied'));
 }
 
+// npcLink puts the vkey into a launch link of the page ("npc://@host:port?..."),
+// percent-encoded so that it stays one word inside the quotes of a command.
+function npcLink(link, vkey) {
+    var key = encodeURIComponent(vkey).replace(/[!'()*]/g, function (c) {
+        return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+    });
+    return link.replace('npc://@', 'npc://' + key + '@');
+}
+
 function copyText(text) {
     const textarea = document.createElement("textarea");
     textarea.value = text;

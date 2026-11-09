@@ -24,11 +24,11 @@ docker run -d --restart=always --name nps --net=host -v <local_conf_dir>:/conf -
 ```bash
 # DockerHub
 docker pull duan2001/npc
-docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off
+docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://VKEY@xxx:123?type=tls" -log=off
 
 # GHCR
 docker pull ghcr.io/djylb/npc
-docker run -d --restart=always --name npc --net=host ghcr.io/djylb/npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off
+docker run -d --restart=always --name npc --net=host ghcr.io/djylb/npc -launch="npc://VKEY@xxx:123?type=tls" -log=off
 ```
 
 未使用 `--net=host` 时注意：隧道端口由 **NPS 服务端**开放，不是 NPC 容器。

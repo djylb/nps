@@ -456,3 +456,28 @@ func TestUDPOverQUIC(t *testing.T) {
 		_ = f.Close()
 	}
 }
+
+// A launch link with an alt and pipes=multi builds the pipes of its
+// candidates: count pipes on the main address and a standby one on the alt.
+func TestLaunchLinkBuildsMultiPipes(t *testing.T) {
+	e := start(t, "tcp", rec(1, "key", true))
+	l, err := connprofile.ParseLink("npc://key@" + e.addr + "?type=tcp&pipes=multi&count=2&alt=tcp://" + e.addr + "?standby=1;weight=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode, err := connprofile.ParsePipes(l.Common["pipes"]); err != nil || mode != connprofile.PipesMulti {
+		t.Fatalf("%q %v", mode, err)
+	}
+	cs := e.dial(e.multi(l.VKey, l.Server))
+	e.waitOnline()
+	waitUntil(t, "three pipes", func() bool { return len(cs.zc.Pipes()) == 3 })
+	standby := 0
+	for _, st := range cs.zc.PipeStats() {
+		if st.Standby {
+			standby++
+		}
+	}
+	if standby != 1 {
+		t.Fatalf("%d standby pipes, want 1", standby)
+	}
+}

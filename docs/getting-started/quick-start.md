@@ -26,10 +26,10 @@ docker run -d --restart=always --name nps --net=host \
 在内网机器上运行刚才复制的命令，形如：
 
 ```bash
-./npc -server="tcp://1.1.1.1:8024" -vkey="YOUR_CLIENT_VKEY"
+./npc -launch="npc://YOUR_CLIENT_VKEY@1.1.1.1:8024?type=tcp"
 ```
 
-`-server` 用 URL 写法，协议（`tcp`、`tls`、`quic`、`ws`、`wss`）写在地址前，不需要 `-type`；旧的 `-server=host:port -type=tcp` 写法仍可使用。
+`-launch` 的启动链接把 vkey、地址和承载（`type=tcp`、`tls`、`quic`、`ws`、`wss`）写在一起；旧的 `-server="tcp://1.1.1.1:8024" -vkey="YOUR_CLIENT_VKEY"` 写法仍可使用，两种不能同时给出。
 
 客户端列表显示在线即连通。连不上时先用 `telnet`、`nc` 确认能访问 `1.1.1.1:8024`。
 
@@ -45,4 +45,4 @@ ssh -p 8001 root@1.1.1.1
 
 - 其他用途：[选择隧道类型](/getting-started/tunnel-types.md)
 - 注册系统服务：[启动 NPC 客户端](/getting-started/start-client.md)
-- 给客户端连接加密：把 `-server` 换成 `tls://1.1.1.1:8025`
+- 给客户端连接加密：把链接里的地址换成 `1.1.1.1:8025` 并写 `type=tls`

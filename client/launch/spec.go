@@ -11,12 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/url"
 	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/djylb/nps/lib/config"
@@ -74,6 +74,9 @@ func resolve(ctx context.Context, raw string, trusted bool, depth int) ([]Profil
 		}
 		return resolve(ctx, body, true, depth+1)
 	case strings.HasPrefix(lower, "npc://"):
+		if rest := raw[len("npc://"):]; rest != "" && !strings.ContainsAny(rest, "@?#/:") {
+			return resolveBase64Link(ctx, rest, trusted, depth)
+		}
 		return parseNPC(raw, trusted)
 	case looksLikeINI(raw):
 		return parseText("", raw, trusted, false, nil)
@@ -94,6 +97,29 @@ func resolve(ctx context.Context, raw string, trusted bool, depth int) ([]Profil
 		return nil, fmt.Errorf("invalid launch YAML: %w", err)
 	}
 	return parseStructured(root, trusted)
+}
+
+// resolveBase64Link reads npc://<base64>: one server instance, written in
+// any form a payload takes (a launch link, JSON, YAML, INI). Unlike plain
+// base64 it may not hold line breaks, and it may not decode to several
+// connections: those take several -launch, plain base64 or a file.
+func resolveBase64Link(ctx context.Context, rest string, trusted bool, depth int) ([]Profile, error) {
+	invalid := errors.New("after npc:// there is neither vkey@host nor valid base64")
+	if strings.IndexFunc(rest, unicode.IsSpace) >= 0 {
+		return nil, fmt.Errorf("%w (base64 after npc:// may not contain white space)", invalid)
+	}
+	decoded, ok := decodeBase64(rest)
+	if !ok {
+		return nil, invalid
+	}
+	profiles, err := resolve(ctx, decoded, trusted, depth+1)
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) != 1 {
+		return nil, fmt.Errorf("npc://<base64> stands for one connection, it holds %d: give several -launch, or use plain base64 or an @file", len(profiles))
+	}
+	return profiles, nil
 }
 
 func readFile(path string) (string, error) {
@@ -428,54 +454,36 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 	return []Profile{{Name: name, Direct: direct, Config: cfg}}, nil
 }
 
-var npcLocalKeys = map[string]string{
-	"local_type": "local_type", "local_port": "local_port", "password": "password",
-	"target": "target_addr", "target_addr": "target_addr",
-	"local_proxy": "local_proxy", "conn_mode": "conn_mode",
-}
-
-// parseNPC reads npc://vkey@host:port?type=tls. Lists use the server and vkey
-// query parameters; a local server parameter adds one local server.
+// parseNPC reads a launch link (connprofile.ParseLink) as one profile: a
+// connection alone runs as a direct profile, one with local server keys
+// is a point-to-point visitor.
 func parseNPC(raw string, trusted bool) ([]Profile, error) {
-	u, err := url.Parse(raw)
+	l, err := connprofile.ParseLink(raw)
 	if err != nil {
-		return nil, errors.New("invalid npc URL") // the parse error would log the vkey
+		return nil, err
 	}
-	m := make(map[string]any)
-	if host := u.Host + strings.TrimRight(u.Path, "/"); host != "" {
-		m["server"] = host
+	name := l.Name
+	if name == "" {
+		name = "profile-1"
 	}
-	if u.User != nil {
-		if _, ok := u.User.Password(); ok {
-			return nil, errors.New("this npc URL has a newer format; upgrade npc to use it")
+	base := map[string]any{"server_addr": l.Server, "vkey": l.VKey}
+	for k, v := range l.Common {
+		base[k] = v
+	}
+	if len(l.Local) == 0 {
+		// the vkey and the server are written as they are: they are not
+		// lists, so expandDirect's separators do not apply
+		var b strings.Builder
+		if err := writeSection(&b, "common", base); err != nil {
+			return nil, err
 		}
-		m["vkey"] = u.User.Username()
+		return parseText(name, b.String(), trusted, true, nil)
 	}
-	var local map[string]any
-	for key, values := range u.Query() {
-		value := strings.Join(values, ",")
-		switch iniKey, isLocal := npcLocalKeys[key]; {
-		case isLocal:
-			if local == nil {
-				local = map[string]any{}
-			}
-			local[iniKey] = value
-		case key == "server_addr":
-			m["server"] = value
-		case key == "conn_type":
-			m["type"] = value
-		case key == "proxy_url":
-			m["proxy"] = value
-		case key == "name" || shorthand[key] != "":
-			m[key] = value
-		default:
-			return nil, fmt.Errorf("unknown npc URL parameter %q", key)
-		}
+	local := make(map[string]any, len(l.Local))
+	for k, v := range l.Local {
+		local[k] = v
 	}
-	if local != nil {
-		m["locals"] = []any{local}
-	}
-	return parseProfile(m, "profile-1", trusted)
+	return parseProfile(map[string]any{"name": name, "common": base, "locals": []any{local}}, name, trusted)
 }
 
 // checkLocal refuses a local server with keys or values npc.conf accepts only
