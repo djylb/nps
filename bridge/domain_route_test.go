@@ -53,6 +53,7 @@ type domainFixture struct {
 	http, https string
 	h3          string
 	store       protoStore
+	admitKey    string
 }
 
 func routeFreePort(t *testing.T) int {
@@ -138,7 +139,7 @@ func domainRoute(t *testing.T, target string, cnf model.Config, h *model.Host, v
 		}
 	}
 	addr := func(p int) string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(p)) }
-	return &domainFixture{mixFixture: f, http: addr(httpP), https: addr(httpsP), h3: addr(h3P), store: store}
+	return &domainFixture{mixFixture: f, http: addr(httpP), https: addr(httpsP), h3: addr(h3P), store: store, admitKey: hex.EncodeToString(key)}
 }
 
 func dialMode(tb testing.TB, f *mixFixture, server string) (coreapi.ClientSession, string) {
@@ -499,5 +500,59 @@ func TestAutoOnMixedPort(t *testing.T) {
 			addr, _ := f.startTunnel(t, echoListener(t), "")
 			visit(t, addr, 1<<20)
 		})
+	}
+}
+
+// A route accepts the carriers of any path its Location matches, a path of
+// several levels included, without a rewrite and whatever the bridge path is.
+func TestRouteDeepLocation(t *testing.T) {
+	const deep = "/a/b/c"
+	for _, c := range []struct{ name, target, url, mode string }{
+		{"wss", "bridge://wss", "wss://%s" + deep + "?host=" + routeHost + "&sni=" + routeHost + "&subprotocol=binary", "bound"},
+		{"wss on mix", "bridge://mix", "wss://%s" + deep + "?host=" + routeHost + "&sni=" + routeHost, "bound"},
+		{"https exchange instance nonce", "bridge://ws", "https://%s" + deep + "/{instance}/{nonce}" + params("&kinds=exchange&http=http/1.1&admit_key=KEY"), "sealed"},
+		{"https streaming h1", "bridge://ws", "https://%s" + deep + params("&kinds=streaming&http=http/1.1"), "sealed"},
+		{"https split h1", "bridge://ws", "https://%s" + deep + params("&kinds=split&http=http/1.1"), "sealed"},
+		{"https exchange h1", "bridge://ws", "https://%s" + deep + params("&kinds=exchange&http=http/1.1&admit_key=KEY"), "sealed"},
+		{"h2", "bridge://ws", "https://%s" + deep + params("&kinds=streaming&http=h2"), "sealed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := domainRouteOn(t, c.target, model.Config{Crypt: true}, &model.Host{Location: deep})
+			wantMode(t, f, strings.Replace(strings.Replace(c.url, "%s", f.https, 1), "KEY", f.admitKey, 1), c.mode)
+		})
+	}
+	t.Run("h3", func(t *testing.T) {
+		f := domainRouteOn(t, "bridge://ws", model.Config{Crypt: true}, &model.Host{Location: deep})
+		wantMode(t, f, "https://"+f.h3+deep+params("&kinds=http3&http=h3"), "bound")
+		if m := <-f.store.major; m != 3 {
+			t.Fatalf("HTTP/%d", m)
+		}
+	})
+}
+
+// A path outside the Location does not reach the bridge, and a request that
+// is no carrier falls back.
+func TestRouteOutsideLocation(t *testing.T) {
+	f := domainRouteOn(t, "bridge://ws", model.Config{Crypt: true}, &model.Host{Location: "/a/b/c"})
+	cands, err := connprofile.Parse("https://"+f.https+"/a/b"+params("&kinds=streaming&http=http/1.1"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := session.NewDialer(session.DialConfig{Candidates: cands, VKey: f.client.VerifyKey, Agent: "t", Exit: client.NewCoreExit("", 0), Timeout: 2 * time.Second})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if s, err := d.Dial(ctx); err == nil {
+		_ = s.Close()
+		t.Fatal("a path outside the Location reached the bridge")
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://"+f.http+"/a/b/c/page", nil)
+	req.Host = routeHost
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatal(resp.Status)
 	}
 }

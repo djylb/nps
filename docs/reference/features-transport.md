@@ -42,6 +42,7 @@ TLS 证书校验失败时可用 `-skip_verify` 跳过。
   - **支持类型**：TCP 相关隧道（TCP 隧道、混合代理（HTTP/SOCKS5）、文件隧道等）
 
 - 转发到桥接：在目标填写 `bridge://[桥接类型]`（如 `bridge://tcp`）；`bridge://mix` 接受全部 TCP 类承载（含明文，不受 `mix_plain` 影响），旧协议只在首字节能区分时接受（`tcp`、`tls` 内层），`ws`、`wss` 只走核心协议
+  - 经 `bridge://ws`、`wss`、`mix` 路由进来的 HTTP 类承载（WebSocket、streaming、split、exchange，h2、h3 同）不再校验路径：域名与 Location（含路径重写之后）匹配上就接受，多级路径也行，路径只在路由上配置，与 `bridge_path` 无关；路由上 WebSocket 的新旧协议靠子协议 `binary` 或 `new_protocol_ws_paths` 判定，不是承载的普通请求照旧回落。直连端口上的 `bridge_path` 仍精确匹配
   - 需**管理员权限**且开启 **“代理到服务器本地”**
   - **支持类型**：tcp|tls|ws|wss|web|ipreg
     - `web`：Web 管理界面；`ipreg`：IP 登记页面（见“仅允许已登记的 IP”），例如在域名转发中把目标设为 `bridge://ipreg`，即可用自己的域名提供登记页面
