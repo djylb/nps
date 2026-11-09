@@ -29,7 +29,9 @@ func serveOpened(t *testing.T, f *coreFixture) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	servers := map[int]proxy.Service{}
+	loopDone := make(chan struct{})
 	wg.Go(func() {
+		defer close(loopDone)
 		for {
 			select {
 			case <-ctx.Done():
@@ -51,6 +53,7 @@ func serveOpened(t *testing.T, f *coreFixture) {
 	})
 	t.Cleanup(func() {
 		cancel()
+		<-loopDone // servers is the loop's until it has ended
 		for _, s := range servers {
 			_ = s.Close()
 		}

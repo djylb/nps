@@ -845,7 +845,7 @@ func (s *serverSession) pushLoop(ctx context.Context) {
 	for {
 		select {
 		case <-s.kicked:
-			if err := s.pushConfig(s.a.snapshotOf(s)); err != nil {
+			if err := s.pushConfig(ctx, s.a.snapshotOf(s)); err != nil {
 				log.Debug("config push failed", "client", s.t.client, "err", err)
 			}
 		case <-stop:
@@ -856,9 +856,11 @@ func (s *serverSession) pushLoop(ctx context.Context) {
 	}
 }
 
-// pushConfig opens one stream carrying a full snapshot (§4.3).
-func (s *serverSession) pushConfig(snap *wire.Snapshot) error {
-	st, err := s.zc.OpenUniStream()
+// pushConfig opens one stream carrying a full snapshot (§4.3). It waits for
+// stream credit until ctx or the session ends, so a push is never dropped;
+// the kicks that arrive meanwhile are answered by the next snapshot.
+func (s *serverSession) pushConfig(ctx context.Context, snap *wire.Snapshot) error {
+	st, err := s.zc.OpenUniStreamSync(ctx)
 	if err != nil {
 		return err
 	}

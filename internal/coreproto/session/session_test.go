@@ -654,7 +654,7 @@ func TestConfigMalformedKeepsOld(t *testing.T) {
 	}
 	_ = st.Close()
 	s.seq.Store(1)
-	if err := s.pushConfig(&wire.Snapshot{}); err != nil {
+	if err := s.pushConfig(context.Background(), &wire.Snapshot{}); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "seq 2", func() bool { return cs.appliedSeq() == 2 })

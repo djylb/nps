@@ -1292,7 +1292,10 @@ func (t *Tunnel) LogRoute() string {
 	if t.hostRoute != "" {
 		return t.hostRoute
 	}
-	return t.Mode + ":" + strconv.Itoa(t.Port)
+	t.RLock()
+	mode := t.Mode
+	t.RUnlock()
+	return mode + ":" + strconv.Itoa(t.Port)
 }
 
 // ListenKinds reports the protocols t listens on at its port: TCP unless the
