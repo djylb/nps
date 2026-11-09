@@ -15,7 +15,7 @@
 | `-server`, `-s` | 服务器连接：多个连接（档案）之间用逗号分隔（旧写法），使用 URL 写法时改用分号；每个连接内用 `\|` 分隔多个承载候选，见下文“服务器地址” | 无 |
 | `-pipes` | 每个连接的管道模式：`single`、`multi`（`multi` 需要 zmux，当前告警一次后按 `single` 运行） | `single` |
 | `-vkey`, `-k` | 认证密钥，与 `-server` 的连接一一对应，分隔符与 `-server` 相同 | 无 |
-| `-type`, `-t` | 旧写法（不带 `://`）候选的承载：`tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同。URL 写法的候选由方案名决定承载，不需要 `-type`；全部是 URL 时给出 `-type` 会告警它不起作用 | `tcp` |
+| `-type`, `-t` | 旧写法（不带 `://`）候选的承载：`tcp`、`tls`、`kcp`、`quic`、`ws`、`wss`，分隔符与 `-server` 相同。`kcp` 告警后按 QUIC 连接，服务端的 KCP 端口同时接受 QUIC。URL 写法的候选由方案名决定承载，不需要 `-type`；全部是 URL 时给出 `-type` 会告警它不起作用 | `tcp` |
 | `-config`, `-c` | 配置文件路径，逗号分隔 | 无 |
 | `--launch` | [快速启动](/guide/client/launch.md)内容，可重复 | 无 |
 | `-proxy` | 经代理连接：http、https、socks5、socks5h、socks4、socks4a | 无 |
@@ -70,7 +70,7 @@
 
 候选有两种写法：
 
-- **URL**：方案即承载：`tcp://`、`tls://`、`quic://`、`http://`、`https://`（后续版本的承载条目同样只有这五种），另外本版本还接受 `kcp://`、`ws://`（= `http://` 只用 websocket）、`wss://`（= `https://` 只用 websocket）。URL 里写**拨号地址**；未写端口时用默认端口（tcp/kcp 8024，tls/quic 8025，http/ws 80，https/wss 443），IPv6 写成 `tcp://[::1]:8024`。路径是 http/https/ws/wss 的端点路径（默认 `/ws`），多级路径直接写，如 `/api/v2/ws`；其他方案不能带路径。路径或参数里的 `|` 写成 `%7C`，`?` 写成 `%3F`。查询参数（与后续版本的承载条目同名）：
+- **URL**：方案即承载：`tcp://`、`tls://`、`quic://`、`http://`、`https://`（后续版本的承载条目同样只有这五种），另外本版本还接受 `kcp://`（按 QUIC 连接）、`ws://`（= `http://` 只用 websocket）、`wss://`（= `https://` 只用 websocket）。URL 里写**拨号地址**；未写端口时用默认端口（tcp/kcp 8024，tls/quic 8025，http/ws 80，https/wss 443），IPv6 写成 `tcp://[::1]:8024`。路径是 http/https/ws/wss 的端点路径（默认 `/ws`），多级路径直接写，如 `/api/v2/ws`；其他方案不能带路径。路径或参数里的 `|` 写成 `%7C`，`?` 写成 `%3F`。查询参数（与后续版本的承载条目同名）：
   - `tier`：整数，越小越先尝试，默认 0；
   - `weight`：非负整数，多管道的权重，本版本只解析保存；
   - `standby`：布尔，备用候选，默认 false（只写 `standby` 也算 true）；

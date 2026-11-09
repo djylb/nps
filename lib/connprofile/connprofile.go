@@ -374,8 +374,8 @@ const DefaultQUICALPN = "h3"
 func UseCoreDefaults(cands []Candidate) {
 	for i := range cands {
 		if cands[i].Carrier == "kcp" {
-			// Not a carrier of the core protocol; the port of a kcp bridge
-			// also takes quic when only bridge_port is set.
+			// Not a carrier of the core protocol; the KCP port of a bridge
+			// also takes QUIC.
 			log.Warn("kcp is not available, connecting with quic", "server", cands[i].Addr)
 			cands[i].Carrier, cands[i].ALPN = "quic", []string{DefaultQUICALPN}
 		}
