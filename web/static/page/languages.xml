@@ -297,8 +297,8 @@
 		<en-US>Spread by measured rate</en-US>
 	</lang>
 	<lang id="word-schedulerclient">
-		<zh-CN>默认</zh-CN>
-		<en-US>Default</en-US>
+		<zh-CN>跟随客户端配置</zh-CN>
+		<en-US>Follow client setting</en-US>
 	</lang>
 	<lang id="word-compress">
 		<zh-CN>压缩</zh-CN>

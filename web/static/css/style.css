@@ -12774,6 +12774,8 @@ body.md-skin {
 .npslist:not(.npslist-card) .table > tbody > tr > td.npslist-view,
 .npslist-head th.npslist-view {
     right: var(--npslist-action-w, 0px);
+    /* covers any sub-pixel gap to the option column, which paints over it */
+    box-shadow: inset 1px 0 0 var(--border-color), 8px 0 0 var(--bg);
 }
 .npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-action,
 .npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-view {

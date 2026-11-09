@@ -346,7 +346,7 @@
     Enhancer.prototype.pinned = function () {
         var th = this.table.find('> thead > tr').last().children('th.npslist-action')[0];
         var width = th && th.offsetWidth > 0 ? th.getBoundingClientRect().width : 0;
-        var value = width + 'px';
+        var value = Math.max(0, Math.floor(width)) + 'px';
         if (this.offset === value) return;
         this.offset = value;
         this.page[0].style.setProperty('--npslist-action-w', value);
