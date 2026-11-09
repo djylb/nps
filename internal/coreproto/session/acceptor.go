@@ -102,7 +102,7 @@ type Acceptor struct {
 
 	usageMu sync.Mutex
 	usage   map[uint64]*linkUsage // direct usage reported per link (§9.6)
-	clock   func() time.Time
+	clock   func() time.Time      // of the usage records; called with usageMu held
 
 	mu     sync.Mutex
 	sess   map[int][]*serverSession

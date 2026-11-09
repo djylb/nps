@@ -671,7 +671,13 @@ func TestClientChangesTakeEffect(t *testing.T) {
 	}
 	// off: pushed, session stays
 	e.a.ClientChanged(rec(2, "key-2", false))
-	waitFor(t, "record 4 pushed", func() bool { return cs.appliedSeq() == 2 })
+	// The change can coalesce with the session's first snapshot, so what counts
+	// is the content that arrives and not how many snapshots carried it.
+	waitFor(t, "record 4 pushed", func() bool {
+		cs.d.mu.Lock()
+		defer cs.d.mu.Unlock()
+		return cs.d.record == wire.RecordTrusted
+	})
 	// on: drained
 	e.a.ClientChanged(rec(2, "key-2", true))
 	select {

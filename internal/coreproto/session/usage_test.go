@@ -209,7 +209,9 @@ func TestUsageForgedLinkIgnored(t *testing.T) {
 func TestUsageAfterLinkEnd(t *testing.T) {
 	p := startPeerUsage(t, false, 0, time.Hour)
 	now := time.Now()
+	p.a.usageMu.Lock()
 	p.a.clock = func() time.Time { return now }
+	p.a.usageMu.Unlock()
 	ctx := peerCtx(t)
 	vis, err := p.outer.Get(ctx)
 	if err != nil {
@@ -225,7 +227,9 @@ func TestUsageAfterLinkEnd(t *testing.T) {
 	sendUsage(t, p.provider, wire.LinkUsage{LinkID: r.LinkID, In: 25, Out: 12})
 	waitUntil(t, "late report", func() bool { i, o := p.totals(); return i == 25 && o == 12 })
 
+	p.a.usageMu.Lock()
 	now = now.Add(usageKeep + time.Second)
+	p.a.usageMu.Unlock()
 	sendUsage(t, p.provider, wire.LinkUsage{LinkID: r.LinkID, In: 99, Out: 99})
 	time.Sleep(300 * time.Millisecond)
 	if in, out := p.totals(); in != 25 || out != 12 {

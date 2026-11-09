@@ -174,9 +174,9 @@ func (a *Acceptor) trackUsage(l *peerLink) {
 // endUsage lets the record of an ended link stand for usageKeep more, and
 // drops the ones past it.
 func (a *Acceptor) endUsage(id uint64) {
-	now := a.clock()
 	a.usageMu.Lock()
 	defer a.usageMu.Unlock()
+	now := a.clock()
 	if u := a.usage[id]; u != nil && u.expires.IsZero() {
 		u.expires = now.Add(usageKeep)
 	}
@@ -191,8 +191,8 @@ func (a *Acceptor) endUsage(id uint64) {
 // value. An entry of a link that is not the provider's, unknown or past its
 // keep time is ignored.
 func (a *Acceptor) addUsage(provider int, e wire.LinkUsage) {
-	now := a.clock()
 	a.usageMu.Lock()
+	now := a.clock()
 	u := a.usage[e.LinkID]
 	if u == nil || u.provider != provider || !u.expires.IsZero() && now.After(u.expires) {
 		a.usageMu.Unlock()
