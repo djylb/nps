@@ -1,7 +1,8 @@
 /* Shared behaviour of the bootstrap-table lists (clients, tunnels, domains):
- * per-page column choice kept in localStorage, a pinned option column, a
- * header that stays in view while the page scrolls, and a horizontal scroll
- * bar fixed to the bottom of the screen. The page scrolls inside #wrapper and
+ * per-page column choice kept in localStorage, pinned view and option
+ * columns, a header that stays in view while the page scrolls, and a
+ * horizontal scroll bar fixed to the bottom of the visible page area. The page
+ * scrolls inside div.wrapper-content (the window itself does not scroll) and
  * the table scrolls inside .fixed-table-body, both of which clip, so the
  * header and the bar are floating copies kept in step by script.
  * Below CARD_MAX_WIDTH the table is shown as cards, following the window
@@ -70,6 +71,7 @@
     }
 
     function isOptionColumn(column) { return column.field === 'option'; }
+    function isViewColumn(column) { return column.field === 'show'; }
 
     // init starts the table with the saved column choice applied to options.columns.
     // opts.key names the page; opts.columns need not carry the pinned option class.
@@ -83,6 +85,8 @@
                 column.class = ((column.class || '') + ' npslist-action').trim();
                 return;
             }
+            // pinned beside the option column; it stays switchable
+            if (isViewColumn(column)) column.class = ((column.class || '') + ' npslist-view').trim();
             if (saved && typeof saved[column.field] === 'boolean' && column.switchable !== false) column.visible = saved[column.field];
         });
         table.on('column-switch.bs.table column-switch-all.bs.table', function () {
@@ -224,6 +228,19 @@
         table.on('collapse-row.bs.table', function (e, index) { expandState(index, false); });
     }
 
+    // pageScroller returns the element the page scrolls in: the nearest
+    // ancestor that scrolls vertically (div.wrapper-content in the layout), or
+    // null when only the window scrolls.
+    function pageScroller(node) {
+        var el = node.closest('.wrapper-content');
+        if (el) return el;
+        for (el = node.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+            var oy = getComputedStyle(el).overflowY;
+            if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+        }
+        return null;
+    }
+
     function Enhancer(table) {
         var self = this;
         self.table = table;
@@ -233,6 +250,8 @@
         self.page = table.closest('.ibox-content, .content');
         if (!self.page.length) self.page = self.host.parent();
         self.scroller = table.closest('.fixed-table-body');
+        // the element the page scrolls in; null when the window scrolls
+        self.root = pageScroller(table[0]);
         self.head = null;
         self.bar = null;
         self.pending = 0;
@@ -242,7 +261,8 @@
             'check.bs.table uncheck.bs.table check-all.bs.table uncheck-all.bs.table expand-row.bs.table collapse-row.bs.table ' +
             'load-success.bs.table toggle.bs.table', function () { self.schedule(true); });
         self.bar.on('scroll', function () { self.syncFromBar(); });
-        // the page scrolls in #wrapper; capture catches any scroller on the page
+        // scroll does not bubble; capture catches the page scroller, the window
+        // and the table body, which bootstrap-table may replace
         document.addEventListener('scroll', function (e) {
             if (e.target === self.table.closest('.fixed-table-body')[0]) self.scroller = $(e.target), self.syncFromScroller();
             self.schedule(false);
@@ -252,6 +272,7 @@
             var observer = new ResizeObserver(function () { self.schedule(true); });
             observer.observe(table[0]);
             observer.observe(self.page[0]);
+            if (self.root) observer.observe(self.root);
         }
         if (window.MutationObserver) {
             // sorting marks, translations and column switches change the header
@@ -306,18 +327,55 @@
         return 0;
     };
 
+    // area returns the part of the screen the page is seen in: the scroll
+    // container (the footer lies below it, outside).
+    Enhancer.prototype.area = function () {
+        var box = this.root ? this.root.getBoundingClientRect() : {left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight};
+        var area = {
+            left: box.left,
+            top: Math.max(box.top, 0),
+            // the vertical scroll bar of the container is not part of it
+            right: this.root ? box.left + this.root.clientWidth : box.right,
+            bottom: Math.min(box.bottom, window.innerHeight)
+        };
+        return area;
+    };
+
+    // pinned measures the option column, which the view column sits beside,
+    // and hands the offset to the style sheet.
+    Enhancer.prototype.pinned = function () {
+        var th = this.table.find('> thead > tr').last().children('th.npslist-action')[0];
+        var width = th && th.offsetWidth > 0 ? th.getBoundingClientRect().width : 0;
+        var value = width + 'px';
+        if (this.offset === value) return;
+        this.offset = value;
+        this.page[0].style.setProperty('--npslist-action-w', value);
+        this.head[0].style.setProperty('--npslist-action-w', value);
+    };
+
+    Enhancer.prototype.showBar = function (on, height) {
+        if (!on) this.bar.hide();
+        if (this.barOn === on) return;
+        this.barOn = on;
+        // lets other floating controls (back to top) make room
+        window.dispatchEvent(new CustomEvent('npslist:hbar', {detail: {visible: on, height: height || 0}}));
+    };
+
     Enhancer.prototype.update = function () {
         var self = this;
         self.scroller = self.table.closest('.fixed-table-body');
+        self.root = pageScroller(self.table[0]);
         var off = !self.table.is(':visible') || self.cardView();
         self.page.toggleClass('npslist-card', self.cardView());
         if (off) {
             self.head.hide();
-            self.bar.hide();
+            self.showBar(false);
             self.dirty = false;
             return;
         }
-        var el = self.scroller[0], vh = window.innerHeight;
+        self.pinned();
+        var el = self.scroller[0];
+        var area = self.area();
         var rect = el.getBoundingClientRect();
         var overflowing = el.scrollWidth > el.clientWidth + 1;
 
@@ -325,26 +383,30 @@
         var thead = self.table.find('> thead')[0];
         var show = false;
         if (thead) {
-            var headRect = thead.getBoundingClientRect(), top = self.topOffset();
+            var headRect = thead.getBoundingClientRect(), top = Math.max(self.topOffset(), area.top);
             var tableRect = self.table[0].getBoundingClientRect();
-            show = headRect.top < top && tableRect.bottom - headRect.height > top && rect.top < vh;
+            show = headRect.top < top && tableRect.bottom - headRect.height > top && rect.top < area.bottom;
             if (show) {
                 if (self.dirty || !self.head.children().length) self.rebuildHead(thead);
-                var inner = self.head.children('table');
-                self.head.css({top: top + 'px', left: rect.left + 'px', width: el.clientWidth + 'px'}).show();
-                inner.css('transform', 'translateX(' + (-el.scrollLeft) + 'px)');
+                var left = Math.max(rect.left, area.left), right = Math.min(rect.left + el.clientWidth, area.right);
+                self.head.css({top: top + 'px', left: left + 'px', width: Math.max(0, right - left) + 'px'}).show();
+                self.headShift = left - rect.left;
+                self.head[0].scrollLeft = el.scrollLeft + self.headShift;
             }
         }
         if (!show) self.head.hide();
 
-        // fixed horizontal scroll bar, only while the real one is below the screen
-        var barShow = overflowing && rect.bottom > vh && rect.top < vh - 40;
+        // fixed horizontal scroll bar at the lower edge of the visible area,
+        // only while the table's own bar (at the foot of the table) is below it
+        var barShow = overflowing && rect.bottom > area.bottom + 1 && rect.top < area.bottom - 40;
         if (barShow) {
-            self.bar.css({left: rect.left + 'px', width: el.clientWidth + 'px'}).show();
+            var l = Math.max(rect.left, area.left), r = Math.min(rect.left + el.clientWidth, area.right);
+            self.bar.css({left: l + 'px', width: Math.max(0, r - l) + 'px', bottom: (window.innerHeight - area.bottom) + 'px'}).show();
             self.bar.children().css('width', el.scrollWidth + 'px');
             if (self.bar[0].scrollLeft !== el.scrollLeft) self.bar[0].scrollLeft = el.scrollLeft;
+            self.showBar(true, self.bar[0].offsetHeight);
         } else {
-            self.bar.hide();
+            self.showBar(false);
         }
         self.dirty = false;
     };
@@ -368,7 +430,7 @@
     Enhancer.prototype.syncFromScroller = function () {
         var el = this.scroller[0];
         if (this.bar.is(':visible') && this.bar[0].scrollLeft !== el.scrollLeft) this.bar[0].scrollLeft = el.scrollLeft;
-        if (this.head.is(':visible')) this.head.children('table').css('transform', 'translateX(' + (-el.scrollLeft) + 'px)');
+        if (this.head.is(':visible')) this.head[0].scrollLeft = el.scrollLeft + (this.headShift || 0);
     };
 
     Enhancer.prototype.syncFromBar = function () {

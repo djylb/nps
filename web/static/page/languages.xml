@@ -2075,6 +2075,10 @@
 		<zh-CN>全选（当前页）</zh-CN>
 		<en-US>Select all (current page)</en-US>
 	</lang>
+	<lang id="word-backtotop">
+		<zh-CN>回到顶部</zh-CN>
+		<en-US>Back to top</en-US>
+	</lang>
 	<lang id="word-sortby">
 		<zh-CN>排序方式</zh-CN>
 		<en-US>Sort by</en-US>

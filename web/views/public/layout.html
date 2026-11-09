@@ -27,6 +27,7 @@
     <script src="{{.web_base_url}}/static/js/language.js?v={{.version}}" type="text/javascript"></script>
     <script src="{{.web_base_url}}/static/js/live-refresh.js?v={{.version}}"></script>
     <script src="{{.web_base_url}}/static/js/list-table.js?v={{.version}}"></script>
+    <script src="{{.web_base_url}}/static/js/back-to-top.js?v={{.version}}"></script>
     {{.head_custom_code}}
 </head>
 
@@ -156,6 +157,7 @@
             <div><strong langtag="word-copyright"></strong> <span langtag="application"></span> &copy; 2018-{{.year}}</div>
         </div>
     </div>
+    <button type="button" id="back-to-top" class="back-to-top" langtitle="word-backtotop"><i class="fa fa-arrow-up" aria-hidden="true"></i><span class="sr-only" langtag="word-backtotop">Back to top</span></button>
 </div>
 </body>
 </html>

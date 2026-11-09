@@ -1748,17 +1748,6 @@ body.mini-navbar .navbar-default .nav > li > .nav-second-level li a {
     transition: margin 0s;
 }
 
-@media (max-height: 600px) {
-    .footer {
-        margin-top: auto;
-        bottom: auto !important;
-        left: auto !important;
-        width: 100%;
-        position: relative;
-        z-index: -1;
-    }
-}
-
 .pace-done .navbar-static-side,
 .pace-done .nav-header,
 .pace-done li.active,
@@ -5958,38 +5947,20 @@ ol.unstyled {
     border-top: 1px solid var(--border-color);
 }
 
-.footer.fixed {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
+/* The footer is the last row of #page-wrapper, below the page area: it takes
+ * its own height (two or three lines on narrow screens) and never covers the
+ * content or sits at a position that depends on the window height. */
+#page-wrapper .footer.fixed {
+    position: relative;
+    flex: none;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: 1;
+    margin: 0;
     padding: 10px 20px;
     background: var(--bg-mid);
     border-top: 1px solid transparent;
-    margin-left: 220px;
-}
-
-body.mini-navbar .footer.fixed,
-body.body-small.mini-navbar .footer.fixed {
-    margin: 0 0 0 70px;
-}
-
-body.mini-navbar.fixed-sidebar .footer.fixed {
-    margin: 0;
-}
-
-body.mini-navbar.canvas-menu .footer.fixed,
-body.canvas-menu .footer.fixed {
-    margin: 0 !important;
-}
-
-body.fixed-sidebar.body-small.mini-navbar .footer.fixed {
-    margin: 0 0 0 220px;
-}
-
-body.body-small .footer.fixed {
-    margin-left: 0;
 }
 
 /* PANELS */
@@ -12782,24 +12753,38 @@ body.md-skin {
     }
 }
 
-/* Lists: pinned option column, floating header and horizontal scroll bar
- * (see list-table.js). Cells that stay in place need an opaque background:
- * the page colour plus the stripe and hover tints of the row under them. */
+/* Lists: pinned view and option columns, floating header and horizontal
+ * scroll bar (see list-table.js). Cells that stay in place need an opaque
+ * background: the page colour plus the stripe and hover tints of the row
+ * under them. The view column sits left of the option column, whose
+ * measured width script puts in --npslist-action-w. */
 .npslist:not(.npslist-card) .table > thead > tr > th.npslist-action,
-.npslist:not(.npslist-card) .table > tbody > tr > td.npslist-action {
+.npslist:not(.npslist-card) .table > tbody > tr > td.npslist-action,
+.npslist:not(.npslist-card) .table > thead > tr > th.npslist-view,
+.npslist:not(.npslist-card) .table > tbody > tr > td.npslist-view,
+.npslist-head th.npslist-action,
+.npslist-head th.npslist-view {
     position: sticky;
     right: 0;
     z-index: 2;
     background-color: var(--bg);
     box-shadow: inset 1px 0 0 var(--border-color);
 }
-.npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-action {
+.npslist:not(.npslist-card) .table > thead > tr > th.npslist-view,
+.npslist:not(.npslist-card) .table > tbody > tr > td.npslist-view,
+.npslist-head th.npslist-view {
+    right: var(--npslist-action-w, 0px);
+}
+.npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-action,
+.npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-view {
     background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05));
 }
-.npslist:not(.npslist-card) .table-hover > tbody > tr:hover > td.npslist-action {
+.npslist:not(.npslist-card) .table-hover > tbody > tr:hover > td.npslist-action,
+.npslist:not(.npslist-card) .table-hover > tbody > tr:hover > td.npslist-view {
     background-image: linear-gradient(rgba(0, 0, 0, .075), rgba(0, 0, 0, .075));
 }
-.npslist:not(.npslist-card) .table-striped.table-hover > tbody > tr:nth-of-type(odd):hover > td.npslist-action {
+.npslist:not(.npslist-card) .table-striped.table-hover > tbody > tr:nth-of-type(odd):hover > td.npslist-action,
+.npslist:not(.npslist-card) .table-striped.table-hover > tbody > tr:nth-of-type(odd):hover > td.npslist-view {
     background-image: linear-gradient(rgba(0, 0, 0, .075), rgba(0, 0, 0, .075)), linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05));
 }
 .npslist-head,
@@ -12814,23 +12799,25 @@ body.md-skin {
 }
 .npslist-head > table {
     margin-bottom: 0;
-    transform-origin: 0 0;
 }
-.npslist-head th.npslist-action {
-    background-color: var(--bg);
-}
+/* The bar sits at the lower edge of the visible page area, above the fixed
+ * footer; script sets left, width and bottom. The scroll bar is drawn by the
+ * page itself so that systems which hide scroll bars still show it. */
 .npslist-hbar {
     z-index: 90;
-    bottom: 0;
-    height: 14px;
-    overflow-x: auto;
+    height: 16px;
+    overflow-x: scroll;
     overflow-y: hidden;
-    background-color: var(--bg);
+    background-color: var(--bg-mid);
+    border-top: 1px solid var(--border-color);
 }
 .npslist-hbar-fill { height: 1px; }
-.npslist-hbar::-webkit-scrollbar { height: 12px; }
-.npslist-hbar::-webkit-scrollbar-thumb { background: var(--active-color); border-radius: 6px; }
+.npslist-hbar::-webkit-scrollbar { height: 14px; background: var(--bg-mid); }
+.npslist-hbar::-webkit-scrollbar-thumb { background: var(--active-color); border-radius: 7px; border: 2px solid var(--bg-mid); min-width: 40px; }
 .npslist-hbar::-webkit-scrollbar-track { background: var(--bg-mid); }
+@supports not selector(::-webkit-scrollbar) {
+    .npslist-hbar { scrollbar-width: auto; scrollbar-color: var(--active-color) var(--bg-mid); }
+}
 .detail-column { white-space: nowrap; }
 
 /* Lists in card view (narrow screens, see list-table.js): one bordered card
@@ -12951,4 +12938,41 @@ body.md-skin {
     color: var(--color);
     background-color: var(--bg-title);
     border-color: var(--active-color);
+}
+
+/* Back to top button (see back-to-top.js): bottom-right of the page area,
+ * above the lists' horizontal scroll bar; script sets right and bottom. */
+.back-to-top {
+    position: fixed;
+    right: 16px;
+    bottom: 56px;
+    z-index: 95;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--active-color);
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .2s, visibility .2s;
+}
+.back-to-top.is-visible {
+    opacity: 1;
+    visibility: visible;
+}
+.back-to-top:hover,
+.back-to-top:focus {
+    filter: brightness(1.1);
+    outline: 2px solid var(--bg);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--active-color), 0 2px 8px rgba(0, 0, 0, .3);
+}
+@media (prefers-reduced-motion: reduce) {
+    .back-to-top { transition: none; }
 }
