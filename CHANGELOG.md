@@ -9,6 +9,7 @@
 ## Stable
 
 ### v0.35.0
+- 初始 `conf/nps.conf`、`conf/npc.jsonc` 重写为按用途分组的精简文件（运行、混合端口、域名代理、网页管理、安全、限制、日志），行为不变，其余设置用默认值，见 docs/reference/server-config.md
 - 新安装只用可延续到下一大版本的形式：初始 `nps.conf` 只开混合端口 `mix_port=8024`（不再含 `bridge_*_port`，不启用 KCP），初始客户端配置由 `conf/npc.conf` 改为 `conf/npc.jsonc`（`profiles` 写法），不再附带 `multi_account.conf`；npc 不带参数时先读 `conf/npc.jsonc`，没有时读已有的 `conf/npc.conf`，升级不覆盖已有文件；`bridge_port`、各协议端口、npc.conf 与 `-server`/`-vkey`/`-type` 照常读取，在文档中标为已弃用
 - 私密代理（secret）与 P2P 合并为“点对点访问”（隧道模式 `secret`）：访问端用 `local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`socks5`、`http`、`transparent`）选本地监听，`conn_mode`（`auto` 默认、`relay`、`direct`）选经 nps 中转、打洞直连或自动。旧配置自动换算并告警：npc.conf 的 `mode=p2p` 任务、`[p2p...]` 节、`target_type`、`fallback_secret`、旧的 `local_type` 取值，nps 存储与面板导入里的 p2p 隧道（密钥不变，访问端照常可用），以及 npc 命令行的 `-local_type=p2p|p2ps|p2pt|secret`、`-target_type`、`-fallback_secret`、`-disable_p2p`。**不兼容**：Web/API 不再接受 `mode=p2p`；`-launch` 只接受新写法；旧版 npc 不能与新版互通点对点访问。对照表见 docs/guide/tunnels/secret.md
 - 点对点访问的 `local_proxy`（由服务端连接目标）：隧道开启“代理到本地”且 `allow_local_proxy=true` 时，访问端的 `local_proxy=true` 才生效，中转走服务端；隧道没开时访问端写了也不报错，仍由提供端 npc 连接。移除 `allow_secret_local`（写了 true 告警）。核心协议的 LINK 请求带 `server_exit=1` 表示访问端要求服务端作出口
