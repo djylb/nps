@@ -1,9 +1,10 @@
 # NPC 命令行参数
 
 ```bash
-./npc -launch="npc://VKEY@host:8025?type=tls" -log=off -debug=false
-./npc -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log=off -debug=false
+./npc -launch="npc://VKEY@host:8024?type=tls" -log=off -debug=false
 ```
+
+> **已弃用**：`-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`-config` 指向的 npc.conf 为旧写法，分别由 `-launch`、`-L`、`conf/npc.jsonc` 取代，仍可使用。
 
 一条连接用 `-launch`，一个本地访问用 `-L`，都可重复，写法见[快速启动](/guide/client/launch.md)，网页的“启动命令生成器”可以生成。`-server`、`-vkey`、`-type`、npc.conf 继续可用，转换成同一启动配置；`-launch` 与 `-server`、`-vkey` 互斥。
 
@@ -139,7 +140,7 @@ PowerShell 会把不加引号的 `-server=1.2.3.4:8024` 在第一个 `.` 处拆�
 ## 安装为服务
 
 ```bash
-./npc install -launch="npc://VKEY@host:8025?type=tls" -log=off
+./npc install -launch="npc://VKEY@host:8024?type=tls" -log=off
 ```
 
 链接写入安装目录下仅属主可读的 `conf/npc-service-launch-N.conf`，`-L` 写入 `conf/npc-service-local.conf`，服务定义只带 `@文件`。`-server`/`-vkey` 的安装写到 `conf/npc-service.json`，服务定义同样是 `-launch=@文件`。

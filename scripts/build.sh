@@ -177,8 +177,7 @@ main() {
 
   if [[ "$mode" == "all" || "$mode" == "client" ]]; then
     build_group npc client "$CLIENT_TARGETS" \
-      conf/npc.conf \
-      conf/multi_account.conf
+      conf/npc.jsonc
   fi
 
   if [[ "$mode" == "all" || "$mode" == "server" ]]; then

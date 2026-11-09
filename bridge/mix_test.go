@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -459,4 +461,25 @@ func TestBridgeKCPAndQUICSharePort(t *testing.T) {
 		f.dialCore(t, "quic://"+f.addr+"?alpn=h3", true)
 	})
 	t.Run("quic old", func(t *testing.T) { boot(t).dialOld(t, "quic", true) })
+}
+
+// The shipped nps.conf yields a mixed port that takes a core carrier and the
+// old protocol over TLS.
+func TestShippedConfigMixedPort(t *testing.T) {
+	path := filepath.Join("..", "conf", "nps.conf")
+	if err := servercfg.Load(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		empty := filepath.Join(t.TempDir(), "nps.conf")
+		_ = os.WriteFile(empty, nil, 0o600)
+		_ = servercfg.Load(empty)
+	})
+	n := servercfg.Current().Network
+	if n.MixPort == 0 {
+		t.Fatal("no mixed port")
+	}
+	f := mixOn(t, mixPort, n)
+	f.dialCore(t, "tls://"+f.addr, true)
+	mixOn(t, mixPort, n).dialOld(t, "tls", true)
 }

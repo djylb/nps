@@ -131,13 +131,17 @@ func GetNpcLogPath() string {
 	return path
 }
 
-// GetConfigPath config file path
+// GetConfigPath is the default npc configuration file: conf/npc.jsonc, or
+// an existing conf/npc.conf where there is no such file.
 func GetConfigPath() string {
-	var path string
+	path, old := "conf/npc.jsonc", "conf/npc.conf"
 	if IsWindows() {
-		path = filepath.Join(GetAppPath(), "conf/npc.conf")
-	} else {
-		path = "conf/npc.conf"
+		path, old = filepath.Join(GetAppPath(), path), filepath.Join(GetAppPath(), old)
+	}
+	if _, err := os.Stat(path); err != nil {
+		if _, err := os.Stat(old); err == nil {
+			return old
+		}
 	}
 	return path
 }

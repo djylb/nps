@@ -3,10 +3,10 @@
 一条连接用 `-launch`，一个本地访问用 `-L`，都可重复。网页上客户端和点对点隧道的“编辑”页可以生成完整命令。命令行没有 `-launch` 时读环境变量 `NPC_LAUNCH`（每行一个）。日志、`-skip_verify` 等进程级设置仍是普通 flag。
 
 ```bash
-npc -launch="npc://vkey@1.2.3.4:8025?type=tls"
+npc -launch="npc://vkey@1.2.3.4:8024?type=tls"
 npc -launch=@/etc/npc/npc.jsonc
-npc -launch="npc://vkey@1.2.3.4:8025?type=tls#home" -L="tcp://:2000?access=sshkey&target=10.0.0.5:22"
-npc install -launch="npc://vkey@1.2.3.4:8025?type=tls" -L="tcp://:2000?access=sshkey"
+npc -launch="npc://vkey@1.2.3.4:8024?type=tls#home" -L="tcp://:2000?access=sshkey&target=10.0.0.5:22"
+npc install -launch="npc://vkey@1.2.3.4:8024?type=tls" -L="tcp://:2000?access=sshkey"
 ```
 
 ## -launch 的值
@@ -31,7 +31,7 @@ npc://<vkey>@host:port[/path]?type=tls&alpn=…&sni=…&host=…&alt=tcp://addr:
 链接只描述连接，不含本地访问。
 
 - `vkey` 是任意字符串，按百分号编码；链接里没有客户端编号。
-- `host:port[/path]` 是第一个拨号地址；IPv6 写成 `[::1]:8025`。`/path` 只用于 `ws`、`wss`。
+- `host:port[/path]` 是第一个拨号地址；IPv6 写成 `[::1]:8024`。`/path` 只用于 `ws`、`wss`。
 - `#名字` 和 `name` 是连接名（日志和 `-L` 的 `via` 用），`#名字` 优先。
 - 参数名区分大小写，不能重复（`alt` 除外）。不认识的参数告警后忽略；`access`、`password`、`target`、`local_type`、`local_port`、`local_ip`、`conn_mode`、`local_proxy` 属于 `-L`，写在链接里报错。文本最长 8 KiB。
 
@@ -52,7 +52,7 @@ npc://<vkey>@host:port[/path]?type=tls&alpn=…&sni=…&host=…&alt=tcp://addr:
 一条链接是一个服务端实例，可以有多条路径。`pipes=multi` 让路径同时各建管道，缺省时按顺序尝试。
 
 ```bash
-npc -launch="npc://VKEY@nps.example.com:8025?type=tls&alpn=h2&count=2&pipes=multi&alt=wss://nps.example.com:443/ws?tier=1;weight=2;http=h2&alt=tcp://nps.example.com:8024?standby=1&name=office"
+npc -launch="npc://VKEY@nps.example.com:8024?type=tls&alpn=h2&count=2&pipes=multi&alt=wss://nps.example.com:443/ws?tier=1;weight=2;http=h2&alt=tcp://nps.example.com:8024?standby=1&name=office"
 ```
 
 ## 本地访问 -L
@@ -91,7 +91,7 @@ JSON 或 JSONC（可写注释和尾逗号）。顶层 `profiles` 是以连接名
       "vkey": "VKEY",
       "source_addr": "192.168.1.5",
       "paths": [
-        {"url": "tls://a.example.com:8025", "alpn": "h2", "count": 2},
+        {"url": "tls://a.example.com:8024", "alpn": "h2", "count": 2},
         {"url": "wss://a.example.com:443/ws", "tier": 1, "weight": 2, "standby": false}
       ],
       "session": {"max_pipes": 2, "scheduler_up": "spread_eta", "max_lanes": 0, "resume_timeout": 0, "usage_interval": 0},
@@ -124,8 +124,10 @@ JSON 或 JSONC（可写注释和尾逗号）。顶层 `profiles` 是以连接名
 
 `npc install` 把内容写到安装目录下仅属主可读的文件，服务定义只有 `@文件`。`npc launch show -launch=… -L=…` 规范化打印，默认遮盖 vkey、access 和代理密码，`--reveal` 才显示；也接受旧参数并输出新写法。
 
-## 旧写法
+## 旧写法（已弃用）
 
 `-server`、`-vkey`、`-type`、`-password`、`-local_type`、`-local_port`、`-target`、`-conn_mode`、`-local_proxy`、`npc.conf` 和早期版本写入的 JSON、YAML、INI 文件（`@文件`）继续可用，集中转换成同一启动配置。`-password` 这组只支持单条，和 `-launch`、`-L` 同时给出报错。
+
+新安装的 `conf/npc.jsonc` 是上面配置文件的写法，不带参数时 npc 读取它（没有它而有 `conf/npc.conf` 时读取旧文件）。
 
 此功能到 1.0 不会原样保留，见[版本规则](../../getting-started/versioning.md)。

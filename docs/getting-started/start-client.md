@@ -2,26 +2,26 @@
 
 ## 获取启动命令
 
-进入 Web 管理界面，点击客户端前的 `+` 号，复制启动命令。命令里是启动链接 `-launch="npc://密钥@host:8025?type=tls"`，承载写在 `type`，vkey 已按百分号编码；写法见[快速启动 -launch](/guide/client/launch.md)。`-server`、`-vkey` 仍可使用（多个连接共用一组列表、`tier`、`weight` 等多承载参数的组合只能用 `-server`），两种写法不能同时给出。
+进入 Web 管理界面，点击客户端前的 `+` 号，复制启动命令。命令里是启动链接 `-launch="npc://密钥@host:8024?type=tls"`，承载写在 `type`，vkey 已按百分号编码；写法见[快速启动 -launch](/guide/client/launch.md)。
 
 ## 直接运行
 
 ```bash
-./npc -launch="npc://VKEY@xxx:123?type=tls" -log=off
+./npc -launch="npc://VKEY@xxx:8024?type=tls" -log=off
 ```
 
 ```powershell
-npc.exe -launch="npc://VKEY@xxx:123?type=tls" -log="off"
+npc.exe -launch="npc://VKEY@xxx:8024?type=tls" -log="off"
 ```
 
-多个服务端重复 `-launch`；旧写法：`./npc -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off`。
+多个服务端重复 `-launch`。
 
 > PowerShell 中请用双引号括起参数。
 
 ## 安装服务
 
 ```bash
-./npc install -launch="npc://VKEY@xxx:123?type=tls" -log=off
+./npc install -launch="npc://VKEY@xxx:8024?type=tls" -log=off
 ./npc start
 npc stop
 npc restart
@@ -29,7 +29,7 @@ npc uninstall
 ```
 
 ```powershell
-npc.exe install -launch="npc://VKEY@xxx:123?type=tls" -log="off"
+npc.exe install -launch="npc://VKEY@xxx:8024?type=tls" -log="off"
 npc.exe start
 ```
 
@@ -62,7 +62,7 @@ After=network-online.target syslog.target
 LimitNOFILE=65536
 StartLimitInterval=5
 StartLimitBurst=10
-ExecStart=/usr/bin/npc "-server=xxx:123,yyy:456" "-vkey=xxx,yyy" "-type=tcp,tls" "-debug=false" "-log=off"
+ExecStart=/usr/bin/npc "-launch=npc://VKEY@xxx:8024?type=tls" "-debug=false" "-log=off"
 Restart=always
 RestartSec=120
 
@@ -84,7 +84,7 @@ systemctl daemon-reload
 ### Windows（sc）
 
 ```powershell
-cmd /c 'sc create Npc1 binPath= "D:\tools\npc.exe -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls,tcp -log=off -debug=false" DisplayName= "NPS Client 1" start= auto'
+cmd /c 'sc create Npc1 binPath= "D:\tools\npc.exe -launch=npc://VKEY@xxx:8024?type=tls -log=off -debug=false" DisplayName= "NPS Client 1" start= auto'
 sc start Npc1
 
 sc stop Npc1

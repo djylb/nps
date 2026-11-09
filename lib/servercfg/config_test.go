@@ -300,3 +300,26 @@ func TestInstanceKeyPathRelativeToLoadedConfig(t *testing.T) {
 		}
 	}
 }
+
+// The shipped nps.conf opens the mixed port alone and uses no key of an
+// earlier version.
+func TestShippedConfigMixedPortOnly(t *testing.T) {
+	resetTestState(t)
+	if err := Load(filepath.Join("..", "..", "conf", "nps.conf")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Current()
+	n, b := cfg.Network, cfg.Bridge
+	if n.MixPort != 8024 || n.MixPlain || !n.MixLegacy || n.BridgeGeneric || n.BridgeKCPQUIC {
+		t.Fatalf("mixed port: %+v", n)
+	}
+	if n.BridgePort|n.BridgeTCPPort|n.BridgeKCPPort|n.BridgeQUICPort|n.BridgeTLSPort|n.BridgeWSPort|n.BridgeWSSPort != 0 {
+		t.Fatalf("a per-protocol port is set: %+v", n)
+	}
+	if b.ServerTCPEnabled || b.ServerKCPEnabled || b.ServerQUICEnabled || b.ServerTLSEnabled || b.ServerWSEnabled || b.ServerWSSEnabled {
+		t.Fatalf("a per-protocol listener is on: %+v", b)
+	}
+	if len(cfg.Legacy) != 0 {
+		t.Fatalf("legacy warnings: %v", cfg.Legacy)
+	}
+}

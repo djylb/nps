@@ -1,5 +1,7 @@
 # NPC 配置文件 npc.conf
 
+> **已弃用**：新安装使用 `conf/npc.jsonc`（见[快速启动 -launch](/guide/client/launch.md#配置文件)）。npc.conf 仍可读取，下列键、`[common]` 之外的隧道段、文件模式、`secret`/`p2p` 段、`fallback_secret`、`target_type` 均为旧写法，各自的替代见相应页面。
+
 用法和完整示例见[配置文件模式](/guide/client/config-file.md)。段名含义：`[common]` 全局；含 `host` 的段是域名；名称以 `secret`、`p2p` 开头且没有 `mode` 的段是本地访问端；其他是隧道。
 
 ## [common]

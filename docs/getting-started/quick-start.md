@@ -11,7 +11,7 @@ docker run -d --restart=always --name nps --net=host \
 
 首次运行时容器把示例配置复制到 `/conf/nps.conf`，重启后按它运行。其他安装方式见[安装指南](/getting-started/install.md)。
 
-确保防火墙放行：Web 管理端口 `8081/tcp`，客户端连接端口 `8024/tcp`。默认配置还会占用 `80`、`443`、`8024/udp`、`8025`、`8026`、`8027`、`6000-6002/udp`，端口冲突请修改 `nps.conf`。
+确保防火墙放行：Web 管理端口 `8081/tcp`，客户端连接端口 `8024`（TCP 和 UDP 同一号码，即 `mix_port`）。默认配置还会占用 `80`、`443`、`6000-6002/udp`，端口冲突请修改 `nps.conf`。
 
 ## 2. 修改默认密码
 
@@ -26,10 +26,10 @@ docker run -d --restart=always --name nps --net=host \
 在内网机器上运行刚才复制的命令，形如：
 
 ```bash
-./npc -launch="npc://YOUR_CLIENT_VKEY@1.1.1.1:8024?type=tcp"
+./npc -launch="npc://YOUR_CLIENT_VKEY@1.1.1.1:8024?type=tls"
 ```
 
-`-launch` 的启动链接把 vkey、地址和承载（`type=tcp`、`tls`、`quic`、`ws`、`wss`）写在一起；旧的 `-server="tcp://1.1.1.1:8024" -vkey="YOUR_CLIENT_VKEY"` 写法仍可使用，两种不能同时给出。
+`-launch` 的启动链接把 vkey、地址和承载（默认混合端口接受 `tls`、`quic`、`wss`）写在一起。
 
 客户端列表显示在线即连通。连不上时先用 `telnet`、`nc` 确认能访问 `1.1.1.1:8024`。
 
@@ -45,4 +45,3 @@ ssh -p 8001 root@1.1.1.1
 
 - 其他用途：[选择隧道类型](/getting-started/tunnel-types.md)
 - 注册系统服务：[启动 NPC 客户端](/getting-started/start-client.md)
-- 给客户端连接加密：把链接里的地址换成 `1.1.1.1:8025` 并写 `type=tls`

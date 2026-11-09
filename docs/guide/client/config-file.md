@@ -1,5 +1,7 @@
 # 配置文件模式
 
+> **已弃用**：npc.conf（INI）及其隧道段、文件模式、`secret`/`p2p` 访问段、`fallback_secret`、`target_type` 等，新安装改用 `conf/npc.jsonc`（`profiles` 写法，见[快速启动 -launch](/guide/client/launch.md#配置文件)）；隧道在 Web 管理界面创建，点对点访问用 `-L` 或 `access`。旧文件仍可读取，转换时告警。以下说明只适用于已有的 npc.conf。
+
 适用于不使用 Web 配置、用公钥或客户端 `vkey` 验证、在 `npc.conf` 中完成所有设置的场景。完整键名见 [npc.conf 参考](/reference/npc-config.md)，也可参考[示例文件](https://github.com/djylb/nps/tree/master/conf/npc.conf)。
 
 ```bash
@@ -8,7 +10,7 @@
 ./npc -config=/path/to/npc1.conf,/path/to/npc2.conf
 ```
 
-不指定配置且没有 `-server`、`-vkey` 时，默认读取 `conf/npc.conf`。客户端需要开启“允许配置文件模式连接”，或使用 `public_vkey`。
+不指定配置且没有 `-server`、`-vkey` 时，默认读取 `conf/npc.jsonc`，不存在而 `conf/npc.conf` 存在时读取后者。客户端需要开启“允许配置文件模式连接”，或使用 `public_vkey`。
 
 Windows 下用记事本等编辑均可：UTF-8（含或不含 BOM）、CRLF 换行、段头或键值前后多余空格都能正确解析。
 

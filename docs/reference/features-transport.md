@@ -2,7 +2,9 @@
 
 ## 连接协议
 
-| `-type` | 默认端口 | 配置 |
+新安装只使用混合端口 `mix_port`（初始配置 `8024`）：TCP 接 `tls`、`wss`、`https`，UDP 同端口号接 `quic`；`tcp`、`ws` 等明文承载需打开 `mix_plain`。下表的各协议单独端口（`bridge_*_port`）已弃用，旧配置照常读取。
+
+| `-type` | 旧配置的默认端口（已弃用） | 配置（已弃用） |
 | --- | --- | --- |
 | `tcp` | 8024 | `bridge_tcp_port` |
 | `kcp` | 8024/udp | `bridge_kcp_port` |
@@ -54,7 +56,7 @@ TLS 证书校验失败时可用 `-skip_verify` 跳过。
 
 ## 端口复用
 
-在端口受限的环境，可以把 `bridge_tcp_port`、`http_proxy_port`、`https_proxy_port`、`web_port` 设为同一端口，nps 自动识别。
+在端口受限的环境，可以把 `mix_port`（旧配置的 `bridge_tcp_port` 已弃用）、`http_proxy_port`、`https_proxy_port`、`web_port` 设为同一端口，nps 自动识别。
 
 - 客户端连接用 `bridge_host` 区分。
 - 复用 Web 管理时需要配置 `web_host`（一个二级域名）。

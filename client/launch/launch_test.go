@@ -751,3 +751,21 @@ func TestUsageIntervalSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The configuration file shipped in conf parses through the loader of
+// -config, and so does a JSONC file given as a default path.
+func TestShippedNpcJSONC(t *testing.T) {
+	path := filepath.Join("..", "..", "conf", "npc.jsonc")
+	got, err := CommandLine{Config: []string{path}}.Sources()
+	if err != nil || len(got) != 1 {
+		t.Fatalf("%v %v", err, got)
+	}
+	profiles, err := got[0].Load(context.Background())
+	if err != nil || len(profiles) != 1 {
+		t.Fatalf("%v %+v", err, profiles)
+	}
+	p := profiles[0]
+	if p.Name != "default" || p.Config.CommonConfig.VKey == "" || !strings.HasPrefix(p.Config.CommonConfig.Server, "tls://") || len(p.Config.LocalServer) != 0 {
+		t.Fatalf("%+v %+v", p, p.Config.CommonConfig)
+	}
+}

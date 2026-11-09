@@ -2,7 +2,7 @@
 
 利用nps提供一个公网可访问的本地文件服务（WebDAV，浏览器也可直接浏览）。
 
-**文件模式只能在 npc.conf 中配置，并用 `npc -config=npc.conf` 启动**；网页管理界面不能创建文件隧道，命令行（`-server`/`-vkey`）模式也不会启动文件服务。
+**已弃用**：文件模式只能写在旧的 npc.conf 里，没有新写法的对应项。**文件模式只能在 npc.conf 中配置，并用 `npc -config=npc.conf` 启动**；网页管理界面不能创建文件隧道，命令行（`-server`/`-vkey`）模式也不会启动文件服务。
 
 ```ini
 [common]

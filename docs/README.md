@@ -29,7 +29,7 @@ NPS 是一款**轻量级**、**高性能**、**功能强大**的**内网穿透�
 | 选择安装方式 | [安装指南](/getting-started/install.md) |
 | 按用途选择转发方式 | [选择隧道类型](/getting-started/tunnel-types.md) |
 | 查询服务端配置 | [服务端配置 nps.conf](/reference/server-config.md) |
-| 查询客户端参数 | [NPC 命令行参数](/reference/npc-cli.md)、[npc.conf](/reference/npc-config.md) |
+| 查询客户端参数 | [NPC 命令行参数](/reference/npc-cli.md)、[npc.conf（已弃用）](/reference/npc-config.md) |
 | 用脚本管理 | [Web API](/reference/web-api.md)、[Webhook](/guide/server/webhook.md) |
 | 升级前确认兼容性 | [版本规则与兼容范围](/getting-started/versioning.md) |
 | 遇到问题 | [FAQ](/reference/faq.md) |

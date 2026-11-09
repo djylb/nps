@@ -5,17 +5,14 @@
 所有配置在 Web 管理界面完成，客户端只需一条命令。
 
 ```bash
-# TCP
-./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8024?type=tcp"
-# TLS
-./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8025?type=tls"
-# 旧写法，仍可使用，与 -launch 不能同时给出
-./npc -server="ip:8025" -vkey="YOUR_CLIENT_VKEY" -type="tls"
+./npc -launch="npc://YOUR_CLIENT_VKEY@ip:8024?type=tls"
 ```
 
-启动链接的参数见[快速启动 -launch](/guide/client/launch.md)；下文多承载、多管道等需要 `tier`、`weight` 的组合用 `-server`。
+启动链接的参数见[快速启动 -launch](/guide/client/launch.md)。
 
-默认端口 `8024` 用于 TCP 和 KCP，`8025` 用于 TLS 和 QUIC，`8026` 用于 WS，`8027` 用于 WSS。
+初始配置的混合端口 `8024` 接受 `tls`、`quic`、`wss`（TCP 与 UDP 同号）。`tcp`、`ws` 需要服务端打开 `mix_plain`。
+
+> **已弃用**：`-server`、`-vkey`、`-type` 仍可使用，改用 `-launch`；各协议单独端口（8025、8026、8027 等）是旧配置的默认值。下文以 `-server` 书写的示例同属旧写法，其中的多承载参数（`tier`、`weight` 等）在 `-launch` 的 `alt` 与配置文件的 `paths` 里同样可用。
 
 ## 连接多个服务端
 

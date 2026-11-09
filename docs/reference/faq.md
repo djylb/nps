@@ -2,7 +2,7 @@
 
 ## 服务端
 
-**服务端无法启动**：示例配置占用 8024、8025、8026、8027、8081、80、443 和 UDP 6000-6002，端口冲突时请修改。单个 HTTP/HTTPS 监听失败不会让 nps 退出，请看日志。
+**服务端无法启动**：示例配置占用 8024（TCP 和 UDP）、8081、80、443 和 UDP 6000-6002，端口冲突时请修改。单个 HTTP/HTTPS 监听失败不会让 nps 退出，请看日志。
 
 **修改配置无效**：Linux 安装后配置在 `/etc/nps/conf/nps.conf`，请修改该文件。
 
@@ -10,7 +10,7 @@
 
 **指定配置路径**：`-conf_path`，服务安装时也要带上：`./nps install -conf_path=/app/nps`，然后 `nps start`。
 
-**TLS 端口**：`bridge_tls_port` 不为 `0` 时监听。客户端 `npc -server=xxx:8025 -vkey=xxx -type=tls`。
+**客户端连接端口**：`mix_port` 不为 `0` 时监听，接受 `tls`、`wss`、`quic`。客户端 `npc -launch="npc://vkey@xxx:8024?type=tls"`。各协议单独端口 `bridge_tls_port` 等已弃用，旧配置仍然读取。
 
 ## 客户端
 

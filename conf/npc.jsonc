@@ -1,0 +1,23 @@
+// npc 初始配置 / Initial npc configuration (JSONC: comments and trailing commas allowed)
+// 用法 / Usage: npc -launch=@conf/npc.jsonc，或不带参数直接运行 / or run npc without arguments
+// profiles 的键是连接名 / The key of a profile is the connection name
+{
+  "profiles": {
+    "default": {
+      // 客户端密钥，在 nps 网页上创建客户端后获得 / Client vkey, from the client created on the nps web page
+      "vkey": "123",
+      "paths": [
+        // 混合端口，tls 为加密承载 / The mixed port, tls is an encrypted carrier
+        {"url": "tls://127.0.0.1:8024"},
+      ],
+
+      // 点对点本地访问示例：把本机端口映射到另一个 npc 提供的隧道
+      // Point-to-point local access: a local port reaching a tunnel provided by another npc
+      // access 是 nps 上点对点隧道的访问密钥 / access is the key of the point-to-point tunnel on nps
+      // "access": [
+      //   {"access": "sshkey", "target": "10.0.0.5:22", "local_type": "tcp", "local_port": 2000, "local_ip": "127.0.0.1", "conn_mode": "auto"},
+      //   {"access": "lan", "local_type": "mixed", "local_port": 1080, "auth": [{"user": "user", "pass": "pass"}]},
+      // ],
+    },
+  },
+}

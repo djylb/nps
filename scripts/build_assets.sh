@@ -44,7 +44,7 @@ TARGETS=(
   "windows arm64"
 )
 
-NPC_TAR_FILES="conf/npc.conf conf/multi_account.conf"
+NPC_TAR_FILES="conf/npc.jsonc"
 NPS_TAR_FILES="conf/nps.conf web/views web/static"
 
 SDK_TARGETS=(

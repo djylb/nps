@@ -92,10 +92,10 @@ docker run -d --restart=always --name nps --net=host -v $(pwd)/conf:/conf -v /et
 
 ```bash
 docker pull duan2001/npc
-docker run -d --restart=always --name npc --net=host duan2001/npc -server=xxx:123,yyy:456 -vkey=key1,key2 -type=tls,tcp -log=off
+docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://key1@xxx:8024?type=tls" -log=off
 ```
 
-> **Tip:** Get `-server`, `-vkey`, and `-type` from the client page in the NPS Web UI to avoid manual input mistakes.
+> **Tip:** Get the `-launch` command from the client page in the NPS Web UI to avoid manual input mistakes.
 
 ### Server Installation
 
@@ -134,7 +134,7 @@ nps update-force
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/djylb/nps/refs/heads/master/install.sh | sudo sh -s npc
-/usr/bin/npc install -server=xxx:123,yyy:456 -vkey=xxx,yyy -type=tls -log=off
+/usr/bin/npc install -launch="npc://xxx@xxx:8024?type=tls" -log=off
 npc start|stop|restart|uninstall
 
 # Update
@@ -150,7 +150,7 @@ npc update-force
 > Install SP1, applicable system updates and current root certificates first; see [Windows 7 setup and troubleshooting](docs/getting-started/install-windows.md#windows7).
 
 ```powershell
-.\npc.exe install -server="xxx:123,yyy:456" -vkey="xxx,yyy" -type="tls,tcp" -log="off"
+.\npc.exe install -launch="npc://xxx@xxx:8024?type=tls" -log="off"
 .\npc.exe start|stop|restart|uninstall
 
 # Update
@@ -158,7 +158,5 @@ npc update-force
 .\npc.exe update-force
 ```
 
-> **Tip:** The client supports connecting to multiple servers simultaneously. Example:
-> `npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`
-> Here, `xxx:123` uses TCP, and `yyy:456` and `zzz:789` use TLS.
+> **Tip:** The client supports connecting to multiple servers simultaneously: repeat `-launch`, one per server.
 
