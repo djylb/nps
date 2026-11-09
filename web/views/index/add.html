@@ -108,7 +108,7 @@
                             </div>
                         </div>
                     </section>
-                    <details class="resource-section resource-advanced">
+                    <details class="resource-section resource-advanced" data-section="compress">
                         <summary><span langtag="section-transport"></span></summary>
                         <div class="resource-section-body">
                             <div class="form-group" id="compress_alg">
@@ -126,8 +126,8 @@
                             </div>
                         </div>
                     </details>
-                    <details class="resource-section resource-advanced">
-                        <summary><span langtag="section-access"></span></summary>
+                    <details class="resource-section resource-advanced" data-section="auth">
+                        <summary><span langtag="section-auth"></span></summary>
                         <div class="resource-section-body">
                             <div class="form-group" id="auth">
                                 <label class="control-label font-bold" langtag="word-auth"></label>
@@ -136,6 +136,11 @@
                                     <span class="help-block m-b-none" langtag="info-targetauth"></span>
                                 </div>
                             </div>
+                        </div>
+                    </details>
+                    <details class="resource-section resource-advanced" data-section="acl">
+                        <summary><span langtag="section-acl"></span></summary>
+                        <div class="resource-section-body">
                             <div class="form-group" id="iplistpriority">
                                 <label class="control-label font-bold" langtag="word-iplistpriority"></label>
                                 <div class="col-sm-12">
@@ -191,7 +196,7 @@
                             </div>
                         </div>
                     </details>
-                    <details class="resource-section resource-advanced">
+                    <details class="resource-section resource-advanced" data-section="limits">
                         <summary><span langtag="section-limits"></span></summary>
                         <div class="resource-section-body">
                             {{if eq true .allow_connection_num_limit}}
@@ -241,7 +246,7 @@
                             {{end}}
                         </div>
                     </details>
-                    <details class="resource-section resource-advanced">
+                    <details class="resource-section resource-advanced" data-section="proxy">
                         <summary><span langtag="section-transport"></span></summary>
                         <div class="resource-section-body">
                             {{if and .allow_local_proxy (or .isAdmin .allow_user_local)}}
@@ -381,8 +386,10 @@
     $(function () {
         $("#type").val(('{{.type}}' == '') ? 'tcp' : '{{.type}}');
         resetForm()
+        applyResourceSectionDefaults($("form.resource-form"), $("#type").val())
         $("#type").on("change", function () {
             resetForm()
+            applyResourceSectionDefaults($("form.resource-form"), $("#type").val())
         })
         $("select[name='dest_acl_mode']").on("change", function () {
             toggleDestAclRules()

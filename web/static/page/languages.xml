@@ -2273,6 +2273,14 @@
 		<zh-CN>访问控制与认证</zh-CN>
 		<en-US>Access Control and Authentication</en-US>
 	</lang>
+	<lang id="section-auth">
+		<zh-CN>账号认证</zh-CN>
+		<en-US>Account Authentication</en-US>
+	</lang>
+	<lang id="section-acl">
+		<zh-CN>访问控制</zh-CN>
+		<en-US>Access Control</en-US>
+	</lang>
 	<lang id="section-limits">
 		<zh-CN>流量与有效期</zh-CN>
 		<en-US>Traffic and Expiry</en-US>

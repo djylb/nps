@@ -678,6 +678,52 @@ function refreshResourceSections(form) {
     );
 }
 
+// Collapsible groups are keyed by data-section. This map is the only place that
+// decides which of them start open for a tunnel type (or "domain" for domain
+// pages); every group not listed starts collapsed.
+var resourceSectionDefaults = {
+    tcp: [],
+    udp: [],
+    mixProxy: ['auth'],
+    secret: ['acl'],
+    domain: ['tls']
+};
+
+// True when a control holds something other than empty, zero or its first
+// option (the default state of a collapsible field), or other than its
+// data-default when the field declares one.
+function resourceControlIsCustom(el) {
+    var type = (el.type || '').toLowerCase();
+    if (type === 'checkbox' || type === 'radio') return el.checked;
+    if (el.tagName === 'SELECT') return el.selectedIndex > 0;
+    var v = $.trim(el.value);
+    if (el.hasAttribute('data-default')) return v !== el.getAttribute('data-default');
+    return v !== '' && v !== '0';
+}
+
+// True when a visible field of the group differs from its default, so an
+// effective setting is never hidden inside a collapsed group.
+function resourceSectionHasCustomValue(section) {
+    return $(section).find('input[name], select[name], textarea[name]').toArray().some(function (el) {
+        if (el.type === 'hidden' || el.type === 'button' || el.type === 'submit') return false;
+        for (var node = el; node && node !== section; node = node.parentNode) {
+            if (node.style && node.style.display === 'none') return false;
+        }
+        return resourceControlIsCustom(el);
+    });
+}
+
+// Apply the default expansion for a tunnel type. With keepCustom (edit pages),
+// groups holding non-default values open as well. It runs on page load and on
+// type changes only, so a group the user opened or closed stays as left.
+function applyResourceSectionDefaults(form, kind, keepCustom) {
+    var open = resourceSectionDefaults[kind] || [];
+    $(form).find('details.resource-advanced[data-section]').each(function () {
+        this.open = open.indexOf(this.dataset.section) >= 0
+            || (!!keepCustom && resourceSectionHasCustomValue(this));
+    });
+}
+
 function setResourceSectionsExpanded(form, expanded) {
     $(form).find('details.resource-advanced:not([hidden])').prop('open', expanded);
 }
