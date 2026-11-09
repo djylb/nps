@@ -93,7 +93,7 @@ type Acceptor struct {
 	sessionOpts wire.SessionOptions
 	limits      CompressLimits
 	maxPipes    int // client_max_pipes, 0 unlimited
-	shaping     atomic.Pointer[[]byte]
+	shaping     atomic.Pointer[shapingPlan]
 	shapingFrom func(context.Context, func([]byte))
 
 	linkMu sync.Mutex
@@ -141,9 +141,13 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	a := &Acceptor{links: map[uint64]*peerLink{}, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource,
 		stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
+	base := &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
+		EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
-		Config: &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
-			EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)},
+		Config: base,
+		SessionConfig: func(_ context.Context, _ *zmux.CarrierInfo, admitted any) (*zmux.Config, error) {
+			return a.sessionConfig(base, admitted), nil
+		},
 		MaxSuspended:        maxSuspended,
 		MaxPending:          maxPending,
 		MaxPendingPerSource: maxPendingPerSource,
@@ -153,7 +157,7 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		OnReject: onReject,
 		Fallback: a.fallback,
 		WrapPipe: &admitPipe{a: a, cfg: &seal.ServerConfig{
-			Gate:            &gate{a},
+			Gate:            &gate{a: a},
 			Key:             key,
 			ClientAnchor:    acceptAnyClient{},
 			AppData:         a.appData,
@@ -179,14 +183,17 @@ func (w *admitPipe) Validate() error { return w.cfg.Validate() }
 
 // WrapPipe implements zmux.PipeWrapper.
 func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeHint) (zmux.PipeIO, error) {
-	q, err := w.cfg.WrapPipe(ctx, p, hint)
+	g := &gate{a: w.a}
+	cfg := *w.cfg
+	cfg.Gate, cfg.Shaper = g, g.handshake
+	q, err := cfg.WrapPipe(ctx, p, hint)
 	if err != nil {
 		w.report(err, p, hint)
 		return q, err
 	}
 	if peer, ok := seal.PeerOf(q); ok {
 		if t, ok := peer.Value.(*ticket); ok {
-			t.carrier = carrierLabel(p)
+			t.carrier, t.kind = carrierLabel(p), p.Carrier
 		}
 	}
 	return q, nil
@@ -575,7 +582,8 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 }
 
 // snapshotOf is a client's CONFIG: the record rule of §3.2, its default
-// compression, the session options and the health checks.
+// compression, the session options and the health checks. The session's own
+// shaping follows what it carries.
 func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 	snap := &wire.Snapshot{Session: a.sessionOpts}
 	if s.CanHealth() {
@@ -586,7 +594,11 @@ func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 			snap.Record = wire.RecordTrusted
 		}
 		snap.Compress = chooseCompress(e.Compress, s.t.hello.CompressAlgs)
-		snap.Shaping = a.shapingFor(s, e.Shaping)
+		p := a.shapingFor(s.t, e.Shaping)
+		if p != nil {
+			snap.Shaping = p.raw
+		}
+		s.follow(p)
 	}
 	return snap
 }

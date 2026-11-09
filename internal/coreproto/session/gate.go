@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -26,14 +27,20 @@ type ticket struct {
 	hello   wire.Hello
 	static  []byte
 	src     netip.AddrPort
-	carrier string // set after the handshake (admitPipe)
+	carrier string                       // set after the handshake (admitPipe)
+	kind    zmux.CarrierKind             // likewise
+	plan    *atomic.Pointer[shapingPlan] // the session's shaping
 }
 
 // gate is the seal.Gate of the entry.
-type gate struct{ a *Acceptor }
+type gate struct {
+	a     *Acceptor
+	entry *clientEntry // of the Handle Resolve saw
+}
 
 func (g *gate) Resolve(_ context.Context, handle []byte, _ netip.AddrPort) ([]byte, error) {
 	if e := g.a.table.lookup(handle); e != nil {
+		g.entry = e
 		return e.psk, nil
 	}
 	return nil, errUnknownHandle
@@ -72,7 +79,7 @@ func (g *gate) Commit(_ context.Context, a seal.Admission) (any, error) {
 			return refuse("malformed", "")
 		}
 	}
-	t := &ticket{client: e.ID, handle: e.handle, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source}
+	t := &ticket{client: e.ID, handle: e.handle, crypt: e.Crypt, hello: hello, static: a.Peer.Static, src: a.Source, plan: new(atomic.Pointer[shapingPlan])}
 	if !g.a.admitFirstPipe(t) {
 		return refuse("pipes", "")
 	}

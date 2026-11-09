@@ -85,7 +85,8 @@ type DialConfig struct {
 
 // Dialer establishes the sessions of a profile.
 type Dialer struct {
-	cfg DialConfig
+	cfg     DialConfig
+	planKey string // of this server and key in shapingPlans
 
 	mu          sync.Mutex
 	record      uint64               // last CONFIG record
@@ -107,7 +108,9 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.MaxConfig <= 0 {
 		cfg.MaxConfig = maxConfigBody
 	}
-	return &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d := &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d.planKey = d.Server() + "\x00" + cfg.VKey
+	return d
 }
 
 // Server implements coreapi.Dialer.
@@ -373,7 +376,9 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		pin = &id
 	}
 	hello := clientHello(d.cfg.Agent, d.cfg.Label)
+	shape := d.plan()
 	q, err := seal.Establish(ctx, ca.pipe, &seal.ClientConfig{
+		Shaper:     establishShape(shape),
 		Anchor:     &anchor{pin: pin},
 		Mode:       mode,
 		Handle:     handle,
@@ -390,7 +395,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	if err != nil {
 		return nil, err
 	}
-	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
+	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
 	if s.zc, err = zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig(s)); err != nil {
 		return nil, err
 	}
@@ -422,7 +427,8 @@ type clientSession struct {
 	configured     chan struct{} // closed by the first snapshot
 	configuredOnce sync.Once
 
-	shapingRaw   []byte               // the bundle in use; under mu
+	boot         zmux.CarrierKind     // of the first pipe
+	plan         *shapingPlan         // the bundle in use; under mu
 	healthRunner coreapi.HealthRunner // made by the first snapshot with checks; under mu
 
 	wg *sync.WaitGroup
