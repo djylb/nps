@@ -119,6 +119,10 @@ type Candidate struct {
 
 	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
 
+	// Auto marks a candidate that a type=auto address expanded to: the
+	// candidates of the profile are raced, not tried in turn (§3).
+	Auto bool
+
 	// AdmitKey is the admission key of the exchange kind, as hex (§13); ""
 	// leaves that kind out.
 	AdmitKey string
@@ -252,6 +256,17 @@ func Parse(s, carrier string) ([]Candidate, error) {
 		if raw == "" {
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(raw), autoScheme) {
+			auto, err := expandAuto(raw)
+			if err != nil {
+				return nil, fmt.Errorf("server candidate %q: %w", raw, err)
+			}
+			for _, a := range auto {
+				a.Index = len(out)
+				out = append(out, a)
+			}
+			continue
+		}
 		var (
 			c   Candidate
 			err error
@@ -272,6 +287,60 @@ func Parse(s, carrier string) ([]Candidate, error) {
 	}
 	if !slices.ContainsFunc(out, Candidate.Starts) {
 		return nil, errors.New("no candidate carries both directions: a session starts on one with dirs=bidi (the default)")
+	}
+	return out, nil
+}
+
+// autoScheme writes an address of type=auto in a server string.
+const autoScheme = "auto://"
+
+// autoOrder are the carriers a type=auto address tries on a mixed port, in
+// order; those of HTTP need a path, and none of them is plaintext.
+var autoOrder = []string{"tls", "quic", "wss", "https"}
+
+// autoParams says which parameters of an auto address go to which carrier;
+// the rest go to all.
+var autoParams = map[string][]string{
+	"alpn": {"tls", "quic"}, "http": {"https"}, "kinds": {"https"}, "admit_key": {"https"}, "subprotocol": {"wss", "https"},
+}
+
+// expandAuto returns the candidates of a type=auto address.
+func expandAuto(raw string) ([]Candidate, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Port() == "" {
+		return nil, errors.New("type auto needs a port: a mixed port has no default")
+	}
+	q, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, err
+	}
+	var out []Candidate
+	for _, carrier := range autoOrder {
+		path := ""
+		if carrier == "wss" || carrier == "https" {
+			if path = u.EscapedPath(); path == "" || path == "/" {
+				continue
+			}
+		}
+		v := url.Values{}
+		for key, vals := range q {
+			if only, ok := autoParams[key]; !ok || slices.Contains(only, carrier) {
+				v[key] = vals
+			}
+		}
+		r := carrier + "://" + u.Host + path
+		if len(v) > 0 {
+			r += "?" + v.Encode()
+		}
+		c, err := parseURL(r)
+		if err != nil {
+			return nil, err
+		}
+		c.Auto, c.Raw = true, r
+		out = append(out, c)
 	}
 	return out, nil
 }

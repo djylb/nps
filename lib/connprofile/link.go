@@ -37,7 +37,7 @@ type Link struct {
 }
 
 // Link types: those of a candidate that this version dials.
-var linkTypes = []string{"tcp", "tls", "ws", "wss", "http", "https", "quic"}
+var linkTypes = []string{"auto", "tcp", "tls", "ws", "wss", "http", "https", "quic"}
 
 // candidateKeys are the link parameters that belong to the first address;
 // they have the names of the candidate parameters of Parse.
@@ -92,7 +92,7 @@ func ParseLink(raw string) (Link, error) {
 
 	typ := strings.ToLower(strings.TrimSpace(q.Get("type")))
 	if typ == "" {
-		typ = "tcp"
+		typ = "auto"
 	}
 	if !slices.Contains(linkTypes, typ) {
 		return l, fmt.Errorf("launch link: type %q is not supported by this version (want %s)", typ, strings.Join(linkTypes, ", "))
@@ -241,8 +241,21 @@ func FormatLink(vkey, server, carrier, name string, common map[string]string) (s
 	}
 	var b, alts strings.Builder
 	q := make(url.Values)
+	auto := url.Values{}
+	autoAddr, autoPath := "", ""
 	for i, c := range cands {
 		typ, addr, path, params := candidateParts(c)
+		if c.Auto {
+			// The candidates of one type=auto address.
+			autoAddr = addr
+			if autoPath == "" && (c.Carrier == "wss" || c.HTTPCarrier()) {
+				autoPath = c.Path
+			}
+			for k, v := range params {
+				auto[k] = v
+			}
+			continue
+		}
 		if i == 0 {
 			b.WriteString(LinkScheme + user + "@" + addr + path)
 			q = params
@@ -253,6 +266,11 @@ func FormatLink(vkey, server, carrier, name string, common map[string]string) (s
 		if len(params) > 0 {
 			alts.WriteString("?" + strings.ReplaceAll(params.Encode(), "&", ";"))
 		}
+	}
+	if autoAddr != "" {
+		q = auto
+		q.Set("type", "auto")
+		b.WriteString(LinkScheme + user + "@" + autoAddr + autoPath)
 	}
 	for key, v := range common {
 		if n := commonNames[key]; n != "" {

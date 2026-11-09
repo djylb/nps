@@ -10,8 +10,10 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -101,8 +103,12 @@ type Dialer struct {
 	last        string               // candidate that connected last
 	now         func() time.Time     // tests
 	limits      CompressLimits
-	kinds       zmux.CarrierCache // HTTP carrier kinds per candidate (§14)
-	h3Known     map[string]bool   // candidates on which h3 has worked (§2.4b)
+	kinds       zmux.CarrierCache                                                    // HTTP carrier kinds per candidate (§14)
+	autoOK      map[string]bool                                                      // type=auto entries that connected, per network
+	autoDropped map[string]bool                                                      // those whose session soon ended
+	autoWinner  string                                                               // the entry of the session being kept, for pipes=multi
+	attempt     func(context.Context, connprofile.Candidate) (*clientSession, error) // tests replace it
+	h3Known     map[string]bool                                                      // candidates on which h3 has worked (§2.4b)
 	h3Clients   map[string]*http.Client
 	closers     []func() // of the HTTP clients the last session kept
 }
@@ -118,7 +124,8 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.MaxConfig <= 0 {
 		cfg.MaxConfig = maxConfigBody
 	}
-	d := &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, h3Known: map[string]bool{}, h3Clients: map[string]*http.Client{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d := &Dialer{cfg: cfg, autoOK: map[string]bool{}, autoDropped: map[string]bool{}, boundFailed: map[string]time.Time{}, h3Known: map[string]bool{}, h3Clients: map[string]*http.Client{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d.attempt = d.dialCandidate
 	d.plans = planSlotOf(d.Server() + "\x00" + cfg.VKey)
 	return d
 }
@@ -142,6 +149,14 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 	}
 	cands := d.attempts(pool)
 	d.mu.Unlock()
+	if slices.ContainsFunc(cands, func(c connprofile.Candidate) bool { return c.Auto }) {
+		s, err := d.dialRace(ctx, cands)
+		if err != nil {
+			d.closeHTTP()
+			return nil, err
+		}
+		return s, nil
+	}
 	var errs []error
 	for _, c := range cands {
 		if !c.Starts() {
@@ -394,6 +409,13 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	}
 	hello := clientHello(d.cfg.Agent, d.cfg.Label, d.cfg.CanUpdate)
 	shape := d.plan()
+	gate := raceGateOf(ctx)
+	var held atomic.Bool
+	release := func() {
+		if held.CompareAndSwap(true, false) {
+			gate.release()
+		}
+	}
 	q, err := seal.Establish(ctx, ca.pipe, &seal.ClientConfig{
 		Shaper:     establishShape(shape),
 		Anchor:     &anchor{pin: pin},
@@ -404,12 +426,21 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		MaxAppData: wire.MaxHelloRecv,
 		AppData: func(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
 			if r.Message == 3 {
+				if gate != nil {
+					// The Hello commits the server to this session: only
+					// one of a race may send it.
+					if err := gate.acquire(ctx); err != nil {
+						return nil, err
+					}
+					held.Store(true)
+				}
 				return hello, nil
 			}
 			return nil, nil
 		},
 	})
 	if err != nil {
+		release()
 		// A carrier of several requests has no connection to end with it.
 		if a, ok := ca.pipe.W.(interface{ Abort(error) }); ok {
 			a.Abort(err)
@@ -419,6 +450,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	}
 	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
 	if s.zc, err = zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig(s)); err != nil {
+		release()
 		return nil, err
 	}
 	s.start(c)
@@ -467,6 +499,9 @@ type clientSession struct {
 	services   map[string]coreapi.LocalService // what this session offers, by id
 	serviceSeq uint64                          // seq of the last SERVICE snapshot
 	onApply    func(uint64, wire.Snapshot)     // tests
+
+	autoEntry string    // the race entry of the session, "" for none
+	autoStart time.Time // when it connected
 }
 
 func (s *clientSession) start(boot connprofile.Candidate) {
@@ -494,6 +529,7 @@ func (s *clientSession) start(boot connprofile.Candidate) {
 			s.healthRunner.Stop()
 		}
 		s.ended()
+		s.d.autoEnded(s)
 		s.d.closeHTTP()
 		close(s.done)
 	}()

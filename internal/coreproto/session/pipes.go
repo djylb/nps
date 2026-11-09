@@ -222,7 +222,7 @@ func (s *clientSession) maintain(ctx context.Context, boot connprofile.Candidate
 	case <-ctx.Done():
 		return
 	}
-	members := connprofile.MultiMembers(s.d.cfg.Candidates)
+	members := s.d.poolMembers()
 	best := bestTier(members)
 	for _, m := range members {
 		if m.HTTPCarrier() {
@@ -378,4 +378,17 @@ func (r *quicPipeReader) SetReadDeadline(t time.Time) error {
 		return d.SetReadDeadline(t)
 	}
 	return nil
+}
+
+// poolMembers are the candidates that carry pipes of a session: of a type=auto
+// address only the entry that won, whose carrier the path lets through.
+func (d *Dialer) poolMembers() []connprofile.Candidate {
+	members := connprofile.MultiMembers(d.cfg.Candidates)
+	d.mu.Lock()
+	winner := d.autoWinner
+	d.mu.Unlock()
+	if winner == "" {
+		return members
+	}
+	return slices.DeleteFunc(members, func(c connprofile.Candidate) bool { return c.Auto && c.Raw != winner })
 }

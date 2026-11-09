@@ -2,7 +2,7 @@
 // the current keys into npc commands, for its page and for list details.
 (function (root) {
     'use strict';
-    var CARRIERS = ['tcp', 'tls', 'ws', 'wss', 'http', 'https', 'quic'];
+    var CARRIERS = ['auto', 'tcp', 'tls', 'ws', 'wss', 'http', 'https', 'quic'];
     var SCHEDULERS = ['', 'affinity', 'session_affinity', 'spread_eta', 'spread_round_robin', 'spread_rate_weighted'];
     var PATH_FIELDS = {addr: '', port: '', path: '', alpn: '', sni: '', host: '', http: '', subprotocol: '', tier: '', weight: '', standby: false, count: '', dirs: '', kinds: ''};
 
@@ -66,7 +66,7 @@
     function effective(p, ctx) {
         var d = ctx._def[p.carrier] || {};
         var usesDefault = !trim(p.addr);
-        var path = isHTTP(p.carrier) ? (trim(p.path) || d.path || '') : '';
+        var path = isHTTP(p.carrier) || p.carrier === 'auto' ? (trim(p.path) || d.path || '') : '';
         if (path && path.charAt(0) !== '/') path = '/' + path;
         return {carrier: p.carrier, host: trim(p.addr) || d.host || '', port: trim(p.port) || d.port || '', path: path,
             alpn: usesALPN(p.carrier) ? (trim(p.alpn) || (usesDefault ? d.alpn || '' : '')) : '',
@@ -78,7 +78,8 @@
         var q = [];
         function add(k, v) { if (trim(v) !== '') q.push([k, trim(v)]); }
         add('host', p.host); add('sni', p.sni); add('alpn', e.alpn);
-        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); add('admit_key', e.admitKey); }
+        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); }
+        if (isHTTP(p.carrier) || p.carrier === 'auto') add('admit_key', e.admitKey);
         if (multi) add('tier', p.tier);
         add('weight', p.weight); if (p.standby) q.push(['standby', 'true']);
         add('count', p.count); add('dirs', p.dirs);

@@ -481,3 +481,23 @@ func TestAdmitKeyStableAcrossRestart(t *testing.T) {
 }
 
 func connectionEqual(a, b []byte) bool { return string(a) == string(b) }
+
+// type=auto connects over TLS on a mixed port, with or without a path.
+func TestAutoOnMixedPort(t *testing.T) {
+	for name, server := range map[string]func(string) string{
+		"no path": func(a string) string { return "auto://" + a },
+		"path":    func(a string) string { return "auto://" + a + "/ws" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, key := exchangeMix(t)
+			s, mode := dialMode(t, f, server(f.addr))
+			if mode != "bound" || s.Carrier() != "tls" {
+				t.Fatal(mode, s.Carrier())
+			}
+			_ = key
+			f.waitConnected(t)
+			addr, _ := f.startTunnel(t, echoListener(t), "")
+			visit(t, addr, 1<<20)
+		})
+	}
+}

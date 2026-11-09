@@ -540,7 +540,7 @@ func TestRoleFromAccess(t *testing.T) {
 	if p := load([]string{"@" + doc}, nil); p.Direct || p.Hosting {
 		t.Fatalf("file visitor: %+v", p)
 	}
-	if p := load([]string{"@" + doc, "npc://k@a:1"}, nil); !p.Hosting {
+	if p := load([]string{"@" + doc, "npc://k@a:1?type=tcp"}, nil); !p.Hosting {
 		t.Fatalf("file mixed: %+v", p)
 	}
 }

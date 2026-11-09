@@ -17,7 +17,7 @@ func TestParseLink(t *testing.T) {
 		common  map[string]string
 		carrier string
 	}{
-		{in: "npc://k@a.com:8024", vkey: "k", server: "tcp://a.com:8024", carrier: "tcp"},
+		{in: "npc://k@a.com:8024", vkey: "k", server: "auto://a.com:8024", carrier: "tls"},
 		{in: "NPC://k@a.com:8025?type=TLS&alpn=h2,http/1.1&sni=b.com&host=c.com", vkey: "k",
 			server: "tls://a.com:8025?alpn=h2%2Chttp%2F1.1&host=c.com&sni=b.com", carrier: "tls"},
 		{in: "npc://k@a.com:443/ws/x?type=wss&http=h2&subprotocol=zmux", vkey: "k",
@@ -25,12 +25,12 @@ func TestParseLink(t *testing.T) {
 		{in: "npc://k@a.com:80/p?type=ws", vkey: "k", server: "ws://a.com:80/p", carrier: "ws"},
 		{in: "npc://k@a.com:8025?type=quic&alpn=h3", vkey: "k", server: "quic://a.com:8025?alpn=h3", carrier: "quic"},
 		{in: "npc://k@[2001:db8::1]:8024?type=tls", vkey: "k", server: "tls://[2001:db8::1]:8024", carrier: "tls"},
-		{in: "npc://p%40ss%3A%2F%3B%2C%20w@a.com:1", vkey: "p@ss:/;, w", server: "tcp://a.com:1", carrier: "tcp"},
+		{in: "npc://p%40ss%3A%2F%3B%2C%20w@a.com:1", vkey: "p@ss:/;, w", server: "auto://a.com:1", carrier: "tls"},
 		{in: "npc://k@a.com:1?type=tls&tier=1&weight=3&standby&count=2&alt=tcp://b.com:2&alt=" + url.QueryEscape("wss://c.com:443@front.com/ws?tier=2") + "#home", vkey: "k",
 			server: "tls://a.com:1?count=2&standby=&tier=1&weight=3|tcp://b.com:2|wss://c.com:443/ws?host=front.com&tier=2", name: "home", carrier: "tls"},
-		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&source_addr=10.0.0.2", vkey: "k", server: "tcp://a.com:1", name: "nas", carrier: "tcp",
+		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&source_addr=10.0.0.2", vkey: "k", server: "auto://a.com:1", name: "nas", carrier: "tls",
 			common: map[string]string{"new_protocol_pin": pin, "proxy_url": "socks5://p:1", "pipes": "multi", "session_max_lanes": "4", "local_ip": "10.0.0.2"}},
-		{in: "npc://k@a.com:1?future=1&exp=5", vkey: "k", server: "tcp://a.com:1", carrier: "tcp"},
+		{in: "npc://k@a.com:1?future=1&exp=5", vkey: "k", server: "auto://a.com:1", carrier: "tls"},
 	}
 	for _, tt := range tests {
 		l, err := ParseLink(tt.in)
@@ -78,14 +78,13 @@ func TestParseLinkRejects(t *testing.T) {
 		"empty vkey":    "npc://@a:1",
 		"client number": "npc://7:k@a:1",
 		"no host":       "npc://k@:1",
-		"type auto":     "npc://k@a:1?type=auto",
 		"type kcp":      "npc://k@a:1?type=kcp",
 		"type unknown":  "npc://k@a:1?type=x",
 		"twice":         "npc://k@a:1?type=tls&type=tcp",
-		"alpn on tcp":   "npc://k@a:1?alpn=h2",
+		"alpn on tcp":   "npc://k@a:1?type=tcp&alpn=h2",
 		"http on tls":   "npc://k@a:1?type=tls&http=h2",
 		"subproto tls":  "npc://k@a:1?type=tls&subprotocol=x",
-		"path on tcp":   "npc://k@a:1/x",
+		"path on tcp":   "npc://k@a:1/x?type=tcp",
 		"alt no scheme": "npc://k@a:1?alt=b:2",
 		"alt kcp":       "npc://k@a:1?alt=kcp://b:2",
 		"bad pin":       "npc://k@a:1?pin=abcd",
@@ -147,8 +146,8 @@ func TestFormatLinkRoundTrip(t *testing.T) {
 // would refuse.
 func TestParseLinkAltParameters(t *testing.T) {
 	for _, in := range []string{
-		"npc://k@a.com:1?pipes=multi&count=2&alt=quic://b:443?tier=1;weight=2&alt=tls://c:8025?alpn=h2,nps;count=3;standby=1",
-		"npc://k@a.com:1?pipes=multi&count=2&alt=" + url.QueryEscape("quic://b:443?tier=1&weight=2") + "&alt=" + url.QueryEscape("tls://c:8025?alpn=h2,nps&count=3&standby=1"),
+		"npc://k@a.com:1?type=tcp&pipes=multi&count=2&alt=quic://b:443?tier=1;weight=2&alt=tls://c:8025?alpn=h2,nps;count=3;standby=1",
+		"npc://k@a.com:1?type=tcp&pipes=multi&count=2&alt=" + url.QueryEscape("quic://b:443?tier=1&weight=2") + "&alt=" + url.QueryEscape("tls://c:8025?alpn=h2,nps&count=3&standby=1"),
 	} {
 		l, err := ParseLink(in)
 		if err != nil {
@@ -180,5 +179,19 @@ func TestParseLinkDocumentedExample(t *testing.T) {
 	c, err := Parse(l.Server, "")
 	if err != nil || len(c) != 3 || c[1].Weight != 2 || !c[2].Standby || l.Name != "office" {
 		t.Fatalf("%+v %v", c, err)
+	}
+}
+
+func TestFormatLinkAuto(t *testing.T) {
+	got, err := FormatLink("k", "auto://a.com:8024/ws?count=2", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "@a.com:8024/ws?") || !strings.Contains(got, "type=auto") || strings.Contains(got, "alt=") {
+		t.Fatal(got)
+	}
+	l, err := ParseLink(got)
+	if err != nil || !strings.HasPrefix(l.Server, "auto://a.com:8024/ws") {
+		t.Fatal(l, err)
 	}
 }

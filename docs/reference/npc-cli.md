@@ -151,3 +151,6 @@ PowerShell 会把不加引号的 `-server=1.2.3.4:8024` 在第一个 `.` 处拆�
 npc launch pack npc.jsonc                # 输出 gzip+base64，可作 -launch 的值；含明文密钥
 npc launch show -launch=… -L=… [--reveal]  # 规范化打印，默认遮盖 vkey、access 和代理密码；也接受旧参数并输出新写法
 ```
+
+
+启动链接不写 `type` 时等于 `type=auto`：在混合端口上依次试 `tls`、`quic`、`wss`、`https`（没有路径时跳过后两种，不试明文），每 250 ms 并行加一个，只有一条成为连接；握手后 30 秒内断开的不算成功，下次排到后面。

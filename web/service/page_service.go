@@ -256,6 +256,8 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		Year:           info.Year,
 		IsAdmin:        input.IsAdmin,
 		AdmitKey:       pageAdmitKey(cfg, input.IsAdmin),
+		MixIP:          bridge.Primary.IP,
+		MixPort:        pageIntString(cfg.Network.MixPort),
 		ServerUpdate:   info.CanUpdate,
 		Username:       strings.TrimSpace(input.Username),
 		BridgeType:     bridge.Primary.Type,

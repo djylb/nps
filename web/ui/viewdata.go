@@ -39,6 +39,9 @@ type ManagementPageCommonData struct {
 	// AdmitKey is the admission key of the exchange carrier, as hex, shown to
 	// administrators only.
 	AdmitKey string
+	// MixIP and MixPort are the mixed port, where a type=auto link connects;
+	// the port is "" when there is none.
+	MixIP, MixPort string
 	// ServerUpdate tells whether the server can be updated from the web.
 	ServerUpdate bool
 	Username     string
@@ -126,7 +129,7 @@ func (d ManagementPageCommonData) Map() map[string]any {
 }
 
 // LinkURLs are the launch links of the enabled bridge carriers, by type
-// (tcp, tls, quic, ws, wss, http, https): the one place the start commands take them from.
+// (auto where there is a mixed port, tcp, tls, quic, ws, wss, http, https): the one place the start commands take them from.
 // A link has no vkey yet, "npc://@host:port", for the page to put in with
 // npcLink (language.js); an HTTP link carries the path, a QUIC link the
 // ALPN.
@@ -142,13 +145,18 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	add("quic", d.QUICIP, d.QUICPort, "", d.quicQuery())
 	add("ws", d.WSIP, d.WSPort, d.WSPath, "")
 	add("wss", d.WSSIP, d.WSSPort, d.WSPath, "")
-	var admit string
-	if d.AdmitKey != "" {
-		admit = "admit_key=" + d.AdmitKey
-	}
-	add("http", d.WSIP, d.WSPort, d.WSPath, admit)
-	add("https", d.WSSIP, d.WSSPort, d.WSPath, admit)
+	add("auto", d.MixIP, d.MixPort, d.WSPath, d.admitQuery())
+	add("http", d.WSIP, d.WSPort, d.WSPath, d.admitQuery())
+	add("https", d.WSSIP, d.WSSPort, d.WSPath, d.admitQuery())
 	return urls
+}
+
+// admitQuery is the admission key as a link parameter, "" without one.
+func (d ManagementPageCommonData) admitQuery() string {
+	if d.AdmitKey == "" {
+		return ""
+	}
+	return "admit_key=" + d.AdmitKey
 }
 
 // linkURL writes a launch link without its vkey. addr is host:port.
@@ -176,6 +184,9 @@ func (d ManagementPageCommonData) quicQuery() string {
 // connect over QUIC; the display address is the fallback when that carrier is
 // not enabled.
 func (d ManagementPageCommonData) bridgeURL(urls map[string]string) string {
+	if u := urls["auto"]; u != "" {
+		return u
+	}
 	scheme := d.BridgeType
 	if scheme == "kcp" {
 		scheme = "quic"
