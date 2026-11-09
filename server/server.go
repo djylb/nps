@@ -206,7 +206,7 @@ func (s *Server) Bridge() *bridge.Bridge { return s.bridge }
 func (s *Server) lookupTunnel(id int) (bridge.TunnelDialer, bool) {
 	if v, ok := s.tasks.Load(id); ok {
 		if svr, ok := v.(*proxy.TunnelModeServer); ok {
-			if !strings.Contains(svr.Task.Target.TargetStr, "tunnel://") {
+			if !strings.Contains(svr.Task.View().Target.TargetStr, "tunnel://") {
 				return svr, true
 			}
 		}
@@ -504,7 +504,8 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		return ErrClosed
 	default:
 	}
-	if t.Mode == "secret" {
+	mode := t.View().Mode
+	if mode == "secret" {
 		// The bridge serves secret tasks; grants resolved under the
 		// task's earlier settings end.
 		s.bridge.RevokeSecretTunnel(t.Id)
@@ -519,14 +520,14 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		log.Debug("virtual backend not started: it has no listener", "tunnel", t.Id, "client", clientID(t))
 		return nil
 	}
-	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
+	if b := s.ports.TestTunnelPort(t); !b && mode != "httpHostServer" {
 		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "port", t.Port, "reason", "in_use")
 		return errors.New("the port open error")
 	}
 	svr := s.newMode(t)
 	if svr == nil {
 		err := errors.New("the mode is not correct")
-		log.Error("tunnel not started", "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "mode", t.Mode, "err", err)
+		log.Error("tunnel not started", "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "mode", mode, "err", err)
 		return err
 	}
 	b, binds := svr.(proxy.Binder)
@@ -536,7 +537,7 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 			return err
 		}
 		carrier := "tcp"
-		if t.Mode == "udp" {
+		if mode == "udp" {
 			carrier = "udp"
 		}
 		slogx.Emit(context.Background(), log, &logevent.Listening, "route", tunnelRoute(t), "listen", tunnelListen(t), "carrier", carrier, "tls", false)
@@ -546,12 +547,12 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 			_ = oldSvr.Close()
 		}
 	}
-	if t.Mode != "httpHostServer" {
+	if mode != "httpHostServer" {
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 	}
 	// The labels name the task in stack dumps and tracebacks of everything
 	// the server starts.
-	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", t.Mode, "client", strconv.Itoa(clientID(t)))
+	labels := pprof.Labels("task", strconv.Itoa(t.Id), "mode", mode, "client", strconv.Itoa(clientID(t)))
 	if !s.goWork("task "+strconv.Itoa(t.Id), func(ctx context.Context) {
 		pprof.Do(ctx, labels, func(context.Context) {
 			if err := svr.Start(); err != nil && !errors.Is(err, proxy.ErrServerClosed) {
@@ -808,7 +809,7 @@ func tunnelRoute(t *model.Tunnel) string { return t.LogRoute() }
 
 // tunnelListen is the ip:port tunnel t listens on.
 func tunnelListen(t *model.Tunnel) string {
-	ip := t.ServerIp
+	ip := t.View().ServerIp
 	if ip == "" {
 		ip = "0.0.0.0"
 	}

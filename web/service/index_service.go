@@ -135,7 +135,7 @@ func (s DefaultIndexService) SaveTunnelLaunchForm(id int, form string) error {
 	if err != nil {
 		return err
 	}
-	if tunnel.Mode != "secret" {
+	if tunnel.View().Mode != "secret" {
 		return ErrTunnelNotFound
 	}
 	tunnel.LaunchForm = form

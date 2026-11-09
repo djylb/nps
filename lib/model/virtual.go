@@ -35,4 +35,4 @@ const ModeService = "service"
 
 // IsVirtualBackend reports whether t describes a virtual service of npc, which
 // is never stored: the server only ever sees what a session reports.
-func (t *Tunnel) IsVirtualBackend() bool { return t.Mode == ModeService }
+func (t *Tunnel) IsVirtualBackend() bool { return t.View().Mode == ModeService }

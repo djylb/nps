@@ -84,13 +84,13 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 	accessID := slices.Clone(r.AccessID)
 	find := func() *model.Tunnel {
 		t := s.store.GetTaskByAccessID(accessID)
-		if t == nil || t.Mode != "secret" {
+		if t == nil || t.View().Mode != "secret" {
 			return nil
 		}
 		return t
 	}
 	t := find()
-	if t == nil || !r.Verify([]byte(t.Password)) {
+	if t == nil || !r.Verify([]byte(t.View().Password)) {
 		s.spendGuess(client)
 		accessRefused(client, r.Source, "reason", "bad_key")
 		return nil, refused

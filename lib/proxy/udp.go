@@ -36,17 +36,14 @@ func (s *UdpModeServer) Bind() error {
 		if s.listener != nil {
 			return nil
 		}
-		if s.Task.ServerIp == "" {
-			s.Task.ServerIp = "0.0.0.0"
-		}
-		udp, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(s.Task.ServerIp), Port: s.Task.Port})
+		udp, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(s.Task.ListenIP()), Port: s.Task.Port})
 		if err != nil {
 			return err
 		}
 		pc := rate.NewVisitorPacketConn(udp, s.Task.Client.Rate, s.Task.RateLimiter())
 		s.listener = netx.NewPacketListener(pc,
 			netx.WithPacketAcceptFilter(func(peer net.Addr, _ []byte) bool {
-				return !s.Bridge.IsServer() || !datagramDenied(peer, s.Bridge.GlobalSource(), s.Task.Client, &s.Task.SourceLists)
+				return !s.Bridge.IsServer() || !datagramDenied(peer, s.Bridge.GlobalSource(), s.Task.Client, s.Task.View().Source)
 			}),
 			netx.WithPacketIdleTimeout(udpSessionIdleTimeout),
 			netx.WithPacketQueue(udpSessionQueue),

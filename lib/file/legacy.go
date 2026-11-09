@@ -61,7 +61,7 @@ func (s *JsonDb) portTaken(t *model.Tunnel) (taken bool) {
 	tcp, udp := t.ListenKinds()
 	s.Tasks.Range(func(_, v any) bool {
 		o := v.(*model.Tunnel)
-		if o.Id == t.Id || o.Port == 0 || o.Port != t.Port || !model.ListenIPsOverlap(o.ServerIp, t.ServerIp) {
+		if o.Id == t.Id || o.Port == 0 || o.Port != t.Port || !model.ListenIPsOverlap(o.View().ServerIp, t.ServerIp) {
 			return true
 		}
 		otcp, oudp := o.ListenKinds()

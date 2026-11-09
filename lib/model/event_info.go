@@ -39,12 +39,13 @@ type HostInfo struct {
 
 // NewTunnelInfo snapshots t.
 func NewTunnelInfo(t *Tunnel) TunnelInfo {
-	info := TunnelInfo{ID: t.Id, Mode: t.Mode, ServerIP: t.ServerIp, Port: t.Port, Remark: t.Remark, Enabled: t.Status, FromClient: t.NoStore}
+	v := t.View()
+	info := TunnelInfo{ID: t.Id, Mode: v.Mode, ServerIP: v.ServerIp, Port: t.Port, Remark: v.Remark, Enabled: t.Status, FromClient: t.NoStore}
 	if t.Client != nil {
 		info.ClientID = t.Client.Id
 	}
-	if t.Target != nil {
-		info.Target = t.Target.TargetStr
+	if v.Target != nil {
+		info.Target = v.Target.TargetStr
 	}
 	return info
 }

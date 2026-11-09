@@ -50,7 +50,7 @@ type sourceFilterPacketConn struct {
 func (c *sourceFilterPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
 		n, addr, err := c.PacketConn.ReadFrom(p)
-		if err != nil || c.task == nil || c.task.Client == nil || !datagramDenied(addr, c.bridge.GlobalSource(), c.task.Client, &c.task.SourceLists) {
+		if err != nil || c.task == nil || c.task.Client == nil || !datagramDenied(addr, c.bridge.GlobalSource(), c.task.Client, c.task.View().Source) {
 			return n, addr, err
 		}
 	}
@@ -68,7 +68,10 @@ func (s *TunnelModeServer) socks5UDPAddr(req *socks5.Request, socket net.Addr) n
 // destination of a datagram.
 func (s *TunnelModeServer) allowsSocks5Datagram(_ *socks5.Request, dst netx.Addr) bool {
 	t := s.Task
-	if t == nil || t.Mode != "mixProxy" || t.DestAclMode == model.AclOff {
+	if t == nil {
+		return true
+	}
+	if v := t.View(); v.Mode != "mixProxy" || v.DestAclMode == model.AclOff {
 		return true
 	}
 	return t.AllowsDestination(dst.String())
@@ -87,7 +90,7 @@ func (s *TunnelModeServer) dialSocks5Packet(_ context.Context, req *socks5.Reque
 		task.Client.Cnf.Crypt,
 		task.Client.Cnf.Compress,
 		req.Conn.RemoteAddr().String(),
-		s.AllowLocalProxy && task.Target.LocalProxy,
+		s.AllowLocalProxy && task.View().Target.LocalProxy,
 	)
 	link.Option.Timeout = socks5UDPIdleTimeout
 	link.Option.Node = task.Route().Node
@@ -115,7 +118,7 @@ func validateSocks5UDPTunnelTask(task *model.Tunnel) error {
 		return errors.New("nil socks5 udp task client")
 	case task.Client.Cnf == nil:
 		return errors.New("nil socks5 udp client config")
-	case task.Target == nil:
+	case task.View().Target == nil:
 		return errors.New("nil socks5 udp target")
 	case task.Flow == nil:
 		return errors.New("nil socks5 udp task flow")

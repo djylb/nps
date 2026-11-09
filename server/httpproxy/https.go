@@ -140,7 +140,7 @@ func (s *HttpsServer) Start() error {
 	_ = conn.Accept(s.httpsListener, func(c net.Conn) {
 		// Only the global list: the entry lists depend on the request's host,
 		// which may differ from the SNI.
-		if proxy.SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), nil, nil, "") {
+		if proxy.SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), nil, model.SourceView{}, "") {
 			_ = c.Close()
 			return
 		}

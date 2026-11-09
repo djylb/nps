@@ -75,7 +75,7 @@ loop:
 
 				s.store.RangeTunnels(func(v *model.Tunnel) bool {
 					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
-						remarks = append(remarks, v.Remark)
+						remarks = append(remarks, v.View().Remark)
 					}
 					return true
 				})
@@ -381,7 +381,8 @@ func (s *Bridge) publishTask(tl *model.Tunnel, client *model.Client, uuid string
 	if err := s.store.ReserveTaskPassword(tl); err != nil {
 		return nil, false, err
 	}
-	joining := tt.Routes.HasOther(uuid) && tt.Mode == tl.Mode && tt.ServerIp == tl.ServerIp
+	cur := tt.View()
+	joining := tt.Routes.HasOther(uuid) && cur.Mode == tl.Mode && cur.ServerIp == tl.ServerIp
 	if caps.NodeID {
 		tt.Routes.Publish(uuid, tl.Target)
 	}

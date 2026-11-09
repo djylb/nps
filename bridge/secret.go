@@ -228,7 +228,11 @@ func (s *Bridge) handleSecretAttach(c *conn.Conn, id int, uuid string) {
 		return
 	}
 	t := s.store.GetTaskBySecretIndex(req.Index)
-	if t == nil || t.Mode != "secret" || !hmac.Equal(req.Proof, crypt.SecretProof(t.Password, nonce, uuid)) {
+	var tv model.TunnelView
+	if t != nil {
+		tv = t.View()
+	}
+	if t == nil || tv.Mode != "secret" || !hmac.Equal(req.Proof, crypt.SecretProof(tv.Password, nonce, uuid)) {
 		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "secret",
 			"client", id, "reason", "bad_key")
 		refuse(legacy.P2PCodeRefused, "no secret task has this password")

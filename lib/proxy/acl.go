@@ -83,21 +83,18 @@ func clientOf(t *model.Tunnel) int {
 
 // sourcePolicies returns the source access lists of the client and entry, a
 // tunnel or host; missing levels allow everything.
-func sourcePolicies(client *model.Client, entry *model.SourceLists) (cli, ent *acl.Source) {
+func sourcePolicies(client *model.Client, entry model.SourceView) (cli, ent *acl.Source) {
 	if client != nil {
 		cli = client.SourceACL()
 	}
-	if entry != nil {
-		ent = entry.SourceACL()
-	}
-	return
+	return cli, entry.ACL()
 }
 
 // SourceDenied reports whether the access lists of the global settings, the
 // client and the entry deny the visitor addr, and logs a denial. g, the global lists, is
 // nil where there are no global lists, as on npc. entryName names the entry
 // in the log, for example "tunnel 3".
-func SourceDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *model.SourceLists, entryName string) bool {
+func SourceDenied(addr net.Addr, g *acl.Source, client *model.Client, entry model.SourceView, entryName string) bool {
 	c, e := sourcePolicies(client, entry)
 	if !acl.Allows(addr, g, c, e) {
 		slogx.Emit(context.Background(), log, &logevent.TunnelDenied, "src_ip", srcIP(addr), "route", entryName, "reason", "acl", "rule", acl.Decide(addr, levelNames(client, entryName), g, c, e))
@@ -111,7 +108,7 @@ func SourceDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *mod
 }
 
 // SourceDeniedString is SourceDenied for an address given as text.
-func SourceDeniedString(addr string, g *acl.Source, client *model.Client, entry *model.SourceLists, entryName string) bool {
+func SourceDeniedString(addr string, g *acl.Source, client *model.Client, entry model.SourceView, entryName string) bool {
 	c, e := sourcePolicies(client, entry)
 	if !acl.AllowsString(addr, g, c, e) {
 		slogx.Emit(context.Background(), log, &logevent.TunnelDenied, "src_ip", netaddr.Host(addr), "route", entryName, "reason", "acl", "rule", acl.DecideString(addr, levelNames(client, entryName), g, c, e))
@@ -126,7 +123,7 @@ func SourceDeniedString(addr string, g *acl.Source, client *model.Client, entry 
 
 // datagramDenied is SourceDenied for single datagrams, which are dropped
 // with a trace entry only so that a flood of them does not flood the log.
-func datagramDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *model.SourceLists) bool {
+func datagramDenied(addr net.Addr, g *acl.Source, client *model.Client, entry model.SourceView) bool {
 	c, e := sourcePolicies(client, entry)
 	if acl.Allows(addr, g, c, e) && (client == nil || !registrationRequired(client, entry) || ipreg.RegisteredAddr(client.Id, addr)) {
 		return false
@@ -137,11 +134,11 @@ func datagramDenied(addr net.Addr, g *acl.Source, client *model.Client, entry *m
 
 // registrationRequired reports whether the client or the entry only allows
 // visitor addresses registered for the client.
-func registrationRequired(client *model.Client, entry *model.SourceLists) bool {
+func registrationRequired(client *model.Client, entry model.SourceView) bool {
 	if client == nil {
 		return false
 	}
-	return client.RegisteredOnly || (entry != nil && entry.RegisteredOnly)
+	return client.RegisteredOnly || entry.RegisteredOnly()
 }
 
 // levelNames names the levels of a decision for the log.
@@ -155,9 +152,9 @@ func levelNames(client *model.Client, entryName string) []string {
 
 func taskName(t *model.Tunnel) string { return t.LogRoute() }
 
-func taskLists(t *model.Tunnel) *model.SourceLists {
+func taskLists(t *model.Tunnel) model.SourceView {
 	if t == nil {
-		return nil
+		return model.SourceView{}
 	}
-	return &t.SourceLists
+	return t.View().Source
 }

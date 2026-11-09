@@ -62,7 +62,7 @@ func newHTTPProxyServer(s *TunnelModeServer) *httpproxy.Server {
 // accepting any when it has none.
 func (s *TunnelModeServer) checkProxyAccount(user, password string) bool {
 	u, p := socks5ClientCredentials(s.Task)
-	accounts, authMap := model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)
+	accounts, authMap := model.GetAccountMap(s.Task.View().MultiAccount), model.GetAccountMap(s.Task.UserAuth)
 	if !auth.NeedsAuth(u, p, accounts, authMap) {
 		return true
 	}
@@ -99,7 +99,7 @@ func (a httpFallbackAuth) Authenticate(_ context.Context, req *httpproxy.Request
 // allowHTTPProxy applies the destination ACL and refuses requests once the
 // task or client is over its flow or time limit.
 func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Request) error {
-	if s.Task.Mode == "mixProxy" && s.Task.DestAclMode != model.AclOff && !s.Task.AllowsDestination(req.Dst.String()) {
+	if v := s.Task.View(); v.Mode == "mixProxy" && v.DestAclMode != model.AclOff && !s.Task.AllowsDestination(req.Dst.String()) {
 		destDenied(req.Conn.RemoteAddr(), s.Task, req.Dst.String())
 		return &httpproxy.StatusError{Code: 403, Err: errProxyAccessDenied}
 	}
@@ -115,7 +115,7 @@ func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Requ
 // openHTTPLink opens a link to the destination of req through the client
 // tunnel.
 func (s *TunnelModeServer) openHTTPLink(c *conn.Conn, req *httpproxy.Request) (net.Conn, *conn.Link, bool, error) {
-	target, link, isLocal, err := s.openClientLinkAcked(c, s.Task.Client, req.Dst.String(), conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLinkAcked(c, s.Task.Client, req.Dst.String(), conn.LinkTCP, s.Task.View().Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if errors.Is(err, errProxyAccessDenied) || err != nil && logevent.NetReason(err) == "permission" {
 		err = &httpproxy.StatusError{Code: 403, Err: err}
 	} else if err == nil && (target == nil || link == nil) {

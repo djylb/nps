@@ -74,12 +74,13 @@ var (
 // NewSecretPolicy is the policy of task t reaching target, with the
 // server's allow_local_proxy.
 func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy bool) *SecretPolicy {
+	v := t.View()
 	p := &SecretPolicy{
-		TargetType: t.TargetType,
+		TargetType: v.TargetType,
 		NameDest:   true,
 	}
-	if t.DestAclMode == model.AclWhitelist || t.DestAclMode == model.AclBlacklist {
-		p.DestAclMode, p.DestAclRules, p.allows = t.DestAclMode, t.DestAclRules, t.AllowsDestination
+	if v.DestAclMode == model.AclWhitelist || v.DestAclMode == model.AclBlacklist {
+		p.DestAclMode, p.DestAclRules, p.allows = v.DestAclMode, v.DestAclRules, t.AllowsDestination
 	}
 	if target != nil {
 		p.Targets = target.TargetStr

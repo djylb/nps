@@ -227,7 +227,8 @@ func (s *Server) DashboardData(force bool) map[string]any {
 	var tcpN, udpN, secretN, socks5N, httpN int
 	s.db.JsonDb.Tasks.Range(func(key, value any) bool {
 		t := value.(*model.Tunnel)
-		switch t.Mode {
+		v := t.View()
+		switch v.Mode {
 		case "tcp":
 			tcpN++
 		case "socks5":
@@ -235,10 +236,10 @@ func (s *Server) DashboardData(force bool) map[string]any {
 		case "httpProxy":
 			httpN++
 		case "mixProxy":
-			if t.HttpProxy {
+			if v.HttpProxy {
 				httpN++
 			}
-			if t.Socks5Proxy {
+			if v.Socks5Proxy {
 				socks5N++
 			}
 		case "udp":

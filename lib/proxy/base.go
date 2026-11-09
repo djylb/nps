@@ -221,8 +221,8 @@ func (s *BaseServer) openLink(c *conn.Conn, client *model.Client, addr, tp strin
 	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
-	if task != nil && task.Mode == "mixProxy" && task.DestAclMode != model.AclOff {
-		if !task.AllowsDestination(addr) {
+	if task != nil {
+		if v := task.View(); v.Mode == "mixProxy" && v.DestAclMode != model.AclOff && !task.AllowsDestination(addr) {
 			destDenied(c.RemoteAddr(), task, addr)
 			return nil, nil, false, errProxyAccessDenied
 		}

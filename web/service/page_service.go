@@ -98,6 +98,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 		if err != nil {
 			return PageBuildResult{}, ErrPageNotFound
 		}
+		task = task.Clone()
 		data["t"] = task
 		setAccessListData(data, &task.SourceLists)
 		if task.UserAuth == nil {
@@ -108,7 +109,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 		data["name"] = "edit tunnel"
 	case "launch":
 		task, err := s.index().GetTunnel(pageInt(input, "id"))
-		if err != nil || task.Mode != "secret" || task.Client == nil {
+		if err != nil || task.View().Mode != "secret" || task.Client == nil {
 			return PageBuildResult{}, ErrPageNotFound
 		}
 		vkey, _ := data["visitor_vkey"].(string)
@@ -116,10 +117,11 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			vkey = task.Client.VerifyKey
 		}
 		target := ""
-		if task.Target != nil {
-			target, _, _ = strings.Cut(strings.TrimSpace(task.Target.TargetStr), "\n")
+		view := task.View()
+		if view.Target != nil {
+			target, _, _ = strings.Cut(strings.TrimSpace(view.Target.TargetStr), "\n")
 		}
-		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "password": task.Password,
+		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "password": view.Password,
 			"defaultTarget": target, "form": task.LaunchForm, "save": "index/savelaunch"}
 		data["name"] = "start command"
 	case "hostlist":

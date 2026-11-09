@@ -41,7 +41,7 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	// clientConn wraps req.Conn only, which every path below closes or relays.
 	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(req.Conn)
-	target, link, isLocal, err := s.openClientLinkAcked(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLinkAcked(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.View().Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
 		_ = req.Reply(socks5ReplyOf(err), netx.Addr{})
 		return true, err
@@ -84,7 +84,7 @@ func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
 	return []socks5.Authenticator{socks5.UserPassAuth{Check: func(_ context.Context, c net.Conn, username, password string) (bool, error) {
 		user, passwd := socks5ClientCredentials(s.Task)
 		if !auth.CheckAuthWithAccountMap(username, password, user, passwd,
-			model.GetAccountMap(s.Task.MultiAccount), model.GetAccountMap(s.Task.UserAuth)) {
+			model.GetAccountMap(s.Task.View().MultiAccount), model.GetAccountMap(s.Task.UserAuth)) {
 			proxyAuthFailed(c.RemoteAddr(), s.Task, username)
 			return false, nil
 		}
@@ -95,7 +95,7 @@ func (s *TunnelModeServer) socks5Auth() []socks5.Authenticator {
 func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	// the source lists apply before any handshake, so that denied
 	// addresses cannot try the proxy credentials
-	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), s.Task.Client, &s.Task.SourceLists, taskName(s.Task)) {
+	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), s.Task.Client, s.Task.View().Source, taskName(s.Task)) {
 		_ = c.Close()
 		return errProxyAccessDenied
 	}
@@ -156,13 +156,14 @@ func effectiveMixProxyFlags(task *model.Tunnel) (httpEnabled, socksEnabled bool)
 	if task == nil {
 		return false, false
 	}
-	switch task.Mode {
+	v := task.View()
+	switch v.Mode {
 	case "socks5":
 		return false, true
 	case "httpProxy":
 		return true, false
 	case "mixProxy":
-		return task.HttpProxy, task.Socks5Proxy
+		return v.HttpProxy, v.Socks5Proxy
 	default:
 		return false, false
 	}
@@ -174,7 +175,7 @@ func socks5NeedsAuth(task *model.Tunnel) bool {
 	}
 	user, passwd := socks5ClientCredentials(task)
 	return auth.NeedsAuth(user, passwd,
-		model.GetAccountMap(task.MultiAccount), model.GetAccountMap(task.UserAuth))
+		model.GetAccountMap(task.View().MultiAccount), model.GetAccountMap(task.UserAuth))
 }
 
 func socks5ClientCredentials(task *model.Tunnel) (user, passwd string) {

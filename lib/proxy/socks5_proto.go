@@ -77,7 +77,7 @@ func socks5ReplyIP(task *model.Tunnel, tcpLocal, udpLocal net.Addr, client net.I
 	}
 
 	if task != nil {
-		if ip := net.ParseIP(task.ServerIp); ip != nil {
+		if ip := net.ParseIP(task.View().ServerIp); ip != nil {
 			if specific := trySpecificIP(ip); specific != nil {
 				return specific
 			}

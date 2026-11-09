@@ -131,7 +131,7 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(s.ErrorContent)
 		return
 	}
-	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, &host.SourceLists, host.Host) {
+	if proxy.SourceDeniedString(r.RemoteAddr, s.Bridge.GlobalSource(), host.Client, host.SourceView(), host.Host) {
 		abortRequest()
 	}
 	if a := accessOf(r.Context()); a != nil {

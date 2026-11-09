@@ -380,7 +380,7 @@ func tunnelRateRows(rows []*model.Tunnel) []*tunnelRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &tunnelRateRow{Tunnel: row, HasLaunch: row.LaunchForm != "", NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
+		result[i] = &tunnelRateRow{Tunnel: row.Clone(), HasLaunch: row.LaunchForm != "", NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }

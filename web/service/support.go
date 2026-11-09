@@ -102,11 +102,15 @@ func changeTunnelStatus(repo Repository, id int, name, action string) error {
 
 	switch strings.TrimSpace(name) {
 	case "http":
-		if err := applyBoolAction(&tunnel.HttpProxy, action); err != nil {
+		var err error
+		tunnel.Modify(func(t *model.Tunnel) { err = applyBoolAction(&t.HttpProxy, action) })
+		if err != nil {
 			return err
 		}
 	case "socks5":
-		if err := applyBoolAction(&tunnel.Socks5Proxy, action); err != nil {
+		var err error
+		tunnel.Modify(func(t *model.Tunnel) { err = applyBoolAction(&t.Socks5Proxy, action) })
+		if err != nil {
 			return err
 		}
 	case "flow":

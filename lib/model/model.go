@@ -712,16 +712,20 @@ func (t *Tunnel) AllowsDestination(addr string) bool {
 // single failure status when ok is false, so both sides use this to stay in
 // step on the configuration connection.
 func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
-	if t == nil || t.Target == nil {
+	if t == nil {
+		return nil, nil, false
+	}
+	v := t.View()
+	if v.Target == nil {
 		return nil, nil, false
 	}
 	ports = netaddr.GetPorts(t.Ports)
-	targets = netaddr.GetPorts(t.Target.TargetStr)
-	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") {
+	targets = netaddr.GetPorts(v.Target.TargetStr)
+	if len(ports) > 1 && (v.Mode == "tcp" || v.Mode == "udp") {
 		if _, ok := MatchTargetPorts(ports, targets, false); !ok {
 			return nil, nil, false
 		}
-	} else if t.Mode == "secret" {
+	} else if v.Mode == "secret" {
 		ports = append(ports, 0)
 	}
 	if len(ports) == 0 {
@@ -1239,10 +1243,11 @@ func (s *Client) CurrentRates() (int64, int64) {
 
 // RelayTarget names where the tunnel forwards to.
 func (t *Tunnel) RelayTarget() string {
-	if t.Target == nil {
+	target := t.View().Target
+	if target == nil {
 		return ""
 	}
-	return t.Target.TargetStr
+	return target.TargetStr
 }
 
 // SetIsHTTP records whether the tunnel's traffic looks like HTTP.

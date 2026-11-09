@@ -41,10 +41,7 @@ func (s *TunnelModeServer) Bind() error {
 		if s.listener != nil {
 			return nil
 		}
-		if s.Task.ServerIp == "" {
-			s.Task.ServerIp = "0.0.0.0"
-		}
-		s.address = net.JoinHostPort(s.Task.ServerIp, strconv.Itoa(s.Task.Port))
+		s.address = net.JoinHostPort(s.Task.ListenIP(), strconv.Itoa(s.Task.Port))
 
 		var udp net.PacketConn
 		if s.usesSocks5UDP() {
@@ -54,7 +51,7 @@ func (s *TunnelModeServer) Bind() error {
 			}
 		}
 		listen := func(address string) (net.Listener, error) { return net.Listen("tcp", address) }
-		if s.Task.Mode == "tcpTrans" || s.Task.Mode == "p2pt" {
+		if mode := s.Task.View().Mode; mode == "tcpTrans" || mode == "p2pt" {
 			listen = listenTransparent
 		}
 		listener, err := listen(s.address)
@@ -166,5 +163,6 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 		relayFailed(s.Task, "", err)
 		return err
 	}
-	return s.DealClient(c, s.Task.Client, "", nil, conn.LinkTCP, nil, flows, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	target := s.Task.View().Target
+	return s.DealClient(c, s.Task.Client, "", nil, conn.LinkTCP, nil, flows, target.ProxyProtocol, target.LocalProxy, s.Task)
 }

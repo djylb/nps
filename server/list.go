@@ -16,6 +16,7 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 	}
 	allList := make([]*model.Tunnel, 0) //store all Tunnel
 	list := make([]*model.Tunnel, 0)
+	views := make(map[*model.Tunnel]model.TunnelView) // settings as read when listed, so sorting and searching see one state
 	originLength := length
 	var cnt int
 
@@ -25,13 +26,18 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 	for _, key := range keys {
 		if value, ok := s.db.JsonDb.Tasks.Load(key); ok {
 			v, ok := value.(*model.Tunnel)
-			if !ok || v == nil || v.Client == nil || v.Target == nil {
+			if !ok || v == nil || v.Client == nil {
 				continue
 			}
-			if (typeVal != "" && v.Mode != typeVal || (clientId != 0 && v.Client.Id != clientId)) || (typeVal == "" && clientId != v.Client.Id) {
+			view := v.View()
+			if view.Target == nil {
+				continue
+			}
+			if (typeVal != "" && view.Mode != typeVal || (clientId != 0 && v.Client.Id != clientId)) || (typeVal == "" && clientId != v.Client.Id) {
 				continue
 			}
 			allList = append(allList, v)
+			views[v] = view
 		}
 	}
 
@@ -58,9 +64,9 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 
 	case "Remark":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Remark < allList[j].Remark })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Remark < views[allList[j]].Remark })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Remark > allList[j].Remark })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Remark > views[allList[j]].Remark })
 		}
 
 	case "Client.VerifyKey":
@@ -72,9 +78,9 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 
 	case "Target.TargetStr":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Target.TargetStr < allList[j].Target.TargetStr })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Target.TargetStr < views[allList[j]].Target.TargetStr })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Target.TargetStr > allList[j].Target.TargetStr })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Target.TargetStr > views[allList[j]].Target.TargetStr })
 		}
 
 	case "Port":
@@ -86,37 +92,37 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 
 	case "Mode":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Mode < allList[j].Mode })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Mode < views[allList[j]].Mode })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Mode > allList[j].Mode })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Mode > views[allList[j]].Mode })
 		}
 
 	case "TargetType":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].TargetType < allList[j].TargetType })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].TargetType < views[allList[j]].TargetType })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].TargetType > allList[j].TargetType })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].TargetType > views[allList[j]].TargetType })
 		}
 
 	case "Password":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Password < allList[j].Password })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Password < views[allList[j]].Password })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Password > allList[j].Password })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Password > views[allList[j]].Password })
 		}
 
 	case "HttpProxy":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].HttpProxy && !allList[j].HttpProxy })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].HttpProxy && !views[allList[j]].HttpProxy })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return !allList[i].HttpProxy && allList[j].HttpProxy })
+			sort.SliceStable(allList, func(i, j int) bool { return !views[allList[i]].HttpProxy && views[allList[j]].HttpProxy })
 		}
 
 	case "Socks5Proxy":
 		if order == "asc" {
-			sort.SliceStable(allList, func(i, j int) bool { return allList[i].Socks5Proxy && !allList[j].Socks5Proxy })
+			sort.SliceStable(allList, func(i, j int) bool { return views[allList[i]].Socks5Proxy && !views[allList[j]].Socks5Proxy })
 		} else {
-			sort.SliceStable(allList, func(i, j int) bool { return !allList[i].Socks5Proxy && allList[j].Socks5Proxy })
+			sort.SliceStable(allList, func(i, j int) bool { return !views[allList[i]].Socks5Proxy && views[allList[j]].Socks5Proxy })
 		}
 
 	case "NowConn":
@@ -220,9 +226,9 @@ func (s *Server) ListTunnels(start, length int, typeVal string, clientId int, se
 		if search != "" &&
 			v.Id != searchInt &&
 			v.Port != searchInt &&
-			!textutil.ContainsFold(v.Password, search) &&
-			!textutil.ContainsFold(v.Remark, search) &&
-			!textutil.ContainsFold(v.Target.TargetStr, search) {
+			!textutil.ContainsFold(views[v].Password, search) &&
+			!textutil.ContainsFold(views[v].Remark, search) &&
+			!textutil.ContainsFold(views[v].Target.TargetStr, search) {
 			continue
 		}
 

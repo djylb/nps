@@ -75,7 +75,7 @@ func (s DefaultConfigTransferService) Export() ([]byte, error) {
 		switch {
 		case t.NoStore || !ownerExported(t.Client):
 		default:
-			bundle.Tunnels = append(bundle.Tunnels, t)
+			bundle.Tunnels = append(bundle.Tunnels, t.Clone())
 		}
 		return true
 	})

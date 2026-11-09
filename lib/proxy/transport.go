@@ -37,7 +37,8 @@ func HandleTrans(c *conn.Conn, s *TunnelModeServer) error {
 		log.Debug("transparent target unknown", "client", s.Task.Client.Id, "tunnel", s.Task.Id, "src_ip", srcIP(c.RemoteAddr()), "err", err)
 		return err
 	}
-	return s.DealClient(c, s.Task.Client, addr, nil, conn.LinkTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, s.Task.Target.ProxyProtocol, s.Task.Target.LocalProxy, s.Task)
+	target := s.Task.View().Target
+	return s.DealClient(c, s.Task.Client, addr, nil, conn.LinkTCP, nil, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, target.ProxyProtocol, target.LocalProxy, s.Task)
 }
 
 // originalTarget returns the original destination of a redirected

@@ -45,7 +45,7 @@ func (a Allowed) TestTunnelPort(t *model.Tunnel) bool {
 		return false
 	}
 	_, udp := t.ListenKinds()
-	return a.testPortUsage(t.Port, t.Mode, udp)
+	return a.testPortUsage(t.Port, t.View().Mode, udp)
 }
 
 func (a Allowed) testPortUsage(p int, m string, needUDP bool) (b bool) {
@@ -105,9 +105,10 @@ func (a Allowed) GenerateTunnelPort(t *model.Tunnel) int {
 	if t == nil {
 		return 0
 	}
+	v := t.View()
 	probe := &model.Tunnel{
-		Mode:        t.Mode,
-		Socks5Proxy: t.Socks5Proxy,
+		Mode:        v.Mode,
+		Socks5Proxy: v.Socks5Proxy,
 	}
 	if len(a.ports) > 0 {
 		for _, idx := range rand.Perm(len(a.ports)) {

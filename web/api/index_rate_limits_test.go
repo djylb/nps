@@ -173,7 +173,7 @@ func TestIndexRateListHandlers(t *testing.T) {
 		t.Fatalf("total=%d", table.Total)
 	}
 	rows := table.Rows.([]*tunnelRateRow)
-	if len(rows) != 1 || rows[0].Tunnel != s.tunnel {
+	if len(rows) != 1 || rows[0].Id != s.tunnel.Id || rows[0].Remark != s.tunnel.Remark {
 		t.Fatal("tunnel fields changed")
 	}
 	u, d := s.tunnel.CurrentRates()

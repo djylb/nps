@@ -51,10 +51,10 @@ func TestSourceDeniedLevels(t *testing.T) {
 }
 
 func TestSourceDeniedWithoutLists(t *testing.T) {
-	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, &model.Client{}, nil, "tunnel") {
+	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, &model.Client{}, model.SourceView{}, "tunnel") {
 		t.Fatal("no lists denied an address")
 	}
-	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, nil, nil, "tunnel") {
+	if SourceDenied(tcpAddr("1.2.3.4:5"), nil, nil, model.SourceView{}, "tunnel") {
 		t.Fatal("missing client denied an address")
 	}
 }
