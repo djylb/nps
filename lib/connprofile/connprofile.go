@@ -15,6 +15,7 @@ package connprofile
 
 import (
 	"cmp"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -87,13 +88,14 @@ const (
 	KindWebSocket = "websocket"
 	KindStreaming = "streaming"
 	KindSplit     = "split"
+	KindExchange  = "exchange"
 	KindHTTP3     = "http3"
 )
 
 // httpKinds are the kinds an http or https candidate tries, in order, when
-// it names none. An http list with h3 adds http3
+// it names none, exchange last. An http list with h3 adds http3
 // (candidateKinds).
-var httpKinds = []string{KindWebSocket, KindStreaming, KindSplit}
+var httpKinds = []string{KindWebSocket, KindStreaming, KindSplit, KindExchange}
 
 // knownKinds are the kinds a kinds parameter may name on http and https.
 var knownKinds = append(slices.Clone(httpKinds), KindHTTP3)
@@ -116,6 +118,10 @@ type Candidate struct {
 	Subprotocol string
 
 	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
+
+	// AdmitKey is the admission key of the exchange kind, as hex (§13); ""
+	// leaves that kind out.
+	AdmitKey string
 
 	// How this version dials it.
 	Carrier string // tcp, tls, kcp, quic, ws, wss, http, https (scheme-less: the profile type as given)
@@ -156,6 +162,10 @@ func (c Candidate) Attempts() []Candidate {
 		}
 		for _, k := range c.Kinds {
 			if !kindCarried(k, v) {
+				continue
+			}
+			if k == KindExchange && c.AdmitKey == "" {
+				warnOnce(c.Raw, "exchange skipped: the link has no admit_key")
 				continue
 			}
 			a := c
@@ -434,6 +444,14 @@ func parseURL(s string) (Candidate, error) {
 			}
 		case "sni":
 			sni, hasSNI = v, true
+		case "admit_key":
+			if !httpKind {
+				return Candidate{}, fmt.Errorf("admit_key is used by http and https, not %s", u.Scheme)
+			}
+			if b, err := hex.DecodeString(v); err != nil || len(b) != AdmitKeySize {
+				return Candidate{}, fmt.Errorf("admit_key is %d hex digits", 2*AdmitKeySize)
+			}
+			c.AdmitKey = strings.ToLower(v)
 		case "alpn":
 			if carrier != "tls" && carrier != "quic" {
 				return Candidate{}, fmt.Errorf("alpn is used by tls and quic, not %s (http and https take http=)", u.Scheme)
@@ -457,7 +475,7 @@ func parseURL(s string) (Candidate, error) {
 				return Candidate{}, err
 			}
 		default:
-			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn, http or subprotocol)", key)
+			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn, http, subprotocol or admit_key)", key)
 		}
 	}
 	if !isWS && !kindsWritten && slices.Contains(c.HTTP, HTTP3) {
@@ -480,12 +498,15 @@ func parseURL(s string) (Candidate, error) {
 			return Candidate{}, fmt.Errorf("dirs up and down are not available on %s, which is not Bound", u.Scheme)
 		}
 		if len(c.Attempts()) == 0 {
-			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds (h2 and h3 need https, http3 needs h3)", strings.Join(c.HTTP, ","))
+			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds (h2 and h3 need https, http3 needs h3, exchange needs admit_key)", strings.Join(c.HTTP, ","))
 		}
 	}
 	c.URL = entryURL(scheme, c.Addr, path)
 	return c, nil
 }
+
+// AdmitKeySize is the length of an admission key in bytes.
+const AdmitKeySize = 32
 
 // DefaultQUICALPN is the ALPN of quic carriers (§13).
 const DefaultQUICALPN = "h3"

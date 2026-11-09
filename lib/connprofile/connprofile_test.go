@@ -288,6 +288,7 @@ func TestAttempts(t *testing.T) {
 		{"wss://a.com/x", []string{""}},
 		{"https://a.com/x?http=h3&kinds=http3", []string{"#h3/http3"}},
 		{"https://a.com/x?http=h3,h2", []string{"#h3/http3", "#h2/streaming", "#h2/split"}},
+		{"https://a.com/x?http=h2&admit_key=" + strings.Repeat("ab", 32), []string{"#h2/streaming", "#h2/split", "#h2/exchange"}},
 	} {
 		c, err := Parse(tc.in, "")
 		if err != nil {
@@ -307,7 +308,7 @@ func TestAttempts(t *testing.T) {
 	if a := Attempts([]Candidate{mustParse(t, "https://a.com/x?kinds=websocket&http=http/1.1")})[0]; a.Carrier != "wss" {
 		t.Fatalf("websocket attempt carrier %q", a.Carrier)
 	}
-	for _, bad := range []string{"http://a.com?http=h2", "https://a.com?http=h2&kinds=http3", "http://a.com?dirs=up", "https://a.com?kinds=websocket,websocket", "https://a.com?kinds=x"} {
+	for _, bad := range []string{"http://a.com?http=h2", "https://a.com?http=h2&kinds=http3", "https://a.com?admit_key=xx", "http://a.com?dirs=up", "https://a.com?kinds=websocket,websocket", "https://a.com?kinds=x"} {
 		if _, err := Parse(bad, ""); err == nil {
 			t.Fatalf("%s: no error", bad)
 		}

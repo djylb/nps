@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/http"
@@ -31,7 +32,33 @@ const httpAttemptTimeout = 8 * time.Second
 
 // HTTPCarriers implements coreapi.Entry.
 func (a *Acceptor) HTTPCarriers(next http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	return zmux.NewHTTPHandler(a.zl, &zmux.HTTPOptions{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
+	h, err := zmux.NewHTTPHandler(a.zl, &zmux.HTTPOptions{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
+	if err != nil || len(a.admitKey) == 0 {
+		return h, err
+	}
+	ex, err := a.exchangeHandler(f)
+	if err != nil {
+		return nil, err
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ex.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), exchangeNextKey{}, h)))
+	}), nil
+}
+
+// exchangeNextKey holds what a request that is no exchange goes on to.
+type exchangeNextKey struct{}
+
+// exchangeHandler is the one handler of the exchange carriers of the entry:
+// it holds their state, and every path of the entry has the same key. What is
+// not an exchange goes on to the handler of the path it came in by.
+func (a *Acceptor) exchangeHandler(f coreapi.Forwarding) (*zmux.HTTPExchangeHandler, error) {
+	a.exchange.once.Do(func() {
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Context().Value(exchangeNextKey{}).(http.Handler).ServeHTTP(w, r)
+		})
+		a.exchange.h, a.exchange.err = zmux.NewHTTPExchangeHandler(a.zl, &zmux.HTTPExchangeConfig{PSK: a.admitKey, PairField: httpPairField, Next: next, Trusted: trustedOf(f)})
+	})
+	return a.exchange.h, a.exchange.err
 }
 
 // attempts returns what Dial and the redial go through for cands: every
@@ -131,6 +158,25 @@ func (t *h3Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 type quicState struct{ qc *quic.Conn }
 
 func (s quicState) ConnectionState() tls.ConnectionState { return s.qc.ConnectionState().TLS }
+
+// exchangeClient is the client of the bounded requests of an exchange
+// carrier, which unlike the others reuse their connections.
+func (d *Dialer) exchangeClient(c connprofile.Candidate) *http.Client {
+	t := d.httpTransport(c, c.HTTP)
+	t.DisableKeepAlives, t.MaxIdleConnsPerHost, t.IdleConnTimeout = false, 8, 30*time.Second
+	d.mu.Lock()
+	d.closers = append(d.closers, t.CloseIdleConnections)
+	d.mu.Unlock()
+	return httpClient(t)
+}
+
+func (d *Dialer) exchangeConfig(c connprofile.Candidate) (*zmux.HTTPExchangeConfig, error) {
+	key, err := hex.DecodeString(c.AdmitKey)
+	if err != nil {
+		return nil, err
+	}
+	return &zmux.HTTPExchangeConfig{PSK: key, PairField: httpPairField}, nil
+}
 
 // closeHTTP ends what the HTTP carriers of the last session kept open.
 func (d *Dialer) closeHTTP() {
@@ -233,6 +279,11 @@ func (d *Dialer) dialHTTP(ctx context.Context, c connprofile.Candidate) (carrier
 		p, err = zmux.HTTPPipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, zmux.DirBidirectional, nil)
 	case connprofile.KindSplit:
 		p, err = (&zmux.HTTPSplitOptions{PairField: httpPairField}).Pipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, nil)
+	case connprofile.KindExchange:
+		var cfg *zmux.HTTPExchangeConfig
+		if cfg, err = d.exchangeConfig(c); err == nil {
+			p, err = zmux.HTTPExchangePipe(ctx, d.exchangeClient(c), httpURL(c), cfg)
+		}
 	default:
 		err = errors.New("unknown http carrier kind " + c.Kinds[0])
 	}
@@ -280,6 +331,12 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
 			h3 := zmux.StreamingCandidate(d.h3Client(m), h3URL(m), nil)
 			h3.Kind = zmux.CarrierHTTP3
 			cands = append(cands, h3)
+		case connprofile.KindExchange:
+			cfg, err := d.exchangeConfig(m)
+			if err != nil {
+				return zmux.Mode{}, err
+			}
+			cands = append(cands, zmux.ExchangeCandidate(d.exchangeClient(m), httpURL(m), cfg))
 		}
 	}
 	return zmux.AutoMode(cands...), nil

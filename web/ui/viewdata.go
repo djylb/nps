@@ -36,6 +36,9 @@ type ManagementPageCommonData struct {
 	Version        string
 	Year           int
 	IsAdmin        bool
+	// AdmitKey is the admission key of the exchange carrier, as hex, shown to
+	// administrators only.
+	AdmitKey string
 	// ServerUpdate tells whether the server can be updated from the web.
 	ServerUpdate bool
 	Username     string
@@ -139,8 +142,12 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	add("quic", d.QUICIP, d.QUICPort, "", d.quicQuery())
 	add("ws", d.WSIP, d.WSPort, d.WSPath, "")
 	add("wss", d.WSSIP, d.WSSPort, d.WSPath, "")
-	add("http", d.WSIP, d.WSPort, d.WSPath, "")
-	add("https", d.WSSIP, d.WSSPort, d.WSPath, "")
+	var admit string
+	if d.AdmitKey != "" {
+		admit = "admit_key=" + d.AdmitKey
+	}
+	add("http", d.WSIP, d.WSPort, d.WSPath, admit)
+	add("https", d.WSSIP, d.WSSPort, d.WSPath, admit)
 	return urls
 }
 

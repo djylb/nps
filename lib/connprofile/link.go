@@ -41,7 +41,7 @@ var linkTypes = []string{"tcp", "tls", "ws", "wss", "http", "https", "quic"}
 
 // candidateKeys are the link parameters that belong to the first address;
 // they have the names of the candidate parameters of Parse.
-var candidateKeys = []string{"host", "sni", "alpn", "http", "subprotocol", "tier", "weight", "standby", "count", "dirs", "kinds"}
+var candidateKeys = []string{"host", "sni", "alpn", "http", "subprotocol", "tier", "weight", "standby", "count", "dirs", "kinds", "admit_key"}
 
 // commonKeys maps link parameters to [common] keys.
 var commonKeys = map[string]string{
@@ -304,6 +304,9 @@ func candidateParts(c Candidate) (typ, addr, path string, q url.Values) {
 	}
 	if c.Subprotocol != "" {
 		q.Set("subprotocol", c.Subprotocol)
+	}
+	if c.AdmitKey != "" {
+		q.Set("admit_key", c.AdmitKey)
 	}
 	if c.Tier != 0 {
 		q.Set("tier", strconv.Itoa(c.Tier))

@@ -34,7 +34,7 @@ sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 - 日志级别与时间同步：`log_level`、`log_secrets`、`ntp_server`、`ntp_interval`
 - 统计与限制：`system_info_display`、`flow_limit_type`、`client_history_limit`
 - Webhook：`webhook_url`、`webhook_secret`、`webhook_timeout`、`webhook_retries`、`webhook_queue_size`、`webhook_report_interval`
-- Web 管理界面：`appname`、`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`web_tunnel_port_range_max`、`instance_key_file`、`ip_register_max_hours`、`http_proxy_access_port`、`https_proxy_access_port`
+- Web 管理界面：`appname`、`web_base_url`、`head_custom_code`、`web_close_on_not_found`、`web_tunnel_port_range_max`、`instance_key_file`、`admit_key`、`ip_register_max_hours`、`http_proxy_access_port`、`https_proxy_access_port`
 - 账号与登录：`web_username`、`web_password`、`totp_secret`、`auth_key`、`auth_crypt_key`、`allow_x_real_ip`、`trusted_proxy_ips`、`allow_user_login`、`allow_user_register`、`allow_user_vkey_login`、`allow_user_change_username`
 - 用户功能开关：`allow_flow_limit`、`allow_rate_limit`、`allow_time_limit`、`allow_connection_num_limit`、`allow_multi_ip`、`allow_tunnel_num_limit`、`allow_user_local`
 - 登录防护：`open_captcha`、`force_pow`、`pow_bits`、`login_ban_time`、`login_ip_ban_time`、`login_user_ban_time`、`login_max_fail_times`、`login_max_body`、`login_max_skew`、`login_acl_mode`、`login_acl_rules`
@@ -110,7 +110,7 @@ Start-Service Nps
 
 ## 实例主密钥
 
-启动 Web 管理时，会在实际加载的配置文件目录中自动生成 `instance.key`，可用 `instance_key_file` 指定其他路径（相对路径以配置文件目录为基准）。Cookie 的签名和加密密钥由它派生，不依赖管理员账号、密码、TOTP 或 API 密钥。
+启动 Web 管理时，会在实际加载的配置文件目录中自动生成 `instance.key`，可用 `instance_key_file` 指定其他路径（相对路径以配置文件目录为基准）。Cookie 的签名和加密密钥由它派生，不依赖管理员账号、密码、TOTP 或 API 密钥。exchange 载体的准入密钥默认也由它派生，重启后不变；`admit_key` 可用 64 位十六进制覆盖，网页启动链接在有管理权限时带上 `admit_key=`。
 
 - 后续重启或修改登录配置不会更换它。请备份，Docker 需持久挂载；多个副本只有共享同一密钥才能互认 Cookie。
 - Unix 新建文件权限为 `0600`。自定义目录需预先存在且可写，并支持同目录原子硬链接，否则启动报错。

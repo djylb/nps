@@ -27,8 +27,8 @@
         Object.keys(map || {}).forEach(function (typ) {
             var m = /^npc:\/\/@(\[[^\]]+\]|[^:/?]+):(\d+)([^?]*)(?:\?(.*))?$/.exec(map[typ] || '');
             if (!m) return;
-            var a = /(?:^|&)alpn=([^&]*)/.exec(m[4] || '');
-            out[typ] = {host: m[1].replace(/^\[|\]$/g, ''), port: m[2], path: decodeURI(m[3] || ''), alpn: a ? decodeURIComponent(a[1]) : ''};
+            var a = /(?:^|&)alpn=([^&]*)/.exec(m[4] || ''), k = /(?:^|&)admit_key=([^&]*)/.exec(m[4] || '');
+            out[typ] = {host: m[1].replace(/^\[|\]$/g, ''), port: m[2], path: decodeURI(m[3] || ''), alpn: a ? decodeURIComponent(a[1]) : '', admitKey: k ? decodeURIComponent(k[1]) : ''};
         });
         return out;
     }
@@ -69,7 +69,8 @@
         var path = isHTTP(p.carrier) ? (trim(p.path) || d.path || '') : '';
         if (path && path.charAt(0) !== '/') path = '/' + path;
         return {carrier: p.carrier, host: trim(p.addr) || d.host || '', port: trim(p.port) || d.port || '', path: path,
-            alpn: usesALPN(p.carrier) ? (trim(p.alpn) || (usesDefault ? d.alpn || '' : '')) : ''};
+            alpn: usesALPN(p.carrier) ? (trim(p.alpn) || (usesDefault ? d.alpn || '' : '')) : '',
+            admitKey: d.admitKey || ''};
     }
     function hostPort(e) { return (e.host.indexOf(':') >= 0 ? '[' + e.host + ']' : e.host) + ':' + e.port; }
 
@@ -77,7 +78,7 @@
         var q = [];
         function add(k, v) { if (trim(v) !== '') q.push([k, trim(v)]); }
         add('host', p.host); add('sni', p.sni); add('alpn', e.alpn);
-        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); }
+        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); add('admit_key', e.admitKey); }
         if (multi) add('tier', p.tier);
         add('weight', p.weight); if (p.standby) q.push(['standby', 'true']);
         add('count', p.count); add('dirs', p.dirs);

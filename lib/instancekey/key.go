@@ -6,6 +6,7 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -92,4 +93,26 @@ func (k *Key) DeriveKey(purpose string, length int) ([]byte, error) {
 		return nil, fmt.Errorf("invalid instance key derivation parameters")
 	}
 	return hkdf.Key(sha256.New, k.secret[:], nil, purpose, length)
+}
+
+// AdmitPurpose is the derivation purpose of the admission key of the
+// exchange carrier.
+const AdmitPurpose = "nps/admit/v1"
+
+// AdmitKey is the admission key of the server whose instance key is at path:
+// override as 64 hex digits when set, else derived, so that it survives a
+// restart and links already handed out keep working.
+func AdmitKey(path, override string) ([]byte, error) {
+	if override != "" {
+		b, err := hex.DecodeString(override)
+		if err != nil || len(b) != 32 {
+			return nil, errors.New("admit_key is 64 hex digits")
+		}
+		return b, nil
+	}
+	key, err := LoadOrCreate(path)
+	if err != nil {
+		return nil, err
+	}
+	return key.DeriveKey(AdmitPurpose, 32)
 }

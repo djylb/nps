@@ -8,6 +8,7 @@ import (
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/servercfg"
 )
@@ -44,7 +45,12 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 	if src != nil {
 		from = src.run
 	}
+	admit, err := instancekey.AdmitKey(cfg.Web.InstanceKeyFile, cfg.Web.AdmitKey)
+	if err != nil {
+		return nil, err
+	}
 	a, err := session.NewAcceptor(coreStore{db}, session.Options{
+		AdmitKey:      admit,
 		ShapingSource: from,
 		// Told to npc only when configured: the default leaves it its own.
 		Session:       wire.SessionOptions{ResumeMs: uint64(max(resumeS, 0)) * 1000, DeadS: uint64(cfg.Runtime.DeadS), IdleS: uint64(cfg.Runtime.IdleS)},

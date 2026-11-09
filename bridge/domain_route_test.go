@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"io"
 	"net"
@@ -23,6 +24,7 @@ import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/connprofile"
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/httpproxy"
@@ -89,7 +91,9 @@ func domainRoute(t *testing.T, target string, cnf model.Config, h *model.Host, v
 	t.Helper()
 	httpP, httpsP, h3P := routeFreePort(t), routeFreePort(t), routeFreePort(t)
 	n := servercfg.NetworkConfig{BridgePath: "/ws", MixLegacy: true, HTTPProxyIP: "127.0.0.1", HTTPProxyPort: httpP, HTTPSProxyPort: httpsP, HTTP3ProxyPort: h3P}
-	f := mixOnOpts(t, mixVirtual, n, cnf, session.Options{})
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	f := mixOnOpts(t, mixVirtual, n, cnf, session.Options{AdmitKey: key})
 	b := f.b
 	for _, l := range []**netx.ChanListener{&b.VirtualTcpListener, &b.VirtualTlsListener, &b.VirtualWsListener, &b.VirtualWssListener, &b.VirtualMixListener} {
 		v, err := b.virtualBridgeListener(false, 0)
@@ -331,3 +335,149 @@ func hostFront(t *testing.T, addr string) string {
 	}()
 	return l.Addr().String()
 }
+
+func exchangeMix(t *testing.T) (*mixFixture, string) {
+	t.Helper()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return mixOnOpts(t, mixVirtual, servercfg.NetworkConfig{MixLegacy: true}, model.Config{Crypt: true}, session.Options{AdmitKey: key}), hex.EncodeToString(key)
+}
+
+func TestExchangeOnlineAndLargeFile(t *testing.T) {
+	f, key := exchangeMix(t)
+	_, mode := dialMode(t, f, "http://"+f.addr+"/ws?kinds=exchange&admit_key="+key)
+	if mode != "sealed" {
+		t.Fatal(mode)
+	}
+	f.waitConnected(t)
+	addr, _ := f.startTunnel(t, echoListener(t), "")
+	visit(t, addr, 8<<20)
+}
+
+// noUpgrade refuses WebSocket and buffers bodies whole.
+func noUpgrade(t *testing.T, addr string) string {
+	t.Helper()
+	p := reverseProxy(t, addr, true)
+	return p.URL
+}
+
+func TestExchangeThroughBufferingProxy(t *testing.T) {
+	f, key := exchangeMix(t)
+	p := noUpgradeProxy(t, f.addr)
+	if _, err := f.dialHTTP(t, p+"/ws?kinds=streaming,split", client.NewCoreExit("", 0), 2*time.Second); err == nil {
+		t.Fatal("a long request passed the buffering proxy")
+	}
+	s, err := f.dialHTTP(t, p+"/ws?admit_key="+key, client.NewCoreExit("", 0), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := s.(interface{ RecordMode() string }).RecordMode(); m != "sealed" {
+		t.Fatal(m)
+	}
+	f.waitConnected(t)
+	addr, _ := f.startTunnel(t, echoListener(t), "")
+	visit(t, addr, 1<<20)
+}
+
+func noUpgradeProxy(t *testing.T, addr string) string {
+	t.Helper()
+	back := noUpgrade(t, addr)
+	l := http.NewServeMux()
+	u := strings.TrimPrefix(back, "http://")
+	l.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") != "" {
+			http.Error(w, "no", http.StatusBadRequest)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Scheme, r2.URL.Host, r2.RequestURI = "http", u, ""
+		resp, err := http.DefaultTransport.RoundTrip(r2)
+		if err != nil {
+			http.Error(w, "bad", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	})
+	return startHTTP(t, l)
+}
+
+func startHTTP(t *testing.T, h http.Handler) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &http.Server{Handler: h}
+	go func() { _ = s.Serve(l) }()
+	t.Cleanup(func() { _ = s.Close() })
+	return "http://" + l.Addr().String()
+}
+
+func TestExchangeWrongKeyRefusedAndFallsBack(t *testing.T) {
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	f, _ := exchangeMix(t)
+	wrong := strings.Repeat("ab", 32)
+	if _, err := f.dialHTTP(t, "http://"+f.addr+"/ws?kinds=exchange&admit_key="+wrong, client.NewCoreExit("", 0), 2*time.Second); err == nil {
+		t.Fatal("a wrong admit_key connected")
+	}
+	select {
+	case got := <-f.fallback.got:
+		if !strings.HasPrefix(got, "POST") {
+			t.Fatalf("fallback got %q", got)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("did not reach the fallback")
+	}
+	f.raw(t, plainGET)
+	for end := time.After(4 * time.Second); ; {
+		select {
+		case got := <-f.fallback.got:
+			if strings.HasPrefix(got, "GET") {
+				// The repeated exchange requests may still come.
+				go func() {
+					for {
+						select {
+						case <-f.fallback.got:
+						case <-stop:
+							return
+						}
+					}
+				}()
+				return
+			}
+		case <-end:
+			t.Fatal("a plain request did not reach the fallback")
+		}
+	}
+}
+
+func TestAdmitKeyStableAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "instance.key")
+	a, err := instancekey.AdmitKey(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := instancekey.AdmitKey(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !connectionEqual(a, b) || len(a) != 32 {
+		t.Fatal("admit key changed")
+	}
+	over := strings.Repeat("0f", 32)
+	c, err := instancekey.AdmitKey(path, over)
+	if err != nil || hex.EncodeToString(c) != over {
+		t.Fatal(c, err)
+	}
+	if _, err := instancekey.AdmitKey(path, "short"); err == nil {
+		t.Fatal("a bad override was taken")
+	}
+}
+
+func connectionEqual(a, b []byte) bool { return string(a) == string(b) }

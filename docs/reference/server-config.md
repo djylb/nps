@@ -47,6 +47,7 @@ nps.exe -conf_path=D:\test\nps
 | `web_username` / `web_password` | 空 | `admin` / `123` | 管理员账号。**请修改** |
 | `totp_secret` | 空 | 空 | TOTP 密钥。启用后登录时在密码（或验证码）后追加 6 位动态码；`web_password` 留空可仅用 TOTP。用 `nps -gen2fa` 生成 |
 | `instance_key_file` | 配置目录 `instance.key` | - | [实例主密钥](/guide/server/operations.md) |
+| `admit_key` | 由 `instance.key` 派生 | - | exchange 载体的准入密钥，64 位十六进制 |
 | `head_custom_code` | 空 | - | 插入页面头部的自定义代码 |
 | `open_captcha` | `false` | `true` | 登录验证码 |
 | `pow_bits` | `20` | `20` | PoW 计算位数 |

@@ -113,6 +113,13 @@ type Acceptor struct {
 	stallTotal               int
 	stallMax, stallPerSource int
 
+	admitKey []byte
+	exchange struct {
+		once sync.Once
+		h    *zmux.HTTPExchangeHandler
+		err  error
+	}
+
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -134,6 +141,8 @@ type Options struct {
 	// ShapingSource keeps the bundle current until ctx ends, through set; nil
 	// is none (§13).
 	ShapingSource func(ctx context.Context, set func([]byte))
+	// AdmitKey is the PSK of the exchange carrier (§13); nil offers none.
+	AdmitKey []byte
 }
 
 // NewAcceptor builds the entry over store, with a key of this process
@@ -145,7 +154,7 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	}
 	a := &Acceptor{links: map[uint64]*peerLink{}, usage: map[uint64]*linkUsage{}, clock: time.Now, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource,
-		stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
+		admitKey: opts.AdmitKey, stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
 	base := &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
 		EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)}
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
@@ -214,7 +223,7 @@ func carrierLabel(p zmux.PipeIO) string {
 		return "quic"
 	case p.Carrier == zmux.CarrierHTTP3:
 		return "h3"
-	case p.Carrier == zmux.CarrierStreaming, p.Carrier == zmux.CarrierSplit:
+	case p.Carrier == zmux.CarrierStreaming, p.Carrier == zmux.CarrierSplit, p.Carrier == zmux.CarrierExchange:
 		return "http"
 	case ok:
 		return "wss"
@@ -287,6 +296,10 @@ func (a *Acceptor) Close() error {
 	a.mu.Unlock()
 	for _, s := range all {
 		_ = s.zc.Close()
+	}
+	a.exchange.once.Do(func() {}) // none is built past this point
+	if a.exchange.h != nil {
+		_ = a.exchange.h.Close()
 	}
 	a.wg.Wait()
 	return nil

@@ -81,6 +81,9 @@ type LogConfig struct {
 
 type WebConfig struct {
 	InstanceKeyFile string
+	// AdmitKey overrides the admission key of the exchange carrier, 64 hex
+	// digits; "" derives it from the instance key.
+	AdmitKey        string
 	BaseURL         string
 	HeadCustomCode  string
 	Host            string
@@ -435,6 +438,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 
 	cfg.Web = WebConfig{
 		InstanceKeyFile:    r.stringValue("instance_key_file"),
+		AdmitKey:           r.stringValue("admit_key"),
 		BaseURL:            r.stringValue("web_base_url"),
 		HeadCustomCode:     r.stringValue("head_custom_code"),
 		Host:               r.stringValue("web_host"),

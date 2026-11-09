@@ -1,11 +1,13 @@
 package service
 
 import (
+	"encoding/hex"
 	"html/template"
 	"strconv"
 	"strings"
 
 	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
@@ -228,6 +230,18 @@ func (s DefaultPageService) system() SystemService {
 	return DefaultSystemService{}
 }
 
+// pageAdmitKey is the admission key for the links of an administrator's pages.
+func pageAdmitKey(cfg *servercfg.Snapshot, admin bool) string {
+	if !admin || cfg.Web.InstanceKeyFile == "" {
+		return ""
+	}
+	key, err := instancekey.AdmitKey(cfg.Web.InstanceKeyFile, cfg.Web.AdmitKey)
+	if err != nil {
+		return ""
+	}
+	return hex.EncodeToString(key)
+}
+
 func managementPageData(system SystemService, input PageBuildInput) map[string]any {
 	cfg := normalizePageConfig(input.Config)
 	if system == nil {
@@ -241,6 +255,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		Version:        info.Version,
 		Year:           info.Year,
 		IsAdmin:        input.IsAdmin,
+		AdmitKey:       pageAdmitKey(cfg, input.IsAdmin),
 		ServerUpdate:   info.CanUpdate,
 		Username:       strings.TrimSpace(input.Username),
 		BridgeType:     bridge.Primary.Type,
