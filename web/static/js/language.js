@@ -55,7 +55,8 @@
 
     function setchartlang(langobj, chartobj) {
         if ($.type(langobj) == 'string') return langobj;
-        if ($.type(langobj) == 'chartobj') return false;
+        // A translation may name more entries than the chart has.
+        if (chartobj === undefined || chartobj === null) return false;
         var flag = true;
         for (key in langobj) {
             var item = key;
@@ -148,8 +149,9 @@
             setchartlang(languages['content']['charts'], chartdatas);
             for (var key in chartdatas) {
                 if ($('#' + key).length == 0) continue;
-                if ($.type(chartdatas[key]) == 'object')
-                    charts[key] = echarts.init(document.getElementById(key));
+                // Keep the instance the page created (it carries the page's theme).
+                var dom = document.getElementById(key);
+                charts[key] = echarts.getInstanceByDom(dom) || charts[key] || echarts.init(dom);
                 charts[key].setOption(chartdatas[key], true);
             }
         }

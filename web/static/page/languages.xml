@@ -1877,12 +1877,12 @@
 			<legend>
 				<data>
 					<array id="0">
-						<zh-CN>出口</zh-CN>
-						<en-US>Out</en-US>
-					</array>
-					<array id="1">
 						<zh-CN>入口</zh-CN>
 						<en-US>In</en-US>
+					</array>
+					<array id="1">
+						<zh-CN>出口</zh-CN>
+						<en-US>Out</en-US>
 					</array>
 				</data>
 			</legend>
@@ -1933,12 +1933,8 @@
 						<en-US>SOCKS 5</en-US>
 					</array>
 					<array id="5">
-						<zh-CN>私密代理</zh-CN>
-						<en-US>Secret</en-US>
-					</array>
-					<array id="6">
-						<zh-CN>P2P 连接</zh-CN>
-						<en-US>P2P</en-US>
+						<zh-CN>点对点访问</zh-CN>
+						<en-US>Point-to-point access</en-US>
 					</array>
 				</data>
 			</legend>
@@ -1981,14 +1977,8 @@
 						</array>
 						<array id="5">
 							<name>
-								<zh-CN>私密代理</zh-CN>
-								<en-US>Secret</en-US>
-							</name>
-						</array>
-						<array id="6">
-							<name>
-								<zh-CN>P2P 连接</zh-CN>
-								<en-US>P2P</en-US>
+								<zh-CN>点对点访问</zh-CN>
+								<en-US>Point-to-point access</en-US>
 							</name>
 						</array>
 					</data>

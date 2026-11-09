@@ -551,6 +551,8 @@
     $("#overview_send").text(changeunit({{.data.io_send}}) + "/s")
     $("#overview_recv").text(changeunit({{.data.io_recv}}) + "/s")
 
+    // Chart text takes its colour from the page theme when a chart is created.
+    function registerChartTheme() {
     const chartTextColor = getComputedStyle(document.documentElement)
         .getPropertyValue('--text').trim();
     const chartBgColor   = getComputedStyle(document.documentElement)
@@ -594,6 +596,8 @@
             }
         }
     });
+    }
+    registerChartTheme();
 
     chartdatas['load'] = {
         tooltip: {
@@ -872,7 +876,7 @@
         legend: {
             orient: 'vertical',
             left: 'left',
-            data: ['', '', '', '', '', '', '']
+            data: ['', '', '', '', '', '']
         },
         series: [
             {
@@ -918,13 +922,23 @@
     };
 
     window.charts = window.charts || {};
-    Object.keys(chartdatas).forEach(key => {
-        const dom = document.getElementById(key);
-        if (dom) {
+    function initCharts() {
+        Object.keys(chartdatas).forEach(key => {
+            const dom = document.getElementById(key);
+            if (!dom) return;
+            const old = echarts.getInstanceByDom(dom);
+            if (old) old.dispose();
             window.charts[key] = echarts.init(dom, 'nps-theme');
             window.charts[key].setOption(chartdatas[key]);
-        }
-    });
+        });
+    }
+    initCharts();
+
+    // A theme switch recreates the charts so their text follows the new colours.
+    new MutationObserver(() => { registerChartTheme(); initCharts(); })
+        .observe(document.documentElement, {attributes: true, attributeFilter: ['theme']});
+    // The strings may have arrived before the charts existed.
+    if (languages['content']) $('body').setLang('');
 
     window.addEventListener('resize', () => {
         for (var key in charts) {
