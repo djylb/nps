@@ -82,10 +82,10 @@ func TestManagementPageLinkURLs(t *testing.T) {
 		"tcp":   "npc://@[2001:db8::1]:8024?type=tcp",
 		"tls":   "npc://@[::1]:8025?type=tls",
 		"quic":  "npc://@[fe80::1]:8026?type=quic&alpn=n+ps",
-		"ws":    "npc://@nps.example.com:80/w%20s?type=ws",
-		"wss":   "npc://@nps.example.com:443/w%20s?type=wss",
-		"http":  "npc://@nps.example.com:80/w%20s?type=http",
-		"https": "npc://@nps.example.com:443/w%20s?type=https",
+		"ws":    "npc://@nps.example.com:80/w%20s?type=ws&subprotocol=binary",
+		"wss":   "npc://@nps.example.com:443/w%20s?type=wss&subprotocol=binary",
+		"http":  "npc://@nps.example.com:80/w%20s?type=http&subprotocol=binary",
+		"https": "npc://@nps.example.com:443/w%20s?type=https&subprotocol=binary",
 	}
 	got := d.LinkURLs()
 	for k, v := range want {
@@ -118,9 +118,9 @@ func TestManagementPageBridgeURL(t *testing.T) {
 	for _, c := range []struct{ typ, addr, want string }{
 		{"tcp", "10.0.0.1:8024", "npc://@10.0.0.1:8024?type=tcp"},
 		{"kcp", "10.0.0.1:8025", "npc://@10.0.0.1:8025?type=quic"},
-		{"ws", "h:80", "npc://@h:80/ws?type=ws"},
+		{"ws", "h:80", "npc://@h:80/ws?type=ws&subprotocol=binary"},
 		{"tls", "10.0.0.1:9", "npc://@10.0.0.1:9?type=tls"},
-		{"wss", "h:443/p", "npc://@h:443/p?type=wss"},
+		{"wss", "h:443/p", "npc://@h:443/p?type=wss&subprotocol=binary"},
 	} {
 		d := base
 		d.BridgeType, d.BridgeAddr = c.typ, c.addr

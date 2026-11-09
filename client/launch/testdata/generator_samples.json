@@ -24,6 +24,14 @@
   "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSJ9XSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoic29ja3M1IiwibG9jYWxfcG9ydCI6MTA4MSwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJhdXRoIjpbeyJ1c2VyIjoiYSIsInBhc3MiOiIxIn1dfSx7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJodHRwIiwibG9jYWxfcG9ydCI6ODA4MSwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJjb25uX21vZGUiOiJyZWxheSJ9XX0"
  },
  {
+  "name": "bridge path default",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" -L=\"tcp://:2000?access=p%26%221%21\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"auto://1.2.3.4:8028/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"https://1.2.3.4:8029/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/own\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/ws\",\n      \"subprotocol\": \"other\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
+  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93cyIsInN1YnByb3RvY29sIjoiYmluYXJ5In0seyJ1cmwiOiJhdXRvOi8vMS4yLjMuNDo4MDI4L3dzIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6Imh0dHBzOi8vMS4yLjMuNDo4MDI5L3dzIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6IndzOi8vMS4yLjMuNDo4MDI2L293biJ9LHsidXJsIjoid3M6Ly8xLjIuMy40OjgwMjYvd3MiLCJzdWJwcm90b2NvbCI6Im90aGVyIn1dLCJhY2Nlc3MiOlt7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwfV19"
+ },
+ {
   "name": "client default",
   "shell": "bash",
   "one": "./npc -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",

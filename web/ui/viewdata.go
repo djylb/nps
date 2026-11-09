@@ -143,12 +143,27 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	add("tcp", d.TCPIP, d.TCPPort, "", "")
 	add("tls", d.TLSIP, d.TLSPort, "", "")
 	add("quic", d.QUICIP, d.QUICPort, "", d.quicQuery())
-	add("ws", d.WSIP, d.WSPort, d.WSPath, "")
-	add("wss", d.WSSIP, d.WSSPort, d.WSPath, "")
-	add("auto", d.MixIP, d.MixPort, d.WSPath, d.admitQuery())
-	add("http", d.WSIP, d.WSPort, d.WSPath, d.admitQuery())
-	add("https", d.WSSIP, d.WSSPort, d.WSPath, d.admitQuery())
+	add("ws", d.WSIP, d.WSPort, d.WSPath, withBinary(""))
+	add("wss", d.WSSIP, d.WSSPort, d.WSPath, withBinary(""))
+	autoQuery := d.admitQuery()
+	if d.WSPath != "" && d.WSPath != "/" {
+		autoQuery = withBinary(autoQuery)
+	}
+	add("auto", d.MixIP, d.MixPort, d.WSPath, autoQuery)
+	add("http", d.WSIP, d.WSPort, d.WSPath, withBinary(d.admitQuery()))
+	add("https", d.WSSIP, d.WSSPort, d.WSPath, withBinary(d.admitQuery()))
 	return urls
+}
+
+// withBinary appends the subprotocol of the core protocol to the parameters
+// of a link to the shared bridge path: a URL candidate sends none by default,
+// and on that path none is the old protocol. An auto link only carries it with
+// a path, as only wss and https use it.
+func withBinary(query string) string {
+	if query == "" {
+		return "subprotocol=binary"
+	}
+	return query + "&subprotocol=binary"
 }
 
 // admitQuery is the admission key as a link parameter, "" without one.
@@ -202,7 +217,7 @@ func (d ManagementPageCommonData) bridgeURL(urls map[string]string) string {
 		}
 		return linkURL(scheme, addr, "", "alpn="+url.QueryEscape(rest))
 	case "ws", "wss":
-		return linkURL(scheme, addr, rest, "")
+		return linkURL(scheme, addr, rest, withBinary(""))
 	case "tcp", "tls":
 		return linkURL(scheme, addr, "", "")
 	}

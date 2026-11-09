@@ -216,7 +216,19 @@ func choose(record uint64, secure, boundFailed bool) plan {
 	return plan{mode: zmux.Sealed}
 }
 
+// dialCandidate dials c and establishes; a ws or wss URL candidate that names
+// no subprotocol and gets no reply to Establish may have reached the old
+// protocol of the shared bridge path, which the error says.
 func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*clientSession, error) {
+	s, err := d.dialCandidateOnce(ctx, c)
+	if err != nil && errors.Is(err, seal.ErrNoReply) && ctx.Err() == nil &&
+		(c.Carrier == "ws" || c.Carrier == "wss") && c.Subprotocol == "" && strings.Contains(c.Raw, "://") {
+		err = fmt.Errorf("%w (the shared bridge path needs subprotocol=binary)", err)
+	}
+	return s, err
+}
+
+func (d *Dialer) dialCandidateOnce(ctx context.Context, c connprofile.Candidate) (*clientSession, error) {
 	ca, err := d.dialCarrier(ctx, c)
 	if err != nil {
 		return nil, err
@@ -298,11 +310,12 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		scheme := c.Carrier
 		// The old way of writing a candidate sends the subprotocol (§12);
 		// a URL candidate sends the one it names, else none.
-		// binary marks the core protocol on a bridge path that old npc share; a
-		// path of the core protocol alone accepts it too.
-		protocols := []string{legacySubprotocol}
-		if c.Subprotocol != "" {
+		protocols := []string{zmuxws.NoSubprotocol}
+		switch {
+		case c.Subprotocol != "":
 			protocols = []string{c.Subprotocol}
+		case !strings.Contains(c.Raw, "://"):
+			protocols = []string{legacySubprotocol}
 		}
 		cd := &captureDialer{dial: d.cfg.Dial}
 		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}

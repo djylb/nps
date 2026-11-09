@@ -816,9 +816,8 @@ func TestWebSocketRouting(t *testing.T) {
 	if legacy.Load() != 0 {
 		t.Fatal("binary went to the old protocol")
 	}
-	// A URL candidate sends it too, unless it names another: on the bridge
-	// path anything else is the old protocol.
-	url, err := connprofile.Parse("ws://"+addr+"/ws?subprotocol=other", "ws")
+	// A URL candidate sends none, and on the bridge path that is the old one.
+	url, err := connprofile.Parse("ws://"+addr+"/ws", "ws")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -826,7 +825,7 @@ func TestWebSocketRouting(t *testing.T) {
 	defer cancel()
 	if s, err := NewDialer(DialConfig{Candidates: url, VKey: "key-1", Timeout: 2 * time.Second}).Dial(ctx); err == nil {
 		_ = s.Close()
-		t.Fatal("another subprotocol reached the new protocol")
+		t.Fatal("no subprotocol reached the new protocol")
 	}
 	if legacy.Load() != 1 {
 		t.Fatalf("legacy saw %d requests", legacy.Load())

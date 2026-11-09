@@ -41,7 +41,7 @@ npc://<vkey>@host:port[/path]?type=tls&alpn=…&sni=…&host=…&alt=tcp://addr:
 | `host`、`sni` | Host 头与默认 SNI、TLS 服务器名 |
 | `alpn` | `tls`、`quic` 的 ALPN，逗号列表 |
 | `http` | `ws`、`wss` 的 HTTP 版本，逗号列表 |
-| `subprotocol` | `ws`、`wss` 的 WebSocket 子协议 |
+| `subprotocol` | WebSocket 子协议（`ws`、`wss`、`http`、`https`）。链接默认不发；连共用 bridge 路径（旧 npc 也在用）要写 `subprotocol=binary`，网页生成的链接已带。没写且握手无回应时，错误信息会提示 |
 | `tier`、`weight`、`standby`、`count`、`dirs`、`kinds` | 第一个地址的多承载参数，见 [NPC 命令行参数](/reference/npc-cli.md#服务器地址) |
 | `alt` | 更多路径，可重复：`scheme://host:port[/path][?k=v;k=v]`，参数同上，用 `;` 分隔 |
 | `pin` | 服务端密钥标识（32 位十六进制） |

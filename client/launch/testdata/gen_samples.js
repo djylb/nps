@@ -5,6 +5,7 @@ const G = require(path.join(__dirname, '../../../web/static/js/launch-generator.
 const carriers = {
   tcp: 'npc://@1.2.3.4:8024?type=tcp', tls: 'npc://@1.2.3.4:8025?type=tls', quic: 'npc://@1.2.3.4:8025?type=quic&alpn=h3',
   ws: 'npc://@1.2.3.4:8026/ws?type=ws', wss: 'npc://@[2001:db8::1]:8027/ws?type=wss',
+  auto: 'npc://@1.2.3.4:8028/ws?type=auto', https: 'npc://@1.2.3.4:8029/ws?type=https',
 };
 const tunnel = () => ({kind: 'tunnel', vkey: 'v k@x$', password: 'p&"1!', defaultTarget: '10.0.0.1:22', carriers, primary: carriers.tls, bin: './npc'});
 const client = () => ({kind: 'client', vkey: 'vkey', carriers, primary: carriers.tcp, bin: './npc'});
@@ -32,6 +33,8 @@ const cases = {
   'cmd paths': [tunnel(), o => { o.os = 'cmd'; multi(o); accounts(o); }],
   'powershell paths': [tunnel(), o => { o.os = 'powershell'; o.bin = 'custom'; o.binPath = 'C:\\My Dir\\npc'; multi(o); accounts(o); }],
   'service named': [tunnel(), o => { o.run = 'service'; o.named = true; o.name = 'ho me'; accounts(o); }],
+  // the shared bridge path carries the subprotocol by default; a custom address or path does not, and a typed one wins
+  'bridge path default': [tunnel(), o => { o.paths[0].carrier = 'wss'; o.paths.push(Object.assign({}, o.paths[0], {carrier: 'auto'}), Object.assign({}, o.paths[0], {carrier: 'https'}), Object.assign({}, o.paths[0], {carrier: 'ws', path: '/own'}), Object.assign({}, o.paths[0], {carrier: 'ws', subprotocol: 'other'})); }],
   'docker': [client(), o => { o.run = 'docker'; o.os = 'cmd'; }],
 };
 const out = Object.keys(cases).sort().map(name => {

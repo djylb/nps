@@ -6,6 +6,8 @@
     var SCHEDULERS = ['', 'affinity', 'session_affinity', 'spread_eta', 'spread_round_robin', 'spread_rate_weighted'];
     var PATH_FIELDS = {addr: '', port: '', path: '', alpn: '', sni: '', host: '', http: '', subprotocol: '', tier: '', weight: '', standby: false, count: '', dirs: '', kinds: ''};
 
+    var DEFAULT_SUBPROTOCOL = 'binary';
+
     function trim(v) { return v == null ? '' : String(v).trim(); }
     function isWS(c) { return c === 'ws' || c === 'wss'; }
     function isHTTP(c) { return isWS(c) || c === 'http' || c === 'https'; }
@@ -68,7 +70,12 @@
         var usesDefault = !trim(p.addr);
         var path = isHTTP(p.carrier) || p.carrier === 'auto' ? (trim(p.path) || d.path || '') : '';
         if (path && path.charAt(0) !== '/') path = '/' + path;
-        return {carrier: p.carrier, host: trim(p.addr) || d.host || '', port: trim(p.port) || d.port || '', path: path,
+        // On the bridge path the server shares with old npc, the core protocol is
+        // told by the subprotocol; a custom address or path may be another path
+        // (new_protocol_ws_paths), so nothing is added there.
+        var shared = !trim(p.addr) && !trim(p.port) && !trim(p.path);
+        var sub = shared && (isHTTP(p.carrier) || (p.carrier === 'auto' && path)) ? DEFAULT_SUBPROTOCOL : '';
+        return {carrier: p.carrier, subprotocol: sub, host: trim(p.addr) || d.host || '', port: trim(p.port) || d.port || '', path: path,
             alpn: usesALPN(p.carrier) ? (trim(p.alpn) || (usesDefault ? d.alpn || '' : '')) : '',
             admitKey: d.admitKey || ''};
     }
@@ -78,7 +85,8 @@
         var q = [];
         function add(k, v) { if (trim(v) !== '') q.push([k, trim(v)]); }
         add('host', p.host); add('sni', p.sni); add('alpn', e.alpn);
-        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', p.subprotocol); add('kinds', p.kinds); }
+        if (isHTTP(p.carrier)) { add('http', p.http); add('subprotocol', trim(p.subprotocol) || e.subprotocol); add('kinds', p.kinds); }
+        else if (p.carrier === 'auto') add('subprotocol', e.subprotocol);
         if (isHTTP(p.carrier) || p.carrier === 'auto') add('admit_key', e.admitKey);
         if (multi) add('tier', p.tier);
         add('weight', p.weight); if (p.standby) q.push(['standby', 'true']);
@@ -303,7 +311,7 @@
             if (isHTTP(c)) adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || '/ws');
             if (usesALPN(c)) adv += plain(b + 'alpn', p.alpn, at + 'alpn', 'alpn', d.alpn || '');
             adv += plain(b + 'sni', p.sni, at + 'sni', 'sni') + plain(b + 'host', p.host, at + 'host', 'host');
-            if (isHTTP(c)) adv += plain(b + 'http', p.http, at + 'http', 'http', 'http/1.1,h2') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol') + plain(b + 'kinds', p.kinds, at + 'kinds', 'kinds', isWS(c) ? 'websocket' : 'websocket,streaming,split');
+            if (isHTTP(c)) adv += plain(b + 'http', p.http, at + 'http', 'http', 'http/1.1,h2') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol', effective(p, ctx).subprotocol) + plain(b + 'kinds', p.kinds, at + 'kinds', 'kinds', isWS(c) ? 'websocket' : 'websocket,streaming,split');
             if (multi) adv += plain(b + 'tier', p.tier, at + 'tier', 'tier', '0');
             adv += plain(b + 'weight', p.weight, at + 'weight', 'weight', '0') + plain(b + 'count', p.count, at + 'count', 'count', '1')
                 + plain(b + 'dirs', p.dirs, at + 'dirs', 'dirs', 'bidi');

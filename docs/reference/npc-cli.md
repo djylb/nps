@@ -82,6 +82,7 @@
   - `count`：多管道下这个候选的管道数，默认 1；
   - `dirs`：`bidi`（默认）、`up`、`down`，可用逗号组合，如 `dirs=up,down`。会话只能在含 `bidi` 的候选上建立，所以每个连接至少要有一个；单管道下跳过不含 `bidi` 的候选（告警一次：方向需要 zmux）；
   - `kinds`：http/https 的 HTTP 种类，顺序即偏好，可选 `websocket`、`streaming`、`split`，默认全部；同一 URL 上按 `http` 的版本顺序、版本内按 `kinds` 的顺序依次尝试，不可用的自动换下一个（多管道下由内核做缓存并逐步升级到排在前面的种类）。`streaming`、`split` 经 CDN 或反向代理也可用，记录层用 Sealed。`exchange` 需要两端共享的准入密钥，本版本告警并忽略；`ws`/`wss` 固定为 `websocket`；
+  - `subprotocol`：http/https/ws/wss 的 WebSocket 子协议。旧写法（不带 `://`，`-type ws/wss`）默认发 `binary`；URL 写法和启动链接默认不发。服务端的共用 bridge 路径（旧 npc 也在用的路径）靠 `binary` 判定新协议，所以连共用 bridge 路径要写 `subprotocol=binary`（网页生成的链接已带）；服务端 `new_protocol_ws_paths` 里的专用路径不需要。URL 写法的 ws/wss 没写子协议、握手没有回应时，错误信息会提示这一点；
   - `host`：Host 头和默认 SNI，缺端口时沿用地址的端口；
   - `sni`：覆盖 TLS 服务器名（默认取 `host` 或地址的主机名，IP 地址时不发）；
   - `alpn`：外层 TLS 的 ALPN，逗号分隔，顺序即偏好，只用于 `tls`、`quic`（quic 默认 `nps`）；http/https/ws/wss 不接受，它们的 ALPN 由 `http` 决定。
