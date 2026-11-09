@@ -12781,3 +12781,54 @@ body.md-skin {
         order: 1;
     }
 }
+
+/* Lists: pinned option column, floating header and horizontal scroll bar
+ * (see list-table.js). Cells that stay in place need an opaque background:
+ * the page colour plus the stripe and hover tints of the row under them. */
+.npslist:not(.npslist-card) .table > thead > tr > th.npslist-action,
+.npslist:not(.npslist-card) .table > tbody > tr > td.npslist-action {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background-color: var(--bg);
+    box-shadow: inset 1px 0 0 var(--border-color);
+}
+.npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-action {
+    background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05));
+}
+.npslist:not(.npslist-card) .table-hover > tbody > tr:hover > td.npslist-action {
+    background-image: linear-gradient(rgba(0, 0, 0, .075), rgba(0, 0, 0, .075));
+}
+.npslist:not(.npslist-card) .table-striped.table-hover > tbody > tr:nth-of-type(odd):hover > td.npslist-action {
+    background-image: linear-gradient(rgba(0, 0, 0, .075), rgba(0, 0, 0, .075)), linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05));
+}
+.npslist-head,
+.npslist-hbar {
+    position: fixed;
+    overflow: hidden;
+}
+.npslist-head {
+    z-index: 90;
+    background-color: var(--bg);
+    box-shadow: 0 1px 0 var(--border-color);
+}
+.npslist-head > table {
+    margin-bottom: 0;
+    transform-origin: 0 0;
+}
+.npslist-head th.npslist-action {
+    background-color: var(--bg);
+}
+.npslist-hbar {
+    z-index: 90;
+    bottom: 0;
+    height: 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background-color: var(--bg);
+}
+.npslist-hbar-fill { height: 1px; }
+.npslist-hbar::-webkit-scrollbar { height: 12px; }
+.npslist-hbar::-webkit-scrollbar-thumb { background: var(--active-color); border-radius: 6px; }
+.npslist-hbar::-webkit-scrollbar-track { background: var(--bg-mid); }
+.detail-column { white-space: nowrap; }

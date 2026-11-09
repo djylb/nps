@@ -65,7 +65,7 @@
         $('#clientScope').text(' - ').append($('<span langtag="word-clientid"></span>'), document.createTextNode(': ' + new URLSearchParams(location.search).get('client_id')))
     }
 
-    $('#table').bootstrapTable({
+    npsList.init('#table', {
         toolbar: "#toolbar",
         idField: "Id",
         uniqueId: "Id",
@@ -97,7 +97,7 @@
         cookieStorage: 'localStorage',
         // Only the layout is kept across visits; a search or page left over
         // from another list or client would hide rows without notice.
-        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () { $('body').setLang('.detail-view'); },
@@ -147,6 +147,7 @@
                 + '<b langtag="word-httpskey"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.KeyFile + '</div>&emsp;<br/><br>'
             }
             return '<div class="resource-details">'
+                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'Scheme', 'PathRewrite', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
                 + resourceDetailSection('section-tls', tls)
@@ -172,7 +173,7 @@
                 field: 'Client.Id', //域值
                 title: '<span langtag="word-clientid"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
@@ -213,7 +214,7 @@
                 field: 'Scheme', //域值
                 title: '<span langtag="word-scheme"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span langtag="word-' + value + '"></span>'
@@ -352,7 +353,7 @@
                 title: '<span langtag="word-speed"></span>',
                 align: 'center',
                 halign: 'center',
-                visible: true,
+                visible: false,
                 sortable: true,
                 sortName: 'speed',
                 formatter: function (value, row, index) {
@@ -410,7 +411,7 @@
                 title: '<span langtag="word-totalflow"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
@@ -505,7 +506,7 @@
                 title: '<span langtag="word-nowconn"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="oCopy(this)">' + value + '</span>'
@@ -531,7 +532,7 @@
                 title: '<span langtag="word-clientstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (value) {
@@ -567,7 +568,7 @@
             // A list opened for one client shows that client in its title.
             return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
         })
-    });
+    }, {key: 'host'});
     initListLive('host', '{{.web_base_url}}');
     initListBatch('host', '{{.web_base_url}}');
 </script>

@@ -68,7 +68,7 @@
 
     var clientScoped = new URLSearchParams(location.search).has('client_id')
 
-    $('#table').bootstrapTable({
+    npsList.init('#table', {
         toolbar: "#toolbar",
         idField: "Id",
         uniqueId: "Id",
@@ -101,7 +101,7 @@
         cookieStorage: 'localStorage',
         // Only the layout is kept across visits; a search or page left over
         // from another list or client would hide rows without notice.
-        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () { $('body').setLang('.detail-view'); },
@@ -123,7 +123,8 @@
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
                 + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
-            var tmp = resourceDetailSection('section-limits', usage)
+            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Status', 'Client.IsConnect']))
+                + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
             var access = row.Mode != "secret" ? accessListDetail(row) : ''
             if (row.Mode != "mixProxy") {
@@ -185,7 +186,7 @@
                 field: 'Client.Id', //域值
                 title: '<span langtag="word-clientid"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
@@ -254,7 +255,7 @@
                 field: 'TargetType', //域值
                 title: '<span langtag="word-targettype"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(String(value).toUpperCase())
@@ -264,7 +265,7 @@
                 field: 'Password', //域值
                 title: '<span langtag="word-identificationkey"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -276,14 +277,14 @@
                 field: 'ServiceKind', //域值
                 title: '<span langtag="word-servicekind"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 formatter: function (value) { return escapeHtml(value == null ? '' : value) }
             },
             {
                 field: 'ServiceName', //域值
                 title: '<span langtag="word-servicename"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 formatter: function (value) { return escapeHtml(value == null ? '' : value) }
             },
             {{ end }}
@@ -293,7 +294,7 @@
                 title: '<span langtag="word-httpproxy"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var btn_group = '<div class="btn-group">'
@@ -312,7 +313,7 @@
                 title: '<span langtag="word-socks5proxy"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var btn_group = '<div class="btn-group">'
@@ -331,7 +332,7 @@
                 title: '<span langtag="word-speed"></span>',
                 align: 'center',
                 halign: 'center',
-                visible: true,
+                visible: false,
                 sortable: true,
                 sortName: 'speed',
                 formatter: function (value, row, index) {
@@ -389,7 +390,7 @@
                 title: '<span langtag="word-totalflow"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="submitform(\'clear\', \'{{.web_base_url}}/index/clear\', {\'id\':' + row.Id + ', \'mode\': \'flow\'})">' + changeunit(typeof value === 'number' ? value : row.Flow.InletFlow + row.Flow.ExportFlow) + '</span>'
@@ -484,7 +485,7 @@
                 title: '<span langtag="word-nowconn"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -532,7 +533,7 @@
                 title: '<span langtag="word-clientstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     if (value) {
@@ -576,7 +577,7 @@
             // A list opened for one client shows that client in its title.
             return !clientScoped || (c.field !== 'Client.Id' && c.field !== 'Client.VerifyKey')
         })
-    });
+    }, {key: 'tunnel-{{if .type}}{{.type}}{{else}}all{{end}}'});
     initListLive('tunnel', '{{.web_base_url}}');
     {{ if or (not .type) (ne .type "service") }}
     initListBatch('tunnel', '{{.web_base_url}}');

@@ -114,6 +114,7 @@
                 var fields = {};
                 columns.forEach(function (column) { (dependencies[column.field] || []).forEach(function (f) { fields[f] = true; }); });
                 entry.tr.next('.detail-view').find('[data-live-field]').each(function () { if ($(this).closest('.detail-view').is(':visible')) fields[$(this).attr('data-live-field')] = true; });
+                entry.tr.next('.detail-view').find('[data-detail-column]').each(function () { (dependencies[$(this).attr('data-detail-column')] || []).forEach(function (f) { fields[f] = true; }); });
                 if (Object.keys(fields).length) items.push({id: entry.row.Id, fields: Object.keys(fields)});
             });
             if (items.length > 200) { var all = items; items = all.slice(cursor, cursor + 200); cursor = (cursor + 200 >= all.length) ? 0 : cursor + 200; }
@@ -136,6 +137,13 @@
                         var value = path(entry.row, column.field), html = typeof column.formatter === 'function' ? column.formatter.call(column, value, entry.row, entry.index, column.field) : value;
                         var header = headers.filter(function () { return $(this).attr('data-field') === column.field; });
                         var cell = table.bootstrapTable('getOptions').cardView ? entry.tr.find('.card-view').filter(function () { return $(this).hasClass('card-view-field-' + column.field); }).find('.card-view-value') : (header.length ? entry.tr.children('td').eq(header.index()) : $());
+                        if (cell.html() !== String(html)) cell.html(html).addClass('nps-live-changed');
+                    });
+                    entry.tr.next('.detail-view').find('[data-detail-column]').each(function () {
+                        var field = $(this).attr('data-detail-column'), deps = dependencies[field] || [];
+                        var column = (table.bootstrapTable('getOptions').columns[0] || []).filter(function (c) { return c.field === field; })[0];
+                        if (!column || typeof column.formatter !== 'function' || !(field === 'TimeRemain' || deps.some(function (f) { return changed[f]; }))) return;
+                        var html = column.formatter.call(column, path(entry.row, field), entry.row, entry.index, field), cell = $(this).children('.detail-column-value');
                         if (cell.html() !== String(html)) cell.html(html).addClass('nps-live-changed');
                     });
                     entry.tr.next('.detail-view').find('[data-live-field]').each(function () {

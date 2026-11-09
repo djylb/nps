@@ -84,7 +84,7 @@
 
 <script>
     /*bootstrap table*/
-    $('#table').bootstrapTable({
+    npsList.init('#table', {
         toolbar: "#toolbar",
         idField: "Id",
         uniqueId: "Id",
@@ -106,7 +106,7 @@
         cookieStorage: 'localStorage',
         // Only the layout is kept across visits; a search or page left over
         // from another list or client would hide rows without notice.
-        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList', 'bs.table.hiddenColumns'],
+        cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
         onExpandRow: function () {$('body').setLang ('.detail-view');},
@@ -201,6 +201,7 @@
                 + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{index .server_urls "wss"}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
             return '<div class="resource-details">'
+                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Mode', 'VerifyKey', 'Status', 'UploadRate', 'DownloadRate', 'InletFlow', 'ExportFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'show']))
                 + resourceDetailSection('section-status', status)
                 + resourceDetailSection('section-commands', commands)
                 + resourceDetailSection('section-quotas', quotas)
@@ -257,7 +258,7 @@
                 field: 'Mode',//域值
                 title: '<span langtag="word-scheme"></span>',//标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="oCopy(this)">' + getBridgeMode(value) + '</span>'
@@ -267,7 +268,7 @@
                 field: 'VerifyKey',//域值
                 title: '<span langtag="word-verifykey"></span>',//标题
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (!row.NoStore) {
@@ -455,7 +456,7 @@
                 field: 'NowConn',//域值
                 title: '<span langtag="word-nowconn"></span>',//内容
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     return '<span onclick="oCopy(this)">' + value + '</span>'
@@ -466,7 +467,7 @@
                 title: '<span langtag="word-status"></span>',//内容
                 align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (value) {
@@ -493,10 +494,10 @@
             },
             {
                 field: 'show',//域值
-                title: '<span langtag="word-show">',//内容
+                title: '<span langtag="word-show"></span>',//内容
                 align: 'center',
                 halign: 'center',
-                visible: true,//false表示不显示
+                visible: false,//false表示不显示
                 formatter: function (value, row, index) {
                     return '<div class="btn-group"><a href="{{.web_base_url}}/index/all?client_id=' + row.Id
                         + '" class="btn btn-outline btn-primary" langtag="word-tunnel"></a>'
@@ -537,7 +538,7 @@
                 }
             }
         ]
-    });
+    }, {key: 'client'});
     initListLive('client', '{{.web_base_url}}');
     {{if eq true .isAdmin}}
     initListBatch('client', '{{.web_base_url}}');

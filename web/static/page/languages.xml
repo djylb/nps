@@ -2007,6 +2007,10 @@
 			<en-US>No results match {0}</en-US>
 		</lang>
 	</bootstrap-select>
+	<lang id="section-overview">
+		<zh-CN>概览</zh-CN>
+		<en-US>Overview</en-US>
+	</lang>
 	<lang id="section-basic">
 		<zh-CN>基本信息</zh-CN>
 		<en-US>Basic Information</en-US>
