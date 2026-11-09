@@ -2442,8 +2442,12 @@
 		<en-US>Traffic and Expiry</en-US>
 	</lang>
 	<lang id="section-transport">
-		<zh-CN>转发设置</zh-CN>
-		<en-US>Forwarding</en-US>
+		<zh-CN>传输设置</zh-CN>
+		<en-US>Transport</en-US>
+	</lang>
+	<lang id="section-backend">
+		<zh-CN>后端设置</zh-CN>
+		<en-US>Backend</en-US>
 	</lang>
 	<lang id="section-tls">
 		<zh-CN>HTTPS 与证书</zh-CN>
