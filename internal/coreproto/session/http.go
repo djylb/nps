@@ -6,11 +6,15 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/connprofile"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/zmuxws"
 )
@@ -33,7 +37,110 @@ func (a *Acceptor) HTTPCarriers(next http.Handler, f coreapi.Forwarding) (http.H
 // attempts returns what Dial and the redial go through for cands: every
 // (version, kind) of an http candidate, the candidate last good first.
 func (d *Dialer) attempts(cands []connprofile.Candidate) []connprofile.Candidate {
-	return connprofile.Order(connprofile.Attempts(cands), d.last)
+	all := connprofile.Attempts(cands)
+	usable := all[:0:0]
+	for _, a := range all {
+		// §2.4b: the first connection is over TCP unless the list has only
+		// h3; h3 follows once it has worked.
+		if a.Carrier != "https" || a.HTTP[0] != connprofile.HTTP3 || d.h3Known[a.Raw] || onlyHTTP3(cands, a) {
+			usable = append(usable, a)
+		}
+	}
+	return connprofile.Order(usable, d.last)
+}
+
+// onlyHTTP3 reports whether the candidate that attempt a came from names no
+// version but h3.
+func onlyHTTP3(cands []connprofile.Candidate, a connprofile.Candidate) bool {
+	return slices.ContainsFunc(cands, func(c connprofile.Candidate) bool { return c.Raw == a.Raw && c.OnlyHTTP3() })
+}
+
+// noteH3 records how an h3 attempt went: a failure is told once per change.
+func (d *Dialer) noteH3(c connprofile.Candidate, ok bool, err error) {
+	if c.Carrier != "https" || c.HTTP[0] != connprofile.HTTP3 {
+		return
+	}
+	d.mu.Lock()
+	known := d.h3Known[c.Raw]
+	if ok {
+		d.h3Known[c.Raw] = true
+	} else {
+		delete(d.h3Known, c.Raw)
+	}
+	d.mu.Unlock()
+	if !ok && (known || c.OnlyHTTP3()) {
+		log.Warn("h3 is unavailable, going on without it", "server", c.Addr, "err", err)
+	}
+}
+
+// h3Client is the HTTP/3 client of candidate c, which its attempts share:
+// their carriers are request streams of one QUIC connection. It stays until
+// the session ends (closeHTTP).
+func (d *Dialer) h3Client(c connprofile.Candidate) *http.Client {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if cl := d.h3Clients[c.Raw]; cl != nil {
+		return cl
+	}
+	rt := &h3Transport{host: c.Host}
+	rt.t = &http3.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13, ServerName: serverName(c), NextProtos: []string{http3.NextProtoH3}},
+		QUICConfig:      &quic.Config{KeepAlivePeriod: 10 * time.Second, MaxIdleTimeout: 30 * time.Second},
+		Dial: func(ctx context.Context, addr string, tc *tls.Config, qc *quic.Config) (*quic.Conn, error) {
+			conn, err := d.dialQUICConn(ctx, addr, tc, qc)
+			if err == nil {
+				rt.conn.Store(conn)
+			}
+			return conn, err
+		},
+	}
+	d.closers = append(d.closers, func() { _ = rt.t.Close() })
+	cl := &http.Client{Transport: rt, CheckRedirect: noRedirect}
+	d.h3Clients[c.Raw] = cl
+	return cl
+}
+
+// h3Transport runs the requests of a candidate over its QUIC connection. It
+// sends the host parameter as the request's Host, the URL naming the address
+// to dial, and names that connection to a carrier's body before the headers
+// go out, which is what makes the carrier declare the Bound contract. (zmuxh3
+// has this client, but needs a webtransport-go that does not build against
+// the quic-go of this module.)
+type h3Transport struct {
+	t    *http3.Transport
+	host string
+	conn atomic.Pointer[quic.Conn]
+}
+
+func (t *h3Transport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if t.host != "" {
+		r = r.Clone(r.Context())
+		r.Host = t.host
+	}
+	if b, ok := r.Body.(zmux.HTTPCarrierBody); ok {
+		r = r.WithContext(httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) {
+			if qc := t.conn.Load(); qc != nil {
+				b.SetSecureConnection(quicState{qc})
+			}
+		}}))
+	}
+	return t.t.RoundTrip(r)
+}
+
+// quicState is the TLS state of a QUIC connection, read when asked.
+type quicState struct{ qc *quic.Conn }
+
+func (s quicState) ConnectionState() tls.ConnectionState { return s.qc.ConnectionState().TLS }
+
+// closeHTTP ends what the HTTP carriers of the last session kept open.
+func (d *Dialer) closeHTTP() {
+	d.mu.Lock()
+	closers := d.closers
+	d.closers, d.h3Clients = nil, map[string]*http.Client{}
+	d.mu.Unlock()
+	for _, f := range closers {
+		f()
+	}
 }
 
 // attemptTimeout is the limit of one try of c.
@@ -85,10 +192,13 @@ func tlsProtos(versions []string) []string {
 
 // httpClient follows no redirect, as the WebSocket carrier does.
 func httpClient(t *http.Transport) *http.Client {
-	return &http.Client{Transport: t, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	return &http.Client{Transport: t, CheckRedirect: noRedirect}
 }
+
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// h3URL is httpURL for the HTTP/3 transport, which dials the URL's host.
+func h3URL(c connprofile.Candidate) string { return "https://" + c.Addr + c.Path }
 
 // httpURL is the URL of the requests of c; the Host field is the URL's, and
 // c.Addr is what is dialed (httpTransport).
@@ -104,21 +214,25 @@ func httpURL(c connprofile.Candidate) string {
 	return scheme + "://" + host + c.Path
 }
 
-// dialHTTP opens a streaming or split carrier for one attempt of an http
-// candidate: never Bound, as the request's connection is not end to end
-// (§3.2), and so of any network.
+// dialHTTP opens a carrier for one attempt of an http candidate. Only the
+// h3 kind can be Bound: a request stream of QUIC is end to end, the others'
+// connection is not (§3.2).
 func (d *Dialer) dialHTTP(ctx context.Context, c connprofile.Candidate) (carrier, error) {
-	client := httpClient(d.httpTransport(c, c.HTTP))
 	// The caller ends ctx once the carrier is dialed, which for a request
 	// is before it is under way; closing the carrier ends it instead.
 	ctx = context.WithoutCancel(ctx)
 	var p zmux.PipeIO
 	var err error
 	switch c.Kinds[0] {
+	case connprofile.KindHTTP3:
+		if p, err = zmux.HTTPPipe(ctx, d.h3Client(c), h3URL(c), nil, zmux.DirBidirectional, nil); err != nil {
+			return carrier{}, err
+		}
+		return carrier{pipe: p, secure: true}, nil
 	case connprofile.KindStreaming:
-		p, err = zmux.HTTPPipe(ctx, client, httpURL(c), nil, zmux.DirBidirectional, nil)
+		p, err = zmux.HTTPPipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, zmux.DirBidirectional, nil)
 	case connprofile.KindSplit:
-		p, err = (&zmux.HTTPSplitOptions{PairField: httpPairField}).Pipe(ctx, client, httpURL(c), nil, nil)
+		p, err = (&zmux.HTTPSplitOptions{PairField: httpPairField}).Pipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, nil)
 	default:
 		err = errors.New("unknown http carrier kind " + c.Kinds[0])
 	}
@@ -162,6 +276,10 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
 				return zmux.Mode{}, err
 			}
 			cands = append(cands, c)
+		case connprofile.KindHTTP3:
+			h3 := zmux.StreamingCandidate(d.h3Client(m), h3URL(m), nil)
+			h3.Kind = zmux.CarrierHTTP3
+			cands = append(cands, h3)
 		}
 	}
 	return zmux.AutoMode(cands...), nil

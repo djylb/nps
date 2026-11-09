@@ -327,15 +327,17 @@ func (s *clientSession) joinOne(ctx context.Context, m connprofile.Candidate, o 
 
 // dialQUIC opens a QUIC connection of its own for one carrier; the connection
 // ends with its pipe.
+// dialQUICConn opens a QUIC connection, keeping -local_ip.
+func (d *Dialer) dialQUICConn(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
+	if d.cfg.DialQUIC != nil {
+		return d.cfg.DialQUIC(ctx, addr, t, q)
+	}
+	return quic.DialAddr(ctx, addr, t, q)
+}
+
 func (d *Dialer) dialQUIC(ctx context.Context, c connprofile.Candidate, t *tls.Config) (carrier, error) {
 	q := zmuxquic.QUICConfig(&quic.Config{KeepAlivePeriod: 10 * time.Second, MaxIdleTimeout: 30 * time.Second})
-	dial := d.cfg.DialQUIC
-	if dial == nil {
-		dial = func(ctx context.Context, addr string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
-			return quic.DialAddr(ctx, addr, t, q)
-		}
-	}
-	qc, err := dial(ctx, c.Addr, t, q)
+	qc, err := d.dialQUICConn(ctx, c.Addr, t, q)
 	if err != nil {
 		return carrier{}, err
 	}

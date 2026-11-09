@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"net"
+	"net/http"
 	"net/netip"
 	"sync"
 	"testing"
@@ -21,7 +22,7 @@ type stubFallback struct {
 
 func (stubFallback) ServeFallback(net.Conn, *tls.ConnectionState) bool { return false }
 
-func (stubFallback) ServeHTTP3(*quic.Conn) bool { return false }
+func (stubFallback) ServeHTTP3(*quic.Conn, func(http.Handler) http.Handler) bool { return false }
 
 func (f stubFallback) FallbackCert(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if h.ServerName == f.name {

@@ -212,6 +212,8 @@ func carrierLabel(p zmux.PipeIO) string {
 		return p.Label
 	case p.Carrier == zmux.CarrierQUIC:
 		return "quic"
+	case p.Carrier == zmux.CarrierHTTP3:
+		return "h3"
 	case p.Carrier == zmux.CarrierStreaming, p.Carrier == zmux.CarrierSplit:
 		return "http"
 	case ok:

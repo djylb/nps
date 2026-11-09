@@ -422,7 +422,7 @@ func TestCorePingAndUDPThroughOpenLink(t *testing.T) {
 }
 
 // fallbackRec answers with what it read of the request.
-func (fallbackRec) ServeHTTP3(*quic.Conn) bool { return false }
+func (fallbackRec) ServeHTTP3(*quic.Conn, func(http.Handler) http.Handler) bool { return false }
 
 type fallbackRec struct{ got chan string }
 

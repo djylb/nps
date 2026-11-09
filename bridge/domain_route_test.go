@@ -242,6 +242,22 @@ func TestRouteSwitchOffTrusted(t *testing.T) {
 	t.Fatalf("mode %s, want trusted", last)
 }
 
+func TestRouteH2Sealed(t *testing.T) {
+	f := domainRouteOn(t, "bridge://ws", model.Config{Crypt: true}, &model.Host{})
+	wantMode(t, f, "https://"+f.https+"/ws"+params("&kinds=streaming&http=h2"), "sealed")
+	if m := <-f.store.major; m != 2 {
+		t.Fatalf("HTTP/%d", m)
+	}
+}
+
+func TestRouteH3Bound(t *testing.T) {
+	f := domainRouteOn(t, "bridge://ws", model.Config{Crypt: true}, &model.Host{})
+	wantMode(t, f, "https://"+f.h3+"/ws"+params("&kinds=http3&http=h3"), "bound")
+	if m := <-f.store.major; m != 3 {
+		t.Fatalf("HTTP/%d", m)
+	}
+}
+
 // A request that is no carrier gets the 404 of an unknown site, and does not
 // come back to the route.
 func TestRouteFallback(t *testing.T) {

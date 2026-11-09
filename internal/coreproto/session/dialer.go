@@ -102,6 +102,9 @@ type Dialer struct {
 	now         func() time.Time     // tests
 	limits      CompressLimits
 	kinds       zmux.CarrierCache // HTTP carrier kinds per candidate (§14)
+	h3Known     map[string]bool   // candidates on which h3 has worked (§2.4b)
+	h3Clients   map[string]*http.Client
+	closers     []func() // of the HTTP clients the last session kept
 }
 
 // NewDialer returns a Dialer for cfg.
@@ -115,7 +118,7 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.MaxConfig <= 0 {
 		cfg.MaxConfig = maxConfigBody
 	}
-	d := &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d := &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, h3Known: map[string]bool{}, h3Clients: map[string]*http.Client{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
 	d.plans = planSlotOf(d.Server() + "\x00" + cfg.VKey)
 	return d
 }
@@ -147,6 +150,7 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		s, err := d.dialCandidate(dctx, c)
 		cancel()
+		d.noteH3(c, err == nil, err)
 		if err == nil {
 			d.mu.Lock()
 			d.last = c.Key()
@@ -158,6 +162,7 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 			break
 		}
 	}
+	d.closeHTTP()
 	if len(errs) == 0 {
 		return nil, errors.New("no candidate can start a session")
 	}
@@ -489,6 +494,7 @@ func (s *clientSession) start(boot connprofile.Candidate) {
 			s.healthRunner.Stop()
 		}
 		s.ended()
+		s.d.closeHTTP()
 		close(s.done)
 	}()
 }

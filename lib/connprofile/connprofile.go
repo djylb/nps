@@ -87,12 +87,16 @@ const (
 	KindWebSocket = "websocket"
 	KindStreaming = "streaming"
 	KindSplit     = "split"
+	KindHTTP3     = "http3"
 )
 
 // httpKinds are the kinds an http or https candidate tries, in order, when
-// it names none. The exchange kind is left out: it needs a key both ends
-// share before authentication, which this version does not hand out.
+// it names none. An http list with h3 adds http3
+// (candidateKinds).
 var httpKinds = []string{KindWebSocket, KindStreaming, KindSplit}
+
+// knownKinds are the kinds a kinds parameter may name on http and https.
+var knownKinds = append(slices.Clone(httpKinds), KindHTTP3)
 
 // Candidate is one way to reach the server of a profile.
 type Candidate struct {
@@ -151,8 +155,8 @@ func (c Candidate) Attempts() []Candidate {
 			continue
 		}
 		for _, k := range c.Kinds {
-			if k == KindWebSocket && v != HTTP11 {
-				continue // WebSocket is dialed over HTTP/1.1
+			if !kindCarried(k, v) {
+				continue
 			}
 			a := c
 			a.HTTP, a.Kinds, a.Attempt = []string{v}, []string{k}, "#"+v+"/"+k
@@ -165,11 +169,27 @@ func (c Candidate) Attempts() []Candidate {
 	return out
 }
 
-// httpVersionDialable reports whether this version dials v on carrier: h3
-// has no carrier yet, and h2 needs TLS to be negotiated.
+// httpVersionDialable reports whether this version dials v on carrier: h2
+// and h3 need TLS.
 func httpVersionDialable(v, carrier string) bool {
-	return v == HTTP11 || v == HTTP2 && carrier == "https"
+	return v == HTTP11 || (v == HTTP2 || v == HTTP3) && carrier == "https"
 }
+
+// kindCarried reports whether version v carries kind k (§2.4b): http3 only
+// runs over h3, nothing else does, and WebSocket is dialed over HTTP/1.1.
+func kindCarried(k, v string) bool {
+	switch k {
+	case KindHTTP3:
+		return v == HTTP3
+	case KindWebSocket:
+		return v == HTTP11
+	}
+	return v != HTTP3
+}
+
+// OnlyHTTP3 reports whether h3 is all the http list of c names (§2.4b): only
+// then is h3 dialed without being known to work.
+func (c Candidate) OnlyHTTP3() bool { return slices.Equal(c.HTTP, []string{HTTP3}) }
 
 // Attempts returns the attempts of every candidate, in order.
 func Attempts(cands []Candidate) []Candidate {
@@ -338,6 +358,7 @@ func parseURL(s string) (Candidate, error) {
 		return Candidate{}, err
 	}
 	host, sni, hasSNI := u.Host, "", false
+	kindsWritten := q.Has("kinds")
 	for key, values := range q {
 		if len(values) > 1 {
 			return Candidate{}, fmt.Errorf("parameter %q given twice", key)
@@ -387,7 +408,7 @@ func parseURL(s string) (Candidate, error) {
 				case k == "":
 				case slices.Contains(kinds, k):
 					return Candidate{}, fmt.Errorf("kind %q given twice", k)
-				case k == KindWebSocket || !isWS && slices.Contains(httpKinds, k):
+				case k == KindWebSocket || !isWS && slices.Contains(knownKinds, k):
 					kinds = append(kinds, k)
 				default:
 					ignored = append(ignored, k)
@@ -439,6 +460,9 @@ func parseURL(s string) (Candidate, error) {
 			return Candidate{}, fmt.Errorf("unknown parameter %q (want tier, weight, standby, count, dirs, kinds, host, sni, alpn, http or subprotocol)", key)
 		}
 	}
+	if !isWS && !kindsWritten && slices.Contains(c.HTTP, HTTP3) {
+		c.Kinds = append(slices.Clone(c.Kinds), KindHTTP3)
+	}
 	c.Host = host
 	if hasSNI {
 		c.SNI = sni
@@ -456,7 +480,7 @@ func parseURL(s string) (Candidate, error) {
 			return Candidate{}, fmt.Errorf("dirs up and down are not available on %s, which is not Bound", u.Scheme)
 		}
 		if len(c.Attempts()) == 0 {
-			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds on this version (h3 is not dialed, h2 needs https)", strings.Join(c.HTTP, ","))
+			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds (h2 and h3 need https, http3 needs h3)", strings.Join(c.HTTP, ","))
 		}
 	}
 	c.URL = entryURL(scheme, c.Addr, path)

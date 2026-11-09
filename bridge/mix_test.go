@@ -8,6 +8,7 @@ import (
 	"fmt"
 	legacyclient "github.com/djylb/nps/client/legacy"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -432,7 +433,7 @@ type h3Stub struct {
 	got chan struct{}
 }
 
-func (h h3Stub) ServeHTTP3(*quic.Conn) bool {
+func (h h3Stub) ServeHTTP3(*quic.Conn, func(http.Handler) http.Handler) bool {
 	select {
 	case h.got <- struct{}{}:
 	default:

@@ -278,7 +278,7 @@ type Fallback interface {
 	FallbackCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 	// ServeHTTP3 serves qc as HTTP/3 through the domain proxy until it
 	// ends. It returns false when there is no HTTP/3 engine.
-	ServeHTTP3(qc *quic.Conn) bool
+	ServeHTTP3(qc *quic.Conn, wrap func(http.Handler) http.Handler) bool
 }
 
 func (s *Bridge) coreFallback(c net.Conn, state *tls.ConnectionState) bool {
@@ -323,7 +323,7 @@ func (s *Bridge) startCore() error {
 type routeNextKey struct{}
 
 // startRouteCarriers builds the handler of the carriers that arrive by a
-// domain route: one handler, whose TLS is
+// domain route, or over HTTP/3 on the mixed port: one handler, whose TLS is
 // the request's (§3.2).
 func (s *Bridge) startRouteCarriers() {
 	fw := s.coreForwarding()

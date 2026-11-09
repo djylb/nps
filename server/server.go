@@ -168,8 +168,8 @@ func (f domainFallback) ServeFallback(c net.Conn, state *tls.ConnectionState) bo
 }
 
 // ServeHTTP3 implements bridge.Fallback.
-func (f domainFallback) ServeHTTP3(qc *quic.Conn) bool {
-	return f.proxy(func(hp *httpproxy.HttpProxy) bool { return hp.ServeHTTP3(qc) })
+func (f domainFallback) ServeHTTP3(qc *quic.Conn, wrap func(http.Handler) http.Handler) bool {
+	return f.proxy(func(hp *httpproxy.HttpProxy) bool { return hp.ServeHTTP3(qc, wrap) })
 }
 
 // FallbackCert implements bridge.Fallback.

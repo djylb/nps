@@ -266,6 +266,16 @@ func FormatLink(vkey, server, carrier, name string, common map[string]string) (s
 	return b.String(), nil
 }
 
+// defaultKinds reports whether c tries the kinds it would without a kinds
+// parameter.
+func defaultKinds(c Candidate) bool {
+	want := httpKinds
+	if slices.Contains(c.HTTP, HTTP3) {
+		want = append(slices.Clone(httpKinds), KindHTTP3)
+	}
+	return slices.Equal(c.Kinds, want)
+}
+
 // candidateParts splits c into what a link writes: the type, the address,
 // the escaped path and the parameters different from the defaults.
 func candidateParts(c Candidate) (typ, addr, path string, q url.Values) {
@@ -283,7 +293,7 @@ func candidateParts(c Candidate) (typ, addr, path string, q url.Values) {
 	if httpKind && !slices.Equal(c.HTTP, defaultHTTP(map[string]string{"ws": "http", "wss": "https", "http": "http", "https": "https"}[typ])) {
 		q.Set("http", strings.Join(c.HTTP, ","))
 	}
-	if (typ == "http" || typ == "https") && !slices.Equal(c.Kinds, httpKinds) {
+	if (typ == "http" || typ == "https") && !defaultKinds(c) {
 		q.Set("kinds", strings.Join(c.Kinds, ","))
 	}
 	if c.Host != "" && c.Host != c.Addr {

@@ -298,6 +298,24 @@ func (s *Bridge) serveQUIC(qc *quic.Conn, mix *mixEntry) {
 // ends.
 func (s *Bridge) serveHTTP3(qc *quic.Conn) {
 	if f := s.fallback.Load(); f != nil {
-		(*f).ServeHTTP3(qc)
+		(*f).ServeHTTP3(qc, s.http3Carriers)
 	}
+}
+
+// http3Carriers gives the requests of the bridge path to the new protocol;
+// anything else, and what is no carrier there, stays with next.
+func (s *Bridge) http3Carriers(next http.Handler) http.Handler {
+	h, _ := s.routeCarriers.Load().(http.Handler)
+	if h == nil {
+		return next
+	}
+	n := connection.Network()
+	carriers := withRouteNext(h, next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == n.BridgePath || slices.Contains(n.NewProtocolWSPaths, r.URL.Path) {
+			carriers.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
