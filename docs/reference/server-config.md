@@ -43,6 +43,7 @@ nps.exe -conf_path=D:\test\nps
 | `web_open_ssl` | `false` | `false` | 启用 HTTPS |
 | `web_cert_file` / `web_key_file` | 空 | `conf/server.pem` / `conf/server.key` | 证书和私钥（路径或 PEM） |
 | `web_close_on_not_found` | `false` | - | 未知路径尽量不响应直接断开 |
+| `web_tunnel_port_range_max` | `1000` | - | 网页新增 tcp/udp 隧道时，端口范围（如 `8000-8100,9000`）一次最多展开的条数，`0` 不限 |
 | `web_username` / `web_password` | 空 | `admin` / `123` | 管理员账号。**请修改** |
 | `totp_secret` | 空 | 空 | TOTP 密钥。启用后登录时在密码（或验证码）后追加 6 位动态码；`web_password` 留空可仅用 TOTP。用 `nps -gen2fa` 生成 |
 | `instance_key_file` | 配置目录 `instance.key` | - | [实例主密钥](/guide/server/operations.md) |

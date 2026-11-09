@@ -488,3 +488,19 @@ func TestParseClientCompress(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchTargetPorts(t *testing.T) {
+	ports := []int{8000, 8001, 8002}
+	if got, ok := MatchTargetPorts(ports, []int{1, 2, 3}, false); !ok || got[2] != 3 {
+		t.Errorf("one to one = %v %v", got, ok)
+	}
+	if _, ok := MatchTargetPorts(ports, []int{80}, false); ok {
+		t.Error("a single target must not match without single")
+	}
+	if got, ok := MatchTargetPorts(ports, []int{80}, true); !ok || len(got) != 3 || got[0] != 80 || got[2] != 80 {
+		t.Errorf("single = %v %v", got, ok)
+	}
+	if _, ok := MatchTargetPorts(ports, []int{1, 2}, true); ok {
+		t.Error("two targets for three ports must not match")
+	}
+}

@@ -9,6 +9,9 @@ type StatusMessageIDResponse struct {
 	Status int    `json:"status"`
 	Msg    string `json:"msg"`
 	ID     int    `json:"id"`
+	// Count is the number of entries a port range added, the first one's id
+	// being ID; absent for a single entry.
+	Count int `json:"count,omitempty"`
 }
 
 type StatusNonceResponse struct {

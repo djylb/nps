@@ -66,7 +66,8 @@
                             <div class="form-group" id="port">
                                 <label class="control-label font-bold" langtag="word-serverport"></label>
                                 <div class="col-sm-12">
-                                    <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text">
+                                    <input class="form-control" langtag="info-suchasport" name="port" placeholder="" type="text" inputmode="text" autocomplete="off">
+                                    <span class="help-block m-b-none port-range-hint" langtag="info-portrange"></span>
                                 </div>
                             </div>
                             <div class="form-group" id="target_type">
@@ -84,6 +85,7 @@
                                 <div class="col-sm-12">
                                     <textarea class="form-control" langtag="info-suchasiplist" name="target" placeholder="" rows="4"></textarea>
                                     <span class="help-block m-b-none" langtag="info-targettunnel"></span>
+                                    <span class="help-block m-b-none port-range-hint" langtag="info-portrangetarget"></span>
                                 </div>
                             </div>
                             <div class="form-group" id="password">
@@ -324,6 +326,23 @@
     $(function () { toggleHealthCheck($("#health_check input[name='health_check']")[0]); });
 </script>
 <script>
+    // A port range adds several tunnels at once; the server reports how many,
+    // and the message names the count in the page language.
+    $.ajaxPrefilter(function (options) {
+        if (String(options.url).indexOf('/index/add') < 0) return;
+        options.dataFilter = function (data) {
+            try {
+                var res = JSON.parse(data);
+                if (res && res.status && res.count > 1) {
+                    var text = languages['content'] && languages['content']['info-tunnelsadded'];
+                    text = text && (text[languages['current']] || text[languages['default']]);
+                    res.msg = (text || '{n} tunnels created').replace('{n}', res.count);
+                    return JSON.stringify(res);
+                }
+            } catch (e) {}
+            return data;
+        };
+    });
     var arr = []
     arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     arr["tcp"] = ["compress_alg", "health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
@@ -341,6 +360,7 @@
         $('.p2p-rate-hint').toggle(o === 'secret');
         $('.secret-destacl-hint').toggle(o === 'secret');
         $('.destacl-hint').toggle(o !== 'secret');
+        $('.port-range-hint').toggle(o === 'tcp' || o === 'udp');
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }

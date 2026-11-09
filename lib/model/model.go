@@ -676,8 +676,10 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 	}
 	ports = netaddr.GetPorts(t.Ports)
 	targets = netaddr.GetPorts(t.Target.TargetStr)
-	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && len(ports) != len(targets) {
-		return nil, nil, false
+	if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") {
+		if _, ok := MatchTargetPorts(ports, targets, false); !ok {
+			return nil, nil, false
+		}
 	} else if t.Mode == "secret" {
 		ports = append(ports, 0)
 	}
@@ -685,6 +687,32 @@ func ConfigTaskPorts(t *Tunnel) (ports, targets []int, ok bool) {
 		return nil, nil, false
 	}
 	return ports, targets, true
+}
+
+// MatchTargetPorts returns the target port of each of ports. The targets pair
+// with the ports one to one; with single set, one target serves every port.
+// ok is false for any other count.
+func MatchTargetPorts(ports, targets []int, single bool) (matched []int, ok bool) {
+	switch {
+	case len(targets) == len(ports):
+		return targets, true
+	case single && len(targets) == 1:
+		matched = make([]int, len(ports))
+		for i := range matched {
+			matched[i] = targets[0]
+		}
+		return matched, true
+	}
+	return nil, false
+}
+
+// PortTaskTarget is the target of a tunnel opened for one port of a
+// multi-port task: the port on host, or the bare port when host is empty.
+func PortTaskTarget(host string, port int) string {
+	if host != "" {
+		return host + ":" + strconv.Itoa(port)
+	}
+	return strconv.Itoa(port)
 }
 
 func NewTunnelByHost(host *Host, port int) *Tunnel {

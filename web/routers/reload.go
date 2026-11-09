@@ -32,7 +32,7 @@ func ConfigApplier(db *file.DbUtils, identity *crypt.Identity, runtime webservic
 // each request; its listener is not among them.
 var webSettings = []string{
 	"appname", "ip_register_max_hours",
-	"instance_key_file", "web_base_url", "head_custom_code", "web_close_on_not_found",
+	"instance_key_file", "web_base_url", "head_custom_code", "web_close_on_not_found", "web_tunnel_port_range_max",
 	"web_username", "web_password", "totp_secret",
 	"auth_key", "auth_crypt_key", "allow_x_real_ip", "trusted_proxy_ips",
 	"allow_user_login", "allow_user_register", "allow_user_vkey_login",

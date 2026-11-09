@@ -20,6 +20,7 @@ type IndexService interface {
 	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
 	ServiceAvailable(client int, target string) bool
 	AddTunnel(TunnelInput) (TunnelMutation, error)
+	AddTunnels(TunnelInput) ([]TunnelMutation, error)
 	GetTunnel(id int) (*model.Tunnel, error)
 	EditTunnel(TunnelInput) (TunnelMutation, error)
 	StopTunnel(id int, mode string) error
@@ -79,6 +80,12 @@ type TunnelInput struct {
 	AllowUserLocal bool
 	ResetFlow      bool
 	Access         AccessListInput
+	// PortSpec is the port field as submitted when adding; a range such as
+	// 8000-8100,9000 opens one tunnel per port (AddTunnels). Empty or a
+	// plain value is the single port Tunnel.Port holds.
+	PortSpec string
+	// PortRangeMax limits the ports one PortSpec may expand to; 0 for no limit.
+	PortRangeMax int
 	// Tunnel holds the values of model.TunnelSettings as submitted.
 	Tunnel *model.Tunnel
 }
@@ -118,14 +125,27 @@ func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*model.Tunnel
 }
 
 func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error) {
-	lists, err := input.Access.validate(acl.ScopeUser)
+	tunnel, err := s.prepareTunnel(input)
 	if err != nil {
 		return TunnelMutation{}, err
+	}
+	if err := s.createTunnel(tunnel); err != nil {
+		return TunnelMutation{}, err
+	}
+	return TunnelMutation{ID: tunnel.Id, ClientID: input.ClientID, Mode: tunnel.Mode}, nil
+}
+
+// prepareTunnel builds the tunnel of a submitted form and runs every check
+// adding applies, without storing or starting it.
+func (s DefaultIndexService) prepareTunnel(input TunnelInput) (*model.Tunnel, error) {
+	lists, err := input.Access.validate(acl.ScopeUser)
+	if err != nil {
+		return nil, err
 	}
 	form := input.form()
 	destRules, err := normalizeDestRules(form.DestAclRules)
 	if err != nil {
-		return TunnelMutation{}, err
+		return nil, err
 	}
 	id := s.Backend.Repository.NextTunnelID()
 	flowLimit, timeLimit := formFlowLimits(form.Flow)
@@ -140,33 +160,37 @@ func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error
 	lists.applyTo(&tunnel.SourceLists, "tunnel "+strconv.Itoa(id))
 
 	if err := s.checkServiceTarget(tunnel, input.ClientID); err != nil {
-		return TunnelMutation{}, err
+		return nil, err
 	}
 	if _, err := s.resolveTunnelPort(tunnel); err != nil {
-		return TunnelMutation{}, err
+		return nil, err
 	}
 
 	client, err := s.Backend.Repository.GetClient(input.ClientID)
 	if err != nil {
-		return TunnelMutation{}, ErrClientNotFound
+		return nil, ErrClientNotFound
 	}
 	if !webTunnelMode(form.Mode) {
-		return TunnelMutation{}, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, form.Mode)
+		return nil, fmt.Errorf("%w: %q", ErrTunnelModeInvalid, form.Mode)
 	}
 	tunnel.Client = client
 	if tunnel.Client.MaxTunnelNum != 0 && s.Backend.Repository.ClientEntryCount(tunnel.Client) >= tunnel.Client.MaxTunnelNum {
-		return TunnelMutation{}, ErrTunnelLimitExceeded
+		return nil, ErrTunnelLimitExceeded
 	}
+	return tunnel, nil
+}
 
+// createTunnel stores and starts a prepared tunnel; a tunnel that cannot
+// start is not kept.
+func (s DefaultIndexService) createTunnel(tunnel *model.Tunnel) error {
 	if err := s.Backend.Repository.CreateTunnel(tunnel); err != nil {
-		return TunnelMutation{}, err
+		return err
 	}
 	if err := s.Backend.Runtime.AddTunnel(tunnel); err != nil {
 		_ = s.Backend.Repository.DeleteTunnelRecord(tunnel.Id)
-		return TunnelMutation{}, normalizeRuntimeError(err)
+		return normalizeRuntimeError(err)
 	}
-
-	return TunnelMutation{ID: tunnel.Id, ClientID: input.ClientID, Mode: tunnel.Mode}, nil
+	return nil
 }
 
 func (s DefaultIndexService) GetTunnel(id int) (*model.Tunnel, error) {

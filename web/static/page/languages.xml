@@ -1217,6 +1217,18 @@
 		<zh-CN>例如 8024</zh-CN>
 		<en-US>Such as 8024</en-US>
 	</lang>
+	<lang id="info-portrange">
+		<zh-CN>TCP、UDP 可填端口范围，如 8000-8100,9000，每个端口新建一条隧道，备注为“备注-端口”，全部成功才创建</zh-CN>
+		<en-US>TCP and UDP accept a port range such as 8000-8100,9000: one tunnel is created per port, remarked "remark-port"; all or none are created</en-US>
+	</lang>
+	<lang id="info-portrangetarget">
+		<zh-CN>填写了多个端口时，目标只能一行：host:端口 表示所有端口都转发到它，或 host:8000-8100,9000 与监听端口一一对应</zh-CN>
+		<en-US>With several ports the target must be one line: host:port sends every port to it, or host:8000-8100,9000 pairs with the listen ports one to one</en-US>
+	</lang>
+	<lang id="info-tunnelsadded">
+		<zh-CN>已创建 {n} 条隧道</zh-CN>
+		<en-US>{n} tunnels created</en-US>
+	</lang>
 	<lang id="info-tagline">
 		<zh-CN>一款轻量级、高性能、功能强大的内网穿透代理服务器</zh-CN>
 		<en-US>A lightweight, high-performance, powerful intranet reverse proxy server</en-US>

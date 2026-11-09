@@ -3,7 +3,6 @@ package bridge
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/djylb/nps/lib/model"
@@ -268,15 +267,7 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 		tl.Remark = t.Remark
 	} else {
 		tl.Remark = fmt.Sprintf("%s_%d", t.Remark, tl.Port)
-		if t.TargetAddr != "" {
-			tl.Target = &model.Target{
-				TargetStr: fmt.Sprintf("%s:%d", t.TargetAddr, targets[i]),
-			}
-		} else {
-			tl.Target = &model.Target{
-				TargetStr: strconv.Itoa(targets[i]),
-			}
-		}
+		tl.Target = &model.Target{TargetStr: model.PortTaskTarget(t.TargetAddr, targets[i])}
 		if t.Target != nil {
 			tl.Target.ProxyProtocol = t.Target.ProxyProtocol
 		}

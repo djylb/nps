@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"html"
 
 	"github.com/djylb/nps/lib/model"
@@ -63,12 +64,23 @@ func (a *App) GetTunnel(c Context) {
 }
 
 func (a *App) AddTunnel(c Context) {
-	result, err := a.Services.Index.AddTunnel(tunnelInput(c, a.currentConfig()))
+	cfg := a.currentConfig()
+	input := tunnelInput(c, cfg)
+	input.PortSpec = requestString(c, "port")
+	if cfg != nil {
+		input.PortRangeMax = cfg.Web.TunnelPortRangeMax
+	}
+	results, err := a.Services.Index.AddTunnels(input)
 	if err != nil {
+		prefix := ""
+		var pe *webservice.PortError
+		if errors.As(err, &pe) {
+			prefix = fmt.Sprintf("port %d: ", pe.Port)
+		}
 		switch {
 		case errors.Is(err, webservice.ErrPortUnavailable):
-			ajax(c, "The port cannot be opened because it may has been occupied or is no longer allowed.", 0)
-		case errors.Is(err, webservice.ErrTunnelLimitExceeded):
+			ajax(c, prefix+"The port cannot be opened because it may has been occupied or is no longer allowed.", 0)
+		case err == webservice.ErrTunnelLimitExceeded:
 			ajax(c, "The number of tunnels exceeds the limit", 0)
 		default:
 			ajax(c, err.Error(), 0)
@@ -76,7 +88,11 @@ func (a *App) AddTunnel(c Context) {
 		return
 	}
 
-	ajaxWithID(c, "add success", 1, result.ID)
+	if len(results) > 1 {
+		c.RespondJSON(200, StatusMessageIDResponse{Status: 1, Msg: "add success", ID: results[0].ID, Count: len(results)})
+		return
+	}
+	ajaxWithID(c, "add success", 1, results[0].ID)
 }
 
 func (a *App) GetOneTunnel(c Context) {

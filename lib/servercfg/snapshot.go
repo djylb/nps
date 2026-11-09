@@ -88,11 +88,14 @@ type WebConfig struct {
 	Port            int
 	OpenSSL         bool
 	CloseOnNotFound bool
-	KeyFile         string
-	CertFile        string
-	Username        string
-	Password        string
-	TOTPSecret      string
+	// TunnelPortRangeMax limits the ports one tunnel added from the web may
+	// expand to; 0 means no limit.
+	TunnelPortRangeMax int
+	KeyFile            string
+	CertFile           string
+	Username           string
+	Password           string
+	TOTPSecret         string
 }
 
 type AuthConfig struct {
@@ -436,19 +439,20 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	}
 
 	cfg.Web = WebConfig{
-		InstanceKeyFile: r.stringValue("instance_key_file"),
-		BaseURL:         r.stringValue("web_base_url"),
-		HeadCustomCode:  r.stringValue("head_custom_code"),
-		Host:            r.stringValue("web_host"),
-		IP:              r.stringDefault("0.0.0.0", "web_ip"),
-		Port:            r.intDefault(0, "web_port"),
-		OpenSSL:         r.boolDefault(false, "web_open_ssl"),
-		CloseOnNotFound: r.boolDefault(false, "web_close_on_not_found"),
-		KeyFile:         r.stringValue("web_key_file"),
-		CertFile:        r.stringValue("web_cert_file"),
-		Username:        r.stringValue("web_username"),
-		Password:        r.stringValue("web_password"),
-		TOTPSecret:      r.stringValue("totp_secret"),
+		InstanceKeyFile:    r.stringValue("instance_key_file"),
+		BaseURL:            r.stringValue("web_base_url"),
+		HeadCustomCode:     r.stringValue("head_custom_code"),
+		Host:               r.stringValue("web_host"),
+		IP:                 r.stringDefault("0.0.0.0", "web_ip"),
+		Port:               r.intDefault(0, "web_port"),
+		OpenSSL:            r.boolDefault(false, "web_open_ssl"),
+		CloseOnNotFound:    r.boolDefault(false, "web_close_on_not_found"),
+		TunnelPortRangeMax: r.intDefault(1000, "web_tunnel_port_range_max"),
+		KeyFile:            r.stringValue("web_key_file"),
+		CertFile:           r.stringValue("web_cert_file"),
+		Username:           r.stringValue("web_username"),
+		Password:           r.stringValue("web_password"),
+		TOTPSecret:         r.stringValue("totp_secret"),
 	}
 
 	cfg.Auth = AuthConfig{
