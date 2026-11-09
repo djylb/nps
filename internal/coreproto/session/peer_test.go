@@ -85,11 +85,11 @@ type peerEnv struct {
 	provider *clientSession
 	outer    *OuterSessions
 	valid    atomic.Bool
-	// exitTarget is the target the last server-exit stream named.
-	exitTarget atomic.Pointer[string]
 	// askedExit is whether the last LINK asked for the server as the exit.
 	askedExit atomic.Bool
-	echo      string
+	// exitTarget is the target the last server-exit stream named.
+	exitTarget atomic.Pointer[string]
+	echo       string
 	// Set before the LINK that should see them.
 	// directIn and directOut add up what the grant's AddDirect received.
 	directIn, directOut atomic.Uint64

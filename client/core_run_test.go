@@ -14,11 +14,11 @@ import (
 
 // fakeOuter records how the client uses an outer session.
 type fakeOuter struct {
-	keep    bool
 	hosting func() bool
 	closed  atomic.Int32
 	dials   atomic.Int32
 	visitor atomic.Int32
+	keep    bool
 }
 
 func (o *fakeOuter) Dial(context.Context) (coreapi.ClientSession, error) {

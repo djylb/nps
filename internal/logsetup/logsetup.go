@@ -23,11 +23,11 @@ type Options struct {
 	MaxSize  int // MB
 	MaxFiles int
 	MaxDays  int
+	// Memory keeps the last entries in memory (npc SDK, a log viewer).
+	Memory   int
 	Compress bool
 	// Service: a service has no console, so stdout means the file.
 	Service bool
-	// Memory keeps the last entries in memory (npc SDK, a log viewer).
-	Memory int
 	// Secrets writes keys and passwords in lines, for development
 	// (slogx.Config.LogSecrets).
 	Secrets bool

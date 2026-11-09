@@ -318,20 +318,20 @@ type Config struct {
 	U        string // username
 	P        string // password
 	Compress bool
+	Crypt    bool
+	// Shaping turns on traffic shaping for this client (off by default); it
+	// takes effect only with a shaping source configured on the server.
+	Shaping bool `json:",omitempty"`
 	// CompressAlg is the algorithm of Compress for npc on the core
 	// protocol (flate, zstd, snappy); empty is snappy, the old protocol's
 	// compression (§7.1).
 	CompressAlg string `json:",omitempty"`
-	Crypt       bool
 	// SchedulerDown is how nps schedules sending to this client on the core
 	// protocol (connprofile.Schedulers); empty is affinity.
 	SchedulerDown string `json:",omitempty"`
 	// SchedulerUp is the scheduler npc is told to use for sending to nps
 	// (connprofile.Schedulers); empty tells nothing and npc keeps its own.
 	SchedulerUp string `json:",omitempty"`
-	// Shaping turns on traffic shaping for this client (off by default); it
-	// takes effect only with a shaping source configured on the server.
-	Shaping bool `json:",omitempty"`
 }
 
 // ShapedStats are the shaping statistics of a client, as listed.

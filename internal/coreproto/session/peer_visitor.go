@@ -260,12 +260,10 @@ func peerCompressAlgs(q zmux.PipeIO) []uint64 {
 
 // visitorLink is a live link: the nested session and its paths.
 type visitorLink struct {
-	v *Visitor
-	// refused: the server said the link is gone (refusalReader).
-	refused atomic.Bool
-	id      uint64
-	mode    uint64
-	key     []byte
+	v    *Visitor
+	id   uint64
+	mode uint64
+	key  []byte
 
 	// server_exit only: the LINK stream that keeps the link and its session.
 	exit        *linkConn
@@ -282,11 +280,13 @@ type visitorLink struct {
 
 	mu       sync.Mutex
 	punching bool
-	direct   *coreapi.DirectPath
-	upSince  time.Time           // the direct path up, continuously
-	upPath   *coreapi.DirectPath // the path that was up
-	backoff  time.Duration
-	nextTry  time.Time
+	// refused: the server said the link is gone (refusalReader).
+	refused atomic.Bool
+	direct  *coreapi.DirectPath
+	upSince time.Time           // the direct path up, continuously
+	upPath  *coreapi.DirectPath // the path that was up
+	backoff time.Duration
+	nextTry time.Time
 }
 
 func (l *visitorLink) ended() bool {

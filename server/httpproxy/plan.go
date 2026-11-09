@@ -42,31 +42,31 @@ type hostPlan struct {
 	// scheme stage
 	acme      bool // answer ACME HTTP challenges (AutoSSL)
 	autoHttps bool // redirect plain HTTP to HTTPS
-
-	// rewrite stage
-	location    string // the path prefix PathRewrite replaces
-	pathRewrite string // "" if the path is kept
 	// originalPath sends the path before the rewrite as X-Original-Path;
 	// CompatMode leaves it out.
 	originalPath bool
-	redirect     *redirectURL // answer with a 307 to it, nil if none
-	hostChange   string       // the Host sent on, "" for the client's
-	headerRules  []httprewrite.Rule
-	respRules    []httprewrite.Rule
 	autoCORS     bool
+	backendTLS   bool
+	// upgradeForwardHeaders adds the forwarding headers to upgrades;
+	// CompatMode leaves them out, while regular requests keep them.
+	upgradeForwardHeaders bool
+
+	// rewrite stage
+	location    string       // the path prefix PathRewrite replaces
+	pathRewrite string       // "" if the path is kept
+	redirect    *redirectURL // answer with a 307 to it, nil if none
+	hostChange  string       // the Host sent on, "" for the client's
+	headerRules []httprewrite.Rule
+	respRules   []httprewrite.Rule
 	// altSvc is the Alt-Svc header that announces HTTP/3 on responses to
 	// TLS requests, "" if HTTP/3 is off or CompatMode or HttpsJustProxy is
 	// set.
 	altSvc string
 
 	// upstream and forward stages
-	backendScheme string // "https" if TargetIsHttps
-	backendTLS    bool
-	// upgradeForwardHeaders adds the forwarding headers to upgrades;
-	// CompatMode leaves them out, while regular requests keep them.
-	upgradeForwardHeaders bool
-	transports            *hostTransports // regular requests; CompatMode keeps no connection
-	proxy                 *httputil.ReverseProxy
+	backendScheme string          // "https" if TargetIsHttps
+	transports    *hostTransports // regular requests; CompatMode keeps no connection
+	proxy         *httputil.ReverseProxy
 }
 
 // proxyRequest is one request on its way through the stages.

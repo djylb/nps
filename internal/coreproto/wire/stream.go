@@ -237,15 +237,15 @@ func ParseConfigOpen(fields []byte) (uint64, error) {
 // StreamOpen is the OPEN_INFO of a TCP or UDP stream (§4.4, §4.5).
 type StreamOpen struct {
 	Op        Op
-	Target    *Address
-	Source    *Address
 	WantReply bool
-	Compress  uint64
-	Service   []byte
-	LinkID    uint64
 	// ProviderTarget leaves the target to the provider, on a stream of a
 	// nested session only (§9.3).
 	ProviderTarget bool
+	Target         *Address
+	Source         *Address
+	Compress       uint64
+	Service        []byte
+	LinkID         uint64
 }
 
 // AppendStreamOpen encodes o in id order; the result is at most MaxOpenInfo

@@ -19,7 +19,6 @@ import (
 
 type Http3Server struct {
 	*HttpsServer
-	http3Status     atomic.Bool
 	http3Listener   net.PacketConn
 	http3Server     *http3.Server
 	http3NextProtos []string
@@ -29,6 +28,8 @@ type Http3Server struct {
 	workers sync.WaitGroup
 	closeMu sync.Mutex
 	closing bool
+
+	http3Status atomic.Bool
 }
 
 func NewHttp3Server(httpsSrv *HttpsServer, udpConn net.PacketConn) *Http3Server {

@@ -756,7 +756,6 @@ type serverSession struct {
 	a       *Acceptor
 	zc      *zmux.Conn
 	t       *ticket
-	mode    zmux.RecordMode
 	since   time.Time
 	seq     atomic.Uint64
 	kicked  chan struct{} // a newer snapshot wants pushing
@@ -766,6 +765,7 @@ type serverSession struct {
 	suspended atomic.Bool
 	// configOnly is a session of the public key.
 	configOnly bool
+	mode       zmux.RecordMode
 
 	healthMu sync.Mutex
 	health   []wire.HealthGroup

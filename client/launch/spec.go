@@ -37,7 +37,14 @@ const (
 type Profile struct {
 	Name   string
 	Direct bool
-	Config *config.Config
+	// Hosting: an access-less writing shares this connection, so besides
+	// its local accesses it runs as an ordinary client.
+	Hosting bool
+	// auto: Name was assigned, the source wrote none.
+	auto bool
+	// combined: more than one writing or a -L went into this connection.
+	combined bool
+	Config   *config.Config
 	// Source says where the profile was written, for messages; it holds no secret.
 	Source string
 	// written names the session keys the source set itself. nil means the
@@ -45,18 +52,11 @@ type Profile struct {
 	written map[string]bool
 	// aliases are further names of a connection written several times.
 	aliases []string
-	// auto: Name was assigned, the source wrote none.
-	auto bool
 	// by records which source wrote each session key, for messages.
 	by map[string]string
-	// combined: more than one writing or a -L went into this connection.
-	combined bool
 	// writings records each time the connection is written: with its name
 	// and whether an access goes with it, which decides its role.
 	writings []writing
-	// Hosting: an access-less writing shares this connection, so besides
-	// its local accesses it runs as an ordinary client.
-	Hosting bool
 }
 
 type writing struct {

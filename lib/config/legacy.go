@@ -66,10 +66,10 @@ func legacyLocalSection(name string, keys map[string]bool) bool {
 // local_type values secret/p2p/p2ps/p2pt, target_type and fallback_secret.
 type legacyLocal struct {
 	section     bool // a [p2p...] section
-	localType   string
-	targetType  string
 	fallback    bool
 	hasFallback bool
+	localType   string
+	targetType  string
 	used        []string
 }
 

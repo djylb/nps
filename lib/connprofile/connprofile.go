@@ -108,20 +108,21 @@ type Candidate struct {
 	SNI     string   // TLS server name, "" for none (an IP address)
 	Kinds   []string // HTTP carrier kinds of http and https, in order of preference
 	Dirs    Dirs
-	Tier    int // lower is tried first
-	Weight  int // share of a pipe in multi mode
 	Standby bool
-	Count   int // pipes in multi mode, at least 1
+	// Auto marks a candidate that a type=auto address expanded to: the
+	// candidates of the profile are raced, not tried in turn (§3).
+	Auto bool
+	// ALPNDefaulted: no ALPN was written for this quic candidate.
+	ALPNDefaulted bool
+	Tier          int // lower is tried first
+	Weight        int // share of a pipe in multi mode
+	Count         int // pipes in multi mode, at least 1
 
 	ALPN []string // TLS ALPN of tls and quic, in order of preference
 	// Subprotocol is the WebSocket subprotocol of ws and wss, "" for none.
 	Subprotocol string
 
 	HTTP []string // HTTP versions of http and https: http/1.1, h2, h3, in order of preference
-
-	// Auto marks a candidate that a type=auto address expanded to: the
-	// candidates of the profile are raced, not tried in turn (§3).
-	Auto bool
 
 	// AdmitKey is the admission key of the exchange kind, as hex (§13); ""
 	// leaves that kind out.
@@ -131,9 +132,6 @@ type Candidate struct {
 	Carrier string // tcp, tls, kcp, quic, ws, wss, http, https (scheme-less: the profile type as given)
 	Addr    string // host:port to dial
 	Path    string // HTTP path, escaped
-
-	// ALPNDefaulted: no ALPN was written for this quic candidate.
-	ALPNDefaulted bool
 
 	Index int    // position in the profile, from 0
 	Raw   string // the candidate as written

@@ -21,16 +21,17 @@ type EntrySetting struct {
 	Form  string // web form and API parameter; "" if the web does not set it
 	Conf  string // npc.conf key; "" if npc.conf does not set it
 
-	// FormRaw keeps the form value as entered; other form values are
-	// HTML-escaped.
-	FormRaw bool
-	// ConfList takes commas in the npc.conf value for line breaks.
-	ConfList bool
 	// ConfPEM is the PEM block type of an npc.conf value that is PEM text or
 	// the path of a PEM file.
 	ConfPEM string
 	// ConfDefault is the value an npc.conf entry has without the key.
 	ConfDefault string
+
+	// FormRaw keeps the form value as entered; other form values are
+	// HTML-escaped.
+	FormRaw bool
+	// ConfList takes commas in the npc.conf value for line breaks.
+	ConfList bool
 	// Min0 stores a negative number as zero.
 	Min0 bool
 	// Custom marks a form value the web service checks or derives the stored

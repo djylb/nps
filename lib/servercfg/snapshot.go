@@ -71,8 +71,8 @@ type LogConfig struct {
 	MaxFiles     int
 	MaxDays      int
 	MaxSize      int // MB
+	Memory       int // entries kept for the log viewer of the web manager; 0 for none
 	Compress     bool
-	Memory       int    // entries kept for the log viewer of the web manager; 0 for none
 	Secrets      bool   // write keys and passwords in lines, for development
 	Instance     string // instance= on every line, to tell instances apart where logs meet
 	Access       string // access log file of the domain proxy; empty for none
@@ -221,15 +221,15 @@ type NetworkConfig struct {
 	MixPort   int
 	MixPlain  bool
 	MixLegacy bool
-	// ClientMaxPipes limits the pipes of one client over all its sessions
-	// (client_max_pipes, 0 unlimited).
-	ClientMaxPipes int
 	// BridgeGeneric: the config names only the generic bridge_port, which
 	// is then a full mixed port (see legacy.go).
 	BridgeGeneric bool
 	// BridgeKCPQUIC: the KCP port also takes QUIC (conn.UDPSplit), which is
 	// how npc reaches a port configured for kcp. It goes with old KCP.
 	BridgeKCPQUIC bool
+	// ClientMaxPipes limits the pipes of one client over all its sessions
+	// (client_max_pipes, 0 unlimited).
+	ClientMaxPipes int
 	// CompressMaxWindow and CompressMaxRatio are the receive limits of
 	// compressed links on the core protocol (nps.conf compress_max_window
 	// in bytes, compress_max_ratio; 0 is the default, a negative ratio

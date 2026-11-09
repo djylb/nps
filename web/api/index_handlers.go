@@ -354,13 +354,13 @@ type tunnelRateRow struct {
 	*model.Tunnel
 	// LaunchForm is never set: it hides the tunnel's large field from lists,
 	// which only need HasLaunch to fetch it when a row is opened.
-	LaunchForm   string `json:",omitempty"`
-	HasLaunch    bool   `json:",omitempty"`
-	NowConn      int32
+	LaunchForm string `json:",omitempty"`
+	NowConn    int32
+	HasLaunch  bool `json:",omitempty"`
+	// ServiceDown marks a target naming a virtual service nobody reports.
+	ServiceDown  bool `json:",omitempty"`
 	UploadRate   int64
 	DownloadRate int64
-	// ServiceDown marks a target naming a virtual service nobody reports.
-	ServiceDown bool `json:",omitempty"`
 }
 
 type hostRateRow struct {

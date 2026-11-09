@@ -36,16 +36,16 @@ type ManagementPageCommonData struct {
 	Version        string
 	Year           int
 	IsAdmin        bool
+	// ServerUpdate tells whether the server can be updated from the web.
+	ServerUpdate bool
 	// AdmitKey is the admission key of the exchange carrier, as hex, shown to
 	// administrators only.
 	AdmitKey string
 	// MixIP and MixPort are the mixed port, where a type=auto link connects;
 	// the port is "" when there is none.
 	MixIP, MixPort string
-	// ServerUpdate tells whether the server can be updated from the web.
-	ServerUpdate bool
-	Username     string
-	BridgeType   string
+	Username       string
+	BridgeType     string
 	// VisitorVKey, when set, is the vkey the access commands show.
 	VisitorVKey   string
 	BridgeAddr    string

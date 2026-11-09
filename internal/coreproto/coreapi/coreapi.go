@@ -26,9 +26,14 @@ var FirstBytes = []string{"\x01", "\x02", "\x03"}
 // ClientRecord is what the entry reads of a stored client.
 type ClientRecord struct {
 	ID      int
-	VKey    string
 	Enabled bool
 	Crypt   bool
+	// ConfigOnly is the public key: its sessions only upload a configuration
+	// and are never nodes of a client.
+	ConfigOnly bool
+	// Shaping is the client's shaping switch (§13).
+	Shaping bool
+	VKey    string
 	// Compress is the client's default compression, algorithms in order of
 	// preference (§7): the first the peer can decompress is used.
 	Compress []string
@@ -38,11 +43,6 @@ type ClientRecord struct {
 	// SchedulerUp names the scheduler npc is told to send with; "" tells
 	// nothing and npc keeps its own.
 	SchedulerUp string
-	// ConfigOnly is the public key: its sessions only upload a configuration
-	// and are never nodes of a client.
-	ConfigOnly bool
-	// Shaping is the client's shaping switch (§13).
-	Shaping bool
 }
 
 // Networks of a link.
@@ -65,12 +65,12 @@ type LinkRequest struct {
 	Source string
 	// WantReply waits for the exit's result before the link is returned.
 	WantReply bool
-	// Compress is the compression of a TCP link, algorithms in order of
-	// preference; nil for none. UDP is not compressed.
-	Compress []string
 	// ProviderTarget leaves the choice of target to the provider, Target
 	// empty, in a nested session (§9.3).
 	ProviderTarget bool
+	// Compress is the compression of a TCP link, algorithms in order of
+	// preference; nil for none. UDP is not compressed.
+	Compress []string
 	// LinkID names a server-exit LINK (§4.6).
 	LinkID uint64
 	// Service names the virtual service to reach instead of a target (§8),

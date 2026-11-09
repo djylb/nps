@@ -149,20 +149,20 @@ type compressConn struct {
 	alg    uint64
 	limits CompressLimits
 
-	wmu  sync.Mutex
-	enc  encoder
-	bw   *bufio.Writer
-	wfin bool
-	werr error
+	wmu     sync.Mutex
+	enc     encoder
+	bw      *bufio.Writer
+	werr    error
+	wfin    bool
+	started bool
 	// abandon tells a Write in progress that Close gave up on the stream.
 	abandon atomic.Bool
 
-	src     *countReader
-	br      *bufio.Reader
-	dec     io.Reader
-	out     uint64
-	rerr    error
-	started bool
+	src  *countReader
+	br   *bufio.Reader
+	dec  io.Reader
+	out  uint64
+	rerr error
 }
 
 // newCompressConn wraps c; the reader side is built on the first Read so that
