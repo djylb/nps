@@ -14,6 +14,7 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/server/connection"
+	"github.com/xtaci/kcp-go/v5"
 )
 
 // ErrClosed is returned by StartTunnel on a bridge that is closed.
@@ -76,32 +77,18 @@ func (s *Bridge) StartTunnel(t Transports) error {
 		}
 	}
 
-	// kcp and QUIC on one UDP port (a config with only bridge_port)
-	shared := t.KCP && t.QUIC && n.BridgeKCPQUIC
-	if shared {
-		if err := s.listenKCPQUIC(net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort))); err != nil {
+	// kcp, with QUIC on the same port (conn.UDPSplit) unless quic_enable is off
+	kcpAddr := net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort))
+	quicAddr := net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort))
+	if t.KCP {
+		if err := s.listenKCP(kcpAddr, n.BridgeKCPQUIC); err != nil {
 			return err
 		}
 	}
 
-	// kcp
-	if t.KCP && !shared {
-		l, err := conn.ListenKCP(net.JoinHostPort(n.BridgeKCPIP, strconv.Itoa(n.BridgeKCPPort)))
-		if err != nil {
-			return fmt.Errorf("kcp bridge listener: %w", err)
-		}
-		slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", l.Addr().String(), "carrier", "kcp")
-		s.addCloser(l)
-		_ = s.scope.Go("kcp bridge listener", func(context.Context) error {
-			return conn.ServeKCP(l, func(c net.Conn) {
-				s.serve(conn.NewConn(c), conn.TransportKCP)
-			})
-		})
-	}
-
-	// quic
-	if t.QUIC && !shared {
-		if err := s.listenQUIC(net.JoinHostPort(n.BridgeQUICIP, strconv.Itoa(n.BridgeQUICPort)), "quic", nil); err != nil {
+	// quic, unless the kcp port above already takes it
+	if t.QUIC && !(t.KCP && n.BridgeKCPQUIC && kcpAddr == quicAddr) {
+		if err := s.listenQUIC(quicAddr, "quic", nil); err != nil {
 			return err
 		}
 	}
@@ -225,22 +212,31 @@ func (s *Bridge) closeClients() {
 	})
 }
 
-// listenKCPQUIC serves the old KCP and QUIC on one UDP port: the first packet
-// of a source tells which (conn.UDPSplit).
-func (s *Bridge) listenKCPQUIC(addr string) error {
-	sp, err := conn.ListenUDPSplit(addr)
-	if err != nil {
-		return err
+// listenKCP serves the old KCP on addr and, withQUIC, QUIC on the same UDP
+// port: the first packet of a source tells which (conn.UDPSplit).
+func (s *Bridge) listenKCP(addr string, withQUIC bool) error {
+	var l *kcp.Listener
+	var err error
+	var split *conn.UDPSplit
+	if withQUIC {
+		if split, err = conn.ListenUDPSplit(addr); err != nil {
+			return fmt.Errorf("kcp bridge listener: %w", err)
+		}
+		s.addCloser(split)
+		l, err = conn.ListenKCPOn(split.KCP)
+	} else {
+		l, err = conn.ListenKCP(addr)
 	}
-	s.addCloser(sp)
-	l, err := conn.ListenKCPOn(sp.KCP)
 	if err != nil {
-		return err
+		return fmt.Errorf("kcp bridge listener: %w", err)
 	}
-	slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", sp.KCP.LocalAddr().String(), "carrier", "kcp")
+	slogx.Emit(context.Background(), log, &logevent.Listening, "route", "bridge", "listen", l.Addr().String(), "carrier", "kcp")
 	s.addCloser(l)
 	_ = s.scope.Go("kcp bridge listener", func(context.Context) error {
 		return conn.ServeKCP(l, func(c net.Conn) { s.serve(conn.NewConn(c), conn.TransportKCP) })
 	})
-	return s.serveQUICOn(addr, "quic", nil, sp.QUIC)
+	if withQUIC {
+		return s.serveQUICOn(addr, "quic", nil, split.QUIC)
+	}
+	return nil
 }

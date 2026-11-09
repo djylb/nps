@@ -435,13 +435,13 @@ func (h h3Stub) ServeHTTP3(*quic.Conn) bool {
 	return true
 }
 
-// One UDP port takes the old KCP and QUIC (a config with only bridge_port and
-// bridge_type=kcp), and closing the bridge ends both listeners.
+// One UDP port takes the old KCP and QUIC (the KCP port of a config, whichever
+// way it was written), and closing the bridge ends both listeners.
 func TestBridgeKCPAndQUICSharePort(t *testing.T) {
 	boot := func(t *testing.T) *mixFixture {
 		f := mixOn(t, mixPort, servercfg.NetworkConfig{})
 		f.addr = freeUDP(t)
-		if err := f.b.listenKCPQUIC(f.addr); err != nil {
+		if err := f.b.listenKCP(f.addr, true); err != nil {
 			t.Fatal(err)
 		}
 		return f

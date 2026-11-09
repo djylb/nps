@@ -226,8 +226,8 @@ type NetworkConfig struct {
 	// BridgeGeneric: the config names only the generic bridge_port, which
 	// is then a full mixed port (see legacy.go).
 	BridgeGeneric bool
-	// BridgeKCPQUIC: the config names only bridge_port with bridge_type=kcp,
-	// which is then one UDP port for the old KCP and QUIC (conn.UDPSplit).
+	// BridgeKCPQUIC: the KCP port also takes QUIC (conn.UDPSplit), which is
+	// how npc reaches a port configured for kcp. It goes with old KCP.
 	BridgeKCPQUIC bool
 	// CompressMaxWindow and CompressMaxRatio are the receive limits of
 	// compressed links on the core protocol (nps.conf compress_max_window
@@ -625,6 +625,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 	cfg.Bridge.ServerWSEnabled = cfg.Bridge.WSEnable && cfg.Network.BridgeWSPort != 0 && cfg.Network.BridgePath != "" && cfg.Bridge.PrimaryType == "tcp"
 	cfg.Bridge.ServerWSSEnabled = cfg.Bridge.WSSEnable && cfg.Network.BridgeWSSPort != 0 && cfg.Network.BridgePath != "" && cfg.Bridge.PrimaryType == "tcp"
 	legacyGenericPort(r, cfg)
+	cfg.Network.BridgeKCPQUIC = cfg.Bridge.ServerKCPEnabled && cfg.Bridge.QUICEnable
 	cfg.Bridge.Display = BridgeDisplayConfig{
 		Path: r.stringDefault(cfg.Network.BridgePath, "bridge_show_path"),
 		TCP: BridgeDisplayEndpoint{

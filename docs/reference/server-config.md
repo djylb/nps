@@ -111,9 +111,9 @@ nps.exe -conf_path=D:\test\nps
 | --- | --- | --- | --- |
 | `bridge_ip` | `0.0.0.0` | `0.0.0.0` | 监听地址 |
 | `bridge_tcp_ip`、`bridge_kcp_ip`、`bridge_tls_ip`、`bridge_quic_ip`、`bridge_ws_ip`、`bridge_wss_ip` | 同 `bridge_ip` | - | 各协议单独的监听地址 |
-| `bridge_port` | `0` | - | TCP、KCP 端口的默认值。只配它、没有配 `bridge_tcp_port`、`bridge_tls_port`、`bridge_ws_port`、`bridge_wss_port`，且不与网页或域名转发共用端口时，该端口是完整混合端口：`tcp`、`tls`、`ws`、`wss` 和新旧协议都接受，字节流按首字节分流，`bridge_path` 上的 WebSocket 按子协议分流（`binary` 走核心协议，无子协议走旧协议），`new_protocol_ws_paths` 总是核心协议。`bridge_type` 为 `kcp`、`udp`、`quic` 时，该端口是只监听 UDP 的端口，不开 TCP：`kcp`（且 `kcp_enable` 未关）时同一端口服务旧 KCP 和 QUIC，按首个包区分；`udp`、`quic` 只服务 QUIC，不再服务 kcp（`udp` 启动时告警一次，旧 kcp 客户端要改用 `bridge_type=kcp`）；单独写了 `bridge_kcp_port`、`bridge_quic_port` 的保持原样 |
+| `bridge_port` | `0` | - | TCP、KCP 端口的默认值。只配它、没有配 `bridge_tcp_port`、`bridge_tls_port`、`bridge_ws_port`、`bridge_wss_port`，且不与网页或域名转发共用端口时，该端口是完整混合端口：`tcp`、`tls`、`ws`、`wss` 和新旧协议都接受，字节流按首字节分流，`bridge_path` 上的 WebSocket 按子协议分流（`binary` 走核心协议，无子协议走旧协议），`new_protocol_ws_paths` 总是核心协议。`bridge_type` 为 `kcp`、`udp`、`quic` 时，该端口是只监听 UDP 的端口，不开 TCP：`kcp`、`udp`（且 `kcp_enable` 未关）时同一端口服务旧 KCP 和 QUIC，按首个包区分；`quic` 只服务 QUIC；单独写了 `bridge_kcp_port`、`bridge_quic_port` 的不走这条规则 |
 | `bridge_tcp_port` | 同 `bridge_port` | `8024` | `0` 关闭，下同 |
-| `bridge_kcp_port` | 同 `bridge_port` | `8024` | |
+| `bridge_kcp_port` | 同 `bridge_port` | `8024` | KCP 端口同时服务 QUIC（`quic_enable` 未关时），按首个包区分：旧 npc 用 KCP，新 npc 的 `-type kcp` 用 QUIC，QUIC 再按 ALPN 分新旧协议 |
 | `bridge_tls_port` | `0` | `8025` | 也接受旧名 `tls_bridge_port` |
 | `bridge_quic_port` | `0` | `8025` | |
 | `bridge_ws_port` | `0` | `8026` | |
@@ -140,7 +140,7 @@ nps.exe -conf_path=D:\test\nps
 | `session_max_services` | `0` | `8192` | 一个核心协议会话可上报的虚拟服务条数，`0` 为 4096，负数不限 |
 | `session_idle_s` | `0` | `15` | 核心协议空闲管道的探测周期（秒），`0` 用 zmux 默认（15 秒）；配置后也下发给 npc |
 | `client_max_pipes` | `0` | `20` | 单个客户端所有会话的底层流总数，`0` 不限；超限拒绝新管道，已有的不动 |
-| `bridge_type` | `both` | - | 已弃用；`tcp`、`kcp`、`quic`、`udp`、`both`。只配 `bridge_port` 时 `tcp` 类（`tcp`、`both`）得到混合端口，`kcp` 得到只在 UDP 上、同时服务旧 KCP 和 QUIC 的端口，`udp`、`quic` 得到只在 UDP 上的 QUIC 端口，见 `bridge_port` |
+| `bridge_type` | `both` | - | 已弃用；`tcp`、`kcp`、`quic`、`udp`、`both`。只配 `bridge_port` 时 `tcp` 类（`tcp`、`both`）得到混合端口，`kcp`、`udp` 得到只在 UDP 上、同时服务旧 KCP 和 QUIC 的端口，`quic` 得到只在 UDP 上的 QUIC 端口，见 `bridge_port` |
 | `tcp_enable`、`kcp_enable`、`quic_enable`、`tls_enable`、`ws_enable`、`wss_enable` | `true` | - | 单独关闭某协议 |
 | `bridge_show_path` | 同 `bridge_path` | - | 网页命令显示的路径 |
 | `bridge_tcp_show`、`bridge_kcp_show`、`bridge_quic_show`、`bridge_tls_show`、`bridge_ws_show`、`bridge_wss_show` | 协议启用时为 `true` | - | 是否在网页命令显示 |

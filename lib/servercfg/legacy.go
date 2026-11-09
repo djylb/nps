@@ -42,9 +42,8 @@ func legacySecretLink(r *valueReader) bool { return r.boolDefault(false, "allow_
 // only has the generic bridge_port: that port takes every TCP-class carrier
 // of both protocols (bridge.mixGeneric) when bridge_type is of the TCP class
 // (tcp, tls, ws, wss, both). With bridge_type of the UDP class (kcp, udp,
-// quic) the port is a UDP port without TCP: with kcp it takes the old KCP and
-// QUIC together (BridgeKCPQUIC), with udp and quic QUIC only (Snapshot.Legacy
-// says so for udp, which used to take kcp). A port
+// quic) the port is a UDP port without TCP that takes QUIC, and with kcp and
+// udp the old KCP too (NetworkConfig.BridgeKCPQUIC). A port
 // shared with the web manager or the domain proxy stays with the port
 // multiplexer. It goes with the next major version.
 func legacyGenericPort(r *valueReader, cfg *Snapshot) {
@@ -71,16 +70,6 @@ func legacyGenericPort(r *valueReader, cfg *Snapshot) {
 		n.BridgeQUICPort = n.BridgePort
 		cfg.Bridge.ServerQUICEnabled = cfg.Bridge.QUICEnable
 		cfg.Bridge.ServerTCPEnabled = false
-		if cfg.Bridge.Type == "kcp" && cfg.Bridge.KCPEnable {
-			// the old KCP and QUIC share the UDP port, told apart by the first packet
-			n.BridgeKCPQUIC = true
-			return
-		}
-		cfg.Bridge.ServerKCPEnabled = false
-		if cfg.Bridge.Type == "udp" {
-			cfg.Legacy = append(cfg.Legacy, "bridge_port with bridge_type=udp now listens QUIC only on UDP "+
-				"(no TCP, no kcp): old kcp clients cannot connect; use bridge_type=kcp to serve kcp and QUIC on that port")
-		}
 		return
 	}
 	n.BridgeGeneric = true

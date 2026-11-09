@@ -2,7 +2,6 @@ package servercfg
 
 import (
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -60,20 +59,23 @@ func TestMixDefaults(t *testing.T) {
 func TestGenericBridgePortUDPClass(t *testing.T) {
 	for _, typ := range []string{"kcp", "udp", "quic"} {
 		s := buildSnapshot(map[string]any{"bridge_port": "8024", "bridge_type": typ})
-		shared := typ == "kcp"
+		shared := typ != "quic"
 		if s.Network.BridgeQUICPort != 8024 || !s.Bridge.ServerQUICEnabled || s.Bridge.ServerKCPEnabled != shared || s.Network.BridgeKCPQUIC != shared ||
 			s.Bridge.ServerTCPEnabled || s.Bridge.ServerTLSEnabled || s.Bridge.ServerWSEnabled {
 			t.Errorf("%s: %+v", typ, s.Bridge)
 		}
-		warned := slices.ContainsFunc(s.Legacy, func(w string) bool { return strings.Contains(w, "QUIC only") })
-		if warned != (typ == "udp") {
+		if len(s.Legacy) != 0 {
 			t.Errorf("%s: warnings %v", typ, s.Legacy)
 		}
 	}
-	// ports written one by one stay as they are
+	// an explicit KCP port takes QUIC as well, without a QUIC port of its own
 	s := buildSnapshot(map[string]any{"bridge_port": "8024", "bridge_type": "kcp", "bridge_kcp_port": "8024"})
-	if s.Network.BridgeQUICPort != 0 || !s.Bridge.ServerKCPEnabled || s.Network.BridgeKCPQUIC {
+	if s.Network.BridgeQUICPort != 0 || !s.Bridge.ServerKCPEnabled || !s.Network.BridgeKCPQUIC {
 		t.Errorf("explicit kcp port: %+v", s.Bridge)
+	}
+	s = buildSnapshot(map[string]any{"bridge_port": "8024", "bridge_type": "kcp", "bridge_kcp_port": "8024", "quic_enable": "false"})
+	if s.Network.BridgeKCPQUIC {
+		t.Errorf("quic_enable=false: %+v", s.Network)
 	}
 	s = buildSnapshot(map[string]any{"bridge_port": "8024"})
 	if len(s.Legacy) != 0 {
