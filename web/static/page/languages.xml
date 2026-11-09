@@ -272,6 +272,14 @@
 		<zh-CN>下行调度（核心协议）</zh-CN>
 		<en-US>Downstream scheduler (new protocol)</en-US>
 	</lang>
+	<lang id="word-schedulerup">
+		<zh-CN>上行调度（核心协议）</zh-CN>
+		<en-US>Upstream scheduler (new protocol)</en-US>
+	</lang>
+	<lang id="word-schedulerclient">
+		<zh-CN>由客户端决定</zh-CN>
+		<en-US>Decided by the client</en-US>
+	</lang>
 	<lang id="word-compress">
 		<zh-CN>压缩</zh-CN>
 		<en-US>Compress</en-US>
@@ -2034,9 +2042,5 @@
 	<lang id="word-compressdefault">
 		<zh-CN>默认（snappy）</zh-CN>
 		<en-US>Default (snappy)</en-US>
-	</lang>
-	<lang id="info-compressclientalg">
-		<zh-CN>压缩开启时 npc 使用的算法，隧道和域名可以单独覆盖。</zh-CN>
-		<en-US>The algorithm npc uses when compression is on; a tunnel or host may override it.</en-US>
 	</lang>
 </content>

@@ -512,6 +512,19 @@ func TestConfigFollowsChanges(t *testing.T) {
 	waitSnapshot(t, ch, func(s wire.Snapshot) bool { return s.Record == wire.RecordTrusted })
 }
 
+func TestConfigCarriesSchedulerUp(t *testing.T) {
+	l := startLink(t, DialConfig{})
+	ch := applied(l)
+	rec := coreapi.ClientRecord{ID: 1, VKey: "key-1", Enabled: true, Crypt: true}
+	rec.SchedulerUp = "spread_eta"
+	l.e.a.ClientChanged(rec)
+	waitSnapshot(t, ch, func(s wire.Snapshot) bool { return s.HasSchedulerUp && s.SchedulerUp == wire.SchedulerSpreadETA })
+	// Back to unset: the next snapshot tells npc nothing.
+	rec.SchedulerUp = ""
+	l.e.a.ClientChanged(rec)
+	waitSnapshot(t, ch, func(s wire.Snapshot) bool { return !s.HasSchedulerUp })
+}
+
 func TestConfigSeqAndFailureKeepOld(t *testing.T) {
 	l := startLink(t, DialConfig{})
 	deadline := time.Now().Add(3 * time.Second)

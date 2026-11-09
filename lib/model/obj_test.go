@@ -462,3 +462,29 @@ func TestNormalizeCompress(t *testing.T) {
 		t.Errorf("off = %v", got)
 	}
 }
+
+func TestParseClientCompress(t *testing.T) {
+	for _, c := range []struct {
+		compress, alg string
+		on            bool
+		want          string
+	}{
+		{"", "", false, ""},
+		{"0", "", false, ""},
+		{"0", "zstd", false, ""},
+		{"off", "", false, ""},
+		{"1", "", true, ""},
+		{"true", "", true, ""},
+		{"1", "zstd", true, "zstd"},
+		{"1", "OFF", false, ""},
+		{"1", "bogus", true, ""},
+		{"snappy", "", true, "snappy"},
+		{"zstd", "flate", true, "zstd"},
+		{" Flate ", "", true, "flate"},
+	} {
+		on, alg := ParseClientCompress(c.compress, c.alg)
+		if on != c.on || alg != c.want {
+			t.Errorf("ParseClientCompress(%q, %q) = %v, %q; want %v, %q", c.compress, c.alg, on, alg, c.on, c.want)
+		}
+	}
+}

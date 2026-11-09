@@ -20,6 +20,7 @@ import (
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
@@ -594,6 +595,9 @@ func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 			snap.Record = wire.RecordTrusted
 		}
 		snap.Compress = chooseCompress(e.Compress, s.t.hello.CompressAlgs)
+		if i := slices.Index(connprofile.Schedulers, e.SchedulerUp); i >= 0 && e.SchedulerUp != "" {
+			snap.SchedulerUp, snap.HasSchedulerUp = uint64(i), true
+		}
 		p := a.shapingFor(s.t, e.Shaping)
 		if p != nil {
 			snap.Shaping = p.raw
@@ -681,7 +685,7 @@ func (a *Acceptor) ClientChanged(r coreapi.ClientRecord) {
 		for _, s := range sessions {
 			a.drain(s)
 		}
-	case old.Crypt != r.Crypt || old.Shaping != r.Shaping || !slices.Equal(old.Compress, r.Compress):
+	case old.Crypt != r.Crypt || old.Shaping != r.Shaping || old.SchedulerUp != r.SchedulerUp || !slices.Equal(old.Compress, r.Compress):
 		for _, s := range sessions {
 			s.kick()
 		}

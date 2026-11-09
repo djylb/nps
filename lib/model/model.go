@@ -291,6 +291,9 @@ type Config struct {
 	// SchedulerDown is how nps schedules sending to this client on the core
 	// protocol (connprofile.Schedulers); empty is affinity.
 	SchedulerDown string `json:",omitempty"`
+	// SchedulerUp is the scheduler npc is told to use for sending to nps
+	// (connprofile.Schedulers); empty tells nothing and npc keeps its own.
+	SchedulerUp string `json:",omitempty"`
 	// Shaping turns on traffic shaping for this client (off by default); it
 	// takes effect only with a shaping source configured on the server.
 	Shaping bool `json:",omitempty"`
@@ -350,6 +353,33 @@ func (c *Config) SchedulerDownName() string {
 		return ""
 	}
 	return c.SchedulerDown
+}
+
+// SchedulerUpName is the scheduler npc is told to send with, "" for none.
+func (c *Config) SchedulerUpName() string {
+	if c == nil {
+		return ""
+	}
+	return c.SchedulerUp
+}
+
+// ParseClientCompress reads the compression of a client from a form or API
+// call. compress is the single form choice: 0/1 (the old switch), or an
+// algorithm, which turns compression on with it. alg refines an on switch;
+// "off" in either place turns compression off. The result is the Compress and
+// CompressAlg of the client's Config; off leaves no algorithm.
+func ParseClientCompress(compress, alg string) (bool, string) {
+	compress = strings.ToLower(strings.TrimSpace(compress))
+	if NormalizeClientCompress(compress) != "" {
+		return true, compress
+	}
+	if on, _ := textutil.ParseBool(compress); !on { // also "off" and ""
+		return false, ""
+	}
+	if strings.EqualFold(strings.TrimSpace(alg), CompressOff) {
+		return false, ""
+	}
+	return true, NormalizeClientCompress(alg)
 }
 
 // CompressList is the default compression of a client: algorithms in order of

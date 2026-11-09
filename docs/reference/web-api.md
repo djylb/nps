@@ -248,10 +248,11 @@ curl -X POST \
   | `p` | Basic 认证密码（字符串） |
   | `vkey` | 客户端验证密钥（字符串） |
   | `config_conn_allow` | 是否允许客户端以配置文件模式连接（`0` 否，`1` 是） |
-  | `compress` | 是否启用数据压缩（`0` 否，`1` 是） |
-  | `compress_alg` | 压缩开启时 npc 使用的算法：空（snappy）、`snappy`、`zstd`、`flate`；隧道和域名的 `compress` 可单独覆盖 |
+  | `compress` | 压缩：`0` 关闭，`1` 开启（算法由 `compress_alg` 定，默认 snappy），或直接给算法 `snappy`、`zstd`、`flate`（开启并使用该算法） |
+  | `compress_alg` | `compress=1` 时 npc 使用的算法：空（snappy）、`snappy`、`zstd`、`flate`；`off` 等同 `compress=0`；隧道和域名的 `compress` 可单独覆盖 |
   | `shaping` | 是否对该客户端启用流量整形（`0` 否，`1` 是）；服务端配置了整形来源（`shaping_url` 等）才生效 |
   | `scheduler_down` | 核心协议下 nps 向该客户端发送的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
+  | `scheduler_up` | 核心协议下 npc 向 nps 发送的调度，取值同 `scheduler_down`；空不下发，npc 保留本地 `-scheduler_up` |
   | `crypt` | 是否启用加密（`0` 否，`1` 是） |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |

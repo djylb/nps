@@ -49,8 +49,11 @@
                                 <label class="control-label font-bold" langtag="word-compress"></label>
                                 <div class="col-sm-12">
                                     <select class="form-control selectpicker" name="compress">
-                                        <option {{if eq false .c.Cnf.Compress}}selected{{end}} value="0" langtag="word-no"></option>
-                                        <option {{if eq true .c.Cnf.Compress}}selected{{end}}  value="1" langtag="word-yes"></option>
+                                        <option {{if not .c.Cnf.Compress}}selected {{end}}langtag="word-compressoff" value="0"></option>
+                                        <option {{if and .c.Cnf.Compress (eq "" .c.Cnf.CompressAlg)}}selected {{end}}langtag="word-compressdefault" value="1"></option>
+                                        <option {{if and .c.Cnf.Compress (eq "snappy" .c.Cnf.CompressAlg)}}selected {{end}}value="snappy">snappy</option>
+                                        <option {{if and .c.Cnf.Compress (eq "zstd" .c.Cnf.CompressAlg)}}selected {{end}}value="zstd">zstd</option>
+                                        <option {{if and .c.Cnf.Compress (eq "flate" .c.Cnf.CompressAlg)}}selected {{end}}value="flate">flate</option>
                                     </select>
                                 </div>
                             </div>
@@ -66,19 +69,19 @@
                                     </select>
                                 </div>
                             </div>
-                            <details class="form-group" id="advanced_compress_alg">
-                                <summary class="control-label font-bold" langtag="word-advanced"></summary>
-                                <label class="control-label font-bold" langtag="word-compressalg"></label>
+                            <div class="form-group" id="scheduler_up">
+                                <label class="control-label font-bold" langtag="word-schedulerup"></label>
                                 <div class="col-sm-12">
-                                    <select class="form-control" name="compress_alg">
-                                        <option {{if eq "" .c.Cnf.CompressAlg}}selected {{end}}value="" langtag="word-compressdefault"></option>
-                                        <option {{if eq "snappy" .c.Cnf.CompressAlg}}selected {{end}}value="snappy">snappy</option>
-                                        <option {{if eq "zstd" .c.Cnf.CompressAlg}}selected {{end}}value="zstd">zstd</option>
-                                        <option {{if eq "flate" .c.Cnf.CompressAlg}}selected {{end}}value="flate">flate</option>
+                                    <select class="form-control selectpicker" name="scheduler_up">
+                                        <option {{if eq "" .c.Cnf.SchedulerUp}}selected {{end}}value="" langtag="word-schedulerclient"></option>
+                                        <option {{if eq "affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="affinity">affinity</option>
+                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="session_affinity">session_affinity</option>
+                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_eta">spread_eta</option>
+                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_round_robin">spread_round_robin</option>
+                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_rate_weighted">spread_rate_weighted</option>
                                     </select>
-                                    <span class="help-block m-b-none" langtag="info-compressclientalg"></span>
                                 </div>
-                            </details>
+                            </div>
                             <details class="form-group" id="advanced_shaping">
                                 <summary class="control-label font-bold" langtag="word-advanced"></summary>
                                 <label class="control-label font-bold" langtag="word-shaping"></label>

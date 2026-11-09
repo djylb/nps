@@ -46,8 +46,11 @@
                                 <label class="control-label font-bold" langtag="word-compress"></label>
                                 <div class="col-sm-12">
                                     <select class="form-control selectpicker" name="compress">
-                                        <option langtag="word-no" value="0"></option>
-                                        <option langtag="word-yes" value="1"></option>
+                                        <option langtag="word-compressoff" value="0"></option>
+                                        <option langtag="word-compressdefault" value="1"></option>
+                                        <option value="snappy">snappy</option>
+                                        <option value="zstd">zstd</option>
+                                        <option value="flate">flate</option>
                                     </select>
                                 </div>
                             </div>
@@ -63,19 +66,19 @@
                                     </select>
                                 </div>
                             </div>
-                            <details class="form-group" id="advanced_compress_alg">
-                                <summary class="control-label font-bold" langtag="word-advanced"></summary>
-                                <label class="control-label font-bold" langtag="word-compressalg"></label>
+                            <div class="form-group" id="scheduler_up">
+                                <label class="control-label font-bold" langtag="word-schedulerup"></label>
                                 <div class="col-sm-12">
-                                    <select class="form-control" name="compress_alg">
-                                        <option value="" langtag="word-compressdefault"></option>
-                                        <option value="snappy">snappy</option>
-                                        <option value="zstd">zstd</option>
-                                        <option value="flate">flate</option>
+                                    <select class="form-control selectpicker" name="scheduler_up">
+                                        <option value="" langtag="word-schedulerclient"></option>
+                                        <option value="affinity">affinity</option>
+                                        <option value="session_affinity">session_affinity</option>
+                                        <option value="spread_eta">spread_eta</option>
+                                        <option value="spread_round_robin">spread_round_robin</option>
+                                        <option value="spread_rate_weighted">spread_rate_weighted</option>
                                     </select>
-                                    <span class="help-block m-b-none" langtag="info-compressclientalg"></span>
                                 </div>
-                            </details>
+                            </div>
                             <details class="form-group" id="advanced_shaping">
                                 <summary class="control-label font-bold" langtag="word-advanced"></summary>
                                 <label class="control-label font-bold" langtag="word-shaping"></label>

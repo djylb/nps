@@ -32,15 +32,23 @@ func (a *App) ListClients(c Context) {
 	respondClientList(c, clientRateRows(result.Rows), result.Total, result.BridgeIP, result.BridgeAddr, result.BridgeType, result.BridgePort, traffic)
 }
 
+// requestClientCompress is the compression of a client from the single
+// compress choice (0/1 or an algorithm) and the older compress_alg.
+func requestClientCompress(c Context) (bool, string) {
+	return model.ParseClientCompress(requestEscapedString(c, "compress"), requestEscapedString(c, "compress_alg"))
+}
+
 func (a *App) AddClient(c Context) {
+	compress, compressAlg := requestClientCompress(c)
 	id, err := a.Services.Clients.Add(webservice.AddClientInput{
 		VKey:             requestEscapedString(c, "vkey"),
 		Remark:           requestEscapedString(c, "remark"),
 		User:             requestEscapedString(c, "u"),
 		Password:         requestEscapedString(c, "p"),
-		Compress:         c.Bool("compress"),
-		CompressAlg:      requestEscapedString(c, "compress_alg"),
+		Compress:         compress,
+		CompressAlg:      compressAlg,
 		SchedulerDown:    requestEscapedString(c, "scheduler_down"),
+		SchedulerUp:      requestEscapedString(c, "scheduler_up"),
 		Shaping:          requestBoolValue(c, "shaping"),
 		Crypt:            requestBoolValue(c, "crypt"),
 		ConfigConnAllow:  requestBoolValue(c, "config_conn_allow"),
@@ -83,6 +91,7 @@ func (a *App) GetClient(c Context) {
 }
 
 func (a *App) EditClient(c Context) {
+	compress, compressAlg := requestClientCompress(c)
 	cfg := a.currentConfig()
 	if err := a.Services.Clients.Edit(webservice.EditClientInput{
 		ID:                      requestIntValue(c, "id"),
@@ -93,9 +102,10 @@ func (a *App) EditClient(c Context) {
 		Remark:                  requestEscapedString(c, "remark"),
 		User:                    requestEscapedString(c, "u"),
 		Password:                requestEscapedString(c, "p"),
-		Compress:                c.Bool("compress"),
-		CompressAlg:             requestEscapedString(c, "compress_alg"),
+		Compress:                compress,
+		CompressAlg:             compressAlg,
 		SchedulerDown:           requestEscapedString(c, "scheduler_down"),
+		SchedulerUp:             requestEscapedString(c, "scheduler_up"),
 		Shaping:                 requestBoolValue(c, "shaping"),
 		Crypt:                   requestBoolValue(c, "crypt"),
 		ConfigConnAllow:         requestBoolValue(c, "config_conn_allow"),
@@ -117,7 +127,7 @@ func (a *App) EditClient(c Context) {
 			ajax(c, "web login username duplicate, please reset", 0)
 		case errors.Is(err, webservice.ErrClientVKeyDuplicate):
 			ajax(c, "Vkey duplicate, please reset", 0)
-		case errors.Is(err, webservice.ErrInvalidAccessList):
+		case errors.Is(err, webservice.ErrInvalidAccessList), errors.Is(err, webservice.ErrInvalidScheduler):
 			ajax(c, err.Error(), 0)
 		case errors.Is(err, webservice.ErrRegisterKeyDuplicate):
 			ajax(c, "registration key duplicate, please reset", 0)

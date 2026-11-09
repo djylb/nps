@@ -6,6 +6,7 @@ var (
 	ErrClientQRCodeTextRequired  = errors.New("missing qr code text")
 	ErrClientQRCodeSecretInvalid = errors.New("invalid totp secret")
 	ErrClientModifyFailed        = errors.New("client modify failed")
+	ErrInvalidScheduler          = errors.New("invalid scheduler")
 	ErrClientVKeyDuplicate       = errors.New("client verify key duplicate")
 	ErrWebUsernameDuplicate      = errors.New("client web username duplicate")
 	ErrInvalidRegistration       = errors.New("invalid registration")

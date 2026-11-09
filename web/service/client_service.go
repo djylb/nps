@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/lib/acl"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
@@ -74,6 +75,7 @@ type AddClientInput struct {
 	Compress         bool
 	CompressAlg      string
 	SchedulerDown    string
+	SchedulerUp      string
 	Shaping          bool
 	Crypt            bool
 	ConfigConnAllow  bool
@@ -113,6 +115,7 @@ type EditClientInput struct {
 	Compress                bool
 	CompressAlg             string
 	SchedulerDown           string
+	SchedulerUp             string
 	Shaping                 bool
 	Crypt                   bool
 	ConfigConnAllow         bool
@@ -147,7 +150,24 @@ func (s DefaultClientService) List(input ListClientsInput) ListClientsResult {
 	}
 }
 
+// normalizeSchedulerUp checks a client's scheduler_up: "" tells npc nothing,
+// otherwise it must be one of connprofile.Schedulers.
+func normalizeSchedulerUp(v string) (string, error) {
+	if v = strings.ToLower(strings.TrimSpace(v)); v == "" {
+		return "", nil
+	}
+	v, err := connprofile.ParseScheduler(v)
+	if err != nil {
+		return "", ErrInvalidScheduler
+	}
+	return v, nil
+}
+
 func (s DefaultClientService) Add(input AddClientInput) (int, error) {
+	schedulerUp, err := normalizeSchedulerUp(input.SchedulerUp)
+	if err != nil {
+		return 0, err
+	}
 	id := s.Backend.Repository.NextClientID()
 	client := &model.Client{
 		VerifyKey: input.VKey,
@@ -160,6 +180,7 @@ func (s DefaultClientService) Add(input AddClientInput) (int, error) {
 			Compress:      input.Compress,
 			CompressAlg:   model.NormalizeClientCompress(input.CompressAlg),
 			SchedulerDown: input.SchedulerDown,
+			SchedulerUp:   schedulerUp,
 			Shaping:       input.Shaping,
 			Crypt:         input.Crypt,
 		},
@@ -214,6 +235,10 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	if err != nil {
 		return err
 	}
+	schedulerUp, err := normalizeSchedulerUp(input.SchedulerUp)
+	if err != nil {
+		return err
+	}
 	registerKey := strings.TrimSpace(input.RegisterKey)
 	vkey := client.VerifyKey
 	if input.IsAdmin {
@@ -253,6 +278,7 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.Cnf.Compress = input.Compress
 	client.Cnf.CompressAlg = model.NormalizeClientCompress(input.CompressAlg)
 	client.Cnf.SchedulerDown = input.SchedulerDown
+	client.Cnf.SchedulerUp = schedulerUp
 	client.Cnf.Shaping = input.Shaping
 	client.Cnf.Crypt = input.Crypt
 	if input.IsAdmin || input.AllowUserChangeUsername {

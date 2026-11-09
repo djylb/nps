@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -85,29 +86,91 @@ func (s *shapingSource) load(ctx context.Context) ([]byte, error) {
 	return os.ReadFile(s.file)
 }
 
+// loadParsed loads the bundle and checks it: one over the size limit or
+// invalid is an error. next is when the bundle itself asks to be looked at
+// again (zero for no preference).
+func (s *shapingSource) loadParsed(ctx context.Context) (b []byte, next time.Time, err error) {
+	if b, err = s.load(ctx); err != nil {
+		return nil, time.Time{}, err
+	}
+	if len(b) > bundle.DefaultMaxBytes {
+		return nil, time.Time{}, errors.New("over the size limit")
+	}
+	parsed, err := bundle.Parse(b, bundle.ParseOptions{})
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return b, parsed.NextChange(), nil
+}
+
 // run keeps the bundle current until ctx ends. A failure keeps what is in
-// use; one over the size limit or invalid is not given to anybody.
+// use and is retried with a growing delay until it succeeds; one over the
+// size limit or invalid is not given to anybody.
 func (s *shapingSource) run(ctx context.Context, set func([]byte)) {
+	l := shapingLoop{load: s.loadParsed, set: set, refresh: shapingRefresh, retryMin: shapingRetryMin, retryMax: shapingRetryMax}
+	l.run(ctx)
+}
+
+// The delay before retrying a failed load: it starts at shapingRetryMin,
+// doubles on each failure and stops growing at shapingRetryMax. The address
+// of the bundle may only be reachable once this server itself is up, so a
+// failure at start is expected and must not wait out a refresh.
+const (
+	shapingRetryMin = 5 * time.Second
+	shapingRetryMax = 5 * time.Minute
+)
+
+// retryDelay is the delay after the n-th (from 0) failure in a row: lo
+// doubled n times up to hi, less up to a tenth so that servers that failed
+// together do not retry together; hi is never exceeded.
+func retryDelay(n int, lo, hi time.Duration) time.Duration {
+	d := lo
+	for ; n > 0 && d < hi; n-- {
+		d *= 2
+	}
+	d = min(d, hi)
+	if j := int64(d / 10); j > 0 {
+		d -= time.Duration(rand.Int64N(j + 1))
+	}
+	return d
+}
+
+// shapingLoop is the refresh schedule of a bundle source.
+type shapingLoop struct {
+	load     func(context.Context) (b []byte, next time.Time, err error)
+	set      func([]byte)
+	refresh  time.Duration
+	retryMin time.Duration
+	retryMax time.Duration
+}
+
+func (l *shapingLoop) run(ctx context.Context) {
 	var last []byte
+	fails := 0
 	for {
-		wait := shapingRefresh
-		b, err := s.load(ctx)
-		if err == nil && len(b) > bundle.DefaultMaxBytes {
-			err = errors.New("over the size limit")
+		wait := l.refresh
+		b, next, err := l.load(ctx)
+		if ctx.Err() != nil {
+			return
 		}
-		var parsed *bundle.Bundle
-		if err == nil {
-			parsed, err = bundle.Parse(b, bundle.ParseOptions{})
-		}
-		switch {
-		case err != nil:
-			log.Warn("shaping source not loaded", "err", err)
-		case !bytes.Equal(b, last):
-			last = b
-			set(b)
-		}
-		if parsed != nil {
-			if d := time.Until(parsed.NextChange()); d > time.Second && d < wait {
+		if err != nil {
+			wait = retryDelay(fails, l.retryMin, l.retryMax)
+			if fails == 0 {
+				log.Warn("shaping source not loaded, retrying", "err", err)
+			} else {
+				log.Debug("shaping source still not loaded", "err", err, "retry", wait)
+			}
+			fails++
+		} else {
+			if fails > 0 {
+				log.Info("shaping source loaded", "failures", fails)
+				fails = 0
+			}
+			if !bytes.Equal(b, last) {
+				last = b
+				l.set(b)
+			}
+			if d := time.Until(next); d > time.Second && d < wait {
 				wait = d
 			}
 		}

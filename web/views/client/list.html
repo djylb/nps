@@ -168,7 +168,7 @@
                 + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
             }
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
-                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
+                + '<b langtag="word-compress"></b>: ' + (row.Cnf.Compress ? (row.Cnf.CompressAlg ? row.Cnf.CompressAlg : 'snappy') : '<span langtag="word-compressoff"></span>') + '&emsp;'
                 + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
             var commands = ''
                 {{if index . "tcp_p"}}

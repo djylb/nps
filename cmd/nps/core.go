@@ -20,7 +20,7 @@ func coreRecord(c *model.Client) (coreapi.ClientRecord, bool) {
 	if c.Id <= 0 || !public && c.KeyKind != model.KeyControl {
 		return coreapi.ClientRecord{}, false
 	}
-	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, ConfigOnly: public, Crypt: public || c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName(), Shaping: c.Cnf != nil && c.Cnf.Shaping}, true
+	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, ConfigOnly: public, Crypt: public || c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName(), SchedulerUp: c.Cnf.SchedulerUpName(), Shaping: c.Cnf != nil && c.Cnf.Shaping}, true
 }
 
 // RangeClients implements session.Store.
