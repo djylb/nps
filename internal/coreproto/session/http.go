@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -203,7 +204,11 @@ func (d *Dialer) attemptTimeout(c connprofile.Candidate) time.Duration {
 func (d *Dialer) httpTransport(c connprofile.Candidate, versions []string) *http.Transport {
 	cd := &captureDialer{dial: d.cfg.Dial}
 	dial := func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return cd.DialContext(ctx, "tcp", c.Addr)
+		nc, err := cd.DialContext(ctx, "tcp", c.Addr)
+		if err != nil {
+			return nil, err
+		}
+		return &watchedConn{Conn: nc}, nil
 	}
 	// Requests of a carrier live as long as it does; none is reused later.
 	t := &http.Transport{DialContext: dial, DisableKeepAlives: true, ForceAttemptHTTP2: slices.Contains(versions, connprofile.HTTP2),
@@ -223,6 +228,101 @@ func (d *Dialer) httpTransport(c connprofile.Candidate, versions []string) *http
 		}
 	}
 	return t
+}
+
+// watchedConn is a connection of an HTTP carrier that tells when it has ended.
+type watchedConn struct {
+	net.Conn
+	mu    sync.Mutex
+	ended bool
+	onEnd func()
+}
+
+func (c *watchedConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if err != nil {
+		c.end()
+	}
+	return n, err
+}
+
+func (c *watchedConn) end() {
+	c.mu.Lock()
+	c.ended = true
+	f := c.onEnd
+	c.onEnd = nil
+	c.mu.Unlock()
+	if f != nil {
+		f()
+	}
+}
+
+// notify has f called once when the connection has ended, at once if it has.
+func (c *watchedConn) notify(f func()) {
+	c.mu.Lock()
+	if !c.ended {
+		c.onEnd = f
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
+	f()
+}
+
+// watchedOf finds the watchedConn under a connection of httpTransport.
+func watchedOf(c net.Conn) *watchedConn {
+	if tc, ok := c.(*tls.Conn); ok {
+		c = tc.NetConn()
+	}
+	w, _ := c.(*watchedConn)
+	return w
+}
+
+// endWithConn opens a bidirectional carrier with dial and ends its uplink
+// when the connection of its request ends. http.Transport reports a
+// connection that ended before the response only after it has stopped
+// reading the request body, and a carrier's body blocks until the next
+// write, which here is waiting for that response: a join would hold until
+// its deadline. Only the connection of the latest request counts, an earlier
+// one may have ended with a redirect.
+func endWithConn(ctx context.Context, dial func(context.Context) (zmux.PipeIO, error)) (zmux.PipeIO, error) {
+	var mu sync.Mutex
+	var cur *watchedConn
+	var ended bool
+	var endUp func()
+	p, err := dial(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(i httptrace.GotConnInfo) {
+		c := watchedOf(i.Conn)
+		if c == nil {
+			return
+		}
+		mu.Lock()
+		cur = c
+		mu.Unlock()
+		c.notify(func() {
+			mu.Lock()
+			if c != cur {
+				mu.Unlock()
+				return
+			}
+			ended = true
+			f := endUp
+			mu.Unlock()
+			if f != nil {
+				f()
+			}
+		})
+	}}))
+	if err != nil {
+		return p, err
+	}
+	mu.Lock()
+	endUp = func() { _ = p.W.Close() }
+	done := ended
+	mu.Unlock()
+	if done {
+		endUp()
+	}
+	return p, nil
 }
 
 // tlsProtos are the ALPN names of the TCP versions of an http list (§2.4b).
@@ -276,7 +376,9 @@ func (d *Dialer) dialHTTP(ctx context.Context, c connprofile.Candidate) (carrier
 		}
 		return carrier{pipe: p, secure: true}, nil
 	case connprofile.KindStreaming:
-		p, err = zmux.HTTPPipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, zmux.DirBidirectional, nil)
+		p, err = endWithConn(ctx, func(ctx context.Context) (zmux.PipeIO, error) {
+			return zmux.HTTPPipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, zmux.DirBidirectional, nil)
+		})
 	case connprofile.KindSplit:
 		p, err = (&zmux.HTTPSplitOptions{PairField: httpPairField}).Pipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, nil)
 	case connprofile.KindExchange:
@@ -320,7 +422,12 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
 			}
 			cands = append(cands, zmuxws.Candidate(scheme+"://"+m.Addr+m.Path, o))
 		case connprofile.KindStreaming:
-			cands = append(cands, zmux.StreamingCandidate(httpClient(d.httpTransport(m, m.HTTP)), httpURL(m), nil))
+			sc := zmux.StreamingCandidate(httpClient(d.httpTransport(m, m.HTTP)), httpURL(m), nil)
+			dial := sc.Dial
+			sc.Dial = func(ctx context.Context, cred zmux.Credential) (zmux.PipeIO, error) {
+				return endWithConn(ctx, func(ctx context.Context) (zmux.PipeIO, error) { return dial(ctx, cred) })
+			}
+			cands = append(cands, sc)
 		case connprofile.KindSplit:
 			c, err := (&zmux.HTTPSplitOptions{PairField: httpPairField}).Candidate(httpClient(d.httpTransport(m, m.HTTP)), httpURL(m), nil)
 			if err != nil {

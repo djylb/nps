@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,6 +71,60 @@ func TestHTTPCarrierResume(t *testing.T) {
 			default:
 			}
 		})
+	}
+}
+
+// A connection that ends after the request went out and before any response
+// fails the carrier at once: the join waiting for the reply must not sit out
+// its deadline.
+func TestHTTPStreamingFailsWithConn(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	t.Cleanup(func() { _ = ln.Close(); wg.Wait() })
+	hello := []byte("hello")
+	wg.Go(func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close() }()
+		// Close only once the first body bytes arrived: the transport is
+		// then blocked on the next read of the body.
+		var seen []byte
+		buf := make([]byte, 4096)
+		for !bytes.Contains(seen, hello) {
+			n, err := c.Read(buf)
+			if err != nil {
+				return
+			}
+			seen = append(seen, buf[:n]...)
+		}
+	})
+	cands, err := connprofile.Parse("http://"+ln.Addr().String()+"/x?kinds=streaming", "tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewDialer(DialConfig{Candidates: cands, VKey: "key", Agent: "t", Timeout: 3 * time.Second, Exit: plainExit{}, Key: newKey(t)})
+	ca, err := d.dialHTTP(context.Background(), connprofile.Attempts(cands)[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ca.pipe.W.Close(); _ = ca.pipe.R.Close() }()
+	if _, err := ca.pipe.W.Write(hello); err != nil {
+		t.Fatal(err)
+	}
+	read := make(chan error, 1)
+	go func() { _, err := ca.pipe.R.Read(make([]byte, 16)); read <- err }()
+	select {
+	case err := <-read:
+		if err == nil {
+			t.Fatal("read succeeded on a connection without a response")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("carrier did not fail with its connection")
 	}
 }
 
