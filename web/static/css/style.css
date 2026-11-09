@@ -12758,6 +12758,23 @@ body.md-skin {
  * background: the page colour plus the stripe and hover tints of the row
  * under them. The view column sits left of the option column, whose
  * measured width script puts in --npslist-action-w. */
+/* Separate borders without spacing: in a collapsed-border table the borders
+ * between cells stay where they were laid out while pinned cells move, which
+ * leaves slits that scrolled content shows through. Only the row separator
+ * (the top border) is drawn; side and bottom borders are transparent anyway. */
+.npslist:not(.npslist-card) .table,
+.npslist-head > .table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border-width: 0;
+}
+.npslist:not(.npslist-card) .table > thead > tr > th,
+.npslist-head > .table > thead > tr > th {
+    border-width: 0;
+}
+.npslist:not(.npslist-card) .table > tbody > tr > td {
+    border-width: 1px 0 0;
+}
 .npslist:not(.npslist-card) .table > thead > tr > th.npslist-action,
 .npslist:not(.npslist-card) .table > tbody > tr > td.npslist-action,
 .npslist:not(.npslist-card) .table > thead > tr > th.npslist-view,
@@ -12774,8 +12791,6 @@ body.md-skin {
 .npslist:not(.npslist-card) .table > tbody > tr > td.npslist-view,
 .npslist-head th.npslist-view {
     right: var(--npslist-action-w, 0px);
-    /* covers any sub-pixel gap to the option column, which paints over it */
-    box-shadow: inset 1px 0 0 var(--border-color), 8px 0 0 var(--bg);
 }
 .npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-action,
 .npslist:not(.npslist-card) .table-striped > tbody > tr:nth-of-type(odd) > td.npslist-view {
