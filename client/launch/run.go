@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/netaddr"
 )
+
+// RelaunchWait is how long a connection that stopped waits before it restarts.
+var RelaunchWait = 5 * time.Second
 
 // Options holds the command line defaults a payload does not set.
 type Options struct {
@@ -59,4 +63,88 @@ func (p Profile) runHosting(ctx context.Context) error {
 		errs <- err
 	})
 	return <-errs
+}
+
+// Supervise keeps each connection of the plan running, independently
+// of the others: when one stops the plan is loaded again after
+// RelaunchWait and whatever is not running is started. The first load
+// must be valid; a later invalid one is logged and tried again. It returns
+// nil when ctx ends and an error when npc cannot continue.
+func Supervise(
+	ctx context.Context,
+	load func(context.Context) (Plan, error),
+	run func(context.Context, Profile) error,
+) error {
+	ctx, stop := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	defer func() { stop(); wg.Wait() }()
+	type end struct {
+		profile Profile
+		err     error
+	}
+	ended := make(chan end)
+	running := make(map[string]bool)
+	started := false
+	var wait <-chan time.Time
+	reload := func() error {
+		plan, err := load(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case err != nil && !started:
+			return err
+		case err != nil:
+			log.Warn("launch reload failed", "retry_in_ms", SourceRetry.Milliseconds(), "err", err)
+			wait = time.After(SourceRetry)
+			return nil
+		}
+		started = true
+		for _, p := range plan.Profiles {
+			key := p.Key()
+			if running[key] {
+				continue
+			}
+			running[key] = true
+			wg.Go(func() {
+				err := run(ctx, p)
+				select {
+				case ended <- end{p, err}:
+				case <-ctx.Done():
+				}
+			})
+		}
+		if plan.Retry > 0 {
+			wait = time.After(plan.Retry)
+		}
+		return nil
+	}
+	if err := reload(); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case e := <-ended:
+			delete(running, e.profile.Key())
+			err := e.err
+			if err == nil {
+				err = errors.New("client closed")
+			}
+			if !launchReconnects(e.profile) {
+				return err
+			}
+			log.Info("launch connection restarting", "name", e.profile.Name, "retry_in_ms", RelaunchWait.Milliseconds(), "err", err)
+			wait = time.After(RelaunchWait)
+		case <-wait:
+			wait = nil
+			if err := reload(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func launchReconnects(p Profile) bool {
+	return p.Config.CommonConfig.AutoReconnection && client.AutoReconnect
 }

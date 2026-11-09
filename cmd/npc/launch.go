@@ -9,10 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
-	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/lib/clock"
 	"github.com/djylb/nps/lib/connprofile"
@@ -22,8 +20,6 @@ import (
 	"github.com/djylb/slogx"
 	flag "github.com/spf13/pflag"
 )
-
-var launchRelaunchWait = 5 * time.Second
 
 // launchPayloads are the inputs of -launch, or, when the command line gives
 // none, those of NPC_LAUNCH.
@@ -154,94 +150,10 @@ func startLaunch(ctx context.Context, cancel context.CancelFunc, sources []launc
 	}
 	composer := launch.NewComposer(sources, locals)
 	go func() {
-		if err := superviseLaunch(ctx, composer.Load, run); err != nil {
+		if err := launch.Supervise(ctx, composer.Load, run); err != nil {
 			fail(cancel, err)
 		}
 	}()
-}
-
-// superviseLaunch keeps each connection of the plan running, independently
-// of the others: when one stops the plan is loaded again after
-// launchRelaunchWait and whatever is not running is started. The first load
-// must be valid; a later invalid one is logged and tried again. It returns
-// nil when ctx ends and an error when npc cannot continue.
-func superviseLaunch(
-	ctx context.Context,
-	load func(context.Context) (launch.Plan, error),
-	run func(context.Context, launch.Profile) error,
-) error {
-	ctx, stop := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-	defer func() { stop(); wg.Wait() }()
-	type end struct {
-		profile launch.Profile
-		err     error
-	}
-	ended := make(chan end)
-	running := make(map[string]bool)
-	started := false
-	var wait <-chan time.Time
-	reload := func() error {
-		plan, err := load(ctx)
-		switch {
-		case ctx.Err() != nil:
-			return nil
-		case err != nil && !started:
-			return err
-		case err != nil:
-			log.Warn("launch reload failed", "retry_in_ms", launch.SourceRetry.Milliseconds(), "err", err)
-			wait = time.After(launch.SourceRetry)
-			return nil
-		}
-		started = true
-		for _, p := range plan.Profiles {
-			key := p.Key()
-			if running[key] {
-				continue
-			}
-			running[key] = true
-			wg.Go(func() {
-				err := run(ctx, p)
-				select {
-				case ended <- end{p, err}:
-				case <-ctx.Done():
-				}
-			})
-		}
-		if plan.Retry > 0 {
-			wait = time.After(plan.Retry)
-		}
-		return nil
-	}
-	if err := reload(); err != nil {
-		return err
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case e := <-ended:
-			delete(running, e.profile.Key())
-			err := e.err
-			if err == nil {
-				err = errors.New("client closed")
-			}
-			if !launchReconnects(e.profile) {
-				return err
-			}
-			log.Info("launch connection restarting", "name", e.profile.Name, "retry_in_ms", launchRelaunchWait.Milliseconds(), "err", err)
-			wait = time.After(launchRelaunchWait)
-		case <-wait:
-			wait = nil
-			if err := reload(); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func launchReconnects(p launch.Profile) bool {
-	return p.Config.CommonConfig.AutoReconnection && client.AutoReconnect
 }
 
 const launchUsage = `npc launch pack <file>

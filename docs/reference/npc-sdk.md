@@ -10,10 +10,29 @@ CGO_ENABLED=1 go build -tags sdk -buildmode=c-shared -o npc_sdk.so ./cmd/npc
 
 ## 接口说明
 
-### 1. StartClientByVerifyKey
+### 1. StartClient
 
 **功能描述：**  
-此函数会阻塞，直到客户端退出返回，请自行管理是否重连
+按 `-launch` 和 `-L` 的同一套解析和运行规则启动，写法、角色规则见[快速启动](/guide/client/launch.md)。此函数会阻塞，第一条连接结束后返回，请自行管理是否重连。
+
+**参数：**  
+- **p0 (char\*)** ：一个或多个 `-launch` 的值（启动链接、`@文件`、`http(s)://` 或 base64），每行一个。
+- **p1 (char\*)** ：一个或多个 `-L` 的值，每行一个；没有本地访问时传入空字符串。有 `-L` 关联的连接只作访问者，没有的是普通客户端。
+
+**返回值：**  
+- 返回 `0` 表示输入无效，`1` 表示运行后结束。
+
+**接口原型：**
+```c
+extern GoInt StartClient(char* p0, char* p1);
+```
+
+---
+
+### 2. StartClientByVerifyKey
+
+**功能描述：**  
+旧写法，只能描述一条连接，转换成同一启动配置；新代码请用 `StartClient`。此函数会阻塞，直到客户端退出返回，请自行管理是否重连
 
 **参数：**  
 - **p0 (char\*)** ：连接地址，格式示例 `"192.168.1.100:8080"`。
@@ -31,7 +50,7 @@ extern GoInt StartClientByVerifyKey(char* p0, char* p1, char* p2, char* p3);
 
 ---
 
-### 2. GetClientStatus
+### 3. GetClientStatus
 
 **功能描述：**  
 查询当前客户端状态。  
@@ -45,7 +64,7 @@ extern GoInt GetClientStatus();
 
 ---
 
-### 3. CloseClient
+### 4. CloseClient
 
 **功能描述：**  
 关闭正在运行的内网穿透客户端，并释放相关资源。
@@ -57,7 +76,7 @@ extern void CloseClient();
 
 ---
 
-### 4. Version
+### 5. Version
 
 **功能描述：**  
 获取当前客户端版本信息，返回一个 C 字符串指针，包含版本号。
@@ -69,7 +88,7 @@ extern char* Version();
 
 ---
 
-### 5. SetLogsLevel
+### 6. SetLogsLevel
 
 **功能描述：**  
 配置日志输出等级
@@ -82,7 +101,7 @@ extern void SetLogsLevel(char* logsLevel);
 
 ---
 
-### 6. Logs
+### 7. Logs
 
 **功能描述：**  
 获取客户端日志信息，返回一个 C 字符串指针，适用于调试和运行时监控。
@@ -94,7 +113,7 @@ extern char* Logs();
 
 ---
 
-### 7. SetDnsServer
+### 8. SetDnsServer
 
 **功能描述：**  
 配置解析服务器域名的DNS 
@@ -117,13 +136,11 @@ extern void SetDnsServer(char* dns);
 
 // 线程函数，用于启动客户端（阻塞式调用）
 void* client_thread(void *arg) {
-    char *serverAddr = "192.168.1.100:8080";
-    char *vkey      = "your_vkey_here";
-    char *connType  = "tcp";
-    char *proxy     = "";
-    
+    char *launch = "npc://your_vkey_here@192.168.1.100:8080?type=tcp";
+    char *local  = "";
+
     // 阻塞式启动客户端
-    StartClientByVerifyKey(serverAddr, vkey, connType, proxy);
+    StartClient(launch, local);
     return NULL;
 }
 

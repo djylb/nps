@@ -29,9 +29,9 @@ func goodProfiles(t *testing.T, links ...string) []launch.Profile {
 
 func fastLaunchDelays(t *testing.T) {
 	t.Helper()
-	w, a := launchRelaunchWait, client.AutoReconnect
-	launchRelaunchWait, client.AutoReconnect = time.Millisecond, true
-	t.Cleanup(func() { launchRelaunchWait, client.AutoReconnect = w, a })
+	w, a := launch.RelaunchWait, client.AutoReconnect
+	launch.RelaunchWait, client.AutoReconnect = time.Millisecond, true
+	t.Cleanup(func() { launch.RelaunchWait, client.AutoReconnect = w, a })
 }
 
 func TestSuperviseRestartsOnlyTheConnectionThatStopped(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSuperviseRestartsOnlyTheConnectionThatStopped(t *testing.T) {
 		<-ctx.Done()
 		return nil
 	}
-	if err := superviseLaunch(ctx, load, run); err != nil {
+	if err := launch.Supervise(ctx, load, run); err != nil {
 		t.Fatal(err)
 	}
 	if runs["stay"] != 1 || runs["flap"] != 3 {
@@ -66,7 +66,7 @@ func TestSuperviseRestartsOnlyTheConnectionThatStopped(t *testing.T) {
 
 func TestSuperviseFirstLoadInvalid(t *testing.T) {
 	want := errors.New("bad")
-	err := superviseLaunch(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{}, want },
+	err := launch.Supervise(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{}, want },
 		func(context.Context, launch.Profile) error { return nil })
 	if !errors.Is(err, want) {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestSuperviseLaterInvalidLoadKeepsGoing(t *testing.T) {
 		}
 		return nil
 	}
-	if err := superviseLaunch(ctx, load, run); err != nil {
+	if err := launch.Supervise(ctx, load, run); err != nil {
 		t.Fatal(err)
 	}
 	if loads.Load() < 3 {
@@ -108,7 +108,7 @@ func TestSuperviseStopsWithoutReconnect(t *testing.T) {
 	fastLaunchDelays(t)
 	client.AutoReconnect = false
 	profiles := goodProfiles(t, "npc://k@a:1")
-	err := superviseLaunch(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{Profiles: profiles}, nil },
+	err := launch.Supervise(context.Background(), func(context.Context) (launch.Plan, error) { return launch.Plan{Profiles: profiles}, nil },
 		func(context.Context, launch.Profile) error { return nil })
 	if err == nil {
 		t.Fatal("expected an error")
@@ -129,7 +129,7 @@ func TestSupervisePendingRetries(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- superviseLaunch(ctx, load, func(ctx context.Context, _ launch.Profile) error { cancel(); <-ctx.Done(); return nil })
+		done <- launch.Supervise(ctx, load, func(ctx context.Context, _ launch.Profile) error { cancel(); <-ctx.Done(); return nil })
 	}()
 	select {
 	case err := <-done:
