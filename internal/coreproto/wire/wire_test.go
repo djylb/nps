@@ -146,7 +146,7 @@ func TestServiceRoundTrip(t *testing.T) {
 		t.Fatal("ambiguous id")
 	}
 	bad := []Service{{ID: ServiceID("file", "b"), Kind: "file", Name: "a"}}
-	if _, err := ParseServices(AppendServices(nil, bad)); err != ErrMalformed {
+	if _, err := ParseServices(AppendServices(nil, bad)); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("wrong id: %v", err)
 	}
 	seq, err := ParseServiceOpen(AppendServiceOpen(7)[1:])
@@ -174,7 +174,7 @@ func TestServiceNetworkAndUDPOpen(t *testing.T) {
 	if err != nil || got[0].Network != ServiceUDP || got[1].Network != ServiceTCP {
 		t.Fatalf("%+v, %v", got, err)
 	}
-	if _, err := ParseServices(AppendServices(nil, []Service{{ID: ServiceID("a", "b"), Kind: "a", Name: "b", Network: 9}})); err != ErrUnsupported {
+	if _, err := ParseServices(AppendServices(nil, []Service{{ID: ServiceID("a", "b"), Kind: "a", Name: "b", Network: 9}})); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("unknown network: %v", err)
 	}
 	id := ServiceID("a", "b")
@@ -185,7 +185,7 @@ func TestServiceNetworkAndUDPOpen(t *testing.T) {
 	}
 	a, _ := ParseHostPort("1.2.3.4:5")
 	b, _ := AppendStreamOpen(&StreamOpen{Op: OpUDP, Service: id, Target: &a})
-	if _, err := ParseStreamOpen(OpUDP, b[1:]); err != ErrMalformed {
+	if _, err := ParseStreamOpen(OpUDP, b[1:]); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("service and target: %v", err)
 	}
 }

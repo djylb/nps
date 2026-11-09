@@ -138,8 +138,10 @@ func (a *App) bootstrapPayloadWithShellAssets(c Context, shellAssets ui.Manageme
 		},
 		Request: c.Metadata(),
 	}
-	if cert, err := a.Identity.RSAPublicKeyPEM(); err == nil {
-		payload.PublicKey = cert
+	if a != nil {
+		if cert, err := a.Identity.RSAPublicKeyPEM(); err == nil {
+			payload.PublicKey = cert
+		}
 	}
 	return payload
 }

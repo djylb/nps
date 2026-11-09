@@ -106,10 +106,6 @@ func (idx *AnyStringIndex) Get(key string) (value any, ok bool) {
 	return idx.data.Load(key)
 }
 
-func (idx *AnyStringIndex) Remove(key string) {
-	idx.data.Delete(key)
-}
-
 func (idx *AnyStringIndex) Clear() {
 	idx.data.Range(func(k, _ any) bool {
 		idx.data.Delete(k)

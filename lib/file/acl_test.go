@@ -34,10 +34,10 @@ func readConf(t *testing.T, p string) string {
 
 func loadAll(dir string) *JsonDb {
 	db := NewJsonDb(dir)
-	db.LoadClientFromJsonFile()
-	db.LoadTaskFromJsonFile()
-	db.LoadHostFromJsonFile()
-	db.LoadGlobalFromJsonFile()
+	_ = db.LoadClientFromJsonFile()
+	_ = db.LoadTaskFromJsonFile()
+	_ = db.LoadHostFromJsonFile()
+	_ = db.LoadGlobalFromJsonFile()
 	return db
 }
 
@@ -102,7 +102,7 @@ func TestLoadObsoleteClientFile(t *testing.T) {
 		`{"Id":3,"VerifyKey":"k3","Status":true,"Cnf":{},"Flow":{},"BlackIpList":["1.1.1.1","x y"]}`+"\n"+connDataSeq+
 			`{"Id":4,"VerifyKey":"k4","Status":true,"Cnf":{},"Flow":{}}`+"\n"+connDataSeq)
 	db := NewJsonDb(dir)
-	db.LoadClientFromJsonFile()
+	_ = db.LoadClientFromJsonFile()
 	v, ok := db.Clients.Load(3)
 	if !ok {
 		t.Fatal("client 3 lost")
@@ -154,7 +154,7 @@ func TestGlobalTrafficPersisted(t *testing.T) {
 	}
 	rate.ResetGlobalTraffic()
 	loaded := NewJsonDb(dir)
-	loaded.LoadGlobalFromJsonFile()
+	_ = loaded.LoadGlobalFromJsonFile()
 	if in, out := rate.GlobalTraffic(); in != 1234 || out != 5678 {
 		t.Fatalf("restored traffic = %d/%d, want 1234/5678", in, out)
 	}
@@ -163,7 +163,7 @@ func TestGlobalTrafficPersisted(t *testing.T) {
 	}
 
 	empty := NewJsonDb(t.TempDir())
-	empty.LoadGlobalFromJsonFile()
+	_ = empty.LoadGlobalFromJsonFile()
 	if empty.Global == nil {
 		t.Fatal("no global settings left Global nil, so the traffic would not be stored")
 	}
@@ -178,7 +178,7 @@ func TestNullGlobalSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := NewJsonDb(dir)
-	db.LoadGlobalFromJsonFile()
+	_ = db.LoadGlobalFromJsonFile()
 	if db.Global == nil {
 		t.Fatal("null global settings left Global nil")
 	}

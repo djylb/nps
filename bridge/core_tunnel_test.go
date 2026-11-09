@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
-	legacyclient "github.com/djylb/nps/client/legacy"
 	"io"
 	"net"
 	"net/http"
@@ -22,6 +21,7 @@ import (
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/conn"
@@ -452,8 +452,8 @@ func TestWSPortUnknownPathGoesToFallback(t *testing.T) {
 	wg.Go(func() { _ = conn.Accept(ln, func(c net.Conn) { conn.ServeVirtual(base, c) }) })
 	wsl := conn.NewWSListener(base, "/ws", "", "", f.b.coreWS())
 	t.Cleanup(func() { _ = wsl.Close(); _ = ln.Close(); _ = base.Close(); wg.Wait() })
-	client := &http.Client{Timeout: 4 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
-	resp, err := client.Get("http://" + ln.Addr().String() + "/unknown/path?x=1")
+	hc := &http.Client{Timeout: 4 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := hc.Get("http://" + ln.Addr().String() + "/unknown/path?x=1")
 	if err != nil {
 		t.Fatal(err)
 	}

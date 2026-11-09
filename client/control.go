@@ -129,7 +129,7 @@ func configExchangeTimeout(cnf *config.Config) time.Duration {
 // exchangeConfig sends the configuration on c, finished by deadline, and
 // returns the vkey to run with. A refused host or task is logged and skipped;
 // any error means the connection is unusable and the client must reconnect.
-func exchangeConfig(c *conn.Conn, cnf *config.Config, fsm *FileServerManager, deadline time.Time) (string, error) {
+func exchangeConfig(c *conn.Conn, cnf *config.Config, deadline time.Time) (string, error) {
 	if err := c.SetDeadline(deadline); err != nil {
 		return "", err
 	}

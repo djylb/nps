@@ -294,10 +294,10 @@ func TestWebhookReceivesServiceChanges(t *testing.T) {
 func TestKickRefusesOfflineAndVirtualClients(t *testing.T) {
 	r := &virtualClientRuntime{}
 	s := DefaultClientService{Backend: Backend{Repository: stubRepository{getClient: func(id int) (*model.Client, error) { return &model.Client{Id: id}, nil }}, Runtime: r}}
-	if err := s.Kick(-1); err != ErrVirtualClientOperation {
+	if err := s.Kick(-1); !errors.Is(err, ErrVirtualClientOperation) {
 		t.Fatalf("virtual: %v", err)
 	}
-	if err := s.Kick(3); err != ErrClientOffline {
+	if err := s.Kick(3); !errors.Is(err, ErrClientOffline) {
 		t.Fatalf("offline: %v", err)
 	}
 	if len(r.disconnected) != 0 {

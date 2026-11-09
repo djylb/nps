@@ -168,8 +168,8 @@ func TestNestedNoBundleNothingChanges(t *testing.T) {
 func helloLen(t *testing.T, kind zmux.CarrierKind, slot *planSlot) int {
 	t.Helper()
 	a, b := net.Pipe()
-	defer a.Close()
-	defer b.Close()
+	defer func() { _ = a.Close() }()
+	defer func() { _ = b.Close() }()
 	got := make(chan int, 1)
 	go func() {
 		buf := make([]byte, 1<<16)

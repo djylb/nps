@@ -62,7 +62,7 @@ func routeFreePort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -205,12 +205,12 @@ func tlsFront(t *testing.T, backend string) string {
 				return
 			}
 			go func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				up, err := tls.Dial("tcp", backend, &tls.Config{InsecureSkipVerify: true, ServerName: routeHost, NextProtos: []string{"http/1.1"}})
 				if err != nil {
 					return
 				}
-				defer up.Close()
+				defer func() { _ = up.Close() }()
 				go func() { _, _ = io.Copy(up, c); _ = up.CloseWrite() }()
 				_, _ = io.Copy(c, up)
 			}()
@@ -274,7 +274,7 @@ func TestRouteFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatal(resp.Status)
 	}
@@ -317,12 +317,12 @@ func hostFront(t *testing.T, addr string) string {
 				return
 			}
 			go func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				up, err := net.Dial("tcp", addr)
 				if err != nil {
 					return
 				}
-				defer up.Close()
+				defer func() { _ = up.Close() }()
 				buf := make([]byte, 8192)
 				n, _ := c.Read(buf)
 				head := string(buf[:n])
@@ -397,7 +397,7 @@ func noUpgradeProxy(t *testing.T, addr string) string {
 			http.Error(w, "bad", http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		for k, v := range resp.Header {
 			w.Header()[k] = v
 		}
@@ -551,7 +551,7 @@ func TestRouteOutsideLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatal(resp.Status)
 	}

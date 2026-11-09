@@ -74,7 +74,7 @@ func (s *TunnelModeServer) Start() error {
 	if err := s.Bind(); err != nil {
 		return err
 	}
-	conn.Accept(s.listener, s.handleConn)
+	_ = conn.Accept(s.listener, s.handleConn)
 	_ = s.socks5.Close()
 	_ = s.httpProxy.Close()
 	return nil

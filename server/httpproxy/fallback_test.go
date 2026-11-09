@@ -54,7 +54,7 @@ func exchange(t *testing.T, c net.Conn) (*http.Response, error) {
 func TestFallbackPlainConn(t *testing.T) {
 	hs, store := fallbackEnv(t, true)
 	a, b := net.Pipe()
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	if !hs.serveFallback(b, nil) {
 		t.Fatal("refused")
 	}
@@ -80,7 +80,7 @@ func TestFallbackAfterTLSTermination(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl, sv := net.Pipe()
-	defer cl.Close()
+	defer func() { _ = cl.Close() }()
 	tc := tls.Server(sv, &tls.Config{Certificates: []tls.Certificate{cert}})
 	client := tls.Client(cl, &tls.Config{InsecureSkipVerify: true})
 	done := make(chan error, 1)
@@ -144,7 +144,7 @@ func TestFallbackCustom404Body(t *testing.T) {
 	}
 	hs.Fallback404Content = LoadFallback404(path)
 	a, b := net.Pipe()
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	if !hs.serveFallback(b, nil) {
 		t.Fatal("refused")
 	}
@@ -165,9 +165,9 @@ func TestFallbackCustom404Body(t *testing.T) {
 // A node without a domain proxy answers the same way.
 func TestNotFoundWithoutDomainProxy(t *testing.T) {
 	n := NewNotFound([]byte(defaultNotFound))
-	defer n.Close()
+	defer func() { _ = n.Close() }()
 	a, b := net.Pipe()
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	if !n.ServeFallback(b, nil) {
 		t.Fatal("refused")
 	}

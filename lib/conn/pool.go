@@ -40,15 +40,6 @@ func (p *bytePool64K) Put(buf []byte) {
 	p.pool.Put((*[poolSize]byte)(b))
 }
 
-func (p *bytePool64K) PutZero(buf []byte) {
-	b, ok := normalizeForPut(buf, poolSize)
-	if !ok {
-		return
-	}
-	clear(b)
-	p.pool.Put((*[poolSize]byte)(b))
-}
-
 type bytePoolCopy struct {
 	pool sync.Pool
 }

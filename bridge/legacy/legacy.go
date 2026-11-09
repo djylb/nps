@@ -21,10 +21,10 @@ import (
 
 var log = slogx.Module("bridge")
 
-type muxLogger struct{}
-
 // muxLogger carries the mux package's printf-style lines; their text goes
 // into the detail field, since the mux has no structured fields to give.
+type muxLogger struct{}
+
 func (muxLogger) Println(v ...any) { log.Debug("mux", "detail", fmt.Sprint(v...)) }
 func (muxLogger) Printf(format string, v ...any) {
 	log.Debug("mux", "detail", fmt.Sprintf(format, v...))
@@ -70,6 +70,3 @@ func NewMuxCarrier(c net.Conn, connType string, disconnectTime int, initiator bo
 
 // SetPingInterval sets how often muxes check their peer.
 func SetPingInterval(d time.Duration) { mux.PingInterval = d }
-
-// PingInterval returns how often muxes check their peer.
-func PingInterval() time.Duration { return mux.PingInterval }

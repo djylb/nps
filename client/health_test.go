@@ -98,7 +98,7 @@ func wantReport(t *testing.T, reports <-chan string, want string, timeout time.D
 // A self-signed backend is alive: an HTTPS check does not judge its certificate.
 func TestHTTPSCheckAcceptsSelfSigned(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	defer srv.Close()
+	defer func() { srv.Close() }()
 	srv.Config.ErrorLog = logger.New(io.Discard, "", 0)
 	addr := srv.Listener.Addr().String()
 	sideA, sideB := net.Pipe()
@@ -119,7 +119,7 @@ func TestTouchPostponesOnlyTCPChecks(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
-	defer srv.Close()
+	defer func() { srv.Close() }()
 	addr := srv.Listener.Addr().String()
 	sideA, sideB := net.Pipe()
 	defer func() { _ = sideB.Close() }()
@@ -216,7 +216,7 @@ func TestCoreHealthObservesDials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	go func() {
 		for {
 			c, err := ln.Accept()

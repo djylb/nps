@@ -13,7 +13,7 @@ func TestSourceGone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	peer, err := net.Dial("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func TestSourceGone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if SourceGone(c) {
 		t.Fatal("open connection reported gone")
 	}

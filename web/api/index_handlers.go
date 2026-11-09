@@ -95,7 +95,7 @@ func (a *App) AddTunnel(c Context) {
 		switch {
 		case errors.Is(err, webservice.ErrPortUnavailable):
 			ajax(c, prefix+"The port cannot be opened because it may has been occupied or is no longer allowed.", 0)
-		case err == webservice.ErrTunnelLimitExceeded:
+		case errors.Is(err, webservice.ErrTunnelLimitExceeded):
 			ajax(c, "The number of tunnels exceeds the limit", 0)
 		default:
 			ajax(c, err.Error(), 0)

@@ -2,9 +2,9 @@ package service
 
 import (
 	"errors"
-	npsbridge "github.com/djylb/nps/bridge"
 	"testing"
 
+	npsbridge "github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/model"
 )
 

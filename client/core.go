@@ -50,13 +50,6 @@ func (e coreExit) ServeUDP5Policy(ctx context.Context, c net.Conn, allow conn.UD
 	conn.HandleUdp5Policy(ctx, c, e.udpIdle, localIP, allow)
 }
 
-// RunCore keeps a core protocol session of one server profile until ctx ends
-// (or, without autoReconnect, until the first one ends). The tunnels are run
-// by the session, through the Exit of the dialer.
-func RunCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool) {
-	_ = runCore(ctx, d, autoReconnect, nil, nil)
-}
-
 // runCore is RunCore with after, which runs on each session once it is up
 // (the config upload). A session after fails ends, and the error is returned
 // when no reconnect follows. shared is the entry of a session others may be

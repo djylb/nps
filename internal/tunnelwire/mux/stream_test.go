@@ -337,10 +337,10 @@ func TestConnWriteOnClosedMuxReportsError(t *testing.T) {
 
 func TestAcceptBacklogFullRefusesStream(t *testing.T) {
 	a, b := net.Pipe()
-	defer a.Close()
-	defer b.Close()
+	defer func() { _ = a.Close() }()
+	defer func() { _ = b.Close() }()
 	m := NewMux(a, "tcp", 30, false)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 	for i := range acceptBacklog {
 		if c := NewConn(int32(2*i+2), m); !m.enqueueAccepted(c) {
 			t.Fatalf("stream %d refused below the backlog", i)

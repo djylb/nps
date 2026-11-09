@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	legacyclient "github.com/djylb/nps/client/legacy"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge"
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/server/connection"

@@ -42,10 +42,10 @@ func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		s.serveProviderLink(ctx, lc, fields)
 		return
 	case wire.OpPipe:
-		s.servePipe(ctx, st, lc, fields)
+		s.servePipe(st, lc, fields)
 		return
 	case wire.OpPunch:
-		s.servePunch(ctx, lc, fields)
+		s.servePunch(lc, fields)
 		return
 	case wire.OpUpdate:
 		s.serveUpdate(lc)
@@ -207,7 +207,7 @@ func serveExitLink(ctx context.Context, exit coreapi.Exit, zc *zmux.Conn, limits
 		_ = target.Close()
 		return
 	}
-	var end net.Conn = c
+	var end = c
 	if o.Op == wire.OpUDP {
 		end = netx.NewFramedConn(c, netx.WithFramedDatagrams())
 	}

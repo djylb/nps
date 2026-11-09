@@ -116,7 +116,7 @@ func (id *Identity) decrypt(base64Cipher string) ([]byte, error) {
 	//noinspection GoDeprecation
 	plain, legacyErr := rsa.DecryptPKCS1v15(rand.Reader, id.rsaKey, cipherBytes)
 	if legacyErr != nil {
-		return nil, fmt.Errorf("RSA decrypt error: oaep: %w; pkcs1v15: %v", err, legacyErr)
+		return nil, fmt.Errorf("RSA decrypt error: oaep: %w; pkcs1v15: %w", err, legacyErr)
 	}
 	return plain, nil
 }

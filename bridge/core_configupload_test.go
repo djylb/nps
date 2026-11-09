@@ -233,7 +233,7 @@ func TestFileTunnelPortTaken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer func() { _ = held.Close() }()
 	port := held.Addr().(*net.TCPAddr).Port
 	path := writeConf(t, "npc.conf", "[common]\nserver_addr="+f.addr+"\nvkey="+f.client.VerifyKey+
 		"\nconn_type=tcp\nauto_reconnection=true\n"+
@@ -274,7 +274,7 @@ func TestServiceNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	<-served
 	for end := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		if l := f.b.VirtualServices(); len(l) == 1 && l[0].Kind == "x" && l[0].Network == "udp" {

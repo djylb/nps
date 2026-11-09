@@ -25,8 +25,8 @@ type Source struct {
 	Load  func(context.Context) ([]Profile, error)
 }
 
-// LaunchSources makes a source of each -launch value.
-func LaunchSources(values []string) []Source {
+// Sources makes a source of each -launch value.
+func Sources(values []string) []Source {
 	out := make([]Source, len(values))
 	for i, v := range values {
 		label := "-launch #" + strconv.Itoa(i+1)

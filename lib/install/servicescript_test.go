@@ -150,8 +150,8 @@ func systemdWords(t *testing.T, s string) []string {
 
 func TestSystemdScriptQuotes(t *testing.T) {
 	_, script := serviceScript("linux-systemd", "/usr/bin/npc", awkwardArgs)
-	exec := strings.TrimPrefix(line(t, script, "ExecStart="), "ExecStart=")
-	checkArgs(t, "systemd", systemdWords(t, exec), append([]string{"/usr/bin/npc"}, awkwardArgs...))
+	start := strings.TrimPrefix(line(t, script, "ExecStart="), "ExecStart=")
+	checkArgs(t, "systemd", systemdWords(t, start), append([]string{"/usr/bin/npc"}, awkwardArgs...))
 	if got := systemdQuote(`a "b" 100% $x\{{`); got != `"a \"b\" 100%% $$x\\\x7b\x7b"` {
 		t.Errorf("systemdQuote = %s", got)
 	}

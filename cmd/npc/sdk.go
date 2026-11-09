@@ -66,7 +66,7 @@ func StartClient(launchValues, localValues *C.char) int {
 	if err != nil {
 		return 0
 	}
-	return run(launch.LaunchSources(splitLines(C.GoString(launchValues))), locals)
+	return run(launch.Sources(splitLines(C.GoString(launchValues))), locals)
 }
 
 // StartClientByVerifyKey is the earlier form of StartClient, for one

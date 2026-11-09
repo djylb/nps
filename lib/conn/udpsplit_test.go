@@ -1,13 +1,14 @@
 package conn
 
 import (
+	"container/list"
+	"errors"
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
-	"container/list"
 	"github.com/xtaci/kcp-go/v5"
-	"net/netip"
 )
 
 func TestUDPSplitByFirstPacket(t *testing.T) {
@@ -42,7 +43,7 @@ func TestUDPSplitByFirstPacket(t *testing.T) {
 	// an unblocked read ends with the deadline, a closed side with ErrClosed
 	_ = s.KCP.SetReadDeadline(time.Time{})
 	_ = s.KCP.Close()
-	if _, _, err := s.KCP.ReadFrom(nil); err != net.ErrClosed {
+	if _, _, err := s.KCP.ReadFrom(nil); !errors.Is(err, net.ErrClosed) {
 		t.Fatal(err)
 	}
 }

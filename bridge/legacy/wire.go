@@ -132,8 +132,5 @@ func ReadExact(r io.Reader, n int) ([]byte, error) { return tunnelwire.ReadExact
 // ReadFrame reads a length-prefixed frame.
 func ReadFrame(r io.Reader) ([]byte, error) { return tunnelwire.ReadFrame(r) }
 
-// WriteFrame writes a length-prefixed frame.
-func WriteFrame(w io.Writer, b []byte) error { return tunnelwire.WriteFrame(w, b) }
-
 // KeyDigest is the digest of a client key on the wire.
 func KeyDigest(key string) string { return tunnelwire.KeyDigest(key) }

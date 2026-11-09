@@ -1,5 +1,7 @@
 package wire
 
+import "errors"
+
 // Hello is the application data of msg2 and msg3 (§3.5). Only C=0 fields are
 // allowed in it.
 type Hello struct {
@@ -55,7 +57,7 @@ func ParseHello(b []byte) (Hello, error) {
 		}
 		return nil
 	})
-	if err == ErrUnsupported {
+	if errors.Is(err, ErrUnsupported) {
 		err = ErrMalformed
 	}
 	return h, err

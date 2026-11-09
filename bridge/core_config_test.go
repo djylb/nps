@@ -199,7 +199,7 @@ func composedProfiles(t *testing.T, links, accesses []string) []launch.Profile {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := launch.NewComposer(launch.LaunchSources(links), locals).Load(context.Background())
+	plan, err := launch.NewComposer(launch.Sources(links), locals).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

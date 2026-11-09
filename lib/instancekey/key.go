@@ -66,14 +66,14 @@ func read(path string) (*Key, error) {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("inspect instance key %s: %v", path, err)
+		return nil, fmt.Errorf("inspect instance key %s: %w", path, err)
 	}
 	if !info.Mode().IsRegular() || info.Size() != int64(len(header)+2*keySize) {
 		return nil, fmt.Errorf("invalid instance key file: %s", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read instance key %s: %v", path, err)
+		return nil, fmt.Errorf("read instance key %s: %w", path, err)
 	}
 	if len(data) != len(header)+2*keySize || !bytes.HasPrefix(data, []byte(header)) {
 		return nil, fmt.Errorf("invalid instance key format: %s", path)

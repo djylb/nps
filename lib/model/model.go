@@ -858,8 +858,6 @@ func (t *Tunnel) Update(other *Tunnel) {
 	t.MultiAccount = other.MultiAccount
 }
 
-// adoptFlow keeps counting on the flow of previous, which active connections
-// add to, with the limits of t.
 // AdoptRuntime makes t, an accepted edit of previous, take over the rate
 // buckets, connection slots and flow of previous, so that the connections
 // already open keep counting against the edited tunnel.
@@ -1240,18 +1238,18 @@ func (s *Client) CurrentRates() (int64, int64) {
 }
 
 // RelayTarget names where the tunnel forwards to.
-func (s *Tunnel) RelayTarget() string {
-	if s.Target == nil {
+func (t *Tunnel) RelayTarget() string {
+	if t.Target == nil {
 		return ""
 	}
-	return s.Target.TargetStr
+	return t.Target.TargetStr
 }
 
 // SetIsHTTP records whether the tunnel's traffic looks like HTTP.
-func (s *Tunnel) SetIsHTTP(isHTTP bool) {
-	s.Lock()
-	s.IsHttp = isHTTP
-	s.Unlock()
+func (t *Tunnel) SetIsHTTP(isHTTP bool) {
+	t.Lock()
+	t.IsHttp = isHTTP
+	t.Unlock()
 }
 
 // Target types of a tunnel: what it forwards to its target.

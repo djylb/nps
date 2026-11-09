@@ -210,7 +210,7 @@ func scopeRuleError(err error) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: %v", ErrMalformedScope, ruleError(err))
+	return fmt.Errorf("%w: %w", ErrMalformedScope, ruleError(err))
 }
 
 // DeniesName reports whether a deny rule matches addr, a host:port, as it

@@ -5,15 +5,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/djylb/nps/lib/logevent"
-	"github.com/djylb/slogx"
 	"io"
 	"net"
 	"strconv"
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/server/connection"
+	"github.com/djylb/slogx"
 	"github.com/xtaci/kcp-go/v5"
 )
 

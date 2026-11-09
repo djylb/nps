@@ -77,7 +77,7 @@ func TestTwoPipesSurviveLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.Close()
+	_ = st.Close()
 	waitUntil(t, "replacement", func() bool {
 		ps := cs.zc.Pipes()
 		return len(ps) == 2 && ps[0].ID() != first.ID() && cs.zc.Context().Err() == nil
@@ -259,12 +259,12 @@ func flipProxy(t *testing.T, target string) string {
 		if err != nil {
 			return
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		u, err := net.Dial("tcp", target)
 		if err != nil {
 			return
 		}
-		defer u.Close()
+		defer func() { _ = u.Close() }()
 		wg.Go(func() { _, _ = io.Copy(c, u); _ = c.Close() })
 		buf := make([]byte, 4096)
 		n, err := c.Read(buf)
@@ -360,7 +360,7 @@ func TestQUICNonCarrierStreamEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer qc.CloseWithError(0, "")
+	defer func() { _ = qc.CloseWithError(0, "") }()
 	st, err := qc.OpenStreamSync(ctx)
 	if err != nil {
 		t.Fatal(err)

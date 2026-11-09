@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/coreproto/connect"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/config"
@@ -42,17 +41,6 @@ func commandConfig() *config.CommonConfig {
 	cfg.Server, cfg.VKey, cfg.Tp, cfg.LocalIP = *serverAddr, *verifyKey, strings.ToLower(*connType), *localIP
 	cfg.ProxyUrl = *proxyUrl
 	return cfg
-}
-
-// runCoreProfile hosts one server profile of the command line on the new
-// protocol.
-func runCoreProfile(ctx context.Context, cancel context.CancelFunc, server, vkey, carrier, localIP string) {
-	cfg := config.NewCommonConfig()
-	cfg.Server, cfg.VKey, cfg.Tp, cfg.LocalIP = server, vkey, strings.ToLower(carrier), localIP
-	cfg.ProxyUrl = *proxyUrl
-	if err := coreProfileEnd(ctx, client.RunCoreProfile(ctx, cfg, *autoReconnect), *autoReconnect); err != nil {
-		fail(cancel, err)
-	}
 }
 
 // coreProfileEnd is why npc must stop when a profile returned, nil when it

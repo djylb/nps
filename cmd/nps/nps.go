@@ -132,7 +132,7 @@ func main() {
 	}
 
 	if err := servercfg.LoadDefault(); err != nil {
-		fmt.Fprintln(os.Stderr, "load config file error:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "load config file error:", err)
 		os.Exit(1)
 	}
 	cfg := servercfg.Current()
@@ -191,7 +191,7 @@ func main() {
 		Service: len(os.Args) > 1 && os.Args[1] == "service",
 	}
 	if err := logsetup.Apply(logOpts); err != nil {
-		fmt.Fprintln(os.Stderr, "log:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "log:", err)
 		os.Exit(1)
 	}
 	watchReopen()
@@ -262,8 +262,8 @@ func knownCommand(cmd string) bool {
 }
 
 func printUsage(cmd string) {
-	fmt.Fprintf(os.Stderr, "unknown command %q\n\nUsage: %s [flags] [command]\n\nWithout a command nps runs in the foreground.\n\nCommands:\n", cmd, filepath.Base(os.Args[0]))
-	fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update geoip and the geodata files present, or the one named geoip or geosite\n  version       show the version, as -version\n  service       run as a service, used by the service manager\n\nFlags:\n")
+	_, _ = fmt.Fprintf(os.Stderr, "unknown command %q\n\nUsage: %s [flags] [command]\n\nWithout a command nps runs in the foreground.\n\nCommands:\n", cmd, filepath.Base(os.Args[0]))
+	_, _ = fmt.Fprint(os.Stderr, "  install       install the system service\n  uninstall     remove the system service\n  start         start the system service\n  stop          stop the system service\n  restart       restart the system service\n  update        update nps to the latest release\n  update-force  update nps even if it is up to date\n  update-geo    update geoip and the geodata files present, or the one named geoip or geosite\n  version       show the version, as -version\n  service       run as a service, used by the service manager\n\nFlags:\n")
 	flag.PrintDefaults()
 }
 
@@ -307,7 +307,7 @@ var argWarnings []string
 func warnArgs(logOff bool) {
 	for _, w := range argWarnings {
 		if logOff {
-			fmt.Fprintln(os.Stderr, "WARN", w)
+			_, _ = fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
 		cfgLog.Warn("command-line argument", "detail", w)

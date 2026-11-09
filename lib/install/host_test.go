@@ -168,13 +168,13 @@ func (f *fakeHost) install(t *testing.T) {
 						b.WriteString(",")
 					}
 					first = false
-					fmt.Fprintf(&b, `%q:{"instances":{"instance1":{"pid":%d,"command":[%q,"-vkey=k"]}}}`, svc, s.pid, s.exe)
+					_, _ = fmt.Fprintf(&b, `%q:{"instances":{"instance1":{"pid":%d,"command":[%q,"-vkey=k"]}}}`, svc, s.pid, s.exe)
 				}
 				b.WriteString("}")
 			case "launchctl":
 				b.WriteString("PID\tStatus\tLabel\n")
 				for svc, s := range f.services {
-					fmt.Fprintf(&b, "%d\t0\t%s\n", s.pid, svc)
+					_, _ = fmt.Fprintf(&b, "%d\t0\t%s\n", s.pid, svc)
 				}
 			case "sc":
 				if args[0] == "qc" {
@@ -182,18 +182,18 @@ func (f *fakeHost) install(t *testing.T) {
 					if !ok {
 						return nil, errors.New("no service")
 					}
-					fmt.Fprintf(&b, "        BINARY_PATH_NAME   : \"%s\" service\n", s.exe)
+					_, _ = fmt.Fprintf(&b, "        BINARY_PATH_NAME   : \"%s\" service\n", s.exe)
 					break
 				}
 				for svc, s := range f.services {
-					fmt.Fprintf(&b, "SERVICE_NAME: %s\n        PID                : %d\n", svc, s.pid)
+					_, _ = fmt.Fprintf(&b, "SERVICE_NAME: %s\n        PID                : %d\n", svc, s.pid)
 				}
 			case "systemctl":
 				s, ok := f.services[strings.TrimSuffix(args[len(args)-1], ".service")]
 				if !ok {
 					return nil, errors.New("no unit")
 				}
-				fmt.Fprintf(&b, "{ path=%s ; argv[]=%s service ; }\n", s.exe, s.exe)
+				_, _ = fmt.Fprintf(&b, "{ path=%s ; argv[]=%s service ; }\n", s.exe, s.exe)
 			default:
 				return nil, errors.New("unknown command")
 			}

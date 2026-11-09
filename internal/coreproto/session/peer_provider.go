@@ -242,14 +242,14 @@ func (p *providerLink) close() {
 
 // run serves the nested session until it ends, then closes the LINK (§9.1).
 func (p *providerLink) run(lc *linkConn) {
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 	actx, cancel := context.WithTimeout(p.ctx, nestedFirstPipe)
 	zc, err := p.zl.Accept(actx)
 	cancel()
 	if err != nil {
 		return
 	}
-	defer zc.Close()
+	defer func() { _ = zc.Close() }()
 	// The last report goes before the nested session and the LINK close.
 	defer p.finalUsage(zc)
 	p.shape.attach(zc)
@@ -300,7 +300,7 @@ func (p *providerLink) serveNested(st *zmux.Stream, zc *zmux.Conn) {
 }
 
 // servePipe takes a relay PIPE of the link.
-func (s *clientSession) servePipe(ctx context.Context, st *zmux.Stream, lc *linkConn, fields []byte) {
+func (s *clientSession) servePipe(st *zmux.Stream, lc *linkConn, fields []byte) {
 	o, err := wire.ParsePathOpen(wire.OpPipe, fields)
 	if err != nil {
 		lc.abort(wire.ErrorCode(err))
@@ -316,7 +316,7 @@ func (s *clientSession) servePipe(ctx context.Context, st *zmux.Stream, lc *link
 }
 
 // servePunch runs a PUNCH of the link and takes the direct path it makes.
-func (s *clientSession) servePunch(ctx context.Context, lc *linkConn, fields []byte) {
+func (s *clientSession) servePunch(lc *linkConn, fields []byte) {
 	o, err := wire.ParsePathOpen(wire.OpPunch, fields)
 	if err != nil {
 		lc.abort(wire.ErrorCode(err))

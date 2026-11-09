@@ -51,7 +51,7 @@ func TestServerExitRevocationEndsLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	l := v.live()
 	p.a.RevokeLinks(func(int, int, int) bool { return true })
 	waitUntil(t, "link ended", func() bool { return l.ended() })

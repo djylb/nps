@@ -1,11 +1,10 @@
 package service
 
 import (
-	"github.com/djylb/nps/bridge"
 	"testing"
 
+	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/model"
-
 	"github.com/djylb/nps/lib/servercfg"
 )
 

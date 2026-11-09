@@ -55,7 +55,7 @@ func NPCLocal(args []string) (out, warnings []string) {
 	var localType, targetType string
 	fallback, disable := true, false
 	newType, hasConnMode := "", false
-	used := []string{}
+	var used []string
 	out = make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]

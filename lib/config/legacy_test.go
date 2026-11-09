@@ -24,10 +24,10 @@ func TestLegacyTLSEnable(t *testing.T) {
 }
 
 func TestLegacySection(t *testing.T) {
-	if legacySection("health_a", map[string]bool{"health_check_timeout": true}) == "" {
+	if legacySection(map[string]bool{"health_check_timeout": true}) == "" {
 		t.Error("health section not reported")
 	}
-	if legacySection("web", map[string]bool{"host": true}) != "" {
+	if legacySection(map[string]bool{"host": true}) != "" {
 		t.Error("ordinary section reported")
 	}
 }

@@ -264,12 +264,12 @@ func tlsProxy(t *testing.T, target string) (addr string, carriers *atomic.Int32)
 			}
 			carriers.Add(1)
 			wg.Go(func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				up, err := tls.Dial("tcp", target, &tls.Config{InsecureSkipVerify: true})
 				if err != nil {
 					return
 				}
-				defer up.Close()
+				defer func() { _ = up.Close() }()
 				var both sync.WaitGroup
 				both.Go(func() { _, _ = io.Copy(up, c); _ = up.Close() })
 				both.Go(func() { _, _ = io.Copy(c, up); _ = c.Close() })
@@ -355,7 +355,7 @@ func TestLocalNetworkNamesTheInterface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	go func() {
 		if c, err := ln.Accept(); err == nil {
 			_ = c.Close()
@@ -365,7 +365,7 @@ func TestLocalNetworkNamesTheInterface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	got := localNetwork(c)
 	if !strings.HasPrefix(got, "127.0.0.1@") {
 		t.Fatalf("network %q lacks the interface", got)
@@ -467,12 +467,12 @@ func countingProxy(t *testing.T, target string) (string, *atomic.Int64) {
 				return
 			}
 			wg.Go(func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				up, err := net.Dial("tcp", target)
 				if err != nil {
 					return
 				}
-				defer up.Close()
+				defer func() { _ = up.Close() }()
 				var both sync.WaitGroup
 				both.Go(func() { _, _ = io.Copy(up, c); _ = up.Close() })
 				both.Go(func() {

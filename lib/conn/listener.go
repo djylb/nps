@@ -49,20 +49,6 @@ func ListenQUIC(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (*q
 	return quic.ListenAddr(addr, tlsConfig, quicConfig)
 }
 
-// ServeQUIC hands the first stream of every connection l accepts to f. It
-// returns once l is closed, and closes l.
-func ServeQUIC(l *quic.Listener, f func(c net.Conn)) error {
-	defer func() { _ = l.Close() }()
-	for {
-		// Accept fails only once the listener is closed.
-		sess, err := l.Accept(context.Background())
-		if err != nil {
-			return err
-		}
-		go AcceptQuicStream(sess, f)
-	}
-}
-
 // AcceptQuicStream hands the first stream of sess to f, or closes sess when
 // none comes in time.
 func AcceptQuicStream(sess *quic.Conn, f func(c net.Conn)) {

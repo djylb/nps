@@ -12,12 +12,12 @@ import (
 
 func TestFlowConnStopsAtQuota(t *testing.T) {
 	a, b := net.Pipe()
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	go func() { _, _ = io.Copy(io.Discard, b) }()
 	task := &model.Flow{FlowLimit: 1, InletFlow: 1<<20 - 100}
 	client := new(model.Flow)
 	c := NewFlowConn(a, task, client)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	n, err := c.Write(make([]byte, 1000))
 	if n != 101 || err == nil || !strings.Contains(err.Error(), "Task: flow limit exceeded") {
 		t.Fatalf("Write past the quota = %d, %v; want 101 and the task's flow limit", n, err)
@@ -32,11 +32,11 @@ func TestFlowConnStopsAtQuota(t *testing.T) {
 
 func TestFlowConnCountsReadsAsExport(t *testing.T) {
 	a, b := net.Pipe()
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	go func() { _, _ = b.Write([]byte("hello")) }()
 	task := new(model.Flow)
 	c := NewFlowConn(a, task, nil)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if _, err := io.ReadFull(c, make([]byte, 5)); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestFlowConnCountsReadsAsExport(t *testing.T) {
 
 func TestFlowConnClosedAtExpiry(t *testing.T) {
 	a, b := net.Pipe()
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	client := &model.Flow{TimeLimit: time.Now().Add(50 * time.Millisecond)}
 	c := NewFlowConn(a, nil, client)
 	done := make(chan error, 1)

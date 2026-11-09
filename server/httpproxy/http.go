@@ -260,7 +260,7 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 		},
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			s.plans.drop(p)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				rw.WriteHeader(521)
 				return
 			}
@@ -400,7 +400,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 	// Every path below closes netConn, which wraps wsConn, or hands it to the relay.
 	//noinspection GoResourceLeak
 	wsConn := netx.WrapConn(rawConn, nil)
-	var netConn net.Conn = wsConn
+	var netConn = wsConn
 
 	if err := sendProxyHeader(r.Context(), netConn, req); err != nil {
 		_ = netConn.Close()

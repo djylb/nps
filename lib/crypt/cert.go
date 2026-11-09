@@ -46,7 +46,7 @@ func LoadKeyPair(certFile, keyFile string) (tls.Certificate, error) {
 	if err != nil {
 		return cert, err
 	}
-	args := []any{}
+	var args []any
 	if GetCertType(certFile) != "text" {
 		args = append(args, "file", certFile)
 	}

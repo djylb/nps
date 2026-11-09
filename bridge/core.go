@@ -579,9 +579,9 @@ func (s *Bridge) serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
 // fields differs from what the client sent.
 func requestHead(r *http.Request) []byte {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s %s %s\r\nHost: %s\r\n", r.Method, r.RequestURI, r.Proto, r.Host)
+	_, _ = fmt.Fprintf(&b, "%s %s %s\r\nHost: %s\r\n", r.Method, r.RequestURI, r.Proto, r.Host)
 	if len(r.TransferEncoding) > 0 {
-		fmt.Fprintf(&b, "Transfer-Encoding: %s\r\n", strings.Join(r.TransferEncoding, ","))
+		_, _ = fmt.Fprintf(&b, "Transfer-Encoding: %s\r\n", strings.Join(r.TransferEncoding, ","))
 	}
 	_ = r.Header.Write(&b)
 	b.WriteString("\r\n")

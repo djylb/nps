@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
-	legacyclient "github.com/djylb/nps/client/legacy"
 	"net"
 	"net/http"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	legacyclient "github.com/djylb/nps/client/legacy"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/crypt"

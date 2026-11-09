@@ -174,8 +174,8 @@ func buildConfig(content string, sections []section) (*Config, error) {
 		case legacyLocalSection(name, keys):
 			l, _ := delLocalService(sec.name, true, sec.body)
 			c.LocalServer, c.legacy = append(c.LocalServer, l), true
-		case legacySection(sec.name, keys) != "":
-			log.Warn("legacy config section ignored", "name", sec.name, "detail", legacySection(sec.name, keys))
+		case legacySection(keys) != "":
+			log.Warn("legacy config section ignored", "name", sec.name, "detail", legacySection(keys))
 		case name == "common":
 			c.CommonConfig = dealCommon(sec.body)
 		case keys["host"]:

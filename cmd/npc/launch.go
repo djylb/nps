@@ -85,7 +85,7 @@ func launchSpec(fs *flag.FlagSet, inputs []string) ([]launch.Source, []launch.Lo
 				cfgLog.Warn("flag ignored", "flag", name, "reason", "launch")
 			}
 		}
-		return launch.LaunchSources(inputs), locals, nil
+		return launch.Sources(inputs), locals, nil
 	}
 	sources, err := commandLineSources(fs)
 	return sources, locals, err
@@ -183,11 +183,11 @@ func launchCommand(fs *flag.FlagSet, args []string) int {
 			out, err = launch.Show(ctx, sources, locals, *reveal)
 		}
 	default:
-		fmt.Fprint(os.Stderr, launchUsage)
+		_, _ = fmt.Fprint(os.Stderr, launchUsage)
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "npc launch:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "npc launch:", err)
 		return 1
 	}
 	fmt.Println(out)

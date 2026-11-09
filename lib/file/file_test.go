@@ -146,7 +146,7 @@ func TestCorruptJSONIsKeptAsBad(t *testing.T) {
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loadSyncMapFromFile(path, model.Tunnel{}, func(any) {})
+	_ = loadSyncMapFromFile(path, model.Tunnel{}, func(any) {})
 	got, err := os.ReadFile(path + ".bad")
 	if err != nil || string(got) != string(content) {
 		t.Fatalf("backup = %q, %v", got, err)

@@ -234,7 +234,7 @@ func TestParseLocal(t *testing.T) {
 	}
 }
 
-func sources(values ...string) []Source { return LaunchSources(values) }
+func sources(values ...string) []Source { return Sources(values) }
 
 func locals(t *testing.T, values ...string) []Local {
 	t.Helper()

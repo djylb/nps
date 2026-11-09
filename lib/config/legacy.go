@@ -46,7 +46,7 @@ func (l *legacyCommon) apply(c *CommonConfig) {
 
 // legacySection returns a warning for a section earlier versions read and
 // this one ignores, or "" when the section is not one.
-func legacySection(name string, keys map[string]bool) string {
+func legacySection(keys map[string]bool) string {
 	for k := range keys {
 		if strings.HasPrefix(k, "health_") {
 			return "npc no longer runs health checks from npc.conf; " +

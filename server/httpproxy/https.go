@@ -137,7 +137,7 @@ func (s *HttpsServer) Start() error {
 	if !s.httpsStatus.CompareAndSwap(false, true) {
 		return errors.New("https server already started")
 	}
-	conn.Accept(s.httpsListener, func(c net.Conn) {
+	_ = conn.Accept(s.httpsListener, func(c net.Conn) {
 		// Only the global list: the entry lists depend on the request's host,
 		// which may differ from the SNI.
 		if proxy.SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), nil, nil, "") {

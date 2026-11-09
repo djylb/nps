@@ -1,12 +1,13 @@
 package ui
 
 import (
-	"github.com/djylb/nps/lib/connprofile"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/djylb/nps/lib/connprofile"
 )
 
 func TestLoginPageCommonDataMap(t *testing.T) {

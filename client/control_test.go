@@ -251,7 +251,7 @@ func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
 	t.Run("silent", func(t *testing.T) {
 		a, b := net.Pipe()
 		defer func() { _ = a.Close(); _ = b.Close() }()
-		_, err := exchangeConfig(conn.NewConn(a), cnf, fsm, time.Now().Add(100*time.Millisecond))
+		_, err := exchangeConfig(conn.NewConn(a), cnf, time.Now().Add(100*time.Millisecond))
 		if !errors.Is(err, os.ErrDeadlineExceeded) {
 			t.Fatalf("exchangeConfig = %v, want a deadline error", err)
 		}
@@ -264,7 +264,7 @@ func TestExchangeConfigFailsOnDeadLink(t *testing.T) {
 			_, _ = b.Write([]byte{0}) // isPub
 			_, _ = io.ReadAll(b)
 		}()
-		_, err := exchangeConfig(conn.NewConn(a), cnf, fsm, time.Now().Add(200*time.Millisecond))
+		_, err := exchangeConfig(conn.NewConn(a), cnf, time.Now().Add(200*time.Millisecond))
 		if err == nil {
 			t.Fatal("exchangeConfig = nil, want an error for the missing task status")
 		}

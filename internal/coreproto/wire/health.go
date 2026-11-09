@@ -1,5 +1,7 @@
 package wire
 
+import "errors"
+
 // HealthGroup is one health section of a CONFIG snapshot (§5.3).
 type HealthGroup struct {
 	Name     string
@@ -86,7 +88,7 @@ func parseHealthGroup(b []byte) (g HealthGroup, ok bool, err error) {
 		}
 		return nil
 	})
-	if err == ErrUnsupported {
+	if errors.Is(err, ErrUnsupported) {
 		return g, false, nil
 	}
 	return g, err == nil && known && g.Name != "" && g.Type != "", err

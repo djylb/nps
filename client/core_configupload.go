@@ -58,7 +58,7 @@ func GetTaskStatus(cfg *config.CommonConfig) error {
 			return fmt.Errorf("failed to open the status exchange: %w", err)
 		}
 		c := conn.NewConn(nc)
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		dl, _ := ctx.Deadline()
 		_ = c.SetDeadline(dl)
 		var isPub bool
@@ -91,7 +91,7 @@ func RegisterLocalIP(cfg *config.CommonConfig, hours int) error {
 		if err != nil {
 			return fmt.Errorf("failed to open the registration: %w", err)
 		}
-		defer nc.Close()
+		defer func() { _ = nc.Close() }()
 		dl, _ := ctx.Deadline()
 		_ = nc.SetDeadline(dl)
 		if err := binary.Write(nc, binary.LittleEndian, int32(hours)); err != nil {
@@ -172,7 +172,7 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 		if !t.IsVirtualBackend() {
 			send.Tasks = append(send.Tasks, t)
 		} else if t.ServiceKind == model.FileServiceKind {
-			fsm.StartFileServer(t, cnf.CommonConfig.VKey)
+			fsm.StartFileServer(t)
 		}
 	}
 	nc, err := up.OpenConfigUpload(ctx)
@@ -180,8 +180,8 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 		return "", fmt.Errorf("config upload failed: %w", err)
 	}
 	c := conn.NewConn(nc)
-	defer c.Close()
-	vkey, err := exchangeConfig(c, &send, fsm, time.Now().Add(configExchangeTimeout(&send)))
+	defer func() { _ = c.Close() }()
+	vkey, err := exchangeConfig(c, &send, time.Now().Add(configExchangeTimeout(&send)))
 	if err != nil {
 		return "", fmt.Errorf("config exchange failed: %w", err)
 	}

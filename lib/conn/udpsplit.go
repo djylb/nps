@@ -138,26 +138,35 @@ func newSplitSide(s *UDPSplit) *splitSide {
 
 func (c *splitSide) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
-		c.mu.Lock()
-		d := c.rdl
-		c.mu.Unlock()
-		var expire <-chan time.Time
-		if !d.IsZero() {
-			t := time.NewTimer(time.Until(d))
-			defer t.Stop()
-			expire = t.C
+		n, from, err, again := c.readOnce(p)
+		if !again {
+			return n, from, err
 		}
-		select {
-		case pk := <-c.in:
-			return copy(p, pk.b), pk.from, nil
-		case <-expire:
-			return 0, nil, os.ErrDeadlineExceeded
-		case <-c.dl:
-		case <-c.end:
-			return 0, nil, net.ErrClosed
-		case <-c.s.done:
-			return 0, nil, net.ErrClosed
-		}
+	}
+}
+
+// readOnce waits under the current read deadline; again is that it changed.
+func (c *splitSide) readOnce(p []byte) (n int, from net.Addr, err error, again bool) {
+	c.mu.Lock()
+	d := c.rdl
+	c.mu.Unlock()
+	var expire <-chan time.Time
+	if !d.IsZero() {
+		t := time.NewTimer(time.Until(d))
+		defer t.Stop()
+		expire = t.C
+	}
+	select {
+	case pk := <-c.in:
+		return copy(p, pk.b), pk.from, nil, false
+	case <-expire:
+		return 0, nil, os.ErrDeadlineExceeded, false
+	case <-c.dl:
+		return 0, nil, nil, true
+	case <-c.end:
+		return 0, nil, net.ErrClosed, false
+	case <-c.s.done:
+		return 0, nil, net.ErrClosed, false
 	}
 }
 

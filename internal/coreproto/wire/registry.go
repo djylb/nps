@@ -1,5 +1,7 @@
 package wire
 
+import "errors"
+
 // Op is the operation of a stream (§2.1).
 type Op uint64
 
@@ -134,7 +136,7 @@ const (
 
 // ErrorCode is the stream reset code of a decode error.
 func ErrorCode(err error) uint64 {
-	if err == ErrUnsupported {
+	if errors.Is(err, ErrUnsupported) {
 		return CodeUnsupported
 	}
 	return CodeMalformed

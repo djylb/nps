@@ -52,7 +52,7 @@ func NewFileServerManager(parentCtx context.Context) *FileServerManager {
 	return fsm
 }
 
-func (fsm *FileServerManager) StartFileServer(t *model.Tunnel, vkey string) {
+func (fsm *FileServerManager) StartFileServer(t *model.Tunnel) {
 	if fsm.ctx.Err() != nil {
 		log.Debug("file server not started", "reason", "closed")
 		return
@@ -140,16 +140,6 @@ func (fsm *FileServerManager) Services() []coreapi.LocalService {
 			Serve: func(_ context.Context, c net.Conn) { conn.ServeVirtual(l, c) }})
 	}
 	return list
-}
-
-func (fsm *FileServerManager) GetListenerByKey(key string) (*netx.ChanListener, bool) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-	entry, ok := fsm.servers[key]
-	if !ok {
-		return nil, false
-	}
-	return entry.listener, true
 }
 
 func (fsm *FileServerManager) CloseAll() {

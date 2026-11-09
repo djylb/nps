@@ -104,7 +104,7 @@ func echoBytes(t *testing.T, v *Visitor, n int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	msg := bytes.Repeat([]byte("d"), n)
 	go func() { _, _ = c.Write(msg) }()

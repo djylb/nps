@@ -282,7 +282,7 @@ func (Self *receiveWindowQueue) Pop() (element *listElement, err error) {
 		if !atomic.CompareAndSwapUint64(&Self.lengthWait, ptrs, dequeuePack(0, 1)) {
 			continue // another goroutine is pushing
 		}
-		if err = Self.waitPush(); err != nil && err != io.EOF {
+		if err = Self.waitPush(); err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
 		// woken by a push or a stop: re-check, data queued before the stop

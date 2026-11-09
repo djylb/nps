@@ -27,7 +27,7 @@ func listenSocks5UDP(bridge NetBridge, task *model.Tunnel, addr string) (net.Pac
 	if err != nil {
 		return nil, err
 	}
-	var listener net.PacketConn = pc
+	var listener = pc
 	if task != nil && task.Client != nil {
 		// Visitor datagrams over the task's rates are dropped rather than
 		// stalling the tunnels of every session.

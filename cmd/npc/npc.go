@@ -49,16 +49,16 @@ var (
 	connType       = flag.StringP("type", "t", "tcp", "Connection type with the server (tcp|tls|kcp|quic|ws|wss) (eg: tcp,tls)")
 	pipes          = flag.String("pipes", connprofile.PipesSingle, "Pipes of a connection (single|multi); multi works on the new protocol, the old one runs single")
 	schedulerUp    = flag.String("scheduler_up", "", "New protocol: how npc schedules sending over its pipes (affinity|session_affinity|spread_eta|spread_round_robin|spread_rate_weighted)")
-	configPath     = flag.StringP("config", "c", "", "Configuration file path (path1,path2)")
+	_              = flag.StringP("config", "c", "", "Configuration file path (path1,path2)")
 	proxyUrl       = flag.String("proxy", "", "Proxy URL: http, https, socks5, socks5h, socks4 or socks4a (eg: socks5://user:pass@127.0.0.1:9007)")
 	localIP        = flag.String("local_ip", "", "Local source IP for outbound connections")
 	localIPForward = flag.Bool("local_ip_forward", false, "Apply local_ip to tunnel forwarding egress for public IP/domain targets")
-	localType      = flag.String("local_type", config.LocalTCPUDP, "Point-to-point access listener (tcp|udp|tcp_udp|mixed|socks5|http|transparent)")
-	connMode       = flag.String("conn_mode", config.ConnAuto, "Point-to-point access connection (auto|relay|direct)")
-	localPort      = flag.Int("local_port", 2000, "Point-to-point access local port")
-	password       = flag.String("password", "", "Earlier form of one point-to-point access: its key (write -L instead)")
-	target         = flag.String("target", "", "Earlier form of one point-to-point access: its destination (write -L instead)")
-	localProxy     = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
+	_              = flag.String("local_type", config.LocalTCPUDP, "Point-to-point access listener (tcp|udp|tcp_udp|mixed|socks5|http|transparent)")
+	_              = flag.String("conn_mode", config.ConnAuto, "Point-to-point access connection (auto|relay|direct)")
+	_              = flag.Int("local_port", 2000, "Point-to-point access local port")
+	_              = flag.String("password", "", "Earlier form of one point-to-point access: its key (write -L instead)")
+	_              = flag.String("target", "", "Earlier form of one point-to-point access: its destination (write -L instead)")
+	_              = flag.Bool("local_proxy", false, "Secret enable proxy local (true or false)")
 	disableRemote  = flag.Bool("disable_remote_update", false, "Ignore update requests from the server (true or false)")
 	registerTime   = flag.Int("time", 2, "Register time in hours")
 	logType        = flag.String("log", defaultLogType, "Log output mode (stdout|file|both|off)")
@@ -95,7 +95,7 @@ var (
 	relayIdle            = flag.Int("relay_idle", 0, "Seconds a relay stands by once the direct path is up, then it closes (new protocol; 0: 60)")
 	newProtocolPin       = flag.String("new_protocol_pin", "", "Hex key id the server must have on the new protocol (default: none)")
 	launchInputs         = flag.StringArray("launch", nil, "A connection, repeatable: npc:// launch link, @file, http(s) URL of a configuration, or base64 (npc launch pack); also NPC_LAUNCH, one per line")
-	localInputs          = flag.StringArrayP("local", "L", nil, "A local point-to-point access, repeatable: \"tcp://:2000?access=KEY&target=10.0.0.5:53&conn_mode=auto&via=NAME\" (tcp, udp, tcp_udp, mixed, socks5, http, transparent; mixed, socks5 and http take auth=user:pass), or @file with one per line")
+	_                    = flag.StringArrayP("local", "L", nil, "A local point-to-point access, repeatable: \"tcp://:2000?access=KEY&target=10.0.0.5:53&conn_mode=auto&via=NAME\" (tcp, udp, tcp_udp, mixed, socks5, http, transparent; mixed, socks5 and http take auth=user:pass), or @file with one per line")
 	reveal               = flag.Bool("reveal", false, "npc launch show: print vkeys, access keys and proxy passwords")
 )
 
@@ -297,7 +297,7 @@ var argWarnings []string
 func warnArgs(logOff bool) {
 	for _, w := range argWarnings {
 		if logOff {
-			fmt.Fprintln(os.Stderr, "WARN", w)
+			_, _ = fmt.Fprintln(os.Stderr, "WARN", w)
 			continue
 		}
 		cfgLog.Warn("command line argument", "detail", w)
@@ -325,7 +325,7 @@ func configureLogging() {
 		Secrets: *logSecrets, Instance: *logInstance,
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "log:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "log:", err)
 		os.Exit(1)
 	}
 	warnArgs(strings.EqualFold(*logType, "off"))

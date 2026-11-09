@@ -21,7 +21,7 @@ var (
 	ErrUnauthorized = errors.New("validation failed")
 	// ErrDisabled is a key of a disabled client.
 	ErrDisabled = errors.New("client is disabled")
-	// ErrVersionMismatch: the server's proof does not match the client's version.
+	// ErrVersionMismatch means the server's proof does not match the client's version.
 	ErrVersionMismatch = errors.New("the client does not match the server version")
 )
 

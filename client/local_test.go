@@ -23,7 +23,7 @@ type stubVisitor func(target string, c net.Conn)
 func (f stubVisitor) OpenLink(_ context.Context, r coreapi.LinkRequest) (net.Conn, error) {
 	a, b := net.Pipe()
 	go func() {
-		defer b.Close()
+		defer func() { _ = b.Close() }()
 		f(r.Target, b)
 	}()
 	return a, nil
@@ -154,7 +154,7 @@ func TestLocalCompressAsksNestedStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
 	assertEcho(t, c, "plain bytes")
 	if got := <-asked; !slices.Equal(got, []string{model.CompressSnappy}) {
@@ -168,7 +168,7 @@ func (v compressVisitor) OpenLink(_ context.Context, r coreapi.LinkRequest) (net
 	v.asked <- r.Compress
 	a, b := net.Pipe()
 	go func() {
-		defer b.Close()
+		defer func() { _ = b.Close() }()
 		_, _ = io.Copy(b, b)
 	}()
 	return a, nil
@@ -182,7 +182,7 @@ func freePort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -219,7 +219,7 @@ func socks5Connect(t *testing.T, addr, user, pass string) bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
 	method := byte(0)
 	if user != "" {
@@ -255,7 +255,7 @@ func httpStatus(t *testing.T, addr, user, pass string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }
 
@@ -286,7 +286,7 @@ func TestSingleProtocolListeners(t *testing.T) {
 		t.Error("socks5 listener accounts")
 	}
 	if c, err := net.DialTimeout("tcp", socks, 3*time.Second); err == nil {
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		_ = c.SetDeadline(time.Now().Add(3 * time.Second))
 		_, _ = io.WriteString(c, "GET http://web.test/ HTTP/1.1\r\nHost: web.test\r\n\r\n")
 		if n, _ := io.Copy(io.Discard, c); n != 0 {

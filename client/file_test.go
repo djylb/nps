@@ -115,7 +115,7 @@ func TestFileServerManagerStartAndCloseAll(t *testing.T) {
 		StripPre:  "/files",
 		ReadOnly:  true,
 	}
-	fsm.StartFileServer(tunnel, "vkey")
+	fsm.StartFileServer(tunnel)
 	t.Cleanup(fsm.CloseAll)
 
 	listener, ok := waitListener(fsm, 2*time.Second)

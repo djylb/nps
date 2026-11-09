@@ -128,7 +128,7 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 		tried = append(tried, addr)
 		return true, errDown
 	})
-	if err != errDown || len(tried) != 3 {
+	if !errors.Is(err, errDown) || len(tried) != 3 {
 		t.Fatalf("Dial = %v after %v, want every target tried once", err, tried)
 	}
 
@@ -137,7 +137,7 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 	if err := target.Dial(func(addr string) (bool, error) {
 		tried = append(tried, addr)
 		return false, errDown
-	}); err != errDown || len(tried) != 1 {
+	}); !errors.Is(err, errDown) || len(tried) != 1 {
 		t.Fatalf("Dial = %v after %v, want one attempt", err, tried)
 	}
 
@@ -168,7 +168,7 @@ func TestTargetDialRetriesAndEjects(t *testing.T) {
 	}
 
 	empty := &Target{}
-	if _, err := pickTarget(empty); err != ErrNoTarget {
+	if _, err := pickTarget(empty); !errors.Is(err, ErrNoTarget) {
 		t.Fatalf("empty target list: %v", err)
 	}
 }

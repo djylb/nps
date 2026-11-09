@@ -1,13 +1,13 @@
 package bridge
 
 import (
-	"github.com/djylb/nps/lib/logevent"
 	"time"
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/healthcheck"
+	"github.com/djylb/nps/lib/logevent"
 )
 
 // healthSendTimeout bounds writing one health group message.

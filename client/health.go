@@ -199,7 +199,8 @@ func (hc *HealthChecker) onResult(r health.Report[healthKey]) {
 	}
 	hc.mu.Lock()
 	defer hc.mu.Unlock()
-	up, send := r.Health == upstream.HealthUp, false
+	up := r.Health == upstream.HealthUp
+	var send bool
 	if up {
 		delete(hc.fails, r.Key)
 		send = r.Previous != upstream.HealthUp

@@ -73,9 +73,9 @@ func (s DefaultIndexService) AddTunnels(input TunnelInput) ([]TunnelMutation, er
 	if err != nil {
 		return nil, ErrClientNotFound
 	}
-	if max := client.MaxTunnelNum; max != 0 {
-		if have := s.Backend.Repository.ClientEntryCount(client); have+len(ports) > max {
-			return nil, fmt.Errorf("%w: the client allows %d tunnels, has %d and %d more were asked", ErrTunnelLimitExceeded, max, have, len(ports))
+	if limit := client.MaxTunnelNum; limit != 0 {
+		if have := s.Backend.Repository.ClientEntryCount(client); have+len(ports) > limit {
+			return nil, fmt.Errorf("%w: the client allows %d tunnels, has %d and %d more were asked", ErrTunnelLimitExceeded, limit, have, len(ports))
 		}
 	}
 

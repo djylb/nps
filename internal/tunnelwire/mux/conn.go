@@ -394,7 +394,7 @@ func (Self *receiveWindow) Read(p []byte, id int32) (n int, err error) {
 
 func (Self *receiveWindow) readFromQueue(p []byte, id int32) (n int, err error) {
 	pOff := 0
-	l := 0
+	var l int
 copyData:
 	if Self.off == uint32(Self.element.L) {
 		// on the first Read method invoked, Self.off and Self.element.l
@@ -717,7 +717,7 @@ func (Self *sendWindow) WriteFull(buf []byte, id int32) (n int, err error) {
 		}
 		bufSeg, l, part, err = Self.WriteTo()
 		// get the buf segments from send window
-		if bufSeg == nil && !part && err == io.EOF {
+		if bufSeg == nil && !part && errors.Is(err, io.EOF) {
 			// send window is drain, break the loop
 			err = nil
 			break

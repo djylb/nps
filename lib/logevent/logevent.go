@@ -75,7 +75,7 @@ const (
 // Security: the IP is always src_ip, the first field after the fixed ones,
 // so a filter anchors on it; fail2ban reads these lines.
 var (
-	// AuthFailed: an npc, visitor or API caller failed to authenticate.
+	// AuthFailed event: an npc, visitor or API caller failed to authenticate.
 	// src_ip, src_port, role (client, visitor, secret, api, http_auth),
 	// client (when known), proxy_user (visitor), carrier, route, reason
 	// (bad_key, bad_password, disabled, malformed, timeout, version,
@@ -89,7 +89,7 @@ var (
 	// BanAdded / BanRemoved: src_ip (or user), scope (login), until.
 	BanAdded   = slogx.Def{Name: "ban_added", Level: warn, Security: true, Bus: true}
 	BanRemoved = slogx.Def{Name: "ban_removed", Level: info, Bus: true}
-	// AdminAction: a change through the web manager or its API. src_ip,
+	// AdminAction event: a change through the web manager or its API. src_ip,
 	// user, action (such as client_update, tunnel_delete, config_export),
 	// client, tunnel, host (the object, when it has one), result (ok,
 	// failed), reason.
@@ -105,7 +105,7 @@ var (
 	// itself, so the log lines do not go there too.
 	ClientOnline  = slogx.Def{Name: "client_online", Level: info}
 	ClientOffline = slogx.Def{Name: "client_offline", Level: info}
-	// SessionTakeover: the same npc connected again; client, src_ip, addr
+	// SessionTakeover event: the same npc connected again; client, src_ip, addr
 	// (the old connection).
 	SessionTakeover = slogx.Def{Name: "session_takeover", Level: warn}
 	// SessionSuspended / SessionResumed: a core protocol session lost all
@@ -114,30 +114,30 @@ var (
 	// on npc; resumed adds dur_ms.
 	SessionSuspended = slogx.Def{Name: "session_suspended", Level: debug}
 	SessionResumed   = slogx.Def{Name: "session_resumed", Level: debug}
-	// LimitExceeded: a connection refused by a limit; client, route, kind
+	// LimitExceeded event: a connection refused by a limit; client, route, kind
 	// (flow, conn, rate, expire, pipes).
 	LimitExceeded = slogx.Def{Name: "limit_exceeded", Level: warn, Bus: true, Limit: "client"}
-	// QuotaReached: a client, tunnel or host used up its flow or time
+	// QuotaReached event: a client, tunnel or host used up its flow or time
 	// quota; client, tunnel, host, kind (flow, expire).
 	QuotaReached = slogx.Def{Name: "quota_reached", Level: warn, Bus: true}
 )
 
 // Traffic and policy.
 var (
-	// TunnelDenied: a visitor was refused; src_ip, route, reason (acl,
+	// TunnelDenied event: a visitor was refused; src_ip, route, reason (acl,
 	// dest_acl, not_registered, http_disabled, socks5_disabled, auth,
 	// client_offline).
 	TunnelDenied = slogx.Def{Name: "tunnel_denied", Level: info, Limit: "src_ip"}
-	// RelayFailed: dialing or relaying a target failed; route, client,
+	// RelayFailed event: dialing or relaying a target failed; route, client,
 	// target, reason (NetReason, no_target, client_offline).
 	RelayFailed = slogx.Def{Name: "relay_failed", Level: info, Limit: "target"}
-	// HTTPAccess: a request to the domain proxy, written when it ends, for
+	// HTTPAccess event: a request to the domain proxy, written when it ends, for
 	// every request including refused ones: route, host, src_ip, method,
 	// domain (the Host header), path, proto, status, bytes, dur_ms,
 	// target. Debug in the main log; access_log writes every request to a
 	// file of its own in combined format.
 	HTTPAccess = slogx.Def{Name: "http_access", Level: debug}
-	// ConnClosed: a tunnel connection ended; route, tunnel, client,
+	// ConnClosed event: a tunnel connection ended; route, tunnel, client,
 	// src_ip, target, in_bytes, out_bytes, dur_ms.
 	ConnClosed = slogx.Def{Name: "conn_closed", Level: debug}
 	// TargetDown / TargetUp: a backend target failed or passed its health
@@ -172,10 +172,10 @@ var (
 	// Started / Stopping: version, role (nps, npc), pid, file (config).
 	Started  = slogx.Def{Name: "started", Level: info}
 	Stopping = slogx.Def{Name: "stopping", Level: info}
-	// Listening: route (web, bridge, http, https, http3, ip_register,
+	// Listening event: route (web, bridge, http, https, http3, ip_register,
 	// tunnel route), listen, carrier, tls (bool).
 	Listening = slogx.Def{Name: "listening", Level: info}
-	// ListenFailed: a port could not be opened; route, listen or port,
+	// ListenFailed event: a port could not be opened; route, listen or port,
 	// reason (NetReason), err.
 	ListenFailed = slogx.Def{Name: "listen_failed", Level: errl, Bus: true}
 	// ConfigApplied / ConfigFailed: file, keys, restart (keys needing a
@@ -196,17 +196,17 @@ var (
 
 // Certificates.
 var (
-	// CertLoaded: a certificate in use; route, domain, file, until
+	// CertLoaded event: a certificate in use; route, domain, file, until
 	// (expiry), issuer.
 	CertLoaded = slogx.Def{Name: "cert_loaded", Level: info}
-	// CertIssued: domain, issuer, renewal (bool).
+	// CertIssued event: domain, issuer, renewal (bool).
 	CertIssued = slogx.Def{Name: "cert_issued", Level: info, Bus: true}
-	// CertFailed: domain, renewal, remaining_s, reason (issue_failed,
+	// CertFailed event: domain, renewal, remaining_s, reason (issue_failed,
 	// challenge_failed, rate_limited, dns_failed, account_failed,
 	// load_failed), err. Use CertFailedUrgent when fewer than 7 days remain.
 	CertFailed       = slogx.Def{Name: "cert_failed", Level: warn, Bus: true, Limit: "domain"}
 	CertFailedUrgent = slogx.Def{Name: "cert_failed", Level: errl, Bus: true, Limit: "domain"}
-	// CertRevoked: domain, reason (ocsp).
+	// CertRevoked event: domain, reason (ocsp).
 	CertRevoked = slogx.Def{Name: "cert_revoked", Level: warn, Bus: true}
 )
 

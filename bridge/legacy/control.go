@@ -354,13 +354,6 @@ func ReadHealthSet(r io.Reader) (healthcheck.Group, error) {
 	return healthcheck.Group{Name: m.Group, Type: m.Type, Path: m.Path, Interval: m.Interval, Timeout: m.Timeout, Fall: m.Fall, Targets: m.Targets}, err
 }
 
-// ReadHealthDel reads the body of a HealthDel message.
-func ReadHealthDel(r io.Reader) (string, error) {
-	var m healthDelWire
-	err := control.Read(r, &m)
-	return m.Group, err
-}
-
 // WriteGroupHealth writes a report of a group: a health report with the group as
 // a third field, which only a server that sent the group receives.
 func WriteGroupHealth(w io.Writer, rep healthcheck.Report) error {

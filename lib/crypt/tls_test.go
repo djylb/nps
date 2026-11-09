@@ -68,7 +68,7 @@ func TestNewIdentitySelfSignedRSA(t *testing.T) {
 	if leaf.SerialNumber.Sign() <= 0 || leaf.SerialNumber.BitLen() < 64 {
 		t.Fatalf("serial number %v is not a large positive number", leaf.SerialNumber)
 	}
-	if validFor := leaf.NotAfter.Sub(time.Now()); validFor < 9*365*24*time.Hour {
+	if validFor := time.Until(leaf.NotAfter); validFor < 9*365*24*time.Hour {
 		t.Fatalf("certificate is valid for only %v", validFor)
 	}
 	if leaf.KeyUsage&x509.KeyUsageKeyEncipherment == 0 || leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 {

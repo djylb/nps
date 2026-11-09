@@ -194,7 +194,7 @@ func echoOnce(t *testing.T, ctx context.Context, v *Visitor, msg string) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	checkEcho(t, c, msg)
 }
 
@@ -258,7 +258,7 @@ func TestPeerAutoRelayClosesAndRejoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	checkEcho(t, c, "first")
 	waitPipes(t, v, "direct alone", func(d, r bool) bool { return d && !r })
 	waitUntil(t, "outer idle", func() bool { return p.outer.live() == nil })
@@ -372,7 +372,7 @@ func TestOuterMayDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := NewVisitor(VisitorConfig{Outer: p.outer})
-	defer v.Close()
+	defer func() { _ = v.Close() }()
 	s.mu.Lock()
 	s.provided = map[uint64]*providerLink{1: {}}
 	s.mu.Unlock()
@@ -418,13 +418,13 @@ func TestPeerServerExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	checkEcho(t, c, "exit")
 	c2, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, ProviderTarget: true, WantReply: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c2.Close()
+	defer func() { _ = c2.Close() }()
 	checkEcho(t, c2, "no target")
 	if got := p.exitTarget.Load(); got == nil || *got != "" {
 		t.Fatalf("server exit got target %v", got)
@@ -478,7 +478,7 @@ func concurrentEcho(t *testing.T, ctx context.Context, v *Visitor) int {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		_ = c.SetDeadline(time.Now().Add(15 * time.Second))
 		data := bytes.Repeat([]byte{byte(i + 1), byte(i * 3), 7}, 4<<20/3)
 		wg.Go(func() {
@@ -610,7 +610,7 @@ func TestPeerNestedCompression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if _, ok := c.(*linkConn); ok {
 		t.Fatal("stream was not compressed")
 	}
@@ -655,7 +655,7 @@ func TestPeerQuotaEndsLink(t *testing.T) {
 	c, err := v.OpenLink(ctx, coreapi.LinkRequest{Network: coreapi.NetworkTCP, Target: p.echo})
 	if err == nil {
 		_, _ = c.Write([]byte("more"))
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 	}
 	start := time.Now()
 	waitUntil(t, "link ended", func() bool { return l.ended() })
