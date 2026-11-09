@@ -26,7 +26,7 @@ func updateServer(t *testing.T, vs, latest string, disabled bool) *Server {
 		t.Fatal(err)
 	}
 	db := file.New(dir)
-	db.JsonDb.LoadClientFromJsonFile()
+	_ = db.JsonDb.LoadClientFromJsonFile()
 	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30, DisableRemoteUpdate: disabled,
 		LatestVersion: func() string { return latest }})
 	t.Cleanup(func() { _ = s.Close() })

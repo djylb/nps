@@ -16,7 +16,6 @@ func CapsOf(index int, clientVersion string) Caps { return tunnelwire.Caps(index
 // The protocol's version table.
 const (
 	LatestIndex            = tunnelwire.LatestIndex
-	P2PMinIndex            = tunnelwire.P2PMinIndex
 	P2PMinVersion          = tunnelwire.P2PMinVersion
 	RemoteUpdateMinVersion = tunnelwire.RemoteUpdateMinVersion
 )

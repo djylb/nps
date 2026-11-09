@@ -130,6 +130,7 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 	if req.Method != "CONNECT" {
 		return false, nil
 	}
+	//noinspection GoResourceLeak
 	target, link, isLocal, err := s.openHTTPLink(conn.NewConn(req.Conn), req)
 	if err != nil {
 		return false, err
@@ -138,6 +139,7 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 		_ = target.Close()
 		return true, err
 	}
+	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(req.Conn)
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, conn.LinkTCP)
 	return true, nil
@@ -146,6 +148,7 @@ func (s *TunnelModeServer) handleHTTPConnect(_ context.Context, req *httpproxy.R
 // dialHTTPProxy connects to the target of a forwarded request through the
 // client tunnel, with the client's encryption, compression, rates and flows.
 func (s *TunnelModeServer) dialHTTPProxy(_ context.Context, req *httpproxy.Request) (net.Conn, error) {
+	//noinspection GoResourceLeak
 	target, link, isLocal, err := s.openHTTPLink(conn.NewConn(req.Conn), req)
 	if err != nil {
 		return nil, err

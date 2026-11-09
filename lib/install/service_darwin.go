@@ -10,10 +10,10 @@ import (
 )
 
 // controlService leaves every action to the service library.
-func controlService(service.Service, string, string) (bool, error) { return false, nil }
+func controlService(_ service.Service, _, _ string) (bool, error) { return false, nil }
 
 // serviceStatus leaves the status to the service library.
-func serviceStatus(string) (running, known bool) { return false, false }
+func serviceStatus(_ string) (running, known bool) { return false, false }
 
 // launchdPlists are where the service library places the plist of the
 // launchd job name: a system daemon, or an agent of the user.
@@ -47,10 +47,10 @@ func serviceOfProcess(pid int) string {
 }
 
 // ConfigureService sets the platform specific settings of c; there are none.
-func ConfigureService(*service.Config) {}
+func ConfigureService(_ *service.Config) {}
 
 // serviceFiles returns nothing: uninstall leaves no files behind here.
-func serviceFiles(string) []string { return nil }
+func serviceFiles(_ string) []string { return nil }
 
 func serviceFilesRemoved() {}
 

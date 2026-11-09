@@ -117,6 +117,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 				_ = c.Close()
 				return errors.New("http proxy is disabled")
 			}
+			//noinspection GoResourceLeak
 			if err := ProcessHttp(netx.NewPrefixConn(c, header[:]), s); err != nil {
 				log.Debug("http proxy failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)
 				_ = c.Close()
@@ -139,6 +140,7 @@ func ProcessMix(c *conn.Conn, s *TunnelModeServer) error {
 	// The accounts are read per connection, as they may change while the
 	// task runs.
 	hs := &socks5.Server{Auth: s.socks5Auth()}
+	//noinspection GoResourceLeak
 	req, err := hs.Handshake(context.Background(), netx.NewPrefixConn(c, header[:]))
 	if err != nil {
 		log.Debug("socks5 negotiation failed", "src_ip", srcIP(c.RemoteAddr()), "err", err)

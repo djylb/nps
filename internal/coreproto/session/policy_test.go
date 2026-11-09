@@ -132,8 +132,5 @@ type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
 
-func TestCompressFinishOutlastsResume(t *testing.T) {
-	if compressFinishTimeout <= defaultResumeTimeout {
-		t.Fatalf("finish bound %v does not cover a suspension of %v", compressFinishTimeout, defaultResumeTimeout)
-	}
-}
+// The finish bound must cover a suspension: this fails to compile otherwise.
+const _ = uint64(compressFinishTimeout - defaultResumeTimeout - 1)

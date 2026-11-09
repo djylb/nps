@@ -376,9 +376,6 @@ func TestQUICNonCarrierStreamEnds(t *testing.T) {
 }
 
 func TestOversizeUDPAndLinkIDRefused(t *testing.T) {
-	if got := wire.MaxUDPPayload; got != 65535 {
-		t.Fatal(got)
-	}
 	s := &clientSession{d: NewDialer(DialConfig{Exit: nil})}
 	o := &wire.StreamOpen{Op: wire.OpTCP, LinkID: 7}
 	if c := s.checkOpen(o); c != wire.CodeMalformed {

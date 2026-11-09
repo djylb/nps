@@ -35,8 +35,10 @@ func TestDialConfig(t *testing.T) {
 	}
 	moved := *cc
 	moved.ResumeTimeout = 12
-	if dc, err = DialConfig(&moved, moved.Server); err != nil || dc.ResumeTimeout != 12*time.Second {
-		t.Fatalf("%v %v", dc.ResumeTimeout, err)
+	if dc, err = DialConfig(&moved, moved.Server); err != nil {
+		t.Fatal(err)
+	} else if dc.ResumeTimeout != 12*time.Second {
+		t.Fatal(dc.ResumeTimeout)
 	}
 	moved.Pin = "zz"
 	if _, err = DialConfig(&moved, moved.Server); err == nil {

@@ -398,10 +398,9 @@ func run() (*server.Server, error) {
 	}
 	selectMode, err := bridge.ParseSelectMode(cfg.Bridge.SelectMode)
 	if err != nil {
-		cfgLog.Warn("invalid client select mode, using default", "value", cfg.Bridge.SelectMode, "mode", selectMode.String())
-	} else {
-		log.Info("client select mode", "mode", selectMode.String())
+		cfgLog.Warn("invalid client select mode, using default", "value", cfg.Bridge.SelectMode)
 	}
+	log.Info("client select mode", "mode", selectMode.String())
 	accessLog, closeLog, err := openAccessLog(cfg.Log)
 	if err != nil {
 		cfgLog.Error("access log not opened", "file", cfg.Log.Access, "err", err)
@@ -411,6 +410,7 @@ func run() (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	//noinspection GoResourceLeak
 	srv := server.New(db, server.Config{
 		CoreEntry:           coreEntry,
 		AccessLog:           accessLog,

@@ -70,8 +70,9 @@ func (k Kind) String() string {
 		return "web manager"
 	case KindMix:
 		return "mixed bridge"
+	default:
+		return fmt.Sprintf("kind(%d)", int(k))
 	}
-	return fmt.Sprintf("kind(%d)", int(k))
 }
 
 // address returns the configured ip and port of one listener.
@@ -93,8 +94,9 @@ func address(n *servercfg.NetworkConfig, k Kind) (string, int, bool) {
 		return n.WebIP, n.WebPort, true
 	case KindMix:
 		return n.MixIP, n.MixPort, true
+	default:
+		return "", 0, false
 	}
-	return "", 0, false
 }
 
 // Listen opens the listener of kind k on its configured address, or takes
@@ -147,8 +149,9 @@ func (k Kind) logNames() (route, carrier string, secure bool) {
 			return "web", "tls", true
 		}
 		return "web", "tcp", false
+	default:
+		return k.String(), "tcp", false
 	}
-	return k.String(), "tcp", false
 }
 
 func validPort(port int) bool { return port > 0 && port <= 65535 }

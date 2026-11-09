@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"testing"
 )
 
@@ -61,7 +62,7 @@ func TestPowHelpers(t *testing.T) {
 	}
 	found := false
 	for i := range 64 {
-		if ValidatePoW(1, "seed", string(rune('A'+i))) {
+		if ValidatePoW(1, "seed", strconv.Itoa(i)) {
 			found = true
 			break
 		}

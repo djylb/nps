@@ -30,10 +30,8 @@ func Pack(ctx context.Context, path string) (string, error) {
 	}
 	var b bytes.Buffer
 	z, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
-	if _, err := z.Write([]byte(text)); err != nil {
-		return "", err
-	}
-	if err := z.Close(); err != nil {
+	_, err = z.Write([]byte(text))
+	if err = errors.Join(err, z.Close()); err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b.Bytes()), nil

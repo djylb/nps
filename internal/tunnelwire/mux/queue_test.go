@@ -244,6 +244,7 @@ func TestPriorityQueueStreamScheduling(t *testing.T) {
 			data = []byte("x")
 		case muxMsgSendOk:
 			data = uint64(0)
+		default:
 		}
 		if err := pack.Set(flag, id, data); err != nil {
 			t.Fatal(err)

@@ -160,7 +160,7 @@ func (s *Bridge) addCloser(c io.Closer) { _, _ = s.scope.Add(c) }
 
 // anyError reports every error as expected: once the bridge closes, the
 // listeners and handlers may end with any error.
-func anyError(error) bool { return true }
+func anyError(_ error) bool { return true }
 
 // serve handles a connection a bridge listener accepted. Close waits for it
 // and closes the connection if it is still open then; once the bridge is

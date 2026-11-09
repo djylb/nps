@@ -231,6 +231,7 @@ func decodeBase64(raw string) (string, bool) {
 		if err != nil {
 			return "", false
 		}
+		defer func() { _ = z.Close() }()
 		if b, err = io.ReadAll(io.LimitReader(z, maxPayloadSize+1)); err != nil || len(b) > maxPayloadSize {
 			return "", false
 		}

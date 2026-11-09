@@ -44,7 +44,6 @@ const (
 	goldenTimestamp = int64(1700000000)
 	goldenUUID      = "01890000-0000-7000-8000-000000000001"
 	goldenNode      = "01890000-0000-7000-8000-000000000002"
-	goldenClientVer = "0.35.0"
 )
 
 func goldenPath(name string) string { return filepath.Join("testdata", "wire", name) }
@@ -219,6 +218,9 @@ func recordHandshake(t *testing.T, db *file.DbUtils, cert tls.Certificate, index
 	}
 	return v
 }
+
+// goldenClientVer is the client version the vectors announce.
+var goldenClientVer = "0.35.0"
 
 func TestWireGoldenHandshake(t *testing.T) {
 	fixHandshake(t)

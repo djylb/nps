@@ -183,6 +183,7 @@ func (p *corePuncher) Punch(ctx context.Context, ctrl net.Conn, background, acce
 	}
 	opts := p2pOptions(p.localIP, p.mapper, background || accept, role)
 	opts.ControlSecurity = protocol.ControlSecurityDeclared
+	//noinspection GoResourceLeak
 	sess, err := holepunch.Punch(ctx, ctrl, opts)
 	if err != nil {
 		return nil, err

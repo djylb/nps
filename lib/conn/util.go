@@ -77,6 +77,7 @@ func HandleUdp5Policy(ctx context.Context, serverConn net.Conn, timeout time.Dur
 		IdleTimeout: timeout,
 		OnError:     func(err error) { log.Debug("socks5 udp datagram failed", "err", err) },
 	}
+	//noinspection GoResourceLeak
 	pc := socks5.NewPacketConn(local)
 	if allow != nil {
 		relay.Allow = func(dst netx.Addr) bool {

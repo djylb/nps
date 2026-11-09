@@ -109,6 +109,7 @@ loop:
 			// The bridge client map owns the new client from here on.
 			//noinspection GoResourceLeak
 			node := newNode(uuid, caps)
+			//noinspection GoResourceLeak
 			s.storeClient(client.Id, NewClient(client.Id, node, s.selectMode))
 			if caps.NodeID {
 				published = node

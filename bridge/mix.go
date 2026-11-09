@@ -146,6 +146,7 @@ func (s *Bridge) dispatchMix(ctx context.Context, c net.Conn, e *mixEntry) {
 		return
 	}
 	defer remove()
+	//noinspection GoResourceLeak
 	head, pc := readHead(c, 1)
 	if len(head) == 0 {
 		_ = c.Close()
@@ -154,6 +155,7 @@ func (s *Bridge) dispatchMix(ctx context.Context, c net.Conn, e *mixEntry) {
 	if head[0] == 0x16 {
 		cfg := s.tlsConfig()
 		cfg.GetCertificate = s.fallbackCert
+		//noinspection GoResourceLeak
 		s.admitMix(ctx, tls.Server(pc, cfg), conn.TransportTLS, e)
 		return
 	}
@@ -161,6 +163,7 @@ func (s *Bridge) dispatchMix(ctx context.Context, c net.Conn, e *mixEntry) {
 		s.admitMix(ctx, pc, conn.TransportTCP, e)
 		return
 	}
+	//noinspection GoResourceLeak
 	magic, nc := readHead(pc, len(legacy.Magic))
 	if connection.IsHTTP(magic) && s.coreFallback(nc, nil) {
 		return
@@ -177,6 +180,7 @@ func (s *Bridge) admitMix(ctx context.Context, c net.Conn, carrier string, e *mi
 // mixOther routes what the new protocol's admission did not take: the old
 // protocol's magic and HTTP. It owns c when it returns true.
 func (s *Bridge) mixOther(c net.Conn, st *tls.ConnectionState, e *mixEntry) bool {
+	//noinspection GoResourceLeak
 	head, nc := readHead(c, len(legacy.Magic))
 	transport := conn.TransportTCP
 	if st != nil {
@@ -187,6 +191,7 @@ func (s *Bridge) mixOther(c net.Conn, st *tls.ConnectionState, e *mixEntry) bool
 		if !e.legacy {
 			return false
 		}
+		//noinspection GoResourceLeak
 		s.serve(conn.NewConn(nc), transport)
 		return true
 	case connection.IsHTTP(head):

@@ -604,18 +604,18 @@ func TestCloseUnknownPathWithoutResponseWhenEnabled(t *testing.T) {
 	defer ts.Close()
 
 	addr := strings.TrimPrefix(ts.URL, "http://")
-	conn, err := net.Dial("tcp", addr)
+	rawConn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("Dial() error = %v", err)
 	}
-	defer func() { _ = conn.Close() }()
-	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+	defer func() { _ = rawConn.Close() }()
+	if err := rawConn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		t.Fatalf("SetDeadline() error = %v", err)
 	}
-	if _, err := fmt.Fprintf(conn, "GET /definitely-missing HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", addr); err != nil {
+	if _, err := fmt.Fprintf(rawConn, "GET /definitely-missing HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", addr); err != nil {
 		t.Fatalf("write raw request error = %v", err)
 	}
-	raw, err := io.ReadAll(conn)
+	raw, err := io.ReadAll(rawConn)
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}

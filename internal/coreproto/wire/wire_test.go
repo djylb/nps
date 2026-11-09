@@ -158,7 +158,9 @@ func TestServiceRoundTrip(t *testing.T) {
 func TestHealthRoundTrip(t *testing.T) {
 	in := Snapshot{Health: []HealthGroup{{Name: "t1", Type: "http", Path: "/p", Interval: 3, Timeout: 2, Fall: 1, Targets: []string{"a:1", "b:2"}}}}
 	got, err := ParseSnapshot(AppendSnapshot(nil, &in))
-	if err != nil || len(got.Health) != 1 || got.Health[0].Type != "http" || len(got.Health[0].Targets) != 2 || got.Health[0].Fall != 1 {
+	if err != nil {
+		t.Fatal(err)
+	} else if len(got.Health) != 1 || got.Health[0].Type != "http" || len(got.Health[0].Targets) != 2 || got.Health[0].Fall != 1 {
 		t.Fatalf("%+v, %v", got.Health, err)
 	}
 	rec := AppendHealthReport(nil, HealthReport{Name: "t1", Addr: "a:1", Up: false})

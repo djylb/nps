@@ -34,7 +34,7 @@ func (p *peerEnv) shapedEnds(t *testing.T, ctx context.Context, bundle string, p
 	p.a.ClientChanged(shapedRecord(1, "prov", provider))
 	p.a.ClientChanged(shapedRecord(2, "vis", visitor))
 	p.a.SetShaping([]byte(bundle))
-	if _, err := p.outer.Get(ctx); err != nil {
+	if _, err := p.outer.get(ctx); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "bundles", func() bool {
@@ -102,7 +102,7 @@ func TestNestedShapedOnDirect(t *testing.T) {
 	v := p.visitor(t, wire.ConnDirect, time.Hour)
 	c := openEcho(t, ctx, v)
 	bulkEcho(t, c, 128<<10)
-	vz, pz := v.live().zc, p.providerSession(t)
+	vz, pz := mustLive(v.live()).zc, p.providerSession(t)
 	if spent(vz) == 0 || spent(pz) == 0 {
 		t.Fatalf("not shaped: visitor %d provider %d", spent(vz), spent(pz))
 	}
@@ -116,7 +116,7 @@ func TestNestedShapedOnDirect(t *testing.T) {
 		}
 	}
 	// The outer sessions have accounts of their own, of the default entry.
-	for what, zc := range map[string]*zmux.Conn{"visitor": p.outer.live().zc, "provider": p.provider.zc} {
+	for what, zc := range map[string]*zmux.Conn{"visitor": mustLive(p.outer.live()).zc, "provider": p.provider.zc} {
 		if left := zc.ShapingMeters().WireLeft; left <= 50000 {
 			t.Fatalf("outer %s: left %d", what, left)
 		}
@@ -129,7 +129,7 @@ func TestNestedDirectFallsBackToDefault(t *testing.T) {
 	p.shapedEnds(t, ctx, defaultOnly(70000), true, true)
 	v := p.visitor(t, wire.ConnDirect, time.Hour)
 	bulkEcho(t, openEcho(t, ctx, v), 16<<10)
-	vz := v.live().zc
+	vz := mustLive(v.live()).zc
 	if spent(vz) == 0 {
 		t.Fatal("not shaped")
 	}
@@ -144,7 +144,7 @@ func TestNestedRelayNotShaped(t *testing.T) {
 	p.shapedEnds(t, ctx, defaultOnly(900000), true, true)
 	v := p.visitor(t, wire.ConnRelay, time.Hour)
 	bulkEcho(t, openEcho(t, ctx, v), 128<<10)
-	for what, zc := range map[string]*zmux.Conn{"visitor": v.live().zc, "provider": p.providerSession(t)} {
+	for what, zc := range map[string]*zmux.Conn{"visitor": mustLive(v.live()).zc, "provider": p.providerSession(t)} {
 		if s := zc.ShapingStats(); s != (shaping.Stats{}) {
 			t.Fatalf("%s: %+v", what, s)
 		}
@@ -156,7 +156,7 @@ func TestNestedNoBundleNothingChanges(t *testing.T) {
 	ctx := peerCtx(t)
 	v := p.visitor(t, wire.ConnDirect, time.Hour)
 	bulkEcho(t, openEcho(t, ctx, v), 128<<10)
-	for what, zc := range map[string]*zmux.Conn{"visitor": v.live().zc, "provider": p.providerSession(t)} {
+	for what, zc := range map[string]*zmux.Conn{"visitor": mustLive(v.live()).zc, "provider": p.providerSession(t)} {
 		if s := zc.ShapingStats(); s != (shaping.Stats{}) {
 			t.Fatalf("%s: %+v", what, s)
 		}
@@ -216,12 +216,12 @@ func TestNestedFollowsReplaceAndClear(t *testing.T) {
 	ctx := peerCtx(t)
 	p.outer.Hold(true, nil)
 	v := p.visitor(t, wire.ConnDirect, time.Hour)
-	if _, err := p.outer.Get(ctx); err != nil {
+	if _, err := p.outer.get(ctx); err != nil {
 		t.Fatal(err)
 	}
 	c := openEcho(t, ctx, v)
 	bulkEcho(t, c, 16<<10)
-	vz, pz := v.live().zc, p.providerSession(t)
+	vz, pz := mustLive(v.live()).zc, p.providerSession(t)
 	if spent(vz) != 0 || spent(pz) != 0 {
 		t.Fatal("shaped before a bundle")
 	}
@@ -265,7 +265,7 @@ func TestNestedOneEndShaped(t *testing.T) {
 			p.shapedEnds(t, ctx, quicBundle(900000, 900000), !visitor, visitor)
 			v := p.visitor(t, wire.ConnDirect, time.Hour)
 			bulkEcho(t, openEcho(t, ctx, v), 256<<10)
-			shaped, plain := v.live().zc, p.providerSession(t)
+			shaped, plain := mustLive(v.live()).zc, p.providerSession(t)
 			if !visitor {
 				shaped, plain = plain, shaped
 			}
@@ -287,7 +287,7 @@ func TestNestedAutoShapedOnceDirect(t *testing.T) {
 	v := p.visitor(t, wire.ConnAuto, time.Hour)
 	c := openEcho(t, ctx, v)
 	bulkEcho(t, c, 64<<10)
-	vz, pz := v.live().zc, p.providerSession(t)
+	vz, pz := mustLive(v.live()).zc, p.providerSession(t)
 	if spent(vz) != 0 || spent(pz) != 0 {
 		t.Fatalf("relay shaped: %d %d", spent(vz), spent(pz))
 	}

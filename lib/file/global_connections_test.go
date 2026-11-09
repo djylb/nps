@@ -17,14 +17,14 @@ func TestGlobalConnectionLimitPersistenceAndOldData(t *testing.T) {
 		t.Fatal(err)
 	}
 	model.SetGlobalMaxConn(0)
-	db.JsonDb.LoadGlobalFromJsonFile()
+	_ = db.JsonDb.LoadGlobalFromJsonFile()
 	if _, limit := model.GlobalConnections(); limit != 9 || db.JsonDb.Global.MaxConn != 9 {
 		t.Fatal("global connection limit not restored")
 	}
 	if err := os.WriteFile(db.JsonDb.GlobalFilePath, []byte(`{"RateLimit":0}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	db.JsonDb.LoadGlobalFromJsonFile()
+	_ = db.JsonDb.LoadGlobalFromJsonFile()
 	if _, limit := model.GlobalConnections(); limit != 0 {
 		t.Fatal("old global configuration was not unlimited")
 	}

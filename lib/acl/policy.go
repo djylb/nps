@@ -64,6 +64,7 @@ func CompileSource(scope Scope, priority int, black, white []string, owner any) 
 			continue
 		}
 		l, err := geomatch.NewLive(c, lines)
+		//noinspection GoDfaErrorMayBeNotNil
 		l.SetTag(owner)
 		*list.live = l
 		errs = append(errs, err)
@@ -117,6 +118,7 @@ func CompileDest(mode int, rules string, owner any) (*Dest, error) {
 		return nil, nil
 	}
 	l, err := geomatch.NewLive(destCompiler(), geomatch.SplitLines(rules))
+	//noinspection GoDfaErrorMayBeNotNil
 	l.SetTag(owner)
 	if m == geomatch.ModeAllowlist {
 		return newDest(nil, l), ruleError(err)

@@ -394,7 +394,7 @@ func wantReset(t *testing.T, st *zmux.Stream, code uint64) {
 	}
 }
 
-func deflated(t *testing.T, b []byte, finish bool) []byte {
+func deflated(b []byte, finish bool) []byte {
 	var o bytes.Buffer
 	w, _ := flate.NewWriter(&o, 1)
 	_, _ = w.Write(b)
@@ -416,9 +416,9 @@ func TestCompressTruncationAndGarbage(t *testing.T) {
 		alg  uint64
 		body []byte
 	}{
-		"flate no final block": {wire.CompressFlate, deflated(t, []byte("abc"), false)},
+		"flate no final block": {wire.CompressFlate, deflated([]byte("abc"), false)},
 		"flate empty":          {wire.CompressFlate, nil},
-		"flate trailing":       {wire.CompressFlate, append(deflated(t, []byte("abc"), true), 1, 2, 3)},
+		"flate trailing":       {wire.CompressFlate, append(deflated([]byte("abc"), true), 1, 2, 3)},
 		"zstd cut":             {wire.CompressZstd, frame[:len(frame)-2]},
 		"zstd no frame":        {wire.CompressZstd, nil},
 		"snappy garbage":       {wire.CompressSnappy, []byte("not a snappy stream")},
@@ -435,7 +435,7 @@ func TestCompressTruncationAndGarbage(t *testing.T) {
 
 func TestCompressRatioLimit(t *testing.T) {
 	l := startLink(t, DialConfig{CompressLimits: CompressLimits{MaxRatio: 1}})
-	wantReset(t, rawOpen(t, l, wire.OpTCP, wire.CompressFlate, listenEcho(t), deflated(t, make([]byte, 20<<20), true)), wire.CodeCompressError)
+	wantReset(t, rawOpen(t, l, wire.OpTCP, wire.CompressFlate, listenEcho(t), deflated(make([]byte, 20<<20), true)), wire.CodeCompressError)
 }
 
 func TestCompressWindowLimit(t *testing.T) {

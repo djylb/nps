@@ -211,6 +211,7 @@ func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUr
 
 	switch tp {
 	case "tcp":
+		//noinspection GoResourceLeak
 		connection, err = conn.DialProxy(proxyUrl, server, timeout, localIP)
 	case "tls":
 		isTls = true
@@ -219,29 +220,36 @@ func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUr
 			ServerName:         sni,
 		}
 		conf.NextProtos = alpn
+		//noinspection GoResourceLeak
 		rawConn, err := conn.DialProxy(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		//noinspection GoResourceLeak
 		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
 		cancel()
 		if err != nil {
+			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
 		connection = tlsConn
 		tlsFp, tlsVerify = VerifyState(tlsConn.ConnectionState(), sni)
 	case "ws":
+		//noinspection GoResourceLeak
 		rawConn, err := conn.DialProxy(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
 		}
+		//noinspection GoResourceLeak
 		connection, err = conn.DialWS(rawConn, "ws://"+server+path, host, timeout)
 		if err != nil {
+			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
 	case "wss":
 		isTls = true
+		//noinspection GoResourceLeak
 		rawConn, err := conn.DialProxy(proxyUrl, server, timeout, localIP)
 		if err != nil {
 			return nil, "", serverInfo{}, err
@@ -249,11 +257,14 @@ func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUr
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		// this version's WebSocket runs over http/1.1 only
 		conf := &tls.Config{InsecureSkipVerify: true, ServerName: sni, NextProtos: []string{"http/1.1"}}
+		//noinspection GoResourceLeak
 		tlsConn, err := tlsconn.Client(ctx, rawConn, conf)
 		cancel()
 		if err != nil {
+			_ = rawConn.Close()
 			return nil, "", serverInfo{}, err
 		}
+		//noinspection GoResourceLeak
 		connection, err = conn.DialWS(tlsConn, "wss://"+server+path, host, timeout)
 		if err != nil {
 			_ = tlsConn.Close()
@@ -279,8 +290,10 @@ func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUr
 			_ = sess.CloseWithError(0, "")
 			return nil, "", serverInfo{}, fmt.Errorf("quic open stream error: %w", err)
 		}
+		//noinspection GoResourceLeak
 		connection = conn.NewQuicAutoCloseConn(stream, sess)
 	default:
+		//noinspection GoResourceLeak
 		sess, err = conn.DialKCPWithLocalIP(server, localIP)
 		if err == nil {
 			connection = sess

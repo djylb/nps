@@ -327,7 +327,7 @@ func wantPipeRefused(t *testing.T, ctx context.Context, s *clientSession, id uin
 func TestPeerPathChecks(t *testing.T) {
 	p := startPeer(t, false)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestPeerPathChecks(t *testing.T) {
 func TestPeerVisitorOfflineKeepsLink(t *testing.T) {
 	p := startPeer(t, false)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestPeerVisitorOfflineKeepsLink(t *testing.T) {
 	if p.a.linkOf(r.LinkID) == nil {
 		t.Fatal("link gone with the visitor")
 	}
-	again, err := p.outer.Get(ctx)
+	again, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestPeerVisitorOfflineKeepsLink(t *testing.T) {
 func TestOuterMayDisconnect(t *testing.T) {
 	p := startPeer(t, false)
 	ctx := peerCtx(t)
-	s, err := p.outer.Get(ctx)
+	s, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestOuterMayDisconnect(t *testing.T) {
 func TestPeerProviderGoneRevokes(t *testing.T) {
 	p := startPeer(t, false)
 	ctx := peerCtx(t)
-	vis, _ := p.outer.Get(ctx)
+	vis, _ := p.outer.get(ctx)
 	r := linkReply(t, ctx, vis)
 	_ = p.provider.Close()
 	waitUntil(t, "link dropped", func() bool { return p.a.linkOf(r.LinkID) == nil })
@@ -429,7 +429,7 @@ func TestPeerServerExit(t *testing.T) {
 	if got := p.exitTarget.Load(); got == nil || *got != "" {
 		t.Fatalf("server exit got target %v", got)
 	}
-	s, err := p.outer.Get(ctx)
+	s, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func concurrentEcho(t *testing.T, ctx context.Context, v *Visitor) int {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() { _ = c.Close() }()
+		t.Cleanup(func() { _ = c.Close() })
 		_ = c.SetDeadline(time.Now().Add(15 * time.Second))
 		data := bytes.Repeat([]byte{byte(i + 1), byte(i * 3), 7}, 4<<20/3)
 		wg.Go(func() {
@@ -511,7 +511,7 @@ func TestPeerLanesOnDirect(t *testing.T) {
 	if n < 2 || n > DefaultMaxLanes {
 		t.Fatalf("%d lanes", n)
 	}
-	for _, s := range v.live().zc.PipeStats() {
+	for _, s := range mustLive(v.live()).zc.PipeStats() {
 		if s.RecordMode != zmux.Bound || s.Carrier != zmux.CarrierQUIC {
 			t.Fatalf("pipe %+v", s.RecordMode)
 		}
@@ -538,7 +538,7 @@ func TestPeerRelayOneLane(t *testing.T) {
 	if n := concurrentEcho(t, ctx, v); n != 1 {
 		t.Fatalf("%d lanes on a relay", n)
 	}
-	for _, s := range v.live().zc.PipeStats() {
+	for _, s := range mustLive(v.live()).zc.PipeStats() {
 		if s.RecordMode != zmux.Sealed {
 			t.Fatalf("relay in %v", s.RecordMode)
 		}
@@ -558,7 +558,7 @@ func (*secureLie) ExportKeyingMaterial(string, []byte, int) ([]byte, error) {
 func TestPeerRelayRefusesBound(t *testing.T) {
 	p := startPeer(t, false)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,4 +684,12 @@ func TestPeerVisitorAsksForServerExit(t *testing.T) {
 			t.Fatalf("the grant did not allow the exit, yet the link is one")
 		}
 	}
+}
+
+// mustLive is p, which a test has seen connected.
+func mustLive[T any](p *T) *T {
+	if p == nil {
+		panic("no live session")
+	}
+	return p
 }

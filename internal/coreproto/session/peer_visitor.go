@@ -67,8 +67,8 @@ func (o *OuterSessions) live() *clientSession {
 	return nil
 }
 
-// Get returns the session, dialing it if there is none.
-func (o *OuterSessions) Get(ctx context.Context) (*clientSession, error) {
+// get returns the session, dialing it if there is none.
+func (o *OuterSessions) get(ctx context.Context) (*clientSession, error) {
 	if s := o.live(); s != nil {
 		return s, nil
 	}
@@ -91,7 +91,7 @@ func (o *OuterSessions) Get(ctx context.Context) (*clientSession, error) {
 // Dial implements coreapi.Dialer with the session itself: a host keeps the
 // session through it, and the visitors that share it keep theirs.
 func (o *OuterSessions) Dial(ctx context.Context) (coreapi.ClientSession, error) {
-	s, err := o.Get(ctx)
+	s, err := o.get(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 			v.cfg.Outer.setNeed(v, false)
 		}
 	}()
-	s, err := v.cfg.Outer.Get(ctx)
+	s, err := v.cfg.Outer.get(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +428,7 @@ func (l *visitorLink) start(ctx context.Context) error {
 }
 
 func (l *visitorLink) openRelay(ctx context.Context) (zmux.PipeIO, error) {
-	s, err := l.v.cfg.Outer.Get(ctx)
+	s, err := l.v.cfg.Outer.get(ctx)
 	if err != nil {
 		return zmux.PipeIO{}, err
 	}
@@ -476,7 +476,7 @@ func (r *refusalReader) SetReadDeadline(t time.Time) error {
 
 // punch makes a direct path and opens a pipe on it.
 func (l *visitorLink) punch(ctx context.Context, background bool) (zmux.PipeIO, error) {
-	s, err := l.v.cfg.Outer.Get(ctx)
+	s, err := l.v.cfg.Outer.get(ctx)
 	if err != nil {
 		return zmux.PipeIO{}, err
 	}

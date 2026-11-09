@@ -16,7 +16,7 @@ import (
 func visitorSession(t *testing.T, p *peerEnv) (context.Context, *clientSession) {
 	t.Helper()
 	ctx := peerCtx(t)
-	s, err := p.outer.Get(ctx)
+	s, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

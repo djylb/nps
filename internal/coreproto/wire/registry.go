@@ -107,6 +107,8 @@ const (
 )
 
 // Error codes (§10).
+//
+// noinspection GoUnusedConst
 const (
 	CodeOK                 uint64 = 0
 	CodeZmuxRejected       uint64 = 0x5a4d0002

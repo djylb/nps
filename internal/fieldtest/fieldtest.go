@@ -65,6 +65,7 @@ func fill(v reflect.Value, n *int, depth int, b bool) {
 		fill(e, n, depth+1, b)
 		m.SetMapIndex(k, e)
 		v.Set(m)
+	default: // the other kinds are left zero
 	}
 }
 

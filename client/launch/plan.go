@@ -135,14 +135,14 @@ func (p *Profile) clone() *Profile {
 }
 
 // Key identifies the connection: same vkey and the same set of addresses.
-func (p Profile) Key() string {
+func (p *Profile) Key() string {
 	k, _ := p.identity()
 	return k
 }
 
 // identity returns the key and a text that differs when the paths are
 // written differently.
-func (p Profile) identity() (key, paths string) {
+func (p *Profile) identity() (key, paths string) {
 	c := p.Config.CommonConfig
 	cands, err := connprofile.Parse(c.Server, c.Tp)
 	if err != nil {

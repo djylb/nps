@@ -138,6 +138,7 @@ func (s *clientSession) watch(ctx context.Context) {
 		case zmux.EventSessionResumed:
 			s.redialDone()
 			slogx.Emit(ctx, log, &logevent.SessionResumed, "server", s.d.Server(), "carrier", s.carrier, "dur_ms", time.Since(since).Milliseconds())
+		default: // the pipe events are not logged here
 		}
 	}
 }

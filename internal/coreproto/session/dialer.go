@@ -295,6 +295,7 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 			ca.pipe = zmux.NetPipe(nc)
 			return ca, nil
 		}
+		//noinspection GoResourceLeak
 		tc := tls.Client(nc, tlsCfg)
 		if err := tc.HandshakeContext(ctx); err != nil {
 			_ = nc.Close()

@@ -56,6 +56,7 @@ type Carrier = tunnelwire.Carrier
 // a mux over c. The carrier owns c's connection.
 func NewTunnel(c *conn.Conn, connType string, caps Caps, disconnectTime int, initiator bool) Carrier {
 	if caps.NativeQUIC {
+		//noinspection GoResourceLeak
 		if qc, ok := conn.CarrierOf(c.Conn); ok {
 			return qc
 		}

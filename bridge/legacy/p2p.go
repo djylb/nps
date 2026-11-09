@@ -38,9 +38,6 @@ const (
 	P2PCodeBusy        = control.P2PCodeBusy
 )
 
-// ErrP2PMessageSize is a message whose length prefix is out of range.
-var ErrP2PMessageSize = control.ErrP2PMessageSize
-
 // WriteP2P sends v as one message.
 func WriteP2P(w io.Writer, v any) error { return control.WriteP2P(w, v) }
 

@@ -614,7 +614,9 @@ func TestDiffAutoHttps(t *testing.T) {
 	e.addHost("auto.test", b.addr, func(h *model.Host) { h.AutoHttps = true })
 	// HTTPS requests are served.
 	r, err := e.getTLS("auto.test", "/", nil, false)
-	if err != nil || r.StatusCode != 200 || r.info(t)["tls"] != "false" {
+	if err != nil {
+		t.Fatal(err)
+	} else if r.StatusCode != 200 || r.info(t)["tls"] != "false" {
 		t.Fatalf("HTTPS: %v %v", r.Response, err)
 	}
 	// So are requests with the HTTP-only password, which is not passed on.
@@ -702,10 +704,14 @@ func TestDiffBasicAuth(t *testing.T) {
 		t.Fatalf("%d links, want 1", n)
 	}
 	// Over HTTPS as well.
-	if r, err := e.getTLS("auth.test", "/", nil, false); err != nil || r.StatusCode != 401 {
+	if r, err := e.getTLS("auth.test", "/", nil, false); err != nil {
+		t.Fatal(err)
+	} else if r.StatusCode != 401 {
 		t.Fatalf("HTTPS without credentials: %v %v", r.Response, err)
 	}
-	if r, err := e.getTLS("auth.test", "/", basicAuth("user", "pass"), true); err != nil || r.StatusCode != 200 || r.ProtoMajor != 2 {
+	if r, err := e.getTLS("auth.test", "/", basicAuth("user", "pass"), true); err != nil {
+		t.Fatal(err)
+	} else if r.StatusCode != 200 || r.ProtoMajor != 2 {
 		t.Fatalf("HTTP/2 with credentials: %v %v", r.Response, err)
 	}
 }
@@ -836,7 +842,9 @@ func TestDiffAutoCORS(t *testing.T) {
 		t.Fatalf("backend CORS overridden: %v", r.Header)
 	}
 	pre, err := e.do(http.MethodOptions, "cors.test", "/", http.Header{"Origin": {"http://o.example"}, "Access-Control-Request-Method": {"GET"}})
-	if err != nil || pre.StatusCode != http.StatusNoContent || pre.Header.Get("Access-Control-Allow-Origin") != "http://o.example" || pre.Header.Get("Access-Control-Allow-Methods") != "GET" {
+	if err != nil {
+		t.Fatal(err)
+	} else if pre.StatusCode != http.StatusNoContent || pre.Header.Get("Access-Control-Allow-Origin") != "http://o.example" || pre.Header.Get("Access-Control-Allow-Methods") != "GET" {
 		t.Fatalf("preflight: %v %v", pre.Response, err)
 	}
 	if r := e.mustGet("nocors.test", "/", http.Header{"Origin": {"http://o.example"}}); r.Header.Get("Access-Control-Allow-Origin") != "" {
@@ -985,7 +993,8 @@ func TestDiffUpstreamFailures(t *testing.T) {
 	// Errors of the client's limits are told apart.
 	b := newBackend(t, "a", false)
 	e.addHost("limit.test", b.addr, nil)
-	e.bridge.setFail(errors.New("Client 1 flow limit exceeded"))
+	flowMsg := "Client 1 flow limit exceeded"
+	e.bridge.setFail(errors.New(flowMsg))
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Client 1 flow limit exceeded\n" {
 		t.Fatalf("limit: %d %q", r.StatusCode, r.body)
 	}
@@ -993,7 +1002,8 @@ func TestDiffUpstreamFailures(t *testing.T) {
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "flow page" {
 		t.Fatalf("limit page: %d %q", r.StatusCode, r.body)
 	}
-	e.bridge.setFail(errors.New("Task 1 time limit exceeded"))
+	timeMsg := "Task 1 time limit exceeded"
+	e.bridge.setFail(errors.New(timeMsg))
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Task 1 time limit exceeded\n" {
 		t.Fatalf("time limit: %d %q", r.StatusCode, r.body)
 	}
@@ -1161,13 +1171,17 @@ func TestDiffHTTP3AndAltSvc(t *testing.T) {
 	want := `h3=":` + e.hp.Http3PortStr + `"; ma=86400`
 
 	r, err := e.getTLS("h3.test", "/", nil, false)
-	if err != nil || r.Header.Get("Alt-Svc") != want {
+	if err != nil {
+		t.Fatal(err)
+	} else if r.Header.Get("Alt-Svc") != want {
 		t.Fatalf("HTTPS Alt-Svc %q, %v", r.Header.Get("Alt-Svc"), err)
 	}
 	if r := e.mustGet("h3.test", "/", nil); r.Header.Get("Alt-Svc") != "" {
 		t.Fatal("Alt-Svc over plain HTTP")
 	}
-	if r, err := e.getTLS("h3compat.test", "/", nil, false); err != nil || r.Header.Get("Alt-Svc") != "" {
+	if r, err := e.getTLS("h3compat.test", "/", nil, false); err != nil {
+		t.Fatal(err)
+	} else if r.Header.Get("Alt-Svc") != "" {
 		t.Fatalf("compat Alt-Svc %q, %v", r.Header.Get("Alt-Svc"), err)
 	}
 	r, err = e.getH3("h3.test", "/q")

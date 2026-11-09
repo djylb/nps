@@ -136,7 +136,7 @@ func Reload(appliers ...Applier) Report {
 		}
 	}
 	if len(r.Failed) == 0 {
-		r.sortKeys()
+		sortReportKeys(&r)
 		return r
 	}
 	if prev != nil {
@@ -153,8 +153,8 @@ func Reload(appliers ...Applier) Report {
 	return r
 }
 
-// sortKeys sorts the keys of a report and drops repeats.
-func (r *Report) sortKeys() {
+// sortReportKeys sorts the keys of a report and drops repeats.
+func sortReportKeys(r *Report) {
 	for _, keys := range []*[]string{&r.Applied, &r.Restart} {
 		slices.Sort(*keys)
 		*keys = slices.Compact(*keys)

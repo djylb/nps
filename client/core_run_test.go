@@ -30,7 +30,7 @@ func (o *fakeOuter) Hold(keep bool, hosting func() bool) {
 	o.keep, o.hosting = keep, hosting
 }
 func (o *fakeOuter) Close() { o.closed.Add(1) }
-func (o *fakeOuter) Visitor(access []byte, mode string, idle time.Duration, serverExit bool) coreapi.Visitor {
+func (o *fakeOuter) Visitor(access []byte, _ string, _ time.Duration, _ bool) coreapi.Visitor {
 	o.visitor.Add(1)
 	return &fakeVisitor{access: string(access)}
 }

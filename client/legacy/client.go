@@ -62,6 +62,7 @@ func (s *Client) Start(ctx context.Context) {
 		return
 	}
 	stream = conn.SignalStream(stream)
+	//noinspection GoResourceLeak
 	sc := conn.NewConn(stream)
 	if err := SendType(sc, legacy.WorkMain, uuid); err != nil {
 		_ = stream.Close()

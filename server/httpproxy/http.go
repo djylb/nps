@@ -487,6 +487,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 	if backendReader.Buffered() > 0 {
 		pending := make([]byte, backendReader.Buffered())
 		if _, err := backendReader.Read(pending); err == nil {
+			//noinspection GoResourceLeak
 			netConn = netx.NewPrefixConn(netConn, pending)
 		} else {
 			proxyLog.Debug("backend buffered read failed", "route", host.Host, "err", err)
@@ -505,6 +506,7 @@ func (s *HttpServer) forwardTunnel(w http.ResponseWriter, r *http.Request, req *
 			_ = clientConn.Close()
 			return
 		}
+		//noinspection GoResourceLeak
 		clientConn = netx.NewPrefixConn(clientConn, pending)
 	}
 

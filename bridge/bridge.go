@@ -185,7 +185,11 @@ func (s *Bridge) DelClient(id int) {
 	// Before the sessions close by the way of their nodes, so that a client
 	// whose key no longer holds is told (§3.7).
 	c, err := s.store.GetClient(id)
-	s.core.Kick(id, err != nil || !c.Status)
+	gone := err != nil
+	if !gone {
+		gone = !c.Status
+	}
+	s.core.Kick(id, gone)
 	s.delClient(id, "deleted")
 }
 

@@ -46,6 +46,7 @@ func relay(client, visitor io.ReadWriteCloser, flows []Flow, task Entry, remote 
 	defer cancel(nil)
 	var budgets []byterate.Limiter
 	var counters []*byterate.Counter
+	var stops []func() bool
 	for _, fl := range flows {
 		budget := flowBudget(fl)
 		if budget == nil {
@@ -54,10 +55,14 @@ func relay(client, visitor io.ReadWriteCloser, flows []Flow, task Entry, remote 
 		budgets = append(budgets, budget)
 		counters = append(counters, fl.Traffic())
 		if _, expired := fl.Over(); !expired {
-			stop := budget.AfterExpiry(func() { cancel(errTimeLimit) })
-			defer stop()
+			stops = append(stops, budget.AfterExpiry(func() { cancel(errTimeLimit) }))
 		}
 	}
+	defer func() {
+		for _, stop := range stops {
+			stop()
+		}
+	}()
 	limit := byterate.NewHierarchy(budgets...)
 	out, in, _ = netx.Relay(ctx, client, visitor,
 		netx.WithRelayFlows(relayFlow(limit, counters, flows, task, remote, false), relayFlow(limit, counters, flows, task, remote, true)))

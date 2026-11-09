@@ -58,6 +58,7 @@ func (s *Bridge) openLink(clientId int, link *conn.Link, taskID int) (target net
 	// if the proxy type is local
 	if link.LocalProxy || clientId < 0 {
 		if link.ConnType == conn.LinkUDP5 {
+			//noinspection GoResourceLeak
 			serverSide, handlerSide := net.Pipe()
 			go conn.HandleUdp5(context.Background(), handlerSide, link.Option.Timeout, "")
 			return serverSide, nil

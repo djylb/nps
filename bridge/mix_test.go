@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -186,7 +187,7 @@ func (f *mixFixture) wantStall(t *testing.T, payload string) {
 	_ = c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	var b [1]byte
 	_, err := c.Read(b[:])
-	if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
+	if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
 		t.Fatalf("want a stall, got %v", err)
 	}
 }

@@ -58,6 +58,7 @@ func NewFlowConn(conn io.ReadWriteCloser, task, client Flow) *FlowConn {
 	if nc, ok := conn.(net.Conn); ok {
 		c = byterate.NewConn(nc, opts...)
 	} else {
+		//noinspection GoResourceLeak
 		c = netx.WrapConn(byterate.NewStream(conn, opts...), netx.InnermostConn(conn))
 	}
 	fc := &FlowConn{Conn: c, taskFlow: task, clientFlow: client}

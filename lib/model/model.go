@@ -937,7 +937,7 @@ func (c HealthCheck) Normalized() HealthCheck {
 func (t *Tunnel) HealthCheck() HealthCheck {
 	t.RLock()
 	defer t.RUnlock()
-	return t.HealthConfig.orDefault()
+	return healthOrDefault(t.HealthConfig)
 }
 
 // SetHealthCheck sets the entry's check.
@@ -952,7 +952,7 @@ func (t *Tunnel) SetHealthCheck(c HealthCheck) {
 func (s *Host) HealthCheck() HealthCheck {
 	s.RLock()
 	defer s.RUnlock()
-	return s.HealthConfig.orDefault()
+	return healthOrDefault(s.HealthConfig)
 }
 
 // SetHealthCheck sets the entry's check.
@@ -963,7 +963,7 @@ func (s *Host) SetHealthCheck(c HealthCheck) {
 	s.HealthConfig = &c
 }
 
-func (c *HealthCheck) orDefault() HealthCheck {
+func healthOrDefault(c *HealthCheck) HealthCheck {
 	if c == nil {
 		return HealthCheck{}.Normalized()
 	}

@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -70,7 +71,7 @@ func TestHealthGroupsNotSentToOldClient(t *testing.T) {
 	_ = npc.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	if n, err := npc.Read(make([]byte, 1)); n != 0 || err == nil {
 		t.Fatalf("old npc got bytes: n=%d err=%v", n, err)
-	} else if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
+	} else if ne, ok := errors.AsType[net.Error](err); !ok || !ne.Timeout() {
 		t.Fatalf("read: %v", err)
 	}
 	_ = npc.SetReadDeadline(time.Time{})

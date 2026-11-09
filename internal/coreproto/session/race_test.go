@@ -63,7 +63,9 @@ func TestRaceBlackholedFirstThenSecondAfterStagger(t *testing.T) {
 		return succeed(ctx)
 	}
 	s, c, err := d.raceSet(context.Background(), splitGroups(d))
-	if err != nil || s == nil || c.Carrier != "quic" {
+	if err != nil {
+		t.Fatal(err)
+	} else if s == nil || c.Carrier != "quic" {
 		t.Fatal(c.Carrier, err)
 	}
 	if second < raceStagger-10*time.Millisecond {
@@ -115,7 +117,9 @@ func TestRaceHolderFailureLetsTheNextGo(t *testing.T) {
 	}
 	go func() { time.Sleep(2 * raceStagger); close(holder) }()
 	_, c, err := d.raceSet(context.Background(), splitGroups(d))
-	if err != nil || c.Carrier != "quic" {
+	if err != nil {
+		t.Fatal(err)
+	} else if c.Carrier != "quic" {
 		t.Fatal(c.Carrier, err)
 	}
 }

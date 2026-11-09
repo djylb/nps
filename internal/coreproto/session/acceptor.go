@@ -453,6 +453,7 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	_ = c.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 	n, _ := io.ReadFull(c, head)
 	_ = c.SetReadDeadline(time.Time{})
+	//noinspection GoResourceLeak
 	nc := zmux.PrefixedConn(c, head[:n])
 	info, _ := ctx.Value(carrierKey{}).(carrierCtx)
 	if info.other != nil && info.other(nc, tlsState(info)) {

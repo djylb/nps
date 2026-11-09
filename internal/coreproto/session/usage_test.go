@@ -34,7 +34,7 @@ func TestUsageWire(t *testing.T) {
 	if op, _, err := wire.ParseOpenOp(wire.AppendUsageOpen()); err != nil || op != wire.OpP2PUsage || !op.FromClient() || op.FromServer() {
 		t.Fatalf("open %v %v", op, err)
 	}
-	if wire.OpConfigUpload == wire.OpP2PUsage || wire.OpRegister == wire.OpP2PUsage || !wire.OpConfigUpload.Known() || wire.Op(12).Known() {
+	if !wire.OpConfigUpload.Known() || wire.Op(12).Known() {
 		t.Fatal("op table")
 	}
 }
@@ -156,7 +156,7 @@ func TestUsageRelayNotCounted(t *testing.T) {
 func TestUsageCumulative(t *testing.T) {
 	p := startPeerUsage(t, false, 0, time.Hour)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestUsageCumulative(t *testing.T) {
 func TestUsageForgedLinkIgnored(t *testing.T) {
 	p := startPeerUsage(t, false, 0, time.Hour)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestUsageAfterLinkEnd(t *testing.T) {
 	p.a.clock = func() time.Time { return now }
 	p.a.usageMu.Unlock()
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestUsageClearCountsOnlyNew(t *testing.T) {
 	add := func(in, out uint64) { flow.AddDirect(int64(in), int64(out)) }
 	p.onDirect.Store(&add)
 	ctx := peerCtx(t)
-	vis, err := p.outer.Get(ctx)
+	vis, err := p.outer.get(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,13 +26,17 @@ func TestUpdateJournalNextToRunning(t *testing.T) {
 	}
 	assertContent(t, exe, script("0.35.9"))
 	assertContent(t, svcExe, script("0.35.9"))
-	if out, err := selfupdate.JournalFor(exe).Startup(context.Background(), updateBoots); err != nil || out.Status != selfupdate.StatusPending {
+	if out, err := selfupdate.JournalFor(exe).Startup(context.Background(), updateBoots); err != nil {
+		t.Fatal(err)
+	} else if out.Status != selfupdate.StatusPending {
 		t.Fatalf("journal next to %s: Startup() = (%v, %v), want pending", exe, out.Status, err)
 	}
 	if err := selfupdate.JournalFor(exe).Commit(context.Background()); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	if out, err := selfupdate.JournalFor(svcExe).Startup(context.Background(), updateBoots); err != nil || out.Status != selfupdate.StatusIdle {
+	if out, err := selfupdate.JournalFor(svcExe).Startup(context.Background(), updateBoots); err != nil {
+		t.Fatal(err)
+	} else if out.Status != selfupdate.StatusIdle {
 		t.Fatalf("journal next to %s: Startup() = (%v, %v), want idle", svcExe, out.Status, err)
 	}
 }

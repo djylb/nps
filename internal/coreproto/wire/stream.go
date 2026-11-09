@@ -106,6 +106,8 @@ var (
 var sessionOptionsSchema = newSchema(one(keySoResumeMs), one(keySoIdleS), one(keySoDeadS))
 
 // Record modes of CONFIG `record` (§5.1); 0 is "absent".
+//
+// noinspection GoUnusedConst
 const (
 	RecordDefault       uint64 = 0
 	RecordBound         uint64 = 1
@@ -359,6 +361,8 @@ const MaxUDPPacket = 1<<16 + 300
 const MaxUDPPayload = 65535
 
 // Values of scheduler_up (§5).
+//
+// noinspection GoUnusedConst
 const (
 	SchedulerAffinity uint64 = iota
 	SchedulerSessionAffinity

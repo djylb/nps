@@ -186,8 +186,14 @@ func busValue(v slog.Value) any {
 		return v.Duration().Milliseconds()
 	case slog.KindTime:
 		return v.Time().UTC().Format(time.RFC3339)
+	default:
+		return busAny(v.Any())
 	}
-	switch x := v.Any().(type) {
+}
+
+// busAny is the event bus value of what slog holds as any.
+func busAny(a any) any {
+	switch x := a.(type) {
 	case error:
 		return x.Error()
 	case fmt.Stringer:
