@@ -512,6 +512,13 @@ func (s *Server) AddTunnel(t *model.Tunnel) error {
 		slogx.Emit(context.Background(), log, &logevent.TunnelStarted, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t))
 		return nil
 	}
+	if t.IsVirtualBackend() {
+		// A virtual backend is what a client's session reports and listens
+		// nowhere, whatever port the record carries; a tunnel to it is a tcp
+		// tunnel with the target service://<id>.
+		log.Debug("virtual backend not started: it has no listener", "tunnel", t.Id, "client", clientID(t))
+		return nil
+	}
 	if b := s.ports.TestTunnelPort(t); !b && t.Mode != "httpHostServer" {
 		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", tunnelRoute(t), "tunnel", t.Id, "client", clientID(t), "port", t.Port, "reason", "in_use")
 		return errors.New("the port open error")

@@ -100,3 +100,23 @@ func TestUploadedTunnelGoesWhenOffline(t *testing.T) {
 	s.deleteClientEntries(c.Id, true)
 	assertGone(t, db, tn)
 }
+
+// A virtual backend never listens, even when its record carries a port; the
+// tcp tunnel generated for a file tunnel's port does.
+func TestVirtualBackendListensNowhere(t *testing.T) {
+	_, db, c, tn := generatedFixture(t, false)
+	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30})
+	t.Cleanup(func() { _ = s.Close() })
+	port := freeTunnelPort(t)
+	backend := &model.Tunnel{Id: db.NextTunnelID(), Mode: model.ModeService, Port: port, ServerIp: "127.0.0.1", Client: c, Status: true,
+		Flow: new(model.Flow), Target: &model.Target{TargetStr: tn.Target.TargetStr}}
+	if err := s.AddTunnel(backend); err != nil {
+		t.Fatalf("AddTunnel: %v", err)
+	}
+	if listening(port) || s.TunnelRunning(backend.Id) {
+		t.Fatal("a virtual backend listens")
+	}
+	if !listening(tn.Port) {
+		t.Fatal("the generated tcp tunnel stopped listening")
+	}
+}

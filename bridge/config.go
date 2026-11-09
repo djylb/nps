@@ -168,6 +168,14 @@ loop:
 				break loop
 			}
 
+			if t.Mode == model.ModeService {
+				log.Info("tunnel from npc config refused", "client", client.Id, "remark", t.Remark, "reason", "virtual_backend_listens_nowhere")
+				if !writeAddFail(c) {
+					fail = true
+					break loop
+				}
+				continue
+			}
 			if t.Mode == "file" {
 				log.Info("tunnel from npc config refused", "client", client.Id, "remark", t.Remark, "reason", "file_mode_unsupported")
 				if !writeAddFail(c) {
