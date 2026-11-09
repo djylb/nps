@@ -2111,8 +2111,4 @@
 		<zh-CN>留空跟随客户端的压缩设置；选择算法则只对这条使用该算法，“不压缩”则这条不压缩。</zh-CN>
 		<en-US>Empty follows the client's compression setting; an algorithm applies to this entry only, and Off disables compression for it.</en-US>
 	</lang>
-	<lang id="word-compressdefault">
-		<zh-CN>默认（snappy）</zh-CN>
-		<en-US>Default (snappy)</en-US>
-	</lang>
 </content>

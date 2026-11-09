@@ -50,8 +50,7 @@
                                 <div class="col-sm-12">
                                     <select class="form-control selectpicker" name="compress">
                                         <option {{if not .c.Cnf.Compress}}selected {{end}}langtag="word-compressoff" value="0"></option>
-                                        <option {{if and .c.Cnf.Compress (eq "" .c.Cnf.CompressAlg)}}selected {{end}}langtag="word-compressdefault" value="1"></option>
-                                        <option {{if and .c.Cnf.Compress (eq "snappy" .c.Cnf.CompressAlg)}}selected {{end}}value="snappy">snappy</option>
+                                        <option {{if and .c.Cnf.Compress (or (eq "" .c.Cnf.CompressAlg) (eq "snappy" .c.Cnf.CompressAlg))}}selected {{end}}value="snappy">snappy</option>
                                         <option {{if and .c.Cnf.Compress (eq "zstd" .c.Cnf.CompressAlg)}}selected {{end}}value="zstd">zstd</option>
                                         <option {{if and .c.Cnf.Compress (eq "flate" .c.Cnf.CompressAlg)}}selected {{end}}value="flate">flate</option>
                                     </select>
