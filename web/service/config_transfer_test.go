@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -132,6 +133,8 @@ func TestImportRefusalLeavesNothing(t *testing.T) {
 		"same key":     `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5"},{"Id":6,"VerifyKey":"k5"}]}`,
 		"bad rule":     `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5","BlackIpList":["not a rule!"]}]}`,
 		"limit":        `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5","MaxTunnelNum":1}],"hosts":[{"Host":"x.test","Client":{"Id":5}},{"Host":"y.test","Client":{"Id":5}}]}`,
+		"client form":  `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5","LaunchForm":"` + strings.Repeat("x", MaxLaunchForm+1) + `"}]}`,
+		"tunnel form":  `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5"}],"tunnels":[{"Id":1,"Mode":"secret","Client":{"Id":5},"LaunchForm":"` + strings.Repeat("x", MaxLaunchForm+1) + `"}]}`,
 		"self host":    `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5"}],"hosts":[{"Host":"x.test","Client":{"Id":5}},{"Host":"x.test","Client":{"Id":5}}]}`,
 	} {
 		if _, err := transfer.Import(ImportConfigInput{Data: []byte(input)}); err == nil {
@@ -299,5 +302,25 @@ func TestKickRefusesOfflineAndVirtualClients(t *testing.T) {
 	}
 	if len(r.disconnected) != 0 {
 		t.Fatal("disconnected what is not connected")
+	}
+}
+
+// An oversized start command form is refused with its own reason, as the
+// editor refuses it.
+func TestImportRefusesLargeLaunchForm(t *testing.T) {
+	db := useTempDb(t)
+	transfer := DefaultConfigTransferService{Backend: NewBackend(db, newTestServer(t, db))}
+	big := strings.Repeat("x", MaxLaunchForm+1)
+	for name, input := range map[string]string{
+		"client": `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5","LaunchForm":"` + big + `"}]}`,
+		"tunnel": `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5"}],"tunnels":[{"Id":1,"Mode":"secret","Client":{"Id":5},"LaunchForm":"` + big + `"}]}`,
+	} {
+		if _, err := transfer.Import(ImportConfigInput{Data: []byte(input)}); !errors.Is(err, ErrLaunchFormTooLarge) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	ok := `{"version":1,"clients":[{"Id":5,"VerifyKey":"k5","LaunchForm":"` + strings.Repeat("x", MaxLaunchForm) + `"}]}`
+	if _, err := transfer.Import(ImportConfigInput{Data: []byte(ok)}); err != nil {
+		t.Fatal(err)
 	}
 }

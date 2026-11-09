@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -88,13 +90,16 @@ func (s *session) common() (map[string]any, error) {
 	return out, nil
 }
 
-// connection is one server instance in a configuration file.
+// connection is one server instance in a configuration file. In "profiles"
+// its name is the key; Name is only written by a single instance at the top
+// level.
 type connection struct {
-	Name    string   `json:"name"`
-	VKey    string   `json:"vkey"`
-	Paths   []path   `json:"paths"`
-	Session *session `json:"session"`
-	Access  []Access `json:"access"`
+	Name       string   `json:"name"`
+	VKey       string   `json:"vkey"`
+	SourceAddr string   `json:"source_addr"`
+	Paths      []path   `json:"paths"`
+	Session    *session `json:"session"`
+	Access     []Access `json:"access"`
 }
 
 func (c connection) profile(trusted bool) (Profile, error) {
@@ -115,6 +120,9 @@ func (c connection) profile(trusted bool) (Profile, error) {
 	base, err := c.Session.common()
 	if err != nil {
 		return p, err
+	}
+	if c.SourceAddr != "" {
+		base["local_ip"] = c.SourceAddr
 	}
 	written := make(map[string]bool, len(base))
 	for k := range base {
@@ -143,11 +151,16 @@ func (c connection) profile(trusted bool) (Profile, error) {
 }
 
 // isDocument reports whether the keys are those of the configuration file
-// schema, a list of connections or a single one at the top level.
+// schema: "profiles" as an object, or one instance at the top level. A
+// "profiles" list is the file of an earlier version (compat.go).
 func isDocument(keys map[string]json.RawMessage) bool {
-	_, list := keys["connections"]
 	_, paths := keys["paths"]
-	return list || paths
+	return paths || isObject(keys["profiles"])
+}
+
+func isObject(raw json.RawMessage) bool {
+	raw = bytes.TrimSpace(raw)
+	return len(raw) > 0 && raw[0] == '{'
 }
 
 // parseDocument reads the configuration file schema from JSON text.
@@ -157,32 +170,45 @@ func parseDocument(text []byte, trusted bool) ([]Profile, error) {
 		return nil, fmt.Errorf("invalid launch JSON: %w", err)
 	}
 	var doc struct {
-		Connections []connection `json:"connections"`
+		Profiles map[string]connection `json:"profiles"`
 	}
-	if _, ok := keys["connections"]; ok {
+	if _, ok := keys["profiles"]; ok {
 		if len(keys) != 1 {
-			return nil, errors.New(`"connections" cannot be combined with other keys`)
+			return nil, errors.New(`"profiles" cannot be combined with other keys`)
 		}
 		if err := decodeStrict(text, &doc); err != nil {
 			return nil, err
+		}
+		if len(doc.Profiles) == 0 {
+			return nil, errors.New("launch content has no profiles")
 		}
 	} else {
 		var c connection
 		if err := decodeStrict(text, &c); err != nil {
 			return nil, err
 		}
-		doc.Connections = []connection{c}
+		doc.Profiles = map[string]connection{c.Name: c}
 	}
-	if len(doc.Connections) == 0 {
-		return nil, errors.New("launch content has no connections")
-	}
-	out := make([]Profile, len(doc.Connections))
-	for i, c := range doc.Connections {
+	out := make([]Profile, 0, len(doc.Profiles))
+	for _, name := range slices.Sorted(maps.Keys(doc.Profiles)) {
+		c := doc.Profiles[name]
+		if _, ok := keys["profiles"]; ok {
+			switch {
+			case name == "":
+				return nil, errors.New("a profile needs a name")
+			case c.Name != "":
+				return nil, fmt.Errorf("profile %q: the key is its name, remove \"name\"", name)
+			}
+			c.Name = name
+		}
 		p, err := c.profile(trusted)
 		if err != nil {
-			return nil, fmt.Errorf("connection %d: %w", i+1, err)
+			if name == "" {
+				return nil, err
+			}
+			return nil, fmt.Errorf("profile %q: %w", name, err)
 		}
-		out[i] = p
+		out = append(out, p)
 	}
 	return out, nil
 }

@@ -28,7 +28,7 @@ func TestParseLink(t *testing.T) {
 		{in: "npc://p%40ss%3A%2F%3B%2C%20w@a.com:1", vkey: "p@ss:/;, w", server: "tcp://a.com:1", carrier: "tcp"},
 		{in: "npc://k@a.com:1?type=tls&tier=1&weight=3&standby&count=2&alt=tcp://b.com:2&alt=" + url.QueryEscape("wss://c.com:443@front.com/ws?tier=2") + "#home", vkey: "k",
 			server: "tls://a.com:1?count=2&standby=&tier=1&weight=3|tcp://b.com:2|wss://c.com:443/ws?host=front.com&tier=2", name: "home", carrier: "tls"},
-		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&source=10.0.0.2", vkey: "k", server: "tcp://a.com:1", name: "nas", carrier: "tcp",
+		{in: "npc://k@a.com:1?name=nas&pin=" + pin + "&proxy=socks5://p:1&pipes=multi&session_max_lanes=4&source_addr=10.0.0.2", vkey: "k", server: "tcp://a.com:1", name: "nas", carrier: "tcp",
 			common: map[string]string{"new_protocol_pin": pin, "proxy_url": "socks5://p:1", "pipes": "multi", "session_max_lanes": "4", "local_ip": "10.0.0.2"}},
 		{in: "npc://k@a.com:1?future=1&exp=5", vkey: "k", server: "tcp://a.com:1", carrier: "tcp"},
 	}

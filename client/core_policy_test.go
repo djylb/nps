@@ -116,8 +116,8 @@ func TestPeerUDP5Policy(t *testing.T) {
 		t.Fatal("addressed UDP admitted without name_dest")
 	}
 	e = peerExitOf(t, spy, coreapi.LinkPolicy{NameDest: true, TargetType: coreapi.NetworkTCP}, nil)
-	if err := e.AdmitUDP5(); err == nil {
-		t.Fatal("addressed UDP admitted on a tcp task")
+	if err := e.AdmitUDP5(); err != nil {
+		t.Fatal(err)
 	}
 	e = peerExitOf(t, spy, coreapi.LinkPolicy{NameDest: true, Scope: "deny 10.0.0.0/8\ndeny bad.example"}, nil)
 	if err := e.AdmitUDP5(); err != nil {

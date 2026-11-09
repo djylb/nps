@@ -145,6 +145,9 @@ func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved s
 		if err := validateSourceLists(&c.SourceLists); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
+		if len(c.LaunchForm) > MaxLaunchForm {
+			return fmt.Errorf("%s: %w (more than %d bytes)", name, ErrLaunchFormTooLarge, MaxLaunchForm)
+		}
 	}
 	entries := make(map[int]int)
 	countEntry := func(owner *model.Client) (int, error) {
@@ -196,6 +199,9 @@ func (s DefaultConfigTransferService) validateBundle(b *ConfigBundle, reserved s
 		}
 		if err := validateSourceLists(&t.SourceLists); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
+		}
+		if len(t.LaunchForm) > MaxLaunchForm {
+			return fmt.Errorf("%s: %w (more than %d bytes)", name, ErrLaunchFormTooLarge, MaxLaunchForm)
 		}
 		rules, err := normalizeDestRules(t.DestAclRules)
 		if err != nil {

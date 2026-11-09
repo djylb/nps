@@ -25,13 +25,15 @@ import (
 //
 // The task's targets are only the default of a link naming no destination;
 // the limit is the task's destination list. Without a list the visitor may
-// name any destination; with one, those the list allows. A link naming no
-// destination on a task without targets fails.
+// name any destination, on any network; with one, those the list allows. A
+// link naming no destination on a task without targets fails. TargetType
+// says which network the default target serves and limits nothing else.
 type SecretPolicy struct {
 	// Targets are the task's target addresses, one per line, used when the
 	// visitor names none.
 	Targets string `json:"targets,omitempty"`
-	// TargetType is the task's network for its targets: tcp, udp or all.
+	// TargetType is the network the default targets are used for: tcp, udp
+	// or all. A destination the visitor names is not bound by it.
 	TargetType string `json:"target_type,omitempty"`
 	// NameDest lets the visitor name destinations, within the destination
 	// list when the task has one. nps always sets it (SecretPolicy above);
@@ -134,7 +136,12 @@ func (p *SecretPolicy) Admit(lk *conn.Link) (SecretRoute, error) {
 		return g, nil
 	}
 	g.ConnType = lk.ConnType
-	if !p.networkAllowed(lk.ConnType) || g.Host != "" && p.allows != nil && !p.allows(g.Host) {
+	if g.Host == "" && lk.ConnType != conn.LinkUDP5 {
+		// The default target: its network is the task's target type.
+		if !p.networkAllowed(lk.ConnType) {
+			return g, ErrSecretDestDenied
+		}
+	} else if g.Host != "" && p.allows != nil && !p.allows(g.Host) {
 		return g, ErrSecretDestDenied
 	}
 	if p.AllowLocal {
@@ -180,8 +187,7 @@ func (p *SecretPolicy) isTarget(host string) bool {
 	return false
 }
 
-// networkAllowed reports whether a named destination may use network: the
-// task's target type bounds it.
+// networkAllowed reports whether the task's default target serves network.
 func (p *SecretPolicy) networkAllowed(network string) bool {
 	switch p.TargetType {
 	case model.TargetTCP:

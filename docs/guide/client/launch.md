@@ -47,7 +47,7 @@ npc://<vkey>@host:port[/path]?type=tls&alpn=…&sni=…&host=…&alt=tcp://addr:
 | `pin` | 服务端密钥标识（32 位十六进制） |
 | `pipes`、`scheduler_up`、`session_max_lanes`、`session_resume_timeout`、`relay_idle`、`p2p_visitor_keep_server` | 会话设置，含义同 [npc.conf](/reference/npc-config.md) |
 | `proxy` | 连接服务端使用的代理 |
-| `source` | 出站连接的本地源地址（npc.conf 的 `local_ip`） |
+| `source_addr` | 出站连接的本地源地址（npc.conf 的 `local_ip`） |
 
 一条链接是一个服务端实例，可以有多条路径。`pipes=multi` 让路径同时各建管道，缺省时按顺序尝试。
 
@@ -81,14 +81,14 @@ npc -launch="npc://VKEY@nps.example.com:8025?type=tls&alpn=h2&count=2&pipes=mult
 
 ## 配置文件
 
-JSON 或 JSONC（可写注释和尾逗号）：
+JSON 或 JSONC（可写注释和尾逗号）。顶层 `profiles` 是以连接名为键的对象，键就是 `#名字`，也是 `-L` 的 `via` 的值：
 
 ```jsonc
 {
-  "connections": [
-    {
-      "name": "home",
+  "profiles": {
+    "home": {
       "vkey": "VKEY",
+      "source_addr": "192.168.1.5",
       "paths": [
         {"url": "tls://a.example.com:8025", "alpn": "h2", "count": 2},
         {"url": "wss://a.example.com:443/ws", "tier": 1, "weight": 2, "standby": false}
@@ -98,12 +98,15 @@ JSON 或 JSONC（可写注释和尾逗号）：
         {"access": "sshkey", "target": "10.0.0.5:22", "local_type": "tcp", "local_port": 2000, "local_ip": "127.0.0.1", "conn_mode": "auto"},
         {"access": "lan", "local_type": "mixed", "local_port": 1080, "auth": [{"user": "a", "pass": "b"}]}
       ]
-    }
-  ]
+    },
+    "office": {"vkey": "VKEY2", "paths": [{"url": "tcp://b.example.com:8024"}]}
+  }
 }
 ```
 
-单实例可以省略 `connections`，把字段放顶层。`paths` 的 `url` 必须带 scheme，字段还有 `sni`、`host`、`http`、`subprotocol`、`tier`、`weight`、`standby`、`dirs`、`count`、`kinds`。`session.max_pipes` 为 1 单管道，大于 1 多管道。
+单实例可以省略 `profiles`，把字段放顶层，连接名写 `name`（可省）。`paths` 的 `url` 必须带 scheme，字段还有 `sni`、`host`、`http`、`subprotocol`、`tier`、`weight`、`standby`、`dirs`、`count`、`kinds`。`session.max_pipes` 为 1 单管道，大于 1 多管道。`source_addr` 是出站连接的本地源地址，同启动链接的 `source_addr`。`profiles` 里不能再写 `name`。
+
+`-L` 可以挂到配置文件里的连接上：`-L="tcp://:3000?access=p&via=office"`，`via` 就是 `profiles` 的键；该连接自己的 `access` 照常保留，只有本地端口冲突才报错。
 
 多个 `-launch` 的内容合并：同一 vkey 和服务器的条目共用会话，会话设置写一处即可，写了不一致报错并指明来源；本地端口冲突报错并指明来源。
 

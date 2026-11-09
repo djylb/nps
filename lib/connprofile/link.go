@@ -32,7 +32,7 @@ type Link struct {
 	// Name is the #label, else the name parameter: the profile name.
 	Name string
 	// Common holds the other [common] keys of the link: pipes, proxy_url,
-	// local_ip (written source=), new_protocol_pin and the core settings.
+	// local_ip (written source_addr=), new_protocol_pin and the core settings.
 	Common map[string]string
 }
 
@@ -48,7 +48,7 @@ var commonKeys = map[string]string{
 	"pipes": "pipes", "scheduler_up": "scheduler_up", "session_max_lanes": "session_max_lanes",
 	"relay_idle": "relay_idle", "p2p_visitor_keep_server": "p2p_visitor_keep_server",
 	"session_resume_timeout": "session_resume_timeout", "proxy": "proxy_url",
-	"source": "local_ip", "pin": "new_protocol_pin",
+	"source_addr": "local_ip", "pin": "new_protocol_pin",
 }
 
 // accessKeys are settings of a local access, which a link does not describe.
@@ -136,7 +136,7 @@ func ParseLink(raw string) (Link, error) {
 			l.Common[ck] = v
 		case slices.Contains(accessKeys, key):
 			if key == "local_ip" {
-				return l, errors.New("launch link: the outbound address is written source=, a listen address belongs in -L")
+				return l, errors.New("launch link: the outbound address is written source_addr=, a listen address belongs in -L")
 			}
 			return l, fmt.Errorf("launch link: %s is not part of a connection, write it in -L", key)
 		default:

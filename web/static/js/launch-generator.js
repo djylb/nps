@@ -147,7 +147,6 @@
             });
             return o;
         })};
-        if (connName(form)) doc.name = connName(form);
         var session = {};
         if (form.pipes === 'multi') session.max_pipes = 2;
         if (trim(form.scheduler)) session.scheduler_up = trim(form.scheduler);
@@ -164,6 +163,8 @@
             }
             return o;
         });
+        // a named connection is a profile: its key is the name -L's via refers to
+        if (connName(form)) { var named = {}; named[connName(form)] = doc; return {profiles: named}; }
         return doc;
     }
 

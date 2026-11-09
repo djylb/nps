@@ -5,6 +5,7 @@
 .vscode/
 *.tar.gz
 *.json
+!client/launch/testdata/*.json
 *.tmp
 
 # geodata fetched at build time

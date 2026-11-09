@@ -54,7 +54,7 @@ func gz(t *testing.T, s string) []byte {
 }
 
 func TestResolveLink(t *testing.T) {
-	got, err := Resolve(context.Background(), "npc://a%3Bb@a:1?type=tls&source=10.0.0.1&session_max_lanes=3&pin=00112233445566778899aabbccddeeff#home")
+	got, err := Resolve(context.Background(), "npc://a%3Bb@a:1?type=tls&source_addr=10.0.0.1&session_max_lanes=3&pin=00112233445566778899aabbccddeeff#home")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,9 +81,33 @@ func TestResolveDocument(t *testing.T) {
 	if l[0].Password != "p" || l[0].Ip != "127.0.0.1" || l[0].ConnMode != "relay" || l[1].Type != "mixed" || l[1].Auth["v"] != "2" {
 		t.Fatalf("%+v %+v", l[0], l[1])
 	}
-	list := `{"connections":[{"vkey":"a","paths":[{"url":"tcp://a:1"}]},{"vkey":"b","paths":[{"url":"tcp://b:1"}]}]}`
-	if got, err = Resolve(context.Background(), "@"+writeFile(t, "l.json", list)); err != nil || len(got) != 2 {
+	profiles := `{"profiles":{"work":{"vkey":"b","source_addr":"10.0.0.3","paths":[{"url":"tcp://b:1"}]},
+		"home":{"vkey":"a","paths":[{"url":"tcp://a:1"}],"access":[{"access":"x","local_port":1}]}}}`
+	if got, err = Resolve(context.Background(), "@"+writeFile(t, "l.json", profiles)); err != nil || len(got) != 2 {
 		t.Fatalf("%v %+v", err, got)
+	}
+	if home, work := got[0], got[1]; home.Name != "home" || work.Name != "work" || home.Direct || !work.Direct ||
+		work.Config.CommonConfig.LocalIP != "10.0.0.3" || !work.written["local_ip"] || len(home.Config.LocalServer) != 1 {
+		t.Fatalf("%+v %+v", home, work)
+	}
+}
+
+// The key of a profile is its name, so "connections" of the first drafts and
+// a name inside a profile are refused.
+func TestProfilesRejects(t *testing.T) {
+	for name, body := range map[string]string{
+		"connections list": `{"connections":[{"vkey":"a","paths":[{"url":"tcp://a:1"}]}]}`,
+		"name inside":      `{"profiles":{"a":{"name":"b","vkey":"a","paths":[{"url":"tcp://a:1"}]}}}`,
+		"empty":            `{"profiles":{}}`,
+		"empty name":       `{"profiles":{"":{"vkey":"a","paths":[{"url":"tcp://a:1"}]}}}`,
+		"other keys":       `{"profiles":{"a":{"vkey":"a","paths":[{"url":"tcp://a:1"}]}},"vkey":"k"}`,
+		"unknown field":    `{"profiles":{"a":{"vkey":"a","source":"1.1.1.1","paths":[{"url":"tcp://a:1"}]}}}`,
+		"error names it":   `{"profiles":{"a":{"vkey":"a","paths":[]}}}`,
+	} {
+		_, err := Resolve(context.Background(), "@"+writeFile(t, "f", body))
+		if err == nil || name == "error names it" && !strings.Contains(err.Error(), `"a"`) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
@@ -147,7 +171,7 @@ func TestResolveRejects(t *testing.T) {
 		"no scheme":     `{"vkey":"k","paths":[{"url":"a:1"}]}`,
 		"mixed target":  `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"access":[{"access":"a","local_type":"mixed","target":"t:1"}]}`,
 		"auth on tcp":   `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"access":[{"access":"a","local_type":"tcp","auth":[{"user":"u"}]}]}`,
-		"connections+":  `{"connections":[],"vkey":"k"}`,
+		"profiles+":     `{"profiles":{},"vkey":"k"}`,
 		"old link":      "npc://k@a:1?access=pw",
 		"old ini local": "[common]\nserver_addr=a:1\nvkey=k\n[p2p_a]\npassword=pw\n",
 		"dup name":      `[{"name":"a","server":"a:1","vkey":"k"},{"name":"a","server":"b:1","vkey":"k"}]`,
@@ -414,7 +438,7 @@ func TestPack(t *testing.T) {
 
 func TestShow(t *testing.T) {
 	ctx := context.Background()
-	src := sources("npc://k%40x@a:1?type=tls&pipes=multi&source=1.1.1.1#home")
+	src := sources("npc://k%40x@a:1?type=tls&pipes=multi&source_addr=1.1.1.1#home")
 	loc := locals(t, "mixed://u:s3@127.0.0.1:1080?access=key", "tcp://:2?access=key&target=t:1&conn_mode=relay")
 	masked, err := Show(ctx, src, loc, false)
 	if err != nil {
@@ -429,7 +453,7 @@ func TestShow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(shown, `-launch="npc://k%40x@a:1?`) || !strings.Contains(shown, "source=1.1.1.1") || !strings.Contains(shown, "auth=u:s3") || !strings.Contains(shown, "access=key") {
+	if !strings.Contains(shown, `-launch="npc://k%40x@a:1?`) || !strings.Contains(shown, "source_addr=1.1.1.1") || !strings.Contains(shown, "auth=u:s3") || !strings.Contains(shown, "access=key") {
 		t.Fatal(shown)
 	}
 	// the printed form is accepted and means the same
@@ -664,5 +688,45 @@ func TestGeneratorSamples(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A -L reaches a profile of a configuration file by its key, whether or not
+// the profile has accesses of its own; only a local port clash is an error.
+func TestLocalViaFileProfile(t *testing.T) {
+	ctx := context.Background()
+	file := writeFile(t, "p.jsonc", `{"profiles":{
+		"home":{"vkey":"k","paths":[{"url":"tls://a:1"}]},
+		"work":{"vkey":"w","paths":[{"url":"tls://b:1"}],"access":[{"access":"x","local_port":2000,"local_ip":"127.0.0.1"}]}}}`)
+	load := func(ls ...string) (Plan, error) {
+		return NewComposer(sources("@"+file), locals(t, ls...)).Load(ctx)
+	}
+	plan, err := load("tcp://:3000?access=p&via=home")
+	if err != nil || len(plan.Profiles) != 2 {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	if home := plan.Profiles[0]; home.Name != "home" || home.Direct || home.Hosting || len(home.Config.LocalServer) != 1 {
+		t.Fatalf("home: %+v", home)
+	}
+	if work := plan.Profiles[1]; work.Direct || work.Hosting || len(work.Config.LocalServer) != 1 {
+		t.Fatalf("work: %+v", work)
+	}
+	// a profile with accesses of its own takes more, on other ports
+	if plan, err = load("tcp://:3000?access=p&via=work"); err != nil || len(plan.Profiles[1].Config.LocalServer) != 2 {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	// the same connection from a link without access runs as an ordinary client too
+	plan, err = NewComposer(sources("@"+file, "npc://k@a:1?type=tls"), locals(t, "tcp://:3000?access=p&via=home")).Load(ctx)
+	if err != nil || len(plan.Profiles) != 2 || !plan.Profiles[0].Hosting {
+		t.Fatalf("%v %+v", err, plan)
+	}
+	// only the local port clashes
+	for _, l := range []string{"tcp://127.0.0.1:2000?access=p&via=home", "tcp://:2000?access=p&via=work"} {
+		if _, err = load(l); err == nil || !strings.Contains(err.Error(), "port 2000") {
+			t.Errorf("%s: %v", l, err)
+		}
+	}
+	if _, err = load("tcp://:3000?access=p&via=none"); err == nil || !strings.Contains(err.Error(), "none") {
+		t.Fatal(err)
 	}
 }
