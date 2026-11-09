@@ -288,7 +288,9 @@
             };
             return '<div class="lg-tools">' + b('up', 'fa-arrow-up', 'lg-up', i === 0) + b('down', 'fa-arrow-down', 'lg-down', i === n - 1) + b('del', 'fa-trash', 'lg-delete', false) + '</div>';
         }
-        function advanced(obj, inner) { return '<details class="lg-adv" data-adv="1"' + (open.get(obj) ? ' open' : '') + '><summary><span langtag="lg-advanced"></span></summary><div class="lg-grid">' + inner + '</div></details>'; }
+        // advanced is the folded part of a card; what it is (kind, index) is on the
+        // element, so that its state is kept for the object the card shows.
+        function advanced(obj, kind, i, inner) { return '<details class="lg-adv" data-adv="' + kind + '" data-i="' + i + '"' + (open.get(obj) ? ' open' : '') + '><summary><span langtag="lg-advanced"></span></summary><div class="lg-grid">' + inner + '</div></details>'; }
 
         function pathCard(p, i) {
             var d = ctx._def[p.carrier] || {}, at = 'p' + i + '.', b = 'paths.' + i + '.', multi = form.paths.length > 1, c = p.carrier;
@@ -304,7 +306,7 @@
             adv += plain(b + 'weight', p.weight, at + 'weight', 'weight', '0') + plain(b + 'count', p.count, at + 'count', 'count', '1')
                 + plain(b + 'dirs', p.dirs, at + 'dirs', 'dirs', 'bidi');
             adv += '<div class="lg-field"><label><input type="checkbox" data-bind="' + b + 'standby"' + (p.standby ? ' checked' : '') + '> <span langtag="lg-standby"></span></label></div>';
-            return '<div class="lg-card">' + toolbar('path', i, form.paths.length) + '<div class="lg-grid">' + top + '</div>' + advanced(p, adv) + '</div>';
+            return '<div class="lg-card">' + toolbar('path', i, form.paths.length) + '<div class="lg-grid">' + top + '</div>' + advanced(p, 'path', i, adv) + '</div>';
         }
         function plain(bind, value, at, name, ph) {
             return '<div class="lg-field"><label class="control-label font-bold">' + esc(name) + '</label>' + input(bind, value, ph) + '<div class="text-danger small" data-err="' + at + '"></div></div>';
@@ -331,7 +333,7 @@
                     + '<button type="button" class="btn btn-outline btn-primary btn-xs" data-act="auth-add" data-i="' + i + '"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-account"></span></button></div>';
             }
             return '<div class="lg-card">' + toolbar('access', i, form.access.length) + '<div class="lg-grid">' + top + '</div>'
-                + '<div class="text-warning small" data-note="' + i + '"></div>' + advanced(a, adv) + '</div>';
+                + '<div class="text-warning small" data-note="' + i + '"></div>' + advanced(a, 'access', i, adv) + '</div>';
         }
         function langDefault() {
             var l = typeof languages !== 'undefined' && languages.content && languages.content['lg-default'];
@@ -340,7 +342,28 @@
         function runSelect() { return select('run', form.run, [['temp', 'lg-run-temp'], ['service', 'lg-run-service'], ['docker', 'lg-run-docker']]); }
         function osSelect() { return select('os', form.os, [['linux', '', 'Linux'], ['macos', '', 'macOS'], ['cmd', '', 'Windows cmd'], ['powershell', '', 'PowerShell']]); }
 
-        function render() {
+        // focusKey names the control that has the focus, so that the page drawn
+        // again puts it back.
+        function focusKey() {
+            var a = document.activeElement;
+            if (!a || a === document.body || !$root[0].contains(a)) return null;
+            var sel = a.hasAttribute('data-bind') ? '[data-bind="' + a.getAttribute('data-bind') + '"]'
+                : a.hasAttribute('data-act') ? '[data-act="' + a.getAttribute('data-act') + '"][data-i="' + a.getAttribute('data-i') + '"]' + (a.hasAttribute('data-j') ? '[data-j="' + a.getAttribute('data-j') + '"]' : '')
+                : a.hasAttribute('data-copy') ? '[data-copy="' + a.getAttribute('data-copy') + '"]' : null;
+            if (!sel) return null;
+            var range = typeof a.selectionStart === 'number' && /^(text|search|url|tel|password)$/.test(a.type) ? [a.selectionStart, a.selectionEnd] : null;
+            return {sel: sel, range: range};
+        }
+        function restoreFocus(key) {
+            if (!key) return;
+            var el;
+            [].concat(key.sel).some(function (sel) { el = $root.find(sel).filter(':not(:disabled)')[0]; return el; });
+            if (!el) return;
+            el.focus({preventScroll: true});
+            if (key.range && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(key.range[0], key.range[1]); } catch (e) { /* not a text control */ } }
+        }
+        function render(focus) {
+            var kept = focus === undefined ? focusKey() : focus;
             var html = '<form class="form-horizontal resource-form" onsubmit="return false"><div class="lg-grid">'
                 + field('lg-run', runSelect()) + field('lg-os', osSelect());
             if (form.run !== 'docker') {
@@ -350,7 +373,7 @@
             html += '</div>';
             html += '<h4 class="lg-title"><span langtag="lg-paths"></span></h4>' + form.paths.map(pathCard).join('')
                 + '<button type="button" class="btn btn-outline btn-primary btn-sm" data-act="path-add"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-path"></span></button>'
-                + '<details class="lg-adv" data-adv="form"' + (open.get(form) ? ' open' : '') + '><summary><span langtag="lg-advanced"></span></summary><div class="lg-grid">'
+                + '<details class="lg-adv" data-adv="form" data-i="0"' + (open.get(form) ? ' open' : '') + '><summary><span langtag="lg-advanced"></span></summary><div class="lg-grid">'
                 + field('lg-usage', select('pipes', form.pipes, [['single', 'lg-mode-single'], ['multi', 'lg-mode-multi']]))
                 + field('lg-scheduler', select('scheduler', form.scheduler, SCHEDULERS.map(function (s) { return [s, s ? '' : 'lg-default', s]; })))
                 + '<div class="lg-field"><label><input type="checkbox" data-bind="named"' + (form.named ? ' checked' : '') + '> <span langtag="lg-named"></span></label>'
@@ -364,6 +387,7 @@
             $root.html(html);
             refresh();
             if ($.fn.setLang) $('body').setLang('#launch-root');
+            restoreFocus(kept);
         }
         function outputBlock(id, label) {
             return '<div class="lg-output"><div class="lg-output-head"><b langtag="' + label + '"></b> <button type="button" class="btn btn-outline btn-primary btn-xs" data-copy="' + id + '"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></div><pre id="lg-out-' + id + '" tabindex="0"></pre></div>';
@@ -414,15 +438,16 @@
             }
             refresh();
         });
-        $root.on('toggle', 'details[data-adv]', function () {
-            var el = this, m = el.getAttribute('data-adv');
-            var obj = m === 'form' ? form : null;
-            if (!obj) {
-                var cards = $(el).closest('.lg-card').prevAll('.lg-card').length;
-                obj = $(el).closest('.lg-card').find('[data-bind^="paths."]').length ? form.paths[cards] : form.access[cards];
-            }
+        // toggle does not bubble: it is caught on the way down. The state is kept
+        // for the object of the card, so that drawing the page again leaves every
+        // advanced part as the user left it.
+        $root[0].addEventListener('toggle', function (ev) {
+            var el = ev.target;
+            if (!el.matches || !el.matches('details[data-adv]') || !el.isConnected) return;
+            var kind = el.getAttribute('data-adv'), i = +el.getAttribute('data-i');
+            var obj = kind === 'form' ? form : kind === 'path' ? form.paths[i] : form.access[i];
             if (obj) open.set(obj, el.open);
-        });
+        }, true);
         function move(list, i, d) { var t = list[i]; list[i] = list[i + d]; list[i + d] = t; }
         function post(data, done) {
             $.post(ctx.base + '/' + ctx.save, data, function (res) {
@@ -432,21 +457,22 @@
         }
         $root.on('click', '[data-act]', function () {
             var act = this.getAttribute('data-act'), i = +this.getAttribute('data-i'), j = +this.getAttribute('data-j');
+            var focus;
             switch (act) {
                 case 'path-add': form.paths.push(newPath(ctx._primary)); break;
                 case 'path-del': if (form.paths.length > 1) form.paths.splice(i, 1); break;
-                case 'path-up': move(form.paths, i, -1); break;
-                case 'path-down': move(form.paths, i, 1); break;
+                case 'path-up': move(form.paths, i, -1); focus = {sel: ['[data-act="path-up"][data-i="' + (i - 1) + '"]', '[data-act="path-down"][data-i="' + (i - 1) + '"]']}; break;
+                case 'path-down': move(form.paths, i, 1); focus = {sel: ['[data-act="path-down"][data-i="' + (i + 1) + '"]', '[data-act="path-up"][data-i="' + (i + 1) + '"]']}; break;
                 case 'access-add': form.access.push(newAccess(ctx)); break;
                 case 'access-del': form.access.splice(i, 1); break;
-                case 'access-up': move(form.access, i, -1); break;
-                case 'access-down': move(form.access, i, 1); break;
+                case 'access-up': move(form.access, i, -1); focus = {sel: ['[data-act="access-up"][data-i="' + (i - 1) + '"]', '[data-act="access-down"][data-i="' + (i - 1) + '"]']}; break;
+                case 'access-down': move(form.access, i, 1); focus = {sel: ['[data-act="access-down"][data-i="' + (i + 1) + '"]', '[data-act="access-up"][data-i="' + (i + 1) + '"]']}; break;
                 case 'auth-add': form.access[i].auth.push({user: '', pass: ''}); open.set(form.access[i], true); break;
                 case 'auth-del': form.access[i].auth.splice(j, 1); break;
                 case 'save': post({id: ctx.id, form: JSON.stringify(form)}); return;
                 case 'restore': post({id: ctx.id, form: ''}, function () { form = defaultForm(ctx); render(); }); return;
             }
-            render();
+            render(focus);
         });
         $root.on('click', '[data-copy]', function () { copyText($('#lg-out-' + this.getAttribute('data-copy')).text()); });
         render();
