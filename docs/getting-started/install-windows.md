@@ -86,7 +86,7 @@ certutil -addstore Root root-ca.cer
 
 ```bat
 npc.exe stop
-npc.exe -server="nps.example.com:8025" -vkey="你的vkey" -type="tls"
+npc.exe -server="tls://nps.example.com:8025" -vkey="你的vkey"
 REM 确认连接成功后按 Ctrl+C 退出，再执行以下命令
 npc.exe start
 sc query Npc

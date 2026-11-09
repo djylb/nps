@@ -42,7 +42,7 @@ func TestManagementPageCommonDataMap(t *testing.T) {
 	if data["bridgeType"] != "tcp" || data["addr"] != "127.0.0.1:8024" || data["proxyPort"] != "8080" {
 		t.Fatalf("ManagementPageCommonData.Map() = %#v", data)
 	}
-	if data["win"] != ".exe" || data["quic_addr"] != "127.0.0.1:8025/nps" {
+	if data["win"] != ".exe" || data["quic_query"] != "?alpn=nps" {
 		t.Fatalf("ManagementPageCommonData.Map() should include optional fields, got %#v", data)
 	}
 }
@@ -59,5 +59,19 @@ func TestManagementPageServerUpdateOnlyForAdmin(t *testing.T) {
 		if got != c.want {
 			t.Errorf("admin=%v update=%v: allow_server_update = %v, want %v", c.admin, c.update, got, c.want)
 		}
+	}
+}
+
+// IPv6 addresses are bracketed so that the start commands built from the
+// address and port are valid URLs.
+func TestManagementPageIPv6Hosts(t *testing.T) {
+	data := ManagementPageCommonData{TCPIP: "2001:db8::1", TLSIP: "[::1]", WSIP: "nps.example.com", QUICIP: "fe80::1"}.Map()
+	for k, want := range map[string]string{"tcp_ip": "[2001:db8::1]", "tls_ip": "[::1]", "ws_ip": "nps.example.com", "quic_ip": "[fe80::1]"} {
+		if data[k] != want {
+			t.Errorf("%s = %v, want %s", k, data[k], want)
+		}
+	}
+	if _, ok := data["kcp_ip"]; ok {
+		t.Error("kcp_ip is no longer provided")
 	}
 }

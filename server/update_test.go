@@ -11,6 +11,7 @@ import (
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
+	"github.com/djylb/nps/lib/model"
 )
 
 // updateServer is a server holding client 1, connected through one npc of
@@ -51,7 +52,7 @@ func TestListClientsCanUpdate(t *testing.T) {
 		{"newer than latest", "0.35.1", "0.35.0", false, false},
 		{"npc without the capability", "0.34.8", "0.35.0", false, false},
 		{"latest unknown, older than the server", "0.34.9", "", false, true},
-		{"remote update disabled", "0.34.9", "0.35.0", true, false},
+		{"server self-update disabled", "0.34.9", "0.35.0", true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			s := updateServer(t, c.vs, c.latest, c.disabled)
@@ -70,10 +71,11 @@ func TestListClientsCanUpdate(t *testing.T) {
 	}
 }
 
-func TestRequestClientUpdateDisabled(t *testing.T) {
+// Disabling the web update of the server leaves client updates alone.
+func TestRequestClientUpdateIgnoresSelfUpdateSwitch(t *testing.T) {
 	s := updateServer(t, "0.34.9", "0.35.0", true)
-	if _, err := s.RequestClientUpdate(1); !errors.Is(err, ErrUpdateDisabled) {
-		t.Fatalf("err = %v, want ErrUpdateDisabled", err)
+	if _, err := s.RequestClientUpdate(1); errors.Is(err, ErrUpdateDisabled) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -88,5 +90,24 @@ func TestUpdateSelfDisabled(t *testing.T) {
 	}
 	if s.updating.Load() {
 		t.Fatal("a refused update left the update marked as running")
+	}
+}
+
+// Only a connected client with shaping on lists shaping statistics.
+func TestClientShapedListing(t *testing.T) {
+	s := updateServer(t, "0.34.9", "0.35.0", false)
+	for _, shaping := range []bool{false, true} {
+		v, _ := s.db.JsonDb.Clients.Load(1)
+		v.(*model.Client).Cnf = &model.Config{Shaping: shaping}
+		list, _ := s.ListClients(0, 10, "", "Id", "asc", 0)
+		for _, c := range list {
+			// the node of updateServer has a signal connection only: no core session
+			if c.Shaped != nil {
+				t.Fatalf("shaping %v: client %d lists stats without a core session", shaping, c.Id)
+			}
+		}
+	}
+	if s.clientShaped(&model.Client{Id: 1, Cnf: &model.Config{}}) != nil {
+		t.Fatal("stats of a client without shaping")
 	}
 }

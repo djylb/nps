@@ -170,24 +170,35 @@
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: ' + (row.Cnf.Compress ? (row.Cnf.CompressAlg ? row.Cnf.CompressAlg : 'snappy') : '<span langtag="word-compressoff"></span>') + '&emsp;'
                 + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
+            transport += shaped
+            var shaped = ''
+            if (row.Cnf && row.Cnf.Shaping) {
+                var st = row.Shaped
+                shaped = '<b langtag="word-shapingstats"></b>: '
+                    + '<b langtag="word-shapingactive"></b> <span langtag="word-' + (st ? 'yes' : 'no') + '"></span>&emsp;'
+                if (st) {
+                    shaped += '<b langtag="word-shapingwire"></b> ' + changeunit(st.Wire || 0) + '&emsp;'
+                        + '<b langtag="word-shapingstall"></b> ' + (st.StallMs || 0) + ' ms&emsp;'
+                        + '<b langtag="word-shapinginjected"></b> ' + (st.Injected || 0) + '&emsp;'
+                        + '<b langtag="word-shapingfaults"></b> ' + (st.Faults || 0) + '&emsp;'
+                }
+                shaped += '<br/><br/>'
+            }
             var commands = ''
                 {{if index . "tcp_p"}}
-                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.tcp_ip}}:{{.tcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tcp\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if index . "kcp_p"}}
-                + '<b langtag="word-commandclient-kcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.kcp_ip}}:{{.kcp_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"kcp\"</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"tcp://{{.tcp_ip}}:{{.tcp_p}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "tls_p"}}
-                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.tls_ip}}:{{.tls_p}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"tls\"</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"tls://{{.tls_ip}}:{{.tls_p}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "quic_p"}}
-                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.quic_addr}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"quic\"</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"quic://{{.quic_ip}}:{{.quic_p}}{{.quic_query}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "ws_p"}}
-                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.ws_ip}}:{{.ws_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"ws\"</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"ws://{{.ws_ip}}:{{.ws_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
                 {{if index . "wss_p"}}
-                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"{{.wss_ip}}:{{.wss_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\" -type=\"wss\"</code>&emsp;<br/><br/>"
+                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "./npc{{.win}} -server=\"wss://{{.wss_ip}}:{{.wss_p}}{{.ws_path}}\" -vkey=\"" + row.VerifyKey + "\"</code>&emsp;<br/><br/>"
                 {{end}}
             return '<div class="resource-details">'
                 + resourceDetailSection('section-status', status)

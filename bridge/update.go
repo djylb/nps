@@ -73,6 +73,21 @@ func (s *Bridge) ClientCanUpdate(id int) bool {
 	return false
 }
 
+// ClientShapingStats sums the shaping statistics of the core sessions of
+// client id; ok is false when none is connected.
+func (s *Bridge) ClientShapingStats(id int) (st coreapi.ShapingStats, ok bool) {
+	v, found := s.Client.Load(id)
+	if !found {
+		return st, false
+	}
+	for _, node := range v.(*Client).nodeList() {
+		if cs := node.coreSession(); cs != nil {
+			st, ok = st.Add(cs.ShapingStats()), true
+		}
+	}
+	return st, ok
+}
+
 // RequestClientUpdate asks every connected npc of client id that can be
 // updated (see ClientCanUpdate) to update itself to the latest release. It
 // returns how many were asked.

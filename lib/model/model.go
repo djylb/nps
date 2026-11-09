@@ -299,6 +299,16 @@ type Config struct {
 	Shaping bool `json:",omitempty"`
 }
 
+// ShapedStats are the shaping statistics of a client, as listed.
+type ShapedStats struct {
+	Wire          uint64 // wire bytes added
+	StallMs       int64  // waits applied, in milliseconds
+	Injected      uint64 // records sent for shaping only
+	Clamped       uint64
+	InjectDropped uint64
+	Faults        uint64 // shaper calls that failed
+}
+
 // Tunnel and host override of the compression of a client; "" follows the
 // client.
 const (
@@ -419,30 +429,33 @@ const (
 )
 
 type Client struct {
-	Cnf             *Config
-	Id              int        // id
-	VerifyKey       string     // verify key
-	Mode            string     // bridge mode
-	Addr            string     // client ip
-	LocalAddr       string     // client local ip
-	Remark          string     // remark
-	Status          bool       // allowed to connect
-	IsConnect       bool       // connected now
-	CanUpdate       bool       `json:",omitempty"` // a connected npc can be updated from the web; set when listed
-	RateLimit       int        // rate limit (KB/s)
-	Flow            *Flow      // flow
-	ExportFlow      FlowTotal  // outbound flow of the client's hosts and tasks
-	InletFlow       FlowTotal  // inbound flow of the client's hosts and tasks
-	Rate            *rate.Rate // rate limiter
-	NoStore         bool       // do not store to file
-	NoDisplay       bool       // do not display on web
-	KeyKind         KeyKind    `json:"-"` // what the vkey may do on the bridge
-	MaxConn         int        // max concurrent connections
-	NowConn         int32      // legacy JSON snapshot; use CurrentConnections at runtime
-	WebUserName     string     // web username
-	WebPassword     string     // web password
-	WebTotpSecret   string     // web totp secret
-	ConfigConnAllow bool       // allowed by config file
+	Cnf       *Config
+	Id        int    // id
+	VerifyKey string // verify key
+	Mode      string // bridge mode
+	Addr      string // client ip
+	LocalAddr string // client local ip
+	Remark    string // remark
+	Status    bool   // allowed to connect
+	IsConnect bool   // connected now
+	CanUpdate bool   `json:",omitempty"` // a connected npc can be updated from the web; set when listed
+	// Shaped sums the shaping statistics of the connected npc in the
+	// direction the server sends; set when listed for a client with shaping.
+	Shaped          *ShapedStats `json:",omitempty"`
+	RateLimit       int          // rate limit (KB/s)
+	Flow            *Flow        // flow
+	ExportFlow      FlowTotal    // outbound flow of the client's hosts and tasks
+	InletFlow       FlowTotal    // inbound flow of the client's hosts and tasks
+	Rate            *rate.Rate   // rate limiter
+	NoStore         bool         // do not store to file
+	NoDisplay       bool         // do not display on web
+	KeyKind         KeyKind      `json:"-"` // what the vkey may do on the bridge
+	MaxConn         int          // max concurrent connections
+	NowConn         int32        // legacy JSON snapshot; use CurrentConnections at runtime
+	WebUserName     string       // web username
+	WebPassword     string       // web password
+	WebTotpSecret   string       // web totp secret
+	ConfigConnAllow bool         // allowed by config file
 	MaxTunnelNum    int
 	Version         string
 	SourceLists

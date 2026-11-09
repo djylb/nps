@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 )
 
@@ -12,6 +13,13 @@ const updateReplyTimeout = 10 * time.Second
 
 // CanUpdate implements coreapi.Session.
 func (s *serverSession) CanUpdate() bool { return s.t.hello.HasCap(wire.CapUpdate) }
+
+// ShapingStats implements coreapi.Session.
+func (s *serverSession) ShapingStats() coreapi.ShapingStats {
+	st := s.zc.ShapingStats()
+	return coreapi.ShapingStats{Wire: st.WireSpent, Stall: st.StallSpent, Injected: st.Injected,
+		Clamped: st.Clamped, InjectDropped: st.InjectDropped, Faults: st.Faults}
+}
 
 // RequestUpdate implements coreapi.Session (§6).
 func (s *serverSession) RequestUpdate(ctx context.Context) error {

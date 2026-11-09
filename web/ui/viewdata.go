@@ -1,6 +1,10 @@
 package ui
 
-import "html/template"
+import (
+	"html/template"
+	"net/url"
+	"strings"
+)
 
 type LoginPageCommonData struct {
 	WebBaseURL     string
@@ -43,7 +47,6 @@ type ManagementPageCommonData struct {
 	WindowsSuffix string
 	TCPIP         string
 	TCPPort       string
-	KCPIP         string
 	KCPPort       string
 	TLSIP         string
 	TLSPort       string
@@ -84,25 +87,22 @@ func (d ManagementPageCommonData) Map() map[string]any {
 		data["win"] = d.WindowsSuffix
 	}
 	if d.TCPIP != "" {
-		data["tcp_ip"] = d.TCPIP
+		data["tcp_ip"] = urlHost(d.TCPIP)
 	}
 	if d.TCPPort != "" {
 		data["tcp_p"] = d.TCPPort
-	}
-	if d.KCPIP != "" {
-		data["kcp_ip"] = d.KCPIP
 	}
 	if d.KCPPort != "" {
 		data["kcp_p"] = d.KCPPort
 	}
 	if d.TLSIP != "" {
-		data["tls_ip"] = d.TLSIP
+		data["tls_ip"] = urlHost(d.TLSIP)
 	}
 	if d.TLSPort != "" {
 		data["tls_p"] = d.TLSPort
 	}
 	if d.QUICIP != "" {
-		data["quic_ip"] = d.QUICIP
+		data["quic_ip"] = urlHost(d.QUICIP)
 	}
 	if d.QUICPort != "" {
 		data["quic_p"] = d.QUICPort
@@ -110,23 +110,32 @@ func (d ManagementPageCommonData) Map() map[string]any {
 	if d.QUICALPN != "" {
 		data["quic_alpn"] = d.QUICALPN
 	}
-	if d.QUICAddr != "" {
-		data["quic_addr"] = d.QUICAddr
+	// the ALPN of the display address "host:port/alpn", as a URL query
+	if _, alpn, ok := strings.Cut(d.QUICAddr, "/"); ok && alpn != "" {
+		data["quic_query"] = "?alpn=" + url.QueryEscape(alpn)
 	}
 	if d.WSPath != "" {
 		data["ws_path"] = d.WSPath
 	}
 	if d.WSIP != "" {
-		data["ws_ip"] = d.WSIP
+		data["ws_ip"] = urlHost(d.WSIP)
 	}
 	if d.WSPort != "" {
 		data["ws_p"] = d.WSPort
 	}
 	if d.WSSIP != "" {
-		data["wss_ip"] = d.WSSIP
+		data["wss_ip"] = urlHost(d.WSSIP)
 	}
 	if d.WSSPort != "" {
 		data["wss_p"] = d.WSSPort
 	}
 	return data
+}
+
+// urlHost writes host as the host of a URL: an IPv6 address in brackets.
+func urlHost(host string) string {
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		return "[" + host + "]"
+	}
+	return host
 }

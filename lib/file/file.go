@@ -133,6 +133,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 		}
 		post.Rate.Start()
 		post.NowConn = 0
+		post.CanUpdate, post.Shaped = false, nil
 		if post.Flow == nil {
 			post.Flow = new(model.Flow)
 		}

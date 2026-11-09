@@ -248,7 +248,6 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		commonData.TCPPort = bridge.TCP.Port
 	}
 	if bridge.KCP.Enabled {
-		commonData.KCPIP = bridge.KCP.IP
 		commonData.KCPPort = bridge.KCP.Port
 	}
 	if bridge.TLS.Enabled {

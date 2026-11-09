@@ -212,10 +212,6 @@
 		<zh-CN>TCP 启动命令</zh-CN>
 		<en-US>TCP Command</en-US>
 	</lang>
-	<lang id="word-commandclient-kcp">
-		<zh-CN>KCP 启动命令</zh-CN>
-		<en-US>KCP Command</en-US>
-	</lang>
 	<lang id="word-commandclient-tls">
 		<zh-CN>TLS 启动命令</zh-CN>
 		<en-US>TLS Command</en-US>
@@ -276,9 +272,33 @@
 		<zh-CN>上行调度（核心协议）</zh-CN>
 		<en-US>Upstream scheduler (new protocol)</en-US>
 	</lang>
+	<lang id="word-sched-affinity-default">
+		<zh-CN>每条连接固定走一条（默认）</zh-CN>
+		<en-US>One path per connection (default)</en-US>
+	</lang>
+	<lang id="word-sched-affinity">
+		<zh-CN>每条连接固定走一条</zh-CN>
+		<en-US>One path per connection</en-US>
+	</lang>
+	<lang id="word-sched-session-affinity">
+		<zh-CN>整个会话走一条</zh-CN>
+		<en-US>One path for the whole session</en-US>
+	</lang>
+	<lang id="word-sched-spread-eta">
+		<zh-CN>按包打散：最快到达</zh-CN>
+		<en-US>Spread by packet: earliest arrival</en-US>
+	</lang>
+	<lang id="word-sched-spread-round-robin">
+		<zh-CN>按包打散：轮询</zh-CN>
+		<en-US>Spread by packet: round robin</en-US>
+	</lang>
+	<lang id="word-sched-spread-rate-weighted">
+		<zh-CN>按速率打散</zh-CN>
+		<en-US>Spread by measured rate</en-US>
+	</lang>
 	<lang id="word-schedulerclient">
-		<zh-CN>由客户端决定</zh-CN>
-		<en-US>Decided by the client</en-US>
+		<zh-CN>默认</zh-CN>
+		<en-US>Default</en-US>
 	</lang>
 	<lang id="word-compress">
 		<zh-CN>压缩</zh-CN>
@@ -1016,6 +1036,30 @@
 	<lang id="word-advanced">
 		<zh-CN>高级设置</zh-CN>
 		<en-US>Advanced</en-US>
+	</lang>
+	<lang id="word-shapingstats">
+		<zh-CN>下行整形统计</zh-CN>
+		<en-US>Downlink Shaping Statistics</en-US>
+	</lang>
+	<lang id="word-shapingactive">
+		<zh-CN>生效</zh-CN>
+		<en-US>Active</en-US>
+	</lang>
+	<lang id="word-shapingwire">
+		<zh-CN>补充字节</zh-CN>
+		<en-US>Added Bytes</en-US>
+	</lang>
+	<lang id="word-shapingstall">
+		<zh-CN>等待时长</zh-CN>
+		<en-US>Wait Time</en-US>
+	</lang>
+	<lang id="word-shapinginjected">
+		<zh-CN>注入记录数</zh-CN>
+		<en-US>Injected Records</en-US>
+	</lang>
+	<lang id="word-shapingfaults">
+		<zh-CN>异常数</zh-CN>
+		<en-US>Faults</en-US>
 	</lang>
 	<lang id="word-shaping">
 		<zh-CN>流量整形</zh-CN>

@@ -247,3 +247,30 @@ func TestUsesType(t *testing.T) {
 		t.Fatal("UsesType")
 	}
 }
+
+// The start commands of the web interface write -server as a URL of host,
+// port and, for WebSocket, the bridge path; IPv6 hosts are bracketed.
+func TestWebStartCommandServers(t *testing.T) {
+	for _, c := range []struct{ in, carrier, addr, path, url string }{
+		{"tcp://nps.example.com:8024", "tcp", "nps.example.com:8024", "", "tcp://nps.example.com:8024"},
+		{"tcp://[2001:db8::1]:8024", "tcp", "[2001:db8::1]:8024", "", "tcp://[2001:db8::1]:8024"},
+		{"tls://[2001:db8::1]:8025", "tls", "[2001:db8::1]:8025", "", "tls://[2001:db8::1]:8025"},
+		{"quic://[::1]:8025?alpn=nps", "quic", "[::1]:8025", "", "quic://[::1]:8025"},
+		{"ws://nps.example.com:8026/ws", "ws", "nps.example.com:8026", "/ws", "http://nps.example.com:8026/ws"},
+		{"ws://[2001:db8::1]:8026/a/b", "ws", "[2001:db8::1]:8026", "/a/b", "http://[2001:db8::1]:8026/a/b"},
+		{"wss://[2001:db8::1]:8027/a/b", "wss", "[2001:db8::1]:8027", "/a/b", "https://[2001:db8::1]:8027/a/b"},
+	} {
+		got, err := Parse(c.in, "tcp")
+		if err != nil || len(got) != 1 {
+			t.Fatalf("%s: %v, %d candidates", c.in, err, len(got))
+		}
+		g := got[0]
+		wantPath := c.path
+		if c.carrier != "ws" && c.carrier != "wss" {
+			wantPath = "/ws"
+		}
+		if g.Carrier != c.carrier || g.Addr != c.addr || g.Path != wantPath || g.URL != c.url {
+			t.Errorf("%s: carrier %s addr %s path %s url %s", c.in, g.Carrier, g.Addr, g.Path, g.URL)
+		}
+	}
+}

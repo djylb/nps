@@ -61,11 +61,11 @@
                                 <label class="control-label font-bold" langtag="word-schedulerdown"></label>
                                 <div class="col-sm-12">
                                     <select class="form-control selectpicker" name="scheduler_down">
-                                        <option {{if eq "affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="affinity">affinity</option>
-                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="session_affinity">session_affinity</option>
-                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_eta">spread_eta</option>
-                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_round_robin">spread_round_robin</option>
-                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_rate_weighted">spread_rate_weighted</option>
+                                        <option {{if eq "affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="affinity" langtag="word-sched-affinity-default"></option>
+                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerDown}}selected {{end}}value="session_affinity" langtag="word-sched-session-affinity"></option>
+                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_eta" langtag="word-sched-spread-eta"></option>
+                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_round_robin" langtag="word-sched-spread-round-robin"></option>
+                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerDown}}selected {{end}}value="spread_rate_weighted" langtag="word-sched-spread-rate-weighted"></option>
                                     </select>
                                 </div>
                             </div>
@@ -74,11 +74,11 @@
                                 <div class="col-sm-12">
                                     <select class="form-control selectpicker" name="scheduler_up">
                                         <option {{if eq "" .c.Cnf.SchedulerUp}}selected {{end}}value="" langtag="word-schedulerclient"></option>
-                                        <option {{if eq "affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="affinity">affinity</option>
-                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="session_affinity">session_affinity</option>
-                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_eta">spread_eta</option>
-                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_round_robin">spread_round_robin</option>
-                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_rate_weighted">spread_rate_weighted</option>
+                                        <option {{if eq "affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="affinity" langtag="word-sched-affinity"></option>
+                                        <option {{if eq "session_affinity" .c.Cnf.SchedulerUp}}selected {{end}}value="session_affinity" langtag="word-sched-session-affinity"></option>
+                                        <option {{if eq "spread_eta" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_eta" langtag="word-sched-spread-eta"></option>
+                                        <option {{if eq "spread_round_robin" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_round_robin" langtag="word-sched-spread-round-robin"></option>
+                                        <option {{if eq "spread_rate_weighted" .c.Cnf.SchedulerUp}}selected {{end}}value="spread_rate_weighted" langtag="word-sched-spread-rate-weighted"></option>
                                     </select>
                                 </div>
                             </div>

@@ -654,9 +654,6 @@ func (s *Server) VirtualServices() []bridge.VirtualService { return s.bridge.Vir
 // RequestClientUpdate asks the connected npc of client clientId to update
 // themselves; it returns how many were asked.
 func (s *Server) RequestClientUpdate(clientId int) (int, error) {
-	if s.noUpdate {
-		return 0, ErrUpdateDisabled
-	}
 	return s.bridge.RequestClientUpdate(clientId)
 }
 
@@ -676,7 +673,21 @@ func (s *Server) TunnelPortAvailable(t *model.Tunnel) bool { return s.ports.Test
 // ClientCanUpdate reports whether a connected npc of client clientId can be
 // updated from the web.
 func (s *Server) ClientCanUpdate(clientId int) bool {
-	return !s.noUpdate && s.bridge.ClientCanUpdate(clientId)
+	return s.bridge.ClientCanUpdate(clientId)
+}
+
+// clientShaped sums the shaping statistics of a connected client that has
+// shaping on; nil otherwise.
+func (s *Server) clientShaped(c *model.Client) *model.ShapedStats {
+	if c.Cnf == nil || !c.Cnf.Shaping {
+		return nil
+	}
+	st, ok := s.bridge.ClientShapingStats(c.Id)
+	if !ok {
+		return nil
+	}
+	return &model.ShapedStats{Wire: st.Wire, StallMs: st.Stall.Milliseconds(), Injected: st.Injected,
+		Clamped: st.Clamped, InjectDropped: st.InjectDropped, Faults: st.Faults}
 }
 
 func (s *Server) dealClientData() {
@@ -686,6 +697,7 @@ func (s *Server) dealClientData() {
 		if vv, ok := b.Client.Load(v.Id); ok {
 			v.IsConnect = true
 			v.CanUpdate = s.ClientCanUpdate(v.Id)
+			v.Shaped = s.clientShaped(v)
 			v.MarkSeen(time.Now())
 			cli := vv.(*bridge.Client)
 			node, ok := cli.GetNodeByUUID(cli.LastUUID)
@@ -701,7 +713,7 @@ func (s *Server) dealClientData() {
 		} else if v.Id <= 0 {
 			if servercfg.Current().Feature.AllowLocalProxy {
 				v.IsConnect = v.Status
-				v.CanUpdate = false
+				v.CanUpdate, v.Shaped = false, nil
 				v.Version = version.VERSION
 				v.Mode = "local"
 				v.LocalAddr = netaddr.GetOutboundIP().String()
@@ -712,11 +724,11 @@ func (s *Server) dealClientData() {
 				}
 			} else {
 				v.IsConnect = false
-				v.CanUpdate = false
+				v.CanUpdate, v.Shaped = false, nil
 			}
 		} else {
 			v.IsConnect = false
-			v.CanUpdate = false
+			v.CanUpdate, v.Shaped = false, nil
 		}
 		return true
 	})

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 	"github.com/djylb/nps/lib/version"
@@ -197,5 +198,34 @@ func TestRequestClientUpdateOnlyUpdatable(t *testing.T) {
 	}
 	if flag := <-got; flag != legacy.UpdateRequest {
 		t.Fatalf("legacy npc read %q", flag)
+	}
+}
+
+// shapedCore reports fixed shaping statistics.
+type shapedCore struct {
+	fakeCore
+	st coreapi.ShapingStats
+}
+
+func (s *shapedCore) ShapingStats() coreapi.ShapingStats { return s.st }
+
+// The shaping statistics of a client are the sum over its core sessions.
+func TestClientShapingStats(t *testing.T) {
+	b := bridgeWithLatest(t, func() string { return "" })
+	if _, ok := b.ClientShapingStats(1); ok {
+		t.Fatal("stats of a client that is not connected")
+	}
+	a := &shapedCore{fakeCore: fakeCore{id: "a", client: 1}, st: coreapi.ShapingStats{Wire: 10, Stall: time.Second, Injected: 2, Faults: 1}}
+	c := &shapedCore{fakeCore: fakeCore{id: "b", client: 1}, st: coreapi.ShapingStats{Wire: 5, Stall: time.Second, Injected: 1, InjectDropped: 3}}
+	na, nc := NewNode("a", "1", legacy.LatestIndex), NewNode("b", "1", legacy.LatestIndex)
+	na.AddCore(a)
+	nc.AddCore(c)
+	cl := NewClient(1, na, Primary)
+	cl.AddNode(nc)
+	b.Client.Store(1, cl)
+	st, ok := b.ClientShapingStats(1)
+	want := coreapi.ShapingStats{Wire: 15, Stall: 2 * time.Second, Injected: 3, InjectDropped: 3, Faults: 1}
+	if !ok || st != want {
+		t.Fatalf("stats = %+v, %v; want %+v", st, ok, want)
 	}
 }

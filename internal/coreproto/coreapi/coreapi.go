@@ -180,10 +180,29 @@ type Session interface {
 	// RequestUpdate asks npc to update itself; a refusal by its local policy
 	// is a LinkError with the code NOT_ALLOWED.
 	RequestUpdate(ctx context.Context) error
+	// ShapingStats reports what the shaping of the session did, in the
+	// direction this side sends.
+	ShapingStats() ShapingStats
 	// CanHealth reports whether npc runs health checks (§2.3).
 	CanHealth() bool
 	// SetHealth makes groups, complete, what npc checks (§5.3).
 	SetHealth(groups []healthcheck.Group)
+}
+
+// ShapingStats counts what the shaping of a session did.
+type ShapingStats struct {
+	Wire          uint64        // wire bytes added
+	Stall         time.Duration // waits applied
+	Injected      uint64        // records sent for shaping only
+	Clamped       uint64        // decisions reduced by a limit
+	InjectDropped uint64        // injections not sent
+	Faults        uint64        // shaper calls that failed
+}
+
+// Add returns the sum of s and o.
+func (s ShapingStats) Add(o ShapingStats) ShapingStats {
+	return ShapingStats{s.Wire + o.Wire, s.Stall + o.Stall, s.Injected + o.Injected,
+		s.Clamped + o.Clamped, s.InjectDropped + o.InjectDropped, s.Faults + o.Faults}
 }
 
 // HealthSink takes the reports of a session's checks. Its call returns within

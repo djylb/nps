@@ -87,7 +87,7 @@ sudo nps update-geo geosite  # 指定文件，没有时下载
 
 - 重启期间连接短暂中断，客户端会自动重连。
 - Linux/macOS 等系统无论以服务还是命令行运行都支持；Windows 只支持 `nps install` 安装的系统服务。
-- `-disable_remote_update` 禁止网页更新；官方 Docker 镜像默认已禁止。
+- `-disable_remote_update` 禁止网页更新 nps 自身（不影响更新客户端）；官方 Docker 镜像默认已禁止。
 
 ## 手动替换程序
 
