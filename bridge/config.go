@@ -20,6 +20,20 @@ func writeAddFail(c *conn.Conn) bool {
 	return legacy.WriteStatus(c, false) == nil
 }
 
+// hasNodeBesides reports whether client id has a connected node other than uuid.
+func (s *Bridge) hasNodeBesides(id int, uuid string) bool {
+	v, ok := s.Client.Load(id)
+	if !ok {
+		return false
+	}
+	for _, n := range v.(*Client).nodeList() {
+		if n.UUID != uuid {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *model.Client, caps legacy.Caps, uuid string) {
 	var fail bool
 	var published *Node   // the node that awaits its tunnel after this exchange
@@ -48,7 +62,11 @@ loop:
 			}
 
 			var remarks []string
-			if client.IsConnect && !isPub {
+			// Whether an npc serves the key is the bridge's to say:
+			// client.IsConnect is refreshed only when the web lists it.
+			// The npc asking does not count: on the new protocol its own
+			// session is a node of uuid.
+			if !isPub && s.hasNodeBesides(id, uuid) {
 				s.store.RangeHosts(func(v *model.Host) bool {
 					if v.Client.Id == id {
 						remarks = append(remarks, v.Remark)

@@ -309,6 +309,9 @@ type Hooks struct {
 	// (0.35 transition, removed in the next major version): it returns what
 	// serves the stream, or nil to refuse. nil here refuses all.
 	ConfigUpload func(Session) func(net.Conn)
+	// Register admits an npc register a session opens, like ConfigUpload
+	// (0.35 transition, removed in the next major version).
+	Register func(Session) func(net.Conn)
 	// Health takes one report of a session's checks; it returns promptly.
 	Health func(s Session, r healthcheck.Report)
 	// Services takes a session's complete snapshot of its virtual services
@@ -413,6 +416,8 @@ type ClientSession interface {
 type ConfigUploader interface {
 	// OpenConfigUpload opens the stream once the server has admitted it.
 	OpenConfigUpload(ctx context.Context) (net.Conn, error)
+	// OpenRegister opens the stream of npc register in the same way.
+	OpenRegister(ctx context.Context) (net.Conn, error)
 }
 
 // Dialer establishes sessions of one server profile of npc.

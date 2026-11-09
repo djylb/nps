@@ -251,7 +251,7 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		lc.abort(wire.CodeMalformed)
 		return
 	}
-	if s.configOnly && op != wire.OpConfigUpload {
+	if s.configOnly && op != wire.OpConfigUpload && op != wire.OpRegister {
 		lc.abort(wire.CodeNotAllowed)
 		return
 	}
@@ -267,7 +267,9 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 	case wire.OpService:
 		s.serveServices(lc, fields)
 	case wire.OpConfigUpload:
-		s.serveConfigUpload(lc)
+		s.serveTransition(lc, s.a.hookConfigUpload())
+	case wire.OpRegister:
+		s.serveTransition(lc, s.a.hookRegister())
 	default:
 		lc.abort(rejectCode(st.Preamble(), wire.Op.FromClient))
 	}

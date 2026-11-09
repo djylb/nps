@@ -2,10 +2,14 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
+	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/conn"
@@ -15,8 +19,92 @@ import (
 // The config upload on the new protocol is a 0.35 transition: the tunnels and
 // domains of npc.conf are sent with the byte exchange of the old protocol's
 // config upload (exchangeConfig), on a stream of the session, so that a config
-// file keeps working when only the binary is upgraded. It is removed in the
-// next major version, with this file and wire.OpConfigUpload.
+// file keeps working when only the binary is upgraded. npc status runs on the
+// same exchange and npc register on wire.OpRegister. They are removed in the
+// next major version, with this file and those operations.
+
+// commandTimeout bounds npc status and npc register as a whole.
+const commandTimeout = 45 * time.Second
+
+// withCommandSession runs f on a session of cfg's first server, closed after.
+func withCommandSession(cfg *config.CommonConfig, f func(context.Context, coreapi.ConfigUploader) error) error {
+	if CoreOuter == nil {
+		return errNoCore
+	}
+	server, _, _ := strings.Cut(cfg.Server, ";")
+	outer, err := CoreOuter(cfg, server)
+	if err != nil {
+		return err
+	}
+	defer outer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	s, err := outer.Dial(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	up, ok := s.(coreapi.ConfigUploader)
+	if !ok {
+		return errors.New("this session cannot run the command")
+	}
+	return f(ctx, up)
+}
+
+// GetTaskStatus prints the tunnels and hosts the server runs for cfg's key.
+func GetTaskStatus(cfg *config.CommonConfig) error {
+	return withCommandSession(cfg, func(ctx context.Context, up coreapi.ConfigUploader) error {
+		nc, err := up.OpenConfigUpload(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to open the status exchange: %w", err)
+		}
+		c := conn.NewConn(nc)
+		defer c.Close()
+		dl, _ := ctx.Deadline()
+		_ = c.SetDeadline(dl)
+		var isPub bool
+		if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
+			return fmt.Errorf("failed to read status: %w", err)
+		}
+		if _, err := c.Write(append([]byte(legacy.WorkStatus), legacy.KeyDigest(cfg.VKey)...)); err != nil {
+			return fmt.Errorf("failed to request status: %w", err)
+		}
+		parts, err := legacy.ReadStatusList(c)
+		if err != nil {
+			return fmt.Errorf("failed to read status list: %w", err)
+		}
+		fmt.Println("===== Active Tunnels/Hosts =====")
+		fmt.Printf("Total active: %d\n", len(parts))
+		for i, name := range parts {
+			if name == "" {
+				name = "(no remark)"
+			}
+			fmt.Printf("  %d. %s\n", i+1, name)
+		}
+		return nil
+	})
+}
+
+// RegisterLocalIP registers this host's address with the server for hours.
+func RegisterLocalIP(cfg *config.CommonConfig, hours int) error {
+	return withCommandSession(cfg, func(ctx context.Context, up coreapi.ConfigUploader) error {
+		nc, err := up.OpenRegister(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to open the registration: %w", err)
+		}
+		defer nc.Close()
+		dl, _ := ctx.Deadline()
+		_ = nc.SetDeadline(dl)
+		if err := binary.Write(nc, binary.LittleEndian, int32(hours)); err != nil {
+			return err
+		}
+		// The server closes the stream once it has registered the address.
+		if _, err := io.Copy(io.Discard, nc); err != nil {
+			return err
+		}
+		log.Info("local ip registered", "server", cfg.Server, "dur_ms", int64(hours)*time.Hour.Milliseconds())
+		return nil
+	})
+}
 
 // errKeyIssued ends the session of the public key: the server made a client,
 // and the session of that client's own key does the rest.

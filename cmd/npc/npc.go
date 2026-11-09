@@ -16,7 +16,6 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
-	legacyclient "github.com/djylb/nps/client/legacy"
 	"github.com/djylb/nps/internal/cliargs"
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/clock"
@@ -135,7 +134,6 @@ func main() {
 		return
 	}
 	install.RecoverUpdate()
-	legacyclient.SkipTLSVerify = *skipVerify
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
@@ -230,13 +228,15 @@ func main() {
 	// 处理服务命令
 	switch cmd {
 	case "status":
-		if err := legacyclient.GetTaskStatus(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP); err != nil {
+		setCoreDefaults()
+		if err := client.GetTaskStatus(commandConfig()); err != nil {
 			log.Error("status failed", "err", err)
 			os.Exit(1)
 		}
 		return
 	case "register":
-		if err := legacyclient.RegisterLocalIp(*serverAddr, *verifyKey, *connType, *proxyUrl, *localIP, *registerTime); err != nil {
+		setCoreDefaults()
+		if err := client.RegisterLocalIP(commandConfig(), *registerTime); err != nil {
 			log.Error("register failed", "err", err)
 			os.Exit(1)
 		}

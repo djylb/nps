@@ -9,23 +9,37 @@ import (
 	"github.com/djylb/nps/internal/coreproto/wire"
 )
 
-// The config upload (wire.OpConfigUpload) is a 0.35 transition: the byte
-// exchange of the old protocol's config upload runs on a stream of the
-// session, so that npc.conf keeps working when only the binary is upgraded.
-// It is removed, with this file, in the next major version.
+// The config upload (wire.OpConfigUpload) and npc register (wire.OpRegister)
+// are a 0.35 transition: the byte exchanges of the old protocol's WorkConfig
+// and WorkRegister run on a stream of the session, so that npc.conf and these
+// commands keep working when only the binary is upgraded. They are removed,
+// with this file, in the next major version.
 
-// configUploadReplyTimeout bounds the wait for the admission of an upload.
+// configUploadReplyTimeout bounds the wait for the admission of a stream.
 const configUploadReplyTimeout = 10 * time.Second
 
-// serveConfigUpload answers an upload stream: the bridge admits it, then the
-// reply head and the bridge's exchange follow on the stream.
-func (s *serverSession) serveConfigUpload(lc *linkConn) {
-	h := s.a.hooks.Load()
-	if h == nil || h.ConfigUpload == nil {
+func (a *Acceptor) hookConfigUpload() func(coreapi.Session) func(net.Conn) {
+	if h := a.hooks.Load(); h != nil {
+		return h.ConfigUpload
+	}
+	return nil
+}
+
+func (a *Acceptor) hookRegister() func(coreapi.Session) func(net.Conn) {
+	if h := a.hooks.Load(); h != nil {
+		return h.Register
+	}
+	return nil
+}
+
+// serveTransition answers such a stream: the bridge admits it through admit,
+// then the reply head and the bridge's exchange follow on the stream.
+func (s *serverSession) serveTransition(lc *linkConn, admit func(coreapi.Session) func(net.Conn)) {
+	if admit == nil {
 		failLink(lc, true, wire.CodeUnsupported)
 		return
 	}
-	serve := h.ConfigUpload(s)
+	serve := admit(s)
 	if serve == nil {
 		failLink(lc, true, wire.CodeNotAllowed)
 		return
@@ -44,12 +58,21 @@ var _ coreapi.ConfigUploader = (*clientSession)(nil)
 
 // OpenConfigUpload implements coreapi.ConfigUploader.
 func (s *clientSession) OpenConfigUpload(ctx context.Context) (net.Conn, error) {
+	return s.openTransition(ctx, wire.OpConfigUpload)
+}
+
+// OpenRegister implements coreapi.ConfigUploader.
+func (s *clientSession) OpenRegister(ctx context.Context) (net.Conn, error) {
+	return s.openTransition(ctx, wire.OpRegister)
+}
+
+func (s *clientSession) openTransition(ctx context.Context, op wire.Op) (net.Conn, error) {
 	st, err := s.zc.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
 	}
 	lc := &linkConn{Stream: st, local: s.zc.LocalAddr(), remote: s.zc.RemoteAddr()}
-	if err := st.SetPreamble(wire.AppendOpenInfo(nil, wire.OpConfigUpload)); err != nil {
+	if err := st.SetPreamble(wire.AppendOpenInfo(nil, op)); err != nil {
 		lc.abort(wire.CodeInternal)
 		return nil, err
 	}

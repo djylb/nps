@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,8 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/internal/coreproto/connect"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
+	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/ipreg"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/proxy"
 )
@@ -337,4 +340,59 @@ func TestConfigUploadPublicKey(t *testing.T) {
 	if !compressed {
 		t.Fatal("[common] compress not mapped to the client's default")
 	}
+}
+
+// npc register on the new protocol registers the session's address, under the
+// key rule of WorkRegister.
+func TestRegisterOnNewProtocol(t *testing.T) {
+	ipreg.Reset()
+	t.Cleanup(ipreg.Reset)
+	connect.Install()
+	t.Cleanup(func() { client.CoreOuter = nil })
+	f := newCoreFixture(t, 0, model.Config{})
+	cfg := config.NewCommonConfig()
+	cfg.Server, cfg.VKey, cfg.Tp = f.addr, f.client.VerifyKey, "tcp"
+	if err := client.RegisterLocalIP(cfg, 2); err != nil {
+		t.Fatal(err)
+	}
+	if !ipreg.Registered(f.client.Id, netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("address not registered")
+	}
+	ipreg.Reset()
+	f.client.KeyKind = model.KeyVisitor
+	if err := client.RegisterLocalIP(cfg, 2); err == nil {
+		t.Fatal("a visitor key registered")
+	}
+	if ipreg.Count() != 0 {
+		t.Fatal("refused registration stored")
+	}
+}
+
+// npc status lists what runs only while another npc of the key is connected:
+// the session asking does not count.
+func TestStatusCountsOtherNodes(t *testing.T) {
+	f := newCoreFixture(t, 0, model.Config{})
+	f.joinCore(t, client.NewCoreExit("", 0))
+	uuid := f.b.mustOnlyNode(t, f.client.Id)
+	if f.b.hasNodeBesides(f.client.Id, uuid) {
+		t.Fatal("its own node counted")
+	}
+	if !f.b.hasNodeBesides(f.client.Id, "other") {
+		t.Fatal("a connected node not counted")
+	}
+}
+
+func (s *Bridge) mustOnlyNode(t *testing.T, id int) string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if v, ok := s.Client.Load(id); ok {
+			if nodes := v.(*Client).nodeList(); len(nodes) == 1 {
+				return nodes[0].UUID
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("no node")
+	return ""
 }

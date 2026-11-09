@@ -18,10 +18,13 @@ const (
 	// upload, from the client to the server. 0.35 transition: removed in the
 	// next major version.
 	OpConfigUpload Op = 10
+	// OpRegister carries the hours of npc register, as the old protocol's
+	// WorkRegister did. 0.35 transition, like OpConfigUpload.
+	OpRegister Op = 11
 )
 
 // Known reports whether o is in the table of operations.
-func (o Op) Known() bool { return o >= OpConfig && o <= OpConfigUpload }
+func (o Op) Known() bool { return o >= OpConfig && o <= OpRegister }
 
 // FromServer reports whether the server may open o towards the client: TCP
 // and UDP go from the entry to the exit, LINK, PIPE and PUNCH to the provider

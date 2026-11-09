@@ -48,6 +48,7 @@ func (s *Bridge) coreHooks() coreapi.Hooks {
 		ResolveLink:  s.coreResolveLink,
 		Coordinate:   s.coreCoordinate,
 		ConfigUpload: s.coreConfigUpload,
+		Register:     s.coreRegister,
 	}
 }
 

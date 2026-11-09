@@ -1,6 +1,6 @@
-// Package legacyclient is the old protocol as npc spoke it: the handshake that
-// npc status and npc register still use, and a client for tests of a server
-// that accepts old npc. Remove it in the next major version.
+// Package legacyclient is the old protocol as npc spoke it: a client for tests
+// of a server that accepts old npc; npc itself no longer links it. Remove it
+// in the next major version.
 package legacyclient
 
 import (
@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -49,63 +48,6 @@ var QuicConfig = &quic.Config{
 }
 
 var log = slogx.Module("client")
-
-// GetTaskStatus prints the tunnels and hosts the server runs for vKey.
-func GetTaskStatus(server string, vKey string, tp string, proxyUrl string, localIP string) error {
-	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
-	if err != nil {
-		return fmt.Errorf("Failed to connect: %w", err)
-	}
-	//defer c.Close()
-	err = SendType(c, legacy.WorkConfig, uuid)
-	if err != nil {
-		return fmt.Errorf("Failed to send type: %w", err)
-	}
-	if _, err := c.BufferWrite([]byte(legacy.WorkStatus)); err != nil {
-		return fmt.Errorf("Failed to write WorkStatus: %w", err)
-	}
-	if _, err := c.Write([]byte(legacy.KeyDigest(vKey))); err != nil {
-		return fmt.Errorf("Failed to write auth key: %w", err)
-	}
-	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
-	var isPub bool
-	if err := binary.Read(c, binary.LittleEndian, &isPub); err != nil {
-		return fmt.Errorf("Failed to read status: %w", err)
-	}
-	parts, err := legacy.ReadStatusList(c)
-	if err != nil {
-		return fmt.Errorf("Failed to read status list: %w", err)
-	}
-	fmt.Println("===== Active Tunnels/Hosts =====")
-	fmt.Printf("Total active: %d\n", len(parts))
-	for i, name := range parts {
-		display := name
-		if display == "" {
-			display = "(no remark)"
-		}
-		fmt.Printf("  %d. %s\n", i+1, display)
-	}
-	return nil
-}
-
-// RegisterLocalIp registers the public address of this host with the server
-// for hour hours.
-func RegisterLocalIp(server string, vKey string, tp string, proxyUrl string, localIP string, hour int) error {
-	c, uuid, err := NewConn(tp, vKey, server, proxyUrl, localIP)
-	if err != nil {
-		return err
-	}
-	//defer c.Close()
-	err = SendType(c, legacy.WorkRegister, uuid)
-	if err != nil {
-		return err
-	}
-	if err := binary.Write(c, binary.LittleEndian, int32(hour)); err != nil {
-		return err
-	}
-	log.Info("local ip registered", "server", server, "dur_ms", int64(hour)*time.Hour.Milliseconds())
-	return nil
-}
 
 func VerifyState(state tls.ConnectionState, host string) (fingerprint []byte, verified bool) {
 	if len(state.PeerCertificates) == 0 {

@@ -35,6 +35,14 @@ func setCoreDefaults() {
 	connect.Process.Compress = session.CompressLimits{MaxWindow: *compressMaxWindow, MaxRatio: *compressMaxRatio}
 }
 
+// commandConfig is the profile npc status and npc register connect with.
+func commandConfig() *config.CommonConfig {
+	cfg := config.NewCommonConfig()
+	cfg.Server, cfg.VKey, cfg.Tp, cfg.LocalIP = *serverAddr, *verifyKey, strings.ToLower(*connType), *localIP
+	cfg.ProxyUrl = *proxyUrl
+	return cfg
+}
+
 // runCoreProfile hosts one server profile of the command line on the new
 // protocol.
 func runCoreProfile(ctx context.Context, cancel context.CancelFunc, server, vkey, carrier, localIP string) {
