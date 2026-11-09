@@ -85,8 +85,8 @@ type DialConfig struct {
 
 // Dialer establishes the sessions of a profile.
 type Dialer struct {
-	cfg     DialConfig
-	planKey string // of this server and key in shapingPlans
+	cfg   DialConfig
+	plans *planSlot // of this server and key
 
 	mu          sync.Mutex
 	record      uint64               // last CONFIG record
@@ -109,7 +109,7 @@ func NewDialer(cfg DialConfig) *Dialer {
 		cfg.MaxConfig = maxConfigBody
 	}
 	d := &Dialer{cfg: cfg, boundFailed: map[string]time.Time{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
-	d.planKey = d.Server() + "\x00" + cfg.VKey
+	d.plans = planSlotOf(d.Server() + "\x00" + cfg.VKey)
 	return d
 }
 

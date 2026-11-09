@@ -272,6 +272,7 @@ type visitorLink struct {
 	exitDone    chan struct{} // closed when the LINK stream ended
 
 	zc     *zmux.Conn
+	shape  *nestedShaping
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -397,7 +398,8 @@ func (l *visitorLink) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk, MaxAppData: wire.MaxHelloRecv,
+	shape := l.v.cfg.Outer.d.nestedShaping()
+	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Shaper: shape.slot.handshake, Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk, MaxAppData: wire.MaxHelloRecv,
 		AppData: func(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
 			if r.Message == 3 {
 				return wire.AppendHello(nil, &wire.Hello{CompressAlgs: compressAlgs}), nil
@@ -409,14 +411,15 @@ func (l *visitorLink) start(ctx context.Context) error {
 		return err
 	}
 	l.peerAlgs = peerCompressAlgs(q)
-	cfg := nestedConfig(l.v.cfg.Outer.d.cfg.MaxLanes)
+	cfg := shape.configure(nestedConfig(l.v.cfg.Outer.d.cfg.MaxLanes))
 	cfg.Redial = l.redial
 	zc, err := zmux.Start(ctx, q, zmux.RoleClient, cfg)
 	if err != nil {
 		l.closeDirect()
 		return err
 	}
-	l.zc = zc
+	shape.attach(zc)
+	l.zc, l.shape = zc, shape
 	l.ctx, l.cancel = context.WithCancel(l.v.ctx)
 	l.wg.Go(func() { rejectStreams(l.ctx, zc, func(wire.Op) bool { return false }) })
 	l.wg.Go(l.run)
@@ -552,7 +555,11 @@ func usable(p zmux.PipeStats) bool {
 }
 
 // isDirectPipe tells a direct QUIC pipe from a relay PIPE.
-func isDirectPipe(p zmux.PipeStats) bool { return p.Carrier == zmux.CarrierQUIC }
+func isDirectPipe(p zmux.PipeStats) bool { return isDirectCarrier(p.Carrier) }
+
+// isDirectCarrier is the kind of a direct path; a relay PIPE is an outer
+// stream, of no kind.
+func isDirectCarrier(k zmux.CarrierKind) bool { return k == zmux.CarrierQUIC }
 
 // directActive reports whether a direct pipe is carrying data: one still
 // joining or draining does not replace the relay.
@@ -583,6 +590,7 @@ func (v *Visitor) linkOver(l *visitorLink) {
 // run keeps the paths (§9.4a) until the session ends.
 func (l *visitorLink) run() {
 	defer l.v.linkOver(l)
+	defer l.shape.detach()
 	defer l.closeDirect()
 	defer l.cancel()
 	t := time.NewTicker(l.v.cfg.Tick)

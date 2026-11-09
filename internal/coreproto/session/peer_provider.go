@@ -102,10 +102,11 @@ func (g *linkGate) Commit(context.Context, seal.Admission) (any, error) { return
 
 // providerLink is a provider's end of one link.
 type providerLink struct {
-	s    *clientSession
-	id   uint64
-	zl   *zmux.Listener
-	exit coreapi.Exit
+	s     *clientSession
+	id    uint64
+	zl    *zmux.Listener
+	exit  coreapi.Exit
+	shape *nestedShaping
 	// ctx ends the nested session (revocation); paths outlive it on pctx,
 	// so that the close reaches the visitor over them.
 	ctx     context.Context
@@ -202,16 +203,21 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	if err != nil {
 		return nil, err
 	}
-	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: nestedConfig(s.d.cfg.MaxLanes), WrapPipe: &seal.ServerConfig{
-		Gate: &linkGate{handle: handle, psk: psk}, Key: key, ClientAnchor: acceptAnyClient{},
+	shape := s.d.nestedShaping()
+	base := nestedConfig(s.d.cfg.MaxLanes)
+	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: base, WrapPipe: &seal.ServerConfig{
+		Shaper: shape.slot.handshake,
+		Gate:   &linkGate{handle: handle, psk: psk}, Key: key, ClientAnchor: acceptAnyClient{},
 		AllowRecordMode: allowNestedMode, MaxAppData: wire.MaxHelloRecv, AppData: nestedProviderHello,
+	}, SessionConfig: func(context.Context, *zmux.CarrierInfo, any) (*zmux.Config, error) {
+		return shape.configure(base.Clone()), nil
 	}})
 	if err != nil {
 		return nil, err
 	}
 	lctx, cancel := context.WithCancel(ctx)
 	pctx, pcancel := context.WithCancel(context.WithoutCancel(ctx))
-	return &providerLink{s: s, id: id, zl: zl, exit: exit, ctx: lctx, cancel: cancel, pctx: pctx, pcancel: pcancel}, nil
+	return &providerLink{s: s, id: id, zl: zl, exit: exit, shape: shape, ctx: lctx, cancel: cancel, pctx: pctx, pcancel: pcancel}, nil
 }
 
 // nestedProviderHello is msg2 of a nested handshake: what the provider can
@@ -239,6 +245,8 @@ func (p *providerLink) run(lc *linkConn) {
 		return
 	}
 	defer zc.Close()
+	p.shape.attach(zc)
+	defer p.shape.detach()
 	stop := context.AfterFunc(p.ctx, func() { _ = zc.Close() })
 	defer stop()
 	var wg sync.WaitGroup
