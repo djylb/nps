@@ -15,6 +15,7 @@ import (
 )
 
 type IndexService interface {
+	SaveTunnelLaunchForm(id int, form string) error
 	DashboardData(force bool) map[string]any
 	SuggestCert(host string, excludeID, clientID int) *CertSuggestion
 	ListTunnels(TunnelListInput) ([]*model.Tunnel, int)
@@ -122,6 +123,23 @@ func (s DefaultIndexService) DashboardData(force bool) map[string]any {
 
 func (s DefaultIndexService) ListTunnels(input TunnelListInput) ([]*model.Tunnel, int) {
 	return s.Backend.Runtime.ListTunnels(input.Offset, input.Limit, input.Type, input.ClientID, input.Search, input.Sort, input.Order)
+}
+
+// SaveTunnelLaunchForm stores the start command form of a point-to-point
+// tunnel; empty removes it.
+func (s DefaultIndexService) SaveTunnelLaunchForm(id int, form string) error {
+	if len(form) > MaxLaunchForm {
+		return ErrLaunchFormTooLarge
+	}
+	tunnel, err := s.Backend.Repository.GetTunnel(id)
+	if err != nil {
+		return err
+	}
+	if tunnel.Mode != "secret" {
+		return ErrTunnelNotFound
+	}
+	tunnel.LaunchForm = form
+	return s.Backend.Repository.SaveTunnel(tunnel)
 }
 
 func (s DefaultIndexService) AddTunnel(input TunnelInput) (TunnelMutation, error) {

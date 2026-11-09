@@ -5,10 +5,12 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -476,5 +478,191 @@ func TestCommandLine(t *testing.T) {
 	out, err := Show(ctx, src, nil, true)
 	if err != nil || !strings.Contains(out, `-launch="npc://k@a:1?type=tls"`) || !strings.Contains(out, `-L="mixed://:9?access=pw&conn_mode=relay"`) {
 		t.Fatalf("%v %s", err, out)
+	}
+}
+
+func TestRoleFromAccess(t *testing.T) {
+	ctx := context.Background()
+	load := func(links, ls []string) Profile {
+		t.Helper()
+		plan, err := NewComposer(sources(links...), locals(t, ls...)).Load(ctx)
+		if err != nil || len(plan.Profiles) != 1 {
+			t.Fatalf("%v %+v", err, plan)
+		}
+		return plan.Profiles[0]
+	}
+	if p := load([]string{"npc://k@a:1"}, nil); !p.Direct || p.Hosting {
+		t.Fatalf("ordinary: %+v", p)
+	}
+	if p := load([]string{"npc://k@a:1#v"}, []string{"tcp://:1?access=p&via=v"}); p.Direct || p.Hosting {
+		t.Fatalf("visitor: %+v", p)
+	}
+	mixed := load([]string{"npc://k@a:1", "npc://k@a:1#v"}, []string{"tcp://:1?access=p&via=v"})
+	if mixed.Direct || !mixed.Hosting || len(mixed.Config.LocalServer) != 1 {
+		t.Fatalf("mixed: %+v", mixed)
+	}
+	reversed := load([]string{"npc://k@a:1#v", "npc://k@a:1"}, []string{"tcp://:1?access=p&via=v"})
+	if !reversed.Hosting || reversed.Name != "v" {
+		t.Fatalf("reversed: %+v", reversed)
+	}
+	// a -L needs via once a connection is written twice
+	if _, err := NewComposer(sources("npc://k@a:1", "npc://k@a:1#v"), locals(t, "tcp://:1?access=p")).Load(ctx); err == nil {
+		t.Fatal("accepted without via")
+	}
+	doc := writeFile(t, "d", `{"vkey":"k","paths":[{"url":"tcp://a:1"}],"access":[{"access":"x","local_port":1}]}`)
+	if p := load([]string{"@" + doc}, nil); p.Direct || p.Hosting {
+		t.Fatalf("file visitor: %+v", p)
+	}
+	if p := load([]string{"@" + doc, "npc://k@a:1"}, nil); !p.Hosting {
+		t.Fatalf("file mixed: %+v", p)
+	}
+}
+
+// shellWords splits a generated command as the named shell would.
+func shellWords(t *testing.T, line, shell string) []string {
+	t.Helper()
+	var (
+		words []string
+		cur   strings.Builder
+		in    bool // inside a word
+	)
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == ' ' || c == '\n':
+			if in {
+				words, in = append(words, cur.String()), false
+				cur.Reset()
+			}
+		case c == '"':
+			in = true
+			for i++; i < len(line) && line[i] != '"'; i++ {
+				if line[i] == '\\' && shell == "bash" && strings.IndexByte("$`\"\\", line[i+1]) >= 0 {
+					i++
+				} else if line[i] == '\\' && shell == "cmd" && line[i+1] == '"' {
+					i++
+				}
+				cur.WriteByte(line[i])
+			}
+		case c == '\'':
+			in = true
+			for i++; i < len(line); i++ {
+				if line[i] != '\'' {
+					cur.WriteByte(line[i])
+				} else if shell == "powershell" && i+1 < len(line) && line[i+1] == '\'' {
+					cur.WriteByte('\'')
+					i++
+				} else if shell == "bash" && strings.HasPrefix(line[i:], `'\''`) {
+					cur.WriteByte('\'')
+					i += 3
+				} else {
+					break
+				}
+			}
+		case c == '\\' && shell == "bash" && i+1 < len(line) && line[i+1] == '\n':
+			i++
+		case c == '^' && shell == "cmd" && i+1 < len(line) && line[i+1] == '\n':
+			i++
+		case c == '`' && shell == "powershell" && i+1 < len(line) && line[i+1] == '\n':
+			i++
+		default:
+			in = true
+			cur.WriteByte(c)
+		}
+	}
+	if in {
+		words = append(words, cur.String())
+	}
+	return words
+}
+
+type generatorSample struct {
+	Name, Shell               string
+	One, Multi, JSONC, Base64 string
+}
+
+func loadGeneratorSamples(t *testing.T) []generatorSample {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "generator_samples.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node, err := exec.LookPath("node"); err == nil {
+		fresh, err := exec.Command(node, filepath.Join("testdata", "gen_samples.js")).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(fresh, b) {
+			t.Fatal("generator_samples.json is stale: node client/launch/testdata/gen_samples.js > client/launch/testdata/generator_samples.json")
+		}
+	}
+	var samples []generatorSample
+	if err := json.Unmarshal(b, &samples); err != nil {
+		t.Fatal(err)
+	}
+	return samples
+}
+
+// What the web generator prints is what npc accepts, in every output form,
+// and the forms agree with each other.
+func TestGeneratorSamples(t *testing.T) {
+	ctx := context.Background()
+	plan := func(t *testing.T, sample generatorSample, words []string) Plan {
+		t.Helper()
+		var links, ls []string
+		for _, w := range words {
+			if v, ok := strings.CutPrefix(w, "-launch="); ok {
+				links = append(links, v)
+			} else if v, ok := strings.CutPrefix(w, "-L="); ok {
+				ls = append(ls, v)
+			}
+		}
+		if len(links) != 1 {
+			t.Fatalf("%s: %q", sample.Name, words)
+		}
+		p, err := NewComposer(sources(links...), locals(t, ls...)).Load(ctx)
+		if err != nil {
+			t.Fatalf("%s: %v", sample.Name, err)
+		}
+		return p
+	}
+	for _, s := range loadGeneratorSamples(t) {
+		t.Run(s.Name, func(t *testing.T) {
+			one := plan(t, s, shellWords(t, s.One, s.Shell)).Profiles[0]
+			multi := plan(t, s, shellWords(t, s.Multi, s.Shell)).Profiles[0]
+			packed := plan(t, s, shellWords(t, s.Base64, s.Shell)).Profiles[0]
+			got, err := Resolve(ctx, "@"+writeFile(t, "g.jsonc", s.JSONC))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for what, p := range map[string]Profile{"multi": multi, "base64": packed, "jsonc": got[0]} {
+				if p.Key() != one.Key() || len(p.Config.LocalServer) != len(one.Config.LocalServer) || p.Config.CommonConfig.Pipes != one.Config.CommonConfig.Pipes {
+					t.Fatalf("%s differs: %+v %+v", what, p.Config.CommonConfig, one.Config.CommonConfig)
+				}
+				for i, l := range p.Config.LocalServer {
+					if a := one.Config.LocalServer[i]; l.Password != a.Password || l.Target != a.Target || l.Port != a.Port || l.Ip != a.Ip || len(l.Auth) != len(a.Auth) {
+						t.Fatalf("%s local %d: %+v, want %+v", what, i, l, a)
+					}
+				}
+			}
+			switch s.Name {
+			case "tunnel default":
+				if l := one.Config.LocalServer[0]; l.Password != `p&"1!` || one.Config.CommonConfig.VKey != "v k@x$" {
+					t.Fatalf("%+v", l)
+				}
+			case "bash accounts":
+				if a := one.Config.LocalServer[0].Auth; a["a b"] != "x:y&z" || a["c"] != "2" {
+					t.Fatalf("%v", a)
+				}
+			case "service named":
+				if one.Name != "ho me" || !strings.Contains(s.One, " install ") {
+					t.Fatal(s.One)
+				}
+			case "docker":
+				if !strings.HasPrefix(s.One, "docker run -d") {
+					t.Fatal(s.One)
+				}
+			}
+		})
 	}
 }

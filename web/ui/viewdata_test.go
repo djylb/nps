@@ -135,8 +135,8 @@ func TestManagementPageBridgeURL(t *testing.T) {
 // The start commands of the pages are launch links in double quotes.
 func TestStartCommandsUseLaunchLinks(t *testing.T) {
 	for file, want := range map[string][]string{
-		"client/list.html": {`{{.npc_bin}} -launch=\"`, `{{.npc_bin}} install -launch=\"`, `npcLink(`},
-		"index/list.html":  {`{{.npc_bin}} -launch=\"`, `-L=\"`, `encodeURIComponent(row.Password)`},
+		"client/list.html": {`LaunchGen.detail(`, `launch-generator.js`},
+		"index/list.html":  {`LaunchGen.detail(`, `launch-generator.js`},
 	} {
 		b, err := os.ReadFile(filepath.Join("..", "views", file))
 		if err != nil {

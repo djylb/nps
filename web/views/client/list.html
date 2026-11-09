@@ -82,8 +82,10 @@
     </div>
 </div>
 
+<script src="{{.web_base_url}}/static/js/launch-generator.js?v={{.version}}"></script>
 <script>
     /*bootstrap table*/
+    var launchBase = {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}, visitor: {{.visitor_vkey}}};
     var hasCommands = {{if or (index .link_urls "tcp") (index .link_urls "tls") (index .link_urls "quic") (index .link_urls "ws") (index .link_urls "wss")}}true{{else}}false{{end}};
     npsList.init('#table', {
         toolbar: "#toolbar",
@@ -110,7 +112,7 @@
         cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
-        onExpandRow: function () {$('body').setLang ('.detail-view');},
+        onExpandRow: function (index, row, $el) { $('body').setLang ('.detail-view'); LaunchGen.fill(launchBase, 'client', row, $el); },
         onPostBody: function (data) { if ($(this)[0].locale != undefined) $('body').setLang('#table'); },
         onLoadSuccess: function (res) { showGlobalTraffic(res && res.traffic); },
         detailFormatter: function (index, row, element) {
@@ -185,25 +187,7 @@
                 shaped += '<br/><br/>'
             }
             transport += shaped
-            var commands = ''
-                {{if index .link_urls "tcp"}}
-                + '<b langtag="word-commandclient-tcp"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "tcp"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if index .link_urls "tls"}}
-                + '<b langtag="word-commandclient-tls"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "tls"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if index .link_urls "quic"}}
-                + '<b langtag="word-commandclient-quic"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "quic"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if index .link_urls "ws"}}
-                + '<b langtag="word-commandclient-ws"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "ws"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if index .link_urls "wss"}}
-                + '<b langtag="word-commandclient-wss"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{index .link_urls "wss"}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
-                {{if .bridge_url}}
-                + '<b langtag="word-commandclient-install"></b>: ' + '<code onclick="oCopy(this)">' + "{{.npc_bin}} install -launch=\"" + escapeHtml(npcLink({{.bridge_url}}, row.VerifyKey)) + "\"</code>&emsp;<br/><br/>"
-                {{end}}
+            var commands = LaunchGen.detail(launchBase, 'client', row)
             return '<div class="resource-details">'
                 + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Mode', 'VerifyKey', 'Status', 'UploadRate', 'DownloadRate', 'InletFlow', 'ExportFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain']))
                 + resourceDetailSection('section-status', status)
@@ -518,6 +502,8 @@
                         + '" class="btn btn-outline btn-primary list-entry-btn" langtitle="word-tunnel"><i class="fa fa-exchange-alt" aria-hidden="true"></i><span class="sr-only" langtag="word-tunnel"></span></a>'
                         + '<a href="{{.web_base_url}}/index/hostlist?client_id=' + row.Id
                         + '" class="btn btn-outline btn-info list-entry-btn" langtitle="word-host"><i class="fa fa-globe" aria-hidden="true"></i><span class="sr-only" langtag="word-host"></span></a>'
+                        + '<a href="{{.web_base_url}}/client/launch?id=' + row.Id
+                        + '" class="btn btn-outline btn-secondary list-entry-btn" langtitle="word-startcommand"><i class="fa fa-terminal" aria-hidden="true"></i><span class="sr-only" langtag="word-startcommand"></span></a>'
                         + '</div>'
                 }
             },

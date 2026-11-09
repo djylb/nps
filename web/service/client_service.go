@@ -21,6 +21,7 @@ import (
 )
 
 type ClientService interface {
+	SaveLaunchForm(id int, form string) error
 	Kick(id int) error
 	List(ListClientsInput) ListClientsResult
 	Add(AddClientInput) (int, error)
@@ -305,6 +306,19 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.RegisterKey = registerKey
 	client.RegisterMaxHours = max(input.RegisterMaxHours, 0)
 	lists.applyTo(&client.SourceLists, "client "+strconv.Itoa(client.Id))
+	return s.Backend.Repository.SaveClient(client)
+}
+
+// SaveLaunchForm stores the start command form of client id; empty removes it.
+func (s DefaultClientService) SaveLaunchForm(id int, form string) error {
+	if len(form) > MaxLaunchForm {
+		return ErrLaunchFormTooLarge
+	}
+	client, err := s.Backend.Repository.GetClient(id)
+	if err != nil {
+		return err
+	}
+	client.LaunchForm = form
 	return s.Backend.Repository.SaveClient(client)
 }
 

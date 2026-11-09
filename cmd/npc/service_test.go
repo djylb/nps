@@ -283,6 +283,15 @@ func TestServiceArgumentsAccessCommand(t *testing.T) {
 	}
 }
 
+// -launch and -L are collected separately, in any order.
+func TestLaunchAndLocalAnyOrder(t *testing.T) {
+	fs := serviceFlags(t, "-L=tcp://:1?access=a&via=x", "--launch=npc://k@a:1#x", "-L", "udp://:2?access=b&via=x")
+	sources, locals, err := launchSpec(fs, []string{"npc://k@a:1#x"})
+	if err != nil || len(sources) != 1 || len(locals) != 2 {
+		t.Fatalf("%v %d %d", err, len(sources), len(locals))
+	}
+}
+
 func TestSplitLaunchEnv(t *testing.T) {
 	got := splitLaunchEnv("\n npc://k@a:1?alpn=h3,nps \r\n\n@/etc/npc/b.json\n")
 	if !slices.Equal(got, []string{"npc://k@a:1?alpn=h3,nps", "@/etc/npc/b.json"}) {

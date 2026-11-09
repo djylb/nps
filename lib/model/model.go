@@ -437,8 +437,11 @@ type Client struct {
 	LocalAddr string // client local ip
 	Remark    string // remark
 	Status    bool   // allowed to connect
-	IsConnect bool   // connected now
-	CanUpdate bool   `json:",omitempty"` // a connected npc can be updated from the web; set when listed
+	// LaunchForm is the start command form the web page saved, opaque to the
+	// server; it holds no vkey.
+	LaunchForm string `json:",omitempty"`
+	IsConnect  bool   // connected now
+	CanUpdate  bool   `json:",omitempty"` // a connected npc can be updated from the web; set when listed
 	// Shaped sums the shaping statistics of the connected npc in the
 	// direction the server sends; set when listed for a client with shaping.
 	Shaped          *ShapedStats `json:",omitempty"`
@@ -618,6 +621,9 @@ type Tunnel struct {
 	ServiceName string `json:",omitempty"`
 	// Generated marks a tunnel converted from a file tunnel with a port.
 	Generated bool `json:",omitempty"`
+	// LaunchForm is the start command form the web page saved, opaque to the
+	// server; it holds no access key.
+	LaunchForm string `json:",omitempty"`
 }
 
 // CompileDestACL compiles the destination list. Rules that cannot be used
@@ -779,6 +785,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		UserAuth:     t.UserAuth,
 		MultiAccount: t.MultiAccount,
 		HealthConfig: t.HealthConfig,
+		LaunchForm:   t.LaunchForm,
 	}
 	c.CopySourceLists(&t.SourceLists)
 	flow := t.Flow

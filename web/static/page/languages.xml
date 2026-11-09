@@ -10,6 +10,274 @@
 		<en-US>English</en-US>
 	</languages>
 
+	<lang id="page-launch">
+		<zh-CN>启动命令</zh-CN>
+		<en-US>Start Command</en-US>
+	</lang>
+	<lang id="word-startcommand">
+		<zh-CN>启动命令</zh-CN>
+		<en-US>Start command</en-US>
+	</lang>
+	<lang id="lg-named">
+		<zh-CN>指定连接名称</zh-CN>
+		<en-US>Name the connection</en-US>
+	</lang>
+	<lang id="lg-edit">
+		<zh-CN>编辑</zh-CN>
+		<en-US>Edit</en-US>
+	</lang>
+	<lang id="lg-run">
+		<zh-CN>运行方式</zh-CN>
+		<en-US>How to run</en-US>
+	</lang>
+	<lang id="lg-run-temp">
+		<zh-CN>临时启动</zh-CN>
+		<en-US>Run now</en-US>
+	</lang>
+	<lang id="lg-run-service">
+		<zh-CN>安装为服务</zh-CN>
+		<en-US>Install as a service</en-US>
+	</lang>
+	<lang id="lg-run-docker">
+		<zh-CN>Docker</zh-CN>
+		<en-US>Docker</en-US>
+	</lang>
+	<lang id="lg-os">
+		<zh-CN>系统</zh-CN>
+		<en-US>System</en-US>
+	</lang>
+	<lang id="lg-bin">
+		<zh-CN>程序路径</zh-CN>
+		<en-US>Program path</en-US>
+	</lang>
+	<lang id="lg-bin-dot">
+		<zh-CN>当前目录</zh-CN>
+		<en-US>Current directory</en-US>
+	</lang>
+	<lang id="lg-bin-plain">
+		<zh-CN>在 PATH 中</zh-CN>
+		<en-US>On PATH</en-US>
+	</lang>
+	<lang id="lg-bin-custom">
+		<zh-CN>自定义路径</zh-CN>
+		<en-US>Custom path</en-US>
+	</lang>
+	<lang id="lg-paths">
+		<zh-CN>连接路径</zh-CN>
+		<en-US>Connection paths</en-US>
+	</lang>
+	<lang id="lg-access">
+		<zh-CN>点对点访问</zh-CN>
+		<en-US>Point-to-point access</en-US>
+	</lang>
+	<lang id="lg-add-path">
+		<zh-CN>添加路径</zh-CN>
+		<en-US>Add path</en-US>
+	</lang>
+	<lang id="lg-add-access">
+		<zh-CN>添加访问</zh-CN>
+		<en-US>Add access</en-US>
+	</lang>
+	<lang id="lg-carrier">
+		<zh-CN>载体</zh-CN>
+		<en-US>Carrier</en-US>
+	</lang>
+	<lang id="lg-addr">
+		<zh-CN>地址</zh-CN>
+		<en-US>Address</en-US>
+	</lang>
+	<lang id="lg-port">
+		<zh-CN>端口</zh-CN>
+		<en-US>Port</en-US>
+	</lang>
+	<lang id="lg-path">
+		<zh-CN>路径</zh-CN>
+		<en-US>Path</en-US>
+	</lang>
+	<lang id="lg-advanced">
+		<zh-CN>高级</zh-CN>
+		<en-US>Advanced</en-US>
+	</lang>
+	<lang id="lg-standby">
+		<zh-CN>仅作备用</zh-CN>
+		<en-US>Standby only</en-US>
+	</lang>
+	<lang id="lg-mode-multi">
+		<zh-CN>多路径同时使用</zh-CN>
+		<en-US>Use all paths together</en-US>
+	</lang>
+	<lang id="lg-mode-single">
+		<zh-CN>按顺序尝试（备用）</zh-CN>
+		<en-US>Try in order (backup)</en-US>
+	</lang>
+	<lang id="lg-usage">
+		<zh-CN>路径使用</zh-CN>
+		<en-US>Path use</en-US>
+	</lang>
+	<lang id="lg-scheduler">
+		<zh-CN>上行调度</zh-CN>
+		<en-US>Upload scheduling</en-US>
+	</lang>
+	<lang id="lg-default">
+		<zh-CN>默认</zh-CN>
+		<en-US>Default</en-US>
+	</lang>
+	<lang id="lg-local-type">
+		<zh-CN>本地类型</zh-CN>
+		<en-US>Local type</en-US>
+	</lang>
+	<lang id="lg-listen">
+		<zh-CN>监听地址</zh-CN>
+		<en-US>Listen address</en-US>
+	</lang>
+	<lang id="lg-target">
+		<zh-CN>目标</zh-CN>
+		<en-US>Target</en-US>
+	</lang>
+	<lang id="lg-conn-mode">
+		<zh-CN>连接模式</zh-CN>
+		<en-US>Connection mode</en-US>
+	</lang>
+	<lang id="lg-key">
+		<zh-CN>访问密钥</zh-CN>
+		<en-US>Access key</en-US>
+	</lang>
+	<lang id="lg-accounts">
+		<zh-CN>代理账号</zh-CN>
+		<en-US>Proxy accounts</en-US>
+	</lang>
+	<lang id="lg-add-account">
+		<zh-CN>添加账号</zh-CN>
+		<en-US>Add account</en-US>
+	</lang>
+	<lang id="lg-user">
+		<zh-CN>用户名</zh-CN>
+		<en-US>User</en-US>
+	</lang>
+	<lang id="lg-pass">
+		<zh-CN>密码</zh-CN>
+		<en-US>Password</en-US>
+	</lang>
+	<lang id="lg-local-proxy">
+		<zh-CN>由服务端连接目标</zh-CN>
+		<en-US>Server reaches the target</en-US>
+	</lang>
+	<lang id="lg-up">
+		<zh-CN>上移</zh-CN>
+		<en-US>Move up</en-US>
+	</lang>
+	<lang id="lg-down">
+		<zh-CN>下移</zh-CN>
+		<en-US>Move down</en-US>
+	</lang>
+	<lang id="lg-delete">
+		<zh-CN>删除</zh-CN>
+		<en-US>Delete</en-US>
+	</lang>
+	<lang id="lg-output">
+		<zh-CN>命令</zh-CN>
+		<en-US>Command</en-US>
+	</lang>
+	<lang id="lg-oneline">
+		<zh-CN>单行命令</zh-CN>
+		<en-US>One line</en-US>
+	</lang>
+	<lang id="lg-multiline">
+		<zh-CN>多行命令</zh-CN>
+		<en-US>Multi-line</en-US>
+	</lang>
+	<lang id="lg-jsonc">
+		<zh-CN>配置文件 JSONC</zh-CN>
+		<en-US>Configuration file JSONC</en-US>
+	</lang>
+	<lang id="lg-base64">
+		<zh-CN>Base64</zh-CN>
+		<en-US>Base64</en-US>
+	</lang>
+	<lang id="lg-copy">
+		<zh-CN>复制</zh-CN>
+		<en-US>Copy</en-US>
+	</lang>
+	<lang id="lg-save">
+		<zh-CN>保存</zh-CN>
+		<en-US>Save</en-US>
+	</lang>
+	<lang id="lg-restore">
+		<zh-CN>恢复默认</zh-CN>
+		<en-US>Restore defaults</en-US>
+	</lang>
+	<lang id="lg-note-secret">
+		<zh-CN>命令里含明文密钥，不要公开。</zh-CN>
+		<en-US>These commands contain keys in clear text; do not share them.</en-US>
+	</lang>
+	<lang id="lg-note-service">
+		<zh-CN>安装后用 npc start 启动，密钥写入仅属主可读的文件。</zh-CN>
+		<en-US>After installing, start it with npc start; the keys go into a file only the owner can read.</en-US>
+	</lang>
+	<lang id="lg-note-transparent">
+		<zh-CN>透明代理需要自行配置防火墙，npc 不修改防火墙。示例：</zh-CN>
+		<en-US>A transparent proxy needs your own firewall rules; npc does not change the firewall. Example:</en-US>
+	</lang>
+	<lang id="lg-warn-noauth">
+		<zh-CN>本地代理没有认证，局域网内都可使用。</zh-CN>
+		<en-US>This local proxy has no authentication; anyone on the network can use it.</en-US>
+	</lang>
+	<lang id="lg-warn-lan">
+		<zh-CN>透明代理没有认证，监听非本机地址时局域网内都可使用。</zh-CN>
+		<en-US>A transparent proxy has no authentication; on a non-local address anyone on the network can use it.</en-US>
+	</lang>
+	<lang id="lg-err-addr">
+		<zh-CN>此载体服务端没有启用，必须填写地址和端口。</zh-CN>
+		<en-US>The server does not enable this carrier: enter the address and port.</en-US>
+	</lang>
+	<lang id="lg-err-port">
+		<zh-CN>端口必须是 1-65535。</zh-CN>
+		<en-US>The port must be 1-65535.</en-US>
+	</lang>
+	<lang id="lg-err-number">
+		<zh-CN>必须是整数。</zh-CN>
+		<en-US>Must be an integer.</en-US>
+	</lang>
+	<lang id="lg-err-count">
+		<zh-CN>必须是不小于 1 的整数。</zh-CN>
+		<en-US>Must be an integer of at least 1.</en-US>
+	</lang>
+	<lang id="lg-err-http">
+		<zh-CN>ws/wss 的 HTTP 版本只能是 http/1.1、h2。</zh-CN>
+		<en-US>The HTTP versions of ws/wss are http/1.1 and h2.</en-US>
+	</lang>
+	<lang id="lg-err-kinds">
+		<zh-CN>当前只支持 websocket。</zh-CN>
+		<en-US>Only websocket is available.</en-US>
+	</lang>
+	<lang id="lg-err-dirs">
+		<zh-CN>dirs 取 bidi、up、down 或逗号组合。</zh-CN>
+		<en-US>dirs is bidi, up, down or a comma list of them.</en-US>
+	</lang>
+	<lang id="lg-err-bidi">
+		<zh-CN>至少一条路径要能建立会话（dirs 含 bidi）。</zh-CN>
+		<en-US>At least one path must be able to start a session (dirs includes bidi).</en-US>
+	</lang>
+	<lang id="lg-err-target">
+		<zh-CN>隧道没有默认目标，必须填写目标。</zh-CN>
+		<en-US>The tunnel has no default target: enter the target.</en-US>
+	</lang>
+	<lang id="lg-err-key">
+		<zh-CN>必须填写访问密钥。</zh-CN>
+		<en-US>Enter the access key.</en-US>
+	</lang>
+	<lang id="lg-err-user">
+		<zh-CN>用户名不能为空，也不能含冒号。</zh-CN>
+		<en-US>The user name must not be empty or contain a colon.</en-US>
+	</lang>
+	<lang id="lg-err-dup-port">
+		<zh-CN>本地端口重复。</zh-CN>
+		<en-US>Local port used twice.</en-US>
+	</lang>
+	<lang id="lg-hint-target-client">
+		<zh-CN>留空时使用隧道的默认目标。</zh-CN>
+		<en-US>Leave empty for the tunnel's default target.</en-US>
+	</lang>
 	<lang id="title-admin">
 		<zh-CN>NPS 管理</zh-CN>
 		<en-US>NPS Admin</en-US>
@@ -184,18 +452,6 @@
 		<zh-CN>关闭</zh-CN>
 		<en-US>Close</en-US>
 	</lang>
-	<lang id="word-commandaccessp2ps">
-		<zh-CN>访问端命令 (HTTP|Socks5)</zh-CN>
-		<en-US>Access Command (HTTP|Socks5)</en-US>
-	</lang>
-	<lang id="word-commandaccessp2pt">
-		<zh-CN>访问端命令 (透明代理)</zh-CN>
-		<en-US>Access Command (Transparent proxy)</en-US>
-	</lang>
-	<lang id="word-commandaccessp2p">
-		<zh-CN>访问端命令 (TCP|UDP)</zh-CN>
-		<en-US>Access Command (TCP|UDP)</en-US>
-	</lang>
 	<lang id="word-commandaccess">
 		<zh-CN>访问端命令</zh-CN>
 		<en-US>Access Command</en-US>
@@ -207,30 +463,6 @@
 	<lang id="word-commandclient">
 		<zh-CN>客户端命令</zh-CN>
 		<en-US>Command</en-US>
-	</lang>
-	<lang id="word-commandclient-tcp">
-		<zh-CN>TCP 启动命令</zh-CN>
-		<en-US>TCP Command</en-US>
-	</lang>
-	<lang id="word-commandclient-tls">
-		<zh-CN>TLS 启动命令</zh-CN>
-		<en-US>TLS Command</en-US>
-	</lang>
-	<lang id="word-commandclient-quic">
-		<zh-CN>QUIC 启动命令</zh-CN>
-		<en-US>QUIC Command</en-US>
-	</lang>
-	<lang id="word-commandclient-ws">
-		<zh-CN>WS 启动命令</zh-CN>
-		<en-US>WS Command</en-US>
-	</lang>
-	<lang id="word-commandclient-wss">
-		<zh-CN>WSS 启动命令</zh-CN>
-		<en-US>WSS Command</en-US>
-	</lang>
-	<lang id="word-commandclient-install">
-		<zh-CN>安装为服务命令</zh-CN>
-		<en-US>Install as Service Command</en-US>
 	</lang>
 	<lang id="word-tcpport">
 		<zh-CN>TCP 端口</zh-CN>

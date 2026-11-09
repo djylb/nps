@@ -23,6 +23,7 @@ var (
 	ErrRegisterKeyInvalid        = errors.New("invalid registration key")
 	ErrRegisterKeyDuplicate      = errors.New("registration key duplicate")
 	ErrTunnelNotFound            = errors.New("tunnel not found")
+	ErrLaunchFormTooLarge        = errors.New("start command form is too large")
 	ErrHostNotFound              = errors.New("host not found")
 	ErrHostExists                = errors.New("host already exists")
 	ErrModeRequired              = errors.New("mode is required")
@@ -34,3 +35,6 @@ var (
 	ErrForbidden                 = errors.New("forbidden")
 	ErrPageNotFound              = errors.New("page not found")
 )
+
+// MaxLaunchForm is the longest start command form a client or tunnel keeps.
+const MaxLaunchForm = 64 << 10

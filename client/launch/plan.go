@@ -257,6 +257,7 @@ func merge(a, q *Profile) error {
 	a.Config.LocalServer = append(a.Config.LocalServer, q.Config.LocalServer...)
 	a.Direct = a.Direct && q.Direct
 	a.combined = true
+	a.writings = append(a.writings, q.writings...)
 	return nil
 }
 
@@ -285,6 +286,7 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 		for i := range group {
 			p := group[i].clone()
 			p.writtenKeys()
+			p.writings = []writing{{p.Name, len(p.Config.LocalServer) > 0}}
 			k := p.Key()
 			if a, ok := byKey[k]; ok {
 				if err := merge(a, p); err != nil {
@@ -324,6 +326,10 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 			listeners = append(listeners, listener{l, p.Source})
 		}
 	}
+	written := 0
+	for _, p := range conns {
+		written += len(p.writings)
+	}
 	for _, loc := range locals {
 		var p *Profile
 		switch {
@@ -336,10 +342,15 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 			}
 		case pending:
 			continue
-		case len(conns) != 1:
-			return nil, fmt.Errorf("%s: via is required with %d connections", loc.Source, len(conns))
+		case len(conns) != 1 || len(conns[0].writings) != 1:
+			return nil, fmt.Errorf("%s: via is required with %d connections", loc.Source, written)
 		default:
 			p = conns[0]
+		}
+		for i := range p.writings {
+			if loc.Via == "" || p.writings[i].name == loc.Via {
+				p.writings[i].access = true
+			}
 		}
 		l, err := loc.Access.compile()
 		if err != nil {
@@ -360,6 +371,9 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 	for i, p := range conns {
 		if c := p.Config; p.combined && len(c.LocalServer) > 0 && len(c.Hosts)+len(c.Tasks) > 0 {
 			return nil, fmt.Errorf("connection %s has both tunnels and local access from different sources: run them as separate connections", p.label())
+		}
+		if len(p.Config.LocalServer) > 0 {
+			p.Hosting = slices.ContainsFunc(p.writings, func(w writing) bool { return !w.access })
 		}
 		out[i] = *p
 	}

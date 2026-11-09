@@ -1,0 +1,14 @@
+<div class="row tile">
+    <div class="col-md-12 col-md-auto">
+        <div class="ibox float-e-margins">
+            <h3 class="ibox-title" langtag="page-launch"></h3>
+            <div class="ibox-content"><div id="launch-root"></div></div>
+        </div>
+    </div>
+</div>
+<script src="{{.web_base_url}}/static/js/launch-generator.js?v={{.version}}"></script>
+<script>
+    LaunchGen.mount(document.getElementById('launch-root'), Object.assign(
+        {{.launch_ctx}},
+        {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}}));
+</script>

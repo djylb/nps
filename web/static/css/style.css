@@ -12993,3 +12993,20 @@ body.md-skin {
 @media (prefers-reduced-motion: reduce) {
     .back-to-top { transition: none; }
 }
+
+/* start command generator */
+.lg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; }
+.lg-wide { grid-column: 1 / -1; }
+.lg-card { border: 1px solid rgba(128, 128, 128, .35); border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+.lg-tools { text-align: right; margin-bottom: 4px; }
+.lg-tools .btn, .lg-account .btn { min-width: 32px; min-height: 32px; }
+.lg-title { margin-top: 18px; }
+.lg-adv { margin: 8px 0; }
+.lg-adv summary { cursor: pointer; padding: 6px 0; }
+.lg-account { display: flex; gap: 6px; margin-bottom: 4px; }
+.lg-account input { min-width: 0; }
+.lg-output { margin-bottom: 10px; }
+.lg-output-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.lg-output-head .btn { min-height: 32px; }
+.lg-output pre, .lg-card pre { white-space: pre-wrap; word-break: break-all; margin: 0; }
+.lg-actions { margin-top: 14px; }

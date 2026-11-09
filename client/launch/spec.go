@@ -51,6 +51,17 @@ type Profile struct {
 	by map[string]string
 	// combined: more than one writing or a -L went into this connection.
 	combined bool
+	// writings records each time the connection is written: with its name
+	// and whether an access goes with it, which decides its role.
+	writings []writing
+	// Hosting: an access-less writing shares this connection, so besides
+	// its local accesses it runs as an ordinary client.
+	Hosting bool
+}
+
+type writing struct {
+	name   string
+	access bool
 }
 
 var errNotLaunch = errors.New("不是启动链接、@文件或 base64，文件请写 @路径 (not a launch link, @file or base64; write a file as @path)")

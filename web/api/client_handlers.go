@@ -139,6 +139,32 @@ func (a *App) EditClient(c Context) {
 	ajax(c, "save success", 1)
 }
 
+// GetClientLaunch returns the saved start command form.
+func (a *App) GetClientLaunch(c Context) {
+	client, err := a.Services.Clients.Get(requestIntValue(c, "id"))
+	if err != nil {
+		respondCode(c, 0)
+		return
+	}
+	respondCodeData(c, 1, client.LaunchForm)
+}
+
+// SaveClientLaunch stores the start command form; an empty form restores the default.
+func (a *App) SaveClientLaunch(c Context) {
+	respondLaunchSave(c, a.Services.Clients.SaveLaunchForm(requestIntValue(c, "id"), requestString(c, "form")))
+}
+
+func respondLaunchSave(c Context, err error) {
+	switch {
+	case errors.Is(err, webservice.ErrLaunchFormTooLarge):
+		ajax(c, err.Error(), 0)
+	case err != nil:
+		ajax(c, "save error", 0)
+	default:
+		ajax(c, "save success", 1)
+	}
+}
+
 func (a *App) ClearClient(c Context) {
 	if err := a.Services.Clients.Clear(requestIntValue(c, "id"), requestEscapedString(c, "mode"), sessionBool(c, "isAdmin")); err != nil {
 		ajax(c, "modified fail", 0)
@@ -222,6 +248,10 @@ func (a *App) ClientQRCode(c Context) {
 // Directional speeds are response-only; the client's combined RateLimit remains unchanged.
 type clientRateRow struct {
 	*model.Client
+	// LaunchForm is never set: it hides the client's large field from lists,
+	// which only need HasLaunch to fetch it when a row is opened.
+	LaunchForm   string `json:",omitempty"`
+	HasLaunch    bool   `json:",omitempty"`
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
@@ -237,7 +267,7 @@ func clientRateRows(rows []*model.Client) []*clientRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &clientRateRow{Client: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
+		result[i] = &clientRateRow{Client: row, HasLaunch: row.LaunchForm != "", NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }

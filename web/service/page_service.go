@@ -104,6 +104,22 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			data["auth"] = task.UserAuth.Content
 		}
 		data["name"] = "edit tunnel"
+	case "launch":
+		task, err := s.index().GetTunnel(pageInt(input, "id"))
+		if err != nil || task.Mode != "secret" || task.Client == nil {
+			return PageBuildResult{}, ErrPageNotFound
+		}
+		vkey, _ := data["visitor_vkey"].(string)
+		if vkey == "" {
+			vkey = task.Client.VerifyKey
+		}
+		target := ""
+		if task.Target != nil {
+			target, _, _ = strings.Cut(strings.TrimSpace(task.Target.TargetStr), "\n")
+		}
+		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "password": task.Password,
+			"defaultTarget": target, "form": task.LaunchForm, "save": "index/savelaunch"}
+		data["name"] = "start command"
 	case "hostlist":
 		data["httpAccessPort"] = cfg.Network.HTTPProxyAccessPort
 		data["httpsAccessPort"] = cfg.Network.HTTPSProxyAccessPort
@@ -139,6 +155,14 @@ func (s DefaultPageService) buildClient(input PageBuildInput) (PageBuildResult, 
 		data["name"] = "client"
 	case "add":
 		data["name"] = "add client"
+	case "launch":
+		client, err := s.clients().Get(pageInt(input, "id"))
+		if err != nil {
+			return PageBuildResult{}, ErrPageNotFound
+		}
+		data["launch_ctx"] = map[string]any{"kind": "client", "id": client.Id, "vkey": client.VerifyKey,
+			"form": client.LaunchForm, "save": "client/savelaunch"}
+		data["name"] = "start command"
 	case "edit":
 		client, err := s.clients().Get(pageInt(input, "id"))
 		if err != nil {

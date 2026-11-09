@@ -63,6 +63,21 @@ func (a *App) GetTunnel(c Context) {
 	respondTable(c, out, count)
 }
 
+// GetTunnelLaunch returns the saved start command form.
+func (a *App) GetTunnelLaunch(c Context) {
+	task, err := a.Services.Index.GetTunnel(requestIntValue(c, "id"))
+	if err != nil {
+		respondCode(c, 0)
+		return
+	}
+	respondCodeData(c, 1, task.LaunchForm)
+}
+
+// SaveTunnelLaunch stores the start command form; an empty form restores the default.
+func (a *App) SaveTunnelLaunch(c Context) {
+	respondLaunchSave(c, a.Services.Index.SaveTunnelLaunchForm(requestIntValue(c, "id"), requestString(c, "form")))
+}
+
 func (a *App) AddTunnel(c Context) {
 	cfg := a.currentConfig()
 	input := tunnelInput(c, cfg)
@@ -337,6 +352,10 @@ func indexAllowLocal(cfg *servercfg.Snapshot, isAdmin bool) bool {
 // These response fields are snapshots in bytes/s and are never persisted.
 type tunnelRateRow struct {
 	*model.Tunnel
+	// LaunchForm is never set: it hides the tunnel's large field from lists,
+	// which only need HasLaunch to fetch it when a row is opened.
+	LaunchForm   string `json:",omitempty"`
+	HasLaunch    bool   `json:",omitempty"`
 	NowConn      int32
 	UploadRate   int64
 	DownloadRate int64
@@ -361,7 +380,7 @@ func tunnelRateRows(rows []*model.Tunnel) []*tunnelRateRow {
 			continue
 		}
 		upload, download := row.CurrentRates()
-		result[i] = &tunnelRateRow{Tunnel: row, NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
+		result[i] = &tunnelRateRow{Tunnel: row, HasLaunch: row.LaunchForm != "", NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
 }

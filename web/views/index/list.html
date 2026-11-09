@@ -34,7 +34,9 @@
     </div>
 </div>
 
+<script src="{{.web_base_url}}/static/js/launch-generator.js?v={{.version}}"></script>
 <script>
+    var launchBase = {carriers: {{.link_urls}}, primary: {{.bridge_url}}, bin: {{.npc_bin}}, base: {{.web_base_url}}, visitor: {{.visitor_vkey}}};
     name = '{{.name}}:'.replace(/\s*/g, "")
     $('#langtag').attr('langtag', 'page-list' + name.replace(/:.*/, "")).next().text(name.split(":")[1])
 
@@ -104,7 +106,7 @@
         cookiesEnabled: ['bs.table.sortOrder', 'bs.table.sortName', 'bs.table.sortPriority', 'bs.table.pageList'],
         detailView: true,
         smartDisplay: true, // 智能显示 pagination 和 cardview 等
-        onExpandRow: function () { $('body').setLang('.detail-view'); },
+        onExpandRow: function (index, row, $el) { $('body').setLang('.detail-view'); if (row.Mode == 'secret') LaunchGen.fill(launchBase, 'tunnel', row, $el); },
         onLoadSuccess:function (data) { $('body').setLang('.detail-view'); },
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang('#table'); },
         detailFormatter: function (index, row, element) {
@@ -122,7 +124,7 @@
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Client.Cnf.Crypt + '"></span>&emsp;'
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
-                + '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>'
+                + (row.Mode == "secret" ? '<br/><br>' : '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>')
             var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
@@ -155,14 +157,9 @@
                     + '<b langtag="word-target"></b>: ' + copyable(row.Target.TargetStr) + '&emsp;')
             }
             if (row.Mode == "secret") {
-                var cmd = function (localType) {
-                    return '<code tabindex="0" onclick="oCopy(this)" ' + copyKeys() + '>' + "{{.npc_bin}} -launch=\"" + escapeHtml(npcLink({{.bridge_url}}, {{.visitor_vkey}} || row.Client.VerifyKey))
-                        + "\" -L=\"" + localType + "://:2000?access=" + escapeHtml(encodeURIComponent(row.Password)) + "&amp;conn_mode=auto\"</code>"
-                }
-                return tmp + resourceDetailSection('section-commands', ''
-                    + '<b langtag="word-commandaccessp2p"></b>: ' + cmd("tcp_udp") + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2ps"></b>: ' + cmd("mixed") + "<br/><br>"
-                    + '<b langtag="word-commandaccessp2pt"></b>: ' + cmd("transparent"))
+                var scope = {1: 'word-whitelist', 2: 'word-blacklist'}[Number(row.DestAclMode || 0)] || 'word-disable'
+                return tmp + resourceDetailSection('section-destination', '<b langtag="word-destacl"></b>: <span langtag="' + scope + '"></span>')
+                    + resourceDetailSection('section-commands', LaunchGen.detail(launchBase, 'tunnel', row))
             }
             return '<div class="resource-details">' + tmp + '</div>'
         },
@@ -229,7 +226,7 @@
                 field: 'Port', //域值
                 title: '<span langtag="word-port"></span>', //标题
                 halign: 'center',
-                visible: {{ if and .type (eq .type "service") }}false{{ else }}true{{ end }}, //false表示不显示
+                visible: {{ if and .type (or (eq .type "service") (eq .type "secret")) }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     var generated = row.Generated || (row.NoStore && row.Target && String(row.Target.TargetStr).indexOf('service://') === 0)
@@ -243,7 +240,7 @@
                 field: 'Target.TargetStr', //域值
                 title: '<span langtag="word-target"></span>', //标题
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: {{ if and .type (eq .type "secret") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -512,7 +509,7 @@
                 title: '<span langtag="word-runstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
-                visible: true, //false表示不显示
+                visible: {{ if and .type (eq .type "secret") }}false{{ else }}true{{ end }}, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     if (row.Mode === "service") {
@@ -567,6 +564,9 @@
                         btn_group += actionBtn('btn-primary', 'fa-play', "submitform('start', '{{.web_base_url}}/index/start', " + idArg)
                     }
                     btn_group += actionBtn('btn-danger', 'fa-trash', "submitform('delete', '{{.web_base_url}}/index/del', " + idArg)
+                    if (row.Mode == 'secret') {
+                        btn_group += actionBtn('btn-secondary', 'fa-terminal', '', '{{.web_base_url}}/index/launch?id=' + row.Id)
+                    }
                     if (row.Mode) {
                         btn_group += actionBtn('btn-success', 'fa-edit', '', '{{.web_base_url}}/index/edit?id=' + row.Id)
                     }

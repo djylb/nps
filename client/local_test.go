@@ -192,6 +192,11 @@ func mixedProxy(t *testing.T, accounts map[string]string) string {
 	t.Cleanup(mgr.Close)
 	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
 		return stubVisitor(func(_ string, c net.Conn) {
+			req, err := http.ReadRequest(bufio.NewReader(c))
+			if err != nil {
+				return
+			}
+			_ = req.Body.Close()
 			_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		})
 	}
