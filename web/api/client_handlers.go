@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
@@ -41,16 +42,17 @@ func requestClientCompress(c Context) (bool, string) {
 func (a *App) AddClient(c Context) {
 	compress, compressAlg := requestClientCompress(c)
 	id, err := a.Services.Clients.Add(webservice.AddClientInput{
-		VKey:             requestEscapedString(c, "vkey"),
-		Remark:           requestEscapedString(c, "remark"),
-		User:             requestEscapedString(c, "u"),
-		Password:         requestEscapedString(c, "p"),
-		Compress:         compress,
-		CompressAlg:      compressAlg,
-		SchedulerDown:    requestEscapedString(c, "scheduler_down"),
-		SchedulerUp:      requestEscapedString(c, "scheduler_up"),
-		Shaping:          requestBoolValue(c, "shaping"),
-		Crypt:            requestBoolValue(c, "crypt"),
+		VKey:          requestEscapedString(c, "vkey"),
+		Remark:        requestEscapedString(c, "remark"),
+		User:          requestEscapedString(c, "u"),
+		Password:      requestEscapedString(c, "p"),
+		Compress:      compress,
+		CompressAlg:   compressAlg,
+		SchedulerDown: requestEscapedString(c, "scheduler_down"),
+		SchedulerUp:   requestEscapedString(c, "scheduler_up"),
+		Shaping:       requestBoolValue(c, "shaping"),
+		// a new client encrypts unless the request says crypt=0
+		Crypt:            requestBoolValue(c, "crypt", true),
 		ConfigConnAllow:  requestBoolValue(c, "config_conn_allow"),
 		RateLimit:        requestIntValue(c, "rate_limit"),
 		MaxConn:          requestIntValue(c, "max_conn"),
@@ -107,7 +109,7 @@ func (a *App) EditClient(c Context) {
 		SchedulerDown:           requestEscapedString(c, "scheduler_down"),
 		SchedulerUp:             requestEscapedString(c, "scheduler_up"),
 		Shaping:                 requestBoolValue(c, "shaping"),
-		Crypt:                   requestBoolValue(c, "crypt"),
+		Crypt:                   requestOptionalBool(c, "crypt"),
 		ConfigConnAllow:         requestBoolValue(c, "config_conn_allow"),
 		RateLimit:               requestIntValue(c, "rate_limit"),
 		MaxConn:                 requestIntValue(c, "max_conn"),
@@ -270,4 +272,14 @@ func clientRateRows(rows []*model.Client) []*clientRateRow {
 		result[i] = &clientRateRow{Client: row, HasLaunch: row.LaunchForm != "", NowConn: row.CurrentConnections(), UploadRate: upload, DownloadRate: download}
 	}
 	return result
+}
+
+// requestOptionalBool is the value of key, or nil when the request does not
+// carry it: an edit then leaves the stored setting as it is.
+func requestOptionalBool(c Context, key string) *bool {
+	if strings.TrimSpace(c.String(key)) == "" {
+		return nil
+	}
+	v := requestBoolValue(c, key)
+	return &v
 }

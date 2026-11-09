@@ -38,3 +38,33 @@ func TestClientSchedulerUp(t *testing.T) {
 		t.Fatalf("add invalid: %v", err)
 	}
 }
+
+// An edit that carries no crypt setting keeps the stored one.
+func TestClientEditKeepsCrypt(t *testing.T) {
+	db := useTempDb(t)
+	clients, _ := seedConfig(t, db)
+	id, err := clients.Add(AddClientInput{VKey: "vkey-c", WebUserName: "crypt", Crypt: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := clients.Get(id)
+	edit := func(crypt *bool) {
+		if err := clients.Edit(EditClientInput{ID: id, IsAdmin: true, VKey: "vkey-c", WebUserName: "crypt", Crypt: crypt}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	off, on := false, true
+	edit(nil)
+	if !c.Cnf.Crypt {
+		t.Fatal("an edit without crypt switched it off")
+	}
+	edit(&off)
+	if c.Cnf.Crypt {
+		t.Fatal("crypt=0 not applied")
+	}
+	edit(nil)
+	edit(&on)
+	if !c.Cnf.Crypt {
+		t.Fatal("crypt=1 not applied")
+	}
+}

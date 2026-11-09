@@ -254,7 +254,7 @@ curl -X POST \
   | `shaping` | 是否对该客户端启用流量整形（`0` 否，`1` 是）；服务端配置了整形来源（`shaping_url` 等）才生效 |
   | `scheduler_down` | 核心协议下 nps 向该客户端发送的调度：`affinity`（默认）、`session_affinity`、`spread_eta`、`spread_round_robin`、`spread_rate_weighted` |
   | `scheduler_up` | 核心协议下 npc 向 nps 发送的调度，取值同 `scheduler_down`；空不下发，npc 保留本地 `-scheduler_up` |
-  | `crypt` | 是否启用加密（`0` 否，`1` 是） |
+  | `crypt` | 是否启用加密（`0` 否，`1` 是）；新建时不传按开启，有 `crypt=0` 才关闭；编辑时不传保持原值 |
   | `flow_reset` | 是否重置流量（`0` 否，`1` 是） |
   | `flow_limit` | 流量限制（单位 MB，空则不限制） |
   | `time_limit` | 时间限制（字符串，空则不限制） |

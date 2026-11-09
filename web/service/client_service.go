@@ -118,9 +118,10 @@ type EditClientInput struct {
 	SchedulerDown           string
 	SchedulerUp             string
 	Shaping                 bool
-	Crypt                   bool
-	ConfigConnAllow         bool
-	ResetFlow               bool
+	// Crypt is the new setting of the encryption switch; nil keeps the stored one.
+	Crypt           *bool
+	ConfigConnAllow bool
+	ResetFlow       bool
 }
 
 type ClientQRCodeInput struct {
@@ -281,7 +282,9 @@ func (s DefaultClientService) Edit(input EditClientInput) error {
 	client.Cnf.SchedulerDown = input.SchedulerDown
 	client.Cnf.SchedulerUp = schedulerUp
 	client.Cnf.Shaping = input.Shaping
-	client.Cnf.Crypt = input.Crypt
+	if input.Crypt != nil {
+		client.Cnf.Crypt = *input.Crypt
+	}
 	if input.IsAdmin || input.AllowUserChangeUsername {
 		client.WebUserName = input.WebUserName
 	}
