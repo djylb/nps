@@ -97,6 +97,8 @@
             writeSaved(key, map);
         });
         options.cardView = narrowScreen();
+        // a header click goes ascending, descending, then back to the default order
+        if (options.sortReset === undefined) options.sortReset = true;
         table.bootstrapTable(options);
         new Enhancer(table);
         cardControls(table);
@@ -137,10 +139,23 @@
         function sortBy(field, order) {
             table.bootstrapTable('sortBy', {field: field, sortOrder: order});
         }
+        // sortReset() is the table's own way back to the default order; the
+        // saved sort is dropped as a header click does, so a reload keeps it off
+        function resetSort() {
+            var options = table.bootstrapTable('getOptions');
+            if (!options.sortName) return;
+            table.bootstrapTable('sortReset');
+            try {
+                var storage = options.cookieStorage === 'sessionStorage' ? window.sessionStorage : window.localStorage;
+                ['sortName', 'sortOrder'].forEach(function (name) {
+                    storage.removeItem(options.cookieIdTable + '.bs.table.' + name);
+                });
+            } catch (e) { /* storage unavailable: nothing was saved */ }
+        }
         function fillSort(bar) {
             var options = table.bootstrapTable('getOptions');
             var select = bar.find('.npslist-sort'), count = 0;
-            select.empty().append($('<option value="" langtag="word-sortby">Sort by</option>'));
+            select.empty().append($('<option value="" langtag="word-defaultsort">Default order</option>'));
             table.bootstrapTable('getVisibleColumns').forEach(function (c) {
                 if (!c.sortable || !c.field) return;
                 // the card's own title is the translated column title
@@ -174,11 +189,15 @@
                     '<button type="button" class="btn btn-default npslist-sort-dir"><i aria-hidden="true" class="fa fa-sort-amount-up"></i><span class="sr-only" langtag="word-sortdirection">Sort direction</span></button></span>');
                 bar.find('.npslist-sort').on('change', function () {
                     var field = $(this).val(), options = table.bootstrapTable('getOptions');
-                    if (field && field !== options.sortName) sortBy(field, 'asc');
+                    if (!field) resetSort();
+                    else if (field !== options.sortName) sortBy(field, 'asc');
                 });
                 bar.find('.npslist-sort-dir').on('click', function () {
                     var options = table.bootstrapTable('getOptions');
-                    if (options.sortName) sortBy(options.sortName, options.sortOrder === 'asc' ? 'desc' : 'asc');
+                    if (!options.sortName) return;
+                    // ascending, descending, then the default order
+                    if (options.sortOrder === 'asc') sortBy(options.sortName, 'desc');
+                    else resetSort();
                 });
                 host.find('.fixed-table-container').first().before(bar);
             }

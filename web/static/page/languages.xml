@@ -2489,9 +2489,9 @@
 		<zh-CN>回到顶部</zh-CN>
 		<en-US>Back to top</en-US>
 	</lang>
-	<lang id="word-sortby">
-		<zh-CN>排序方式</zh-CN>
-		<en-US>Sort by</en-US>
+	<lang id="word-defaultsort">
+		<zh-CN>默认排序</zh-CN>
+		<en-US>Default order</en-US>
 	</lang>
 	<lang id="word-sortdirection">
 		<zh-CN>切换升降序</zh-CN>

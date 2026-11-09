@@ -457,9 +457,9 @@ func (s *Server) ListHosts(start, length, clientId int, search, sortField, order
 
 	case "IsClose":
 		if order == "asc" {
-			sort.SliceStable(list, func(i, j int) bool { return list[i].IsClose && !list[j].IsClose })
-		} else {
 			sort.SliceStable(list, func(i, j int) bool { return !list[i].IsClose && list[j].IsClose })
+		} else {
+			sort.SliceStable(list, func(i, j int) bool { return list[i].IsClose && !list[j].IsClose })
 		}
 
 	case "Client.IsConnect":
