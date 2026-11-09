@@ -125,7 +125,11 @@
                 + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Client.Cnf.Compress + '"></span>&emsp;'
                 + proxyprotocol
                 + (row.Mode == "secret" ? '<br/><br>' : '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>')
-            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'TargetType', 'Password', 'HttpProxy', 'Socks5Proxy', 'Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
+            // Speed and traffic belong to the limits, the proxy switches to the
+            // forwarding settings; the overview keeps what has no other place.
+            usage += '<br/><br>' + npsList.detailColumns('#table', row, index, ['Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn'])
+            transport += npsList.detailColumns('#table', row, index, ['HttpProxy', 'Socks5Proxy'])
+            var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['TargetType', 'Password']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
             var access = row.Mode != "secret" ? accessListDetail(row) : ''
@@ -204,7 +208,8 @@
                 field: 'Client.VerifyKey', //域值
                 title: '<span langtag="word-verifykey"></span>', //标题
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
                     return copyable(value)
@@ -252,6 +257,7 @@
                 field: 'TargetType', //域值
                 title: '<span langtag="word-targettype"></span>', //标题
                 halign: 'center',
+                detail: false, // the key of the client is not part of a tunnel's details
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {
@@ -547,6 +553,7 @@
                 title: '<span langtag="word-clientstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
+                detail: false, // the client list shows it
                 visible: false, //false表示不显示
                 sortable: true, //启用排序
                 formatter: function (value, row, index) {

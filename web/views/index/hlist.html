@@ -146,8 +146,10 @@
                 + '<b langtag="word-httpscert"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.CertFile + '</div>&emsp;<br/>'
                 + '<b langtag="word-httpskey"></b>: <div onclick="oCopy(this)" style="height:60px; max-width:75vw; overflow:auto; white-space:nowrap; border:1px solid #ccc; padding:5px; box-sizing:border-box;">' + row.KeyFile + '</div>&emsp;<br/><br>'
             }
+            // Speed and traffic belong to the limits; the overview keeps what has no other place.
+            usage += '<br/><br>' + npsList.detailColumns('#table', row, index, ['Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn'])
             return '<div class="resource-details">'
-                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Client.Id', 'Client.VerifyKey', 'Scheme', 'PathRewrite', 'Speed', 'UploadRate', 'DownloadRate', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn', 'Client.IsConnect']))
+                + resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['Scheme', 'PathRewrite']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
                 + resourceDetailSection('section-tls', tls)
@@ -173,7 +175,8 @@
                 field: 'Client.Id', //域值
                 title: '<span langtag="word-clientid"></span>', //标题
                 halign: 'center',
-                visible: false, //false表示不显示
+                detail: false, // a column of the table
+                visible: true, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
@@ -194,6 +197,7 @@
                 field: 'Client.VerifyKey', //域值
                 title: '<span langtag="word-verifykey"></span>', //标题
                 halign: 'center',
+                detail: false, // the key of the client is not part of a domain's details
                 visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
@@ -532,6 +536,7 @@
                 title: '<span langtag="word-clientstatus"></span>', //内容
                 align: 'center',
                 halign: 'center',
+                detail: false, // the client list shows it
                 visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
