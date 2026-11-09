@@ -41,13 +41,9 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	// clientConn wraps req.Conn only, which every path below closes or relays.
 	//noinspection GoResourceLeak
 	clientConn := conn.NewConn(req.Conn)
-	target, link, isLocal, err := s.openClientLink(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	target, link, isLocal, err := s.openClientLinkAcked(clientConn, s.Task.Client, targetAddr, conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
 	if err != nil {
-		rep := socks5.ReplyGeneralFailure
-		if errors.Is(err, errProxyAccessDenied) {
-			rep = socks5.ReplyNotAllowed
-		}
-		_ = req.Reply(rep, netx.Addr{})
+		_ = req.Reply(socks5ReplyOf(err), netx.Addr{})
 		return true, err
 	}
 	if target == nil || link == nil {
@@ -59,6 +55,24 @@ func (s *TunnelModeServer) handleSocks5(_ context.Context, req *socks5.Request) 
 	}
 	s.pipeClientConn(target, clientConn, link, s.Task.Client, []conn.Flow{s.Task.Flow, s.Task.Client.Flow}, 0, nil, s.Task, isLocal, conn.LinkTCP)
 	return true, nil
+}
+
+// socks5ReplyOf is the reply that reports a link the proxy or its exit refused.
+func socks5ReplyOf(err error) socks5.Reply {
+	if errors.Is(err, errProxyAccessDenied) {
+		return socks5.ReplyNotAllowed
+	}
+	switch logevent.NetReason(err) {
+	case "permission":
+		return socks5.ReplyNotAllowed
+	case "refused":
+		return socks5.ReplyConnectionRefused
+	case "timeout":
+		return socks5.ReplyTTLExpired
+	case "dns", "unreachable":
+		return socks5.ReplyHostUnreachable
+	}
+	return socks5.ReplyGeneralFailure
 }
 
 // socks5Auth returns the authenticators for the task's current accounts:

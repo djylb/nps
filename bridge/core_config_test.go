@@ -1,9 +1,13 @@
 package bridge
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -191,4 +195,114 @@ func TestConfigVisitorOnlyOnNewProtocol(t *testing.T) {
 		runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, p) })
 	}
 	waitEcho(t, "relay section", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+}
+
+// socks5Connect asks the proxy at addr for dst, an IPv4 host:port, and returns
+// the reply code with the connection, closed unless it succeeded.
+func socks5Connect(t *testing.T, addr, dst string) (byte, net.Conn) {
+	t.Helper()
+	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return 0xff, nil
+	}
+	_ = c.SetDeadline(time.Now().Add(8 * time.Second))
+	ap := netip.MustParseAddrPort(dst)
+	req := append([]byte{5, 1, 0, 1}, ap.Addr().AsSlice()...)
+	req = append(req, byte(ap.Port()>>8), byte(ap.Port()))
+	head := make([]byte, 2)
+	if _, err = c.Write([]byte{5, 1, 0}); err == nil {
+		_, err = io.ReadFull(c, head)
+	}
+	reply := make([]byte, 10)
+	if err == nil {
+		if _, err = c.Write(req); err == nil {
+			_, err = io.ReadFull(c, reply)
+		}
+	}
+	if err != nil {
+		_ = c.Close()
+		return 0xff, nil
+	}
+	if reply[1] != 0 {
+		_ = c.Close()
+		return reply[1], nil
+	}
+	return 0, c
+}
+
+// httpConnect asks the proxy at addr to CONNECT dst and returns the status
+// with the connection, closed unless it succeeded.
+func httpConnect(t *testing.T, addr, dst string) (int, net.Conn) {
+	t.Helper()
+	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetDeadline(time.Now().Add(8 * time.Second))
+	_, _ = io.WriteString(c, "CONNECT "+dst+" HTTP/1.1\r\nHost: "+dst+"\r\n\r\n")
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, &http.Request{Method: "CONNECT"})
+	if err != nil {
+		_ = c.Close()
+		t.Fatalf("CONNECT %s: %v", dst, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = c.Close()
+		return resp.StatusCode, nil
+	}
+	return resp.StatusCode, c
+}
+
+// A mixed local section answers both proxy protocols only once the exit has
+// taken the destination or refused it.
+func TestMixedVisitorRepliesAfterExit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	e := newCoreConfigEnv(t)
+	port := freeLocalPort(t)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	head := "[common]\nserver_addr=" + e.f.addr + "\nconn_type=tcp\nauto_reconnection=false\nvkey="
+	provider := writeConf(t, "provider.conf", head+e.prov+"\n")
+	visitor := writeConf(t, "visitor.conf", head+e.f.client.VerifyKey+"\n"+
+		"[secret_a]\nlocal_type=mixed\nconn_mode=relay\nlocal_ip=127.0.0.1\nlocal_port="+strconv.Itoa(port)+"\npassword="+e.secret+"\n")
+	for _, p := range []string{provider, visitor} {
+		runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, p) })
+	}
+	echoed := func(c net.Conn, msg string) {
+		t.Helper()
+		defer func() { _ = c.Close() }()
+		if _, err := io.WriteString(c, msg); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, len(msg))
+		if _, err := io.ReadFull(c, b); err != nil || string(b) != msg {
+			t.Fatalf("echo %q %v", b, err)
+		}
+	}
+	var c net.Conn
+	var rep byte
+	for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+		if rep, c = socks5Connect(t, addr, e.echo); rep == 0 {
+			break
+		}
+	}
+	if rep != 0 {
+		t.Fatalf("socks5 connect to the target: reply %d", rep)
+	}
+	echoed(c, "through socks5")
+	status, c := httpConnect(t, addr, e.echo)
+	if status != http.StatusOK {
+		t.Fatalf("CONNECT to the target: %d", status)
+	}
+	echoed(c, "through connect")
+
+	// outside the tunnel's targets: the provider's policy refuses
+	const denied = "10.1.2.3:4567"
+	if rep, _ := socks5Connect(t, addr, denied); rep != 2 {
+		t.Fatalf("denied destination: socks5 reply %d, want 2", rep)
+	}
+	if status, _ := httpConnect(t, addr, denied); status != http.StatusForbidden {
+		t.Fatalf("denied destination: CONNECT %d, want 403", status)
+	}
 }

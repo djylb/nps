@@ -58,6 +58,7 @@ var linkReasons = map[uint64]string{
 	wire.CodeNetworkUnreachable: "unreachable",
 	wire.CodeHostUnreachable:    "unreachable",
 	wire.CodeNotAllowed:         "permission",
+	wire.CodeScopeDenied:        "permission",
 	wire.CodeAddrTypeUnsupp:     "other",
 	wire.CodeUnsupported:        "other",
 	wire.CodeMalformed:          "other",

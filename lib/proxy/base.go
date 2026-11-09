@@ -205,7 +205,19 @@ func (s *BaseServer) relayClient(target net.Conn, c *conn.Conn, link *conn.Link,
 	return nil
 }
 
+// openClientLink opens the link of c to addr through the client tunnel, and
+// returns once it is requested.
 func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp string, localProxy bool, node string, task *model.Tunnel) (net.Conn, *conn.Link, bool, error) {
+	return s.openLink(c, client, addr, tp, localProxy, node, task, false)
+}
+
+// openClientLinkAcked is openClientLink for a protocol that tells its client
+// the outcome: it returns once the exit has dialed the target or refused it.
+func (s *BaseServer) openClientLinkAcked(c *conn.Conn, client *model.Client, addr, tp string, localProxy bool, node string, task *model.Tunnel) (net.Conn, *conn.Link, bool, error) {
+	return s.openLink(c, client, addr, tp, localProxy, node, task, true)
+}
+
+func (s *BaseServer) openLink(c *conn.Conn, client *model.Client, addr, tp string, localProxy bool, node string, task *model.Tunnel, needAck bool) (net.Conn, *conn.Link, bool, error) {
 	if s.Bridge.IsServer() && SourceDenied(c.RemoteAddr(), s.Bridge.GlobalSource(), client, taskLists(task), taskName(task)) {
 		return nil, nil, false, errProxyAccessDenied
 	}
@@ -218,6 +230,7 @@ func (s *BaseServer) openClientLink(c *conn.Conn, client *model.Client, addr, tp
 	isLocal := s.AllowLocalProxy && localProxy || client.Id < 0
 	link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), isLocal)
 	link.Option.Node = node
+	link.Option.NeedAck = needAck
 	link.Option.Gone = func() bool { return conn.SourceGone(c.Conn) }
 	taskID := 0
 	override := model.CompressDefault

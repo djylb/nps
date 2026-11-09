@@ -10,6 +10,7 @@ import (
 	"github.com/djylb/netx/httpproxy"
 	"github.com/djylb/nps/lib/auth"
 	"github.com/djylb/nps/lib/conn"
+	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
 )
 
@@ -114,8 +115,8 @@ func (s *TunnelModeServer) allowHTTPProxy(_ context.Context, req *httpproxy.Requ
 // openHTTPLink opens a link to the destination of req through the client
 // tunnel.
 func (s *TunnelModeServer) openHTTPLink(c *conn.Conn, req *httpproxy.Request) (net.Conn, *conn.Link, bool, error) {
-	target, link, isLocal, err := s.openClientLink(c, s.Task.Client, req.Dst.String(), conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
-	if errors.Is(err, errProxyAccessDenied) {
+	target, link, isLocal, err := s.openClientLinkAcked(c, s.Task.Client, req.Dst.String(), conn.LinkTCP, s.Task.Target.LocalProxy, s.Task.Route().Node, s.Task)
+	if errors.Is(err, errProxyAccessDenied) || err != nil && logevent.NetReason(err) == "permission" {
 		err = &httpproxy.StatusError{Code: 403, Err: err}
 	} else if err == nil && (target == nil || link == nil) {
 		err = errors.New("no link to " + req.Dst.String())
