@@ -265,7 +265,7 @@ func (s DefaultConfigTransferService) applyBundle(b *ConfigBundle) (result Impor
 		oldID := c.Id
 		c.Id = repo.NextClientID()
 		c.Addr, c.LocalAddr, c.Version, c.LastOnlineTime = "", "", "", ""
-		c.IsConnect, c.NoStore, c.NoDisplay = false, false, false
+		c.IsConnect, c.CanUpdate, c.NoStore, c.NoDisplay = false, false, false, false
 		c.NowConn = 0
 		c.Rate, c.ConnectionHistory = nil, nil
 		c.ExportFlow.Store(0)

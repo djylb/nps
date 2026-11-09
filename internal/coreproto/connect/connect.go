@@ -83,6 +83,7 @@ func DialConfig(cfg *config.CommonConfig, server string) (session.DialConfig, er
 		PeerExit:       client.NewCorePeerExit(exit),
 		Puncher:        client.NewCorePuncher(localIP, session.QUICConfig),
 		Health:         client.NewCoreHealth,
+		CanUpdate:      client.UpdateEnabled(),
 		Update:         client.AcceptUpdate,
 		CompressLimits: Process.Compress,
 		ResumeTimeout:  time.Duration(cfg.ResumeTimeout) * time.Second,

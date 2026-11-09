@@ -46,6 +46,11 @@ type Options struct {
 	// MaxNodeServices bounds the virtual services one session may report: 0
 	// is defaultMaxNodeServices, negative no limit.
 	MaxNodeServices int
+	// LatestVersion returns the latest release as last known, or "" when
+	// unknown; it must not wait for the network. The npc running an older
+	// version can be updated. Nil, or unknown, compares with the server's
+	// own version.
+	LatestVersion func() string
 }
 
 // bridgeHandshakeReadTimeout bounds each read of the client handshake.
@@ -101,6 +106,7 @@ type Bridge struct {
 	lookup             atomic.Pointer[TunnelLookup]
 	core               coreapi.Entry
 	maxNodeServices    int
+	latest             func() string
 	accessGuesses      sync.Map // client id -> *guessBucket
 	fallback           atomic.Pointer[Fallback]
 	corePushes         sync.Map // coreapi.Session -> *healthPush
@@ -129,6 +135,7 @@ func NewTunnel(store Store, runList *sync.Map, opts Options) *Bridge {
 	b.cert = opts.Cert
 	b.core = opts.CoreEntry
 	b.maxNodeServices = opts.MaxNodeServices
+	b.latest = opts.LatestVersion
 	b.fingerprint = crypt.GetCertFingerprint(opts.Cert)
 	if opts.NewUUID != nil {
 		b.newUUID = opts.NewUUID

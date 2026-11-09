@@ -174,10 +174,6 @@ func main() {
 	install.ConfigureService(svcConfig)
 	if !*disableRemote {
 		client.RemoteUpdate = func() error {
-			if !install.CanRestartSelf() {
-				log.Info("remote update refused", "reason", "not_service")
-				return nil
-			}
 			u, err := install.UpdateSelf("npc", svcConfig.Name)
 			if u == nil {
 				if err == nil {

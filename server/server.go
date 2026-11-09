@@ -59,6 +59,10 @@ type Config struct {
 	SelectMode bridge.SelectMode
 	// DisableRemoteUpdate keeps the web interface from updating the server.
 	DisableRemoteUpdate bool
+	// LatestVersion returns the latest release as last known, or "" when
+	// unknown, without waiting for the network; npc older than it can be
+	// updated from the web. Nil compares with the server's own version.
+	LatestVersion func() string
 	// AllowedPorts are the ports tunnels may listen on; the zero value
 	// allows every port.
 	AllowedPorts ports.Allowed
@@ -126,6 +130,7 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		AllowedPorts:    cfg.AllowedPorts,
 		Cert:            cfg.Identity.TLSCert(),
 		CoreEntry:       cfg.CoreEntry,
+		LatestVersion:   cfg.LatestVersion,
 	})
 	db.OnEntriesChanged(s.bridge.EntriesChanged)
 	s.bridge.SetTunnelLookup(s.lookupTunnel)
@@ -649,6 +654,9 @@ func (s *Server) VirtualServices() []bridge.VirtualService { return s.bridge.Vir
 // RequestClientUpdate asks the connected npc of client clientId to update
 // themselves; it returns how many were asked.
 func (s *Server) RequestClientUpdate(clientId int) (int, error) {
+	if s.noUpdate {
+		return 0, ErrUpdateDisabled
+	}
 	return s.bridge.RequestClientUpdate(clientId)
 }
 
@@ -665,12 +673,19 @@ func (s *Server) GenerateTunnelPort(t *model.Tunnel) int { return s.ports.Genera
 // TunnelPortAvailable reports whether t may listen on its port.
 func (s *Server) TunnelPortAvailable(t *model.Tunnel) bool { return s.ports.TestTunnelPort(t) }
 
+// ClientCanUpdate reports whether a connected npc of client clientId can be
+// updated from the web.
+func (s *Server) ClientCanUpdate(clientId int) bool {
+	return !s.noUpdate && s.bridge.ClientCanUpdate(clientId)
+}
+
 func (s *Server) dealClientData() {
 	b := s.bridge
 	s.db.JsonDb.Clients.Range(func(key, value any) bool {
 		v := value.(*model.Client)
 		if vv, ok := b.Client.Load(v.Id); ok {
 			v.IsConnect = true
+			v.CanUpdate = s.ClientCanUpdate(v.Id)
 			v.MarkSeen(time.Now())
 			cli := vv.(*bridge.Client)
 			node, ok := cli.GetNodeByUUID(cli.LastUUID)
@@ -686,6 +701,7 @@ func (s *Server) dealClientData() {
 		} else if v.Id <= 0 {
 			if servercfg.Current().Feature.AllowLocalProxy {
 				v.IsConnect = v.Status
+				v.CanUpdate = false
 				v.Version = version.VERSION
 				v.Mode = "local"
 				v.LocalAddr = netaddr.GetOutboundIP().String()
@@ -696,9 +712,11 @@ func (s *Server) dealClientData() {
 				}
 			} else {
 				v.IsConnect = false
+				v.CanUpdate = false
 			}
 		} else {
 			v.IsConnect = false
+			v.CanUpdate = false
 		}
 		return true
 	})

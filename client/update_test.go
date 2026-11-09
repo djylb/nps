@@ -7,8 +7,9 @@ import (
 )
 
 func TestHandleUpdateRequest(t *testing.T) {
-	old := RemoteUpdate
-	t.Cleanup(func() { RemoteUpdate = old })
+	old, oldRestart := RemoteUpdate, canRestartSelf
+	t.Cleanup(func() { RemoteUpdate, canRestartSelf = old, oldRestart })
+	canRestartSelf = func() bool { return true }
 
 	RemoteUpdate = nil
 	handleUpdateRequest() // disabled: ignored
@@ -39,5 +40,30 @@ func TestHandleUpdateRequest(t *testing.T) {
 	}
 	if n := runs.Load(); n != 2 {
 		t.Fatalf("%d updates ran after the first finished, want 2", n)
+	}
+}
+
+func TestUpdateEnabled(t *testing.T) {
+	old, oldRestart := RemoteUpdate, canRestartSelf
+	t.Cleanup(func() { RemoteUpdate, canRestartSelf = old, oldRestart })
+	run := func() error { return nil }
+	for _, c := range []struct {
+		name    string
+		update  func() error
+		restart bool
+		want    bool
+	}{
+		{"disabled", nil, true, false},
+		{"cannot restart", run, false, false},
+		{"disabled and cannot restart", nil, false, false},
+		{"normal", run, true, true},
+	} {
+		RemoteUpdate, canRestartSelf = c.update, func() bool { return c.restart }
+		if got := UpdateEnabled(); got != c.want {
+			t.Errorf("%s: UpdateEnabled = %v, want %v", c.name, got, c.want)
+		}
+		if !c.want && AcceptUpdate() {
+			t.Errorf("%s: update accepted", c.name)
+		}
 	}
 }

@@ -398,6 +398,7 @@ type Client struct {
 	Remark          string     // remark
 	Status          bool       // allowed to connect
 	IsConnect       bool       // connected now
+	CanUpdate       bool       `json:",omitempty"` // a connected npc can be updated from the web; set when listed
 	RateLimit       int        // rate limit (KB/s)
 	Flow            *Flow      // flow
 	ExportFlow      FlowTotal  // outbound flow of the client's hosts and tasks

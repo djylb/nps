@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	npsbridge "github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/runenv"
@@ -213,20 +212,19 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 	info := system.Info()
 	bridge := system.BridgeDisplay(cfg, input.Host)
 	commonData := ui.ManagementPageCommonData{
-		WebBaseURL:      cfg.Web.BaseURL,
-		HeadCustomCode:  template.HTML(cfg.Web.HeadCustomCode),
-		Version:         info.Version,
-		Year:            info.Year,
-		IsAdmin:         input.IsAdmin,
-		ServerUpdate:    info.CanUpdate,
-		Username:        strings.TrimSpace(input.Username),
-		BridgeType:      bridge.Primary.Type,
-		VisitorVKey:     cfg.Runtime.VisitorVKey,
-		BridgeAddr:      bridge.Primary.Addr,
-		BridgeIP:        bridge.Primary.IP,
-		BridgePort:      bridge.Primary.Port,
-		ProxyPort:       pageIntString(cfg.Network.HTTPProxyPort),
-		ClientUpdateMin: npsbridge.RemoteUpdateMinVersion,
+		WebBaseURL:     cfg.Web.BaseURL,
+		HeadCustomCode: template.HTML(cfg.Web.HeadCustomCode),
+		Version:        info.Version,
+		Year:           info.Year,
+		IsAdmin:        input.IsAdmin,
+		ServerUpdate:   info.CanUpdate,
+		Username:       strings.TrimSpace(input.Username),
+		BridgeType:     bridge.Primary.Type,
+		VisitorVKey:    cfg.Runtime.VisitorVKey,
+		BridgeAddr:     bridge.Primary.Addr,
+		BridgeIP:       bridge.Primary.IP,
+		BridgePort:     bridge.Primary.Port,
+		ProxyPort:      pageIntString(cfg.Network.HTTPProxyPort),
 		Features: map[string]bool{
 			"allow_user_login":           cfg.Feature.AllowUserLogin,
 			"allow_flow_limit":           cfg.Feature.AllowFlowLimit,

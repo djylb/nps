@@ -57,8 +57,6 @@ type ManagementPageCommonData struct {
 	WSSIP         string
 	WSSPort       string
 	ProxyPort     string
-	// ClientUpdateMin is the oldest npc version that acts on update requests.
-	ClientUpdateMin string
 	// Features are the feature switches the templates test, by name.
 	Features map[string]bool
 }
@@ -78,7 +76,6 @@ func (d ManagementPageCommonData) Map() map[string]any {
 		"ip":                  d.BridgeIP,
 		"p":                   d.BridgePort,
 		"proxyPort":           d.ProxyPort,
-		"client_update_min":   d.ClientUpdateMin,
 	}
 	for name, on := range d.Features {
 		data[name] = on

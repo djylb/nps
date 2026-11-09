@@ -468,27 +468,6 @@ function initListBatch(kind, baseURL) {
     $('body').setLang('.list-batch-controls');
 }
 
-// compareVersion compares dotted versions numerically segment by segment,
-// ignoring a leading "v" and build metadata; a pre-release suffix sorts
-// before the release with the same numbers. It matches version.Compare.
-function compareVersion(a, b) {
-    var split = function (v) {
-        v = String(v == null ? '' : v).trim().replace(/^v/, '').split('+')[0];
-        var i = v.indexOf('-');
-        var core = i < 0 ? v : v.slice(0, i);
-        return {nums: core.split('.').map(function (p) { return /^\d+$/.test(p) ? parseInt(p, 10) : 0; }), pre: i < 0 ? '' : v.slice(i + 1)};
-    };
-    var x = split(a), y = split(b);
-    for (var i = 0; i < Math.max(x.nums.length, y.nums.length); i++) {
-        var p = x.nums[i] || 0, q = y.nums[i] || 0;
-        if (p !== q) return p < q ? -1 : 1;
-    }
-    if (x.pre === y.pre) return 0;
-    if (x.pre === '') return 1;
-    if (y.pre === '') return -1;
-    return x.pre < y.pre ? -1 : 1;
-}
-
 // actualFlow estimates the traffic a flow costs the server: nps counts the
 // visitor side once each way, and every byte also crosses the link to the
 // client, so the total is doubled.

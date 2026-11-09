@@ -70,6 +70,9 @@ type DialConfig struct {
 	Puncher coreapi.Puncher
 	// CompressLimits are the receive limits of compressed streams (§7.4).
 	CompressLimits CompressLimits
+	// CanUpdate advertises the update capability; set it only when Update
+	// can start an update, so that the server's interface offers it only then.
+	CanUpdate bool
 	// Update decides an update request of the server (§6) and starts the
 	// update when it returns true; nil refuses them.
 	Update func() bool
@@ -375,7 +378,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		id := proto.KeyID(d.cfg.Pin)
 		pin = &id
 	}
-	hello := clientHello(d.cfg.Agent, d.cfg.Label)
+	hello := clientHello(d.cfg.Agent, d.cfg.Label, d.cfg.CanUpdate)
 	shape := d.plan()
 	q, err := seal.Establish(ctx, ca.pipe, &seal.ClientConfig{
 		Shaper:     establishShape(shape),

@@ -61,8 +61,8 @@ func TestUpdateOnCoreSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		asked := make(chan struct{}, 1)
-		s, err := session.NewDialer(session.DialConfig{Candidates: cands, VKey: f.client.VerifyKey, Agent: "npc/9.8.7 test/x",
-			Exit: client.NewCoreExit("", 0), Timeout: 4 * time.Second,
+		s, err := session.NewDialer(session.DialConfig{Candidates: cands, VKey: f.client.VerifyKey, Agent: "npc/0.34.0 test/x",
+			Exit: client.NewCoreExit("", 0), Timeout: 4 * time.Second, CanUpdate: true,
 			Update: func() bool { asked <- struct{}{}; return accept }}).Dial(context.Background())
 		if err != nil {
 			t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/djylb/lifecycle/lifecycletest"
+	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/connprofile"
 )
@@ -28,6 +29,9 @@ func TestDialConfig(t *testing.T) {
 		dc.VKey != "k" || dc.Pipes != connprofile.PipesMulti || dc.Scheduler != "spread_eta" ||
 		dc.MaxLanes != 3 || dc.ResumeTimeout != -time.Second || dc.Exit == nil || dc.PeerExit == nil || dc.Puncher == nil {
 		t.Fatalf("%+v", dc)
+	}
+	if dc.CanUpdate != client.UpdateEnabled() || dc.Update == nil {
+		t.Fatalf("update: CanUpdate = %v, enabled = %v", dc.CanUpdate, client.UpdateEnabled())
 	}
 	moved := *cc
 	moved.ResumeTimeout = 12

@@ -2,10 +2,80 @@ package server
 
 import (
 	"errors"
+	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/djylb/nps/bridge"
+	"github.com/djylb/nps/bridge/legacy"
+	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/file"
 )
+
+// updateServer is a server holding client 1, connected through one npc of
+// version vs, with the given latest release and remote update setting.
+func updateServer(t *testing.T, vs, latest string, disabled bool) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "conf", "clients.json"), []byte(`[{"Id":1,"VerifyKey":"a"},{"Id":2,"VerifyKey":"b"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db := file.New(dir)
+	db.JsonDb.LoadClientFromJsonFile()
+	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30, DisableRemoteUpdate: disabled,
+		LatestVersion: func() string { return latest }})
+	t.Cleanup(func() { _ = s.Close() })
+	a, b := net.Pipe()
+	t.Cleanup(func() { _ = a.Close(); _ = b.Close() })
+	n := bridge.NewNode("n", vs, legacy.LatestIndex)
+	n.AddSignal(conn.NewConn(a))
+	s.bridge.Client.Store(1, bridge.NewClient(1, n, bridge.Primary))
+	return s
+}
+
+// The client list says whether a connected npc can be updated.
+func TestListClientsCanUpdate(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		vs       string
+		latest   string
+		disabled bool
+		want     bool
+	}{
+		{"older than latest", "0.34.9", "0.35.0", false, true},
+		{"equal to latest", "0.35.0", "0.35.0", false, false},
+		{"newer than latest", "0.35.1", "0.35.0", false, false},
+		{"npc without the capability", "0.34.8", "0.35.0", false, false},
+		{"latest unknown, older than the server", "0.34.9", "", false, true},
+		{"remote update disabled", "0.34.9", "0.35.0", true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := updateServer(t, c.vs, c.latest, c.disabled)
+			list, _ := s.ListClients(0, 10, "", "Id", "asc", 0)
+			got := map[int]bool{}
+			for _, cl := range list {
+				got[cl.Id] = cl.CanUpdate
+			}
+			if got[1] != c.want {
+				t.Fatalf("connected client: CanUpdate = %v, want %v", got[1], c.want)
+			}
+			if got[2] {
+				t.Fatal("offline client: CanUpdate")
+			}
+		})
+	}
+}
+
+func TestRequestClientUpdateDisabled(t *testing.T) {
+	s := updateServer(t, "0.34.9", "0.35.0", true)
+	if _, err := s.RequestClientUpdate(1); !errors.Is(err, ErrUpdateDisabled) {
+		t.Fatalf("err = %v, want ErrUpdateDisabled", err)
+	}
+}
 
 func TestUpdateSelfDisabled(t *testing.T) {
 	s := New(file.New(t.TempDir()), Config{CoreEntry: stubEntry{}, DisableRemoteUpdate: true})

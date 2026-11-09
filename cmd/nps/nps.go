@@ -418,6 +418,7 @@ func run() (*server.Server, error) {
 		SecureMode:          cfg.Security.SecureMode,
 		SelectMode:          selectMode,
 		DisableRemoteUpdate: *noUpdate,
+		LatestVersion:       install.LatestVersion,
 		AllowedPorts:        ports.ParseAllowed(cfg.Feature.AllowPorts),
 		Identity:            identity,
 		Transports: bridge.Transports{
