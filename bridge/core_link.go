@@ -100,7 +100,14 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 		return nil, refused
 	}
 	feature := servercfg.Current().Feature
-	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy, feature.AllowSecretLocal)
+	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy)
+	// The server is the exit when the tunnel is served by it, or when the
+	// visitor asked for it and the tunnel lets visitors (proxy to local).
+	// A visitor asking without that goes to the provider.
+	exit := p.LocalProxy || r.ServerExit && p.AllowLocal
+	if r.ServerExit && !exit {
+		log.Debug("local_proxy ignored: the tunnel does not proxy to local", "tunnel", t.Id, "client", client)
+	}
 	server := proxy.NewSecretServer(s, t, p, feature.AllowLocalProxy)
 	// The LINK is admitted as a link would be; each PIPE then holds its slot.
 	release, err := server.AcquireForwarding(t.Client, t.ControlGroup())
@@ -112,7 +119,7 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 	return &coreapi.LinkGrant{
 		Tunnel:     t.Id,
 		Provider:   t.Client.Id,
-		ServerExit: p.LocalProxy,
+		ServerExit: exit,
 		Policy:     linkPolicyOf(p),
 		Valid: func() bool {
 			c := find()
@@ -122,7 +129,7 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 			return !flowOver(c.Flow) && !flowOver(c.Client.Flow)
 		},
 		ServeExit: func(_ context.Context, c net.Conn, network, target string, ack func() error) error {
-			lk := conn.NewLink(exitLinkType(network), target, false, false, c.RemoteAddr().String(), p.LocalProxy)
+			lk := conn.NewLink(exitLinkType(network), target, false, false, c.RemoteAddr().String(), true)
 			lk.Option.NeedAck = true
 			err := server.Serve(c, lk, func(net.Conn, time.Duration) error { return ack() })
 			if errors.Is(err, proxy.ErrSecretDestDenied) || errors.Is(err, proxy.ErrSecretLinkRefused) || errors.Is(err, proxy.ErrForwardingRefused) {

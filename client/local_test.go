@@ -46,7 +46,7 @@ func TestMixedServesHTTPAndSocks5(t *testing.T) {
 	hosts := make(chan string, 2)
 	mgr := NewSecretManager(t.Context(), func() {}, config.NewCommonConfig())
 	t.Cleanup(mgr.Close)
-	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
+	mgr.coreVisitor = func(_, _ string, _ bool) coreapi.Visitor {
 		return stubVisitor(func(target string, c net.Conn) {
 			hosts <- target
 			br := bufio.NewReader(c)
@@ -138,7 +138,7 @@ func TestLocalCompressAsksNestedStream(t *testing.T) {
 	asked := make(chan []string, 1)
 	mgr := NewSecretManager(t.Context(), func() {}, cfg)
 	t.Cleanup(mgr.Close)
-	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
+	mgr.coreVisitor = func(_, _ string, _ bool) coreapi.Visitor {
 		return compressVisitor{asked}
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -195,7 +195,7 @@ func typedProxy(t *testing.T, typ string, accounts map[string]string) string {
 	t.Helper()
 	mgr := NewSecretManager(t.Context(), func() {}, config.NewCommonConfig())
 	t.Cleanup(mgr.Close)
-	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
+	mgr.coreVisitor = func(_, _ string, _ bool) coreapi.Visitor {
 		return stubVisitor(func(_ string, c net.Conn) {
 			req, err := http.ReadRequest(bufio.NewReader(c))
 			if err != nil {

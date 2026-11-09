@@ -298,7 +298,7 @@ func (s *serverSession) serveLinkOpen(ctx context.Context, lc *linkConn, fields 
 		failLink(lc, true, wire.CodeNotAllowed)
 		return
 	}
-	r := coreapi.LinkResolve{Tunnel: int(o.Tunnel), Source: s.t.src}
+	r := coreapi.LinkResolve{Tunnel: int(o.Tunnel), Source: s.t.src, ServerExit: o.ServerExit}
 	if len(o.Access) > 0 {
 		id, proof, ok := wire.SplitAccess(o.Access)
 		if !ok {

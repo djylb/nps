@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +20,62 @@ import (
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/server/connection"
 )
+
+// allowLocalProxy sets the server's allow_local_proxy for the test.
+func allowLocalProxy(t *testing.T, on bool) {
+	t.Helper()
+	load := func(conf string) {
+		path := filepath.Join(t.TempDir(), "nps.conf")
+		if err := os.WriteFile(path, []byte(conf), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := servercfg.Load(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	load("allow_local_proxy=" + map[bool]string{false: "false", true: "true"}[on] + "\n")
+	t.Cleanup(func() { load("allow_local_proxy=false\n") })
+}
+
+// A visitor's local_proxy makes the server the exit only when the tunnel has
+// proxy to local on and the server allows it; otherwise the provider
+// serves the link and nothing fails.
+func TestServerExitNeedsTunnelAndServer(t *testing.T) {
+	for _, tc := range []struct {
+		name                            string
+		serverAllows, tunnelOn, visitor bool
+		exit                            bool
+	}{
+		{"all on", true, true, true, true},
+		{"visitor does not ask", true, true, false, false},
+		{"tunnel off", true, false, true, false},
+		{"server off", false, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			allowLocalProxy(t, tc.serverAllows)
+			b, task := secretFixture(t)
+			task.Target.LocalProxy = tc.tunnelOn
+			r := accessOf("pw")
+			r.ServerExit = tc.visitor
+			g, err := b.coreResolveLink(1, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g.ServerExit != tc.exit {
+				t.Fatalf("ServerExit = %v, want %v", g.ServerExit, tc.exit)
+			}
+		})
+	}
+	t.Run("the server's own client", func(t *testing.T) {
+		allowLocalProxy(t, false)
+		b, task := secretFixture(t)
+		task.Client.Id = -1
+		g, err := b.coreResolveLink(1, accessOf("pw"))
+		if err != nil || !g.ServerExit {
+			t.Fatalf("own client: %+v, %v", g, err)
+		}
+	})
+}
 
 func TestNewConfigWithoutCnf(t *testing.T) {
 	db := useTestDb(t)

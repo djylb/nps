@@ -102,8 +102,8 @@ func (o *OuterSessions) Dial(ctx context.Context) (coreapi.ClientSession, error)
 func (o *OuterSessions) Server() string { return o.d.Server() }
 
 // Visitor implements coreapi.Outer.
-func (o *OuterSessions) Visitor(access []byte, mode string, relayIdle time.Duration) coreapi.Visitor {
-	return NewVisitor(VisitorConfig{Outer: o, Access: access, Mode: ConnModeOf(mode), RelayIdle: relayIdle})
+func (o *OuterSessions) Visitor(access []byte, mode string, relayIdle time.Duration, serverExit bool) coreapi.Visitor {
+	return NewVisitor(VisitorConfig{Outer: o, Access: access, Mode: ConnModeOf(mode), RelayIdle: relayIdle, ServerExit: serverExit})
 }
 
 // Hold implements coreapi.Outer. It is called before the session is used.
@@ -145,12 +145,13 @@ func (o *OuterSessions) Close() {
 
 // VisitorConfig is one link a visitor reaches.
 type VisitorConfig struct {
-	Outer     *OuterSessions
-	Access    []byte
-	Mode      uint64        // wire.ConnRelay, ConnAuto or ConnDirect
-	RelayIdle time.Duration // 0 is DefaultRelayIdle
-	Tick      time.Duration // 0 is one second; tests
-	Timeout   time.Duration // 0 is 15 s: making the link
+	Outer      *OuterSessions
+	Access     []byte
+	Mode       uint64        // wire.ConnRelay, ConnAuto or ConnDirect
+	ServerExit bool          // ask for the server as the exit of the link
+	RelayIdle  time.Duration // 0 is DefaultRelayIdle
+	Tick       time.Duration // 0 is one second; tests
+	Timeout    time.Duration // 0 is 15 s: making the link
 }
 
 // Visitor implements coreapi.Visitor: the link, made on demand and made again
@@ -327,7 +328,7 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess(v.cfg.Access, ekm), ConnMode: v.cfg.Mode})
+	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess(v.cfg.Access, ekm), ConnMode: v.cfg.Mode, ServerExit: v.cfg.ServerExit})
 	if err != nil {
 		return nil, err
 	}

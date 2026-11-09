@@ -27,6 +27,7 @@ var legacyKeys = []legacyKey{
 	{old: "ip_limit", note: "ip_limit was removed: it made every client accept only visitors whose address " +
 		"was registered (npc register). Registration-only access is now set per client, tunnel or host: " +
 		"\"Registered IPs Only\" in the web UI, or registered_only=1 in the web API"},
+	{old: "allow_secret_local", ifTrue: true, note: "allow_secret_local was removed: a point-to-point visitor's local_proxy takes effect when the tunnel has \"proxy to local\" on and allow_local_proxy is true"},
 	{old: "allow_secret_link", note: "allow_secret_link was removed: visitors of secret tunnels may name any destination unless the tunnel's destination list says otherwise"},
 }
 

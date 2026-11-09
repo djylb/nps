@@ -189,3 +189,20 @@ func TestServiceNetworkAndUDPOpen(t *testing.T) {
 		t.Fatalf("service and target: %v", err)
 	}
 }
+
+func TestLinkOpenServerExit(t *testing.T) {
+	for _, ask := range []bool{false, true} {
+		b, err := AppendLinkOpen(&LinkOpen{Access: []byte("id.proof"), ServerExit: ask})
+		if err != nil {
+			t.Fatal(err)
+		}
+		op, fields, err := ParseOpenOp(b)
+		if err != nil || op != OpLink {
+			t.Fatalf("%v %v", op, err)
+		}
+		o, err := ParseLinkOpen(fields)
+		if err != nil || o.ServerExit != ask {
+			t.Fatalf("ServerExit %v -> %+v, %v", ask, o, err)
+		}
+	}
+}

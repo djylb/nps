@@ -115,7 +115,7 @@ func TestSecretLocalProxySendsProxyHeaderToBackend(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.Addr().String(), LocalProxy: true, ProxyProtocol: 1},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
@@ -186,7 +186,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 		Target: &model.Target{TargetStr: backend.LocalAddr().String(), ProxyProtocol: 2},
 	}
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, false), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true), true)
 
 	visitor, src := tcpConnPair(t)
 	done := make(chan struct{})
@@ -223,7 +223,7 @@ func TestSecretLocalProxyRelaysUDPDatagrams(t *testing.T) {
 func TestSecretLinkDestinationDenied(t *testing.T) {
 	bridge := &localDialBridge{links: make(chan *conn.Link, 1)}
 	task := &model.Tunnel{Client: &model.Client{Id: 1, Cnf: &model.Config{}, Flow: &model.Flow{}}, Flow: &model.Flow{}, Target: &model.Target{}, DestAclMode: model.AclBlacklist, DestAclRules: "denied.example"}
-	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true, true), true)
+	s := NewSecretServer(bridge, task, NewSecretPolicy(task, task.Target, true), true)
 	_, srv := tcpConnPair(t)
 	if err := s.Serve(srv, conn.NewLink("tcp", "denied.example:80", false, false, "", false), legacy.WriteAck); !errors.Is(err, ErrSecretDestDenied) {
 		t.Fatalf("link to a denied destination: %v", err)
@@ -248,7 +248,7 @@ func TestSecretPolicyAdmit(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
 		task                   *model.Tunnel
-		allowLocalProxy, local bool
+		allowLocalProxy, local bool // the server's allow_local_proxy; the tunnel's proxy to local
 		lk                     *conn.Link
 		want                   SecretRoute
 		denied, refused        bool
@@ -266,11 +266,15 @@ func TestSecretPolicyAdmit(t *testing.T) {
 		{name: "list: default target network outside", task: tcpOnly, lk: link("udp", "", false), denied: true},
 		{name: "list: network inside", task: tcpOnly, lk: link("tcp", "a:1", false), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
 		{name: "file link", task: listed, lk: link("file", "file://x", false), refused: true},
-		{name: "local not allowed", task: listed, allowLocalProxy: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "local: tunnel off", task: listed, allowLocalProxy: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "local: server off", task: listed, local: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "local: tunnel on, visitor does not ask", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "a:1", false), want: SecretRoute{ConnType: "tcp", Host: "a:1"}},
+		{name: "local: tunnel on, default target", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "", true), want: SecretRoute{ConnType: "tcp", LocalProxy: true}},
 		{name: "local allowed", task: listed, allowLocalProxy: true, local: true, lk: link("tcp", "a:1", true), want: SecretRoute{ConnType: "tcp", Host: "a:1", LocalProxy: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := NewSecretPolicy(tc.task, target, tc.allowLocalProxy, tc.local)
+			tgt := &model.Target{TargetStr: target.TargetStr, LocalProxy: tc.local}
+			p := NewSecretPolicy(tc.task, tgt, tc.allowLocalProxy)
 			b, err := json.Marshal(p)
 			if err != nil {
 				t.Fatal(err)
@@ -296,7 +300,7 @@ func TestSecretPolicyAdmit(t *testing.T) {
 			}
 		})
 	}
-	own := NewSecretPolicy(&model.Tunnel{Client: &model.Client{Id: -1}}, target, false, true)
+	own := NewSecretPolicy(&model.Tunnel{Client: &model.Client{Id: -1}}, target, false)
 	if own.Direct() {
 		t.Fatal("a task of the server's own client offers a direct path")
 	}

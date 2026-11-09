@@ -39,11 +39,14 @@ type SecretPolicy struct {
 	// list when the task has one. nps always sets it (SecretPolicy above);
 	// false on the wire leaves only the targets.
 	NameDest bool `json:"name_dest,omitempty"`
-	// AllowLocal lets a visitor naming destinations choose whether nps
-	// reaches them itself (allow_secret_local and allow_local_proxy).
+	// AllowLocal lets a visitor choose, link by link, that nps reaches the
+	// destination itself (local_proxy): the tunnel has "proxy to local" on
+	// (Target.LocalProxy) and the server allows it (allow_local_proxy). A
+	// visitor asking for it without that is served by the provider as if it
+	// had not asked.
 	AllowLocal bool `json:"allow_local,omitempty"`
-	// LocalProxy is whether nps reaches the target itself when the visitor
-	// does not choose: then no direct path can serve the link.
+	// LocalProxy is whether nps always reaches the target itself, whatever
+	// the visitor asks: then no direct path can serve the link.
 	LocalProxy bool `json:"local_proxy,omitempty"`
 	// DestAclMode and DestAclRules are the task's destination list, applied
 	// to destinations the visitor names; mode off with NameDest is no limit.
@@ -69,19 +72,18 @@ var (
 )
 
 // NewSecretPolicy is the policy of task t reaching target, with the
-// server's allow_local_proxy and allow_secret_local.
-func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy, allowLocal bool) *SecretPolicy {
+// server's allow_local_proxy.
+func NewSecretPolicy(t *model.Tunnel, target *model.Target, allowLocalProxy bool) *SecretPolicy {
 	p := &SecretPolicy{
 		TargetType: t.TargetType,
 		NameDest:   true,
-		AllowLocal: allowLocal && allowLocalProxy,
 	}
 	if t.DestAclMode == model.AclWhitelist || t.DestAclMode == model.AclBlacklist {
 		p.DestAclMode, p.DestAclRules, p.allows = t.DestAclMode, t.DestAclRules, t.AllowsDestination
 	}
 	if target != nil {
 		p.Targets = target.TargetStr
-		p.LocalProxy = allowLocalProxy && target.LocalProxy
+		p.AllowLocal = allowLocalProxy && target.LocalProxy
 	}
 	if t.Client != nil && t.Client.Id < 0 {
 		// The server's own client: nps always reaches the target itself.
@@ -107,7 +109,7 @@ func (p *SecretPolicy) Compile() error {
 // Direct reports whether a direct path can serve some link: not when nps
 // must reach the target itself.
 func (p *SecretPolicy) Direct() bool {
-	return !p.LocalProxy || p.AllowLocal
+	return !p.LocalProxy
 }
 
 // Admit decides what lk reaches; lk nil is a visitor that sent no link
@@ -146,6 +148,8 @@ func (p *SecretPolicy) Admit(lk *conn.Link) (SecretRoute, error) {
 	}
 	if p.AllowLocal {
 		g.LocalProxy = lk.LocalProxy
+	} else if lk.LocalProxy && !g.LocalProxy {
+		log.Debug("local_proxy ignored: the tunnel does not proxy to local", "dest", g.Host)
 	}
 	return g, nil
 }

@@ -31,9 +31,9 @@ type SecretManager struct {
 	wg      sync.WaitGroup
 	cfg     *config.CommonConfig
 	// coreVisitor makes the access of a password.
-	coreVisitor  func(password, mode string) coreapi.Visitor
+	coreVisitor  func(password, mode string, serverExit bool) coreapi.Visitor
 	coreRelease  func()                     // gives back the shared session of coreVisitor
-	visitors     map[string]coreapi.Visitor // by task password and conn_mode
+	visitors     map[string]coreapi.Visitor // by task password, conn_mode and local_proxy
 	proxyServers []Closer
 }
 
@@ -58,15 +58,16 @@ func NewSecretManager(pCtx context.Context, pCancel context.CancelFunc, cfg *con
 func (mgr *SecretManager) visitor(l *config.LocalServer, mode string) coreapi.Visitor {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
-	// A link has one conn_mode: sections differing in it have their own.
-	key := l.Password + "\x00" + mode
+	// A link has one conn_mode and one exit: sections differing in them have
+	// their own.
+	key := l.Password + "\x00" + mode + "\x00" + strconv.FormatBool(l.LocalProxy)
 	if v, ok := mgr.visitors[key]; ok {
 		return v
 	}
 	if mgr.visitors == nil {
 		mgr.visitors = make(map[string]coreapi.Visitor)
 	}
-	v := mgr.coreVisitor(l.Password, mode)
+	v := mgr.coreVisitor(l.Password, mode, l.LocalProxy)
 	mgr.visitors[key] = v
 	return v
 }

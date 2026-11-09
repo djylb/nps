@@ -69,7 +69,7 @@ func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
 		t.Fatal("initial reservation")
 	}
 	defer task.CutConn()
-	s := NewSecretServer(&localDialBridge{}, task, NewSecretPolicy(task, nil, false, false), false)
+	s := NewSecretServer(&localDialBridge{}, task, NewSecretPolicy(task, nil, false), false)
 	a, b := net.Pipe()
 	defer func() { _ = a.Close(); _ = b.Close() }()
 	if err := s.Serve(a, nil, legacy.WriteAck); err == nil {
@@ -84,7 +84,7 @@ func TestSecretTunnelLimitRejectsBeforeClientReservation(t *testing.T) {
 // exit on the server.
 func TestSecretWithoutTargetFails(t *testing.T) {
 	task := &model.Tunnel{Client: &model.Client{Flow: &model.Flow{}, Cnf: &model.Config{}}, Flow: &model.Flow{}, Target: &model.Target{}}
-	s := NewSecretServer(&localDialBridge{}, task, NewSecretPolicy(task, task.Target, false, false), false)
+	s := NewSecretServer(&localDialBridge{}, task, NewSecretPolicy(task, task.Target, false), false)
 	a, b := net.Pipe()
 	defer func() { _ = b.Close() }()
 	if err := s.Serve(a, conn.NewLink("tcp", "", false, false, "", false), legacy.WriteAck); !errors.Is(err, model.ErrNoTarget) {

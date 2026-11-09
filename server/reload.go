@@ -116,7 +116,7 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		// read where used as above, and the grants of point-to-point access
 		// hold the policy resolved under these: visitors attach again
 		{Name: "tunnels and secret grants", Settings: []string{
-			"allow_local_proxy", "allow_secret_local",
+			"allow_local_proxy",
 		}, Apply: func(_, _ *servercfg.Snapshot) error {
 			s.bridge.RevokeSecretGrants()
 			return nil

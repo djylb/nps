@@ -87,7 +87,9 @@ type peerEnv struct {
 	valid    atomic.Bool
 	// exitTarget is the target the last server-exit stream named.
 	exitTarget atomic.Pointer[string]
-	echo       string
+	// askedExit is whether the last LINK asked for the server as the exit.
+	askedExit atomic.Bool
+	echo      string
 	// Set before the LINK that should see them.
 	// directIn and directOut add up what the grant's AddDirect received.
 	directIn, directOut atomic.Uint64
@@ -128,6 +130,7 @@ func startPeerUsage(t *testing.T, serverExit bool, lanes int, usageEvery time.Du
 			if !bytes.Equal(r.AccessID, wire.AccessID([]byte("secret"))) || !r.Verify([]byte("secret")) {
 				return nil, linkError(wire.CodeNotAllowed)
 			}
+			p.askedExit.Store(r.ServerExit)
 			return &coreapi.LinkGrant{Tunnel: 7, Provider: 1, ServerExit: serverExit,
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
@@ -658,5 +661,27 @@ func TestPeerQuotaEndsLink(t *testing.T) {
 	waitUntil(t, "link ended", func() bool { return l.ended() })
 	if d := time.Since(start); d > 10*time.Second {
 		t.Fatalf("took %v", d)
+	}
+}
+
+// A visitor's local_proxy reaches the server's resolution as the request
+// for the exit; the grant says whether it is one.
+func TestPeerVisitorAsksForServerExit(t *testing.T) {
+	for _, ask := range []bool{false, true} {
+		p := startPeer(t, false)
+		v := NewVisitor(VisitorConfig{Outer: p.outer, Access: []byte("secret"), Mode: wire.ConnRelay, ServerExit: ask, Tick: 20 * time.Millisecond, Timeout: 5 * time.Second})
+		t.Cleanup(func() { _ = v.Close() })
+		c, err := v.OpenLink(peerCtx(t), coreapi.LinkRequest{Network: coreapi.NetworkTCP, Target: p.echo, WantReply: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkEcho(t, c, "asked")
+		_ = c.Close()
+		if got := p.askedExit.Load(); got != ask {
+			t.Fatalf("visitor asking %v: the server saw %v", ask, got)
+		}
+		if l := v.live(); l == nil || l.exit != nil {
+			t.Fatalf("the grant did not allow the exit, yet the link is one")
+		}
 	}
 }

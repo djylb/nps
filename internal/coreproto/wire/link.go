@@ -22,6 +22,9 @@ type LinkOpen struct {
 	Tunnel   uint64
 	Access   []byte
 	ConnMode uint64 // 0: the default
+	// ServerExit asks for the server as the exit of the link; the reply
+	// says whether the tunnel lets it.
+	ServerExit bool
 }
 
 // AppendLinkOpen encodes o.
@@ -35,6 +38,9 @@ func AppendLinkOpen(o *LinkOpen) ([]byte, error) {
 	}
 	if o.ConnMode != 0 {
 		b = AppendUint(b, KeyConnMode, o.ConnMode)
+	}
+	if o.ServerExit {
+		b = AppendUint(b, KeyServerExit, 1)
 	}
 	if len(b) > MaxOpenInfo {
 		return nil, ErrMalformed
@@ -54,6 +60,8 @@ func ParseLinkOpen(fields []byte) (LinkOpen, error) {
 			o.Access = f.Data
 		case KeyConnMode:
 			o.ConnMode = f.Value
+		case KeyServerExit:
+			o.ServerExit = f.Value == 1
 		}
 		return nil
 	})

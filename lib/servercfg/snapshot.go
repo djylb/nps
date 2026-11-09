@@ -125,7 +125,6 @@ type FeatureConfig struct {
 	AllowTunnelNumLimit     bool
 	AllowLocalProxy         bool
 	AllowUserLocal          bool
-	AllowSecretLocal        bool
 	SystemInfoDisplay       bool
 	AllowPorts              string
 }
@@ -473,7 +472,6 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		AllowMultiIP:            r.boolDefault(false, "allow_multi_ip"),
 		AllowTunnelNumLimit:     r.boolDefault(false, "allow_tunnel_num_limit"),
 		AllowLocalProxy:         r.boolDefault(false, "allow_local_proxy"),
-		AllowSecretLocal:        r.boolDefault(false, "allow_secret_local"),
 		SystemInfoDisplay:       r.boolDefault(false, "system_info_display"),
 		AllowPorts:              r.stringValue("allow_ports"),
 	}

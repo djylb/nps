@@ -235,6 +235,9 @@ type LinkResolve struct {
 	Verify func(password []byte) bool
 	// Source is where the visitor's session comes from.
 	Source netip.AddrPort
+	// ServerExit is the visitor asking for the server as the exit of the
+	// link; the tunnel decides whether it is (LinkGrant.ServerExit).
+	ServerExit bool
 }
 
 // AccessID is what an access key is found by (§9.1).
@@ -264,7 +267,9 @@ type Forwarding interface {
 type LinkGrant struct {
 	Tunnel   int
 	Provider int // the provider's client; unused with ServerExit
-	// ServerExit makes the server the exit of the link (§9.1).
+	// ServerExit makes the server the exit of the link (§9.1): the visitor
+	// asked for it and the tunnel allows it, or the tunnel's provider is the
+	// server itself.
 	ServerExit bool
 	// Policy is the provider's local policy of the link.
 	Policy LinkPolicy
@@ -466,8 +471,10 @@ type Outer interface {
 	Dialer
 	// Visitor makes the access of the secret task Access in connection mode
 	// mode (auto, relay or direct). relayIdle is how long a relay stands by
-	// once the direct path is up; zero is the default.
-	Visitor(access []byte, mode string, relayIdle time.Duration) Visitor
+	// once the direct path is up; zero is the default. serverExit asks for
+	// the server as the exit of the link (local_proxy): the tunnel may not
+	// allow it, then the link goes to the provider.
+	Visitor(access []byte, mode string, relayIdle time.Duration, serverExit bool) Visitor
 	// Hold sets what keeps the session whatever the visitors need: keep
 	// always, hosting while it returns true.
 	Hold(keep bool, hosting func() bool)

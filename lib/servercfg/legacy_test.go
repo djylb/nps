@@ -63,6 +63,17 @@ func TestLegacySecretLink(t *testing.T) {
 	}
 }
 
+// allow_secret_local no longer has an effect: set to true it warns, off it is silent.
+func TestLegacySecretLocal(t *testing.T) {
+	s := buildSnapshot(map[string]any{"allow_secret_local": "true"})
+	if len(s.Legacy) != 1 || !strings.Contains(s.Legacy[0], "proxy to local") {
+		t.Fatalf("warnings %q", s.Legacy)
+	}
+	if len(buildSnapshot(map[string]any{"allow_secret_local": "false"}).Legacy) != 0 {
+		t.Fatal("warned about a key that is off")
+	}
+}
+
 func TestLegacyQUICALPNOverlap(t *testing.T) {
 	s := buildSnapshot(map[string]any{"quic_alpn": "nps,h3"})
 	if got := strings.Join(s.Network.QUICALPNList, ","); got != "nps" {

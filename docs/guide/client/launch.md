@@ -68,6 +68,7 @@ npc -launch="npc://VKEY@nps.example.com:8025?type=tls&alpn=h2&count=2&pipes=mult
 | `access` | 隧道密钥，必填 |
 | `target` | 要访问的目标；不写时用隧道的默认目标，隧道也没有时连接失败。`mixed`、`socks5`、`http`、`transparent` 的目标取自每条连接，写了报错 |
 | `conn_mode` | `auto`（默认）、`relay`、`direct` |
+| `local_proxy` | `true` 时让服务端连接目标（只走中转）。隧道开启了“代理到本地”才生效，隧道没开时忽略，仍由提供端 npc 连接 |
 | `via` | 走哪条连接（`#名字`）。只有一条连接时可省略，多条时必填，不存在就报错 |
 | `auth` | 只用于 `mixed`、`socks5`、`http`，可重复，`user:pass`，按第一个 `:` 分隔，百分号解码；`user:pass@` 是一组简写，可以和 `auth` 同时存在；不写就无认证 |
 

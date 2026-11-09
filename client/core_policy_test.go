@@ -231,15 +231,19 @@ func TestIssuedKeyUsedOnLaterRuns(t *testing.T) {
 	}
 }
 
-func TestSectionsDifferByConnMode(t *testing.T) {
+func TestSectionsDifferByConnModeAndExit(t *testing.T) {
 	var n int
-	mgr := &SecretManager{coreVisitor: func(string, string) coreapi.Visitor { n++; return &fakeVisitor{} }}
+	mgr := &SecretManager{coreVisitor: func(string, string, bool) coreapi.Visitor { n++; return &fakeVisitor{} }}
 	l := &config.LocalServer{Password: "p"}
 	if mgr.visitor(l, "relay") == mgr.visitor(l, "direct") || n != 2 {
 		t.Fatalf("modes share a visitor, made %d", n)
 	}
 	if mgr.visitor(l, "relay"); n != 2 {
 		t.Fatal("same mode not shared")
+	}
+	exit := &config.LocalServer{Password: "p", LocalProxy: true}
+	if mgr.visitor(exit, "relay") == mgr.visitor(l, "relay") || n != 3 {
+		t.Fatalf("local_proxy shares a visitor, made %d", n)
 	}
 }
 

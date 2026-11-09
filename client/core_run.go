@@ -226,8 +226,8 @@ func (mgr *SecretManager) UseCore() error {
 		return err
 	}
 	idle := time.Duration(mgr.cfg.RelayIdle) * time.Second
-	mgr.coreVisitor = func(password, mode string) coreapi.Visitor {
-		return e.outer.Visitor([]byte(password), mode, idle)
+	mgr.coreVisitor = func(password, mode string, serverExit bool) coreapi.Visitor {
+		return e.outer.Visitor([]byte(password), mode, idle, serverExit)
 	}
 	mgr.coreRelease = e.release
 	return nil

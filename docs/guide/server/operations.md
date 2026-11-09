@@ -39,7 +39,7 @@ sudo kill -USR1 <pid>            # 其他方式，<pid> 为 nps 进程号
 - 用户功能开关：`allow_flow_limit`、`allow_rate_limit`、`allow_time_limit`、`allow_connection_num_limit`、`allow_multi_ip`、`allow_tunnel_num_limit`、`allow_user_local`
 - 登录防护：`open_captcha`、`force_pow`、`pow_bits`、`login_ban_time`、`login_ip_ban_time`、`login_user_ban_time`、`login_max_fail_times`、`login_max_body`、`login_max_skew`、`login_acl_mode`、`login_acl_rules`
 - 客户端连接地址的显示：`bridge_addr`、`bridge_show_path`、`bridge_tcp_show`、`bridge_tcp_show_ip`、`bridge_tcp_show_port`、`bridge_kcp_show`、`bridge_kcp_show_ip`、`bridge_kcp_show_port`、`bridge_quic_show`、`bridge_quic_show_ip`、`bridge_quic_show_port`、`bridge_tls_show`、`bridge_tls_show_ip`、`bridge_tls_show_port`、`bridge_ws_show`、`bridge_ws_show_ip`、`bridge_ws_show_port`、`bridge_wss_show`、`bridge_wss_show_ip`、`bridge_wss_show_port`、`bridge_quic_show_alpn`
-- 运行时读取的：`allow_local_proxy`、`allow_secret_local`、`http_add_origin_header`、`auth_time_window`（`allow_local_proxy` 只影响之后启动的隧道；`allow_local_proxy`、`allow_secret_local` 变更时点对点访问的授权失效，访问端重新授权）
+- 运行时读取的：`allow_local_proxy`、`http_add_origin_header`、`auth_time_window`（`allow_local_proxy` 只影响之后启动的隧道；`allow_local_proxy` 变更时点对点访问的授权失效，访问端重新授权）
 
 以下变更需要重启才生效，重载时列出：
 
