@@ -61,7 +61,7 @@ Based on the original [NPS](https://github.com/ehang-io/nps) project, **NPS Enha
   Built-in features such as encrypted transmission, traffic limiting, access expiration controls, certificate management, and certificate renewal help improve security and manageability.
 
 - **Multiple Connection Protocols**  
-  Supports connecting to the server using TCP, KCP, TLS, QUIC, WS, and WSS protocols.
+  Supports connecting to the server using TLS, QUIC, WSS and other protocols.
 
 ---
 
@@ -112,7 +112,7 @@ sudo nps update
 sudo nps update-force
 ```
 
-> **Tip:** For first-time setup, edit `/etc/nps/nps.conf` and verify it before running `nps start`.
+> **Tip:** For first-time setup, edit `/etc/nps/conf/nps.conf` and verify it before running `nps start`.
 
 #### Windows
 

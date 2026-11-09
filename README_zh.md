@@ -45,7 +45,7 @@ NPS 是一款轻量高效的内网穿透代理服务器，支持多种协议（T
   内置加密传输、流量限制、到期限制、证书管理续签等多重功能，保障数据安全。
 
 - **多连接协议**  
-  支持 TCP、KCP、TLS、QUIC、WS、WSS 协议连接服务器。
+  支持 TLS、QUIC、WSS 等协议连接服务器。
 
 ---
 
@@ -77,7 +77,7 @@ docker pull duan2001/npc
 docker run -d --restart=always --name npc --net=host duan2001/npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls"
 ```
 
-> **提示：** `-server`、`-vkey`、`-type` 等参数请从 NPS Web 管理端的客户端页面复制，避免手动填写错误。
+> **提示：** `-launch` 命令请从 NPS Web 管理端的客户端页面复制，避免手动填写错误。
 
 ### 服务端安装
 
@@ -93,7 +93,7 @@ sudo nps update
 sudo nps update-force
 ```
 
-> **提示：** 首次安装后请先编辑 `/etc/nps/nps.conf`，确认配置无误后再执行 `nps start`。
+> **提示：** 首次安装后请先编辑 `/etc/nps/conf/nps.conf`，确认配置无误后再执行 `nps start`。
 
 #### Windows
 > Windows 7 用户请使用 old 结尾版本 [64](https://github.com/djylb/nps/releases/latest/download/windows_amd64_server_old.tar.gz) / [32](https://github.com/djylb/nps/releases/latest/download/windows_386_server_old.tar.gz)
@@ -135,7 +135,6 @@ sudo npc update-force
 ```
 
 > **提示：** 客户端支持同时连接多个服务器，示例：  
-> `npc -server=xxx:123,yyy:456,zzz:789 -vkey=key1,key2,key3 -type=tcp,tls`  
-> 这里 `xxx:123` 使用 tcp, `yyy:456` 和 `zzz:789` 使用tls
+> `npc -launch="npc://key1@xxx:123?type=tls" -launch="npc://key2@yyy:456?type=tls"`  
 
 ---
