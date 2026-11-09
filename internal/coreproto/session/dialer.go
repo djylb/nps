@@ -225,7 +225,7 @@ func (d *Dialer) dialCandidate(ctx context.Context, c connprofile.Candidate) (*c
 		(c.Carrier == "ws" || c.Carrier == "wss") && c.Subprotocol == "" && strings.Contains(c.Raw, "://") {
 		err = fmt.Errorf("%w (the shared bridge path needs subprotocol=binary)", err)
 	}
-	if err != nil && errors.Is(err, seal.ErrNoReply) && ctx.Err() == nil && c.Carrier == "tcp" {
+	if err != nil && errors.Is(err, seal.ErrNoReply) && c.Carrier == "tcp" {
 		err = fmt.Errorf("%w: %w", coreapi.ErrPlainRefused, err)
 	}
 	return s, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -51,6 +52,9 @@ func (e coreExit) ServeUDP5Policy(ctx context.Context, c net.Conn, allow conn.UD
 	conn.HandleUdp5Policy(ctx, c, e.udpIdle, localIP, allow)
 }
 
+// plainHint keeps the hint about a silent plain carrier to one per process.
+var plainHint sync.Once
+
 // runCore is RunCore with after, which runs on each session once it is up
 // (the config upload). A session after fails ends, and the error is returned
 // when no reconnect follows. shared is the entry of a session others may be
@@ -63,8 +67,10 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 		s, err := d.Dial(ctx)
 		if err != nil {
 			attempt++
-			if attempt == 1 && errors.Is(err, coreapi.ErrPlainRefused) {
-				log.Warn("the server did not answer on the plain tcp carrier; if it takes only tls, use -type=tls or a launch link with type=tls (or auto)", "server", d.Server())
+			if errors.Is(err, coreapi.ErrPlainRefused) {
+				plainHint.Do(func() {
+					log.Warn("the server did not answer on the plain tcp carrier; if it takes only tls, use -type=tls or a launch link with type=tls (or auto)", "server", d.Server())
+				})
 			}
 			slogx.Emit(ctx, log, &logevent.ConnectFailed, "server", d.Server(), "attempt", attempt, "reason", "establish", "err", err)
 		} else {
