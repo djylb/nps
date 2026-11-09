@@ -121,6 +121,9 @@ type Bridge struct {
 	scope     *lifecycle.Scope
 	conns     *lifecycle.Scope
 	closeOnce sync.Once
+
+	// routeCarriers holds the http.Handler of startRouteCarriers.
+	routeCarriers atomic.Value
 }
 
 // NewTunnel returns a bridge of the entries in store; runList holds the

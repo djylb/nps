@@ -49,6 +49,11 @@ type mixFixture struct {
 // mixOn starts a mixed entry of kind over a fixture.
 func mixOn(t *testing.T, kind mixKind, n servercfg.NetworkConfig) *mixFixture {
 	t.Helper()
+	return mixOnOpts(t, kind, n, model.Config{Crypt: true}, session.Options{})
+}
+
+func mixOnOpts(t *testing.T, kind mixKind, n servercfg.NetworkConfig, cnf model.Config, opts session.Options) *mixFixture {
+	t.Helper()
 	if n.BridgePath == "" {
 		n.BridgePath = "/ws"
 	}
@@ -62,7 +67,7 @@ func mixOn(t *testing.T, kind mixKind, n servercfg.NetworkConfig) *mixFixture {
 	old := connection.Network()
 	connection.Configure(n)
 	t.Cleanup(func() { connection.Configure(old) })
-	f := newCoreFixture(t, SelectMode(0), model.Config{Crypt: true})
+	f := newCoreFixtureOpts(t, SelectMode(0), cnf, opts)
 	f.b.cert = selfSigned(t, "bridge.test")
 	f.b.fingerprint = crypt.GetCertFingerprint(f.b.cert)
 	var wg sync.WaitGroup

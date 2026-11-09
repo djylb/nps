@@ -405,6 +405,11 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		},
 	})
 	if err != nil {
+		// A carrier of several requests has no connection to end with it.
+		if a, ok := ca.pipe.W.(interface{ Abort(error) }); ok {
+			a.Abort(err)
+		}
+		_ = zmux.PipeConn(ca.pipe).Close()
 		return nil, err
 	}
 	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
@@ -593,7 +598,10 @@ func (s *clientSession) applySessionOptions(o wire.SessionOptions) {
 	}
 }
 
-func (s *clientSession) Carrier() string       { return s.carrier }
+func (s *clientSession) Carrier() string { return s.carrier }
+
+// RecordMode names the record mode of the session's first pipe.
+func (s *clientSession) RecordMode() string    { return s.mode.String() }
 func (s *clientSession) Done() <-chan struct{} { return s.done }
 func (s *clientSession) Err() error            { return s.err }
 func (s *clientSession) Close() error          { return s.zc.Close() }

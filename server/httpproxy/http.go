@@ -194,6 +194,10 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(context.WithValue(r.Context(), requestKey{}, req))
 
 	// forward
+	if h := s.bridgeCarrier(req, r); h != nil {
+		h.ServeHTTP(w, r)
+		return
+	}
 	if isTunnelRequest(r) {
 		s.forwardTunnel(w, r, req)
 		return

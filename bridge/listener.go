@@ -41,6 +41,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	if err := s.startCore(); err != nil {
 		return err
 	}
+	s.startRouteCarriers()
 	var err error
 	// tcp
 	if s.VirtualTcpListener, err = s.virtualBridgeListener(t.TCP && !n.BridgeGeneric, connection.KindBridgeTCP); err != nil {
@@ -94,6 +95,14 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	}
 
 	_ = s.scope.Go("ping", func(context.Context) error { s.ping(); return nil })
+	s.serveVirtualTargets()
+	return nil
+}
+
+// serveVirtualTargets serves the in-memory listeners of the bridge:// targets
+// and the transport ports that feed them.
+func (s *Bridge) serveVirtualTargets() {
+	n := connection.Network()
 	mixTarget := s.newMixEntry(mixVirtual)
 	s.acceptOn(s.VirtualMixListener, func(c net.Conn) { s.serveMix(c, mixTarget) })
 	s.acceptOn(s.VirtualTcpListener, func(c net.Conn) {
@@ -112,7 +121,6 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	s.acceptOn(wssLn, func(c net.Conn) {
 		s.serve(conn.NewConn(c), conn.TransportWSS)
 	})
-	return nil
 }
 
 // acceptOn serves l in the background until it is closed.

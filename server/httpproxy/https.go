@@ -305,7 +305,11 @@ func (s *HttpsServer) handleHttpsProxy(host *model.Host, c net.Conn, rb []byte, 
 	}
 }
 
-func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni string) {
+func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn *tls.Conn, sni string) {
+	head, took := s.routeToBridge(host, tlsConn)
+	if took {
+		return
+	}
 	release, err := s.AcquireForwarding(host.Client, host.ControlGroup())
 	if err != nil {
 		emitLimit(host, err)
@@ -318,7 +322,7 @@ func (s *HttpsServer) handleTlsProxy(host *model.Host, tlsConn net.Conn, sni str
 	task := model.NewTunnelByHost(host, s.HttpsPort)
 	// DealTarget owns the connection once it found a target.
 	//noinspection GoResourceLeak
-	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, nil, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
+	if err := s.DealTarget(conn.NewConn(tlsConn), host.Client, head, conn.LinkTCP, nil, []conn.Flow{host.Flow, host.Client.Flow}, task); errors.Is(err, model.ErrNoTarget) {
 		slogx.Emit(context.Background(), proxyLog, &logevent.RelayFailed, "route", host.Host, "host", host.Id, "client", host.Client.Id, "reason", "no_target", "err", err)
 		_ = tlsConn.Close()
 	}

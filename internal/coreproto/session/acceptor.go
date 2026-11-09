@@ -300,6 +300,14 @@ func (a *Acceptor) ServeMixed(ctx context.Context, c net.Conn, carrier string, o
 	a.serve(ctx, c, carrierCtx{label: carrier, other: other})
 }
 
+// ServeTerminated implements coreapi.Entry.
+func (a *Acceptor) ServeTerminated(ctx context.Context, tc *tls.Conn, head []byte, carrier string) {
+	p := zmux.PrefixedPipe(zmux.SecureTLS(tc), head)
+	p.Label = carrier
+	ctx = context.WithValue(ctx, carrierKey{}, carrierCtx{label: carrier, tls: tc})
+	_ = a.zl.HandlePipe(ctx, p, zmux.PipeHint{Source: addrPort(tc.RemoteAddr())})
+}
+
 // QUICConfig implements coreapi.Entry.
 func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.QUICConfig(base) }
 

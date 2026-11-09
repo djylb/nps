@@ -374,6 +374,10 @@ type Entry interface {
 	// Hooks.Legacy and Hooks.Fallback. state is c's TLS when this process
 	// terminated it. other returns false, leaving c to the entry to stall.
 	ServeMixed(ctx context.Context, c net.Conn, carrier string, other func(c net.Conn, state *tls.ConnectionState) bool)
+	// ServeTerminated runs a carrier whose TLS a domain route of this process
+	// ended; head are the bytes already read of it. The TLS is end to end, so
+	// the carrier can be Bound. It blocks like Serve.
+	ServeTerminated(ctx context.Context, tc *tls.Conn, head []byte, carrier string)
 	// QUICConfig returns base with what QUIC carriers of this entry need.
 	QUICConfig(base *quic.Config) *quic.Config
 	// ServeQUIC runs one QUIC connection of the core protocol until it ends;

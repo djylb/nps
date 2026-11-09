@@ -317,6 +317,101 @@ func (s *Bridge) startCore() error {
 	return nil
 }
 
+// routeNextKey holds what serves a request of a domain route that is no
+// carrier, for serveHTTPFallback. Going through the domain proxy again would
+// come back to the same route.
+type routeNextKey struct{}
+
+// startRouteCarriers builds the handler of the carriers that arrive by a
+// domain route: one handler, whose TLS is
+// the request's (§3.2).
+func (s *Bridge) startRouteCarriers() {
+	fw := s.coreForwarding()
+	h, err := s.core.WebSocketAnyProtocol(s.httpCarriers(http.HandlerFunc(s.serveHTTPFallback), fw), fw)
+	if err != nil {
+		log.Error("new protocol route carriers", "err", err)
+		return
+	}
+	s.routeCarriers.Store(s.deniedHTTP(h))
+}
+
+// CarrierRoute returns the handler of r when a domain route to the bridge
+// target gives it to the new protocol, nil when it stays on the route's usual
+// way: bridge://ws and wss keep a WebSocket that is not marked as the new
+// protocol's for the old protocol (§12), and tcp and tls take no HTTP.
+// A request that is no carrier goes to next.
+func (s *Bridge) CarrierRoute(target string, r *http.Request, next http.Handler) http.Handler {
+	h, _ := s.routeCarriers.Load().(http.Handler)
+	if h == nil {
+		return nil
+	}
+	switch strings.ToLower(target) {
+	case conn.TransportWS, conn.TransportWSS:
+		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") && !newProtocolWS(r) {
+			return nil
+		}
+	case bridgeTargetMix:
+	default:
+		return nil
+	}
+	return withRouteNext(h, next)
+}
+
+func withRouteNext(h, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), routeNextKey{}, next)))
+	})
+}
+
+// newProtocolWS reports whether a WebSocket request on a port shared with the
+// old protocol is the new protocol's, as coreWS decides it.
+func newProtocolWS(r *http.Request) bool {
+	if slices.Contains(connection.Network().NewProtocolWSPaths, r.URL.Path) {
+		return true
+	}
+	for _, v := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for p := range strings.SplitSeq(v, ",") {
+			if strings.TrimSpace(p) == coreWSSubprotocol {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// coreWSSubprotocol marks the new protocol on the bridge path (§12).
+const coreWSSubprotocol = "binary"
+
+// ServeRouteTLS takes a TLS connection a domain route to target ended, head
+// being its first bytes, when they are the new protocol's byte stream; false
+// leaves it to the route's usual way, as for the old protocol.
+func (s *Bridge) ServeRouteTLS(tc *tls.Conn, head []byte, target string) bool {
+	switch strings.ToLower(target) {
+	case conn.TransportTCP, bridgeTargetMix:
+	default:
+		return false
+	}
+	if len(head) == 0 || head[0] < 1 || head[0] > 3 {
+		return false
+	}
+	if s.store.GlobalDenied(tc.RemoteAddr(), "bridge") {
+		_ = tc.Close()
+		return true
+	}
+	if s.conns.Go("route carrier", func(ctx context.Context) error {
+		remove, err := s.conns.Add(tc)
+		if err != nil {
+			return nil
+		}
+		defer remove()
+		s.core.ServeTerminated(ctx, tc, head, conn.TransportTLS)
+		return nil
+	}) != nil {
+		_ = tc.Close()
+	}
+	return true
+}
+
 // serveCarrier handles an accepted tcp or tls connection of a bridge port:
 // admission routes it, and the old protocol's first bytes come back through
 // Hooks.Legacy.
@@ -450,6 +545,10 @@ func (s *Bridge) deniedHTTP(h http.Handler) http.Handler {
 // carrier to the domain proxy, as the other bridge ports give theirs (§13):
 // the connection, its parsed request written back in front.
 func (s *Bridge) serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
+	if next, ok := r.Context().Value(routeNextKey{}).(http.Handler); ok {
+		next.ServeHTTP(w, r)
+		return
+	}
 	if s.fallback.Load() == nil {
 		http.NotFound(w, r)
 		return
