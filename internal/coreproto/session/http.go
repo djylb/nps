@@ -310,7 +310,7 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
 			cd := &captureDialer{dial: d.cfg.Dial}
 			scheme := map[string]string{"http": "ws", "https": "wss"}[m.Carrier]
 			tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, ServerName: serverName(m)}
-			protocols := []string{zmuxws.NoSubprotocol}
+			protocols := []string{legacySubprotocol}
 			if m.Subprotocol != "" {
 				protocols = []string{m.Subprotocol}
 			}

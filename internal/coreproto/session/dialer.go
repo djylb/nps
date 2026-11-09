@@ -298,12 +298,11 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 		scheme := c.Carrier
 		// The old way of writing a candidate sends the subprotocol (§12);
 		// a URL candidate sends the one it names, else none.
-		protocols := []string{zmuxws.NoSubprotocol}
-		switch {
-		case c.Subprotocol != "":
+		// binary marks the core protocol on a bridge path that old npc share; a
+		// path of the core protocol alone accepts it too.
+		protocols := []string{legacySubprotocol}
+		if c.Subprotocol != "" {
 			protocols = []string{c.Subprotocol}
-		case !strings.Contains(c.Raw, "://"):
-			protocols = []string{legacySubprotocol}
 		}
 		cd := &captureDialer{dial: d.cfg.Dial}
 		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}
