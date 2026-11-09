@@ -14,7 +14,7 @@ import (
 	"github.com/djylb/nps/lib/config"
 )
 
-// Account is one proxy account of a mixed listener.
+// Account is one proxy account of a mixed, socks5 or http listener.
 type Account struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
@@ -55,10 +55,10 @@ func (a Access) compile() (*config.LocalServer, error) {
 		return nil, errors.New("access (the key of the tunnel) is required")
 	case a.LocalPort < 0 || a.LocalPort > 65535:
 		return nil, fmt.Errorf("port %d is out of range", a.LocalPort)
-	case a.Target != "" && (typ == config.LocalMixed || typ == config.LocalTransparent):
+	case a.Target != "" && config.IsProxyType(typ):
 		return nil, fmt.Errorf("%s takes the destination from each connection, it has no target", typ)
-	case len(a.Auth) > 0 && typ != config.LocalMixed:
-		return nil, errors.New("accounts are only used by mixed")
+	case len(a.Auth) > 0 && !config.IsAccountType(typ):
+		return nil, errors.New("accounts are only used by mixed, socks5 and http")
 	}
 	l := &config.LocalServer{Type: typ, ConnMode: mode, Port: a.LocalPort, Ip: a.LocalIP,
 		Password: a.Access, Target: a.Target, LocalProxy: a.LocalProxy}
@@ -85,7 +85,7 @@ type Local struct {
 }
 
 // localSchemes are the local types a -L is written with.
-var localSchemes = []string{config.LocalTCP, config.LocalUDP, config.LocalTCPUDP, config.LocalMixed, config.LocalTransparent}
+var localSchemes = []string{config.LocalTCP, config.LocalUDP, config.LocalTCPUDP, config.LocalMixed, config.LocalSOCKS5, config.LocalHTTP, config.LocalTransparent}
 
 // ParseLocal reads one -L value, scheme://[user:pass@]host:port?access=..&target=..
 // Errors never contain the value: it holds the access key.
@@ -229,7 +229,7 @@ func formatLocal(l *config.LocalServer, via string, reveal bool) string {
 	if l.ConnMode != "" && l.ConnMode != config.ConnAuto {
 		b.WriteString("&conn_mode=" + l.ConnMode)
 	}
-	if l.Target != "" && l.Type != config.LocalMixed && l.Type != config.LocalTransparent {
+	if l.Target != "" && !config.IsProxyType(l.Type) {
 		b.WriteString("&target=" + url.QueryEscape(l.Target))
 	}
 	if l.LocalProxy {

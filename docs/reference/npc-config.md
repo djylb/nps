@@ -31,7 +31,7 @@ vkey=xxx
 
 ## 本地访问段
 
-`[secret...]` 节：`local_port`、`local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`transparent`）、`conn_mode`（`auto` 默认、`relay`、`direct`）、`local_ip`、`password`、`target_addr`、`local_proxy`。
+`[secret...]` 节：`local_port`、`local_type`（`tcp_udp` 默认、`tcp`、`udp`、`mixed`、`socks5`、`http`、`transparent`）、`conn_mode`（`auto` 默认、`relay`、`direct`）、`local_ip`、`password`、`target_addr`、`local_proxy`。
 
 ```ini
 [secret_ssh]

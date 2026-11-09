@@ -44,13 +44,15 @@ ssh -p 2000 root@127.0.0.1
 | `tcp` | 只有 TCP 端口映射 |
 | `udp` | 只有 UDP 端口映射 |
 | `mixed` | HTTP/SOCKS5 代理 |
+| `socks5` | 只有 SOCKS5 代理（`mixed` 关掉 HTTP） |
+| `http` | 只有 HTTP 代理（`mixed` 关掉 SOCKS5） |
 | `transparent` | [透明代理](/guide/tunnels/transparent.md) |
 
 配置文件写法见 [npc.conf](/reference/npc-config.md)。
 
 ## 访问范围
 
-访问端可以自己指定目标和网络（`-L` 的 `target`，以及 `mixed`、`transparent` 访问端连接的地址）。隧道里已存的目标只是默认目标，访问端没指定时使用；隧道也没有目标时连接失败。
+访问端可以自己指定目标和网络（`-L` 的 `target`，以及 `mixed`、`socks5`、`http`、`transparent` 访问端连接的地址）。隧道里已存的目标只是默认目标，访问端没指定时使用；隧道也没有目标时连接失败。
 
 限制只来自隧道的目标访问控制（`dest_acl_mode`、`dest_acl_rules`），中转和直连都按它检查：没有名单时全部放行，白名单或黑名单时只能连到名单允许的目标。隧道的 `target_type`（tcp、udp、all）只决定默认目标用于哪种网络，访问端自己指定目标时不受它限制。
 

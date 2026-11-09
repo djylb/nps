@@ -9,7 +9,8 @@
     function trim(v) { return v == null ? '' : String(v).trim(); }
     function isWS(c) { return c === 'ws' || c === 'wss'; }
     function usesALPN(c) { return c === 'tls' || c === 'quic'; }
-    function proxyType(t) { return t === 'mixed' || t === 'transparent'; }
+    function accountType(t) { return t === 'mixed' || t === 'socks5' || t === 'http'; }
+    function proxyType(t) { return accountType(t) || t === 'transparent'; }
     function assign(a, b) { for (var k in b) if (Object.prototype.hasOwnProperty.call(b, k)) a[k] = b[k]; return a; }
 
     // enc percent-encodes a value, leaving what is safe and easier to read.
@@ -106,7 +107,7 @@
         if (trim(a.target) && !proxyType(a.type)) s += '&target=' + enc(trim(a.target));
         if (a.mode && a.mode !== 'auto') s += '&conn_mode=' + a.mode;
         if (a.local_proxy) s += '&local_proxy=true';
-        if (a.type === 'mixed') (a.auth || []).forEach(function (u) { if (trim(u.user)) s += '&auth=' + enc(trim(u.user)) + ':' + enc(u.pass || ''); });
+        if (accountType(a.type)) (a.auth || []).forEach(function (u) { if (trim(u.user)) s += '&auth=' + enc(trim(u.user)) + ':' + enc(u.pass || ''); });
         if (via) s += '&via=' + enc(via);
         return s;
     }
@@ -157,7 +158,7 @@
             if (trim(a.target) && !proxyType(a.type)) o.target = trim(a.target);
             if (a.mode && a.mode !== 'auto') o.conn_mode = a.mode;
             if (a.local_proxy) o.local_proxy = true;
-            if (a.type === 'mixed') {
+            if (accountType(a.type)) {
                 var auth = (a.auth || []).filter(function (u) { return trim(u.user); }).map(function (u) { return {user: trim(u.user), pass: u.pass || ''}; });
                 if (auth.length) o.auth = auth;
             }
@@ -308,7 +309,7 @@
             return '<div class="lg-field"><label class="control-label font-bold">' + esc(name) + '</label>' + input(bind, value, ph) + '<div class="text-danger small" data-err="' + at + '"></div></div>';
         }
         function accessCard(a, i) {
-            var at = 'a' + i + '.', b = 'access.' + i + '.', types = ['tcp', 'udp', 'tcp_udp', 'mixed'];
+            var at = 'a' + i + '.', b = 'access.' + i + '.', types = ['tcp', 'udp', 'tcp_udp', 'mixed', 'socks5', 'http'];
             if (form.os === 'linux') types.push('transparent');
             var top = field('lg-local-type', select(b + 'type', a.type, types.map(function (t) { return [t, '', t]; })), at + 'type')
                 + textField(b + 'ip', a.ip, at + 'ip', 'lg-listen', proxyType(a.type) ? '127.0.0.1' : '0.0.0.0')
@@ -320,7 +321,7 @@
             }
             var adv = field('lg-conn-mode', select(b + 'mode', a.mode, [['auto', '', 'auto'], ['relay', '', 'relay'], ['direct', '', 'direct']]), at + 'mode')
                 + '<div class="lg-field"><label><input type="checkbox" data-bind="' + b + 'local_proxy"' + (a.local_proxy ? ' checked' : '') + '> <span langtag="lg-local-proxy"></span></label></div>';
-            if (a.type === 'mixed') {
+            if (accountType(a.type)) {
                 adv += '<div class="lg-field lg-wide"><label class="control-label font-bold"><span langtag="lg-accounts"></span></label>'
                     + (a.auth || []).map(function (u, j) {
                         return '<div class="lg-account">' + input(b + 'auth.' + j + '.user', u.user, '') + input(b + 'auth.' + j + '.pass', u.pass, '', 'text')
@@ -377,7 +378,7 @@
             form.access.forEach(function (a, i) {
                 var msg = '', ip = trim(a.ip), loop = ip === '127.0.0.1' || ip === '::1';
                 var hasAuth = (a.auth || []).some(function (u) { return trim(u.user); });
-                if (a.type === 'mixed' && !loop && !hasAuth) msg = '<span langtag="lg-warn-noauth"></span>';
+                if (accountType(a.type) && !loop && !hasAuth) msg = '<span langtag="lg-warn-noauth"></span>';
                 if (a.type === 'transparent') {
                     if (!loop) msg = '<span langtag="lg-warn-lan"></span><br>';
                     msg += '<span langtag="lg-note-transparent"></span><pre>iptables -t nat -A OUTPUT -p tcp -d 10.0.0.0/8 -j REDIRECT --to-ports ' + esc(trim(a.port)) + '</pre>';
@@ -397,7 +398,7 @@
         function afterType(i) {
             var a = form.access[i];
             if (proxyType(a.type)) { a.target = ''; if (!trim(a.ip)) a.ip = '127.0.0.1'; }
-            if (a.type !== 'mixed') a.auth = [];
+            if (!accountType(a.type)) a.auth = [];
         }
         var structural = /^(run|os|bin|named|paths\.\d+\.carrier|access\.\d+\.type|pipes|scheduler)$/;
         $root.on('input change', '[data-bind]', function (ev) {

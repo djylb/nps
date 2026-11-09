@@ -19,7 +19,12 @@ function accounts(o) {
   o.access = [{type: 'mixed', ip: '127.0.0.1', port: '1080', target: '', mode: 'auto', local_proxy: false, key: '', auth: [{user: 'a b', pass: 'x:y&z'}, {user: 'c', pass: '2'}]},
     {type: 'tcp', ip: '::1', port: '2000', target: '10.0.0.9:80', mode: 'relay', local_proxy: true, key: '', auth: []}];
 }
+function singles(o) {
+  o.access = [{type: 'socks5', ip: '127.0.0.1', port: '1081', target: '', mode: 'auto', local_proxy: false, key: '', auth: [{user: 'a', pass: '1'}]},
+    {type: 'http', ip: '127.0.0.1', port: '8081', target: '', mode: 'relay', local_proxy: false, key: '', auth: []}];
+}
 const cases = {
+  'bash single protocols': [tunnel(), singles],
   'client default': [client(), () => {}],
   'tunnel default': [tunnel(), () => {}],
   'bash paths': [tunnel(), multi],

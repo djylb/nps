@@ -133,8 +133,8 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 			Flow:      &model.Flow{},
 		},
 		MultiAccount: localAccounts(l),
-		HttpProxy:    true,
-		Socks5Proxy:  true,
+		HttpProxy:    l.Type != config.LocalSOCKS5,
+		Socks5Proxy:  l.Type != config.LocalHTTP,
 		Flow:         &model.Flow{},
 		Target: &model.Target{
 			TargetStr:  l.Target,
@@ -143,7 +143,8 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 	}
 
 	switch l.Type {
-	case config.LocalMixed:
+	case config.LocalMixed, config.LocalSOCKS5, config.LocalHTTP:
+		// socks5 and http are the mixed listener with the other protocol off.
 		task.Mode = "mixProxy"
 		// serve owns the server and closes it on failure or shutdown.
 		//noinspection GoResourceLeak
@@ -169,7 +170,7 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 	return errors.Join(errs...)
 }
 
-// localAccounts is the proxy accounts of a mixed section as the proxy reads
+// localAccounts is the proxy accounts of a mixed, socks5 or http section as the proxy reads
 // them, nil for none.
 func localAccounts(l *config.LocalServer) *model.MultiAccount {
 	if len(l.Auth) == 0 {

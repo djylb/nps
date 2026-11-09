@@ -12,7 +12,7 @@ type LocalServer struct {
 	Password   string
 	Target     string // the destination the visitor names, within the tunnel's destination list; empty for the tunnel's default target
 	LocalProxy bool
-	Auth       map[string]string // proxy accounts of a mixed listener, none for no authentication
+	Auth       map[string]string // proxy accounts of a mixed, socks5 or http listener, none for no authentication
 }
 
 // Listener types of a LocalServer.
@@ -21,6 +21,8 @@ const (
 	LocalUDP         = "udp"
 	LocalTCPUDP      = "tcp_udp"
 	LocalMixed       = "mixed"       // HTTP and SOCKS5 proxy
+	LocalSOCKS5      = "socks5"      // the SOCKS5 half of mixed alone
+	LocalHTTP        = "http"        // the HTTP half of mixed alone
 	LocalTransparent = "transparent" // transparent proxy (Linux)
 )
 
@@ -33,6 +35,18 @@ const (
 
 // LocalTypes and ConnModes are the accepted values.
 var (
-	LocalTypes = []string{LocalTCP, LocalUDP, LocalTCPUDP, LocalMixed, LocalTransparent}
+	LocalTypes = []string{LocalTCP, LocalUDP, LocalTCPUDP, LocalMixed, LocalSOCKS5, LocalHTTP, LocalTransparent}
 	ConnModes  = []string{ConnAuto, ConnRelay, ConnDirect}
 )
+
+// IsProxyType reports whether a listener type is a proxy that reads the
+// destination from each connection: mixed, socks5 and http, and transparent.
+func IsProxyType(t string) bool {
+	return IsAccountType(t) || t == LocalTransparent
+}
+
+// IsAccountType reports whether a listener type is a mixed, socks5 or http
+// proxy, the types that take proxy accounts.
+func IsAccountType(t string) bool {
+	return t == LocalMixed || t == LocalSOCKS5 || t == LocalHTTP
+}

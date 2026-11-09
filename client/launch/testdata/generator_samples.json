@@ -16,6 +16,14 @@
   "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSIsImFscG4iOiJoMiIsImNvdW50IjoyfSx7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93IHMiLCJodHRwIjoiaDIsaHR0cC8xLjEiLCJ0aWVyIjoxLCJ3ZWlnaHQiOjN9LHsidXJsIjoicXVpYzovL2IuZXhhbXBsZTo5Iiwic25pIjoiYztkJmUiLCJzdGFuZGJ5Ijp0cnVlfV0sInNlc3Npb24iOnsibWF4X3BpcGVzIjoyLCJzY2hlZHVsZXJfdXAiOiJzcHJlYWRfZXRhIn0sImFjY2VzcyI6W3siYWNjZXNzIjoicCZcIjEhIiwibG9jYWxfdHlwZSI6InRjcCIsImxvY2FsX3BvcnQiOjIwMDB9XX0"
  },
  {
+  "name": "bash single protocols",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"socks5://127.0.0.1:1081?access=p%26%221%21&auth=a:1\" -L=\"http://127.0.0.1:8081?access=p%26%221%21&conn_mode=relay\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"socks5://127.0.0.1:1081?access=p%26%221%21&auth=a:1\" \\\n  -L=\"http://127.0.0.1:8081?access=p%26%221%21&conn_mode=relay\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"socks5\",\n      \"local_port\": 1081,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a\",\n          \"pass\": \"1\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"http\",\n      \"local_port\": 8081,\n      \"local_ip\": \"127.0.0.1\",\n      \"conn_mode\": \"relay\"\n    }\n  ]\n}",
+  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSJ9XSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoic29ja3M1IiwibG9jYWxfcG9ydCI6MTA4MSwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJhdXRoIjpbeyJ1c2VyIjoiYSIsInBhc3MiOiIxIn1dfSx7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJodHRwIiwibG9jYWxfcG9ydCI6ODA4MSwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJjb25uX21vZGUiOiJyZWxheSJ9XX0"
+ },
+ {
   "name": "client default",
   "shell": "bash",
   "one": "./npc -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",

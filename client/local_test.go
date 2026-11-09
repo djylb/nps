@@ -188,6 +188,11 @@ func freePort(t *testing.T) int {
 
 func mixedProxy(t *testing.T, accounts map[string]string) string {
 	t.Helper()
+	return typedProxy(t, config.LocalMixed, accounts)
+}
+
+func typedProxy(t *testing.T, typ string, accounts map[string]string) string {
+	t.Helper()
 	mgr := NewSecretManager(t.Context(), func() {}, config.NewCommonConfig())
 	t.Cleanup(mgr.Close)
 	mgr.coreVisitor = func(_, _ string) coreapi.Visitor {
@@ -201,7 +206,7 @@ func mixedProxy(t *testing.T, accounts map[string]string) string {
 		})
 	}
 	port := freePort(t)
-	if err := mgr.StartLocalServer(&config.LocalServer{Type: config.LocalMixed, Ip: "127.0.0.1", Port: port, Auth: accounts}); err != nil {
+	if err := mgr.StartLocalServer(&config.LocalServer{Type: typ, Ip: "127.0.0.1", Port: port, Auth: accounts}); err != nil {
 		t.Fatal(err)
 	}
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
@@ -270,5 +275,32 @@ func TestMixedAccounts(t *testing.T) {
 	open := mixedProxy(t, nil)
 	if !socks5Connect(t, open, "", "") || httpStatus(t, open, "", "") != http.StatusOK {
 		t.Error("a listener without accounts refused a visitor")
+	}
+}
+
+// socks5 and http serve one protocol of the mixed listener, with its accounts.
+func TestSingleProtocolListeners(t *testing.T) {
+	acc := map[string]string{"a": "1"}
+	socks := typedProxy(t, config.LocalSOCKS5, acc)
+	if !socks5Connect(t, socks, "a", "1") || socks5Connect(t, socks, "a", "2") {
+		t.Error("socks5 listener accounts")
+	}
+	if c, err := net.DialTimeout("tcp", socks, 3*time.Second); err == nil {
+		defer c.Close()
+		_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+		_, _ = io.WriteString(c, "GET http://web.test/ HTTP/1.1\r\nHost: web.test\r\n\r\n")
+		if n, _ := io.Copy(io.Discard, c); n != 0 {
+			t.Error("socks5 listener answered an HTTP proxy request")
+		}
+	}
+	web := typedProxy(t, config.LocalHTTP, acc)
+	if httpStatus(t, web, "a", "1") != http.StatusOK {
+		t.Error("http listener refused a valid account")
+	}
+	if httpStatus(t, web, "a", "2") == http.StatusOK {
+		t.Error("http listener accepted a wrong password")
+	}
+	if socks5Connect(t, web, "a", "1") {
+		t.Error("http listener served SOCKS5")
 	}
 }

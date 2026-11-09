@@ -63,15 +63,15 @@ npc -launch="npc://VKEY@nps.example.com:8025?type=tls&alpn=h2&count=2&pipes=mult
 
 | 部分 | 说明 |
 | --- | --- |
-| 类型 | `tcp`、`udp`、`tcp_udp`、`mixed`（HTTP 和 SOCKS5 代理，UDP 走 SOCKS5）、`transparent`（透明代理，仅 Linux，npc 不改防火墙） |
+| 类型 | `tcp`、`udp`、`tcp_udp`、`mixed`（HTTP 和 SOCKS5 代理，UDP 走 SOCKS5）、`socks5`（只有 SOCKS5）、`http`（只有 HTTP 代理）、`transparent`（透明代理，仅 Linux，npc 不改防火墙） |
 | `host:port` | 本地监听，`host` 留空为全部地址，IPv6 写成 `[::1]:2000` |
 | `access` | 隧道密钥，必填 |
-| `target` | 要访问的目标；不写时用隧道的默认目标，隧道也没有时连接失败。`mixed`、`transparent` 的目标取自每条连接，写了报错 |
+| `target` | 要访问的目标；不写时用隧道的默认目标，隧道也没有时连接失败。`mixed`、`socks5`、`http`、`transparent` 的目标取自每条连接，写了报错 |
 | `conn_mode` | `auto`（默认）、`relay`、`direct` |
 | `via` | 走哪条连接（`#名字`）。只有一条连接时可省略，多条时必填，不存在就报错 |
-| `auth` | 只用于 `mixed`，可重复，`user:pass`，按第一个 `:` 分隔，百分号解码；`user:pass@` 是一组简写，可以和 `auth` 同时存在；不写就无认证 |
+| `auth` | 只用于 `mixed`、`socks5`、`http`，可重复，`user:pass`，按第一个 `:` 分隔，百分号解码；`user:pass@` 是一组简写，可以和 `auth` 同时存在；不写就无认证 |
 
-`mixed` 没有账号时任何能连到监听地址的人都能使用，监听局域网地址请加账号。`-L=@文件` 读取每行一条（`#` 开头和空行跳过）。
+`mixed`、`socks5`、`http` 没有账号时任何能连到监听地址的人都能使用，监听局域网地址请加账号。`-L=@文件` 读取每行一条（`#` 开头和空行跳过）。
 
 `-launch` 和 `-L` 分别收集后再关联，先后顺序不影响结果。
 

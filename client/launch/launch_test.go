@@ -196,6 +196,8 @@ func TestParseLocal(t *testing.T) {
 		{in: "tcp_udp://[::1]:9?access=p&conn_mode=direct", typ: "tcp_udp", ip: "::1", port: 9, mode: "direct"},
 		{in: "transparent://:7?access=p", typ: "transparent", port: 7, mode: "auto"},
 		{in: "mixed://0.0.0.0:1080?access=p", typ: "mixed", ip: "0.0.0.0", port: 1080, mode: "auto"},
+		{in: "socks5://:1080?access=p&auth=u:1", typ: "socks5", port: 1080, mode: "auto", accounts: map[string]string{"u": "1"}},
+		{in: "http://127.0.0.1:8080?access=p", typ: "http", ip: "127.0.0.1", port: 8080, mode: "auto"},
 		{in: "mixed://a%40b:p%3Aq@:1080?access=p&auth=u:x:y&auth=v:2", typ: "mixed", port: 1080, mode: "auto",
 			accounts: map[string]string{"a@b": "p:q", "u": "x:y", "v": "2"}},
 	} {
@@ -217,11 +219,12 @@ func TestParseLocal(t *testing.T) {
 		}
 	}
 	for name, in := range map[string]string{
-		"no access": "tcp://:1", "scheme": "socks5://:1?access=p", "no port": "tcp://a?access=p", "unknown": "tcp://:1?access=p&x=1",
+		"no access": "tcp://:1", "scheme": "ftp://:1?access=p", "no port": "tcp://a?access=p", "unknown": "tcp://:1?access=p&x=1",
 		"twice": "tcp://:1?access=p&access=q", "mode": "tcp://:1?access=p&conn_mode=p2p", "port": "tcp://:70000?access=p",
 		"mixed target": "mixed://:1?access=p&target=t:1", "transparent target": "transparent://:1?access=p&target=t:1",
 		"tcp userinfo": "tcp://u:p@:1?access=p", "tcp auth": "tcp://:1?access=p&auth=u:p", "auth form": "mixed://:1?access=p&auth=u",
-		"auth clash": "mixed://u:1@:1?access=p&auth=u:2",
+		"auth clash":    "mixed://u:1@:1?access=p&auth=u:2",
+		"socks5 target": "socks5://:1?access=p&target=t:1", "http target": "http://:1?access=p&target=t:1",
 	} {
 		if _, err := ParseLocal(in); err == nil {
 			t.Errorf("%s: accepted", name)
