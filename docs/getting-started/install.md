@@ -70,13 +70,13 @@ wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -
 | 位置 | 环境变量 | 含义 | 默认 |
 | --- | --- | --- | --- |
 | 第 1 个 | `NPS_INSTALL_MODE` | `nps`、`npc` 或 `all` | `all` |
-| 第 2 个 | `NPS_INSTALL_VERSION` | 版本号，如 `v0.35.1` | `latest` |
+| 第 2 个 | `NPS_INSTALL_VERSION` | 版本号，如 `vX.Y.Z`，见[发布页](https://github.com/djylb/nps/releases) | `latest` |
 | 第 3 个 | `NPS_INSTALL_DIR` | 只解压到这个目录，不安装到系统路径 | 无 |
 
 例如安装指定版本的 nps：
 
 ```bash
-wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s nps v0.35.1
+wget -qO- https://fastly.jsdelivr.net/gh/djylb/nps@master/install.sh | sudo sh -s nps vX.Y.Z
 ```
 
 下载不顺时可以设置 `NPS_IPV4=1`（只用 IPv4）、`NPS_CONNECT_TIMEOUT=30`（连接超时秒数）。
