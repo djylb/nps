@@ -20,7 +20,7 @@
     {{.head_custom_code}}
 </head>
 
-<body class="login-page">
+<body class="login-page{{if .setup_required}} login-setup{{end}}">
     <nav class="navbar navbar-static-top navbar-right navbar-login">
         <div class="ml-auto d-flex align-items-center" style="gap: 0.5rem;">
             <button id="theme-toggle" class="btn btn-outline-secondary" onclick="toggleTheme()">
@@ -35,6 +35,9 @@
             </span>
         </div>
     </nav>
+    {{if .setup_required}}
+    <div class="alert alert-warning login-setup-banner" role="alert" langtag="info-adminsetup"></div>
+    {{end}}
 
     <div class="login-card">
         <div class="login-header">

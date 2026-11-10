@@ -127,6 +127,10 @@ func (a *App) LoginVerify(c Context) {
 
 	loginFailed(ip, username, reason)
 	loginPolicy.RecordUserFailure(username, ip)
+	if reason == "setup_required" {
+		ajaxWithNonce(c, "admin login is not set up: set web_username and web_password in nps.conf, then restart or reload", 0, nonce)
+		return
+	}
 	ajaxWithNonce(c, "username or password incorrect", 0, nonce)
 }
 
@@ -234,6 +238,9 @@ func (a *App) doLogin(c Context, username, password, totp string) string {
 	})
 	if err != nil {
 		loginPolicy.RecordIPFailure(ip)
+		if errors.Is(err, webservice.ErrAdminSetupRequired) {
+			return "setup_required"
+		}
 		if !errors.Is(err, webservice.ErrInvalidCredentials) {
 			log.Warn("authentication error", "src_ip", ip, "user", username, "err", err)
 			return "error"

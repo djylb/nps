@@ -3,11 +3,14 @@ package launch
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/lib/clock"
+	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/netaddr"
 )
 
@@ -24,7 +27,7 @@ type Options struct {
 // of the previous run, and the one to pass to the next is returned.
 func (p *Profile) Run(ctx context.Context, issued string, opts Options) (string, error) {
 	c := p.Config.CommonConfig
-	log.Info("launch profile starting", "name", p.Name, "server", c.Server, "carrier", c.Tp)
+	log.Info("launch profile starting", "name", p.Name, "server", c.Server, "carrier", carriers(c.Server, c.Tp))
 	if p.Direct {
 		return issued, client.RunCoreProfile(ctx, c, false)
 	}
@@ -44,6 +47,22 @@ func (p *Profile) Run(ctx context.Context, issued string, opts Options) (string,
 		return issued, p.runHosting(ctx)
 	}
 	return client.RunConfigOnce(ctx, p.Config, issued)
+}
+
+// carriers names the carriers of the server candidates as they are dialed,
+// in order and without repeats: a URL's own type wins over the profile type.
+func carriers(server, tp string) string {
+	cands, err := connprofile.Parse(server, tp)
+	if err != nil || len(cands) == 0 {
+		return tp
+	}
+	var out []string
+	for _, c := range cands {
+		if !slices.Contains(out, c.Carrier) {
+			out = append(out, c.Carrier)
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // runHosting runs the ordinary client and the local accesses of p together,

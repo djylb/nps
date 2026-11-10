@@ -32,11 +32,12 @@ docker run -d --restart=always --name nps --net=host \
 
 日志用 `docker logs nps` 查看（`nps.conf` 里 `log=stdout`）；想同时写文件 `/opt/nps/nps.log`，把 `log` 设为 `both`。日志里出现 `bridge certificate not loaded, using a generated one` 和 `cert_failed` 是正常现象：你还没有配置证书，nps 会自己生成，不影响下面的步骤。
 
-## 2. 修改默认密码
+## 2. 设置管理员密码
 
-默认管理员账号是 `admin`，密码是 `123`，**放到公网前必须改掉**。编辑 `/opt/nps/nps.conf`，改这一行：
+发布包的 `nps.conf` 里管理员账号密码是空的，且 `web_require_password=true`：设置前任何人都登不进管理页，登录页会提示。**先在 `/opt/nps/nps.conf` 里设置 `web_username` 和 `web_password`**，再启动（或重启、重载）：
 
 ```ini
+web_username=admin
 web_password=换成你自己的密码
 ```
 

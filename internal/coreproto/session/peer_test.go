@@ -718,3 +718,39 @@ func TestPeerServerFirstBanner(t *testing.T) {
 	}
 	checkEcho(t, c, "ping")
 }
+
+// TestPeerSameKeyVisitor: a pure visitor with the provider's own key does not
+// come online as the client and the provider stays the one dialing the
+// target.
+func TestPeerSameKeyVisitor(t *testing.T) {
+	p := startPeer(t, false)
+	var wrong atomic.Int64
+	d := NewDialer(DialConfig{Candidates: p.cands(p.addr), VKey: "prov", Agent: "t", Timeout: 3 * time.Second, Puncher: p.punch, Exit: plainExit{},
+		PeerExit: func(coreapi.LinkPolicy) (coreapi.Exit, error) {
+			wrong.Add(1)
+			return nil, errors.New("the visitor is no provider")
+		}})
+	outer := NewOuterSessions(d)
+	outer.Hold(false, func() bool { return false })
+	t.Cleanup(outer.Close)
+	v := NewVisitor(VisitorConfig{Outer: outer, Access: []byte("secret"), Mode: wire.ConnAuto, Tick: 20 * time.Millisecond, Timeout: 5 * time.Second})
+	t.Cleanup(func() { _ = v.Close() })
+	ctx := peerCtx(t)
+	echoOnce(t, ctx, v, "same key")
+	waitPipes(t, v, "direct", func(d, _ bool) bool { return d })
+	echoOnce(t, ctx, v, "same key direct")
+	select {
+	case s := <-p.online:
+		t.Fatalf("visitor came online as client %d", s.ClientID())
+	default:
+	}
+	if wrong.Load() != 0 {
+		t.Fatal("the visitor was asked to provide")
+	}
+	if p.provider.zc.Context().Err() != nil {
+		t.Fatal("provider session displaced")
+	}
+	if got := p.a.providerOf(1); got == nil || got.visitorOnly {
+		t.Fatalf("provider of client 1: %v", got)
+	}
+}

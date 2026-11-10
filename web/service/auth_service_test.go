@@ -1,9 +1,11 @@
 package service
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
+	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -122,5 +124,78 @@ func TestAutoAdminIdentity(t *testing.T) {
 		},
 	}); ok || disabled != nil {
 		t.Fatalf("AutoAdminIdentity() should stay disabled when TOTP is configured, got %+v, %v", disabled, ok)
+	}
+}
+
+func requirePasswordService(web servercfg.WebConfig) DefaultAuthService {
+	web.RequirePassword = true
+	return DefaultAuthService{ConfigProvider: func() *servercfg.Snapshot {
+		return &servercfg.Snapshot{Web: web}
+	}}
+}
+
+func TestRequirePasswordEmptyUsernameBlocksAdmin(t *testing.T) {
+	for _, web := range []servercfg.WebConfig{
+		{},
+		{Password: "secret"},
+	} {
+		cfg := &servercfg.Snapshot{Web: web}
+		cfg.Web.RequirePassword = true
+		if _, ok := AutoAdminIdentity(cfg); ok {
+			t.Fatalf("AutoAdminIdentity() allowed with %+v", web)
+		}
+		service := requirePasswordService(web)
+		for _, in := range []AuthenticateInput{{}, {Password: web.Password}} {
+			if _, err := service.Authenticate(in); !errors.Is(err, ErrAdminSetupRequired) {
+				t.Fatalf("Authenticate(%+v) error = %v, want ErrAdminSetupRequired", in, err)
+			}
+		}
+	}
+}
+
+func TestRequirePasswordUsernameWithoutPasswordBlocksAdmin(t *testing.T) {
+	service := requirePasswordService(servercfg.WebConfig{Username: "admin"})
+	if _, err := service.Authenticate(AuthenticateInput{Username: "admin"}); !errors.Is(err, ErrAdminSetupRequired) {
+		t.Fatalf("Authenticate() error = %v, want ErrAdminSetupRequired", err)
+	}
+}
+
+func TestRequirePasswordWithPasswordLogsIn(t *testing.T) {
+	service := requirePasswordService(servercfg.WebConfig{Username: "admin", Password: "secret"})
+	identity, err := service.Authenticate(AuthenticateInput{Username: "admin", Password: "secret"})
+	if err != nil || identity == nil || !identity.IsAdmin {
+		t.Fatalf("Authenticate() = %+v, %v", identity, err)
+	}
+	if _, err := service.Authenticate(AuthenticateInput{Username: "admin", Password: "bad"}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("wrong password error = %v", err)
+	}
+}
+
+func TestRequirePasswordTOTPOnlyLogsIn(t *testing.T) {
+	secret, err := crypt.GenerateTOTPSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, err := crypt.GetTOTPCode(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := requirePasswordService(servercfg.WebConfig{Username: "admin", TOTPSecret: secret})
+	identity, err := service.Authenticate(AuthenticateInput{Username: "admin", TOTP: code})
+	if err != nil || identity == nil || !identity.IsAdmin {
+		t.Fatalf("Authenticate() = %+v, %v", identity, err)
+	}
+}
+
+func TestRequirePasswordOffKeepsOldBehaviour(t *testing.T) {
+	cfg := &servercfg.Snapshot{}
+	if _, ok := AutoAdminIdentity(cfg); !ok {
+		t.Fatal("empty credentials should auto-login when the switch is off")
+	}
+	service := DefaultAuthService{ConfigProvider: func() *servercfg.Snapshot {
+		return &servercfg.Snapshot{Web: servercfg.WebConfig{Username: "admin"}}
+	}}
+	if _, err := service.Authenticate(AuthenticateInput{Username: "admin"}); err != nil {
+		t.Fatalf("empty password with username set: %v", err)
 	}
 }

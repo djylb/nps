@@ -367,6 +367,24 @@ func (s *Server) addKeyClient(vkey string, kind model.KeyKind) {
 	s.tasks.Store(c.Id, nil)
 }
 
+// replaceKeyClients swaps the key clients for those of the keys now
+// configured; sessions of a removed key end.
+func (s *Server) replaceKeyClients(public, visitor string) {
+	var old []int
+	s.db.JsonDb.Clients.Range(func(_, v any) bool {
+		if c := v.(*model.Client); c.KeyKind != model.KeyControl {
+			old = append(old, c.Id)
+		}
+		return true
+	})
+	for _, id := range old {
+		_ = s.db.DelClient(id)
+		s.tasks.Delete(id)
+		s.bridge.DelClient(id)
+	}
+	s.addKeyClients(public, visitor)
+}
+
 // routePruneInterval is how often departed nodes lose their routes.
 const routePruneInterval = 2 * time.Second
 

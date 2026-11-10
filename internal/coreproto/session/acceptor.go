@@ -435,7 +435,8 @@ func (a *Acceptor) decide(_ context.Context, info *zmux.CarrierInfo, prefix []by
 		if e := a.table.lookup(prefix[2:wire.HelloHeadLen]); e != nil {
 			return zmux.Decision{Verdict: zmux.VerdictAccept, Value: e}
 		}
-		log.Debug("unknown handle", "src_ip", info.Source.Addr().Unmap().String())
+		// A key no client has: a wrong key, told apart from no other.
+		a.authFailed(coreapi.AuthFailure{Source: info.Source, Reason: "bad_key"})
 	case legacyMagic[0]:
 		if len(prefix) < len(legacyMagic) {
 			return zmux.Decision{Verdict: zmux.VerdictMore, Need: len(legacyMagic)}
@@ -563,8 +564,10 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	s := &serverSession{a: a, zc: zc, t: t, mode: peer.Mode, since: time.Now(), kicked: make(chan struct{}, 1)}
 	if e := a.table.get(t.client); e != nil {
 		s.configOnly = e.ConfigOnly
+		s.visitorKey = e.VisitorOnly
 		zc.SetScheduler(schedulerNamed(e.SchedulerDown))
 	}
+	s.visitorOnly = !s.configOnly && (s.visitorKey || t.hello.VisitorOnly)
 	if a.sessionOpts.IdleS != 0 || a.sessionOpts.DeadS != 0 {
 		if err := zc.SetLiveness(livenessOf(a.sessionOpts)); err != nil {
 			log.Debug("session options not applied", "err", err)
@@ -575,12 +578,12 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	h := a.hooks.Load()
 	for _, old := range replaced {
 		old.closing.Store("replaced")
-		if h != nil && h.Takeover != nil {
+		if h != nil && h.Takeover != nil && s.node() {
 			h.Takeover(s, old)
 		}
 		a.drain(old)
 	}
-	if h != nil && h.Online != nil && !s.configOnly {
+	if h != nil && h.Online != nil && s.node() {
 		h.Online(s)
 	}
 	// The client may have changed between Commit and register.
@@ -603,7 +606,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	// hooks.
 	<-watched
 	a.unregister(s)
-	if h != nil && h.Offline != nil && !s.configOnly {
+	if h != nil && h.Offline != nil && s.node() {
 		reason, _ := s.closing.Load().(string)
 		if reason == "" {
 			reason = "closed"
@@ -637,14 +640,15 @@ func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 	return snap
 }
 
-// register adds s and returns the sessions of the same instance it replaces
-// (§3.6); sessions of other instances are left alone.
+// register adds s and returns the sessions of the same instance and role it
+// replaces (§3.6); sessions of other instances are left alone, and so is the
+// client's own session when a pure visitor of the same process connects.
 func (a *Acceptor) register(s *serverSession) (replaced []*serverSession) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	kept := a.sess[s.t.client][:0:0]
 	for _, o := range a.sess[s.t.client] {
-		if bytes.Equal(o.t.static, s.t.static) {
+		if bytes.Equal(o.t.static, s.t.static) && o.visitorOnly == s.visitorOnly {
 			replaced = append(replaced, o)
 		} else {
 			kept = append(kept, o)
@@ -766,6 +770,13 @@ type serverSession struct {
 	suspended atomic.Bool
 	// configOnly is a session of the public key.
 	configOnly bool
+	// visitorOnly is a session that only visits (wire.Hello.VisitorOnly),
+	// whatever its key: it makes links and is never a provider or a node of
+	// its client, so it does not displace the client's own session.
+	visitorOnly bool
+	// visitorKey is a session of the visitor key: visitorOnly whatever its
+	// Hello says, and it uploads or registers nothing.
+	visitorKey bool
 	mode       zmux.RecordMode
 
 	healthMu sync.Mutex
@@ -774,6 +785,10 @@ type serverSession struct {
 	serviceMu  sync.Mutex
 	serviceSeq uint64 // of the applied SERVICE snapshot
 }
+
+// node reports whether the session is a node of its client: online, offline
+// and takeover concern it.
+func (s *serverSession) node() bool { return !s.configOnly && !s.visitorOnly }
 
 func (s *serverSession) ClientID() int          { return s.t.client }
 func (s *serverSession) Instance() string       { return string(s.t.static) }

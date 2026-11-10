@@ -103,7 +103,7 @@ func (a *secretAccess) GlobalSource() *acl.Source { return nil }
 
 func (a *secretAccess) CliProcess(*conn.Conn, string) {}
 
-func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
+func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) (err error) {
 	if mgr.ctx.Err() != nil {
 		return errors.New("parent context canceled")
 	}
@@ -143,6 +143,16 @@ func (mgr *SecretManager) StartLocalServer(l *config.LocalServer) error {
 		},
 	}
 
+	defer func() {
+		if err == nil {
+			target := l.Target
+			if target == "" {
+				target = "(tunnel default)"
+			}
+			log.Info("local access ready, server is reached on first use", "route", l.Type+":"+strconv.Itoa(l.Port),
+				"listen", net.JoinHostPort(ip, strconv.Itoa(l.Port)), "target", target, "conn_mode", mode)
+		}
+	}()
 	switch l.Type {
 	case config.LocalMixed, config.LocalSOCKS5, config.LocalHTTP:
 		// socks5 and http are the mixed listener with the other protocol off.

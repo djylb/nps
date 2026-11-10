@@ -34,12 +34,22 @@ type OuterSessions struct {
 	mu   sync.Mutex
 	cur  *clientSession
 	need map[*Visitor]bool
-	// Keep holds the session open whatever the visitors need
-	// (p2p_visitor_keep_server).
-	Keep bool
 	// Hosting reports tunnels or virtual services this npc serves through
 	// the session; nil is none.
 	Hosting func() bool
+	// held is set by Hold: the session's role then follows Hosting, and a
+	// session dialed while nothing hosts is a pure visitor. Without Hold
+	// (one-off commands) the session is an ordinary one.
+	held bool
+	// Keep holds the session open whatever the visitors need
+	// (p2p_visitor_keep_server).
+	Keep bool
+}
+
+// visitorOnly reports, with o.mu held, whether a session dialed now only
+// visits.
+func (o *OuterSessions) visitorOnly() bool {
+	return o.held && (o.Hosting == nil || !o.Hosting())
 }
 
 // mayDisconnect is the one decision whether the session may close when idle
@@ -57,13 +67,25 @@ func NewOuterSessions(d *Dialer) *OuterSessions {
 	return &OuterSessions{d: d, need: map[*Visitor]bool{}}
 }
 
+// live returns the session if it is up and of the role needed now. A pure
+// visitor session that a host has come to use is closed, so that the host
+// gets a session of its own role; the visitors on it make their links again.
 func (o *OuterSessions) live() *clientSession {
 	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.cur != nil && o.cur.zc.Context().Err() == nil {
-		return o.cur
+	cur := o.cur
+	if cur != nil && cur.zc.Context().Err() == nil {
+		if !cur.visitorOnly || o.visitorOnly() {
+			o.mu.Unlock()
+			return cur
+		}
+	} else {
+		cur = nil
 	}
 	o.cur = nil
+	o.mu.Unlock()
+	if cur != nil {
+		_ = cur.Close()
+	}
 	return nil
 }
 
@@ -77,11 +99,21 @@ func (o *OuterSessions) get(ctx context.Context) (*clientSession, error) {
 	if s := o.live(); s != nil {
 		return s, nil
 	}
+	o.mu.Lock()
+	visitorOnly := o.visitorOnly()
+	o.mu.Unlock()
+	o.d.visitorOnly.Store(visitorOnly)
 	cs, err := o.d.Dial(ctx)
 	if err != nil {
+		if visitorOnly && ctx.Err() == nil {
+			log.Warn("visitor session to server failed", "server", o.d.Server(), "err", err)
+		}
 		return nil, err
 	}
 	s := cs.(*clientSession)
+	if visitorOnly {
+		log.Info("visitor session to server connected", "server", o.d.Server(), "carrier", s.carrier)
+	}
 	o.mu.Lock()
 	o.cur = s
 	o.mu.Unlock()
@@ -109,7 +141,7 @@ func (o *OuterSessions) Visitor(access []byte, mode string, relayIdle time.Durat
 // Hold implements coreapi.Outer. It is called before the session is used.
 func (o *OuterSessions) Hold(keep bool, hosting func() bool) {
 	o.mu.Lock()
-	o.Keep, o.Hosting = keep, hosting
+	o.Keep, o.Hosting, o.held = keep, hosting, true
 	o.mu.Unlock()
 }
 
@@ -424,6 +456,11 @@ func (l *visitorLink) start(ctx context.Context) error {
 	l.ctx, l.cancel = context.WithCancel(l.v.ctx)
 	l.wg.Go(func() { rejectStreams(l.ctx, zc, func(wire.Op) bool { return false }) })
 	l.wg.Go(l.run)
+	path := "relay"
+	if mode == zmux.Bound {
+		path = "direct"
+	}
+	log.Info("p2p link up", "link", l.id, "path", path)
 	return nil
 }
 
@@ -637,7 +674,11 @@ func (l *visitorLink) step() {
 	}
 	upSince, punching := l.upSince, l.punching
 	l.mu.Unlock()
+	if directUp && !wasUp {
+		log.Info("p2p link path", "link", l.id, "path", "direct")
+	}
 	if !directUp && wasUp {
+		log.Info("p2p link path", "link", l.id, "path", "relay")
 		l.closeUpPath()
 	}
 	if directUp && relay != nil {

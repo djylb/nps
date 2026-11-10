@@ -35,6 +35,9 @@ type ClientRecord struct {
 	// ConfigOnly is the public key: its sessions only upload a configuration
 	// and are never nodes of a client.
 	ConfigOnly bool
+	// VisitorOnly is the visitor key: its sessions only visit, as
+	// wire.Hello.VisitorOnly sessions do, and upload or register nothing.
+	VisitorOnly bool
 	// Shaping is the client's shaping switch (§13).
 	Shaping bool
 	VKey    string

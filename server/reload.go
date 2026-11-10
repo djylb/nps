@@ -135,8 +135,12 @@ func (s *Server) builtinAppliers() []servercfg.Applier {
 		}, Apply: restart},
 		{Name: "bridge", Settings: []string{
 			"bridge_select_mode", "bridge_cert_file", "bridge_key_file", "secure_mode",
-			"allow_ports", "public_vkey", "visitor_vkey", "disconnect_timeout", "mux_ping_interval",
+			"allow_ports", "disconnect_timeout", "mux_ping_interval",
 		}, Apply: restart},
+		{Name: "key clients", Settings: []string{"public_vkey", "visitor_vkey"}, Apply: func(_, cur *servercfg.Snapshot) error {
+			s.replaceKeyClients(cur.Runtime.PublicVKey, cur.Runtime.VisitorVKey)
+			return nil
+		}},
 		{Name: "host proxy", Settings: []string{
 			"http_proxy_ip", "http_proxy_port", "https_proxy_port", "http3_proxy_port",
 			"http_proxy_response_timeout", "error_page", "error_page_time_limit", "error_page_flow_limit",

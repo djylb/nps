@@ -7,7 +7,13 @@
 
 ## Stable
 
-### v0.35.0
+### v0.35.1 (2026-11-10)
+- 修复点对点访问 vkey 冲突
+- 添加 vkey 认证失败日志输出
+- 移除配置文件内默认密码
+- 更新相关依赖包
+
+### v0.35.0 (2026-11-09)
 
 **升级必读**
 - 只升级 nps 时，旧版 npc 在兼容范围内继续可用（保证 `tcp`、`tls` 连接和 TCP 隧道，范围见 docs/reference/versioning.md）；npc 0.35 只使用新协议，不能连接旧版服务端，请先升级 nps，再升级 npc；步骤和回退见 docs/guide/server/upgrade.md
@@ -32,7 +38,7 @@
 - npc 动态库新增 `StartClient`（按 `-launch`、`-L` 同一套规则启动）和 `LastError`（取启动失败或结束的原因），见 docs/reference/npc-sdk.md
 
 **变更**
-- 日志重写：一个事件一行的 logfmt（`log_format=json` 可选 JSON），固定字段 `time level event module`，按模块设级别（如 `log_level=info,p2p=debug`），`security_log` 单独输出安全事件；默认级别由 `trace` 改为 `info`；`log_color` 无作用，忽略并告警；npc 在 OpenWrt 上默认不写日志（`-log=off`）。见 docs/guide/server/logging.md
+- 日志重写：一个事件一行的 logfmt（`log_format=json` 可选 JSON），固定字段 `time level event module`，按模块设级别（如 `log_level=info,p2p=debug`），`security_log` 单独输出安全事件；默认级别由 `trace` 改为 `info`；`log_color` 无作用，忽略并告警；npc 在 OpenWrt 上作为服务运行时默认不写日志（`-log=off`），在终端手动运行时默认输出到控制台。见 docs/guide/server/logging.md
 - 更新机制：`nps update` 验证签名与新程序可运行后一次性替换，失败自动回滚；`web/views`、`web/static` 改为覆盖，包内文件新增或覆盖，用户放入的自定义文件保留；`update`、`update-force`、网页更新不跨大版本，大版本升级需手动进行
 - 重载配置改为发送 `SIGUSR1`，或在网页“全局参数”页、`POST /api/v1/global/reload`（Windows 用后两种）；结果列出已生效和需重启的配置键
 - 初始 `conf/nps.conf` 重写为精简文件，只开混合端口 `mix_port=8024`，不再含 `bridge_*_port`，不启用 KCP；初始 `conf/npc.conf` 仍是默认配置文件，只含 `[common]`（`conn_type=tls`）和一个注释掉的点对点访问示例；不再附带 `multi_account.conf`；升级不覆盖已有文件

@@ -7333,6 +7333,21 @@ body.mini-navbar.fixed-sidebar .logo-element {
     background-color: var(--bg-mid);
 }
 
+.login-setup-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1040;
+    margin: 0;
+    border-radius: 0;
+    text-align: center;
+}
+
+.login-setup .navbar-login {
+    top: 68px;
+}
+
 .navbar-login {
     position: absolute;
     top: 20px;

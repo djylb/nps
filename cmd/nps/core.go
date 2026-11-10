@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/djylb/nps/bridge"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/internal/coreproto/wire"
@@ -16,18 +17,10 @@ import (
 // coreStore reads the stored clients for the new protocol entry.
 type coreStore struct{ db *file.DbUtils }
 
-func coreRecord(c *model.Client) (coreapi.ClientRecord, bool) {
-	public := c.KeyKind == model.KeyPublic
-	if c.Id <= 0 || !public && c.KeyKind != model.KeyControl {
-		return coreapi.ClientRecord{}, false
-	}
-	return coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, ConfigOnly: public, Crypt: public || c.Cnf != nil && c.Cnf.Crypt, Compress: c.Cnf.CompressList(), SchedulerDown: c.Cnf.SchedulerDownName(), SchedulerUp: c.Cnf.SchedulerUpName(), Shaping: c.Cnf != nil && c.Cnf.Shaping}, true
-}
-
 // RangeClients implements session.Store.
 func (s coreStore) RangeClients(fn func(coreapi.ClientRecord) bool) {
 	s.db.JsonDb.Clients.Range(func(_, v any) bool {
-		if r, ok := coreRecord(v.(*model.Client)); ok {
+		if r, ok := bridge.CoreRecord(v.(*model.Client)); ok {
 			return fn(r)
 		}
 		return true
@@ -63,7 +56,7 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 		return nil, err
 	}
 	db.OnClientChanged(func(c *model.Client, deleted bool) {
-		if r, ok := coreRecord(c); ok && !deleted {
+		if r, ok := bridge.CoreRecord(c); ok && !deleted {
 			a.ClientChanged(r)
 		} else {
 			a.ClientRemoved(c.Id)

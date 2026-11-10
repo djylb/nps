@@ -8,6 +8,9 @@ type Hello struct {
 	Caps         []uint64
 	CompressAlgs []uint64
 	Label, Agent string // msg3 only
+	// VisitorOnly is a client session that hosts nothing: it only makes
+	// links to providers and is never a node of its client.
+	VisitorOnly bool
 }
 
 func clip(s string) []byte {
@@ -30,6 +33,9 @@ func AppendHello(b []byte, h *Hello) []byte {
 	}
 	for _, a := range h.CompressAlgs {
 		b = AppendUint(b, KeyCompressAlg, a)
+	}
+	if h.VisitorOnly {
+		b = AppendUint(b, KeyVisitorOnly, 1)
 	}
 	return b
 }
@@ -54,6 +60,8 @@ func ParseHello(b []byte) (Hello, error) {
 			if len(f.Data) <= MaxLabel {
 				h.Agent = string(f.Data)
 			}
+		case KeyVisitorOnly:
+			h.VisitorOnly = f.Value == 1
 		}
 		return nil
 	})

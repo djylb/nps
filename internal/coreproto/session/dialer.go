@@ -111,6 +111,9 @@ type Dialer struct {
 	h3Known     map[string]bool                                                      // candidates on which h3 has worked (§2.4b)
 	h3Clients   map[string]*http.Client
 	closers     []func() // of the HTTP clients the last session kept
+	// visitorOnly marks the sessions dialed from now on as pure visitors
+	// (wire.Hello.VisitorOnly); OuterSessions sets it before each dial.
+	visitorOnly atomic.Bool
 }
 
 // NewDialer returns a Dialer for cfg.
@@ -423,7 +426,8 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		id := proto.KeyID(d.cfg.Pin)
 		pin = &id
 	}
-	hello := clientHello(d.cfg.Agent, d.cfg.Label, d.cfg.CanUpdate)
+	visitorOnly := d.visitorOnly.Load()
+	hello := clientHello(d.cfg.Agent, d.cfg.Label, d.cfg.CanUpdate, visitorOnly)
 	shape := d.plan()
 	gate := raceGateOf(ctx)
 	var held atomic.Bool
@@ -464,7 +468,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		_ = zmux.PipeConn(ca.pipe).Close()
 		return nil, err
 	}
-	s := &clientSession{d: d, mode: mode, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
+	s := &clientSession{d: d, mode: mode, visitorOnly: visitorOnly, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
 	if s.zc, err = zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig(s)); err != nil {
 		release()
 		return nil, err
@@ -494,6 +498,7 @@ type clientSession struct {
 	done    chan struct{}
 	err     error
 
+	visitorOnly    bool          // dialed as a pure visitor
 	configured     chan struct{} // closed by the first snapshot
 	configuredOnce sync.Once
 

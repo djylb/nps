@@ -37,7 +37,6 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/crypt"
 	"github.com/djylb/nps/lib/file"
-	"github.com/djylb/nps/lib/version"
 )
 
 const (
@@ -129,6 +128,7 @@ func fixHandshake(t *testing.T) {
 	HandshakeHooks.Timestamp = func() int64 { return goldenTimestamp }
 	HandshakeHooks.OutboundIP = func() net.IP { return net.ParseIP("192.0.2.1") }
 	HandshakeHooks.PadLen = func() int { return 3 }
+	HandshakeHooks.Version = func() string { return goldenClientVer }
 }
 
 func goldenCert(t *testing.T) tls.Certificate {
@@ -227,10 +227,6 @@ func TestWireGoldenHandshake(t *testing.T) {
 	fixHandshake(t)
 	cert := goldenCert(t)
 	db := goldenDb(t)
-	//noinspection GoBoolExpressions
-	if version.VERSION != goldenClientVer {
-		t.Skip("the vectors announce client " + goldenClientVer)
-	}
 	for index := range tunnelwire.IndexCount() {
 		v := recordHandshake(t, db, cert, index, uint64(1000+index))
 		checkGolden(t, fmt.Sprintf("handshake_%d.json", index), v)

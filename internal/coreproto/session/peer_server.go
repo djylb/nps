@@ -219,8 +219,9 @@ func (a *Acceptor) providerOf(id int) *serverSession {
 	all := a.sessionsOf(id)
 	var best *serverSession
 	for _, s := range all {
-		// A client that did not announce link gets none (§2.3).
-		if s.Closed() || !slices.Contains(s.t.hello.Caps, wire.CapLink) {
+		// A client that did not announce link gets none (§2.3), and a pure
+		// visitor provides nothing.
+		if s.Closed() || s.visitorOnly || !slices.Contains(s.t.hello.Caps, wire.CapLink) {
 			continue
 		}
 		if best == nil || !s.Suspended() {
@@ -253,6 +254,15 @@ func (s *serverSession) serveStream(ctx context.Context, st *zmux.Stream) {
 		return
 	}
 	if s.configOnly && op != wire.OpConfigUpload && op != wire.OpRegister {
+		lc.abort(wire.CodeNotAllowed)
+		return
+	}
+	if s.visitorKey && (op == wire.OpConfigUpload || op == wire.OpRegister) {
+		lc.abort(wire.CodeNotAllowed)
+		return
+	}
+	// What only a provider reports.
+	if s.visitorOnly && (op == wire.OpHealth || op == wire.OpP2PUsage || op == wire.OpService) {
 		lc.abort(wire.CodeNotAllowed)
 		return
 	}

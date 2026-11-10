@@ -19,6 +19,7 @@ import (
 	"github.com/djylb/nps/client"
 	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/internal/coreproto/connect"
+	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/session"
 	"github.com/djylb/nps/lib/config"
 	"github.com/djylb/nps/lib/model"
@@ -379,5 +380,66 @@ func TestMixedVisitorRepliesAfterExit(t *testing.T) {
 	}
 	if status, _ := httpConnect(t, addr, denied); status != http.StatusForbidden {
 		t.Fatalf("denied destination: CONNECT %d, want 403", status)
+	}
+}
+
+// The visitor key reaches a secret tunnel as a pure visitor on the new
+// protocol, and hosts nothing: its session is no node and uploads nothing.
+func TestVisitorKeyOnNewProtocol(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	e := newCoreConfigEnv(t)
+	e.f.followClients()
+	vk := model.NewClient("visitor-key", true, true)
+	vk.KeyKind, vk.Status = model.KeyVisitor, true
+	if err := e.f.db.NewClient(vk); err != nil {
+		t.Fatal(err)
+	}
+	port := freeLocalPort(t)
+	head := "[common]\nserver_addr=" + e.f.addr + "\nconn_type=tcp\nauto_reconnection=false\nvkey="
+	provider := writeConf(t, "provider.conf", head+e.prov+"\n")
+	visitor := writeConf(t, "visitor.conf", head+vk.VerifyKey+"\n"+
+		"[secret_a]\nlocal_type=tcp\nconn_mode=relay\nlocal_ip=127.0.0.1\nlocal_port="+strconv.Itoa(port)+"\npassword="+e.secret+"\n")
+	for _, p := range []string{provider, visitor} {
+		runClient(t, func(ctx context.Context) error { return client.StartFromFile(ctx, p) })
+	}
+	waitEcho(t, "visitor key", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+
+	// A session of the key that does not say it only visits is one all the same.
+	f := e.f
+	saved := f.client
+	f.client = vk
+	s := f.joinCore(t, client.NewCoreExit("", 0))
+	f.client = saved
+	if v, ok := f.b.Client.Load(vk.Id); ok && v.(*Client).NodeCount() != 0 {
+		t.Fatal("the visitor key became a node")
+	}
+	up, ok := s.(coreapi.ConfigUploader)
+	if !ok {
+		t.Fatal("session cannot upload")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for name, open := range map[string]func(context.Context) (net.Conn, error){"upload": up.OpenConfigUpload, "register": up.OpenRegister} {
+		if c, err := open(ctx); err == nil {
+			buf := make([]byte, 1)
+			_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+			_, rerr := c.Read(buf)
+			_ = c.Close()
+			if rerr == nil {
+				t.Fatalf("%s was admitted", name)
+			}
+		}
+	}
+
+	// Removing the key ends its sessions and refuses it.
+	if err := f.db.DelClient(vk.Id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("session of a removed key goes on")
 	}
 }

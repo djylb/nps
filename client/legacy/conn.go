@@ -310,13 +310,15 @@ func dialBridge(tp, vkey, server, path string, alpn []string, host, sni, proxyUr
 	return handshakeConn(connection, tp, vkey, isTls, tlsVerify, tlsFp, proxyUrl)
 }
 
-// HandshakeHooks fix the time and address a handshake sends, for tests that
-// record it.
+// HandshakeHooks fix the time, address and release a handshake sends, for
+// tests that record it.
 var HandshakeHooks = struct {
 	Timestamp  func() int64
 	OutboundIP func() net.IP
 	PadLen     func() int
+	Version    func() string
 }{
+	Version:    func() string { return version.VERSION },
 	Timestamp:  func() int64 { return clock.Now().Unix() - int64(rand.Intn(6)) },
 	OutboundIP: netaddr.GetOutboundIP,
 	PadLen:     func() int { return rand.Intn(MaxPad) },
@@ -332,7 +334,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 	c := conn.NewConn(connection)
 	res, err := legacy.ClientHandshake(c, legacy.ClientConfig{
 		Index:         protocolIndex,
-		ClientVersion: version.VERSION,
+		ClientVersion: HandshakeHooks.Version(),
 		Key:           vkey,
 		Transport:     tp,
 		LocalIP:       HandshakeHooks.OutboundIP(),
@@ -372,7 +374,7 @@ func handshakeConn(connection net.Conn, tp, vkey string, isTls, tlsVerify bool, 
 }
 
 // clientCaps returns what this client speaks.
-func clientCaps() legacy.Caps { return legacy.CapsOf(protocolIndex, version.VERSION) }
+func clientCaps() legacy.Caps { return legacy.CapsOf(protocolIndex, HandshakeHooks.Version()) }
 
 func SendType(c *conn.Conn, connType, uuid string) error {
 	if c == nil {

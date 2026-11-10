@@ -194,7 +194,7 @@ npc 的日志格式、字段和事件与 nps 一致，参数在命令行上设�
 npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" -log=file -log_level=info,p2p=debug
 ```
 
-- 各日志参数的默认值见 [npc 命令行](/reference/npc-cli.md)，含义同 nps。默认写文件（OpenWrt 上不写）；交互式运行且没有显式给 `-log` 时输出到控制台。
+- 各日志参数的默认值见 [npc 命令行](/reference/npc-cli.md)，含义同 nps。默认写文件（OpenWrt 上作为服务运行时不写）；交互式运行且没有显式给 `-log` 时输出到控制台，OpenWrt 上也是。
 - 给 npc 进程发 `SIGHUP` 同样重新打开日志文件。
 
 ## 分析工具

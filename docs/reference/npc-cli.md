@@ -91,7 +91,7 @@ npc [子命令] [参数]
 
 | 参数 | 默认值 | 取值与说明 |
 | --- | --- | --- |
-| `-log` | `file`（OpenWrt 上为 `off`） | `stdout`、`file`、`both`、`off`（`false` 同 `off`）。写了就按写的输出 |
+| `-log` | `file`（OpenWrt 上作为服务运行时为 `off`）；在终端运行时为 `stdout` | `stdout`、`file`、`both`、`off`（`false` 同 `off`）。写了就按写的输出 |
 | `-debug` | `true` | 没有写 `-log` 时，让 npc 输出到控制台。安装的服务固定带 `-debug=false`，按 `-log` 输出。它不影响日志级别 |
 | `-log_level` | `info` | `trace`、`debug`、`info`、`warn`、`error`、`off`，可以按模块单独设置，如 `info,p2p=debug` |
 | `-log_format` | `auto` | `auto`（终端上彩色，其他情况 logfmt）、`text`（logfmt）、`json` |

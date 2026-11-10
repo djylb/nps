@@ -91,6 +91,9 @@ type WebConfig struct {
 	Port            int
 	OpenSSL         bool
 	CloseOnNotFound bool
+	// RequirePassword blocks the admin login until web_username and a
+	// password or TOTP secret are set.
+	RequirePassword bool
 	// TunnelPortRangeMax limits the ports one tunnel added from the web may
 	// expand to; 0 means no limit.
 	TunnelPortRangeMax int
@@ -452,6 +455,7 @@ func buildSnapshot(values map[string]any) *Snapshot {
 		Username:           r.stringValue("web_username"),
 		Password:           r.stringValue("web_password"),
 		TOTPSecret:         r.stringValue("totp_secret"),
+		RequirePassword:    r.boolDefault(false, "web_require_password"),
 	}
 
 	cfg.Auth = AuthConfig{

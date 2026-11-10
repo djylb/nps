@@ -37,8 +37,10 @@ type dbClients struct{ db *file.DbUtils }
 
 func (s dbClients) RangeClients(fn func(coreapi.ClientRecord) bool) {
 	s.db.JsonDb.Clients.Range(func(_, v any) bool {
-		c := v.(*model.Client)
-		return fn(coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf.Crypt, Compress: c.Cnf.CompressList()})
+		if r, ok := CoreRecord(v.(*model.Client)); ok {
+			return fn(r)
+		}
+		return true
 	})
 }
 
@@ -113,6 +115,17 @@ func newCoreFixtureWith(tb testing.TB, mode SelectMode, cnf model.Config, opts s
 		_ = b.Close()
 	})
 	return &coreFixture{db: db, b: b, a: a, client: c, extra: extra, addr: ln.Addr().String()}
+}
+
+// followClients keeps the entry current with the store, as nps does.
+func (f *coreFixture) followClients() {
+	f.db.OnClientChanged(func(c *model.Client, deleted bool) {
+		if r, ok := CoreRecord(c); ok && !deleted {
+			f.a.ClientChanged(r)
+		} else {
+			f.a.ClientRemoved(c.Id)
+		}
+	})
 }
 
 // joinCore connects one npc on the new protocol, a process of its own.

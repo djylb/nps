@@ -38,11 +38,14 @@ type gate struct {
 	entry *clientEntry // of the Handle Resolve saw
 }
 
-func (g *gate) Resolve(_ context.Context, handle []byte, _ netip.AddrPort) ([]byte, error) {
+func (g *gate) Resolve(_ context.Context, handle []byte, src netip.AddrPort) ([]byte, error) {
 	if e := g.a.table.lookup(handle); e != nil {
 		g.entry = e
 		return e.psk, nil
 	}
+	// Only carriers accepted before the handshake (HTTP heads) get here
+	// with a key no client has; decide reports the others.
+	g.a.authFailed(coreapi.AuthFailure{Source: src, Reason: "bad_key"})
 	return nil, errUnknownHandle
 }
 

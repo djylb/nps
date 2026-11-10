@@ -59,7 +59,7 @@ Windows 7 上 npc 无法启动，或前台能连接、服务却显示离线，�
 
 | `reason` | 说明 | 怎么处理 |
 | --- | --- | --- |
-| `bad_password` | 账号或密码错 | 发布包自带的是 `admin` / `123`。忘记密码时，直接改 `nps.conf` 里的 `web_username`、`web_password`，然后[重载](/guide/server/operations.md)即可，不用重启。设置了 `totp_secret` 的，登录还要在密码后面接上 6 位动态码（开启验证码时也可接在验证码后面） |
+| `bad_password` | 账号或密码错 | 发布包的账号密码默认为空，需先在 `nps.conf` 里设置。忘记密码时，直接改 `nps.conf` 里的 `web_username`、`web_password`，然后[重载](/guide/server/operations.md)即可，不用重启。设置了 `totp_secret` 的，登录还要在密码后面接上 6 位动态码（开启验证码时也可接在验证码后面） |
 | `bad_captcha`、`bad_pow`、`bad_nonce`、`expired` | 验证码错、工作量证明没算完、请求过期 | 刷新登录页重试；`expired` 时再检查一下浏览器所在电脑的系统时间 |
 | `banned` | 来源 IP 或用户名被暂时封禁（连续失败达到 `login_max_fail_times`，默认 10 次） | 等待一段时间（`login_ip_ban_time` 默认 180 秒，`login_user_ban_time` 默认 3600 秒），或用另一个 IP 登录后到“封禁管理”页解除 |
 | `acl` | 来源被 `login_acl_mode`、`login_acl_rules` 拒绝，页面返回 403 | 检查[登录来源名单](/guide/server/access-control.md)，把自己的 IP 加进白名单，或改 `login_acl_mode=0`，重载即可 |

@@ -33,7 +33,7 @@ func ConfigApplier(db *file.DbUtils, identity *crypt.Identity, runtime webservic
 var webSettings = []string{
 	"appname", "ip_register_max_hours",
 	"instance_key_file", "admit_key", "web_base_url", "head_custom_code", "web_close_on_not_found", "web_tunnel_port_range_max",
-	"web_username", "web_password", "totp_secret",
+	"web_username", "web_password", "totp_secret", "web_require_password",
 	"auth_key", "auth_crypt_key", "allow_x_real_ip", "trusted_proxy_ips",
 	"allow_user_login", "allow_user_register", "allow_user_vkey_login",
 	"allow_user_change_username", "open_captcha", "allow_flow_limit",

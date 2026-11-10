@@ -107,6 +107,7 @@ func (a *App) buildLoginPage(c Context, spec PageSpec) (*ui.Page, error) {
 		data["pow_enable"] = cfg.Security.ForcePoW
 		data["login_delay"] = a.loginPolicy().Settings().LoginDelayMillis()
 		data["register_allow"] = cfg.Feature.AllowUserRegister
+		data["setup_required"] = webservice.AdminSetupRequired(cfg)
 		data["public_key"], _ = a.Identity.RSAPublicKeyPEM()
 		return newStandaloneSpecPage(spec, data), nil
 	case "register":

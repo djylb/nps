@@ -1581,6 +1581,10 @@
 		<zh-CN>服务端支持多用户和用户注册功能</zh-CN>
 		<en-US>Multi-user and user registration support on server.</en-US>
 	</lang>
+	<lang id="info-adminsetup">
+		<zh-CN>首次启动，请先按需修改配置文件</zh-CN>
+		<en-US>First start: please edit the configuration file as needed</en-US>
+	</lang>
 	<lang id="info-noaccount">
 		<zh-CN>还没有有帐号？</zh-CN>
 		<en-US>Do not have an account?</en-US>

@@ -309,14 +309,7 @@ func TestConfigUploadPublicKey(t *testing.T) {
 	connect.Install()
 	t.Cleanup(func() { client.CoreOuter = nil })
 	f := newCoreFixture(t, 0, model.Config{})
-	f.db.OnClientChanged(func(c *model.Client, deleted bool) {
-		if deleted {
-			f.a.ClientRemoved(c.Id)
-			return
-		}
-		f.a.ClientChanged(coreapi.ClientRecord{ID: c.Id, VKey: c.VerifyKey, Enabled: c.Status, Crypt: c.Cnf.Crypt,
-			ConfigOnly: c.KeyKind == model.KeyPublic})
-	})
+	f.followClients()
 	pub := model.NewClient("public-key", true, true)
 	pub.KeyKind, pub.Status = model.KeyPublic, true
 	if err := f.db.NewClient(pub); err != nil {

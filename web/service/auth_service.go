@@ -68,6 +68,9 @@ func (s DefaultAuthService) Authenticate(input AuthenticateInput) (*SessionIdent
 	if identity, ok := authenticateAdmin(username, input.Password, input.TOTP, cfg); ok {
 		return s.normalizeIdentity(identity), nil
 	}
+	if AdminSetupRequired(cfg) && (username == "" || username == strings.TrimSpace(cfg.Web.Username)) {
+		return nil, ErrAdminSetupRequired
+	}
 	if !cfg.Feature.AllowUserLogin || username == "" || input.Password == "" {
 		return nil, ErrInvalidCredentials
 	}
@@ -180,7 +183,21 @@ func ParseSessionIdentityWithResolver(raw string, resolver PermissionResolver) (
 	return NormalizeSessionIdentityWithResolver(&identity, resolver), nil
 }
 
+// AdminSetupRequired reports whether web_require_password blocks the admin
+// login: the switch is on and the username is empty, or neither a password
+// nor a TOTP secret is set.
+func AdminSetupRequired(cfg *servercfg.Snapshot) bool {
+	if cfg == nil || !cfg.Web.RequirePassword {
+		return false
+	}
+	return strings.TrimSpace(cfg.Web.Username) == "" ||
+		(cfg.Web.Password == "" && strings.TrimSpace(cfg.Web.TOTPSecret) == "")
+}
+
 func authenticateAdmin(username, password, totp string, cfg *servercfg.Snapshot) (*SessionIdentity, bool) {
+	if AdminSetupRequired(cfg) {
+		return nil, false
+	}
 	if identity, ok := AutoAdminIdentity(cfg); ok && strings.TrimSpace(username) == "" && password == "" && strings.TrimSpace(totp) == "" {
 		return identity, true
 	}
@@ -230,7 +247,7 @@ func adminAutoLoginEnabled(cfg *servercfg.Snapshot) bool {
 	if cfg == nil {
 		return false
 	}
-	return strings.TrimSpace(cfg.Web.Username) == "" &&
+	return !AdminSetupRequired(cfg) && strings.TrimSpace(cfg.Web.Username) == "" &&
 		cfg.Web.Password == "" &&
 		strings.TrimSpace(cfg.Web.TOTPSecret) == ""
 }

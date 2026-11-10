@@ -70,6 +70,9 @@ var (
 	KeyServerAddr     = key(23, false, true)
 	KeyTargetType     = key(24, true, false)
 	KeyProviderTarget = key(25, true, false)
+	// KeyVisitorOnly in Hello marks a session that only visits: C=0, so a
+	// server that does not know it treats the session as any other.
+	KeyVisitorOnly = key(26, false, false)
 )
 
 // Common is the table of the common fields.
@@ -78,7 +81,7 @@ var Common = newSchema(
 	one(KeyLinkID), many(KeyCap), one(KeyLabel), one(KeyAgent), one(KeyCode), one(KeyReason),
 	one(KeySeq), one(KeyTunnel), one(KeyAccess), one(KeyLinkKey), one(KeyConnMode), one(KeyScope),
 	one(KeyNameDest), many(KeyCompressAlg), one(KeyServerExit), one(KeyBackground),
-	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget),
+	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget), one(KeyVisitorOnly),
 )
 
 // Capabilities (§2.3).

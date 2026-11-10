@@ -35,7 +35,7 @@ sudo npc update      # Linux、macOS
 | 命令行运行 | 终端 |
 | 系统服务（Linux、macOS） | `/var/log/npc.log` |
 | 系统服务（Windows） | npc.exe 所在目录下的 `npc.log` |
-| OpenWrt | 不输出 |
+| 系统服务（OpenWrt） | 不输出 |
 
 默认每个文件最大 5 MB，保留 10 个文件、7 天。
 

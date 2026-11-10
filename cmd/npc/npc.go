@@ -38,8 +38,9 @@ var (
 )
 
 // Config
-// The log defaults: a file, except on OpenWrt, where npc logs nothing unless
-// told to (runenv.LogDefaults).
+// The log defaults: a file, except on OpenWrt, where npc run as a service
+// logs nothing unless told to (runenv.LogDefaults); run by hand it logs to
+// the console (configureLogging).
 var defaultLogType, defaultLogMaxSize, defaultLogMaxFiles = runenv.LogDefaults("file", 5, 10)
 
 var (
@@ -317,9 +318,11 @@ func configureLogging() {
 	if strings.EqualFold(*logType, "false") {
 		*logType = "off"
 	}
-	// An interactive run logs to the console unless -log says otherwise;
-	// an installed service passes -debug=false and logs as -log says.
-	if *debug && *logType != "off" && !flag.CommandLine.Changed("log") {
+	// An interactive run logs to the console unless -log says otherwise,
+	// also where the default is off (OpenWrt), so that a failed start shows;
+	// an installed service passes -debug=false and logs as -log says, and a
+	// run of the init system keeps the default.
+	if *debug && !flag.CommandLine.Changed("log") && (*logType != "off" || service.Interactive()) {
 		if *logType != "both" {
 			*logType = "stdout"
 		}

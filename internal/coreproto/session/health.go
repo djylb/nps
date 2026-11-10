@@ -25,7 +25,7 @@ func healthFromWire(g wire.HealthGroup) healthcheck.Group {
 }
 
 // CanHealth implements coreapi.Session.
-func (s *serverSession) CanHealth() bool { return s.t.hello.HasCap(wire.CapHealth) }
+func (s *serverSession) CanHealth() bool { return !s.visitorOnly && s.t.hello.HasCap(wire.CapHealth) }
 
 // SetHealth implements coreapi.Session.
 func (s *serverSession) SetHealth(groups []healthcheck.Group) {

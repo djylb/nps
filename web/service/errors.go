@@ -30,6 +30,7 @@ var (
 	ErrTunnelModeInvalid         = errors.New("unknown tunnel mode")
 	ErrPortUnavailable           = errors.New("port unavailable")
 	ErrTunnelLimitExceeded       = errors.New("tunnel limit exceeded")
+	ErrAdminSetupRequired        = errors.New("admin login is not set up: set web_username and web_password in nps.conf")
 	ErrInvalidCredentials        = errors.New("invalid credentials")
 	ErrUnauthenticated           = errors.New("unauthenticated")
 	ErrForbidden                 = errors.New("forbidden")
