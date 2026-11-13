@@ -148,7 +148,7 @@
                     });
                     entry.tr.next('.detail-view').find('[data-live-field]').each(function () {
                         var field = $(this).attr('data-live-field'); if (!Object.prototype.hasOwnProperty.call(patch, field) || !changed[field]) return;
-                        var value = patch[field], html = field === 'ConnectionHistory' ? npsHistoryHTML(value) : field.indexOf('Flow.') === 0 ? changeunit(value) : escapeHtml(value);
+                        var value = patch[field], html = field === 'ConnectionHistory' ? npsHistoryHTML(value) : field.indexOf('Flow.') === 0 ? changeunit(value) : escapeHtml(field === 'Link.Pipes' ? value || '—' : value);
                         if ($(this).html() !== html) $(this).html(html).addClass('nps-live-changed');
                     });
                 });

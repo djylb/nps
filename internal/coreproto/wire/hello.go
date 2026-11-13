@@ -1,6 +1,9 @@
 package wire
 
-import "errors"
+import (
+	"errors"
+	"net/netip"
+)
 
 // Hello is the application data of msg2 and msg3 (§3.5). Only C=0 fields are
 // allowed in it.
@@ -11,6 +14,9 @@ type Hello struct {
 	// VisitorOnly is a client session that hosts nothing: it only makes
 	// links to providers and is never a node of its client.
 	VisitorOnly bool
+	// LocalAddr is the IP address the client dials from; "" when it does not
+	// say. It is shown, never used to route.
+	LocalAddr string
 }
 
 func clip(s string) []byte {
@@ -37,6 +43,9 @@ func AppendHello(b []byte, h *Hello) []byte {
 	if h.VisitorOnly {
 		b = AppendUint(b, KeyVisitorOnly, 1)
 	}
+	if h.LocalAddr != "" {
+		b = AppendBytes(b, KeyLocalAddr, clip(h.LocalAddr))
+	}
 	return b
 }
 
@@ -62,6 +71,11 @@ func ParseHello(b []byte) (Hello, error) {
 			}
 		case KeyVisitorOnly:
 			h.VisitorOnly = f.Value == 1
+		case KeyLocalAddr:
+			// Anything but a bare address (zone dropped) is not kept.
+			if a, err := netip.ParseAddr(string(f.Data)); err == nil && len(f.Data) <= MaxLabel {
+				h.LocalAddr = a.WithZone("").Unmap().String()
+			}
 		}
 		return nil
 	})

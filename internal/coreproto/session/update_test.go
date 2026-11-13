@@ -12,7 +12,7 @@ import (
 // can act on an update request.
 func TestUpdateCapAdvertisedByConfig(t *testing.T) {
 	for _, can := range []bool{false, true} {
-		h, err := wire.ParseHello(clientHello("t", "", can, false))
+		h, err := wire.ParseHello(clientHello("t", "", "", can, false))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -82,6 +82,9 @@ var (
 	// tunnel's relay permission changes: C=0, a server that does not know it
 	// answers once and closes, as before.
 	KeyRelayWatch = key(29, false, false)
+	// KeyLocalAddr in Hello is the IP address npc dials from, for the
+	// server to show; C=0, so an older server ignores it.
+	KeyLocalAddr = key(27, false, true)
 )
 
 // Common is the table of the common fields.
@@ -90,7 +93,7 @@ var Common = newSchema(
 	one(KeyLinkID), many(KeyCap), one(KeyLabel), one(KeyAgent), one(KeyCode), one(KeyReason),
 	one(KeySeq), one(KeyTunnel), one(KeyAccess), one(KeyLinkKey), one(KeyConnMode), one(KeyScope),
 	one(KeyNameDest), many(KeyCompressAlg), one(KeyServerExit), one(KeyBackground),
-	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget), one(KeyVisitorOnly), one(KeyNoRelay), one(KeyRelayWatch),
+	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget), one(KeyVisitorOnly), one(KeyNoRelay), one(KeyRelayWatch), one(KeyLocalAddr),
 )
 
 // Capabilities (§2.3).

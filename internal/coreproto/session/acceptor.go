@@ -210,22 +210,37 @@ func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeH
 			t.carrier, t.kind = carrierLabel(p), p.Carrier
 		}
 	}
+	// zmux reports the variant of every pipe in its statistics, and nothing
+	// else of a joined pipe says what carries it (serverSession.Pipes).
+	if q.Variant == "" {
+		q.Variant = carrierLabel(p)
+	}
 	return q, nil
 }
 
 // carrierLabel names a carrier for the log; the HTTP and QUIC adapters give
 // no label.
 func carrierLabel(p zmux.PipeIO) string {
-	switch _, ok := zmux.TerminatedTLS(p); {
-	case p.Label != "":
-		return p.Label
-	case p.Carrier == zmux.CarrierQUIC:
+	_, tls := zmux.TerminatedTLS(p)
+	return kindLabelTLS(p.Label, p.Carrier, tls)
+}
+
+// kindLabel is carrierLabel of a pipe already joined, whose TLS is not known.
+func kindLabel(label string, kind zmux.CarrierKind) string {
+	return kindLabelTLS(label, kind, false)
+}
+
+func kindLabelTLS(label string, kind zmux.CarrierKind, tls bool) string {
+	switch {
+	case label != "":
+		return label
+	case kind == zmux.CarrierQUIC:
 		return "quic"
-	case p.Carrier == zmux.CarrierHTTP3:
+	case kind == zmux.CarrierHTTP3:
 		return "h3"
-	case p.Carrier == zmux.CarrierStreaming, p.Carrier == zmux.CarrierSplit, p.Carrier == zmux.CarrierExchange:
+	case kind == zmux.CarrierStreaming, kind == zmux.CarrierSplit, kind == zmux.CarrierExchange:
 		return "http"
-	case ok:
+	case tls:
 		return "wss"
 	}
 	return "ws"
@@ -795,7 +810,22 @@ func (s *serverSession) Instance() string       { return string(s.t.static) }
 func (s *serverSession) Source() netip.AddrPort { return s.t.src }
 func (s *serverSession) Carrier() string        { return s.t.carrier }
 func (s *serverSession) Agent() string          { return s.t.hello.Agent }
+func (s *serverSession) LocalAddr() string      { return s.t.hello.LocalAddr }
+func (s *serverSession) Record() string         { return s.mode.String() }
 func (s *serverSession) Since() time.Time       { return s.since }
+
+// Pipes implements coreapi.Session: the carriers of the pipes that carry
+// data, in pipe order.
+func (s *serverSession) Pipes() []string {
+	stats := s.zc.PipeStats()
+	out := make([]string, 0, len(stats))
+	for _, p := range stats {
+		if usable(p) {
+			out = append(out, kindLabel(p.Variant, p.Carrier))
+		}
+	}
+	return out
+}
 
 // Close implements coreapi.Session.
 func (s *serverSession) Close() error {

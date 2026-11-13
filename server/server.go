@@ -690,6 +690,14 @@ func (s *Server) DisconnectClient(clientId int) { s.bridge.DelClient(clientId) }
 // sorting lists.
 func (s *Server) ClientConnected(id int) bool { return s.bridge.Connected(id) }
 
+// ClientPipes summarizes the carriers of the pipes client id uses now.
+func (s *Server) ClientPipes(id int) string {
+	if l := s.bridge.ClientLink(id); l != nil {
+		return l.Pipes
+	}
+	return ""
+}
+
 // GenerateTunnelPort picks a free port for t.
 func (s *Server) GenerateTunnelPort(t *model.Tunnel) int { return s.ports.GenerateTunnelPort(t) }
 
@@ -724,6 +732,7 @@ func (s *Server) dealClientData() {
 			v.IsConnect = true
 			v.CanUpdate = s.ClientCanUpdate(v.Id)
 			v.Shaped = s.clientShaped(v)
+			v.Link = b.ClientLink(v.Id)
 			v.MarkSeen(time.Now())
 			cli := vv.(*bridge.Client)
 			node, ok := cli.GetNodeByUUID(cli.LastUUID)
@@ -739,7 +748,7 @@ func (s *Server) dealClientData() {
 		} else if v.Id <= 0 {
 			if servercfg.Current().Feature.AllowLocalProxy {
 				v.IsConnect = v.Status
-				v.CanUpdate, v.Shaped = false, nil
+				v.CanUpdate, v.Shaped, v.Link = false, nil, nil
 				v.Version = version.VERSION
 				v.Mode = "local"
 				v.LocalAddr = netaddr.GetOutboundIP().String()
@@ -750,11 +759,11 @@ func (s *Server) dealClientData() {
 				}
 			} else {
 				v.IsConnect = false
-				v.CanUpdate, v.Shaped = false, nil
+				v.CanUpdate, v.Shaped, v.Link = false, nil, nil
 			}
 		} else {
 			v.IsConnect = false
-			v.CanUpdate, v.Shaped = false, nil
+			v.CanUpdate, v.Shaped, v.Link = false, nil, nil
 		}
 		return true
 	})

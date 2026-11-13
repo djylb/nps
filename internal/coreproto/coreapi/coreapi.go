@@ -167,6 +167,15 @@ type Session interface {
 	Source() netip.AddrPort
 	Carrier() string
 	Agent() string
+	// LocalAddr is the IP address npc says it dials from; "" when it does
+	// not say.
+	LocalAddr() string
+	// Record is the session's record mode, "sealed", "bound" or "trusted"
+	// (§3.2).
+	Record() string
+	// Pipes names the carrier of each pipe that carries data now, as
+	// Carrier does; it follows pipes joining and leaving.
+	Pipes() []string
 	Since() time.Time
 	// OpenLink opens a link to the exit, within ctx: a connection to the
 	// target, bytes for TCP, length-prefixed frames as the old protocol

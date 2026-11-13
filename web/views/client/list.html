@@ -155,7 +155,9 @@
             var status = '<b langtag="word-createtime"></b>: ' + row.CreateTime + '&emsp;'
                 + '<b langtag="word-lastonlinetime"></b>: ' + npsLiveValue('LastOnlineTime', row.LastOnlineTime) + '&emsp;'
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
-                + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + row.LocalAddr + '</span>&emsp;<br/><br/>'
+                + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + escapeHtml(row.LocalAddr || '—') + '</span>&emsp;'
+                + (row.Link ? '<b langtag="word-pipes"></b>: ' + npsLiveValue('Link.Pipes', escapeHtml(row.Link.Pipes || '—')) + '&emsp;' : '')
+                + '<br/><br/>'
             status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
             var account = ''
             if (row.WebUserName || row.WebPassword) {

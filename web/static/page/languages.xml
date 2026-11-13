@@ -696,6 +696,26 @@
 		<zh-CN>加密</zh-CN>
 		<en-US>Crypt</en-US>
 	</lang>
+	<lang id="word-recordmode">
+		<zh-CN>内层加密</zh-CN>
+		<en-US>Inner Encryption</en-US>
+	</lang>
+	<lang id="word-record-sealed">
+		<zh-CN>会话自加密（Sealed）</zh-CN>
+		<en-US>Session-encrypted (Sealed)</en-US>
+	</lang>
+	<lang id="word-record-bound">
+		<zh-CN>绑定外层 TLS（Bound）</zh-CN>
+		<en-US>Bound to outer TLS (Bound)</en-US>
+	</lang>
+	<lang id="word-record-trusted">
+		<zh-CN>信任承载链路（Trusted）</zh-CN>
+		<en-US>Carrier-trusted (Trusted)</en-US>
+	</lang>
+	<lang id="word-pipes">
+		<zh-CN>使用中的通道</zh-CN>
+		<en-US>Pipes in Use</en-US>
+	</lang>
 	<lang id="word-curconnections">
 		<zh-CN>当前连接数</zh-CN>
 		<en-US>Current Connections</en-US>

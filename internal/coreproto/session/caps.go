@@ -22,10 +22,10 @@ func serverHello() []byte {
 
 // clientHello advertises update only when the client can act on an update
 // request (§2.3, §6).
-func clientHello(agent, label string, canUpdate, visitorOnly bool) []byte {
+func clientHello(agent, label, localAddr string, canUpdate, visitorOnly bool) []byte {
 	caps := clientCaps
 	if canUpdate {
 		caps = append(slices.Clone(caps), wire.CapUpdate)
 	}
-	return wire.AppendHello(nil, &wire.Hello{Caps: caps, CompressAlgs: compressAlgs, Agent: agent, Label: label, VisitorOnly: visitorOnly})
+	return wire.AppendHello(nil, &wire.Hello{Caps: caps, CompressAlgs: compressAlgs, Agent: agent, Label: label, VisitorOnly: visitorOnly, LocalAddr: localAddr})
 }

@@ -411,6 +411,19 @@ func serverName(c connprofile.Candidate) string {
 	return h
 }
 
+// localIP is the IP address a carrier left from, "" when it has none to tell.
+func localIP(p zmux.PipeIO) string {
+	a := zmux.PipeConn(p).LocalAddr()
+	if a == nil {
+		return ""
+	}
+	ap, err := netip.ParseAddrPort(a.String())
+	if err != nil || ap.Addr().IsUnspecified() {
+		return ""
+	}
+	return ap.Addr().WithZone("").Unmap().String()
+}
+
 // establish runs Establish and starts the session on ca. On a failure ca is
 // closed.
 func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode, c connprofile.Candidate) (*clientSession, error) {
@@ -427,7 +440,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		pin = &id
 	}
 	visitorOnly := d.visitorOnly.Load()
-	hello := clientHello(d.cfg.Agent, d.cfg.Label, d.cfg.CanUpdate, visitorOnly)
+	hello := clientHello(d.cfg.Agent, d.cfg.Label, localIP(ca.pipe), d.cfg.CanUpdate, visitorOnly)
 	shape := d.plan()
 	gate := raceGateOf(ctx)
 	var held atomic.Bool

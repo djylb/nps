@@ -71,7 +71,7 @@ func (s *Bridge) coreOnline(cs coreapi.Session) {
 	id := cs.ClientID()
 	if c, err := s.store.GetClient(id); err == nil {
 		c.Lock()
-		c.Addr, c.LocalAddr, c.Mode = cs.Source().Addr().Unmap().String(), "", cs.Carrier()
+		c.Addr, c.LocalAddr, c.Mode = cs.Source().Addr().Unmap().String(), cs.LocalAddr(), cs.Carrier()
 		c.Unlock()
 	}
 	uuid := coreNodeUUID(cs)

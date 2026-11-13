@@ -56,6 +56,9 @@ type Runtime interface {
 	PingClient(int, string) int
 	DisconnectClient(int)
 	ClientConnected(int) bool
+	// ClientPipes summarizes the carriers of the pipes a client's core
+	// sessions use now, "tls×2 + quic"; "" for none.
+	ClientPipes(int) string
 	RequestClientUpdate(int) (int, error)
 	VirtualServices() []bridge.VirtualService
 	DeleteClientResources(int)
@@ -303,6 +306,8 @@ func (offlineRuntime) PingClient(int, string) int { return -1 }
 func (offlineRuntime) DisconnectClient(int) {}
 
 func (offlineRuntime) ClientConnected(int) bool { return false }
+
+func (offlineRuntime) ClientPipes(int) string { return "" }
 
 func (offlineRuntime) RequestClientUpdate(int) (int, error)     { return 0, ErrClientOffline }
 func (offlineRuntime) VirtualServices() []bridge.VirtualService { return nil }

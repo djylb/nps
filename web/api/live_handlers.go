@@ -25,7 +25,7 @@ func (a *App) LiveStatus(c Context) {
 		c.RespondJSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "Flow.DirectIn": kind == "tunnel", "Flow.DirectOut": kind == "tunnel", "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "LastOnlineTime": kind == "client"}
+	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "Flow.DirectIn": kind == "tunnel", "Flow.DirectOut": kind == "tunnel", "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "Link.Pipes": kind == "client", "LastOnlineTime": kind == "client"}
 	type item struct {
 		ID     int      `json:"id"`
 		Fields []string `json:"fields"`
@@ -168,6 +168,8 @@ func (a *App) LiveStatus(c Context) {
 				row[f] = client.LastSeenTime()
 			case "ConnectionHistory":
 				row[f] = history
+			case "Link.Pipes":
+				row[f] = rt.ClientPipes(client.Id)
 			}
 		}
 		rows = append(rows, row)

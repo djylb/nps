@@ -108,6 +108,7 @@ func (stubRuntime) ListClients(int, int, string, string, string, int) ([]*model.
 func (stubRuntime) PingClient(int, string) int               { return 0 }
 func (stubRuntime) DisconnectClient(int)                     {}
 func (stubRuntime) ClientConnected(int) bool                 { return false }
+func (stubRuntime) ClientPipes(int) string                   { return "" }
 func (stubRuntime) RequestClientUpdate(int) (int, error)     { return 0, nil }
 func (stubRuntime) VirtualServices() []bridge.VirtualService { return nil }
 func (stubRuntime) DeleteClientResources(int)                {}

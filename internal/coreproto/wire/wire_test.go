@@ -247,3 +247,20 @@ func TestRelayStateRoundTrip(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
+
+func TestHelloLocalAddr(t *testing.T) {
+	in := Hello{Caps: []uint64{1}, Agent: "npc", LocalAddr: "192.168.1.5"}
+	got, err := ParseHello(AppendHello(nil, &in))
+	if err != nil || got.LocalAddr != "192.168.1.5" {
+		t.Fatalf("round trip: %+v, %v", got, err)
+	}
+	// Not an address: dropped, the Hello still parses.
+	bad := AppendBytes(nil, KeyLocalAddr, []byte("<b>x</b>"))
+	if got, err = ParseHello(bad); err != nil || got.LocalAddr != "" {
+		t.Fatalf("bad address: %+v, %v", got, err)
+	}
+	// An older receiver skips the field: it is C=0 and unknown there.
+	if KeyLocalAddr.Critical() {
+		t.Fatal("LocalAddr must not be critical")
+	}
+}
