@@ -59,6 +59,30 @@ func TestSessionSavesOneCookie(t *testing.T) {
 	}
 }
 
+// The session cookie is Secure when the browser came over https, directly or
+// through a proxy saying so, and not over plain http.
+func TestSessionCookieSecureOverHTTPS(t *testing.T) {
+	for name, tc := range map[string]struct {
+		tls, forwarded bool
+		want           bool
+	}{"http": {}, "tls": {tls: true, want: true}, "proxy https": {forwarded: true, want: true}} {
+		c, rec := newSessionTestContext(t)
+		if tc.tls {
+			c.Request = httptest.NewRequest(http.MethodGet, "https://panel.test/", nil)
+		}
+		if tc.forwarded {
+			c.Request.Header.Set("X-Forwarded-Proto", "https")
+		}
+		if err := SetSessionValue(c, "a", "1"); err != nil {
+			t.Fatal(err)
+		}
+		got := sessionCookies(rec)
+		if len(got) != 1 || strings.Contains(got[0], "; Secure") != tc.want {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+}
+
 func TestSessionSaveError(t *testing.T) {
 	c, rec := newSessionTestContext(t)
 	if err := SetSessionValue(c, "small", "x"); err != nil {

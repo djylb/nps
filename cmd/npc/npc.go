@@ -263,7 +263,6 @@ func main() {
 		}
 		return
 	case "install":
-		_ = service.Control(s, "stop")
 		_ = install.UninstallService(s, svcConfig.Name)
 		binPath, err := install.NPC()
 		if err != nil {

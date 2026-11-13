@@ -9,6 +9,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/djylb/nps/lib/instancekey"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/runenv"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/nps/web/ui"
@@ -261,7 +262,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		IsAdmin:        input.IsAdmin,
 		AdmitKey:       pageAdmitKey(cfg, input.IsAdmin),
 		MixIP:          bridge.Primary.IP,
-		MixPort:        pageIntString(cfg.Network.MixPort),
+		MixPort:        mixDisplayPort(cfg),
 		MixPlain:       cfg.Network.MixPlain,
 		MixQUICALPN:    firstString(cfg.Network.NewProtocolQUICALPN),
 		ServerUpdate:   info.CanUpdate,
@@ -364,4 +365,17 @@ func firstString(list []string) string {
 		return ""
 	}
 	return list[0]
+}
+
+// mixDisplayPort is the port of the mixed port in the start commands: the
+// port of bridge_addr when it has one (a mapping or proxy in front), else the
+// port it listens on; "" without a mixed port.
+func mixDisplayPort(cfg *servercfg.Snapshot) string {
+	if cfg.Network.MixPort == 0 {
+		return ""
+	}
+	if p := netaddr.Port(cfg.Bridge.Addr); p != 0 {
+		return strconv.Itoa(p)
+	}
+	return pageIntString(cfg.Network.MixPort)
 }

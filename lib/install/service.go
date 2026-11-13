@@ -147,7 +147,7 @@ func serviceRunning(s service.Service, name string) bool {
 	return err == nil && status == service.StatusRunning
 }
 
-// UninstallService uninstalls s, the system service name. systemd refuses to
+// UninstallService stops and uninstalls s, the system service name. systemd refuses to
 // disable a unit whose file is empty, and procd runs the init script, which
 // an empty or foreign script fails; the files of the service are then deleted
 // directly so that a later install does not find them in place. The start
@@ -157,6 +157,10 @@ func UninstallService(s service.Service, name string) error {
 	if usesRcLinks() {
 		defer removeRcLinks(name)
 	}
+	// A running service is stopped first: the service managers remove its
+	// definition but leave the process running, holding its ports, with
+	// nothing left to stop it. Not running is no error.
+	_ = service.Control(s, "stop")
 	err := service.Control(s, "uninstall")
 	if err == nil {
 		return nil

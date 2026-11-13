@@ -215,7 +215,6 @@ func main() {
 		switch cmd {
 		case "install":
 			// uninstall before
-			_ = service.Control(s, "stop")
 			_ = install.UninstallService(s, svcConfig.Name)
 
 			binPath, err := install.NPS()

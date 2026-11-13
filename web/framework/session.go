@@ -158,6 +158,11 @@ func (s *sessionState) save() error {
 // saveSessionCookie saves session into the Set-Cookie headers of w,
 // replacing any cookie of the session set there before.
 func saveSessionCookie(session *sessions.Session, r *http.Request, w http.ResponseWriter) error {
+	if session.Options != nil && secureRequest(r) {
+		options := *session.Options
+		options.Secure = true
+		session.Options = &options
+	}
 	rec := cookieRecorder{header: http.Header{}}
 	if err := session.Save(r, rec); err != nil {
 		log.Warn("session not saved", "err", err)
@@ -173,6 +178,14 @@ func saveSessionCookie(session *sessions.Session, r *http.Request, w http.Respon
 	}
 	h["Set-Cookie"] = append(kept, rec.header.Values("Set-Cookie")...)
 	return nil
+}
+
+// secureRequest reports whether the browser reached the panel over https,
+// directly or through a proxy that says so. Browsers drop Secure cookies set
+// over plain http from any host but localhost, so the cookie is Secure only
+// then; a forged header can only make it stricter.
+func secureRequest(r *http.Request) bool {
+	return r != nil && (r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 }
 
 // cookieRecorder collects the headers a session save sets.
