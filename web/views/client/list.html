@@ -173,6 +173,10 @@
                 + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
             }
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
+                // the inner encryption of the online sessions, shown only with crypt on
+                + (row.Cnf.Crypt && row.Link && row.Link.Records && row.Link.Records.length ? '<b langtag="word-recordmode"></b>: ' + row.Link.Records.map(function (m) {
+                    return /^(sealed|bound|trusted)$/.test(m) ? '<span langtag="word-record-' + m + '"></span>' : escapeHtml(m);
+                }).join(' + ') + '&emsp;' : '')
                 + '<b langtag="word-compress"></b>: ' + (row.Cnf.Compress ? (row.Cnf.CompressAlg ? row.Cnf.CompressAlg : 'snappy') : '<span langtag="word-compressoff"></span>') + '&emsp;'
                 + '<br/><br/>'
             var shaped = ''

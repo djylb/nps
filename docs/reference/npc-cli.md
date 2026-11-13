@@ -23,7 +23,7 @@ npc [子命令] [参数]
 | `start` | 启动系统服务 |
 | `stop` | 停止系统服务 |
 | `restart` | 重启系统服务。修改配置文件后用它生效 |
-| `uninstall` | 卸载系统服务，`conf` 目录里的文件保留 |
+| `uninstall` | 停止并卸载系统服务，`conf` 目录里的文件保留 |
 | `status` | 向服务端查询这个 vkey 的隧道和域名转发状态，打印后退出。连接用 `-launch`（可重复，也读 `NPC_LAUNCH`）给出，用其中的服务端、vkey、承载方式、代理和源地址；给出多个连接时依次查询。`-launch` 里定义的本机访问忽略。仍可用已弃用的 `-server`、`-vkey`、`-type`、`-proxy`、`-local_ip`，它们和 `-launch` 同时给出时的规则同启动连接 |
 | `register` | 向服务端登记本机当前 IP，有效期由 `-time` 决定，登记后退出。连接的给法同 `status`，给出多个连接时依次登记，任一个失败则以非零状态退出并指出是哪个连接。例：`npc register -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls" -time=2`。登记的用途见[访问控制](/guide/server/access-control.md) |
 | `update` | 更新到最新发布版本，已是最新时什么也不做。见[更新与维护](/guide/client/maintenance.md) |
@@ -50,7 +50,7 @@ npc [子命令] [参数]
 | `-auto_reconnect` | `true` | 断线后自动重连。`false` 时任一连接结束后 npc 退出 |
 | `-skip_verify` | `false` | 跳过服务端证书校验 |
 | `-disable_remote_update` | `false` | 忽略网页发来的远程更新请求 |
-| `-launch_url_access` | `false` | 允许从网址读取的启动内容定义访问，见[从网址读取](npc-launch.md#从网址读取) |
+| `-launch_url_access` | `false` | 允许从网址读取的启动内容定义访问，见[从网址读取](/reference/npc-launch.md?id=从网址读取) |
 | `-disconnect_timeout` | `30` | 保留项，无需设置 |
 | `-keepalive` | `0` | 秒。连接保活周期，`0` 使用内置默认值 |
 | `-p2p_timeout` | `5` | 保留项，无需设置 |

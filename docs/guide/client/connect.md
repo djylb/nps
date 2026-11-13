@@ -71,7 +71,7 @@ sudo npc restart    # 重启
 sudo npc uninstall  # 卸载
 ```
 
-要修改参数，重新执行一次 `npc install` 并带上新参数即可，旧服务会先被卸载。然后再执行 `npc start`。
+要修改参数，重新执行一次 `npc install` 并带上新参数即可，旧服务会先被停止并卸载。然后再执行 `npc start`。
 
 ### 参数保存在哪里
 

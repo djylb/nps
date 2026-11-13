@@ -57,6 +57,7 @@ server {
         proxy_set_header X-NPS-Http-Only "password";
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_redirect off;
         proxy_buffering off;
@@ -64,7 +65,7 @@ server {
 }
 ```
 
-`X-NPS-Http-Only` 让 nps 信任该代理、避免自动 301；`X-Real-IP` 和 `X-Forwarded-For` 传递真实 IP。前面有反代或端口映射时，用 `http_proxy_access_port`、`https_proxy_access_port` 设置页面生成链接使用的对外端口。
+`X-NPS-Http-Only` 让 nps 信任该代理、避免自动 301；`X-Real-IP` 和 `X-Forwarded-For` 传递真实 IP；`X-Forwarded-Proto` 告诉 nps 浏览器用的是 https，网页登录的 Cookie 因此带上 `Secure`，只在 https 下发送。前面有反代或端口映射时，用 `http_proxy_access_port`、`https_proxy_access_port` 设置页面生成链接使用的对外端口。
 
 ## Caddy 反向代理 NPS
 
