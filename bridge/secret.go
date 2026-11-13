@@ -318,6 +318,11 @@ func (s *Bridge) handleSecretLink(c *conn.Conn, id int, uuid string) {
 		return
 	}
 	defer g.untrack(c.Conn)
+	if g.tunnel.View().NoRelay {
+		log.Info("p2p relay refused: the tunnel does not allow relaying", "tunnel", g.tunnel.Id, "client", id, "node", uuid)
+		_ = c.Close()
+		return
+	}
 	s.secrets.relayed.Add(1)
 	_ = g.server.Serve(c.Conn, lk, legacy.WriteAck)
 }

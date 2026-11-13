@@ -110,11 +110,16 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 	}
 	server := proxy.NewSecretServer(s, t, p, feature.AllowLocalProxy)
 	// The LINK is admitted as a link would be; each PIPE then holds its slot.
-	release, err := server.AcquireForwarding(t.Client, t.ControlGroup())
-	if err != nil {
-		return nil, refused
+	// A spent traffic quota leaves a provider link only the direct path,
+	// which is counted, never limited.
+	quotaOnly := !exit && (flowTraffic(t.Flow) || flowTraffic(t.Client.Flow)) && !flowExpired(t.Flow) && !flowExpired(t.Client.Flow)
+	if !quotaOnly {
+		release, err := server.AcquireForwarding(t.Client, t.ControlGroup())
+		if err != nil {
+			return nil, refused
+		}
+		release()
 	}
-	release()
 	id := t.Id
 	return &coreapi.LinkGrant{
 		Tunnel:     t.Id,
@@ -126,7 +131,21 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 			if c == nil || c.Id != id || !c.Status || c.Client == nil {
 				return false
 			}
-			return !flowOver(c.Flow) && !flowOver(c.Client.Flow)
+			// A spent traffic quota stops only the relay (RelayAllowed).
+			return !flowExpired(c.Flow) && !flowExpired(c.Client.Flow)
+		},
+		RelayAllowed: func() bool {
+			c := find()
+			if c == nil || c.Client == nil {
+				return true // Valid refuses it
+			}
+			return !c.View().NoRelay && !flowTraffic(c.Flow) && !flowTraffic(c.Client.Flow)
+		},
+		WatchRelay: func(changed func()) func() {
+			// Tunnel edits revoke the link (RevokeSecretTunnel); the flows
+			// change in place.
+			a, b := t.Flow.Watch(changed), t.Client.Flow.Watch(changed)
+			return func() { a(); b() }
 		},
 		ServeExit: func(_ context.Context, c net.Conn, network, target string, ack func() error) error {
 			lk := conn.NewLink(exitLinkType(network), target, false, false, c.RemoteAddr().String(), true)
@@ -159,9 +178,14 @@ func (s *Bridge) coreResolveLink(client int, r coreapi.LinkResolve) (*coreapi.Li
 // clampInt64 is n as the int64 a Flow counts in.
 func clampInt64(n uint64) int64 { return int64(min(n, math.MaxInt64)) }
 
-func flowOver(f *model.Flow) bool {
-	traffic, expired := f.Over()
-	return traffic || expired
+func flowExpired(f *model.Flow) bool {
+	_, expired := f.Over()
+	return expired
+}
+
+func flowTraffic(f *model.Flow) bool {
+	traffic, _ := f.Over()
+	return traffic
 }
 
 // watchExpiry calls stop when one of flows expires, until the function it

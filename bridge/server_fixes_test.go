@@ -176,7 +176,7 @@ func TestPipeAdmissionTakesConnectionSlots(t *testing.T) {
 	r2()
 }
 
-func TestQuotaEndsGrantAndCountsAsItGoes(t *testing.T) {
+func TestQuotaStopsRelayAndCountsAsItGoes(t *testing.T) {
 	b, task := secretFixture(t)
 	task.Client.Flow.FlowLimit = 1
 	g, err := b.coreResolveLink(1, accessOf("pw"))
@@ -196,8 +196,9 @@ func TestQuotaEndsGrantAndCountsAsItGoes(t *testing.T) {
 		t.Fatal("under quota and not valid")
 	}
 	up.Charge(2 << 20)
-	if g.Valid() {
-		t.Fatal("over quota and still valid")
+	// A spent quota stops the relay only: the link stays for the direct path.
+	if !g.Valid() || g.RelayAllowed() {
+		t.Fatal("over quota: want valid without relay")
 	}
 	if _, err := g.Admit(func() {}); err == nil {
 		t.Fatal("a PIPE passed an exhausted quota")
@@ -205,8 +206,20 @@ func TestQuotaEndsGrantAndCountsAsItGoes(t *testing.T) {
 	if _, err := up.Ready(t.Context(), 1, 10); err == nil {
 		t.Fatal("a running PIPE goes on over quota")
 	}
-	if _, err := b.coreResolveLink(1, accessOf("pw")); err == nil {
-		t.Fatal("a LINK passed an exhausted quota")
+	if g2, err := b.coreResolveLink(1, accessOf("pw")); err != nil || g2.RelayAllowed() {
+		t.Fatalf("a LINK over quota: want direct only, got %v", err)
+	}
+	// Raising the limit gives the relay back and tells the watch.
+	told := make(chan struct{}, 1)
+	defer g.WatchRelay(func() { told <- struct{}{} })()
+	task.Client.Flow.SetFlowLimit(0)
+	select {
+	case <-told:
+	case <-time.After(time.Second):
+		t.Fatal("watch not told")
+	}
+	if !g.RelayAllowed() {
+		t.Fatal("relay not back after the limit was cleared")
 	}
 }
 
@@ -426,7 +439,7 @@ func TestGrantCountsDirectTrafficOnTunnel(t *testing.T) {
 	if v := task.Client.Flow.Values(); v.DirectIn != 0 || v.DirectOut != 0 {
 		t.Fatalf("client flow %+v", v)
 	}
-	if flowOver(task.Flow) || flowOver(task.Client.Flow) || !g.Valid() {
+	if flowTraffic(task.Flow) || flowTraffic(task.Client.Flow) || !g.Valid() || !g.RelayAllowed() {
 		t.Fatal("direct traffic ended the grant")
 	}
 	g.AddDirect(1<<63, 0) // larger than a counter holds

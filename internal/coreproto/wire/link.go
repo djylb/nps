@@ -25,6 +25,8 @@ type LinkOpen struct {
 	// ServerExit asks for the server as the exit of the link; the reply
 	// says whether the tunnel lets it.
 	ServerExit bool
+	// RelayWatch asks for relay state heads after the reply (KeyRelayWatch).
+	RelayWatch bool
 }
 
 // AppendLinkOpen encodes o.
@@ -41,6 +43,9 @@ func AppendLinkOpen(o *LinkOpen) ([]byte, error) {
 	}
 	if o.ServerExit {
 		b = AppendUint(b, KeyServerExit, 1)
+	}
+	if o.RelayWatch {
+		b = AppendUint(b, KeyRelayWatch, 1)
 	}
 	if len(b) > MaxOpenInfo {
 		return nil, ErrMalformed
@@ -62,6 +67,8 @@ func ParseLinkOpen(fields []byte) (LinkOpen, error) {
 			o.ConnMode = f.Value
 		case KeyServerExit:
 			o.ServerExit = f.Value == 1
+		case KeyRelayWatch:
+			o.RelayWatch = f.Value == 1
 		}
 		return nil
 	})
@@ -80,6 +87,8 @@ type LinkReply struct {
 	LinkKey    []byte
 	ConnMode   uint64
 	ServerExit bool
+	// NoRelay: the server refuses the link's PIPE; only a direct path works.
+	NoRelay bool
 }
 
 // AppendLinkReply encodes the fields of a successful reply head.
@@ -94,6 +103,9 @@ func AppendLinkReply(r *LinkReply) []byte {
 	}
 	if r.ServerExit {
 		b = AppendUint(b, KeyServerExit, 1)
+	}
+	if r.NoRelay {
+		b = AppendUint(b, KeyNoRelay, 1)
 	}
 	return b
 }
@@ -111,6 +123,8 @@ func ParseLinkReply(fields []byte) (LinkReply, error) {
 			r.ConnMode = f.Value
 		case KeyServerExit:
 			r.ServerExit = f.Value == 1
+		case KeyNoRelay:
+			r.NoRelay = f.Value == 1
 		}
 		return nil
 	})
@@ -234,4 +248,28 @@ func ParsePathOpen(op Op, fields []byte) (PathOpen, error) {
 		err = ErrMalformed
 	}
 	return o, err
+}
+
+// AppendRelayState encodes the fields of a relay state head (KeyRelayWatch).
+func AppendRelayState(noRelay bool) []byte {
+	var v uint64
+	if noRelay {
+		v = 1
+	}
+	return AppendUint(nil, KeyNoRelay, v)
+}
+
+// ParseRelayState decodes the fields of a relay state head.
+func ParseRelayState(fields []byte) (noRelay bool, err error) {
+	seen := false
+	err = Common.Decode(fields, func(f Field) error {
+		if f.Key == KeyNoRelay {
+			noRelay, seen = f.Value == 1, true
+		}
+		return nil
+	})
+	if err == nil && !seen {
+		err = ErrMalformed
+	}
+	return noRelay, err
 }

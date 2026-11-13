@@ -39,6 +39,17 @@ type peerLink struct {
 	ended bool
 	paths map[wire.Op]*linkPath  // at most one PIPE and one PUNCH (§4.6)
 	exits map[*linkConn]struct{} // active streams of a server-exit link
+
+	// relayChange wakes the visitor's relay watch (KeyRelayWatch).
+	relayChange chan struct{}
+}
+
+// relayChanged wakes the relay watch of l, if any.
+func (l *peerLink) relayChanged() {
+	select {
+	case l.relayChange <- struct{}{}:
+	default:
+	}
 }
 
 // linkPath is the visitor's end of a PIPE or PUNCH and who opened it.
@@ -322,9 +333,19 @@ func (s *serverSession) serveLinkOpen(ctx context.Context, lc *linkConn, fields 
 		failLink(lc, true, linkFailCode(err))
 		return
 	}
-	l := &peerLink{visitor: s.ClientID(), grant: g, paths: map[wire.Op]*linkPath{}, exits: map[*linkConn]struct{}{}}
+	l := &peerLink{visitor: s.ClientID(), grant: g, paths: map[wire.Op]*linkPath{}, exits: map[*linkConn]struct{}{}, relayChange: make(chan struct{}, 1)}
 	if g.ServerExit {
 		s.holdExitLink(lc, l)
+		return
+	}
+	noRelay := !relayAllowed(g)
+	if noRelay && o.ConnMode == wire.ConnRelay {
+		log.Info("p2p relay refused: the tunnel does not allow relaying", "tunnel", g.Tunnel, "client", s.ClientID(), "conn_mode", "relay")
+		_ = lc.SetWriteDeadline(time.Now().Add(linkOpenTimeout))
+		if _, err := lc.Write(wire.AppendReply(nil, wire.CodeNotAllowed, RelayDisabledReason, nil)); err == nil {
+			lc.SetReliableBoundary()
+		}
+		lc.abort(wire.CodeNotAllowed)
 		return
 	}
 	code, reply := s.a.openProviderLink(ctx, l, o.ConnMode)
@@ -332,9 +353,56 @@ func (s *serverSession) serveLinkOpen(ctx context.Context, lc *linkConn, fields 
 		failLink(lc, true, code)
 		return
 	}
+	if noRelay {
+		// A visitor that does not read NoRelay still takes the direct mode
+		// and opens no PIPE.
+		reply.NoRelay, reply.ConnMode = true, wire.ConnDirect
+	}
 	_ = lc.SetWriteDeadline(time.Now().Add(linkOpenTimeout))
-	_, _ = lc.Write(wire.AppendReply(nil, wire.CodeOK, "", wire.AppendLinkReply(reply)))
-	_ = lc.Close() // one question, one answer: the visitor's side holds nothing
+	if _, err := lc.Write(wire.AppendReply(nil, wire.CodeOK, "", wire.AppendLinkReply(reply))); err != nil || !o.RelayWatch {
+		_ = lc.Close() // one question, one answer: the visitor's side holds nothing
+		return
+	}
+	_ = lc.SetWriteDeadline(time.Time{})
+	s.watchRelay(lc, l, noRelay)
+}
+
+// watchRelay keeps a visitor's LINK stream that asked for it and sends a
+// relay state head whenever the relay permission changes, until the link or
+// the stream ends.
+func (s *serverSession) watchRelay(lc *linkConn, l *peerLink, sent bool) {
+	if !l.addExit(lc) {
+		lc.abort(wire.CodeNotAllowed)
+		return
+	}
+	defer l.dropExit(lc)
+	gone := make(chan struct{})
+	s.a.wg.Go(func() {
+		_, _ = io.Copy(io.Discard, lc)
+		close(gone)
+	})
+	if l.grant.WatchRelay != nil {
+		defer l.grant.WatchRelay(l.relayChanged)()
+	}
+	l.relayChanged() // a change between the reply and the watch
+	for {
+		select {
+		case <-gone:
+			return
+		case <-l.relayChange:
+		}
+		now := !relayAllowed(l.grant)
+		if now == sent {
+			continue
+		}
+		_ = lc.SetWriteDeadline(time.Now().Add(linkOpenTimeout))
+		if _, err := lc.Write(wire.AppendReply(nil, wire.CodeOK, "", wire.AppendRelayState(now))); err != nil {
+			lc.abort(wire.CodeInternal)
+			return
+		}
+		sent = now
+		log.Debug("p2p relay state sent", "tunnel", l.grant.Tunnel, "link", l.id, "no_relay", now)
+	}
 }
 
 // verifyAccess checks a proof of password against this session's exporter
@@ -444,6 +512,15 @@ func linkBodyOf(key []byte, mode uint64, p *coreapi.LinkPolicy) *wire.LinkBody {
 	return b
 }
 
+// RelayDisabledReason is the reason of a LINK refused because it asked for
+// relay only and the tunnel does not allow relaying.
+const RelayDisabledReason = "relay disabled for this tunnel"
+
+// relayAllowed reports whether the server may relay g's link now.
+func relayAllowed(g *coreapi.LinkGrant) bool {
+	return g.RelayAllowed == nil || g.RelayAllowed()
+}
+
 // checkLink is the check of every PIPE, PUNCH and server-exit stream (§4.6).
 func (s *serverSession) checkLink(id uint64) *peerLink {
 	l := s.a.linkOf(id)
@@ -463,6 +540,11 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 	h := s.a.hooks.Load()
 	l := s.checkLink(o.LinkID)
 	if l == nil || l.provider == nil || h == nil || op == wire.OpPunch && h.Coordinate == nil {
+		lc.abort(wire.CodeNotAllowed)
+		return
+	}
+	if op == wire.OpPipe && !relayAllowed(l.grant) {
+		log.Info("p2p relay refused: the tunnel does not allow relaying", "tunnel", l.grant.Tunnel, "client", s.ClientID(), "link", l.id)
 		lc.abort(wire.CodeNotAllowed)
 		return
 	}
@@ -508,13 +590,20 @@ func (s *serverSession) servePath(ctx context.Context, lc *linkConn, op wire.Op,
 	if op == wire.OpPipe {
 		var opts zmux.SpliceOptions
 		if l.grant.Limiters != nil {
-			// A direction stopped by a quota or expiry leaves nothing to
-			// rejoin: end the link now instead of letting the nested
-			// session wait out its resume.
+			// An expiry leaves nothing to rejoin: end the link now instead
+			// of letting the nested session wait out its resume. A spent
+			// traffic quota ends only the relay: the direct path is counted,
+			// never limited, and further PIPEs are refused.
 			stopped := func() {
-				if l.grant.Valid != nil && !l.grant.Valid() {
+				switch {
+				case l.grant.Valid != nil && !l.grant.Valid():
 					l.end(wire.CodeNotAllowed)
 					s.a.dropLink(l)
+				case !relayAllowed(l.grant):
+					log.Info("p2p relay stopped: traffic quota reached", "tunnel", l.grant.Tunnel, "client", s.ClientID(), "link", l.id)
+					end.abort(wire.CodeNotAllowed)
+					lc.abort(wire.CodeNotAllowed)
+					l.relayChanged()
 				}
 			}
 			up, down := l.grant.Limiters()

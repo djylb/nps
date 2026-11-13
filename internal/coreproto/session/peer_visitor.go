@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -196,6 +197,8 @@ type Visitor struct {
 	make sync.Mutex // serializes making the link
 	mu   sync.Mutex
 	cur  *visitorLink
+
+	noRelayLogged atomic.Bool
 }
 
 // NewVisitor returns the access cfg describes.
@@ -214,6 +217,13 @@ func NewVisitor(cfg VisitorConfig) *Visitor {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Visitor{cfg: cfg, ctx: ctx, cancel: cancel}
+}
+
+// noteNoRelay logs once that the server does not relay this access.
+func (v *Visitor) noteNoRelay() {
+	if v.cfg.Mode != wire.ConnDirect && v.noRelayLogged.CompareAndSwap(false, true) {
+		log.Info("p2p relay disabled by the server for this tunnel, using the direct path only")
+	}
 }
 
 // Close implements coreapi.Visitor.
@@ -314,11 +324,14 @@ type visitorLink struct {
 	punching bool
 	// refused: the server said the link is gone (refusalReader).
 	refused atomic.Bool
-	direct  *coreapi.DirectPath
-	upSince time.Time           // the direct path up, continuously
-	upPath  *coreapi.DirectPath // the path that was up
-	backoff time.Duration
-	nextTry time.Time
+	// relayOff: the server stopped relaying the link while a direct path
+	// carried it; the link goes on direct only.
+	relayOff atomic.Bool
+	direct   *coreapi.DirectPath
+	upSince  time.Time           // the direct path up, continuously
+	upPath   *coreapi.DirectPath // the path that was up
+	backoff  time.Duration
+	nextTry  time.Time
 }
 
 func (l *visitorLink) ended() bool {
@@ -360,7 +373,7 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess(v.cfg.Access, ekm), ConnMode: v.cfg.Mode, ServerExit: v.cfg.ServerExit})
+	info, err := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess(v.cfg.Access, ekm), ConnMode: v.cfg.Mode, ServerExit: v.cfg.ServerExit, RelayWatch: true})
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +396,9 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 	}
 	if rep.Code != wire.CodeOK {
 		lc.abort(wire.CodeInternal)
+		if rep.Reason != "" {
+			return nil, fmt.Errorf("%w (%s)", linkError(rep.Code), rep.Reason)
+		}
 		return nil, linkError(rep.Code)
 	}
 	r, err := wire.ParseLinkReply(rep.Fields)
@@ -403,14 +419,52 @@ func (v *Visitor) makeLink(ctx context.Context) (_ *visitorLink, err error) {
 		}()
 		return l, nil
 	}
-	_ = lc.Close()
-	if l.mode == 0 {
+	if l.mode == 0 || r.NoRelay {
+		// With NoRelay the reply's direct mode is for visitors that do not
+		// read NoRelay; relayOff says it and may be lifted.
 		l.mode = v.cfg.Mode
 	}
+	if r.NoRelay {
+		v.noteNoRelay()
+		l.relayOff.Store(true)
+	}
 	if err := l.start(ctx); err != nil {
+		_ = lc.Close()
+		if r.NoRelay && v.cfg.Mode != wire.ConnDirect {
+			return nil, fmt.Errorf("direct path failed and the server does not relay this tunnel: %w", err)
+		}
 		return nil, err
 	}
+	l.wg.Go(func() { l.watchRelay(lc) })
 	return l, nil
+}
+
+// watchRelay reads the relay state heads the server sends on the LINK
+// stream (KeyRelayWatch) until the link ends; a server that sends none
+// closes the stream after its reply.
+func (l *visitorLink) watchRelay(lc *linkConn) {
+	stop := context.AfterFunc(l.ctx, func() { lc.abort(wire.CodeOK) })
+	defer stop()
+	defer func() { _ = lc.Close() }()
+	for {
+		rep, err := wire.ReadReply(lc, replyLimit)
+		if err != nil || rep.Code != wire.CodeOK {
+			return
+		}
+		off, err := wire.ParseRelayState(rep.Fields)
+		if err != nil {
+			return
+		}
+		if l.relayOff.Swap(off) == off {
+			continue
+		}
+		if off {
+			l.v.noteNoRelay()
+		} else {
+			l.v.noRelayLogged.Store(false)
+			log.Info("p2p relay allowed again by the server", "link", l.id)
+		}
+	}
 }
 
 // start establishes the nested session on the first path (§9.3).
@@ -418,7 +472,7 @@ func (l *visitorLink) start(ctx context.Context) error {
 	var pipe zmux.PipeIO
 	var err error
 	mode := zmux.Sealed
-	if l.mode == wire.ConnDirect {
+	if l.mode == wire.ConnDirect || l.relayOff.Load() {
 		mode = zmux.Bound
 		pipe, err = l.punch(ctx, false)
 	} else {
@@ -581,7 +635,7 @@ func (l *visitorLink) closeDirect() {
 // redial gives zmux a pipe when the session has none in a direction: a relay,
 // or in direct mode a new punch (§9.4a).
 func (l *visitorLink) redial(ctx context.Context, _ zmux.Direction) (zmux.PipeIO, error) {
-	if l.mode == wire.ConnDirect {
+	if l.mode == wire.ConnDirect || l.relayOff.Load() {
 		return l.punch(ctx, false)
 	}
 	return l.openRelay(ctx)
@@ -642,8 +696,17 @@ func (l *visitorLink) run() {
 		case <-t.C:
 		}
 		if l.refused.Load() {
-			_ = l.zc.Close()
-			return
+			// A refused relay beside an active direct path is the relay
+			// stopped, not the link: a revoked link loses its direct path
+			// at the provider.
+			if l.mode == wire.ConnRelay || !directActive(l.zc.PipeStats()) {
+				_ = l.zc.Close()
+				return
+			}
+			l.refused.Store(false)
+			if !l.relayOff.Swap(true) {
+				l.v.noteNoRelay()
+			}
 		}
 		l.step()
 	}
@@ -693,7 +756,7 @@ func (l *visitorLink) step() {
 			}
 		}
 	}
-	if !directUp && l.mode == wire.ConnAuto && !punching {
+	if !directUp && l.mode == wire.ConnAuto && !l.relayOff.Load() && !punching {
 		l.startPunch(now, relay != nil)
 	}
 	l.v.cfg.Outer.setNeed(l.v, relay != nil || punching || !directUp)

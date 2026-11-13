@@ -536,3 +536,18 @@ func TestFlowDirect(t *testing.T) {
 	}
 	(*Flow)(nil).AddDirect(1, 1)
 }
+
+// Watch reports limit changes and traffic resets until stopped.
+func TestFlowWatch(t *testing.T) {
+	f := &Flow{FlowLimit: 1}
+	n := 0
+	stop := f.Watch(func() { n++ })
+	f.SetFlowLimit(2)
+	f.ResetTraffic()
+	f.SetLimits(3, time.Time{})
+	stop()
+	f.SetFlowLimit(4)
+	if n != 3 {
+		t.Fatalf("calls %d", n)
+	}
+}

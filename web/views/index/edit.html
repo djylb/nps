@@ -139,6 +139,16 @@
                                 </div>
                             </div>
                             {{end}}
+                            <div class="form-group" id="no_relay">
+                                <label class="control-label font-bold" langtag="word-allowrelay"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="no_relay">
+                                        <option {{if not .t.NoRelay}}selected{{end}} langtag="word-yes" value="0"></option>
+                                        <option {{if .t.NoRelay}}selected{{end}} langtag="word-no" value="1"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-allowrelay"></span>
+                                </div>
+                            </div>
                             <div class="form-group" id="proxy_protocol">
                                 <label class="control-label font-bold" langtag="word-proxyprotocol"></label>
                                 <div class="col-sm-12">
@@ -347,7 +357,7 @@
     arr["mixProxy"] = ["compress_alg", "auth", "client_id", "port", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "client_id", "port", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
-    arr["secret"] = ["compress_alg", "client_id", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "dest_acl_mode", "dest_acl_rules"]
+    arr["secret"] = ["compress_alg", "client_id", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "local_proxy", "no_relay", "dest_acl_mode", "dest_acl_rules"]
 
     function resetForm() {
         $(".form-group[id]").css("display", "none");

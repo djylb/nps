@@ -1058,6 +1058,10 @@
 		<zh-CN>代理到服务器本地</zh-CN>
 		<en-US>Proxy to server local</en-US>
 	</lang>
+	<lang id="word-allowrelay">
+		<zh-CN>允许中转</zh-CN>
+		<en-US>Allow relay</en-US>
+	</lang>
 	<lang id="word-publicvkey">
 		<zh-CN>公钥</zh-CN>
 		<en-US>Public vkey</en-US>
@@ -2528,5 +2532,9 @@
 	<lang id="info-compressalg">
 		<zh-CN>留空跟随客户端的压缩设置；选择算法则只对这条使用该算法，“不压缩”则这条不压缩。</zh-CN>
 		<en-US>Empty follows the client's compression setting; an algorithm applies to this entry only, and Off disables compression for it.</en-US>
+	</lang>
+	<lang id="info-allowrelay">
+		<zh-CN>选“否”时服务端不中转这条隧道的数据，访问端与客户端只能直连；直连失败则访问失败。</zh-CN>
+		<en-US>With No, the server does not relay this tunnel: the visitor and the client must connect directly, and the access fails when they cannot.</en-US>
 	</lang>
 </content>

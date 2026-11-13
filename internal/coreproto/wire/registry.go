@@ -73,6 +73,15 @@ var (
 	// KeyVisitorOnly in Hello marks a session that only visits: C=0, so a
 	// server that does not know it treats the session as any other.
 	KeyVisitorOnly = key(26, false, false)
+	// KeyNoRelay in a LINK reply says the tunnel forbids relaying, so the
+	// visitor must not open a PIPE: C=0, so a visitor that does not know it
+	// goes on as before and has its PIPE refused.
+	KeyNoRelay = key(28, false, false)
+	// KeyRelayWatch in a visitor's LINK asks the server to keep the stream
+	// open and send a relay state head (KeyNoRelay 0 or 1) whenever the
+	// tunnel's relay permission changes: C=0, a server that does not know it
+	// answers once and closes, as before.
+	KeyRelayWatch = key(29, false, false)
 )
 
 // Common is the table of the common fields.
@@ -81,7 +90,7 @@ var Common = newSchema(
 	one(KeyLinkID), many(KeyCap), one(KeyLabel), one(KeyAgent), one(KeyCode), one(KeyReason),
 	one(KeySeq), one(KeyTunnel), one(KeyAccess), one(KeyLinkKey), one(KeyConnMode), one(KeyScope),
 	one(KeyNameDest), many(KeyCompressAlg), one(KeyServerExit), one(KeyBackground),
-	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget), one(KeyVisitorOnly),
+	one(KeyServerAddr), one(KeyTargetType), one(KeyProviderTarget), one(KeyVisitorOnly), one(KeyNoRelay), one(KeyRelayWatch),
 )
 
 // Capabilities (§2.3).

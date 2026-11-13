@@ -107,6 +107,7 @@ curl -X POST "http://203.0.113.10:8081/client/list?auth_key=$SIGN&timestamp=$TS"
 | `auth` | 代理的账号认证，多行，每行 `账号=密码`；留空不启用 |
 | `proxy_protocol` | 向目标发送 Proxy Protocol：`0` 关闭，`1` V1，`2` V2 |
 | `local_proxy` | 代理到服务器本地（`0`/`1`），受 `allow_local_proxy` 约束 |
+| `no_relay` | 点对点隧道禁止经服务端中转（`0` 允许，默认；`1` 禁止，只能直连） |
 | `remark` | 备注 |
 | `compress` | 这条隧道的压缩算法：空为跟随客户端，`snappy`、`zstd`、`flate`，`off` 不压缩 |
 | `max_conn` | 最大连接数，`0` 不限 |

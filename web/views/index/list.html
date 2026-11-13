@@ -169,7 +169,7 @@
                 + (row.Mode == "secret" ? '<br/><br>' : '<b langtag="word-ishttp"></b>: <span langtag="word-' + row.IsHttp + '"></span>&emsp;<br/><br>')
             // Speed and traffic belong to the limits; the overview keeps what has no other place.
             usage += '<br/><br>' + npsList.detailColumns('#table', row, index, ['Speed', 'UploadRate', 'DownloadRate', 'DirectFlow', 'TotalFlow', 'ActualFlow', 'FlowRemain', 'TimeRemain', 'NowConn'])
-            var backend = proxyprotocol + npsList.detailColumns('#table', row, index, ['Target.LocalProxy'])
+            var backend = proxyprotocol + npsList.detailColumns('#table', row, index, ['Target.LocalProxy', 'NoRelay'])
             var tmp = resourceDetailSection('section-overview', npsList.detailColumns('#table', row, index, ['HttpProxy', 'Socks5Proxy', 'TargetType', 'Password']))
                 + resourceDetailSection('section-limits', usage)
                 + resourceDetailSection('section-transport', transport)
@@ -530,6 +530,19 @@
                     return copyable(value)
                 }
             },
+            {{ if or (not .type) (eq .type "secret") }}
+            {
+                field: 'NoRelay',
+                title: '<span langtag="word-allowrelay"></span>',
+                align: 'center',
+                halign: 'center',
+                detail: function (row) { return row.Mode == "secret" },
+                visible: false,
+                formatter: function (value, row, index) {
+                    return value ? '<span class="badge badge-badge" langtag="word-no"></span>' : '<span class="badge badge-primary" langtag="word-yes"></span>'
+                }
+            },
+            {{ end }}
             {{ if or (not .type) (eq .type "tcp") (eq .type "udp") (eq .type "secret") }}
             {
                 field: 'Target.LocalProxy',

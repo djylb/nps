@@ -208,3 +208,42 @@ func TestLinkOpenServerExit(t *testing.T) {
 		}
 	}
 }
+
+// NoRelay is C=0: a reply carrying it decodes under a table without it, as
+// a visitor that does not know the field reads it.
+func TestLinkReplyNoRelayIgnorable(t *testing.T) {
+	r := &LinkReply{LinkID: 9, LinkKey: make([]byte, 32), ConnMode: ConnDirect, NoRelay: true}
+	b := AppendLinkReply(r)
+	got, err := ParseLinkReply(b)
+	if err != nil || !got.NoRelay || got.ConnMode != ConnDirect {
+		t.Fatalf("%+v %v", got, err)
+	}
+	old := Schema{}
+	for id, row := range Common {
+		if id != KeyNoRelay.ID() {
+			old[id] = row
+		}
+	}
+	if KeyNoRelay.Critical() || KeyRelayWatch.Critical() {
+		t.Fatal("NoRelay is critical")
+	}
+	if err := old.Decode(b, func(Field) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRelayStateRoundTrip(t *testing.T) {
+	for _, v := range []bool{false, true} {
+		if got, err := ParseRelayState(AppendRelayState(v)); err != nil || got != v {
+			t.Fatalf("%v: %v %v", v, got, err)
+		}
+	}
+	o, err := AppendLinkOpen(&LinkOpen{Tunnel: 1, RelayWatch: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fields, _ := ParseOpenOp(o)
+	if got, err := ParseLinkOpen(fields); err != nil || !got.RelayWatch {
+		t.Fatalf("%+v %v", got, err)
+	}
+}

@@ -42,6 +42,7 @@ type TunnelView struct {
 	HttpProxy    bool
 	Socks5Proxy  bool
 	ReadOnly     bool
+	NoRelay      bool
 	DestAclMode  int
 	DestAclRules string
 	LocalPath    string
@@ -72,6 +73,7 @@ func (t *Tunnel) viewLocked() TunnelView {
 		LocalPath:    t.LocalPath,
 		StripPre:     t.StripPre,
 		ReadOnly:     t.ReadOnly,
+		NoRelay:      t.NoRelay,
 		Target:       t.Target,
 		MultiAccount: t.MultiAccount,
 		Source:       t.SourceLists.View(),

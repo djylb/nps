@@ -64,6 +64,8 @@ type Flow struct {
 	// owner holds the fields naming the entry of the flow (client, tunnel,
 	// host) for its quota_reached events.
 	owner atomic.Pointer[[]any]
+	// watchers are called after the limits or the traffic were set.
+	watchers map[*func()]struct{}
 	sync.RWMutex
 }
 
@@ -210,6 +212,42 @@ func satAdd(a, b int64) int64 {
 	return a + b
 }
 
+// Watch calls f, which must return quickly, after each change of the
+// limits of s or reset of its traffic, until the function it returns is
+// called. A nil s is never changed.
+func (s *Flow) Watch(f func()) (stop func()) {
+	if s == nil {
+		return func() {}
+	}
+	key := &f
+	s.Lock()
+	if s.watchers == nil {
+		s.watchers = map[*func()]struct{}{}
+	}
+	s.watchers[key] = struct{}{}
+	s.Unlock()
+	return func() {
+		s.Lock()
+		delete(s.watchers, key)
+		s.Unlock()
+	}
+}
+
+// changedLocked returns the watchers to call once s is unlocked.
+func (s *Flow) changedLocked() []func() {
+	fs := make([]func(), 0, len(s.watchers))
+	for f := range s.watchers {
+		fs = append(fs, *f)
+	}
+	return fs
+}
+
+func notify(fs []func()) {
+	for _, f := range fs {
+		f()
+	}
+}
+
 // ResetTraffic zeroes the inbound and outbound traffic, the direct traffic
 // included.
 func (s *Flow) ResetTraffic() {
@@ -219,7 +257,9 @@ func (s *Flow) ResetTraffic() {
 	s.DirectIn, s.DirectOut = 0, 0
 	s.traffic.Set(0, 0)
 	s.budget.Reset()
+	fs := s.changedLocked()
 	s.Unlock()
+	notify(fs)
 }
 
 // SetFlowLimit sets the traffic limit in MiB, 0 for none.
@@ -229,7 +269,9 @@ func (s *Flow) SetFlowLimit(limit int64) {
 	if s.started {
 		s.applyLimitLocked()
 	}
+	fs := s.changedLocked()
 	s.Unlock()
+	notify(fs)
 }
 
 // SetTimeLimit sets the time limit, the zero time for none.
@@ -239,7 +281,9 @@ func (s *Flow) SetTimeLimit(limit time.Time) {
 	if s.started {
 		s.budget.SetExpiry(limit)
 	}
+	fs := s.changedLocked()
 	s.Unlock()
+	notify(fs)
 }
 
 // SetLimits sets the traffic limit in MiB and the time limit together.
@@ -251,7 +295,9 @@ func (s *Flow) SetLimits(flowLimit int64, timeLimit time.Time) {
 		s.applyLimitLocked()
 		s.budget.SetExpiry(timeLimit)
 	}
+	fs := s.changedLocked()
 	s.Unlock()
+	notify(fs)
 }
 
 // FlowValues is a snapshot of a Flow. Used is the traffic its limit counts:
@@ -632,13 +678,16 @@ type Tunnel struct {
 	DestAclRules string // one rule per line
 	destAcl      *acl.Dest
 	SourceLists
-	NoStore      bool
-	IsHttp       bool
-	HttpProxy    bool
-	Socks5Proxy  bool
-	LocalPath    string
-	StripPre     string
-	ReadOnly     bool
+	NoStore     bool
+	IsHttp      bool
+	HttpProxy   bool
+	Socks5Proxy bool
+	LocalPath   string
+	StripPre    string
+	ReadOnly    bool
+	// NoRelay keeps the server from relaying a secret tunnel's links: the
+	// visitor and the provider must reach each other directly.
+	NoRelay      bool `json:",omitempty"`
 	Target       *Target
 	Routes       *RouteSet `json:"-"`
 	UserAuth     *MultiAccount
@@ -823,6 +872,7 @@ func (t *Tunnel) Clone() *Tunnel {
 		LocalPath:    t.LocalPath,
 		StripPre:     t.StripPre,
 		ReadOnly:     t.ReadOnly,
+		NoRelay:      t.NoRelay,
 		Target:       t.Target,
 		UserAuth:     t.UserAuth,
 		MultiAccount: t.MultiAccount,

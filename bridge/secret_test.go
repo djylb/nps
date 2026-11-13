@@ -126,3 +126,36 @@ func TestSecretGrantRevokedWithTunnel(t *testing.T) {
 		t.Fatal("revoked grant found")
 	}
 }
+
+// A tunnel that does not allow relaying refuses the relayed link of a
+// grant it still issues: the visitor may go direct.
+func TestSecretLinkRefusedWithoutRelay(t *testing.T) {
+	b := newTestP2PBridge(t, useTestDb(t))
+	task := newSecretTestTask(t, b)
+	task.NoRelay = true
+	granted, _ := attachTest(t, b, "pw", "node-1", nil)
+	if granted.Grant == "" {
+		t.Fatalf("attach = %+v", granted)
+	}
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		b.handleSecretLink(conn.NewConn(server), 1, "node-1")
+	}()
+	_ = client.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := legacy.WriteP2P(client, legacy.SecretOpen{Grant: granted.Grant}); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.WriteLink(client, conn.NewLink("tcp", "127.0.0.1:1", false, false, "127.0.0.1:2", false)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatalf("relayed link without relay: %v", err)
+	}
+	<-done
+	if n := b.RelayedSecretLinks(); n != 0 {
+		t.Fatalf("relayed %d", n)
+	}
+}

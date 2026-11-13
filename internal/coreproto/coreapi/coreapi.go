@@ -291,6 +291,15 @@ type LinkGrant struct {
 	// limits; the PIPE holds what release gives back. stop ends the PIPE
 	// when its quota expires.
 	Admit func(stop func()) (release func(), err error)
+	// RelayAllowed reports whether the server may relay the link: the
+	// tunnel allows it and its traffic quota is not spent. It is asked at
+	// LINK, at every PIPE and when a PIPE's limiter stops. nil allows
+	// relaying. Valid, unlike it, ends the whole link.
+	RelayAllowed func() bool
+	// WatchRelay calls changed, which returns at once, whenever what
+	// RelayAllowed reports may have changed, until stop is called. nil
+	// watches nothing.
+	WatchRelay func(changed func()) (stop func())
 	// Limiters limit and meter a relayed PIPE: from the visitor and to it.
 	Limiters func() (up, down Limiter)
 	// AddDirect counts the direct traffic its provider reported (§9.6): the

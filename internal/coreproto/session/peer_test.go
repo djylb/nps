@@ -101,6 +101,18 @@ type peerEnv struct {
 	admit    func(stop func()) (func(), error)
 	limiters func() (coreapi.Limiter, coreapi.Limiter)
 	exitErr  error
+	// noRelay is what the grant's RelayAllowed denies.
+	noRelay atomic.Bool
+	// relayWatch is the changed callback of the last grant's WatchRelay.
+	relayWatch atomic.Pointer[func()]
+}
+
+// setNoRelay changes what RelayAllowed reports and tells the watch.
+func (p *peerEnv) setNoRelay(v bool) {
+	p.noRelay.Store(v)
+	if f := p.relayWatch.Load(); f != nil {
+		(*f)()
+	}
 }
 
 // allowAll is the exit of a provider that reaches everything.
@@ -141,6 +153,11 @@ func startPeerTarget(t *testing.T, serverExit bool, lanes int, usageEvery time.D
 				Policy: coreapi.LinkPolicy{Targets: []string{p.echo}},
 				Valid:  p.valid.Load,
 				Admit:  p.admit, Limiters: p.limiters,
+				RelayAllowed: func() bool { return !p.noRelay.Load() },
+				WatchRelay: func(changed func()) func() {
+					p.relayWatch.Store(&changed)
+					return func() { p.relayWatch.CompareAndSwap(&changed, nil) }
+				},
 				AddDirect: func(in, out uint64) {
 					p.directIn.Add(in)
 					p.directOut.Add(out)
@@ -295,11 +312,16 @@ func TestPeerRevokedByServer(t *testing.T) {
 
 func linkReply(t *testing.T, ctx context.Context, s *clientSession) wire.LinkReply {
 	t.Helper()
+	return linkReplyMode(t, ctx, s, wire.ConnRelay)
+}
+
+func linkReplyMode(t *testing.T, ctx context.Context, s *clientSession, mode uint64) wire.LinkReply {
+	t.Helper()
 	ekm, err := s.zc.ExportKeyingMaterial(wire.AccessExportLabel, nil, wire.AccessExportLen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, _ := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess([]byte("secret"), ekm), ConnMode: wire.ConnRelay})
+	info, _ := wire.AppendLinkOpen(&wire.LinkOpen{Access: wire.AppendAccess([]byte("secret"), ekm), ConnMode: mode})
 	st, err := s.zc.OpenStreamSync(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -649,6 +671,7 @@ func (quotaLimiter) Charge(int) {}
 
 // A relay pipe stopped by a quota ends the link at once, well before the
 // nested session's resume timeout.
+// An expiry (Valid false) ends the whole link.
 func TestPeerQuotaEndsLink(t *testing.T) {
 	p := startPeer(t, false)
 	lim := quotaLimiter{&p.valid}
