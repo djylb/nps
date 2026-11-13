@@ -185,7 +185,12 @@ func saveSessionCookie(session *sessions.Session, r *http.Request, w http.Respon
 // over plain http from any host but localhost, so the cookie is Secure only
 // then; a forged header can only make it stricter.
 func secureRequest(r *http.Request) bool {
-	return r != nil && (r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
+	if r == nil {
+		return false
+	}
+	// a chain of proxies lists one value each; the first is the browser's
+	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
+	return r.TLS != nil || strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 // cookieRecorder collects the headers a session save sets.

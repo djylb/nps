@@ -745,7 +745,7 @@ func TestGeneratorSamples(t *testing.T) {
 	for _, s := range loadGeneratorSamples(t) {
 		t.Run(s.Name, func(t *testing.T) {
 			one := plan(t, s, shellWords(t, s.One, s.Shell)).Profiles[0]
-			if one.Hosting != (s.Name == "resident client") {
+			if one.Hosting != (s.Name == "as client") {
 				t.Fatalf("hosting %v", one.Hosting)
 			}
 			multi := plan(t, s, shellWords(t, s.Multi, s.Shell)).Profiles[0]

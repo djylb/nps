@@ -55,7 +55,7 @@
 
     function defaultForm(ctx) {
         prepare(ctx);
-        return {run: 'temp', os: ctx._windows ? 'powershell' : 'linux', bin: 'dot', binPath: '', named: false, name: '', resident: false, pipes: 'single', scheduler: '',
+        return {run: 'temp', os: ctx._windows ? 'powershell' : 'linux', bin: 'dot', binPath: '', named: false, name: '', asClient: false, pipes: 'single', scheduler: '',
             paths: [newPath(ctx._primary)], access: ctx.kind === 'tunnel' ? [newAccess(ctx)] : []};
     }
 
@@ -66,7 +66,7 @@
         if (!s || typeof s !== 'object') return form;
         ['run', 'os', 'bin', 'binPath', 'pipes', 'scheduler', 'name'].forEach(function (k) { if (typeof s[k] === 'string') form[k] = s[k]; });
         form.named = !!s.named;
-        form.resident = !!s.resident;
+        form.asClient = !!s.asClient;
         if (Array.isArray(s.paths) && s.paths.length) form.paths = s.paths.map(function (p) {
             var o = assign(newPath(CARRIERS.indexOf(p.carrier) >= 0 ? p.carrier : ctx._primary), p);
             // bidi alone is what no dirs means
@@ -113,7 +113,7 @@
         var s = q.map(function (kv) { return kv[0] + '=' + enc(kv[1]); }).join('&');
         if (form.pipes === 'multi') s += '&pipes=multi';
         if (trim(form.scheduler)) s += '&scheduler_up=' + enc(form.scheduler);
-        if (residentOf(form, ctx)) s += '&role=client,visitor';
+        if (asClientOf(form, ctx)) s += '&role=client,visitor';
         form.paths.slice(1).forEach(function (p) {
             var e = effective(p, ctx);
             var inner = pathParams(p, e, multi).map(function (kv) { return kv[0] + '=' + enc(kv[1]); }).join(';');
@@ -125,9 +125,9 @@
     }
 
     function connName(form) { return form.named ? trim(form.name) : ''; }
-    // residentOf: the connection also joins as an ordinary client. A visitor
+    // asClientOf: the connection also joins as an ordinary client. A visitor
     // key cannot, and without local accesses it is one anyway.
-    function residentOf(form, ctx) { return !!form.resident && !ctx.visitorKey && form.access.length > 0; }
+    function asClientOf(form, ctx) { return !!form.asClient && !ctx.visitorKey && form.access.length > 0; }
     function accessKey(a, ctx) { return ctx.kind === 'tunnel' ? ctx.password || '' : trim(a.key); }
     function accessArg(a, ctx, via) {
         var s = a.type + '://' + (a.ip.indexOf(':') >= 0 ? '[' + a.ip + ']' : a.ip) + ':' + trim(a.port) + '?access=' + encKey(accessKey(a, ctx));
@@ -169,7 +169,9 @@
         var multi = form.paths.length > 1;
         var doc = {vkey: ctx.vkey || '', paths: form.paths.map(function (p) {
             var e = effective(p, ctx), o = {url: e.carrier + '://' + hostPort(e) + e.path};
+            // the schema has no admit_key field: it rides in the query of url
             pathParams(p, e, multi).forEach(function (kv) {
+                if (kv[0] === 'admit_key') { o.url += '?admit_key=' + enc(kv[1]); return; }
                 var n = Number(kv[1]);
                 o[kv[0]] = ['tier', 'weight', 'count'].indexOf(kv[0]) >= 0 ? n : kv[0] === 'standby' ? true : kv[1];
             });
@@ -179,7 +181,7 @@
         if (form.pipes === 'multi') session.max_pipes = 2;
         if (trim(form.scheduler)) session.scheduler_up = trim(form.scheduler);
         if (Object.keys(session).length) doc.session = session;
-        if (residentOf(form, ctx)) doc.role = 'client,visitor';
+        if (asClientOf(form, ctx)) doc.role = 'client,visitor';
         if (form.access.length) doc.access = form.access.map(function (a) {
             var o = {access: accessKey(a, ctx), local_type: a.type, local_port: Number(a.port) || 0};
             if (trim(a.ip)) o.local_ip = trim(a.ip);
@@ -446,7 +448,7 @@
                 + '</div></details>';
             html += '<h4 class="lg-title"><span langtag="lg-access"></span></h4>' + (ctx.visitorKey ? '<p class="small text-muted" langtag="lg-note-visitor"></p>' : '') + form.access.map(accessCard).join('')
                 + '<button type="button" class="btn btn-outline btn-primary btn-sm" data-act="access-add"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-access"></span></button>';
-            if (form.access.length && !ctx.visitorKey) html += '<div class="lg-field"><label><input type="checkbox" data-bind="resident"' + (form.resident ? ' checked' : '') + '> <span langtag="lg-resident"></span></label>' + hint('lg-hint-resident') + '</div>';
+            if (form.access.length && !ctx.visitorKey) html += '<div class="lg-field"><label><input type="checkbox" data-bind="asClient"' + (form.asClient ? ' checked' : '') + '> <span langtag="lg-as-client"></span></label>' + hint('lg-hint-as-client') + '</div>';
             html += '<h4 class="lg-title"><span langtag="lg-output"></span></h4><div class="alert alert-danger lg-errs" role="alert" hidden><span langtag="lg-errs"></span></div>'
                 + '<p class="text-warning small" langtag="lg-note-secret"></p><div id="lg-outputs"></div>';
             html += '<div class="lg-actions"><button type="button" class="btn btn-primary" data-act="save"><span langtag="lg-save"></span></button> '

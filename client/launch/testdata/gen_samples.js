@@ -5,7 +5,7 @@ const G = require(path.join(__dirname, '../../../web/static/js/launch-generator.
 const carriers = {
   tcp: 'npc://@1.2.3.4:8024?type=tcp', tls: 'npc://@1.2.3.4:8025?type=tls', quic: 'npc://@1.2.3.4:8025?type=quic&alpn=h3',
   ws: 'npc://@1.2.3.4:8026/ws?type=ws', wss: 'npc://@[2001:db8::1]:8027/ws?type=wss',
-  auto: 'npc://@1.2.3.4:8028/ws?type=auto', https: 'npc://@1.2.3.4:8029/ws?type=https',
+  auto: 'npc://@1.2.3.4:8028/ws?type=auto&admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f', https: 'npc://@1.2.3.4:8029/ws?type=https',
 };
 const tunnel = () => ({kind: 'tunnel', vkey: 'v k@x$', password: 'p&"1!', defaultTarget: '10.0.0.1:22', carriers, primary: carriers.tls, bin: './npc'});
 const client = () => ({kind: 'client', vkey: 'vkey', carriers, primary: carriers.tcp, bin: './npc'});
@@ -44,8 +44,8 @@ const cases = {
     o.paths.push(Object.assign({}, o.paths[0], {carrier: 'tls', dirs: 'down', tier: '2', weight: '', count: ''}));
     o.access[0].mode = 'direct'; o.access[0].local_proxy = true;
   }],
-  'resident client': [tunnel(), o => { o.resident = true; o.named = true; o.name = 'home'; }],
-  'resident client visitor key': [Object.assign(tunnel(), {visitorKey: true}), o => { o.resident = true; }],
+  'as client': [tunnel(), o => { o.asClient = true; o.named = true; o.name = 'home'; }],
+  'as client visitor key': [Object.assign(tunnel(), {visitorKey: true}), o => { o.asClient = true; }],
   'docker': [client(), o => { o.run = 'docker'; o.os = 'cmd'; }],
 };
 const out = Object.keys(cases).sort().map(name => {

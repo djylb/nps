@@ -48,8 +48,12 @@ type ManagementPageCommonData struct {
 	// ws, http); MixQUICALPN is the ALPN its UDP side takes for quic.
 	MixPlain    bool
 	MixQUICALPN string
-	Username    string
-	BridgeType  string
+	// MixUDPPort is the port quic reaches the mixed port on: the port it
+	// listens on, as a port mapping or proxy given in bridge_addr (MixPort)
+	// usually carries TCP only.
+	MixUDPPort string
+	Username   string
+	BridgeType string
 	// VisitorVKey, when set, is the vkey the access commands show.
 	VisitorVKey   string
 	BridgeAddr    string
@@ -165,8 +169,10 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 		}
 	}
 	mix("tls", "", "")
-	if d.MixQUICALPN != "" {
-		mix("quic", "", "alpn="+url.QueryEscape(d.MixQUICALPN))
+	if d.MixQUICALPN != "" && d.MixUDPPort != "" {
+		if _, ok := urls["quic"]; !ok {
+			add("quic", d.MixIP, d.MixUDPPort, "", "alpn="+url.QueryEscape(d.MixQUICALPN))
+		}
 	}
 	if d.WSPath != "" {
 		mix("wss", d.WSPath, withBinary(""))

@@ -265,6 +265,7 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		MixPort:        mixDisplayPort(cfg),
 		MixPlain:       cfg.Network.MixPlain,
 		MixQUICALPN:    firstString(cfg.Network.NewProtocolQUICALPN),
+		MixUDPPort:     pageIntString(cfg.Network.MixPort),
 		ServerUpdate:   info.CanUpdate,
 		Username:       strings.TrimSpace(input.Username),
 		BridgeType:     bridge.Primary.Type,

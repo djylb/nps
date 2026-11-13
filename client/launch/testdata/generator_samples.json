@@ -1,5 +1,21 @@
 [
  {
+  "name": "as client",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" \\\n  -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"profiles\": {\n    \"home\": {\n      \"vkey\": \"v k@x$\",\n      \"paths\": [\n        {\n          \"url\": \"tls://1.2.3.4:8025\"\n        }\n      ],\n      \"role\": \"client,visitor\",\n      \"access\": [\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"tcp\",\n          \"local_port\": 2000\n        }\n      ]\n    }\n  }\n}",
+  "base64": "./npc -launch=eyJwcm9maWxlcyI6eyJob21lIjp7InZrZXkiOiJ2IGtAeCQiLCJwYXRocyI6W3sidXJsIjoidGxzOi8vMS4yLjMuNDo4MDI1In1dLCJyb2xlIjoiY2xpZW50LHZpc2l0b3IiLCJhY2Nlc3MiOlt7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwfV19fX0"
+ },
+ {
+  "name": "as client visitor key",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"tcp://:2000?access=p%26%221%21\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
+  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSJ9XSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoidGNwIiwibG9jYWxfcG9ydCI6MjAwMH1dfQ"
+ },
+ {
   "name": "bash accounts",
   "shell": "bash",
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
@@ -26,10 +42,10 @@
  {
   "name": "bridge path default",
   "shell": "bash",
-  "one": "./npc -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" -L=\"tcp://:2000?access=p%26%221%21\"",
-  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
-  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"auto://1.2.3.4:8028/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"https://1.2.3.4:8029/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/own\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/ws\",\n      \"subprotocol\": \"other\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
-  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93cyIsInN1YnByb3RvY29sIjoiYmluYXJ5In0seyJ1cmwiOiJhdXRvOi8vMS4yLjMuNDo4MDI4L3dzIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6Imh0dHBzOi8vMS4yLjMuNDo4MDI5L3dzIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6IndzOi8vMS4yLjMuNDo4MDI2L293biJ9LHsidXJsIjoid3M6Ly8xLjIuMy40OjgwMjYvd3MiLCJzdWJwcm90b2NvbCI6Im90aGVyIn1dLCJhY2Nlc3MiOlt7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwfV19"
+  "one": "./npc -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary;admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" -L=\"tcp://:2000?access=p%26%221%21\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary;admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"auto://1.2.3.4:8028/ws?admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"https://1.2.3.4:8029/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/own\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/ws\",\n      \"subprotocol\": \"other\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
+  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93cyIsInN1YnByb3RvY29sIjoiYmluYXJ5In0seyJ1cmwiOiJhdXRvOi8vMS4yLjMuNDo4MDI4L3dzP2FkbWl0X2tleT0wZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmMGYwZjBmIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6Imh0dHBzOi8vMS4yLjMuNDo4MDI5L3dzIiwic3VicHJvdG9jb2wiOiJiaW5hcnkifSx7InVybCI6IndzOi8vMS4yLjMuNDo4MDI2L293biJ9LHsidXJsIjoid3M6Ly8xLjIuMy40OjgwMjYvd3MiLCJzdWJwcm90b2NvbCI6Im90aGVyIn1dLCJhY2Nlc3MiOlt7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwfV19"
  },
  {
   "name": "client default",
@@ -70,22 +86,6 @@
   "multi": "& \"C:\\My Dir\\npc.exe\" `\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" `\n  -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" `\n  -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\",\n      \"alpn\": \"h2\",\n      \"count\": 2\n    },\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/w s\",\n      \"http\": \"h2,http/1.1\",\n      \"tier\": 1,\n      \"weight\": 3\n    },\n    {\n      \"url\": \"quic://b.example:9\",\n      \"sni\": \"c;d&e\",\n      \"standby\": true\n    }\n  ],\n  \"session\": {\n    \"max_pipes\": 2,\n    \"scheduler_up\": \"spread_eta\"\n  },\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"mixed\",\n      \"local_port\": 1080,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a b\",\n          \"pass\": \"x:y&z\"\n        },\n        {\n          \"user\": \"c\",\n          \"pass\": \"2\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"::1\",\n      \"target\": \"10.0.0.9:80\",\n      \"conn_mode\": \"relay\",\n      \"local_proxy\": true\n    }\n  ]\n}",
   "base64": "& \"C:\\My Dir\\npc.exe\" -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSIsImFscG4iOiJoMiIsImNvdW50IjoyfSx7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93IHMiLCJodHRwIjoiaDIsaHR0cC8xLjEiLCJ0aWVyIjoxLCJ3ZWlnaHQiOjN9LHsidXJsIjoicXVpYzovL2IuZXhhbXBsZTo5Iiwic25pIjoiYztkJmUiLCJzdGFuZGJ5Ijp0cnVlfV0sInNlc3Npb24iOnsibWF4X3BpcGVzIjoyLCJzY2hlZHVsZXJfdXAiOiJzcHJlYWRfZXRhIn0sImFjY2VzcyI6W3siYWNjZXNzIjoicCZcIjEhIiwibG9jYWxfdHlwZSI6Im1peGVkIiwibG9jYWxfcG9ydCI6MTA4MCwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJhdXRoIjpbeyJ1c2VyIjoiYSBiIiwicGFzcyI6Ing6eSZ6In0seyJ1c2VyIjoiYyIsInBhc3MiOiIyIn1dfSx7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwLCJsb2NhbF9pcCI6Ijo6MSIsInRhcmdldCI6IjEwLjAuMC45OjgwIiwiY29ubl9tb2RlIjoicmVsYXkiLCJsb2NhbF9wcm94eSI6dHJ1ZX1dfQ"
- },
- {
-  "name": "resident client",
-  "shell": "bash",
-  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
-  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" \\\n  -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
-  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"profiles\": {\n    \"home\": {\n      \"vkey\": \"v k@x$\",\n      \"paths\": [\n        {\n          \"url\": \"tls://1.2.3.4:8025\"\n        }\n      ],\n      \"role\": \"client,visitor\",\n      \"access\": [\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"tcp\",\n          \"local_port\": 2000\n        }\n      ]\n    }\n  }\n}",
-  "base64": "./npc -launch=eyJwcm9maWxlcyI6eyJob21lIjp7InZrZXkiOiJ2IGtAeCQiLCJwYXRocyI6W3sidXJsIjoidGxzOi8vMS4yLjMuNDo4MDI1In1dLCJyb2xlIjoiY2xpZW50LHZpc2l0b3IiLCJhY2Nlc3MiOlt7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwfV19fX0"
- },
- {
-  "name": "resident client visitor key",
-  "shell": "bash",
-  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"tcp://:2000?access=p%26%221%21\"",
-  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
-  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
-  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSJ9XSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoidGNwIiwibG9jYWxfcG9ydCI6MjAwMH1dfQ"
  },
  {
   "name": "service named",

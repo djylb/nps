@@ -137,6 +137,7 @@ func main() {
 		version.PrintVersion(legacy.CoreVersion(legacy.LatestIndex))
 		return
 	}
+	launch.URLAccess = *urlAccess
 	if cmd == "launch" {
 		setCoreDefaults()
 		os.Exit(launchCommand(flag.CommandLine, args[1:]))
@@ -145,7 +146,6 @@ func main() {
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
-	launch.URLAccess = *urlAccess
 	if *urlAccess {
 		cfgLog.Warn("launch URLs may define access: the content of those URLs decides which local ports npc opens")
 	}

@@ -63,15 +63,17 @@ func TestSessionSavesOneCookie(t *testing.T) {
 // through a proxy saying so, and not over plain http.
 func TestSessionCookieSecureOverHTTPS(t *testing.T) {
 	for name, tc := range map[string]struct {
-		tls, forwarded bool
-		want           bool
-	}{"http": {}, "tls": {tls: true, want: true}, "proxy https": {forwarded: true, want: true}} {
+		tls       bool
+		forwarded string
+		want      bool
+	}{"http": {}, "tls": {tls: true, want: true}, "proxy https": {forwarded: "https", want: true},
+		"proxy chain": {forwarded: "https, http", want: true}, "proxy http": {forwarded: "http"}} {
 		c, rec := newSessionTestContext(t)
 		if tc.tls {
 			c.Request = httptest.NewRequest(http.MethodGet, "https://panel.test/", nil)
 		}
-		if tc.forwarded {
-			c.Request.Header.Set("X-Forwarded-Proto", "https")
+		if tc.forwarded != "" {
+			c.Request.Header.Set("X-Forwarded-Proto", tc.forwarded)
 		}
 		if err := SetSessionValue(c, "a", "1"); err != nil {
 			t.Fatal(err)

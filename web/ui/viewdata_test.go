@@ -139,13 +139,13 @@ func TestManagementPageBridgeURL(t *testing.T) {
 // A carrier without a port of its own falls back to the mixed port when that
 // port takes it; one with its own port keeps it.
 func TestManagementPageLinkURLsMix(t *testing.T) {
-	d := ManagementPageCommonData{MixIP: "203.0.113.1", MixPort: "8024", MixQUICALPN: "h3", WSPath: "/ws", TLSIP: "203.0.113.2", TLSPort: "9000"}
+	d := ManagementPageCommonData{MixIP: "203.0.113.1", MixPort: "443", MixUDPPort: "8024", MixQUICALPN: "h3", WSPath: "/ws", TLSIP: "203.0.113.2", TLSPort: "9000"}
 	want := map[string]string{
-		"auto":  "npc://@203.0.113.1:8024/ws?type=auto&subprotocol=binary",
+		"auto":  "npc://@203.0.113.1:443/ws?type=auto&subprotocol=binary",
 		"tls":   "npc://@203.0.113.2:9000?type=tls",
 		"quic":  "npc://@203.0.113.1:8024?type=quic&alpn=h3",
-		"wss":   "npc://@203.0.113.1:8024/ws?type=wss&subprotocol=binary",
-		"https": "npc://@203.0.113.1:8024/ws?type=https&subprotocol=binary",
+		"wss":   "npc://@203.0.113.1:443/ws?type=wss&subprotocol=binary",
+		"https": "npc://@203.0.113.1:443/ws?type=https&subprotocol=binary",
 	}
 	got := d.LinkURLs()
 	for _, k := range []string{"tcp", "ws", "http"} {
@@ -156,7 +156,7 @@ func TestManagementPageLinkURLsMix(t *testing.T) {
 	d.MixPlain = true
 	plain := d.LinkURLs()
 	want["tcp"], want["ws"], want["http"] = plain["tcp"], plain["ws"], plain["http"]
-	if plain["tcp"] != "npc://@203.0.113.1:8024?type=tcp" || plain["ws"] != "npc://@203.0.113.1:8024/ws?type=ws&subprotocol=binary" {
+	if plain["tcp"] != "npc://@203.0.113.1:443?type=tcp" || plain["ws"] != "npc://@203.0.113.1:443/ws?type=ws&subprotocol=binary" {
 		t.Errorf("with mix_plain: tcp %q, ws %q", plain["tcp"], plain["ws"])
 	}
 	for k, v := range want {
