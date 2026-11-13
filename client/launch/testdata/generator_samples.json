@@ -72,6 +72,22 @@
   "base64": "& \"C:\\My Dir\\npc.exe\" -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSIsImFscG4iOiJoMiIsImNvdW50IjoyfSx7InVybCI6IndzczovL1syMDAxOmRiODo6MV06ODAyNy93IHMiLCJodHRwIjoiaDIsaHR0cC8xLjEiLCJ0aWVyIjoxLCJ3ZWlnaHQiOjN9LHsidXJsIjoicXVpYzovL2IuZXhhbXBsZTo5Iiwic25pIjoiYztkJmUiLCJzdGFuZGJ5Ijp0cnVlfV0sInNlc3Npb24iOnsibWF4X3BpcGVzIjoyLCJzY2hlZHVsZXJfdXAiOiJzcHJlYWRfZXRhIn0sImFjY2VzcyI6W3siYWNjZXNzIjoicCZcIjEhIiwibG9jYWxfdHlwZSI6Im1peGVkIiwibG9jYWxfcG9ydCI6MTA4MCwibG9jYWxfaXAiOiIxMjcuMC4wLjEiLCJhdXRoIjpbeyJ1c2VyIjoiYSBiIiwicGFzcyI6Ing6eSZ6In0seyJ1c2VyIjoiYyIsInBhc3MiOiIyIn1dfSx7ImFjY2VzcyI6InAmXCIxISIsImxvY2FsX3R5cGUiOiJ0Y3AiLCJsb2NhbF9wb3J0IjoyMDAwLCJsb2NhbF9pcCI6Ijo6MSIsInRhcmdldCI6IjEwLjAuMC45OjgwIiwiY29ubl9tb2RlIjoicmVsYXkiLCJsb2NhbF9wcm94eSI6dHJ1ZX1dfQ"
  },
  {
+  "name": "resident",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&resident=true#home\" -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&resident=true#home\" \\\n  -L=\"tcp://:2000?access=p%26%221%21&via=home\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"profiles\": {\n    \"home\": {\n      \"vkey\": \"v k@x$\",\n      \"paths\": [\n        {\n          \"url\": \"tls://1.2.3.4:8025\"\n        }\n      ],\n      \"resident\": true,\n      \"access\": [\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"tcp\",\n          \"local_port\": 2000\n        }\n      ]\n    }\n  }\n}",
+  "base64": "./npc -launch=eyJwcm9maWxlcyI6eyJob21lIjp7InZrZXkiOiJ2IGtAeCQiLCJwYXRocyI6W3sidXJsIjoidGxzOi8vMS4yLjMuNDo4MDI1In1dLCJyZXNpZGVudCI6dHJ1ZSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoidGNwIiwibG9jYWxfcG9ydCI6MjAwMH1dfX19"
+ },
+ {
+  "name": "resident visitor key",
+  "shell": "bash",
+  "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"tcp://:2000?access=p%26%221%21\"",
+  "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"tcp://:2000?access=p%26%221%21\"",
+  "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000\n    }\n  ]\n}",
+  "base64": "./npc -launch=eyJ2a2V5IjoidiBrQHgkIiwicGF0aHMiOlt7InVybCI6InRsczovLzEuMi4zLjQ6ODAyNSJ9XSwiYWNjZXNzIjpbeyJhY2Nlc3MiOiJwJlwiMSEiLCJsb2NhbF90eXBlIjoidGNwIiwibG9jYWxfcG9ydCI6MjAwMH1dfQ"
+ },
+ {
   "name": "service named",
   "shell": "bash",
   "one": "./npc install -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls#ho%20me\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2&via=ho%20me\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true&via=ho%20me\"",

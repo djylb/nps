@@ -37,8 +37,9 @@ const (
 type Profile struct {
 	Name   string
 	Direct bool
-	// Hosting: an access-less writing shares this connection, so besides
-	// its local accesses it runs as an ordinary client.
+	// Hosting: an access-less writing shares this connection, or it is
+	// written resident, so besides its local accesses it runs as an
+	// ordinary client.
 	Hosting bool
 	// auto: Name was assigned, the source wrote none.
 	auto bool

@@ -162,7 +162,7 @@ func (p *Profile) identity() (key, paths string) {
 
 // sessionKeys are the [common] keys that apply to the whole connection.
 var sessionKeys = []string{"pipes", "scheduler_up", "session_max_lanes", "relay_idle", "p2p_visitor_keep_server",
-	"session_resume_timeout", "session_usage_interval", "new_protocol_pin", "proxy_url", "local_ip"}
+	"resident", "session_resume_timeout", "session_usage_interval", "new_protocol_pin", "proxy_url", "local_ip"}
 
 func sessionValue(c *config.CommonConfig, key string) string {
 	switch key {
@@ -176,6 +176,8 @@ func sessionValue(c *config.CommonConfig, key string) string {
 		return strconv.Itoa(c.RelayIdle)
 	case "p2p_visitor_keep_server":
 		return strconv.FormatBool(c.KeepServer)
+	case "resident":
+		return strconv.FormatBool(c.Resident)
 	case "session_resume_timeout":
 		return strconv.Itoa(c.ResumeTimeout)
 	case "session_usage_interval":
@@ -202,6 +204,8 @@ func setSession(dst, src *config.CommonConfig, key string) {
 		dst.RelayIdle = src.RelayIdle
 	case "p2p_visitor_keep_server":
 		dst.KeepServer = src.KeepServer
+	case "resident":
+		dst.Resident = src.Resident
 	case "session_resume_timeout":
 		dst.ResumeTimeout = src.ResumeTimeout
 	case "session_usage_interval":
@@ -377,7 +381,7 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 			return nil, fmt.Errorf("connection %s has both tunnels and local access from different sources: run them as separate connections", p.label())
 		}
 		if len(p.Config.LocalServer) > 0 {
-			p.Hosting = slices.ContainsFunc(p.writings, func(w writing) bool { return !w.access })
+			p.Hosting = p.Config.CommonConfig.Resident || slices.ContainsFunc(p.writings, func(w writing) bool { return !w.access })
 		}
 		out[i] = *p
 	}

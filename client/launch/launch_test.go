@@ -545,6 +545,39 @@ func TestRoleFromAccess(t *testing.T) {
 	}
 }
 
+func TestRoleResident(t *testing.T) {
+	ctx := context.Background()
+	load := func(links, ls []string) Profile {
+		t.Helper()
+		plan, err := NewComposer(sources(links...), locals(t, ls...)).Load(ctx)
+		if err != nil || len(plan.Profiles) != 1 {
+			t.Fatalf("%v %+v", err, plan)
+		}
+		return plan.Profiles[0]
+	}
+	if p := load([]string{"npc://k@a:1?resident=true"}, []string{"tcp://:1?access=p"}); p.Direct || !p.Hosting {
+		t.Fatalf("link: %+v", p)
+	}
+	if p := load([]string{"npc://k@a:1?resident=false"}, []string{"tcp://:1?access=p"}); p.Hosting {
+		t.Fatalf("resident=false: %+v", p)
+	}
+	// without local accesses it is an ordinary client anyway
+	if p := load([]string{"npc://k@a:1?resident=true"}, nil); !p.Direct || p.Hosting {
+		t.Fatalf("no access: %+v", p)
+	}
+	doc := writeFile(t, "d", `{"vkey":"k","resident":true,"paths":[{"url":"tcp://a:1"}],"access":[{"access":"x","local_port":1}]}`)
+	if p := load([]string{"@" + doc}, nil); !p.Hosting {
+		t.Fatalf("file: %+v", p)
+	}
+	if _, err := NewComposer(sources("npc://k@a:1?resident=true", "npc://k@a:1?resident=false"), nil).Load(ctx); err == nil {
+		t.Fatal("conflicting resident accepted")
+	}
+	// keys of an access stay errors in a link
+	if _, err := NewComposer(sources("npc://k@a:1?resident=true&access=p"), nil).Load(ctx); err == nil {
+		t.Fatal("access key in a link accepted")
+	}
+}
+
 // shellWords splits a generated command as the named shell would.
 func shellWords(t *testing.T, line, shell string) []string {
 	t.Helper()
@@ -656,6 +689,9 @@ func TestGeneratorSamples(t *testing.T) {
 	for _, s := range loadGeneratorSamples(t) {
 		t.Run(s.Name, func(t *testing.T) {
 			one := plan(t, s, shellWords(t, s.One, s.Shell)).Profiles[0]
+			if one.Hosting != (s.Name == "resident") {
+				t.Fatalf("hosting %v", one.Hosting)
+			}
 			multi := plan(t, s, shellWords(t, s.Multi, s.Shell)).Profiles[0]
 			packed := plan(t, s, shellWords(t, s.Base64, s.Shell)).Profiles[0]
 			got, err := Resolve(ctx, "@"+writeFile(t, "g.jsonc", s.JSONC))
@@ -663,7 +699,7 @@ func TestGeneratorSamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			for what, p := range map[string]Profile{"multi": multi, "base64": packed, "jsonc": got[0]} {
-				if p.Key() != one.Key() || len(p.Config.LocalServer) != len(one.Config.LocalServer) || p.Config.CommonConfig.Pipes != one.Config.CommonConfig.Pipes {
+				if p.Key() != one.Key() || len(p.Config.LocalServer) != len(one.Config.LocalServer) || p.Config.CommonConfig.Pipes != one.Config.CommonConfig.Pipes || p.Config.CommonConfig.Resident != one.Config.CommonConfig.Resident {
 					t.Fatalf("%s differs: %+v %+v", what, p.Config.CommonConfig, one.Config.CommonConfig)
 				}
 				for i, l := range p.Config.LocalServer {

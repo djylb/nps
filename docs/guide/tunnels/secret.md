@@ -44,6 +44,15 @@
 
 > **建议：** 访问端不是你自己的设备时，在 `nps.conf` 里设置 `visitor_vkey`（一段足够长的随机字符串，不要和任何客户端密钥相同）。设置后网页生成的命令会使用它，不用把客户端自己的 vkey 交给访问者；这个密钥只能访问点对点隧道，不能注册隧道或拉取配置。
 
+访问端本身也是一个客户端、还要提供自己的隧道时，在链接里加 `resident=true`，同一条连接既作普通客户端，又打开本地访问（网页上勾选“同时作为常驻客户端”）：
+
+```bash
+./npc -launch="npc://YOUR_VKEY@203.0.113.10:8024?type=tls&resident=true" \
+  -L="tcp_udp://:2000?access=YOUR_ACCESS_KEY&target=192.168.1.10:22&conn_mode=auto"
+```
+
+这里的 `YOUR_VKEY` 必须是这台访问端自己的客户端密钥，`visitor_vkey` 不行。
+
 `-L` 的完整写法见 [npc 启动参数](/reference/npc-launch.md)。
 
 **不要公开这条命令**，里面含有明文密钥，拿到的人可以访问提供端所在内网。
