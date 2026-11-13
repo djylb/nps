@@ -26,6 +26,34 @@
 		<zh-CN>这台 npc 同时作为普通客户端在线，可以提供隧道，空闲时不断开（链接参数 role=client,visitor）</zh-CN>
 		<en-US>This npc also stays online as an ordinary client that can provide tunnels, and does not disconnect when idle (link parameter role=client,visitor)</en-US>
 	</lang>
+	<lang id="lg-carrier-addr">
+		<zh-CN>（需填写地址）</zh-CN>
+		<en-US> (enter an address)</en-US>
+	</lang>
+	<lang id="lg-errs">
+		<zh-CN>表单有错误，改正标红的项后命令才能使用。</zh-CN>
+		<en-US>The form has errors; fix the fields marked in red before using the command.</en-US>
+	</lang>
+	<lang id="lg-note-jsonc">
+		<zh-CN>保存为 npc.jsonc，用 npc -launch=@npc.jsonc 启动。</zh-CN>
+		<en-US>Save as npc.jsonc and start with npc -launch=@npc.jsonc.</en-US>
+	</lang>
+	<lang id="lg-note-base64">
+		<zh-CN>内容与配置文件相同，便于在不方便处理引号的环境中粘贴。</zh-CN>
+		<en-US>The same content as the configuration file, for places where quotes are awkward to paste.</en-US>
+	</lang>
+	<lang id="lg-note-visitor">
+		<zh-CN>当前使用访客密钥：这台 npc 只能访问隧道，不作为客户端在线。</zh-CN>
+		<en-US>The visitor key is in use: this npc can only reach tunnels and is not online as a client.</en-US>
+	</lang>
+	<lang id="lg-hint-norelay">
+		<zh-CN>此隧道禁止中转，只能直连。</zh-CN>
+		<en-US>This tunnel does not allow relaying; it connects directly only.</en-US>
+	</lang>
+	<lang id="lg-err-norelay">
+		<zh-CN>此隧道禁止中转，不能选“中转”。</zh-CN>
+		<en-US>This tunnel does not allow relaying; relay cannot be chosen.</en-US>
+	</lang>
 	<lang id="lg-named">
 		<zh-CN>指定连接名称</zh-CN>
 		<en-US>Name the connection</en-US>
@@ -347,8 +375,8 @@
 		<en-US>A transparent proxy has no authentication; on a non-local address anyone on the network can use it.</en-US>
 	</lang>
 	<lang id="lg-err-addr">
-		<zh-CN>此载体服务端没有启用，必须填写地址和端口。</zh-CN>
-		<en-US>The server does not enable this carrier: enter the address and port.</en-US>
+		<zh-CN>服务端没有此载体的默认地址，请填写地址和端口。</zh-CN>
+		<en-US>The server has no default address for this carrier: enter the address and port.</en-US>
 	</lang>
 	<lang id="lg-err-port">
 		<zh-CN>端口必须是 1-65535。</zh-CN>

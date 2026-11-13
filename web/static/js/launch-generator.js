@@ -242,6 +242,7 @@
         form.access.forEach(function (a, i) {
             var at = 'a' + i + '.';
             if (!trim(a.port)) errs.push({at: at + 'port', id: 'lg-err-port'}); else port(a.port, at + 'port');
+            if (ctx.noRelay && a.mode === 'relay') errs.push({at: at + 'mode', id: 'lg-err-norelay'});
             if (ctx.kind !== 'tunnel' && !trim(a.key)) errs.push({at: at + 'key', id: 'lg-err-key'});
             if (ctx.kind === 'tunnel' && !ctx.defaultTarget && !proxyType(a.type) && !trim(a.target)) errs.push({at: at + 'target', id: 'lg-err-target'});
             (a.auth || []).forEach(function (u, j) { if (!trim(u.user) || trim(u.user).indexOf(':') >= 0) errs.push({at: at + 'auth' + j, id: 'lg-err-user'}); });
@@ -266,6 +267,7 @@
             ctx.vkey = base.visitor || (row.Client && row.Client.VerifyKey) || '';
             ctx.visitorKey = !!base.visitor;
             ctx.password = row.Password;
+            ctx.noRelay = !!row.NoRelay;
             ctx.defaultTarget = row.Target && trim(row.Target.TargetStr).split('\n')[0];
         }
         return prepare(ctx);
@@ -322,6 +324,10 @@
             + '</div><div class="small text-muted"><span langtag="' + hintLang + '"></span> <b class="lg-order">' + esc(chosen.join(' → ')) + '</b></div>'
             + '<div class="text-danger small" data-err="' + at + '"></div></div>';
     }
+    function langText(id, fallback) {
+        var l = typeof languages !== 'undefined' && languages.content && languages.content[id];
+        return (l && (l[languages.current] || l[languages['default']])) || fallback;
+    }
     function textField(bind, value, at, label, ph) { return field(label, input(bind, value, ph), at); }
 
     function mount(rootEl, ctx) {
@@ -342,7 +348,11 @@
 
         function pathCard(p, i) {
             var d = ctx._def[p.carrier] || {}, at = 'p' + i + '.', b = 'paths.' + i + '.', multi = form.paths.length > 1, c = p.carrier;
-            var top = field('lg-carrier', select(b + 'carrier', c, CARRIERS.map(function (x) { return [x, '', x]; })), at + 'carrier')
+            // carriers the server listens on come first; the others need an address
+            var on = CARRIERS.filter(function (x) { return ctx._def[x]; }), off = CARRIERS.filter(function (x) { return !ctx._def[x]; });
+            var top = field('lg-carrier', '<select class="form-control" data-bind="' + b + 'carrier">' + on.concat(off).map(function (x) {
+                return '<option value="' + x + '"' + (x === c ? ' selected' : '') + (ctx._def[x] ? '>' + x : ' langtag="lg-carrier-addr" langprefix="' + x + '">' + x) + '</option>';
+            }).join('') + '</select>', at + 'carrier')
                 + textField(b + 'addr', p.addr, at + 'addr', 'lg-addr', d.host || '')
                 + textField(b + 'port', p.port, at + 'port', 'lg-port', d.port || '');
             var adv = '';
@@ -378,7 +388,9 @@
                 var ph = ctx.kind === 'tunnel' && ctx.defaultTarget ? langDefault() + ctx.defaultTarget : '';
                 top += textField(b + 'target', a.target, at + 'target', 'lg-target', ph);
             }
-            var adv = field('lg-conn-mode', select(b + 'mode', a.mode, [['auto', 'lg-cm-auto'], ['relay', 'lg-cm-relay'], ['direct', 'lg-cm-direct']]), at + 'mode')
+            var modes = [['auto', 'lg-cm-auto'], ['relay', 'lg-cm-relay'], ['direct', 'lg-cm-direct']];
+            if (ctx.noRelay && a.mode !== 'relay') modes.splice(1, 1);
+            var adv = field('lg-conn-mode', select(b + 'mode', a.mode, modes) + (ctx.noRelay ? hint('lg-hint-norelay') : ''), at + 'mode')
                 + field('lg-local-proxy', boolSelect(b + 'local_proxy', a.local_proxy) + hint('lg-hint-local-proxy'), at + 'local_proxy');
             if (accountType(a.type)) {
                 adv += '<div class="lg-field lg-wide"><label class="control-label font-bold"><span langtag="lg-accounts"></span></label>'
@@ -391,10 +403,7 @@
             return '<div class="lg-card">' + toolbar('access', i, form.access.length) + '<div class="lg-grid">' + top + '</div>'
                 + '<div class="text-warning small" data-note="' + i + '"></div>' + advanced(a, 'access', i, adv) + '</div>';
         }
-        function langDefault() {
-            var l = typeof languages !== 'undefined' && languages.content && languages.content['lg-default'];
-            return ((l && (l[languages.current] || l[languages['default']])) || 'Default') + ': ';
-        }
+        function langDefault() { return langText('lg-default', 'Default') + ': '; }
         function runSelect() { return select('run', form.run, [['temp', 'lg-run-temp'], ['service', 'lg-run-service'], ['docker', 'lg-run-docker']]); }
         function osSelect() { return select('os', form.os, [['linux', '', 'Linux'], ['macos', '', 'macOS'], ['cmd', '', 'Windows cmd'], ['powershell', '', 'PowerShell']]); }
 
@@ -435,10 +444,11 @@
                 + '<div class="lg-field"><label><input type="checkbox" data-bind="named"' + (form.named ? ' checked' : '') + '> <span langtag="lg-named"></span></label>'
                 + (form.named ? input('name', form.name, '') : '') + '</div>'
                 + '</div></details>';
-            html += '<h4 class="lg-title"><span langtag="lg-access"></span></h4>' + form.access.map(accessCard).join('')
+            html += '<h4 class="lg-title"><span langtag="lg-access"></span></h4>' + (ctx.visitorKey ? '<p class="small text-muted" langtag="lg-note-visitor"></p>' : '') + form.access.map(accessCard).join('')
                 + '<button type="button" class="btn btn-outline btn-primary btn-sm" data-act="access-add"><i class="fa fa-plus" aria-hidden="true"></i> <span langtag="lg-add-access"></span></button>';
             if (form.access.length && !ctx.visitorKey) html += '<div class="lg-field"><label><input type="checkbox" data-bind="resident"' + (form.resident ? ' checked' : '') + '> <span langtag="lg-resident"></span></label>' + hint('lg-hint-resident') + '</div>';
-            html += '<h4 class="lg-title"><span langtag="lg-output"></span></h4><p class="text-warning small" langtag="lg-note-secret"></p><div id="lg-outputs"></div>';
+            html += '<h4 class="lg-title"><span langtag="lg-output"></span></h4><div class="alert alert-danger lg-errs" role="alert" hidden><span langtag="lg-errs"></span></div>'
+                + '<p class="text-warning small" langtag="lg-note-secret"></p><div id="lg-outputs"></div>';
             html += '<div class="lg-actions"><button type="button" class="btn btn-primary" data-act="save"><span langtag="lg-save"></span></button> '
                 + '<button type="button" class="btn btn-outline btn-secondary" data-act="cancel"><span langtag="lg-cancel"></span></button> '
                 + '<button type="button" class="btn btn-outline btn-secondary" data-act="restore"><span langtag="lg-restore"></span></button>'
@@ -448,15 +458,21 @@
             if ($.fn.setLang) $('body').setLang('#launch-root');
             restoreFocus(kept);
         }
-        function outputBlock(id, label) {
-            return '<div class="lg-output"><div class="lg-output-head"><b langtag="' + label + '"></b> <button type="button" class="btn btn-outline btn-primary btn-xs" data-copy="' + id + '"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></div><pre id="lg-out-' + id + '" tabindex="0"></pre></div>';
+        // The outputs are tabs: one shown at a time, the one-line command first.
+        var OUTS = [['one', 'lg-oneline'], ['multi', 'lg-multiline'], ['jsonc', 'lg-jsonc'], ['base64', 'lg-base64']], shown = 'one';
+        function outputTabs() {
+            return '<div class="lg-output"><div class="lg-output-head"><div class="btn-group lg-tabs" role="tablist">' + OUTS.map(function (o) {
+                return '<button type="button" role="tab" class="btn btn-sm ' + (o[0] === shown ? 'btn-primary' : 'btn-outline btn-secondary') + '" aria-selected="' + (o[0] === shown) + '" data-tab="' + o[0] + '"><span langtag="' + o[1] + '"></span></button>';
+            }).join('') + '</div><button type="button" class="btn btn-primary btn-sm" data-copy="out"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></div>'
+                + '<pre id="lg-out" tabindex="0"></pre><div class="small text-muted" data-tabnote></div></div>';
         }
         function refresh() {
             var out = outputs(form, ctx), errs = validate(form, ctx);
             var box = $root.find('#lg-outputs');
-            if (!box.children().length) box.html(outputBlock('one', 'lg-oneline') + outputBlock('multi', 'lg-multiline') + outputBlock('jsonc', 'lg-jsonc') + outputBlock('base64', 'lg-base64')
-                + '<div class="text-muted small" data-note="service"></div>');
-            ['one', 'multi', 'jsonc', 'base64'].forEach(function (k) { $root.find('#lg-out-' + k).text(out[k]); });
+            if (!box.children().length) box.html(outputTabs() + '<div class="text-muted small" data-note="service"></div>');
+            $root.find('#lg-out').text(out[shown]).toggleClass('lg-bad', errs.length > 0);
+            $root.find('[data-tabnote]').html(shown === 'jsonc' ? '<span langtag="lg-note-jsonc"></span>' : shown === 'base64' ? '<span langtag="lg-note-base64"></span>' : '');
+            $root.find('.lg-errs').prop('hidden', !errs.length);
             $root.find('[data-err]').empty();
             errs.forEach(function (e) { $root.find('[data-err="' + e.at + '"]').append('<span langtag="' + e.id + '"></span> '); });
             form.access.forEach(function (a, i) {
@@ -473,6 +489,7 @@
             if ($.fn.setLang) $('body').setLang('#lg-outputs');
             if ($.fn.setLang) $('body').setLang('[data-err]');
             if ($.fn.setLang) $('body').setLang('[data-note]');
+            if ($.fn.setLang) $('body').setLang('[data-tabnote]');
         }
         function setBind(path, value) {
             var keys = path.split('.'), o = form;
@@ -548,7 +565,15 @@
             }
             render(focus);
         });
-        $root.on('click', '[data-copy]', function () { copyText($('#lg-out-' + this.getAttribute('data-copy')).text()); });
+        $root.on('click', '[data-copy]', function () { copyText($('#lg-out').text()); });
+        $root.on('click', '[data-tab]', function () {
+            shown = this.getAttribute('data-tab');
+            $root.find('[data-tab]').each(function () {
+                var on = this.getAttribute('data-tab') === shown;
+                $(this).toggleClass('btn-primary', on).toggleClass('btn-outline btn-secondary', !on).attr('aria-selected', on);
+            });
+            refresh();
+        });
         render();
     }
 

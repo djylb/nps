@@ -113,6 +113,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			return PageBuildResult{}, ErrPageNotFound
 		}
 		vkey, _ := data["visitor_vkey"].(string)
+		visitorKey := vkey != ""
 		if vkey == "" {
 			vkey = task.Client.VerifyKey
 		}
@@ -121,8 +122,8 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 		if view.Target != nil {
 			target, _, _ = strings.Cut(strings.TrimSpace(view.Target.TargetStr), "\n")
 		}
-		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "password": view.Password,
-			"defaultTarget": target, "form": task.LaunchForm, "save": "index/savelaunch"}
+		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "visitorKey": visitorKey, "password": view.Password,
+			"defaultTarget": target, "noRelay": view.NoRelay, "form": task.LaunchForm, "save": "index/savelaunch"}
 		data["name"] = "start command"
 	case "hostlist":
 		data["httpAccessPort"] = cfg.Network.HTTPProxyAccessPort

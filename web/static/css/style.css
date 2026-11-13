@@ -13024,6 +13024,10 @@ body.md-skin {
 .lg-output { margin-bottom: 10px; }
 .lg-output-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .lg-output-head .btn { min-height: 32px; }
+.lg-output-head { flex-wrap: wrap; gap: 6px; }
+.lg-tabs { display: flex; flex-wrap: wrap; }
+.lg-output pre.lg-bad { opacity: .55; }
+.lg-errs { margin: 6px 0; padding: 8px 12px; }
 .lg-output pre, .lg-card pre { white-space: pre-wrap; word-break: break-all; margin: 0; color: var(--color); background: var(--bg-mid); border: 1px solid var(--border-color); }
 .lg-field .form-control::placeholder, .lg-account .form-control::placeholder { color: var(--text); opacity: .5; }
 .lg-adv summary { color: var(--text); }

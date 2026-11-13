@@ -132,7 +132,8 @@
                     $(item).css('background-color', '#ffeeba');
             }
             if ($.type($(item).attr('placeholder')) == 'undefined') {
-                $(item).text(string);
+                // langprefix is text put before the string, such as a value it describes
+                $(item).text(($(item).attr('langprefix') || '') + string);
             } else {
                 $(item).attr('placeholder', string);
             }
