@@ -221,8 +221,8 @@ func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeH
 // carrierLabel names a carrier for the log; the HTTP and QUIC adapters give
 // no label.
 func carrierLabel(p zmux.PipeIO) string {
-	_, tls := zmux.TerminatedTLS(p)
-	return kindLabelTLS(p.Label, p.Carrier, tls)
+	_, terminated := zmux.TerminatedTLS(p)
+	return kindLabelTLS(p.Label, p.Carrier, terminated)
 }
 
 // kindLabel is carrierLabel of a pipe already joined, whose TLS is not known.

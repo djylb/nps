@@ -413,6 +413,8 @@ func serverName(c connprofile.Candidate) string {
 
 // localIP is the IP address a carrier left from, "" when it has none to tell.
 func localIP(p zmux.PipeIO) string {
+	// the pipe's own connection, only looked at: the pipe closes it
+	//noinspection GoResourceLeak
 	a := zmux.PipeConn(p).LocalAddr()
 	if a == nil {
 		return ""

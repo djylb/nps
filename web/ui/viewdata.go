@@ -38,15 +38,16 @@ type ManagementPageCommonData struct {
 	IsAdmin        bool
 	// ServerUpdate tells whether the server can be updated from the web.
 	ServerUpdate bool
+	// MixPlain tells that the mixed port accepts plaintext carriers (tcp,
+	// ws, http).
+	MixPlain bool
 	// AdmitKey is the admission key of the exchange carrier, as hex, shown to
 	// administrators only.
 	AdmitKey string
 	// MixIP and MixPort are the mixed port, where a type=auto link connects;
 	// the port is "" when there is none.
 	MixIP, MixPort string
-	// MixPlain tells that the mixed port accepts plaintext carriers (tcp,
-	// ws, http); MixQUICALPN is the ALPN its UDP side takes for quic.
-	MixPlain    bool
+	// MixQUICALPN is the ALPN the UDP side of the mixed port takes for quic.
 	MixQUICALPN string
 	// MixUDPPort is the port quic reaches the mixed port on: the port it
 	// listens on, as a port mapping or proxy given in bridge_addr (MixPort)

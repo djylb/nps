@@ -113,6 +113,9 @@ func TestPeerRelayRefusedKeepsDirect(t *testing.T) {
 	checkEcho(t, c, "up")
 	waitPipes(t, v, "direct", func(d, _ bool) bool { return d })
 	l := v.live()
+	if l == nil {
+		t.Fatal("no live link")
+	}
 	p.noRelay.Store(true)
 	l.refused.Store(true)
 	waitUntil(t, "relay off", func() bool { return l.relayOff.Load() })
