@@ -73,6 +73,9 @@ var (
 	// KeyVisitorOnly in Hello marks a session that only visits: C=0, so a
 	// server that does not know it treats the session as any other.
 	KeyVisitorOnly = key(26, false, false)
+	// KeyLocalAddr in Hello is the IP address npc dials from, for the
+	// server to show; C=0, so an older server ignores it.
+	KeyLocalAddr = key(27, false, true)
 	// KeyNoRelay in a LINK reply says the tunnel forbids relaying, so the
 	// visitor must not open a PIPE: C=0, so a visitor that does not know it
 	// goes on as before and has its PIPE refused.
@@ -82,9 +85,6 @@ var (
 	// tunnel's relay permission changes: C=0, a server that does not know it
 	// answers once and closes, as before.
 	KeyRelayWatch = key(29, false, false)
-	// KeyLocalAddr in Hello is the IP address npc dials from, for the
-	// server to show; C=0, so an older server ignores it.
-	KeyLocalAddr = key(27, false, true)
 )
 
 // Common is the table of the common fields.
