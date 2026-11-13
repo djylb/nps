@@ -136,6 +136,36 @@ func TestManagementPageBridgeURL(t *testing.T) {
 }
 
 // The start commands of the pages are launch links in double quotes.
+// A carrier without a port of its own falls back to the mixed port when that
+// port takes it; one with its own port keeps it.
+func TestManagementPageLinkURLsMix(t *testing.T) {
+	d := ManagementPageCommonData{MixIP: "203.0.113.1", MixPort: "8024", MixQUICALPN: "h3", WSPath: "/ws", TLSIP: "203.0.113.2", TLSPort: "9000"}
+	want := map[string]string{
+		"auto":  "npc://@203.0.113.1:8024/ws?type=auto&subprotocol=binary",
+		"tls":   "npc://@203.0.113.2:9000?type=tls",
+		"quic":  "npc://@203.0.113.1:8024?type=quic&alpn=h3",
+		"wss":   "npc://@203.0.113.1:8024/ws?type=wss&subprotocol=binary",
+		"https": "npc://@203.0.113.1:8024/ws?type=https&subprotocol=binary",
+	}
+	got := d.LinkURLs()
+	for _, k := range []string{"tcp", "ws", "http"} {
+		if got[k] != "" {
+			t.Errorf("without mix_plain LinkURLs()[%s] = %q", k, got[k])
+		}
+	}
+	d.MixPlain = true
+	plain := d.LinkURLs()
+	want["tcp"], want["ws"], want["http"] = plain["tcp"], plain["ws"], plain["http"]
+	if plain["tcp"] != "npc://@203.0.113.1:8024?type=tcp" || plain["ws"] != "npc://@203.0.113.1:8024/ws?type=ws&subprotocol=binary" {
+		t.Errorf("with mix_plain: tcp %q, ws %q", plain["tcp"], plain["ws"])
+	}
+	for k, v := range want {
+		if plain[k] != v {
+			t.Errorf("LinkURLs()[%s] = %q, want %q", k, plain[k], v)
+		}
+	}
+}
+
 func TestStartCommandsUseLaunchLinks(t *testing.T) {
 	for file, want := range map[string][]string{
 		"client/list.html": {`LaunchGen.detail(`, `launch-generator.js`},

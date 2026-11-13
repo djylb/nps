@@ -191,7 +191,7 @@ func parseJSON(text string, trusted bool) ([]Profile, error) {
 func connectionsOnly(profiles []Profile) error {
 	for _, p := range profiles {
 		if c := p.Config; len(c.LocalServer)+len(c.Hosts)+len(c.Tasks) > 0 {
-			return errors.New("fetched content may only define connections, not access, hosts or tasks")
+			return errors.New("fetched content may only define connections, not access, hosts or tasks: name the connection (#name) and give its access locally with -L=...&via=name")
 		}
 	}
 	return nil

@@ -262,6 +262,8 @@ func managementPageData(system SystemService, input PageBuildInput) map[string]a
 		AdmitKey:       pageAdmitKey(cfg, input.IsAdmin),
 		MixIP:          bridge.Primary.IP,
 		MixPort:        pageIntString(cfg.Network.MixPort),
+		MixPlain:       cfg.Network.MixPlain,
+		MixQUICALPN:    firstString(cfg.Network.NewProtocolQUICALPN),
 		ServerUpdate:   info.CanUpdate,
 		Username:       strings.TrimSpace(input.Username),
 		BridgeType:     bridge.Primary.Type,
@@ -354,4 +356,12 @@ func pageIntString(value int) string {
 		return ""
 	}
 	return strconv.Itoa(value)
+}
+
+// firstString is the first of list, "" when it is empty.
+func firstString(list []string) string {
+	if len(list) == 0 {
+		return ""
+	}
+	return list[0]
 }

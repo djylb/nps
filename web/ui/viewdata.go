@@ -44,8 +44,12 @@ type ManagementPageCommonData struct {
 	// MixIP and MixPort are the mixed port, where a type=auto link connects;
 	// the port is "" when there is none.
 	MixIP, MixPort string
-	Username       string
-	BridgeType     string
+	// MixPlain tells that the mixed port accepts plaintext carriers (tcp,
+	// ws, http); MixQUICALPN is the ALPN its UDP side takes for quic.
+	MixPlain    bool
+	MixQUICALPN string
+	Username    string
+	BridgeType  string
 	// VisitorVKey, when set, is the vkey the access commands show.
 	VisitorVKey   string
 	BridgeAddr    string
@@ -152,6 +156,29 @@ func (d ManagementPageCommonData) LinkURLs() map[string]string {
 	add("auto", d.MixIP, d.MixPort, d.WSPath, autoQuery)
 	add("http", d.WSIP, d.WSPort, d.WSPath, withBinary(d.admitQuery()))
 	add("https", d.WSSIP, d.WSSPort, d.WSPath, withBinary(d.admitQuery()))
+	// A carrier without a port of its own reaches the mixed port when that
+	// port takes it: TLS ones always, quic on its UDP side, plaintext ones
+	// with mix_plain; the HTTP ones need the bridge path.
+	mix := func(typ, path, query string) {
+		if _, ok := urls[typ]; !ok {
+			add(typ, d.MixIP, d.MixPort, path, query)
+		}
+	}
+	mix("tls", "", "")
+	if d.MixQUICALPN != "" {
+		mix("quic", "", "alpn="+url.QueryEscape(d.MixQUICALPN))
+	}
+	if d.WSPath != "" {
+		mix("wss", d.WSPath, withBinary(""))
+		mix("https", d.WSPath, withBinary(d.admitQuery()))
+	}
+	if d.MixPlain {
+		mix("tcp", "", "")
+		if d.WSPath != "" {
+			mix("ws", d.WSPath, withBinary(""))
+			mix("http", d.WSPath, withBinary(d.admitQuery()))
+		}
+	}
 	return urls
 }
 
