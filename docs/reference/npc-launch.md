@@ -207,7 +207,7 @@ alt=<协议>://<地址>:<端口>[@主机[:端口]][/路径][?k=v;k=v]
 
 - 内容能决定 npc 连接哪个服务端，只使用可信的来源。`http://` 会报警告，`https://` 不允许跳转到 `http://`。
 - 超时 15 秒，上限 1 MiB，最多跟随 5 次跳转。
-- 只能定义连接。出现 `access`、隧道、域名段，引用其他网址或文件，使用 `{{` 模板，或设置 `multi_account`、`cert_file`、`key_file`、`local_path`、`strip_pre`、`pprof_addr`、`dns_server`，都按读取失败处理。
+- 只能定义连接，访问在本机用 `-L=…&via=连接名` 给出。加 `-launch_url_access=true` 时也可以定义访问，这时网址内容决定 npc 在本机开哪些端口，只对可信来源打开。除此之外，出现 `access`、隧道、域名段，引用其他网址或文件，使用 `{{` 模板，或设置 `multi_account`、`cert_file`、`key_file`、`local_path`、`strip_pre`、`pprof_addr`、`dns_server`，都按读取失败处理。
 
 读取失败时的行为：
 

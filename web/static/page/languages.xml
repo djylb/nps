@@ -35,8 +35,8 @@
 		<en-US>The form has errors; fix the fields marked in red before using the command.</en-US>
 	</lang>
 	<lang id="lg-note-jsonc">
-		<zh-CN>保存为 npc.jsonc，用 npc -launch=@npc.jsonc 启动。放到网址上读取时只能包含连接，访问要在本机用 -L 给出（勾选“指定连接名称”，-L 以 via 引用它）。</zh-CN>
-		<en-US>Save as npc.jsonc and start with npc -launch=@npc.jsonc. Read from a URL, it may hold connections only: give the access locally with -L (name the connection and refer to it with via).</en-US>
+		<zh-CN>保存为 npc.jsonc，用 npc -launch=@npc.jsonc 启动。放到网址上读取时只能包含连接，访问要在本机用 -L 给出（勾选“指定连接名称”，-L 以 via 引用它），或在本机加 -launch_url_access=true。</zh-CN>
+		<en-US>Save as npc.jsonc and start with npc -launch=@npc.jsonc. Read from a URL, it may hold connections only: give the access locally with -L (name the connection and refer to it with via), or add -launch_url_access=true locally.</en-US>
 	</lang>
 	<lang id="lg-note-base64">
 		<zh-CN>内容与配置文件相同，便于在不方便处理引号的环境中粘贴。</zh-CN>

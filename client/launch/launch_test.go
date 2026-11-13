@@ -376,6 +376,28 @@ func TestFetchedContentOnlyDefinesConnections(t *testing.T) {
 	}
 }
 
+// -launch_url_access lets fetched content define access, and nothing else
+// the restriction keeps out.
+func TestURLAccess(t *testing.T) {
+	URLAccess = true
+	t.Cleanup(func() { URLAccess = false })
+	conn := `"vkey":"k","paths":[{"url":"tcp://a:1"}]`
+	got, err := Resolve(context.Background(), serve(t, 200, `{`+conn+`,"access":[{"access":"a","local_port":1}]}`))
+	if err != nil || len(got) != 1 || len(got[0].Config.LocalServer) != 1 {
+		t.Fatalf("access: %v %v", got, err)
+	}
+	common := "[common]\nserver_addr=a:1\nvkey=k\n"
+	for name, body := range map[string]string{
+		"tasks":     common + "[w]\nmode=tcp\nserver_port=80\ntarget_addr=1.1.1.1:80\n",
+		"file":      "@/etc/passwd",
+		"plain dns": common + "dns_server=1.1.1.1\n",
+	} {
+		if _, err := Resolve(context.Background(), serve(t, 200, body)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
 // Keys only the local user may set stay allowed in a local file.
 func TestLocalFileKeepsLocalKeys(t *testing.T) {
 	got, err := Resolve(context.Background(), "@"+writeFile(t, "f", "[common]\nserver_addr=a:1\nvkey=k\ndns_server=1.1.1.1\n[web]\nmode=file\nserver_port=80\nlocal_path=/srv\n"))

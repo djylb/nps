@@ -187,11 +187,21 @@ func parseJSON(text string, trusted bool) ([]Profile, error) {
 	return parseLegacyJSON(plain, trusted)
 }
 
-// connectionsOnly refuses fetched content defining anything but connections.
+// URLAccess lets content fetched from a URL define access too
+// (-launch_url_access). Only the local user sets it; the keys that reach
+// local files stay refused either way.
+var URLAccess bool
+
+// connectionsOnly refuses fetched content defining anything but connections,
+// and access where URLAccess allows it.
 func connectionsOnly(profiles []Profile) error {
 	for _, p := range profiles {
-		if c := p.Config; len(c.LocalServer)+len(c.Hosts)+len(c.Tasks) > 0 {
-			return errors.New("fetched content may only define connections, not access, hosts or tasks: name the connection (#name) and give its access locally with -L=...&via=name")
+		c := p.Config
+		if len(c.Hosts)+len(c.Tasks) > 0 {
+			return errors.New("fetched content may not define hosts or tasks")
+		}
+		if len(c.LocalServer) > 0 && !URLAccess {
+			return errors.New("fetched content may only define connections, not access: give the access locally with -L=...&via=name, or allow it with -launch_url_access=true")
 		}
 	}
 	return nil

@@ -16,6 +16,7 @@ import (
 
 	"github.com/djylb/nps/bridge/legacy"
 	"github.com/djylb/nps/client"
+	"github.com/djylb/nps/client/launch"
 	"github.com/djylb/nps/internal/cliargs"
 	"github.com/djylb/nps/internal/logsetup"
 	"github.com/djylb/nps/lib/clock"
@@ -75,6 +76,7 @@ var (
 	debug          = flag.Bool("debug", true, "Log to the console when -log is not given (false for services)")
 	pprofAddr      = flag.String("pprof", "", "PProf debug address (ip:port)")
 	skipVerify     = flag.Bool("skip_verify", false, "Skip verification of server certificate")
+	urlAccess      = flag.Bool("launch_url_access", false, "Let a -launch URL define access (local listeners) too")
 	disconnectTime = flag.Int("disconnect_timeout", 30, "Disconnect timeout in seconds")
 	keepAlive      = flag.Int("keepalive", 0, "KeepAlive Period in seconds")
 	p2pTime        = flag.Int("p2p_timeout", 5, "P2P timeout in seconds")
@@ -143,6 +145,10 @@ func main() {
 	client.AutoReconnect = *autoReconnect
 	client.LocalIPForward = *localIPForward
 	crypt.SkipVerify = *skipVerify
+	launch.URLAccess = *urlAccess
+	if *urlAccess {
+		cfgLog.Warn("launch URLs may define access: the content of those URLs decides which local ports npc opens")
+	}
 
 	// Timezone
 	if err := clock.SetTimezone(*timezone); err != nil {

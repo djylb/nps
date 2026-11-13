@@ -50,6 +50,7 @@ npc [子命令] [参数]
 | `-auto_reconnect` | `true` | 断线后自动重连。`false` 时任一连接结束后 npc 退出 |
 | `-skip_verify` | `false` | 跳过服务端证书校验 |
 | `-disable_remote_update` | `false` | 忽略网页发来的远程更新请求 |
+| `-launch_url_access` | `false` | 允许从网址读取的启动内容定义访问，见[从网址读取](npc-launch.md#从网址读取) |
 | `-disconnect_timeout` | `30` | 保留项，无需设置 |
 | `-keepalive` | `0` | 秒。连接保活周期，`0` 使用内置默认值 |
 | `-p2p_timeout` | `5` | 保留项，无需设置 |
