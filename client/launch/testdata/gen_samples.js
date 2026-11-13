@@ -44,8 +44,8 @@ const cases = {
     o.paths.push(Object.assign({}, o.paths[0], {carrier: 'tls', dirs: 'down', tier: '2', weight: '', count: ''}));
     o.access[0].mode = 'direct'; o.access[0].local_proxy = true;
   }],
-  'resident': [tunnel(), o => { o.resident = true; o.named = true; o.name = 'home'; }],
-  'resident visitor key': [Object.assign(tunnel(), {visitorKey: true}), o => { o.resident = true; }],
+  'resident client': [tunnel(), o => { o.resident = true; o.named = true; o.name = 'home'; }],
+  'resident client visitor key': [Object.assign(tunnel(), {visitorKey: true}), o => { o.resident = true; }],
   'docker': [client(), o => { o.run = 'docker'; o.os = 'cmd'; }],
 };
 const out = Object.keys(cases).sort().map(name => {

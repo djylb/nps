@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -545,36 +546,69 @@ func TestRoleFromAccess(t *testing.T) {
 	}
 }
 
-func TestRoleResident(t *testing.T) {
+func TestRoleParameter(t *testing.T) {
 	ctx := context.Background()
-	load := func(links, ls []string) Profile {
+	load := func(links, ls []string) (Profile, error) {
 		t.Helper()
 		plan, err := NewComposer(sources(links...), locals(t, ls...)).Load(ctx)
-		if err != nil || len(plan.Profiles) != 1 {
-			t.Fatalf("%v %+v", err, plan)
+		if err != nil {
+			return Profile{}, err
 		}
-		return plan.Profiles[0]
+		return plan.Profiles[0], nil
 	}
-	if p := load([]string{"npc://k@a:1?resident=true"}, []string{"tcp://:1?access=p"}); p.Direct || !p.Hosting {
-		t.Fatalf("link: %+v", p)
+	acc := []string{"tcp://:1?access=p"}
+	for _, v := range []string{"client,visitor", "visitor,client", "visitor,client,client", " client , visitor"} {
+		p, err := load([]string{"npc://k@a:1?role=" + url.QueryEscape(v)}, acc)
+		if err != nil || p.Direct || !p.Hosting || p.Config.CommonConfig.Role != "client,visitor" {
+			t.Fatalf("role=%q: %v %+v", v, err, p)
+		}
 	}
-	if p := load([]string{"npc://k@a:1?resident=false"}, []string{"tcp://:1?access=p"}); p.Hosting {
-		t.Fatalf("resident=false: %+v", p)
+	if p, err := load([]string{"npc://k@a:1?role=visitor"}, acc); err != nil || p.Direct || p.Hosting {
+		t.Fatalf("visitor: %v %+v", err, p)
 	}
-	// without local accesses it is an ordinary client anyway
-	if p := load([]string{"npc://k@a:1?resident=true"}, nil); !p.Direct || p.Hosting {
-		t.Fatalf("no access: %+v", p)
+	if p, err := load([]string{"npc://k@a:1?role=client"}, nil); err != nil || !p.Direct || p.Hosting {
+		t.Fatalf("client: %v %+v", err, p)
 	}
-	doc := writeFile(t, "d", `{"vkey":"k","resident":true,"paths":[{"url":"tcp://a:1"}],"access":[{"access":"x","local_port":1}]}`)
-	if p := load([]string{"@" + doc}, nil); !p.Hosting {
-		t.Fatalf("file: %+v", p)
+	// a -L attached to a pure client, a visitor without access
+	for _, c := range []struct {
+		link string
+		ls   []string
+	}{
+		{"npc://k@a:1?role=client", acc},
+		{"npc://k@a:1?role=visitor", nil},
+		{"npc://k@a:1?role=client,visitor", nil},
+		{"npc://k@a:1?role=owner", acc},
+		{"npc://k@a:1?role=client,,visitor", acc},
+		{"npc://k@a:1?role=client,", acc},
+		{"npc://k@a:1?role=", acc},
+		{"npc://k@a:1?role=client,visitor&role=visitor&access=p", acc},
+	} {
+		if _, err := load([]string{c.link}, c.ls); err == nil {
+			t.Fatalf("%s accepted", c.link)
+		}
 	}
-	if _, err := NewComposer(sources("npc://k@a:1?resident=true", "npc://k@a:1?resident=false"), nil).Load(ctx); err == nil {
-		t.Fatal("conflicting resident accepted")
+	// the roles a file writes
+	for role, want := range map[string]struct{ hosting, ok bool }{
+		`"client,visitor"`: {true, true}, `"visitor"`: {false, true}, `"client"`: {false, false}, `"x"`: {false, false},
+	} {
+		doc := writeFile(t, "d", `{"vkey":"k","role":`+role+`,"paths":[{"url":"tcp://a:1"}],"access":[{"access":"x","local_port":1}]}`)
+		p, err := load([]string{"@" + doc}, nil)
+		if (err == nil) != want.ok || err == nil && p.Hosting != want.hosting {
+			t.Fatalf("file role %s: %v %+v", role, err, p)
+		}
 	}
-	// keys of an access stay errors in a link
-	if _, err := NewComposer(sources("npc://k@a:1?resident=true&access=p"), nil).Load(ctx); err == nil {
-		t.Fatal("access key in a link accepted")
+	// different roles of the writings of one connection
+	if _, err := NewComposer(sources("npc://k@a:1?role=client,visitor", "npc://k@a:1?role=visitor"), nil).Load(ctx); err == nil {
+		t.Fatal("conflicting role accepted")
+	}
+	// one writing sets it, the other may leave it
+	if p, err := load([]string{"npc://k@a:1?role=client,visitor#v", "npc://k@a:1"}, []string{"tcp://:1?access=p&via=v"}); err != nil || !p.Hosting {
+		t.Fatalf("merged: %v %+v", err, p)
+	}
+	// the role shows in the current form
+	out, err := Show(ctx, sources("npc://k@a:1?role=visitor,client"), locals(t, acc...), true)
+	if err != nil || !strings.Contains(out, "role=client%2Cvisitor") && !strings.Contains(out, "role=client,visitor") {
+		t.Fatalf("show: %v %s", err, out)
 	}
 }
 
@@ -689,7 +723,7 @@ func TestGeneratorSamples(t *testing.T) {
 	for _, s := range loadGeneratorSamples(t) {
 		t.Run(s.Name, func(t *testing.T) {
 			one := plan(t, s, shellWords(t, s.One, s.Shell)).Profiles[0]
-			if one.Hosting != (s.Name == "resident") {
+			if one.Hosting != (s.Name == "resident client") {
 				t.Fatalf("hosting %v", one.Hosting)
 			}
 			multi := plan(t, s, shellWords(t, s.Multi, s.Shell)).Profiles[0]
@@ -699,7 +733,7 @@ func TestGeneratorSamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			for what, p := range map[string]Profile{"multi": multi, "base64": packed, "jsonc": got[0]} {
-				if p.Key() != one.Key() || len(p.Config.LocalServer) != len(one.Config.LocalServer) || p.Config.CommonConfig.Pipes != one.Config.CommonConfig.Pipes || p.Config.CommonConfig.Resident != one.Config.CommonConfig.Resident {
+				if p.Key() != one.Key() || len(p.Config.LocalServer) != len(one.Config.LocalServer) || p.Config.CommonConfig.Pipes != one.Config.CommonConfig.Pipes || p.Config.CommonConfig.Role != one.Config.CommonConfig.Role {
 					t.Fatalf("%s differs: %+v %+v", what, p.Config.CommonConfig, one.Config.CommonConfig)
 				}
 				for i, l := range p.Config.LocalServer {

@@ -51,7 +51,7 @@ npc://<vkey>@<地址>:<端口>[/路径]?type=<协议>&<参数>#<连接名>
 | `session_usage_interval` | `0` | 同 `-session_usage_interval` |
 | `relay_idle` | `0` | 同 `-relay_idle` |
 | `p2p_visitor_keep_server` | `false` | 同 `-p2p_visitor_keep_server` |
-| `resident` | `false` | `true` 时有本地访问的连接同时作为普通客户端，见[连接的角色](#连接的角色) |
+| `role` | 无 | 连接的角色，`client`、`visitor` 或 `client,visitor`，见[连接的角色](#连接的角色) |
 | `proxy` | 无 | 连接服务端使用的代理，格式同 `-proxy`。密码含 `&`、`%` 时按百分号编码 |
 | `source_addr` | 无 | 出站连接使用的本机源地址 |
 | `pin` | 无 | 服务端密钥标识，32 位十六进制 |
@@ -172,7 +172,7 @@ alt=<协议>://<地址>:<端口>[@主机[:端口]][/路径][?k=v;k=v]
 | `vkey` | 必填。客户端密钥 |
 | `paths` | 必填，至少一条。路径列表 |
 | `source_addr` | 出站连接的本机源地址 |
-| `resident` | `true` 时有本地访问的连接同时作为普通客户端，同链接参数 `resident` |
+| `role` | 连接的角色，字符串，写法同链接参数 `role`，如 `"client,visitor"` |
 | `session` | 连接设置，见下表 |
 | `access` | 本地访问列表 |
 
@@ -233,6 +233,9 @@ alt=<协议>://<地址>:<端口>[@主机[:端口]][/路径][?k=v;k=v]
 
 - 只有本地访问的连接只作访问端，不提供隧道，空闲时可以断开。
 - 没有本地访问的连接是普通客户端。
-- 有本地访问的连接写了 `resident=true`（配置文件里是 `"resident": true`）时，它既是普通客户端，也提供本地访问，空闲时不断开。`npc install` 安装的服务保持这个参数。
-- 同一条连接既有带 `-L` 的写法，又有不带的写法时，效果和 `resident=true` 相同。
-- 同一条连接的几种写法里 `resident` 取值不同时报错。用只能访问点对点隧道的访问密钥（`visitor_vkey`）时不能作为普通客户端。
+- 用 `role` 指定连接的角色，取值 `client`、`visitor`，逗号分隔，顺序不限，重复无妨；未知取值和空项报错。配置文件里写成字符串 `"role": "client,visitor"`。
+  - `role=client,visitor`：既是普通客户端，也提供本地访问，空闲时不断开。`npc install` 安装的服务保持这个参数。
+  - `role=client`：只作普通客户端，连接上有本地访问（`-L` 或配置文件的 `access`）时报错。
+  - `role=visitor`：只作访问端，连接上没有本地访问时报错。含 `visitor` 的角色都要求有本地访问。
+- 不写 `role` 时按上面的规则：同一条连接既有带 `-L` 的写法，又有不带的写法时，既是普通客户端，也提供本地访问。
+- 同一条连接的几种写法里 `role` 取值不同时报错。用只能访问点对点隧道的访问密钥（`visitor_vkey`）时不能作为普通客户端。

@@ -162,7 +162,7 @@ func (p *Profile) identity() (key, paths string) {
 
 // sessionKeys are the [common] keys that apply to the whole connection.
 var sessionKeys = []string{"pipes", "scheduler_up", "session_max_lanes", "relay_idle", "p2p_visitor_keep_server",
-	"resident", "session_resume_timeout", "session_usage_interval", "new_protocol_pin", "proxy_url", "local_ip"}
+	"role", "session_resume_timeout", "session_usage_interval", "new_protocol_pin", "proxy_url", "local_ip"}
 
 func sessionValue(c *config.CommonConfig, key string) string {
 	switch key {
@@ -176,8 +176,8 @@ func sessionValue(c *config.CommonConfig, key string) string {
 		return strconv.Itoa(c.RelayIdle)
 	case "p2p_visitor_keep_server":
 		return strconv.FormatBool(c.KeepServer)
-	case "resident":
-		return strconv.FormatBool(c.Resident)
+	case "role":
+		return c.Role
 	case "session_resume_timeout":
 		return strconv.Itoa(c.ResumeTimeout)
 	case "session_usage_interval":
@@ -204,8 +204,8 @@ func setSession(dst, src *config.CommonConfig, key string) {
 		dst.RelayIdle = src.RelayIdle
 	case "p2p_visitor_keep_server":
 		dst.KeepServer = src.KeepServer
-	case "resident":
-		dst.Resident = src.Resident
+	case "role":
+		dst.Role = src.Role
 	case "session_resume_timeout":
 		dst.ResumeTimeout = src.ResumeTimeout
 	case "session_usage_interval":
@@ -380,8 +380,8 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 		if c := p.Config; p.combined && len(c.LocalServer) > 0 && len(c.Hosts)+len(c.Tasks) > 0 {
 			return nil, fmt.Errorf("connection %s has both tunnels and local access from different sources: run them as separate connections", p.label())
 		}
-		if len(p.Config.LocalServer) > 0 {
-			p.Hosting = p.Config.CommonConfig.Resident || slices.ContainsFunc(p.writings, func(w writing) bool { return !w.access })
+		if err := p.applyRole(); err != nil {
+			return nil, err
 		}
 		out[i] = *p
 	}
@@ -389,6 +389,31 @@ func compose(groups [][]Profile, locals []Local, pending bool) ([]Profile, error
 		return nil, errors.New("nothing to run: no connection was given")
 	}
 	return out, nil
+}
+
+// applyRole decides whether the connection runs as an ordinary client next
+// to its local accesses. Without a role it follows the writings: one without
+// an access shares the connection with the accesses of the others.
+func (p *Profile) applyRole() error {
+	local := len(p.Config.LocalServer) > 0
+	switch p.Config.CommonConfig.Role {
+	case "":
+		p.Hosting = local && slices.ContainsFunc(p.writings, func(w writing) bool { return !w.access })
+	case connprofile.RoleClient:
+		if local {
+			return fmt.Errorf("connection %s has role=client and a local access", p.label())
+		}
+	case connprofile.RoleVisitor:
+		if !local {
+			return fmt.Errorf("connection %s has role=visitor and no local access", p.label())
+		}
+	default: // client,visitor
+		if !local {
+			return fmt.Errorf("connection %s has the visitor role and no local access", p.label())
+		}
+		p.Hosting = true
+	}
+	return nil
 }
 
 // clash reports whether two listeners want the same port.

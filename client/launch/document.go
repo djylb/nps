@@ -101,7 +101,7 @@ type connection struct {
 	Name       string   `json:"name"`
 	VKey       string   `json:"vkey"`
 	SourceAddr string   `json:"source_addr"`
-	Resident   bool     `json:"resident"`
+	Role       string   `json:"role"`
 	Paths      []path   `json:"paths"`
 	Session    *session `json:"session"`
 	Access     []Access `json:"access"`
@@ -129,8 +129,9 @@ func (c connection) profile(trusted bool) (Profile, error) {
 	if c.SourceAddr != "" {
 		base["local_ip"] = c.SourceAddr
 	}
-	if c.Resident {
-		base["resident"] = true
+	if c.Role != "" {
+		// a comma-separated string, like the other list values of a path
+		base["role"] = c.Role
 	}
 	written := make(map[string]bool, len(base))
 	for k := range base {

@@ -37,9 +37,9 @@ const (
 type Profile struct {
 	Name   string
 	Direct bool
-	// Hosting: an access-less writing shares this connection, or it is
-	// written resident, so besides its local accesses it runs as an
-	// ordinary client.
+	// Hosting: besides its local accesses the connection runs as an
+	// ordinary client, because its role says both or an access-less
+	// writing shares it.
 	Hosting bool
 	// auto: Name was assigned, the source wrote none.
 	auto bool
@@ -334,6 +334,12 @@ func parseText(name, text string, trusted, direct bool, want map[string]int) ([]
 		return nil, errors.New("launch payload requires a server and a vkey")
 	}
 	c.Tp = strings.ToLower(c.Tp)
+	if c.Role != "" {
+		var err error
+		if c.Role, err = connprofile.NormalizeRole(c.Role); err != nil {
+			return nil, err
+		}
+	}
 	if want != nil && (len(cfg.Hosts) != want["hosts"] || len(cfg.Tasks) != want["tasks"] ||
 		len(cfg.LocalServer) != want["locals"]) {
 		return nil, errors.New(`a section name changes its kind: "secret" and "p2p" prefixes are reserved`)

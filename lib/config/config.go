@@ -33,9 +33,10 @@ type CommonConfig struct {
 	NtpInterval      int
 	Client           *model.Client
 	DisconnectTime   int
-	// Resident: a connection with local accesses also runs as an ordinary
-	// resident client (launch key resident).
-	Resident bool
+	// Role is the set of roles of the connection, as connprofile.NormalizeRole
+	// writes it (launch key role): empty means the roles follow from what
+	// is written for the connection.
+	Role string
 	CoreSettings
 }
 
@@ -295,8 +296,8 @@ func dealCommon(s string) *CommonConfig {
 			c.RelayIdle = textutil.GetIntNoErrByStr(item[1])
 		case "p2p_visitor_keep_server":
 			c.KeepServer = parseBool(item)
-		case "resident":
-			c.Resident = parseBool(item)
+		case "role":
+			c.Role = item[1]
 		case "session_resume_timeout":
 			c.ResumeTimeout = textutil.GetIntNoErrByStr(item[1])
 		case "session_usage_interval":

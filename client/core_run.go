@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/config"
+	"github.com/djylb/nps/lib/connprofile"
 )
 
 // CoreOuter makes the outer session of cfg's profile to server on the new
@@ -23,9 +25,9 @@ var errNoCore = errors.New("the new protocol is not available in this build")
 // coreKey is what makes two profiles of one process the same session to a
 // server: the same dial and the same session settings.
 type coreKey struct {
-	server, vkey, carrier, localIP, proxy, pipes, scheduler string
-	maxLanes, resume, usage                                 int
-	keep                                                    bool
+	server, vkey, carrier, localIP, proxy, pipes, scheduler, role string
+	maxLanes, resume, usage                                       int
+	keep                                                          bool
 }
 
 // coreEntry is the outer session of a coreKey, shared by the host and the
@@ -122,7 +124,7 @@ func acquireCore(cfg *config.CommonConfig, server string) (*coreEntry, error) {
 	if CoreOuter == nil {
 		return nil, errNoCore
 	}
-	key := coreKey{server, cfg.VKey, strings.ToLower(cfg.Tp), cfg.LocalIP, cfg.ProxyUrl, cfg.Pipes, cfg.SchedulerUp,
+	key := coreKey{server, cfg.VKey, strings.ToLower(cfg.Tp), cfg.LocalIP, cfg.ProxyUrl, cfg.Pipes, cfg.SchedulerUp, cfg.Role,
 		cfg.MaxLanes, cfg.ResumeTimeout, cfg.UsageInterval, cfg.KeepServer}
 	coreOuters.mu.Lock()
 	defer coreOuters.mu.Unlock()
@@ -135,7 +137,7 @@ func acquireCore(cfg *config.CommonConfig, server string) (*coreEntry, error) {
 		return nil, err
 	}
 	e := &coreEntry{key: key, outer: outer, users: 1}
-	outer.Hold(cfg.KeepServer, func() bool { return e.hosts.Load() > 0 })
+	outer.Hold(cfg.KeepServer, hostingOf(cfg.Role, e))
 	if cfg.KeepServer {
 		var ctx context.Context
 		ctx, e.stop = context.WithCancel(context.Background())
@@ -150,6 +152,20 @@ func acquireCore(cfg *config.CommonConfig, server string) (*coreEntry, error) {
 	}
 	coreOuters.m[key] = e
 	return e, nil
+}
+
+// hostingOf is the Hosting decision of the session (OuterSessions.Hold): with
+// a role it follows the role, a session whose role includes client is an
+// ordinary one and one without is a pure visitor (wire Hello visitor_only).
+// Without a role it is whether this process hosts anything through it.
+func hostingOf(role string, e *coreEntry) func() bool {
+	switch {
+	case role == "":
+		return func() bool { return e.hosts.Load() > 0 }
+	case slices.Contains(strings.Split(role, ","), connprofile.RoleClient):
+		return func() bool { return true }
+	}
+	return func() bool { return false }
 }
 
 // release ends the entry's session once nobody uses it.

@@ -23,8 +23,8 @@
 		<en-US>Also run as a resident client</en-US>
 	</lang>
 	<lang id="lg-hint-resident">
-		<zh-CN>这台 npc 同时作为普通客户端在线，可以提供隧道，空闲时不断开（链接参数 resident=true）</zh-CN>
-		<en-US>This npc also stays online as an ordinary client that can provide tunnels, and does not disconnect when idle (link parameter resident=true)</en-US>
+		<zh-CN>这台 npc 同时作为普通客户端在线，可以提供隧道，空闲时不断开（链接参数 role=client,visitor）</zh-CN>
+		<en-US>This npc also stays online as an ordinary client that can provide tunnels, and does not disconnect when idle (link parameter role=client,visitor)</en-US>
 	</lang>
 	<lang id="lg-named">
 		<zh-CN>指定连接名称</zh-CN>

@@ -189,3 +189,17 @@ func waitCore(t *testing.T, what string, ok func() bool) {
 	}
 	t.Fatal("timeout: " + what)
 }
+
+func TestHostingOfRole(t *testing.T) {
+	e := &coreEntry{}
+	if hostingOf("", e)() {
+		t.Fatal("no role and nothing hosted: pure visitor")
+	}
+	e.hosts.Add(1)
+	if !hostingOf("", e)() || hostingOf("visitor", e)() {
+		t.Fatal("hosted tunnels decide only without a role")
+	}
+	if !hostingOf("client", &coreEntry{})() || !hostingOf("client,visitor", &coreEntry{})() {
+		t.Fatal("a role with client is an ordinary session")
+	}
+}

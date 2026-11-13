@@ -113,7 +113,7 @@
         var s = q.map(function (kv) { return kv[0] + '=' + enc(kv[1]); }).join('&');
         if (form.pipes === 'multi') s += '&pipes=multi';
         if (trim(form.scheduler)) s += '&scheduler_up=' + enc(form.scheduler);
-        if (residentOf(form, ctx)) s += '&resident=true';
+        if (residentOf(form, ctx)) s += '&role=client,visitor';
         form.paths.slice(1).forEach(function (p) {
             var e = effective(p, ctx);
             var inner = pathParams(p, e, multi).map(function (kv) { return kv[0] + '=' + enc(kv[1]); }).join(';');
@@ -179,7 +179,7 @@
         if (form.pipes === 'multi') session.max_pipes = 2;
         if (trim(form.scheduler)) session.scheduler_up = trim(form.scheduler);
         if (Object.keys(session).length) doc.session = session;
-        if (residentOf(form, ctx)) doc.resident = true;
+        if (residentOf(form, ctx)) doc.role = 'client,visitor';
         if (form.access.length) doc.access = form.access.map(function (a) {
             var o = {access: accessKey(a, ctx), local_type: a.type, local_port: Number(a.port) || 0};
             if (trim(a.ip)) o.local_ip = trim(a.ip);

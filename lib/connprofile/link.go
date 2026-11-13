@@ -32,7 +32,7 @@ type Link struct {
 	// Name is the #label, else the name parameter: the profile name.
 	Name string
 	// Common holds the other [common] keys of the link: pipes, proxy_url,
-	// local_ip (written source_addr=), new_protocol_pin and the core settings.
+	// local_ip (written source_addr=), role (canonical), new_protocol_pin and the core settings.
 	Common map[string]string
 }
 
@@ -46,9 +46,39 @@ var candidateKeys = []string{"host", "sni", "alpn", "http", "subprotocol", "tier
 // commonKeys maps link parameters to [common] keys.
 var commonKeys = map[string]string{
 	"pipes": "pipes", "scheduler_up": "scheduler_up", "session_max_lanes": "session_max_lanes",
-	"relay_idle": "relay_idle", "p2p_visitor_keep_server": "p2p_visitor_keep_server", "resident": "resident",
+	"relay_idle": "relay_idle", "p2p_visitor_keep_server": "p2p_visitor_keep_server", "role": "role",
 	"session_resume_timeout": "session_resume_timeout", "session_usage_interval": "session_usage_interval", "proxy": "proxy_url",
 	"source_addr": "local_ip", "pin": "new_protocol_pin",
+}
+
+// Roles of a connection, the items of the role parameter.
+const (
+	RoleClient  = "client"
+	RoleVisitor = "visitor"
+)
+
+// NormalizeRole checks a comma-separated set of roles and returns it in the
+// canonical form: no repeats, client before visitor. Unknown values and
+// empty items are errors.
+func NormalizeRole(s string) (string, error) {
+	var client, visitor bool
+	for item := range strings.SplitSeq(s, ",") {
+		switch strings.TrimSpace(item) {
+		case RoleClient:
+			client = true
+		case RoleVisitor:
+			visitor = true
+		default:
+			return "", fmt.Errorf("role %q: want a comma-separated set of %s and %s", s, RoleClient, RoleVisitor)
+		}
+	}
+	switch {
+	case client && visitor:
+		return RoleClient + "," + RoleVisitor, nil
+	case client:
+		return RoleClient, nil
+	}
+	return RoleVisitor, nil
 }
 
 // accessKeys are settings of a local access, which a link does not describe.
@@ -131,6 +161,12 @@ func ParseLink(raw string) (Link, error) {
 			if ck == "new_protocol_pin" {
 				if b, err := hex.DecodeString(v); err != nil || len(b) != 16 {
 					return l, errors.New("launch link: pin is 32 hex digits")
+				}
+			}
+			if ck == "role" {
+				var err error
+				if v, err = NormalizeRole(v); err != nil {
+					return l, fmt.Errorf("launch link: %w", err)
 				}
 			}
 			l.Common[ck] = v
