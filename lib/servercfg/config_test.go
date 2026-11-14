@@ -323,3 +323,16 @@ func TestShippedConfigMixedPortOnly(t *testing.T) {
 		t.Fatalf("legacy warnings: %v", cfg.Legacy)
 	}
 }
+
+func TestINIValueKeepsCommentCharacters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nps.conf")
+	if err := os.WriteFile(path, []byte("# comment\nweb_username=admin\nweb_password=a!@#$%^&*();b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Current().Web.Password; got != "a!@#$%^&*();b" {
+		t.Fatalf("web_password = %q", got)
+	}
+}

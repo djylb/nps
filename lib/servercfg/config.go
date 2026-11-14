@@ -48,7 +48,9 @@ var (
 func newViperParser(format string) parserFunc {
 	return func(path string) (map[string]any, error) {
 		registry := viper.NewCodecRegistry()
-		if err := registry.RegisterCodec("ini", viperini.Codec{KeyDelimiter: "::"}); err != nil {
+		// A value runs to the end of its line: "#" and ";" inside passwords
+		// and keys are data, only whole-line comments are comments.
+		if err := registry.RegisterCodec("ini", viperini.Codec{KeyDelimiter: "::", LoadOptions: viperini.LoadOptions{IgnoreInlineComment: true}}); err != nil {
 			return nil, err
 		}
 		cfg := viper.NewWithOptions(
