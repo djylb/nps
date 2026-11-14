@@ -122,8 +122,8 @@
                 + '<b langtag="word-compatmode"></b>: <span onclick="submitform(\'turn\', \'{{.web_base_url}}/index/clearhost\', {\'id\':' + row.Id + ', \'mode\': \'compat_mode\'})" langtag="word-' + row.CompatMode + '"></span>&emsp;'
             var access = accessListDetail(row)
             if (row.Client.Cnf.U || row.Client.Cnf.P) {
-                access += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.U + '</span>&emsp;'
-                + '<b langtag="word-basicpassword"></b>: <span onclick="oCopy(this)">' + row.Client.Cnf.P + '</span>&emsp;<br/><br>'
+                access += '<b langtag="word-basicusername"></b>: <span onclick="oCopy(this)">' + escapeHtml(row.Client.Cnf.U) + '</span>&emsp;'
+                + '<b langtag="word-basicpassword"></b>: <span onclick="oCopy(this)">' + escapeHtml(row.Client.Cnf.P) + '</span>&emsp;<br/><br>'
             }
             if (row.UserAuth && row.UserAuth.Content) {
                 access += '<b langtag="word-auth"></b>: ' + (row.UserAuth && row.UserAuth.Content ? row.UserAuth.Content : '') + '&emsp;<br/><br>'
@@ -181,7 +181,7 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     var text = row.Client.Remark ? (row.Client.Id + ' · ' + row.Client.Remark) : row.Client.Id
-                    return '<span onclick="copyText(\'' + row.Client.VerifyKey + '\')">' + text + '</span>'
+                    return '<span data-copy="' + escapeHtml(row.Client.VerifyKey) + '" onclick="copyText(this.dataset.copy)">' + escapeHtml(text) + '</span>'
                 }
             },
             {

@@ -161,16 +161,16 @@
             status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
             var account = ''
             if (row.WebUserName || row.WebPassword) {
-                account += '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
-                + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
+                account += '<b langtag="word-webusername"></b>: ' + escapeHtml(row.WebUserName) + '&emsp;'
+                + '<b langtag="word-webpassword"></b>: ' + escapeHtml(row.WebPassword) + '&emsp;'
             }
             if (row.WebUserName && row.WebTotpSecret) {
-                account += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + row.WebUserName + '&secret=' + row.WebTotpSecret + '" style="cursor: pointer;" onclick="showQr(this)">' + row.WebTotpSecret + '</span>&emsp;'
+                account += '<b langtag="word-webtotpsecret"></b>: <span class="btn btn-primary btn-sm" data-url="{{.web_base_url}}/client/qr?account=' + encodeURIComponent(row.WebUserName) + '&amp;secret=' + encodeURIComponent(row.WebTotpSecret) + '" style="cursor: pointer;" onclick="showQr(this)">' + escapeHtml(row.WebTotpSecret) + '</span>&emsp;'
             }
             var access = '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>' + accessListDetail(row)
             if (row.Cnf.U || row.Cnf.P) {
-                access += '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
-                + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
+                access += '<b langtag="word-basicusername"></b>: ' + escapeHtml(row.Cnf.U) + '&emsp;'
+                + '<b langtag="word-basicpassword"></b>: ' + escapeHtml(row.Cnf.P) + '&emsp;<br/><br/>'
             }
             var transport = '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
                 // the inner encryption of the online sessions, shown only with crypt on
@@ -218,7 +218,7 @@
                 visible: true,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
@@ -228,7 +228,7 @@
                 visible: true,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
@@ -268,7 +268,7 @@
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
                     if (!row.NoStore) {
-                        return '<span onclick="oCopy(this)">' + value + '</span>'
+                        return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                     } else {
                         return '<span langtag="word-publicvkey"></span>'
                     }
@@ -281,7 +281,7 @@
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
@@ -291,7 +291,7 @@
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
@@ -455,7 +455,7 @@
                 visible: false,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {
