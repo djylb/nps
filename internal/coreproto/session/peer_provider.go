@@ -31,8 +31,8 @@ const (
 
 // nestedConfig is the zmux configuration both ends of a link use (§9.3).
 func nestedConfig(maxLanes int) *zmux.Config {
-	return &zmux.Config{EnableDatagrams: true, MaxPipes: nestedMaxPipes, ResumeTimeout: nestedResume, Scheduler: zmux.SpreadETA(),
-		AllowRecordMode: allowNestedMode, RecordPolicy: nestedMode, MaxLanes: maxLanesOf(maxLanes)}
+	return boundBuffers(&zmux.Config{EnableDatagrams: true, MaxPipes: nestedMaxPipes, ResumeTimeout: nestedResume, Scheduler: zmux.SpreadETA(),
+		AllowRecordMode: allowNestedMode, RecordPolicy: nestedMode, MaxLanes: maxLanesOf(maxLanes)})
 }
 
 // DefaultMaxLanes is the lanes accepted per pipe: more bring next to nothing.

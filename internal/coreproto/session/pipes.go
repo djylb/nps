@@ -26,8 +26,8 @@ func (d *Dialer) multi() bool { return d.cfg.Pipes == connprofile.PipesMulti }
 // sessionConfig is the zmux configuration of session s. Resume (§3.8) needs a
 // redial source: multi-pipe sessions have MaintainPipes, the others Redial.
 func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
-	cfg := &zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks, MaxLanes: maxLanesOf(d.cfg.MaxLanes), Scheduler: schedulerNamed(d.cfg.Scheduler),
-		ResumeTimeout: d.resumeTimeout()}
+	cfg := boundBuffers(&zmux.Config{EnableDatagrams: true, MaxIncomingStreams: maxIncomingLinks, MaxLanes: maxLanesOf(d.cfg.MaxLanes), Scheduler: schedulerNamed(d.cfg.Scheduler),
+		ResumeTimeout: d.resumeTimeout()})
 	cfg.HandshakeShaper = d.joinShape
 	cfg.Shaper, cfg.ShapingBudget = s.plan.sessionShaper(s.boot)
 	switch {

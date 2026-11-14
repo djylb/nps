@@ -155,8 +155,8 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 	a := &Acceptor{links: map[uint64]*peerLink{}, usage: map[uint64]*linkUsage{}, clock: time.Now, table: newHandleTable(store), key: key, hello: serverHello(), sess: map[int][]*serverSession{},
 		grants: map[int][]*pipeGrant{}, sessionOpts: opts.Session, limits: opts.Compress.normalized(), maxPipes: opts.MaxPipes, shapingFrom: opts.ShapingSource,
 		admitKey: opts.AdmitKey, stalled: map[netip.Prefix]int{}, stallMax: maxStalled, stallPerSource: maxStalledPerSource}
-	base := &zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
-		EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)}
+	base := boundBuffers(&zmux.Config{AllowRecordMode: a.allowJoinMode, AuthorizeJoin: a.authorizeJoin, MaxLanes: maxLanesOf(opts.MaxLanes),
+		EnableDatagrams: true, MaxPipes: sessionMaxPipes, ResumeTimeout: resumeTimeoutOf(opts.ResumeTimeout)})
 	a.zl, err = zmux.NewListener(&zmux.ListenerConfig{
 		Config: base,
 		SessionConfig: func(_ context.Context, _ *zmux.CarrierInfo, admitted any) (*zmux.Config, error) {
