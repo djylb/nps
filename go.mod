@@ -5,21 +5,21 @@ go 1.27
 require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/beevik/ntp v1.6.0
-	github.com/brianvoe/gofakeit/v7 v7.18.1
+	github.com/brianvoe/gofakeit/v7 v7.18.3
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
 	github.com/djylb/byterate v0.0.0-20261107123050-5337be2e3929
 	github.com/djylb/geomatch v0.0.0-20261107120441-0aa9ef2f47b6
 	github.com/djylb/guard v0.0.0-20261107123051-cc0c4f9f4cfe
-	github.com/djylb/holepunch v0.0.0-20261107123358-6b609d830559
-	github.com/djylb/holepunch/quicpath v0.0.0-20261107123358-6b609d830559
+	github.com/djylb/holepunch v0.0.0-20261113170222-06c98641314b
+	github.com/djylb/holepunch/quicpath v0.0.0-20261113170222-06c98641314b
 	github.com/djylb/lifecycle v0.0.0-20261107120442-c0d9ef0db7c4
 	github.com/djylb/netx v0.0.0-20261107123044-7640ba4c50af
-	github.com/djylb/portmux v0.0.0-20261107123354-f41f4037a2df
+	github.com/djylb/portmux v0.0.0-20261113171555-89816d9bec5f
 	github.com/djylb/selfupdate v0.0.0-20261107123055-ab0fadbc217e
 	github.com/djylb/slogx v0.0.0-20261108035304-7d3fcfd07f00
 	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f
-	github.com/djylb/upstream v0.0.0-20261107123048-8c51fc7b4a41
+	github.com/djylb/upstream v0.0.0-20261113163254-b6b9e23b4439
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/golang/snappy v1.0.0
@@ -39,7 +39,7 @@ require (
 	github.com/zmuxio/zmux-go/zmuxws v1.4.3
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/net v0.62.0
 )
 
