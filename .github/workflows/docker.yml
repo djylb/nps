@@ -54,6 +54,8 @@ jobs:
           file: ./Dockerfile.${{ matrix.image }}
           platforms: linux/amd64,linux/arm,linux/arm64,linux/386,linux/ppc64le,linux/s390x
           push: true
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:master
