@@ -13,6 +13,7 @@ import (
 type stubEntry struct{ coreapi.Entry }
 
 func (stubEntry) Kick(int, bool)                                       {}
+func (stubEntry) Close() error                                         { return nil }
 func (stubEntry) RevokeLinks(func(tunnel, visitor, provider int) bool) {}
 
 type dbClients struct{ db *file.DbUtils }

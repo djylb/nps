@@ -195,10 +195,20 @@ func (s *Bridge) Cause() error { return s.scope.Cause() }
 // Close stops the bridge: it closes the listeners and the connections still
 // being served, disconnects the clients, stops P2P and returns once every
 // goroutine the bridge started has returned.
+// Drain ends the sessions of every client with a close while their carriers
+// still run, so npc redials at once instead of waiting out its resume
+// timeout. The server calls it before it stops the carriers.
+func (s *Bridge) Drain() {
+	s.closeClients()
+	if s.core != nil {
+		_ = s.core.Close()
+	}
+}
+
 func (s *Bridge) Close() error {
 	s.closeOnce.Do(func() {
+		s.Drain()
 		s.scope.Close(nil)
-		s.closeClients()
 		s.RevokeSecretGrants()
 		s.StopP2P()
 		_ = s.scope.Wait(context.Background())

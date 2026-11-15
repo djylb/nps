@@ -7,3 +7,4 @@ type coreStub struct{ coreapi.Entry }
 
 func (coreStub) Kick(int, bool)                                       {}
 func (coreStub) RevokeLinks(func(tunnel, visitor, provider int) bool) {}
+func (coreStub) Close() error                                         { return nil }

@@ -301,10 +301,8 @@ func (a *Acceptor) Start(ctx context.Context, h coreapi.Hooks) error {
 
 // Close implements coreapi.Entry.
 func (a *Acceptor) Close() error {
-	if a.cancel != nil {
-		a.cancel()
-	}
-	_ = a.zl.Close()
+	// Sessions end with NPS_DRAIN while their carriers still run, so npc
+	// redials at once instead of waiting out its resume timeout.
 	a.mu.Lock()
 	var all []*serverSession
 	for _, l := range a.sess {
@@ -312,8 +310,12 @@ func (a *Acceptor) Close() error {
 	}
 	a.mu.Unlock()
 	for _, s := range all {
-		_ = s.zc.Close()
+		_ = s.Close()
 	}
+	if a.cancel != nil {
+		a.cancel()
+	}
+	_ = a.zl.Close()
 	a.exchange.once.Do(func() {}) // none is built past this point
 	if a.exchange.h != nil {
 		_ = a.exchange.h.Close()

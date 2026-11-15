@@ -270,6 +270,9 @@ func (s *Server) Done() <-chan struct{} { return s.scope.Done() }
 // then closes the tasks, then the bridge with its clients, then the webhook.
 // It returns the failure that stopped the server, if one did.
 func (s *Server) Close() error {
+	if s.bridge != nil {
+		s.bridge.Drain()
+	}
 	s.scope.Close(nil)
 	return s.scope.Wait(context.Background())
 }

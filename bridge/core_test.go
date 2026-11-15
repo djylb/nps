@@ -83,5 +83,6 @@ func TestTLSBridgeCertificateByName(t *testing.T) {
 type stubEntry struct{ coreapi.Entry }
 
 func (stubEntry) Kick(int, bool)                                       {}
+func (stubEntry) Close() error                                         { return nil }
 func (stubEntry) RevokeLinks(func(tunnel, visitor, provider int) bool) {}
 func (stubEntry) Forwarding([]netip.Prefix, string) coreapi.Forwarding { return nil }
