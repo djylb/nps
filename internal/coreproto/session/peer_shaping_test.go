@@ -183,7 +183,7 @@ func helloLen(t *testing.T, kind zmux.CarrierKind, slot *planSlot) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	cfg := &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Sealed, Handle: handle, PSK: psk}
+	cfg := &seal.ClientConfig{Anchor: &anchor{}, RecordMode: zmux.RecordSealed, Handle: handle, PSK: psk}
 	if slot != nil {
 		cfg.Shaper = slot.handshake
 	}

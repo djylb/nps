@@ -405,15 +405,15 @@ func TestRedialModeFallsBack(t *testing.T) {
 	s := &clientSession{d: d}
 	c := connprofile.Candidate{Addr: "a:1", Carrier: "tls"}
 	ca := carrier{secure: true, network: "n"}
-	for i, want := range []zmux.RecordMode{zmux.Bound, zmux.Sealed, zmux.Bound} {
+	for i, want := range []zmux.RecordMode{zmux.RecordBound, zmux.RecordSealed, zmux.RecordBound} {
 		s.planRedial(c, ca)
-		if got := s.redialRecord(zmux.CarrierInfo{}); got != want {
+		if got := s.redialRecord(zmux.RecordPolicyInput{}); got != want {
 			t.Fatalf("try %d: mode %v, want %v", i, got, want)
 		}
 	}
 	s.redialDone()
 	s.planRedial(c, ca)
-	if got := s.redialRecord(zmux.CarrierInfo{}); got != zmux.Bound {
+	if got := s.redialRecord(zmux.RecordPolicyInput{}); got != zmux.RecordBound {
 		t.Fatalf("after a resume: %v", got)
 	}
 }

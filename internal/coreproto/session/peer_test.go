@@ -540,7 +540,7 @@ func TestPeerLanesOnDirect(t *testing.T) {
 		t.Fatalf("%d lanes", n)
 	}
 	for _, s := range mustLive(v.live()).zc.PipeStats() {
-		if s.RecordMode != zmux.Bound || s.Carrier != zmux.CarrierQUIC {
+		if s.RecordMode != zmux.RecordBound || s.Carrier != zmux.CarrierQUIC {
 			t.Fatalf("pipe %+v", s.RecordMode)
 		}
 	}
@@ -567,7 +567,7 @@ func TestPeerRelayOneLane(t *testing.T) {
 		t.Fatalf("%d lanes on a relay", n)
 	}
 	for _, s := range mustLive(v.live()).zc.PipeStats() {
-		if s.RecordMode != zmux.Sealed {
+		if s.RecordMode != zmux.RecordSealed {
 			t.Fatalf("relay in %v", s.RecordMode)
 		}
 	}
@@ -603,7 +603,7 @@ func TestPeerRelayRefusesBound(t *testing.T) {
 	handle, psk, _ := seal.DeriveHandlePSK(r.LinkKey, []byte(linkDomain), nil)
 	ectx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if _, err := seal.Establish(ectx, pipe, &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Bound, Handle: handle, PSK: psk}); err == nil {
+	if _, err := seal.Establish(ectx, pipe, &seal.ClientConfig{Anchor: &anchor{}, RecordMode: zmux.RecordBound, Handle: handle, PSK: psk}); err == nil {
 		t.Fatal("Bound established on a relay")
 	} else {
 		t.Log(err)
@@ -619,12 +619,12 @@ func TestPeerRelayRefusesBound(t *testing.T) {
 	h2, k2, _ := seal.DeriveHandlePSK(r2.LinkKey, []byte(linkDomain), nil)
 	ectx2, cancel2 := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel2()
-	if _, err := seal.Establish(ectx2, lying, &seal.ClientConfig{Anchor: &anchor{}, Mode: zmux.Bound, Handle: h2, PSK: k2}); err == nil {
+	if _, err := seal.Establish(ectx2, lying, &seal.ClientConfig{Anchor: &anchor{}, RecordMode: zmux.RecordBound, Handle: h2, PSK: k2}); err == nil {
 		t.Fatal("provider took Bound on a relay")
 	} else {
 		t.Log(err)
 	}
-	if allowNestedMode(zmux.CarrierInfo{}, zmux.Bound, nil) || allowNestedMode(zmux.CarrierInfo{Secure: true}, zmux.Trusted, nil) {
+	if allowNestedMode(zmux.RecordPolicyInput{}, zmux.RecordBound, nil) || allowNestedMode(zmux.RecordPolicyInput{Secure: true}, zmux.RecordTrusted, nil) {
 		t.Fatal("record mode allowed")
 	}
 }

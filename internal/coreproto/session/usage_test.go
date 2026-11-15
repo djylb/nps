@@ -40,10 +40,10 @@ func TestUsageWire(t *testing.T) {
 }
 
 func TestDirectMeter(t *testing.T) {
-	direct := func(id, in, out uint64) zmux.PipeStats {
-		return zmux.PipeStats{Pipe: id, Carrier: zmux.CarrierQUIC, BytesReceived: in, BytesSent: out}
+	direct := func(id zmux.PipeID, in, out uint64) zmux.PipeStats {
+		return zmux.PipeStats{PipeID: id, Carrier: zmux.CarrierQUIC, BytesReceived: in, BytesSent: out}
 	}
-	relay := zmux.PipeStats{Pipe: 9, BytesReceived: 1000, BytesSent: 1000}
+	relay := zmux.PipeStats{PipeID: 9, BytesReceived: 1000, BytesSent: 1000}
 	var m directMeter
 	check := func(in, out uint64) {
 		t.Helper()

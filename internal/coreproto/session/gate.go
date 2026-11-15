@@ -57,7 +57,7 @@ func (g *gate) Credential(context.Context, seal.CredentialRequest) (*seal.Creden
 // Commit is where a handshake that passed msg3 becomes a client's. It decides
 // Trusted per client, since AllowRecordMode runs before the client is known
 // (§3.2).
-func (g *gate) Commit(_ context.Context, a seal.Admission) (any, error) {
+func (g *gate) Commit(_ context.Context, a seal.CommitRequest) (any, error) {
 	e := g.a.table.lookup(a.Handle)
 	if e == nil {
 		return nil, errUnknownHandle
@@ -69,7 +69,7 @@ func (g *gate) Commit(_ context.Context, a seal.Admission) (any, error) {
 	if !e.Enabled {
 		return refuse("disabled", "")
 	}
-	if a.Peer.Mode == zmux.Trusted && e.Crypt {
+	if a.Peer.RecordMode == zmux.RecordTrusted && e.Crypt {
 		return refuse("forbidden", "trusted")
 	}
 	var hello wire.Hello
@@ -99,7 +99,7 @@ const grantTTL = 5 * time.Second
 type pipeGrant struct {
 	t    *ticket
 	zc   *zmux.Conn // nil for a first pipe
-	pipe uint64
+	pipe zmux.PipeID
 	at   time.Time
 }
 
@@ -119,11 +119,11 @@ func (a *Acceptor) admitFirstPipe(t *ticket) bool {
 }
 
 // authorizeJoin is zmux.Config.AuthorizeJoin: the limit for a further pipe.
-func (a *Acceptor) authorizeJoin(zc *zmux.Conn, pipe uint64) bool {
+func (a *Acceptor) authorizeJoin(zc *zmux.Conn, pipe zmux.PipeID) bool {
 	if a.maxPipes <= 0 {
 		return true
 	}
-	peer, ok := zc.Admitted().(*seal.Peer)
+	peer, ok := zmux.AdmittedAs[*seal.Peer](zc)
 	if !ok {
 		return false
 	}
@@ -190,23 +190,23 @@ func (a *Acceptor) dropGrant(t *ticket) {
 // without an Anchor msg3's data would stay unauthenticated (§3.4).
 type acceptAnyClient struct{}
 
-func (acceptAnyClient) Verify(context.Context, seal.VerifyInput) (seal.Verdict, error) {
-	return seal.Verdict{}, nil
+func (acceptAnyClient) Verify(context.Context, seal.VerifyInput) (seal.VerifyVerdict, error) {
+	return seal.VerifyVerdict{}, nil
 }
 
 // allowEstablishMode is ServerConfig.AllowRecordMode. Per-client Trusted is in
 // Commit; a carrier that cannot do Bound was refused at msg1 by zmux (§3.2).
-func allowEstablishMode(_ zmux.CarrierInfo, m zmux.RecordMode, _ any) bool {
-	return m == zmux.Sealed || m == zmux.Bound || m == zmux.Trusted
+func allowEstablishMode(_ zmux.RecordPolicyInput, m zmux.RecordMode, _ any) bool {
+	return m == zmux.RecordSealed || m == zmux.RecordBound || m == zmux.RecordTrusted
 }
 
 // allowJoinMode is Config.AllowRecordMode: only a client with its switch off
 // joins Trusted.
-func (a *Acceptor) allowJoinMode(_ zmux.CarrierInfo, m zmux.RecordMode, peer any) bool {
+func (a *Acceptor) allowJoinMode(_ zmux.RecordPolicyInput, m zmux.RecordMode, peer any) bool {
 	switch m {
-	case zmux.Sealed, zmux.Bound:
+	case zmux.RecordSealed, zmux.RecordBound:
 		return true
-	case zmux.Trusted:
+	case zmux.RecordTrusted:
 		p, ok := peer.(*seal.Peer)
 		if !ok {
 			return false
@@ -225,7 +225,7 @@ func (a *Acceptor) allowJoinMode(_ zmux.CarrierInfo, m zmux.RecordMode, peer any
 // back; everything else, Join included, gets silence.
 func onReject(info zmux.RejectInfo) zmux.RejectAction {
 	log.Debug("carrier rejected", "src_ip", info.Src.Addr().Unmap().String(), "reason", info.Reason)
-	if info.Mode == zmux.Bound || info.Mode == zmux.Trusted {
+	if info.RecordMode == zmux.RecordBound || info.RecordMode == zmux.RecordTrusted {
 		return zmux.RejectClose
 	}
 	return zmux.RejectStall

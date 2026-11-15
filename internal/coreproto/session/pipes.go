@@ -92,7 +92,7 @@ func (s *clientSession) planRedial(c connprofile.Candidate, ca carrier) {
 	s.redialMu.Lock()
 	defer s.redialMu.Unlock()
 	s.redialKey, s.redialMode = c.Key(), p.mode
-	if p.mode == zmux.Bound && p.fallback {
+	if p.mode == zmux.RecordBound && p.fallback {
 		if s.redialBound == nil {
 			s.redialBound = map[string]bool{}
 		}
@@ -103,7 +103,7 @@ func (s *clientSession) planRedial(c connprofile.Candidate, ca carrier) {
 }
 
 // redialRecord is zmux.Config.RecordPolicy of a session that redials.
-func (s *clientSession) redialRecord(zmux.CarrierInfo) zmux.RecordMode {
+func (s *clientSession) redialRecord(zmux.RecordPolicyInput) zmux.RecordMode {
 	s.redialMu.Lock()
 	defer s.redialMu.Unlock()
 	return s.redialMode
@@ -156,14 +156,14 @@ func pipesOf(members []connprofile.Candidate) int {
 // one, or an uplink and a downlink as asked.
 func pipeDirs(d connprofile.Dirs) []zmux.Direction {
 	if d&connprofile.DirBidi != 0 {
-		return []zmux.Direction{zmux.DirBidirectional}
+		return []zmux.Direction{zmux.DirectionBidirectional}
 	}
 	var out []zmux.Direction
 	if d&connprofile.DirUp != 0 {
-		out = append(out, zmux.DirSendOnly)
+		out = append(out, zmux.DirectionSendOnly)
 	}
 	if d&connprofile.DirDown != 0 {
-		out = append(out, zmux.DirReceiveOnly)
+		out = append(out, zmux.DirectionReceiveOnly)
 	}
 	return out
 }
@@ -173,15 +173,15 @@ func pipeDirs(d connprofile.Dirs) []zmux.Direction {
 func schedulerNamed(name string) zmux.Scheduler {
 	switch name {
 	case connprofile.SchedulerSessionAffinity:
-		return zmux.SessionAffinity()
+		return zmux.SchedulerSessionAffinity()
 	case connprofile.SchedulerSpreadETA:
-		return zmux.SpreadETA()
+		return zmux.SchedulerSpreadETA()
 	case connprofile.SchedulerSpreadRoundRobin:
-		return zmux.SpreadRoundRobin()
+		return zmux.SchedulerSpreadRoundRobin()
 	case connprofile.SchedulerSpreadRateWeighted:
-		return zmux.SpreadRateWeighted()
+		return zmux.SchedulerSpreadRateWeighted()
 	}
-	return zmux.Affinity()
+	return zmux.SchedulerAffinity()
 }
 
 // pipeOptions are the options of the pipes of c: the tier as a priority
@@ -189,14 +189,12 @@ func schedulerNamed(name string) zmux.Scheduler {
 // directions.
 func pipeOptions(c connprofile.Candidate, best int) zmux.PipeOptions {
 	tier := uint64(max(c.Tier-best, 0))
-	o := zmux.PipeOptions{Label: c.Key(), SendPriority: &tier, ReceivePriority: tier}
+	o := zmux.PipeOptions{Label: c.Key(), SendPriority: zmux.Set(tier), ReceivePriority: zmux.Set(tier)}
 	if c.Weight > 0 {
-		w := uint64(c.Weight)
-		o.Weight = &w
+		o.Weight = zmux.Set(uint64(c.Weight))
 	}
 	if c.Standby {
-		standby := true
-		o.SendStandby, o.ReceiveStandby = &standby, true
+		o.SendStandby, o.ReceiveStandby = zmux.Set(true), zmux.Set(true)
 	}
 	return o
 }
@@ -255,17 +253,7 @@ func (s *clientSession) adoptFirst(o zmux.PipeOptions) ([]*zmux.Pipe, error) {
 		return nil, errors.New("no first pipe")
 	}
 	p := pipes[0]
-	if o.SendPriority != nil {
-		_ = p.SetSendPriority(*o.SendPriority)
-	}
-	_ = p.SetReceivePriority(o.ReceivePriority)
-	if o.Weight != nil {
-		_ = p.SetWeight(*o.Weight)
-	}
-	if o.SendStandby != nil {
-		_ = p.SetSendStandby(*o.SendStandby)
-		_ = p.SetReceiveStandby(o.ReceiveStandby)
-	}
+	_ = p.Update(zmux.PipeUpdate{SendPriority: o.SendPriority, ReceivePriority: o.ReceivePriority, Weight: o.Weight, SendStandby: o.SendStandby, ReceiveStandby: o.ReceiveStandby})
 	return []*zmux.Pipe{p}, nil
 }
 
@@ -301,8 +289,8 @@ func (s *clientSession) joinOne(ctx context.Context, m connprofile.Candidate, o 
 	d.mu.Lock()
 	pl := choose(d.record, ca.secure, d.boundFailedLocked(key))
 	d.mu.Unlock()
-	o.Mode = &pl.mode
-	if pl.mode != zmux.Bound {
+	o.RecordMode = zmux.Set(pl.mode)
+	if pl.mode != zmux.RecordBound {
 		return s.zc.AddPipe(ctx, ca.pipe, o)
 	}
 	bctx, bcancel := context.WithTimeout(ctx, boundLimit)
@@ -315,8 +303,7 @@ func (s *clientSession) joinOne(ctx context.Context, m connprofile.Candidate, o 
 	if ca, err = d.dialCarrier(ctx, m); err != nil {
 		return nil, err
 	}
-	sealed := zmux.Sealed
-	o.Mode = &sealed
+	o.RecordMode = zmux.Set(zmux.RecordSealed)
 	if p, err = s.zc.AddPipe(ctx, ca.pipe, o); err != nil {
 		return nil, err
 	}
@@ -342,7 +329,7 @@ func (d *Dialer) dialQUIC(ctx context.Context, c connprofile.Candidate, t *tls.C
 	if err != nil {
 		return carrier{}, err
 	}
-	p, err := zmuxquic.OpenPipe(ctx, qc)
+	p, err := zmuxquic.ConnPipe(ctx, qc)
 	if err != nil {
 		_ = qc.CloseWithError(0, "")
 		return carrier{}, err

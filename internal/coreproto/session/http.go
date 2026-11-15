@@ -18,11 +18,12 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/zmuxio/zmux-go"
+	"github.com/zmuxio/zmux-go/zmuxhttp"
 	"github.com/zmuxio/zmux-go/zmuxws"
 )
 
 // httpPairField is the request field that pairs the two halves of a split
-// carrier, on both ends (zmux HTTPOptions.PairField): zmux's default names
+// carrier, on both ends (zmuxhttp Options.PairField): zmux's default names
 // the software, and a request field is visible to every intermediary (§2.1b).
 const httpPairField = "X-Client-Trace"
 
@@ -33,7 +34,7 @@ const httpAttemptTimeout = 8 * time.Second
 
 // HTTPCarriers implements coreapi.Entry.
 func (a *Acceptor) HTTPCarriers(next http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	h, err := zmux.NewHTTPHandler(a.zl, &zmux.HTTPOptions{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
+	h, err := zmuxhttp.NewHandler(a.zl, &zmuxhttp.Options{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
 	if err != nil || len(a.admitKey) == 0 {
 		return h, err
 	}
@@ -52,12 +53,12 @@ type exchangeNextKey struct{}
 // exchangeHandler is the one handler of the exchange carriers of the entry:
 // it holds their state, and every path of the entry has the same key. What is
 // not an exchange goes on to the handler of the path it came in by.
-func (a *Acceptor) exchangeHandler(f coreapi.Forwarding) (*zmux.HTTPExchangeHandler, error) {
+func (a *Acceptor) exchangeHandler(f coreapi.Forwarding) (*zmuxhttp.ExchangeHandler, error) {
 	a.exchange.once.Do(func() {
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Context().Value(exchangeNextKey{}).(http.Handler).ServeHTTP(w, r)
 		})
-		a.exchange.h, a.exchange.err = zmux.NewHTTPExchangeHandler(a.zl, &zmux.HTTPExchangeConfig{PSK: a.admitKey, PairField: httpPairField, Next: next, Trusted: trustedOf(f)})
+		a.exchange.h, a.exchange.err = zmuxhttp.NewExchangeHandler(a.zl, &zmuxhttp.ExchangeOptions{Options: zmuxhttp.Options{Next: next, Trusted: trustedOf(f), PairField: httpPairField}}, zmuxhttp.ExchangeConfig{PSK: a.admitKey})
 	})
 	return a.exchange.h, a.exchange.err
 }
@@ -145,7 +146,7 @@ func (t *h3Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		r = r.Clone(r.Context())
 		r.Host = t.host
 	}
-	if b, ok := r.Body.(zmux.HTTPCarrierBody); ok {
+	if b, ok := r.Body.(zmuxhttp.CarrierBody); ok {
 		r = r.WithContext(httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) {
 			if qc := t.conn.Load(); qc != nil {
 				b.SetSecureConnection(quicState{qc})
@@ -171,12 +172,12 @@ func (d *Dialer) exchangeClient(c connprofile.Candidate) *http.Client {
 	return httpClient(t)
 }
 
-func (d *Dialer) exchangeConfig(c connprofile.Candidate) (*zmux.HTTPExchangeConfig, error) {
+func (d *Dialer) exchange(c connprofile.Candidate) (zmuxhttp.Exchange, error) {
 	key, err := hex.DecodeString(c.AdmitKey)
 	if err != nil {
-		return nil, err
+		return zmuxhttp.Exchange{}, err
 	}
-	return &zmux.HTTPExchangeConfig{PSK: key, PairField: httpPairField}, nil
+	return zmuxhttp.Exchange{Client: d.exchangeClient(c), URL: httpURL(c), Config: zmuxhttp.ExchangeConfig{PSK: key}}, nil
 }
 
 // closeHTTP ends what the HTTP carriers of the last session kept open.
@@ -371,20 +372,20 @@ func (d *Dialer) dialHTTP(ctx context.Context, c connprofile.Candidate) (carrier
 	var err error
 	switch c.Kinds[0] {
 	case connprofile.KindHTTP3:
-		if p, err = zmux.HTTPPipe(ctx, d.h3Client(c), h3URL(c), nil, zmux.DirBidirectional, nil); err != nil {
+		if p, err = (zmuxhttp.Streaming{Client: d.h3Client(c), URL: h3URL(c)}).Pipe(ctx, zmux.DirectionBidirectional); err != nil {
 			return carrier{}, err
 		}
 		return carrier{pipe: p, secure: true}, nil
 	case connprofile.KindStreaming:
 		p, err = endWithConn(ctx, func(ctx context.Context) (zmux.PipeIO, error) {
-			return zmux.HTTPPipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, zmux.DirBidirectional, nil)
+			return zmuxhttp.Streaming{Client: httpClient(d.httpTransport(c, c.HTTP)), URL: httpURL(c)}.Pipe(ctx, zmux.DirectionBidirectional)
 		})
 	case connprofile.KindSplit:
-		p, err = (&zmux.HTTPSplitOptions{PairField: httpPairField}).Pipe(ctx, httpClient(d.httpTransport(c, c.HTTP)), httpURL(c), nil, nil)
+		p, err = zmuxhttp.Split{Client: httpClient(d.httpTransport(c, c.HTTP)), URL: httpURL(c), PairField: httpPairField}.Pipe(ctx)
 	case connprofile.KindExchange:
-		var cfg *zmux.HTTPExchangeConfig
-		if cfg, err = d.exchangeConfig(c); err == nil {
-			p, err = zmux.HTTPExchangePipe(ctx, d.exchangeClient(c), httpURL(c), cfg)
+		var ex zmuxhttp.Exchange
+		if ex, err = d.exchange(c); err == nil {
+			p, err = ex.Pipe(ctx)
 		}
 	default:
 		err = errors.New("unknown http carrier kind " + c.Kinds[0])
@@ -398,7 +399,7 @@ func (d *Dialer) dialHTTP(ctx context.Context, c connprofile.Candidate) (carrier
 // httpMode is the zmux mode of the pipes of an http candidate in a
 // multi-pipe session (§14): zmux chooses the kind, stable first, and caches
 // the failures. Its pipes never ask for Bound (§3.2).
-func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
+func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.CarrierChoice, error) {
 	var cands []zmux.Candidate
 	seen := map[string]bool{}
 	for _, a := range m.Attempts() {
@@ -416,37 +417,33 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.Mode, error) {
 			if m.Subprotocol != "" {
 				protocols = []string{m.Subprotocol}
 			}
-			o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}
+			o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, MaxRedirects: -1, Dialer: cd}
 			if m.Host != "" {
 				o.Header = http.Header{"Host": {m.Host}}
 			}
 			cands = append(cands, zmuxws.Candidate(scheme+"://"+m.Addr+m.Path, o))
 		case connprofile.KindStreaming:
-			sc := zmux.StreamingCandidate(httpClient(d.httpTransport(m, m.HTTP)), httpURL(m), nil)
+			sc := zmuxhttp.Streaming{Client: httpClient(d.httpTransport(m, m.HTTP)), URL: httpURL(m)}.Candidate()
 			dial := sc.Dial
-			sc.Dial = func(ctx context.Context, cred zmux.Credential) (zmux.PipeIO, error) {
+			sc.Dial = func(ctx context.Context, cred zmux.CarrierCredential) (zmux.PipeIO, error) {
 				return endWithConn(ctx, func(ctx context.Context) (zmux.PipeIO, error) { return dial(ctx, cred) })
 			}
 			cands = append(cands, sc)
 		case connprofile.KindSplit:
-			c, err := (&zmux.HTTPSplitOptions{PairField: httpPairField}).Candidate(httpClient(d.httpTransport(m, m.HTTP)), httpURL(m), nil)
-			if err != nil {
-				return zmux.Mode{}, err
-			}
-			cands = append(cands, c)
+			cands = append(cands, zmuxhttp.Split{Client: httpClient(d.httpTransport(m, m.HTTP)), URL: httpURL(m), PairField: httpPairField}.Candidate())
 		case connprofile.KindHTTP3:
-			h3 := zmux.StreamingCandidate(d.h3Client(m), h3URL(m), nil)
+			h3 := zmuxhttp.Streaming{Client: d.h3Client(m), URL: h3URL(m)}.Candidate()
 			h3.Kind = zmux.CarrierHTTP3
 			cands = append(cands, h3)
 		case connprofile.KindExchange:
-			cfg, err := d.exchangeConfig(m)
+			ex, err := d.exchange(m)
 			if err != nil {
-				return zmux.Mode{}, err
+				return zmux.CarrierChoice{}, err
 			}
-			cands = append(cands, zmux.ExchangeCandidate(d.exchangeClient(m), httpURL(m), cfg))
+			cands = append(cands, ex.Candidate())
 		}
 	}
-	return zmux.AutoMode(cands...), nil
+	return zmux.AutoChoice(cands...), nil
 }
 
 // maintainHTTP keeps the pipes of the http member m by its mode. A pipe the
@@ -461,13 +458,13 @@ func (s *clientSession) maintainHTTP(ctx context.Context, m connprofile.Candidat
 	s.d.mu.Lock()
 	pl := choose(s.d.record, false, false)
 	s.d.mu.Unlock()
-	o.Mode = &pl.mode
+	o.RecordMode = zmux.Set(pl.mode)
 	var first *zmux.Pipe
 	if pipes := s.zc.Pipes(); boot && len(pipes) > 0 {
 		first = pipes[0]
 	}
-	pool := zmux.PipePool{Count: m.Count, Options: o, Mode: mode,
-		ModePolicy: &zmux.ModePolicy{Cache: &s.d.kinds, Key: m.Key(), TimerMin: 3 * time.Second, TimerMax: 5 * time.Second}}
+	pool := zmux.PipePool{Count: m.Count, Options: o, Choice: mode,
+		ChoicePolicy: &zmux.CarrierChoicePolicy{Cache: &s.d.kinds, Key: m.Key(), TimerMin: 3 * time.Second, TimerMax: 5 * time.Second}}
 	s.wg.Go(func() {
 		if err := s.zc.MaintainPipes(ctx, pool); err != nil && ctx.Err() == nil {
 			log.Debug("pipe pool ended", "carrier", m.Carrier, "err", err)

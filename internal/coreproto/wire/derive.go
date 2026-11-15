@@ -16,7 +16,7 @@ const (
 const (
 	HandleLen    = 16
 	HelloHeadLen = 18
-	MaxPeek      = 291 // Join Hello head (Listener.KnownJoin), §13
+	MaxPeek      = 291 // Join Hello head (ListenerAdapter.KnownJoin), §13
 )
 
 // Derive returns the Handle and PSK of a vkey of any shape (§3.1).

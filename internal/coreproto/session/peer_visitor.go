@@ -471,9 +471,9 @@ func (l *visitorLink) watchRelay(lc *linkConn) {
 func (l *visitorLink) start(ctx context.Context) error {
 	var pipe zmux.PipeIO
 	var err error
-	mode := zmux.Sealed
+	mode := zmux.RecordSealed
 	if l.mode == wire.ConnDirect || l.relayOff.Load() {
-		mode = zmux.Bound
+		mode = zmux.RecordBound
 		pipe, err = l.punch(ctx, false)
 	} else {
 		pipe, err = l.openRelay(ctx)
@@ -486,7 +486,7 @@ func (l *visitorLink) start(ctx context.Context) error {
 		return err
 	}
 	shape := l.v.cfg.Outer.d.nestedShaping()
-	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Shaper: shape.slot.handshake, Anchor: &anchor{}, Mode: mode, Handle: handle, PSK: psk, MaxAppData: wire.MaxHelloRecv,
+	q, err := seal.Establish(ctx, pipe, &seal.ClientConfig{Shaper: shape.slot.handshake, Anchor: &anchor{}, RecordMode: mode, Handle: handle, PSK: psk, MaxAppData: wire.MaxHelloRecv,
 		AppData: func(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
 			if r.Message == 3 {
 				return wire.AppendHello(nil, &wire.Hello{CompressAlgs: compressAlgs}), nil
@@ -511,7 +511,7 @@ func (l *visitorLink) start(ctx context.Context) error {
 	l.wg.Go(func() { rejectStreams(l.ctx, zc, func(wire.Op) bool { return false }) })
 	l.wg.Go(l.run)
 	path := "relay"
-	if mode == zmux.Bound {
+	if mode == zmux.RecordBound {
 		path = "direct"
 	}
 	log.Info("p2p link up", "link", l.id, "path", path)
@@ -592,7 +592,7 @@ func (l *visitorLink) punch(ctx context.Context, background bool) (zmux.PipeIO, 
 	if err != nil {
 		return zmux.PipeIO{}, err
 	}
-	p, err := zmuxquic.OpenPipe(ctx, path.QUIC)
+	p, err := zmuxquic.ConnPipe(ctx, path.QUIC)
 	if err != nil {
 		path.Close()
 		return zmux.PipeIO{}, err
@@ -745,10 +745,9 @@ func (l *visitorLink) step() {
 		l.closeUpPath()
 	}
 	if directUp && relay != nil {
-		if p, ok := l.zc.Pipe(relay.Pipe); ok {
+		if p, ok := l.zc.Pipe(relay.PipeID); ok {
 			if !relay.Standby {
-				_ = p.SetSendStandby(true)
-				_ = p.SetReceiveStandby(true)
+				_ = p.Update(zmux.PipeUpdate{SendStandby: zmux.Set(true), ReceiveStandby: zmux.Set(true)})
 			}
 			if now.Sub(upSince) >= l.v.cfg.RelayIdle && directActive(l.zc.PipeStats()) {
 				_ = p.Close()
@@ -793,8 +792,8 @@ func (l *visitorLink) joinDirect(background bool) error {
 	if err != nil {
 		return err
 	}
-	mode := zmux.Bound
-	if _, err := l.zc.AddPipe(ctx, pipe, zmux.PipeOptions{Mode: &mode}); err != nil {
+	mode := zmux.RecordBound
+	if _, err := l.zc.AddPipe(ctx, pipe, zmux.PipeOptions{RecordMode: zmux.Set(mode)}); err != nil {
 		l.closeDirect()
 		return err
 	}

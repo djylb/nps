@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/connprofile"
@@ -26,6 +27,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/seal"
+	"github.com/zmuxio/zmux-go/zmuxhttp"
 	"github.com/zmuxio/zmux-go/zmuxquic"
 	"github.com/zmuxio/zmux-go/zmuxws"
 )
@@ -116,7 +118,7 @@ type Acceptor struct {
 	admitKey []byte
 	exchange struct {
 		once sync.Once
-		h    *zmux.HTTPExchangeHandler
+		h    *zmuxhttp.ExchangeHandler
 		err  error
 	}
 
@@ -238,7 +240,7 @@ func kindLabelTLS(label string, kind zmux.CarrierKind, tls bool) string {
 		return "quic"
 	case kind == zmux.CarrierHTTP3:
 		return "h3"
-	case kind == zmux.CarrierStreaming, kind == zmux.CarrierSplit, kind == zmux.CarrierExchange:
+	case kind == zmux.CarrierStream, kind == zmux.CarrierSplit, kind == zmux.CarrierExchange:
 		return "http"
 	case tls:
 		return "wss"
@@ -254,7 +256,7 @@ func (w *admitPipe) report(err error, p zmux.PipeIO, hint zmux.PipeHint) {
 	}
 	// A failing Bound is how a TLS-terminating intermediary shows up
 	// (§3.2): the client retries Sealed, and it is no attack.
-	if re.Mode == zmux.Bound {
+	if re.RecordMode == zmux.RecordBound {
 		return
 	}
 	var reason string
@@ -344,7 +346,7 @@ func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.
 // ServeQUIC implements coreapi.Entry. ALPN told the new protocol from the old
 // before this (§12), so a first stream that is no carrier just ends.
 func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn) {
-	_ = zmuxquic.ServeConn(ctx, qc, a.zl, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
+	_ = zmuxquic.ServeConn(ctx, a.zl, qc, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
 		_ = zmux.PipeConn(p).Close()
 	})
 }
@@ -366,7 +368,7 @@ func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {
 // WebSocket implements coreapi.Entry (§12): on the bridge path the subprotocol
 // binary is the core protocol; anything else stays with the old one.
 func (a *Acceptor) WebSocket(legacy http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	return zmuxws.Handler(a.zl, &zmux.HTTPOptions{Next: legacy, Trusted: trustedOf(f)}, legacySubprotocol)
+	return zmuxws.NewHandler(a.zl, &zmuxhttp.Options{Next: legacy, Trusted: trustedOf(f)}, legacySubprotocol)
 }
 
 // forwarding is the coreapi.Forwarding of zmux's resolver, so that the route
@@ -400,8 +402,8 @@ func (a *Acceptor) Forwarding(trusted []netip.Prefix, header string) coreapi.For
 // protocol's, so a request is accepted with the subprotocol it offered (the
 // first of them) or with none.
 func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	o := &zmux.HTTPOptions{Next: next, Trusted: trustedOf(f)}
-	if _, err := zmuxws.Handler(a.zl, o); err != nil {
+	o := &zmuxhttp.Options{Next: next, Trusted: trustedOf(f)}
+	if _, err := zmuxws.NewHandler(a.zl, o); err != nil {
 		return nil, err
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -415,7 +417,7 @@ func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding)
 		}
 		// Built per request: it holds no state, and the protocols are the
 		// request's own, which is what accepting any subprotocol means.
-		h, err := zmuxws.Handler(a.zl, o, protocols...)
+		h, err := zmuxws.NewHandler(a.zl, o, protocols...)
 		if err != nil {
 			o.Fallback(w, r)
 			return
@@ -436,7 +438,7 @@ func (a *Acceptor) decide(_ context.Context, info *zmux.CarrierInfo, prefix []by
 	}
 	switch b := prefix[0]; b {
 	case 2:
-		known, need := a.zl.KnownJoin(prefix)
+		known, need := a.zl.Adapter().KnownJoin(prefix)
 		if need > 0 {
 			return zmux.Decision{Verdict: zmux.VerdictMore, Need: need}
 		}
@@ -469,8 +471,10 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	_ = c.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 	n, _ := io.ReadFull(c, head)
 	_ = c.SetReadDeadline(time.Time{})
-	//noinspection GoResourceLeak
-	nc := zmux.PrefixedConn(c, head[:n])
+	nc := c
+	if n > 0 {
+		nc = netx.NewPrefixConn(c, head[:n])
+	}
 	info, _ := ctx.Value(carrierKey{}).(carrierCtx)
 	if info.other != nil && info.other(nc, tlsState(info)) {
 		return
@@ -495,7 +499,7 @@ func (a *Acceptor) Stall(ctx context.Context, c net.Conn) {
 		return
 	}
 	defer a.releaseStall(key)
-	t := time.NewTimer(a.zl.StallDuration(src))
+	t := time.NewTimer(a.zl.Adapter().StallDuration(src))
 	defer t.Stop()
 	select {
 	case <-t.C:
@@ -566,7 +570,7 @@ func (a *Acceptor) authFailed(f coreapi.AuthFailure) {
 
 // handle runs an established session until it ends.
 func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
-	peer, ok := zc.Admitted().(*seal.Peer)
+	peer, ok := zmux.AdmittedAs[*seal.Peer](zc)
 	if !ok {
 		_ = zc.Close()
 		return
@@ -576,7 +580,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		_ = zc.Close()
 		return
 	}
-	s := &serverSession{a: a, zc: zc, t: t, mode: peer.Mode, since: time.Now(), kicked: make(chan struct{}, 1)}
+	s := &serverSession{a: a, zc: zc, t: t, mode: peer.RecordMode, since: time.Now(), kicked: make(chan struct{}, 1)}
 	if e := a.table.get(t.client); e != nil {
 		s.configOnly = e.ConfigOnly
 		s.visitorKey = e.VisitorOnly
@@ -604,7 +608,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	// The client may have changed between Commit and register.
 	if e := a.table.get(t.client); e == nil || !e.Enabled || e.handle != t.handle {
 		s.closeAuth("deleted")
-	} else if e.Crypt && s.mode == zmux.Trusted {
+	} else if e.Crypt && s.mode == zmux.RecordTrusted {
 		a.drain(s)
 	}
 	watched := make(chan struct{})

@@ -344,7 +344,7 @@ func TestQUICSession(t *testing.T) {
 	}
 	cs := e.dial(NewDialer(DialConfig{Candidates: c, VKey: "key", Agent: "t", Timeout: 5 * time.Second}))
 	s := e.waitOnline()
-	if cs.mode != zmux.Bound || s.Carrier() != "quic" {
+	if cs.mode != zmux.RecordBound || s.Carrier() != "quic" {
 		t.Fatalf("mode %v carrier %q", cs.mode, s.Carrier())
 	}
 }

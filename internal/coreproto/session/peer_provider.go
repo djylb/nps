@@ -16,6 +16,7 @@ import (
 	"github.com/djylb/nps/lib/acl"
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
+	zcarrier "github.com/zmuxio/zmux-go/carrier"
 	"github.com/zmuxio/zmux-go/seal"
 	"github.com/zmuxio/zmux-go/zmuxquic"
 )
@@ -31,7 +32,7 @@ const (
 
 // nestedConfig is the zmux configuration both ends of a link use (§9.3).
 func nestedConfig(maxLanes int) *zmux.Config {
-	return boundBuffers(&zmux.Config{EnableDatagrams: true, MaxPipes: nestedMaxPipes, ResumeTimeout: nestedResume, Scheduler: zmux.SpreadETA(),
+	return boundBuffers(&zmux.Config{EnableDatagrams: true, MaxPipes: nestedMaxPipes, ResumeTimeout: nestedResume, Scheduler: zmux.SchedulerSpreadETA(),
 		AllowRecordMode: allowNestedMode, RecordPolicy: nestedMode, MaxLanes: maxLanesOf(maxLanes)})
 }
 
@@ -48,17 +49,17 @@ func maxLanesOf(n int) int {
 
 // allowNestedMode is Sealed, or Bound on a carrier that secures itself end to
 // end: never on a relay, whose server must not see the records (§9.3).
-func allowNestedMode(info zmux.CarrierInfo, m zmux.RecordMode, _ any) bool {
-	return m == zmux.Sealed || m == zmux.Bound && info.Secure
+func allowNestedMode(info zmux.RecordPolicyInput, m zmux.RecordMode, _ any) bool {
+	return m == zmux.RecordSealed || m == zmux.RecordBound && info.Secure
 }
 
 // nestedMode is the mode a nested pipe asks for: Bound on a direct QUIC path
 // (which also gives it lanes), Sealed otherwise.
-func nestedMode(info zmux.CarrierInfo) zmux.RecordMode {
+func nestedMode(info zmux.RecordPolicyInput) zmux.RecordMode {
 	if info.Secure {
-		return zmux.Bound
+		return zmux.RecordBound
 	}
-	return zmux.Sealed
+	return zmux.RecordSealed
 }
 
 // relayPipe hides the lanes of an outer stream: an extra lane would be a
@@ -72,7 +73,7 @@ func relayPipe(p zmux.PipeIO) zmux.PipeIO {
 type relayWriter struct{ w io.WriteCloser }
 
 func (r *relayWriter) Write(b []byte) (int, error)          { return r.w.Write(b) }
-func (r *relayWriter) WriteBuffers(b [][]byte) (int, error) { return zmux.WriteFlat(r.w, b) }
+func (r *relayWriter) WriteBuffers(b [][]byte) (int, error) { return zcarrier.WriteFlat(r.w, b) }
 func (r *relayWriter) Close() error                         { return r.w.Close() }
 func (r *relayWriter) Abort(err error) {
 	if a, ok := r.w.(interface{ Abort(error) }); ok {
@@ -98,7 +99,7 @@ func (g *linkGate) Resolve(_ context.Context, h []byte, _ netip.AddrPort) ([]byt
 func (g *linkGate) Credential(context.Context, seal.CredentialRequest) (*seal.Credential, error) {
 	return nil, nil
 }
-func (g *linkGate) Commit(context.Context, seal.Admission) (any, error) { return g, nil }
+func (g *linkGate) Commit(context.Context, seal.CommitRequest) (any, error) { return g, nil }
 
 // providerLink is a provider's end of one link.
 type providerLink struct {
@@ -334,7 +335,7 @@ func (s *clientSession) servePunch(lc *linkConn, fields []byte) {
 		return
 	}
 	defer path.Close()
-	_ = zmuxquic.ServeConn(p.pctx, path.QUIC, p.zl, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
+	_ = zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
 		_ = zmux.PipeConn(c).Close()
 	})
 }

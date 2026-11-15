@@ -5,21 +5,21 @@ go 1.27
 require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/beevik/ntp v1.6.0
-	github.com/brianvoe/gofakeit/v7 v7.18.3
+	github.com/brianvoe/gofakeit/v7 v7.18.4
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261107123050-5337be2e3929
-	github.com/djylb/geomatch v0.0.0-20261107120441-0aa9ef2f47b6
-	github.com/djylb/guard v0.0.0-20261107123051-cc0c4f9f4cfe
-	github.com/djylb/holepunch v0.0.0-20261113170222-06c98641314b
-	github.com/djylb/holepunch/quicpath v0.0.0-20261113170222-06c98641314b
-	github.com/djylb/lifecycle v0.0.0-20261107120442-c0d9ef0db7c4
-	github.com/djylb/netx v0.0.0-20261107123044-7640ba4c50af
-	github.com/djylb/portmux v0.0.0-20261113171555-89816d9bec5f
-	github.com/djylb/selfupdate v0.0.0-20261107123055-ab0fadbc217e
-	github.com/djylb/slogx v0.0.0-20261108035304-7d3fcfd07f00
-	github.com/djylb/timeshim v0.0.0-20261031100623-0e5ae6a85c7f
-	github.com/djylb/upstream v0.0.0-20261113163254-b6b9e23b4439
+	github.com/djylb/byterate v0.0.0-20261114150430-081ce2beb174
+	github.com/djylb/geomatch v0.0.0-20261114151740-f426596f6e1b
+	github.com/djylb/guard v0.0.0-20261114154237-2b9a545d9253
+	github.com/djylb/holepunch v0.0.0-20261115010552-0943ae5b48d3
+	github.com/djylb/holepunch/quicpath v0.0.0-20261115010552-0943ae5b48d3
+	github.com/djylb/lifecycle v0.0.0-20261114151509-12ee2033de95
+	github.com/djylb/netx v0.0.0-20261114154740-c89a319ecfb2
+	github.com/djylb/portmux v0.0.0-20261114154843-b107d8ad8413
+	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
+	github.com/djylb/slogx v0.0.0-20261114151516-27c23f157cbd
+	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
+	github.com/djylb/upstream v0.0.0-20261114151745-c1d45d80e034
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/golang/snappy v1.0.0
@@ -33,10 +33,10 @@ require (
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
 	github.com/xtaci/kcp-go/v5 v5.7.5
-	github.com/zmuxio/zmux-go v1.4.3
-	github.com/zmuxio/zmux-go/seal v1.4.3
-	github.com/zmuxio/zmux-go/zmuxquic v1.4.3
-	github.com/zmuxio/zmux-go/zmuxws v1.4.3
+	github.com/zmuxio/zmux-go v1.4.9
+	github.com/zmuxio/zmux-go/seal v1.4.9
+	github.com/zmuxio/zmux-go/zmuxquic v1.4.9
+	github.com/zmuxio/zmux-go/zmuxws v1.4.9
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
@@ -96,5 +96,5 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	gopkg.in/ini.v1 v1.67.3 // indirect
+	gopkg.in/ini.v1 v1.68.0 // indirect
 )

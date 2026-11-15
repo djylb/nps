@@ -24,7 +24,7 @@ func TestAccessExporterOnTrustedTCP(t *testing.T) {
 	<-first.Done()
 	c := e.dial(d)
 	s := e.waitOnline()
-	if s.mode != zmux.Trusted {
+	if s.mode != zmux.RecordTrusted {
 		t.Fatalf("second session in %v, want trusted", s.mode)
 	}
 	cm, err := c.zc.ExportKeyingMaterial(wire.AccessExportLabel, nil, wire.AccessExportLen)

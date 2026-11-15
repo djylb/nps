@@ -204,19 +204,19 @@ type plan struct {
 func choose(record uint64, secure, boundFailed bool) plan {
 	switch record {
 	case wire.RecordTrusted:
-		return plan{mode: zmux.Trusted}
+		return plan{mode: zmux.RecordTrusted}
 	case wire.RecordSealed:
-		return plan{mode: zmux.Sealed}
+		return plan{mode: zmux.RecordSealed}
 	case wire.RecordBound:
 		if secure {
-			return plan{mode: zmux.Bound}
+			return plan{mode: zmux.RecordBound}
 		}
-		return plan{mode: zmux.Sealed}
+		return plan{mode: zmux.RecordSealed}
 	}
 	if secure && !boundFailed {
-		return plan{mode: zmux.Bound, fallback: true}
+		return plan{mode: zmux.RecordBound, fallback: true}
 	}
-	return plan{mode: zmux.Sealed}
+	return plan{mode: zmux.RecordSealed}
 }
 
 // dialCandidate dials c and establishes; a ws or wss URL candidate that names
@@ -243,11 +243,11 @@ func (d *Dialer) dialCandidateOnce(ctx context.Context, c connprofile.Candidate)
 	d.mu.Lock()
 	p := choose(d.record, ca.secure, d.boundFailedLocked(key))
 	d.mu.Unlock()
-	if p.mode != zmux.Bound {
+	if p.mode != zmux.RecordBound {
 		return d.establish(ctx, ca, p.mode, c)
 	}
 	bctx, cancel := context.WithTimeout(ctx, boundLimit)
-	s, err := d.establish(bctx, ca, zmux.Bound, c)
+	s, err := d.establish(bctx, ca, zmux.RecordBound, c)
 	cancel()
 	if err == nil || !p.fallback || ctx.Err() != nil {
 		return s, err
@@ -256,7 +256,7 @@ func (d *Dialer) dialCandidateOnce(ctx context.Context, c connprofile.Candidate)
 	if ca, err = d.dialCarrier(ctx, c); err != nil {
 		return nil, err
 	}
-	if s, err = d.establish(ctx, ca, zmux.Sealed, c); err != nil {
+	if s, err = d.establish(ctx, ca, zmux.RecordSealed, c); err != nil {
 		return nil, err
 	}
 	d.mu.Lock()
@@ -325,7 +325,7 @@ func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carr
 			protocols = []string{legacySubprotocol}
 		}
 		cd := &captureDialer{dial: d.cfg.Dial}
-		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, NoRedirects: true, Dialer: cd}
+		o := &zmuxws.DialOptions{Protocols: protocols, TLSConfig: tlsCfg, MaxRedirects: -1, Dialer: cd}
 		if c.Host != "" {
 			o.Header = http.Header{"Host": {c.Host}}
 		}
@@ -454,7 +454,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	q, err := seal.Establish(ctx, ca.pipe, &seal.ClientConfig{
 		Shaper:     establishShape(shape),
 		Anchor:     &anchor{pin: pin},
-		Mode:       mode,
+		RecordMode: mode,
 		Handle:     handle,
 		PSK:        psk,
 		Key:        d.cfg.Key,
@@ -496,12 +496,12 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 // exactly the pinned key.
 type anchor struct{ pin *proto.KeyID }
 
-func (a *anchor) Verify(_ context.Context, in seal.VerifyInput) (seal.Verdict, error) {
+func (a *anchor) Verify(_ context.Context, in seal.VerifyInput) (seal.VerifyVerdict, error) {
 	id := seal.NodeKeyID(in.PeerStatic)
 	if a.pin != nil && id != *a.pin {
-		return seal.Verdict{}, seal.ErrVerifyRejected
+		return seal.VerifyVerdict{}, seal.ErrVerifyRejected
 	}
-	return seal.Verdict{Principal: seal.Principal{Type: seal.PrincipalNodeKey, Bytes: id[:]}}, nil
+	return seal.VerifyVerdict{Principal: seal.Principal{Type: seal.PrincipalNodeKey, Bytes: id[:]}}, nil
 }
 
 // clientSession implements coreapi.ClientSession.
@@ -577,7 +577,7 @@ func (s *clientSession) ended() {
 	s.mu.Lock()
 	applied := s.applied
 	s.mu.Unlock()
-	if s.mode == zmux.Trusted && applied == 0 {
+	if s.mode == zmux.RecordTrusted && applied == 0 {
 		s.d.setRecord(wire.RecordDefault)
 	}
 }

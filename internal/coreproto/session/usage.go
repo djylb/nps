@@ -45,7 +45,7 @@ func usageIntervalOf(d time.Duration) time.Duration {
 type directMeter struct {
 	mu      sync.Mutex
 	in, out uint64 // of the pipes gone
-	live    map[uint64]pipeBytes
+	live    map[zmux.PipeID]pipeBytes
 }
 
 type pipeBytes struct{ in, out uint64 }
@@ -54,17 +54,17 @@ type pipeBytes struct{ in, out uint64 }
 func (m *directMeter) sample(stats []zmux.PipeStats) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	seen := make(map[uint64]bool, len(stats))
+	seen := make(map[zmux.PipeID]bool, len(stats))
 	if m.live == nil {
-		m.live = map[uint64]pipeBytes{}
+		m.live = map[zmux.PipeID]pipeBytes{}
 	}
 	for _, p := range stats {
 		if !isDirectPipe(p) {
 			continue
 		}
-		seen[p.Pipe] = true
-		old := m.live[p.Pipe]
-		m.live[p.Pipe] = pipeBytes{max(old.in, p.BytesReceived), max(old.out, p.BytesSent)}
+		seen[p.PipeID] = true
+		old := m.live[p.PipeID]
+		m.live[p.PipeID] = pipeBytes{max(old.in, p.BytesReceived), max(old.out, p.BytesSent)}
 	}
 	for id, b := range m.live {
 		if !seen[id] {

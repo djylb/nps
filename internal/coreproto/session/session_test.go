@@ -230,7 +230,7 @@ func TestEstablishTCPSealed(t *testing.T) {
 	e := start(t, "tcp", rec(1, "abc", true)) // a 0.34-style short vkey
 	cs := e.dial(e.dialer("abc"))
 	s := e.waitOnline()
-	if s.ClientID() != 1 || s.mode != zmux.Sealed || cs.mode != zmux.Sealed || s.Carrier() != "tcp" || s.Agent() != "t" {
+	if s.ClientID() != 1 || s.mode != zmux.RecordSealed || cs.mode != zmux.RecordSealed || s.Carrier() != "tcp" || s.Agent() != "t" {
 		t.Fatalf("%+v %v", s.t, s.mode)
 	}
 	waitFor(t, "CONFIG seq 1", func() bool { return cs.appliedSeq() == 1 })
@@ -242,7 +242,7 @@ func TestEstablishTCPSealed(t *testing.T) {
 func TestEstablishTLSBound(t *testing.T) {
 	e := start(t, "tls", rec(1, "key-1", true))
 	cs := e.dial(e.dialer("key-1"))
-	if s := e.waitOnline(); s.mode != zmux.Bound || cs.mode != zmux.Bound || s.Carrier() != "tls" {
+	if s := e.waitOnline(); s.mode != zmux.RecordBound || cs.mode != zmux.RecordBound || s.Carrier() != "tls" {
 		t.Fatalf("server %v client %v", s.mode, cs.mode)
 	}
 }
@@ -286,7 +286,7 @@ func TestBoundFailureFallsToSealedOnNewCarrier(t *testing.T) {
 	addr, carriers := tlsProxy(t, e.addr)
 	d := NewDialer(DialConfig{Candidates: e.cands(addr), VKey: "key-1", Agent: "t", Timeout: 8 * time.Second})
 	cs := e.dial(d)
-	if s := e.waitOnline(); s.mode != zmux.Sealed || cs.mode != zmux.Sealed {
+	if s := e.waitOnline(); s.mode != zmux.RecordSealed || cs.mode != zmux.RecordSealed {
 		t.Fatalf("server %v client %v", s.mode, cs.mode)
 	}
 	if n := carriers.Load(); n != 2 {
@@ -301,7 +301,7 @@ func TestBoundFailureFallsToSealedOnNewCarrier(t *testing.T) {
 	_ = cs.Close()
 	<-cs.Done()
 	e.dial(d)
-	if s := e.waitOnline(); s.mode != zmux.Sealed {
+	if s := e.waitOnline(); s.mode != zmux.RecordSealed {
 		t.Fatal(s.mode)
 	}
 	if n := carriers.Load(); n != 3 {
@@ -376,7 +376,7 @@ func TestCryptOffDeliversTrusted(t *testing.T) {
 	e := start(t, "tcp", rec(1, "key-1", false))
 	d := e.dialer("key-1")
 	cs := e.dial(d)
-	if s := e.waitOnline(); s.mode != zmux.Sealed {
+	if s := e.waitOnline(); s.mode != zmux.RecordSealed {
 		t.Fatalf("first pipe in %v, want the on rules", s.mode)
 	}
 	waitFor(t, "record 4", func() bool {
@@ -387,7 +387,7 @@ func TestCryptOffDeliversTrusted(t *testing.T) {
 	_ = cs.Close()
 	<-cs.Done()
 	again := e.dial(d)
-	if s := e.waitOnline(); s.mode != zmux.Trusted || again.mode != zmux.Trusted {
+	if s := e.waitOnline(); s.mode != zmux.RecordTrusted || again.mode != zmux.RecordTrusted {
 		t.Fatalf("second session in %v", s.mode)
 	}
 	waitFor(t, "CONFIG", func() bool { return again.appliedSeq() == 1 })
@@ -396,7 +396,7 @@ func TestCryptOffDeliversTrusted(t *testing.T) {
 func TestTrustedLostBeforeConfigForgetsRecord(t *testing.T) {
 	d := NewDialer(DialConfig{VKey: "k"})
 	d.setRecord(wire.RecordTrusted)
-	s := &clientSession{d: d, mode: zmux.Trusted}
+	s := &clientSession{d: d, mode: zmux.RecordTrusted}
 	s.ended()
 	if d.record != wire.RecordDefault {
 		t.Fatal("record kept")
@@ -440,13 +440,13 @@ func TestAllowJoinMode(t *testing.T) {
 		m    zmux.RecordMode
 		id   int
 		want bool
-	}{{zmux.Sealed, 1, true}, {zmux.Bound, 1, true}, {zmux.Trusted, 1, false}, {zmux.Trusted, 2, true}, {zmux.Unmanaged, 2, false}} {
-		if got := a.allowJoinMode(zmux.CarrierInfo{}, c.m, peer(c.id)); got != c.want {
+	}{{zmux.RecordSealed, 1, true}, {zmux.RecordBound, 1, true}, {zmux.RecordTrusted, 1, false}, {zmux.RecordTrusted, 2, true}, {zmux.RecordUnmanaged, 2, false}} {
+		if got := a.allowJoinMode(zmux.RecordPolicyInput{}, c.m, peer(c.id)); got != c.want {
 			t.Errorf("mode %v client %d: %v", c.m, c.id, got)
 		}
 	}
-	if onReject(zmux.RejectInfo{Mode: zmux.Bound}) != zmux.RejectClose || onReject(zmux.RejectInfo{Mode: zmux.Trusted}) != zmux.RejectClose ||
-		onReject(zmux.RejectInfo{Mode: zmux.Sealed}) != zmux.RejectStall || onReject(zmux.RejectInfo{Profile: 2}) != zmux.RejectStall {
+	if onReject(zmux.RejectInfo{RecordMode: zmux.RecordBound}) != zmux.RejectClose || onReject(zmux.RejectInfo{RecordMode: zmux.RecordTrusted}) != zmux.RejectClose ||
+		onReject(zmux.RejectInfo{RecordMode: zmux.RecordSealed}) != zmux.RejectStall || onReject(zmux.RejectInfo{Profile: 2}) != zmux.RejectStall {
 		t.Fatal("OnReject")
 	}
 }
