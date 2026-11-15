@@ -138,7 +138,9 @@ func runCoreConfig(ctx context.Context, cnf *config.Config, issued string) (stri
 		return h.publish(ctx, s, fsm.Services())
 	}
 	var got string
+	established := false
 	err := runCoreProfile(ctx, cnf.CommonConfig, false, func(ctx context.Context, s coreapi.ClientSession, h *coreHost) error {
+		established = true
 		vkey, err := uploadConfig(ctx, s, cnf, fsm)
 		if err != nil {
 			return err
@@ -150,6 +152,13 @@ func runCoreConfig(ctx context.Context, cnf *config.Config, issued string) (stri
 		return publish(ctx, s, h)
 	})
 	if got == "" {
+		// The server keeps the clients it issued in memory only: after it
+		// restarts the issued key is unknown, so a run that never got a
+		// session on it registers again with the public key.
+		if issued != "" && !established && ctx.Err() == nil {
+			log.Info("issued client key not accepted, registering again with the public key", "server", cnf.CommonConfig.Server)
+			return "", err
+		}
 		return issued, err
 	}
 	if ctx.Err() != nil {

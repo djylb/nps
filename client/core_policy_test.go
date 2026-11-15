@@ -223,7 +223,9 @@ func TestIssuedKeyUsedOnLaterRuns(t *testing.T) {
 	cnf.Hosts = append(cnf.Hosts, nil)
 	cnf.Hosts = cnf.Hosts[:1]
 	issued, err := runCoreConfig(context.Background(), cnf, "issued-key")
-	if err != nil || issued != "issued-key" {
+	// No session came up on the issued key: the server may have restarted
+	// and forgotten it, so the next run registers with the public key.
+	if err != nil || issued != "" {
 		t.Fatalf("%q %v", issued, err)
 	}
 	if len(*made) != 1 || (*made)[0].VKey != "issued-key" {
