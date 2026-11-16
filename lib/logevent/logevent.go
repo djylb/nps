@@ -213,8 +213,9 @@ var (
 // npc.
 var (
 	// Connected / ConnectFailed / Disconnected: server, carrier, attempt
-	// (failed attempts in a row) or attempts, reason (connect_failed: dial,
-	// send_type, signal_stream, no_tunnel, establish; disconnected: lost, closed), err;
+	// (failed attempts in a row) or attempts, reason (connect_failed: dns,
+	// dial, tls, auth, send_type, signal_stream, no_tunnel, establish;
+	// disconnected: lost, closed), hint (what to check, when known), err;
 	// disconnected adds dur_ms.
 	Connected     = slogx.Def{Name: "connected", Level: info}
 	Disconnected  = slogx.Def{Name: "disconnected", Level: warn}

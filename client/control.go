@@ -24,12 +24,6 @@ var LocalIPForward = false
 
 var errAdd = errors.New("the server returned an error, which port or host may have been occupied or not allowed to open")
 
-// WaitReconnect waits for the time before the next connection attempt. It
-// returns false if ctx ended first.
-func WaitReconnect(ctx context.Context) bool {
-	return timeshim.Sleep(ctx, timeshim.Real, 5*time.Second) == nil
-}
-
 // errSessionEnded is returned once the connection to the server ended and
 // reconnecting is turned off.
 var errSessionEnded = errors.New("the connection to the server ended and auto reconnection is off")
@@ -58,6 +52,8 @@ func StartFromFile(pCtx context.Context, path string) error {
 	// The key the server issued for a public key, kept across runs.
 	var issued string
 
+	pacing := NewReconnect()
+	ctx := WithReconnect(pCtx, pacing)
 	first := true
 	for {
 		select {
@@ -69,14 +65,15 @@ func StartFromFile(pCtx context.Context, path string) error {
 			return errSessionEnded
 		}
 		if !first {
-			log.Info("reconnecting", "server", cnf.CommonConfig.Server)
-			if !WaitReconnect(pCtx) {
+			d := pacing.Delay()
+			log.Info("reconnecting", "server", cnf.CommonConfig.Server, "retry_in_ms", d.Milliseconds())
+			if timeshim.Sleep(pCtx, pacing.clock, d) != nil {
 				return nil
 			}
 		}
 		first = false
 
-		issued, err = RunConfigOnce(pCtx, cnf, issued)
+		issued, err = RunConfigOnce(ctx, cnf, issued)
 		if err != nil {
 			log.Warn("session ended", "server", cnf.CommonConfig.Server, "err", err)
 		}

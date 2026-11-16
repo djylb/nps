@@ -14,9 +14,6 @@ import (
 	"github.com/djylb/nps/lib/netaddr"
 )
 
-// RelaunchWait is how long a connection that stopped waits before it restarts.
-var RelaunchWait = 5 * time.Second
-
 // Options holds the command line defaults a payload does not set.
 type Options struct {
 	DisconnectTimeout int
@@ -85,10 +82,11 @@ func (p *Profile) runHosting(ctx context.Context) error {
 }
 
 // Supervise keeps each connection of the plan running, independently
-// of the others: when one stops the plan is loaded again after
-// RelaunchWait and whatever is not running is started. The first load
-// must be valid; a later invalid one is logged and tried again. It returns
-// nil when ctx ends and an error when npc cannot continue.
+// of the others: when one stops it is started again once its reconnect
+// pacing (client.Reconnect) allows, by loading the plan again and starting
+// whatever is not running. The first load must be valid; a later invalid one
+// is logged and tried again. It returns nil when ctx ends and an error when
+// npc cannot continue.
 func Supervise(
 	ctx context.Context,
 	load func(context.Context) (Plan, error),
@@ -103,8 +101,18 @@ func Supervise(
 	}
 	ended := make(chan end)
 	running := make(map[string]bool)
+	pacing := make(map[string]*client.Reconnect)
+	notBefore := make(map[string]time.Time)
 	started := false
+	// One timer wakes the loop at the earliest time something is due; a
+	// reload schedules again whatever is still waiting.
 	var wait <-chan time.Time
+	var due time.Time
+	wakeAt := func(at time.Time) {
+		if wait == nil || at.Before(due) {
+			wait, due = time.After(time.Until(at)), at
+		}
+	}
 	reload := func() error {
 		plan, err := load(ctx)
 		switch {
@@ -114,26 +122,44 @@ func Supervise(
 			return err
 		case err != nil:
 			log.Warn("launch reload failed", "retry_in_ms", SourceRetry.Milliseconds(), "err", err)
-			wait = time.After(SourceRetry)
+			wakeAt(time.Now().Add(SourceRetry))
 			return nil
 		}
 		started = true
+		inPlan := make(map[string]bool, len(plan.Profiles))
 		for _, p := range plan.Profiles {
 			key := p.Key()
+			inPlan[key] = true
 			if running[key] {
 				continue
 			}
+			if at, ok := notBefore[key]; ok && time.Now().Before(at) {
+				wakeAt(at)
+				continue
+			}
+			delete(notBefore, key)
+			r := pacing[key]
+			if r == nil {
+				r = client.NewReconnect()
+				pacing[key] = r
+			}
 			running[key] = true
 			wg.Go(func() {
-				err := run(ctx, p)
+				err := run(client.WithReconnect(ctx, r), p)
 				select {
 				case ended <- end{p, err}:
 				case <-ctx.Done():
 				}
 			})
 		}
+		for key := range pacing {
+			if !inPlan[key] {
+				delete(pacing, key)
+				delete(notBefore, key)
+			}
+		}
 		if plan.Retry > 0 {
-			wait = time.After(plan.Retry)
+			wakeAt(time.Now().Add(plan.Retry))
 		}
 		return nil
 	}
@@ -145,7 +171,8 @@ func Supervise(
 		case <-ctx.Done():
 			return nil
 		case e := <-ended:
-			delete(running, e.profile.Key())
+			key := e.profile.Key()
+			delete(running, key)
 			err := e.err
 			if err == nil {
 				err = errors.New("client closed")
@@ -153,8 +180,13 @@ func Supervise(
 			if !launchReconnects(e.profile) {
 				return err
 			}
-			log.Info("launch connection restarting", "name", e.profile.Name, "retry_in_ms", RelaunchWait.Milliseconds(), "err", err)
-			wait = time.After(RelaunchWait)
+			var d time.Duration
+			if r := pacing[key]; r != nil {
+				d = r.Delay()
+			}
+			log.Info("launch connection restarting", "name", e.profile.Name, "retry_in_ms", d.Milliseconds(), "err", err)
+			notBefore[key] = time.Now().Add(d)
+			wakeAt(notBefore[key])
 		case <-wait:
 			wait = nil
 			if err := reload(); err != nil {

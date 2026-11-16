@@ -232,14 +232,6 @@ func TestGetProxyConnTimesOutOnSilentProxy(t *testing.T) {
 	}
 }
 
-func TestWaitReconnectEndsWithContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if WaitReconnect(ctx) {
-		t.Fatal("WaitReconnect went on after the context ended")
-	}
-}
-
 // A silent server, or one lost in the middle, must end the config exchange
 // with an error so that the client reconnects.
 func TestExchangeConfigFailsOnDeadLink(t *testing.T) {

@@ -486,7 +486,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 	s := &clientSession{d: d, mode: mode, visitorOnly: visitorOnly, carrier: c.Carrier, plan: shape, boot: ca.pipe.Carrier, done: make(chan struct{}), configured: make(chan struct{}), wg: &sync.WaitGroup{}}
 	if s.zc, err = zmux.Start(ctx, q, zmux.RoleClient, d.sessionConfig(s)); err != nil {
 		release()
-		return nil, err
+		return nil, closeCause(err)
 	}
 	s.start(c)
 	return s, nil
@@ -557,7 +557,7 @@ func (s *clientSession) start(boot connprofile.Candidate) {
 		}
 	})
 	go func() {
-		s.err = s.zc.Wait()
+		s.err = closeCause(s.zc.Wait())
 		cancel()
 		s.wg.Wait()
 		// nothing applies snapshots any more
@@ -683,3 +683,19 @@ func (s *clientSession) RecordMode() string    { return s.mode.String() }
 func (s *clientSession) Done() <-chan struct{} { return s.done }
 func (s *clientSession) Err() error            { return s.err }
 func (s *clientSession) Close() error          { return s.zc.Close() }
+
+// closeCause marks the server's close codes that the client acts on with the
+// coreapi sentinels, so that the client needs no zmux or wire type.
+func closeCause(err error) error {
+	ae, ok := errors.AsType[*zmux.ApplicationError](err)
+	if !ok || !ae.Remote {
+		return err
+	}
+	switch uint64(ae.ErrorCode) {
+	case wire.CodeDrain:
+		return fmt.Errorf("%w: %w", coreapi.ErrDrained, err)
+	case wire.CodeAuth, wire.CodeDisabled:
+		return fmt.Errorf("%w: %w", coreapi.ErrAuthClosed, err)
+	}
+	return err
+}

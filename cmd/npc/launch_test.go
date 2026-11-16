@@ -31,9 +31,9 @@ func goodProfiles(t *testing.T, links ...string) []launch.Profile {
 
 func fastLaunchDelays(t *testing.T) {
 	t.Helper()
-	w, a := launch.RelaunchWait, client.AutoReconnect
-	launch.RelaunchWait, client.AutoReconnect = time.Millisecond, true
-	t.Cleanup(func() { launch.RelaunchWait, client.AutoReconnect = w, a })
+	w, a := client.ReconnectFirst, client.AutoReconnect
+	client.ReconnectFirst, client.AutoReconnect = time.Millisecond, true
+	t.Cleanup(func() { client.ReconnectFirst, client.AutoReconnect = w, a })
 }
 
 func TestSuperviseRestartsOnlyTheConnectionThatStopped(t *testing.T) {
