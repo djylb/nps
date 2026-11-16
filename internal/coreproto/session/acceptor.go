@@ -479,6 +479,8 @@ func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
 	_ = c.SetReadDeadline(time.Time{})
 	nc := c
 	if n > 0 {
+		// nc wraps c, which every path below hands on to its owner.
+		//goland:noinspection GoResourceLeak
 		nc = netx.NewPrefixConn(c, head[:n])
 	}
 	info, _ := ctx.Value(carrierKey{}).(carrierCtx)
