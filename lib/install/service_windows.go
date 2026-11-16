@@ -44,8 +44,17 @@ func serviceOfProcess(pid int) string {
 	return parseScQueryex(string(out), pid)
 }
 
-// ConfigureService sets the platform specific settings of c; Windows has none.
-func ConfigureService(*service.Config) {}
+// ConfigureService sets the platform specific settings of c: the service
+// manager restarts a service that failed, so a crash does not leave it
+// stopped; the failure count it keeps is reset after a day.
+func ConfigureService(c *service.Config) {
+	if c.Option == nil {
+		c.Option = make(service.KeyValue)
+	}
+	c.Option[service.OnFailure] = service.OnFailureRestart
+	c.Option[service.OnFailureDelayDuration] = "5s"
+	c.Option[service.OnFailureResetPeriod] = int((24 * time.Hour).Seconds())
+}
 
 // serviceFiles returns nothing: the service manager keeps no files.
 func serviceFiles(string) []string { return nil }
