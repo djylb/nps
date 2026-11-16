@@ -13,9 +13,11 @@ import (
 	"github.com/djylb/nps/lib/rate"
 )
 
+// ErrFlowLimit and ErrTimeLimit are matched by the errors of a task or client
+// over its traffic limit or past its time limit.
 var (
-	errFlowLimit = errors.New("flow limit exceeded")
-	errTimeLimit = errors.New("time limit exceeded")
+	ErrFlowLimit = errors.New("flow limit exceeded")
+	ErrTimeLimit = errors.New("time limit exceeded")
 )
 
 // Entry is the task or host a relay serves.
@@ -55,7 +57,7 @@ func relay(client, visitor io.ReadWriteCloser, flows []Flow, task Entry, remote 
 		budgets = append(budgets, budget)
 		counters = append(counters, fl.Traffic())
 		if _, expired := fl.Over(); !expired {
-			stops = append(stops, budget.AfterExpiry(func() { cancel(errTimeLimit) }))
+			stops = append(stops, budget.AfterExpiry(func() { cancel(ErrTimeLimit) }))
 		}
 	}
 	defer func() {
@@ -111,10 +113,10 @@ func flowsError(flows []Flow, err error) error {
 		}
 		traffic, expired := fl.Over()
 		if traffic {
-			return errFlowLimit
+			return ErrFlowLimit
 		}
 		if expired {
-			return errTimeLimit
+			return ErrTimeLimit
 		}
 	}
 	return err

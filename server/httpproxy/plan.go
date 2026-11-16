@@ -5,6 +5,7 @@ import (
 	"html"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"github.com/djylb/netx/httprewrite"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/netaddr"
+	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 )
 
@@ -80,6 +82,18 @@ type proxyRequest struct {
 	authed   bool
 	route    model.Route
 	sni      string // server name for a TLS backend
+}
+
+// trustsForwarding reports whether the forwarding headers the client sent are
+// passed on: its address is in trusted_proxy_ips, the one list of trusted
+// proxies that the web login reads too, or it carried the HTTP-only password.
+// Anyone else could forge them, so they are replaced by what nps saw.
+func (r *proxyRequest) trustsForwarding() bool {
+	if r.httpOnly {
+		return true
+	}
+	peer, err := netip.ParseAddrPort(r.remote)
+	return err == nil && servercfg.Current().Auth.TrustedProxies.Contains(peer.Addr())
 }
 
 type requestKey struct{}
@@ -166,6 +180,9 @@ func (p *hostPlan) rewriteUpgrade(r *http.Request, req *proxyRequest) {
 	in := *r
 	if len(p.headerRules) != 0 {
 		in.Header = r.Header.Clone()
+	}
+	if !req.trustsForwarding() {
+		proxy.DropClientForwarding(r.Header)
 	}
 	p.rewriteHeaders(r, &in, !req.httpOnly && p.upgradeForwardHeaders)
 }

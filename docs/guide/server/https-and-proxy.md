@@ -111,4 +111,6 @@ http3_proxy_port=0
 
 `http_add_origin_header=true` 时，域名转发在请求头注入 `X-Forwarded-For` 和 `X-Real-IP`。后端支持时也可以开启 [Proxy Protocol](/reference/features-http.md)。
 
+访问者自己发来的 `Forwarded`、`X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto`、`X-Forwarded-Port`、`X-Real-IP` 可以随意伪造，nps 只在连接来自 `trusted_proxy_ips`（默认 `127.0.0.1`）或带有正确的 `X-NPS-Http-Only` 时保留它们，其他来源一律丢弃，再按 nps 看到的连接重新设置。nps 前面有 CDN 或不在本机的反向代理时，把它们的地址（支持网段）加进 `trusted_proxy_ips`，否则后端看到的访问者 IP 是代理的地址，协议和域名也是 nps 自己看到的那一跳。
+
 HTTP、HTTPS、HTTP/3 任一监听失败时（常见原因是端口被占用），nps 记录错误并停止这组监听中已启动的部分，其他功能继续运行。HTTP/3 的细节见[HTTP 功能](/reference/features-http.md)。

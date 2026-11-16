@@ -18,11 +18,22 @@ var forwardingHeaders = []string{
 	"X-Forwarded-Proto",
 }
 
+// clientForwarding are the forwarding headers a client can forge: only those
+// of a trusted proxy are passed on.
+var clientForwarding = append(slices.Clone(forwardingHeaders), "X-Forwarded-Port", "X-Real-Ip")
+
 // KeepClientForwarding undoes the clean-up ReverseProxy applies before
 // Rewrite, so the client's request reaches the rewrite logic as sent: the
-// forwarding headers come back unless the client listed them in Connection,
-// and the query string keeps parameters ReverseProxy cannot parse.
-func KeepClientForwarding(pr *httputil.ProxyRequest) {
+// query string keeps parameters ReverseProxy cannot parse and, when trusted
+// says the client is a trusted proxy, the forwarding headers come back unless
+// it listed them in Connection. An untrusted client's forwarding headers are
+// all dropped, so the backend sees only those set from what was observed.
+func KeepClientForwarding(pr *httputil.ProxyRequest, trusted bool) {
+	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	if !trusted {
+		DropClientForwarding(pr.Out.Header)
+		return
+	}
 	connection := pr.In.Header["Connection"]
 	for _, name := range forwardingHeaders {
 		v, ok := pr.In.Header[name]
@@ -31,7 +42,13 @@ func KeepClientForwarding(pr *httputil.ProxyRequest) {
 		}
 		pr.Out.Header[name] = slices.Clone(v)
 	}
-	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+}
+
+// DropClientForwarding removes the forwarding headers a client sent from h.
+func DropClientForwarding(h http.Header) {
+	for _, name := range clientForwarding {
+		delete(h, name)
+	}
 }
 
 // AppendForwardedFor appends the client IP taken from remoteAddr to the

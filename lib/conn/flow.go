@@ -76,18 +76,18 @@ func NewFlowConn(conn io.ReadWriteCloser, task, client Flow) *FlowConn {
 	return fc
 }
 
-// CheckFlowLimits returns an error naming label if f is over its traffic
-// limit or past its time limit.
+// CheckFlowLimits returns an error naming label, matching ErrFlowLimit or
+// ErrTimeLimit, if f is over its traffic limit or past its time limit.
 func CheckFlowLimits(f Flow, label string) error {
 	if f == nil {
 		return nil
 	}
 	traffic, expired := f.Over()
 	if traffic {
-		return fmt.Errorf("%s: flow limit exceeded", label)
+		return fmt.Errorf("%s: %w", label, ErrFlowLimit)
 	}
 	if expired {
-		return fmt.Errorf("%s: time limit exceeded", label)
+		return fmt.Errorf("%s: %w", label, ErrTimeLimit)
 	}
 	return nil
 }

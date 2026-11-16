@@ -113,7 +113,7 @@
 | `ssl_zerossl_api` | 空 | 使用 `ZeroSSL` 时的 API 密钥 | 重启 |
 | `ssl_path` | `ssl`（示例文件 `conf/ssl`） | 自动申请的证书的保存目录 | 重启 |
 | `ssl_cache_reload` | `0`（示例文件 `3600`） | 秒。每隔多久检查一次证书文件有没有更换，`0` 不检查 | 重启 |
-| `http_add_origin_header` | `false`（示例文件 `true`） | `true`：转发给内网服务的请求带上访问者的真实 IP（`X-Forwarded-For`、`X-Real-IP`） | 立即 |
+| `http_add_origin_header` | `false`（示例文件 `true`） | `true`：转发给内网服务的请求带上访问者的真实 IP（`X-Forwarded-For`、`X-Real-IP`）和访问协议、域名（`X-Forwarded-Proto`、`X-Forwarded-Host`）。访问者自带的这些头只在它来自 `trusted_proxy_ips` 时保留 | 立即 |
 | `x_nps_http_only` | 空 | 前面的反向代理在请求头 `X-NPS-Http-Only` 里带上这个值时，nps 信任它：不再把 HTTP 请求跳转到 HTTPS，登录时也采信它传来的真实 IP。空为不启用 | 重启 |
 
 ## 网页管理
@@ -145,7 +145,7 @@
 | `auth_key` | 空 | [Web API](/reference/web-api.md) 的认证密钥，空为禁用 | 立即 |
 | `auth_crypt_key` | 空 | 用来加密“获取 authKey”结果的 AES 密钥（16 位），空为禁用 | 立即 |
 | `allow_x_real_ip` | `false`（示例文件 `false`） | `true`：网页登录时采信 `X-Real-IP` 作为访问者 IP。前面有反向代理时打开 | 立即 |
-| `trusted_proxy_ips` | `127.0.0.1`（示例文件 `127.0.0.1`） | 信任的反向代理地址，逗号分隔，支持网段。只有来自这些地址的请求才会采信 `X-Real-IP` | 立即 |
+| `trusted_proxy_ips` | `127.0.0.1`（示例文件 `127.0.0.1`） | 信任的反向代理或 CDN 地址，逗号分隔，支持网段。网页登录（`allow_x_real_ip=true` 时）只采信来自这些地址的 `X-Real-IP`；域名转发只保留来自这些地址的 `Forwarded`、`X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto`、`X-Forwarded-Port`、`X-Real-IP`，其他来源发来的这些请求头一律丢弃，由 nps 按自己看到的连接重新设置 | 立即 |
 | `login_acl_mode` | `0`（示例文件未启用） | 登录来源名单：`0` 关闭，`1` 白名单（只有名单内的来源能登录），`2` 黑名单 | 立即 |
 | `login_acl_rules` | 空（示例文件未启用） | 登录来源名单的规则，逗号或换行分隔，写法同[访问控制](/guide/server/access-control.md) | 立即 |
 | `instance_key_file` | `instance.key`（示例文件未启用） | 实例主密钥文件，相对 `nps.conf` 所在目录。不存在时自动生成。网页登录状态的签名和客户端启动链接里的准入密钥都由它派生，请备份并保密，丢失后已发出的启动链接会失效 | 立即 |

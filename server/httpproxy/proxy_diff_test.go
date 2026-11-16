@@ -12,14 +12,16 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -325,6 +327,9 @@ func newBackend(t *testing.T, name string, useTLS bool) *backend {
 		case "/cors-own":
 			w.Header().Set("Access-Control-Allow-Origin", "own")
 		}
+		if v := r.URL.Query().Get("vary"); v != "" {
+			w.Header().Set("Vary", v)
+		}
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Methods", "GET")
 			w.WriteHeader(http.StatusNoContent)
@@ -361,6 +366,7 @@ func requestInfo(r *http.Request, name string) map[string]string {
 		"xrip":    r.Header.Get("X-Real-IP"),
 		"xfp":     r.Header.Get("X-Forwarded-Proto"),
 		"xfh":     r.Header.Get("X-Forwarded-Host"),
+		"fwd":     r.Header.Get("Forwarded"),
 		"xop":     r.Header.Get("X-Original-Path"),
 		"origin":  r.Header.Get("Origin"),
 		"xtest":   r.Header.Get("X-Test"),
@@ -460,9 +466,15 @@ func waitFlows(t *testing.T, flows ...*model.Flow) {
 // withAddOriginHeader runs the rest of the test with http_add_origin_header on.
 func withAddOriginHeader(t *testing.T) {
 	t.Helper()
+	withServerConfig(t, "http_add_origin_header=true\n")
+}
+
+// withServerConfig runs the rest of the test with the server config conf.
+func withServerConfig(t *testing.T, conf string) {
+	t.Helper()
 	dir := t.TempDir()
 	on, off := filepath.Join(dir, "on.conf"), filepath.Join(dir, "off.conf")
-	if err := os.WriteFile(on, []byte("http_add_origin_header=true\n"), 0o600); err != nil {
+	if err := os.WriteFile(on, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(off, nil, 0o600); err != nil {
@@ -472,8 +484,45 @@ func withAddOriginHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = servercfg.Load(off) })
-	if !servercfg.Current().Proxy.AddOriginHeader {
-		t.Fatal("http_add_origin_header not applied")
+}
+
+// The forwarding headers a visitor sends are passed on only from a proxy of
+// trusted_proxy_ips; anyone else gets them replaced by what nps saw.
+func TestDiffForwardingTrust(t *testing.T) {
+	forged := http.Header{
+		"X-Forwarded-For":   {"203.0.113.7"},
+		"X-Forwarded-Proto": {"https"},
+		"X-Forwarded-Host":  {"forged.example"},
+		"X-Real-Ip":         {"203.0.113.8"},
+		"Forwarded":         {"for=203.0.113.9"},
+	}
+	for _, tc := range []struct {
+		name, conf string
+		want       map[string]string
+	}{
+		{"trusted", "http_add_origin_header=true\n", map[string]string{
+			"xff": "203.0.113.7, 127.0.0.1", "xfp": "https", "xfh": "forged.example", "xrip": "127.0.0.1", "fwd": "for=203.0.113.9",
+		}},
+		{"untrusted", "http_add_origin_header=true\ntrusted_proxy_ips=192.0.2.1\n", map[string]string{
+			"xff": "127.0.0.1", "xfp": "http", "xfh": "fwd.test", "xrip": "127.0.0.1", "fwd": "",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withServerConfig(t, tc.conf)
+			e := newProxyEnv(t, envOptions{})
+			b := newBackend(t, "a", false)
+			e.addHost("fwd.test", b.addr, nil)
+			m := e.mustGet("fwd.test", "/", forged).info(t)
+			for k, v := range tc.want {
+				if m[k] != v {
+					t.Fatalf("%s = %q, want %q (%v)", k, m[k], v, m)
+				}
+			}
+			_, _, resp := e.wsDial("fwd.test", "/ws", forged, false)
+			if resp.StatusCode != 101 || resp.Header.Get("X-Got-xfp") != tc.want["xfp"] || resp.Header.Get("X-Got-xrip") != tc.want["xrip"] {
+				t.Fatalf("WebSocket: %d %v", resp.StatusCode, resp.Header)
+			}
+		})
 	}
 }
 
@@ -835,8 +884,21 @@ func TestDiffAutoCORS(t *testing.T) {
 	if r.Header.Get("Access-Control-Allow-Origin") != "http://o.example" || r.Header.Get("Access-Control-Allow-Credentials") != "true" {
 		t.Fatalf("CORS headers %v", r.Header)
 	}
-	if r := e.mustGet("cors.test", "/", nil); r.Header.Get("Access-Control-Allow-Origin") != "" {
-		t.Fatal("CORS header without Origin")
+	if v := r.Header.Values("Vary"); !slices.Equal(v, []string{"Origin"}) {
+		t.Fatalf("Vary %q, want Origin", v)
+	}
+	// The backend's Vary is kept, and Origin is not listed twice.
+	for vary, want := range map[string][]string{
+		"Accept-Encoding": {"Accept-Encoding", "Origin"},
+		"origin, Accept":  {"origin, Accept"},
+	} {
+		r := e.mustGet("cors.test", "/?vary="+url.QueryEscape(vary), http.Header{"Origin": {"http://o.example"}})
+		if v := r.Header.Values("Vary"); !slices.Equal(v, want) {
+			t.Fatalf("backend Vary %q: got %q, want %q", vary, v, want)
+		}
+	}
+	if r := e.mustGet("cors.test", "/", nil); r.Header.Get("Access-Control-Allow-Origin") != "" || r.Header.Get("Vary") != "" {
+		t.Fatal("CORS headers without Origin")
 	}
 	if r := e.mustGet("cors.test", "/cors-own", http.Header{"Origin": {"http://o.example"}}); r.Header.Get("Access-Control-Allow-Origin") != "own" || r.Header.Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatalf("backend CORS overridden: %v", r.Header)
@@ -990,23 +1052,20 @@ func TestDiffUpstreamFailures(t *testing.T) {
 		t.Fatalf("eof upgrade: %d %v", resp.StatusCode, resp.Header)
 	}
 
-	// Errors of the client's limits are told apart.
+	// Errors of the client's limits are told apart, and the visitor sees
+	// only the status, not the internal error.
 	b := newBackend(t, "a", false)
 	e.addHost("limit.test", b.addr, nil)
-	flowMsg := "Client 1 flow limit exceeded"
-	//noinspection GoErrorStringFormat
-	e.bridge.setFail(errors.New(flowMsg))
-	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Client 1 flow limit exceeded\n" {
+	e.bridge.setFail(fmt.Errorf("client 1: %w", conn.ErrFlowLimit))
+	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Too Many Requests\n" {
 		t.Fatalf("limit: %d %q", r.StatusCode, r.body)
 	}
 	e.hp.FlowLimitErrorContent = []byte("flow page")
 	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "flow page" {
 		t.Fatalf("limit page: %d %q", r.StatusCode, r.body)
 	}
-	timeMsg := "Task 1 time limit exceeded"
-	//noinspection GoErrorStringFormat
-	e.bridge.setFail(errors.New(timeMsg))
-	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Task 1 time limit exceeded\n" {
+	e.bridge.setFail(fmt.Errorf("task 1: %w", conn.ErrTimeLimit))
+	if r := e.mustGet("limit.test", "/", nil); r.StatusCode != 429 || r.body != "Too Many Requests\n" {
 		t.Fatalf("time limit: %d %q", r.StatusCode, r.body)
 	}
 	e.bridge.setFail(nil)

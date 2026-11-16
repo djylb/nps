@@ -76,12 +76,12 @@ func (s *HttpServer) writeErrorPage(rw http.ResponseWriter, statusCode int, cont
 	_, _ = rw.Write(content)
 }
 
-func (s *HttpServer) writeLimitErrorPage(rw http.ResponseWriter, errMsg string) bool {
+func (s *HttpServer) writeLimitErrorPage(rw http.ResponseWriter, err error) bool {
 	var content []byte
 	switch {
-	case strings.Contains(errMsg, "time limit exceeded"):
+	case errors.Is(err, conn.ErrTimeLimit):
 		content = s.TimeLimitErrorContent
-	case strings.Contains(errMsg, "flow limit exceeded"):
+	case errors.Is(err, conn.ErrFlowLimit):
 		content = s.FlowLimitErrorContent
 	default:
 		return false
@@ -227,7 +227,7 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			req := requestOf(pr.In.Context())
-			proxy.KeepClientForwarding(pr)
+			proxy.KeepClientForwarding(pr, req.trustsForwarding())
 			out := pr.Out
 			out.URL.Scheme = p.backendScheme
 			// Header rules cannot change connection-scoped headers; ReverseProxy
@@ -251,6 +251,9 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 					proxyLog.Debug("cors headers set", "route", p.host.Host, "detail", origin)
 					resp.Header.Set("Access-Control-Allow-Origin", origin)
 					resp.Header.Set("Access-Control-Allow-Credentials", "true")
+					// The response now depends on Origin: a cache must not
+					// serve it to another origin.
+					addVary(resp.Header, "Origin")
 				}
 			}
 			if p.altSvc != "" && requestOf(resp.Request.Context()).tls {
@@ -267,21 +270,29 @@ func (s *HttpServer) newReverseProxy(p *hostPlan) *httputil.ReverseProxy {
 			}
 			proxyLog.Debug("proxy error", "route", p.host.Host, "host", p.host.Id, "method", req.Method, "path", req.URL.Path, "err", err)
 
-			errMsg := err.Error()
-			idx := strings.Index(errMsg, "Task")
-			if idx == -1 {
-				idx = strings.Index(errMsg, "Client")
-			}
-			if idx != -1 {
-				if s.writeLimitErrorPage(rw, errMsg) {
-					return
+			// The visitor sees only the status; the detail is in the log line above.
+			if errors.Is(err, conn.ErrFlowLimit) || errors.Is(err, conn.ErrTimeLimit) {
+				if !s.writeLimitErrorPage(rw, err) {
+					http.Error(rw, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 				}
-				http.Error(rw, errMsg[idx:], http.StatusTooManyRequests)
-			} else {
-				s.writeErrorPage(rw, http.StatusBadGateway, s.ErrorContent)
+				return
 			}
+			s.writeErrorPage(rw, http.StatusBadGateway, s.ErrorContent)
 		},
 	}
+}
+
+// addVary adds name to the Vary header of h unless it is listed already,
+// keeping the values the backend set.
+func addVary(h http.Header, name string) {
+	for _, v := range h.Values("Vary") {
+		for f := range strings.SplitSeq(v, ",") {
+			if f = strings.TrimSpace(f); f == "*" || strings.EqualFold(f, name) {
+				return
+			}
+		}
+	}
+	h.Add("Vary", name)
 }
 
 // hostTransports are the backend transports of one host. The route of each
