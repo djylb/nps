@@ -129,8 +129,12 @@
     // key cannot, and without local accesses it is one anyway.
     function asClientOf(form, ctx) { return !!form.asClient && !ctx.visitorKey && form.access.length > 0; }
     function accessKey(a, ctx) { return ctx.kind === 'tunnel' ? ctx.password || '' : trim(a.key); }
+    // listenIP is where a local access listens: loopback unless the form names
+    // another address, so a generated access is not open to the network by default.
+    function listenIP(a) { return trim(a.ip) || '127.0.0.1'; }
     function accessArg(a, ctx, via) {
-        var s = a.type + '://' + (a.ip.indexOf(':') >= 0 ? '[' + a.ip + ']' : a.ip) + ':' + trim(a.port) + '?access=' + encKey(accessKey(a, ctx));
+        var ip = listenIP(a);
+        var s = a.type + '://' + (ip.indexOf(':') >= 0 ? '[' + ip + ']' : ip) + ':' + trim(a.port) + '?access=' + encKey(accessKey(a, ctx));
         if (trim(a.target) && !proxyType(a.type)) s += '&target=' + enc(trim(a.target));
         if (a.mode && a.mode !== 'auto') s += '&conn_mode=' + a.mode;
         if (a.local_proxy) s += '&local_proxy=true';
@@ -184,7 +188,7 @@
         if (asClientOf(form, ctx)) doc.role = 'client,visitor';
         if (form.access.length) doc.access = form.access.map(function (a) {
             var o = {access: accessKey(a, ctx), local_type: a.type, local_port: Number(a.port) || 0};
-            if (trim(a.ip)) o.local_ip = trim(a.ip);
+            o.local_ip = listenIP(a);
             if (trim(a.target) && !proxyType(a.type)) o.target = trim(a.target);
             if (a.mode && a.mode !== 'auto') o.conn_mode = a.mode;
             if (a.local_proxy) o.local_proxy = true;
@@ -383,7 +387,7 @@
             var at = 'a' + i + '.', b = 'access.' + i + '.', types = ['tcp', 'udp', 'tcp_udp', 'mixed', 'socks5', 'http'];
             if (form.os === 'linux') types.push('transparent');
             var top = field('lg-local-type', select(b + 'type', a.type, types.map(function (t) { return [t, '', t]; })), at + 'type')
-                + textField(b + 'ip', a.ip, at + 'ip', 'lg-listen', proxyType(a.type) ? '127.0.0.1' : '0.0.0.0')
+                + textField(b + 'ip', a.ip, at + 'ip', 'lg-listen', '127.0.0.1')
                 + textField(b + 'port', a.port, at + 'port', 'lg-port');
             if (ctx.kind !== 'tunnel') top += textField(b + 'key', a.key, at + 'key', 'lg-key');
             if (!proxyType(a.type)) {
@@ -478,7 +482,7 @@
             $root.find('[data-err]').empty();
             errs.forEach(function (e) { $root.find('[data-err="' + e.at + '"]').append('<span langtag="' + e.id + '"></span> '); });
             form.access.forEach(function (a, i) {
-                var msg = '', ip = trim(a.ip), loop = ip === '127.0.0.1' || ip === '::1';
+                var msg = '', ip = listenIP(a), loop = ip === '127.0.0.1' || ip === '::1';
                 var hasAuth = (a.auth || []).some(function (u) { return trim(u.user); });
                 if (accountType(a.type) && !loop && !hasAuth) msg = '<span langtag="lg-warn-noauth"></span>';
                 if (a.type === 'transparent') {
@@ -500,7 +504,7 @@
         }
         function afterType(i) {
             var a = form.access[i];
-            if (proxyType(a.type)) { a.target = ''; if (!trim(a.ip)) a.ip = '127.0.0.1'; }
+            if (proxyType(a.type)) a.target = '';
             if (!accountType(a.type)) a.auth = [];
         }
         var structural = /^(run|os|bin|named|paths\.\d+\.carrier|access\.\d+\.type|pipes|scheduler)$/;
