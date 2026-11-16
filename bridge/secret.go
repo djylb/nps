@@ -326,3 +326,51 @@ func (s *Bridge) handleSecretLink(c *conn.Conn, id int, uuid string) {
 	s.secrets.relayed.Add(1)
 	_ = g.server.Serve(c.Conn, lk, legacy.WriteAck)
 }
+
+// legacySecretSize is the MD5 hex digest of the task password that npc
+// before 0.35 sends first on a WorkSecret stream.
+const legacySecretSize = 32
+
+// handleLegacySecret serves a WorkSecret stream of npc before 0.35: one
+// relayed connection of a visitor, named by the digest of the task password
+// and followed by its link. Old visitors know no grant and no direct path,
+// so the stream is relayed at once under the task's current settings.
+func (s *Bridge) handleLegacySecret(c *conn.Conn, id int, uuid string) {
+	ip, port := srcIPPort(c.RemoteAddr())
+	_ = c.SetReadDeadline(time.Now().Add(bridgeHandshakeReadTimeout))
+	sum := make([]byte, legacySecretSize)
+	if _, err := io.ReadFull(c, sum); err != nil {
+		log.Debug("reading secret connection failed", "client", id, "src_ip", ip, "src_port", port, "err", err)
+		_ = c.Close()
+		return
+	}
+	t := s.store.GetTaskByLegacySecret(sum)
+	if t == nil {
+		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "secret",
+			"client", id, "reason", "bad_key")
+		_ = c.Close()
+		return
+	}
+	if !t.Status || t.Client == nil {
+		slogx.Emit(context.Background(), log, &logevent.AuthFailed, "src_ip", ip, "src_port", port, "role", "secret",
+			"client", id, "tunnel", t.Id, "route", t.LogRoute(), "reason", "disabled")
+		_ = c.Close()
+		return
+	}
+	lk, err := legacy.ReadLink(c)
+	if err != nil || lk == nil {
+		log.Debug("reading secret link failed", "client", id, "src_ip", ip, "src_port", port, "err", err)
+		_ = c.Close()
+		return
+	}
+	_ = c.SetReadDeadline(time.Time{})
+	if t.View().NoRelay {
+		log.Info("p2p relay refused: the tunnel does not allow relaying", "tunnel", t.Id, "client", id, "node", uuid)
+		_ = c.Close()
+		return
+	}
+	feature := servercfg.Current().Feature
+	p := proxy.NewSecretPolicy(t, t.Route().Target, feature.AllowLocalProxy)
+	s.secrets.relayed.Add(1)
+	_ = proxy.NewSecretServer(s, t, p, feature.AllowLocalProxy).Serve(c.Conn, lk, legacy.WriteAck)
+}

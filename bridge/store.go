@@ -43,6 +43,9 @@ type Store interface {
 	// GetTaskBySecretIndex finds the task whose password has index p
 	// (crypt.SecretIndex).
 	GetTaskBySecretIndex(p string) *model.Tunnel
+	// GetTaskByLegacySecret finds the point-to-point task whose password
+	// has the MD5 hex digest sum, as npc before 0.35 sends it.
+	GetTaskByLegacySecret(sum []byte) *model.Tunnel
 	// GetTaskByAccessID finds the task whose password has the access id
 	// (coreapi.AccessID).
 	GetTaskByAccessID(id []byte) *model.Tunnel

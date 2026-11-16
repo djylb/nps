@@ -1,6 +1,7 @@
 package file
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -394,6 +395,22 @@ func (s *DbUtils) GetTaskBySecretIndex(p string) (t *model.Tunnel) {
 			return
 		}
 	}
+	return
+}
+
+// GetTaskByLegacySecret returns the point-to-point task whose password has
+// the MD5 hex digest sum, nil if none has. npc before 0.35 names the task of
+// a relayed access this way; the few such tasks are searched, as no index
+// keeps a digest that only old visitors use.
+func (s *DbUtils) GetTaskByLegacySecret(sum []byte) (t *model.Tunnel) {
+	s.JsonDb.Tasks.Range(func(_, v any) bool {
+		tv := v.(*model.Tunnel).View()
+		if tv.Mode == "secret" && tv.Password != "" && subtle.ConstantTimeCompare([]byte(crypt.Md5(tv.Password)), sum) == 1 {
+			t = v.(*model.Tunnel)
+			return false
+		}
+		return true
+	})
 	return
 }
 

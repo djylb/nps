@@ -63,7 +63,7 @@
 | --- | --- |
 | 日志重写 | 默认日志级别从 `trace` 变为 `info`；一个事件一行（logfmt，可选 JSON）；`log_color` 无作用。见[日志](/guide/server/logging.md) |
 | 重载配置 | `nps reload` 命令移除，改为发 `SIGUSR1` 或在网页“全局参数”页点“重新加载配置”，见[运维](/guide/server/operations.md) |
-| 点对点访问 | 私密代理（secret）与 P2P 合并为“点对点访问”。网页和接口不再接受 `mode=p2p`；0.34 及更早的 npc 不能参与新的点对点访问（访问端会被拒绝，提供端只能被中转访问） |
+| 点对点访问 | 私密代理（secret）与 P2P 合并为“点对点访问”。网页和接口不再接受 `mode=p2p`；0.34 及更早的 npc 只能经服务端中转参与点对点访问，不能打洞直连：旧访问端的 `secret` 照常可用，`p2p` 要开着 `fallback_secret`（命令行默认开启，`npc.conf` 里要写 `fallback_secret=true`） |
 | 命令行参数 | nps、npc 遇到不认识的参数时忽略并告警，不再拒绝启动 |
 | 健康检查 | 改为在服务端按隧道、域名配置；旧 npc 自己配置并上报的检查被忽略 |
 | 访客限制 | `ip_limit` 移除，改为在客户端、隧道、域名上单独开启“仅允许已登记的 IP”，见[访问控制](/guide/server/access-control.md) |

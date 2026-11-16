@@ -223,10 +223,7 @@ func (s *Bridge) typeDeal(c *conn.Conn, id int, caps legacy.Caps, tunnelType str
 		return
 
 	case legacy.WorkSecret:
-		// npc before 0.35: point-to-point access changed with it.
-		log.Info("secret connection refused", "client", id, "src_ip", ip, "src_port", port, "reason", "version",
-			"version", caps.ClientVersion, "min_version", legacy.P2PMinVersion)
-		_ = c.Close()
+		s.handleLegacySecret(c, id, uuid)
 		return
 
 	case legacy.WorkFile:
