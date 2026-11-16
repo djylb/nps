@@ -96,7 +96,9 @@ func healthProbe(typ, path string) health.Probe {
 		c := uphttp.Check{
 			Scheme: typ,
 			Path:   path,
-			Status: uphttp.StatusRange{Min: 200, Max: 200},
+			// A redirect, to a login page say, still shows a backend
+			// that is up; the redirect is not followed.
+			Status: uphttp.StatusRange{Min: 200, Max: 399},
 		}
 		if typ == "https" {
 			c.Client = insecureProbeClient
