@@ -21,9 +21,11 @@ import (
 type SystemInfo struct {
 	Version string
 	Year    int
-	// CanUpdate tells whether the server can be updated from the web to a
-	// newer release.
+	// CanUpdate tells whether the server can update itself from the web;
+	// the update checks for a newer release when it runs.
 	CanUpdate bool
+	// UpdateAvailable tells that a newer release is known already.
+	UpdateAvailable bool
 }
 
 type BridgeTransport struct {
@@ -95,10 +97,10 @@ func (s DefaultSystemService) canUpdate() bool {
 
 func (s DefaultSystemService) Info() SystemInfo {
 	return SystemInfo{
-		Version: server.GetVersion(),
-		Year:    server.GetCurrentYear(),
-		// the update button only appears when a newer release exists
-		CanUpdate: s.canUpdate() && install.UpdateAvailable(),
+		Version:         server.GetVersion(),
+		Year:            server.GetCurrentYear(),
+		CanUpdate:       s.canUpdate(),
+		UpdateAvailable: s.canUpdate() && install.UpdateAvailable(),
 	}
 }
 

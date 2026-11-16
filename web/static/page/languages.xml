@@ -1318,6 +1318,14 @@
 		<zh-CN>服务端版本</zh-CN>
 		<en-US>Server Version</en-US>
 	</lang>
+	<lang id="word-checkupdate">
+		<zh-CN>检查更新</zh-CN>
+		<en-US>Check For Updates</en-US>
+	</lang>
+	<lang id="word-updateavailable">
+		<zh-CN>有新版本</zh-CN>
+		<en-US>Update Available</en-US>
+	</lang>
 	<lang id="word-minsupportversion">
 		<zh-CN>最低支持版本</zh-CN>
 		<en-US>Minimum Supported Version</en-US>

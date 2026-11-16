@@ -38,6 +38,8 @@ type ManagementPageCommonData struct {
 	IsAdmin        bool
 	// ServerUpdate tells whether the server can be updated from the web.
 	ServerUpdate bool
+	// ServerUpdateAvailable tells that a newer release is known already.
+	ServerUpdateAvailable bool
 	// MixPlain tells that the mixed port accepts plaintext carriers (tcp,
 	// ws, http).
 	MixPlain bool
@@ -82,19 +84,20 @@ type ManagementPageCommonData struct {
 
 func (d ManagementPageCommonData) Map() map[string]any {
 	data := map[string]any{
-		"web_base_url":        d.WebBaseURL,
-		"head_custom_code":    d.HeadCustomCode,
-		"version":             d.Version,
-		"year":                d.Year,
-		"isAdmin":             d.IsAdmin,
-		"allow_server_update": d.IsAdmin && d.ServerUpdate,
-		"username":            d.Username,
-		"bridgeType":          d.BridgeType,
-		"addr":                d.BridgeAddr,
-		"visitor_vkey":        d.VisitorVKey,
-		"ip":                  d.BridgeIP,
-		"p":                   d.BridgePort,
-		"proxyPort":           d.ProxyPort,
+		"web_base_url":            d.WebBaseURL,
+		"head_custom_code":        d.HeadCustomCode,
+		"version":                 d.Version,
+		"year":                    d.Year,
+		"isAdmin":                 d.IsAdmin,
+		"allow_server_update":     d.IsAdmin && d.ServerUpdate,
+		"server_update_available": d.IsAdmin && d.ServerUpdate && d.ServerUpdateAvailable,
+		"username":                d.Username,
+		"bridgeType":              d.BridgeType,
+		"addr":                    d.BridgeAddr,
+		"visitor_vkey":            d.VisitorVKey,
+		"ip":                      d.BridgeIP,
+		"p":                       d.BridgePort,
+		"proxyPort":               d.ProxyPort,
 	}
 	for name, on := range d.Features {
 		data[name] = on

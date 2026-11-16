@@ -229,8 +229,10 @@
                                 </div>
                                 <div class="col-sm-6 text-right">
                                     <strong>{{.data.version}} ({{.data.minVersion}})</strong>
-                                    {{if .allow_server_update}}
-                                    <a class="btn btn-outline btn-info btn-xs ml-2" onclick="updateServer(this)"><i class="fa fa-arrow-circle-up"></i></a>
+                                    {{if .server_update_available}}
+                                    <a class="btn btn-warning btn-xs ml-2" onclick="updateServer(this)" langtitle="word-updateavailable"><i class="fa fa-arrow-circle-up"></i> <span langtag="word-updateavailable"></span></a>
+                                    {{else if .allow_server_update}}
+                                    <a class="btn btn-outline btn-info btn-xs ml-2" onclick="updateServer(this)" langtitle="word-checkupdate"><i class="fa fa-arrow-circle-up"></i></a>
                                     {{end}}
                                 </div>
                             </div>
