@@ -121,3 +121,13 @@ func usesRcLinks() bool {
 	p := host.platform()
 	return p == "unix-systemv" || p == "linux-procd"
 }
+
+// procdServices asks procd for the services it runs; nil when it does not
+// answer.
+func procdServices() map[string][]ubusInstance {
+	out, err := host.output("ubus", "call", "service", "list")
+	if err != nil {
+		return nil
+	}
+	return parseUbusServices(out)
+}

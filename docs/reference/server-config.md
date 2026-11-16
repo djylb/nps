@@ -5,7 +5,7 @@
 ## 文件和写法
 
 - **位置**：安装后在 `/etc/nps/conf/nps.conf`（Windows 为 `C:\Program Files\nps\conf\nps.conf`）；直接在解压目录运行时是解压目录里的 `conf/nps.conf`。除 `.conf` 外，同一位置的 `nps.ini`、`nps.yaml`、`nps.yml`、`nps.json` 也能读。用 `-c` 指定别的位置，详见 [nps 命令行](/reference/nps-cli.md)。
-- **格式**：`.conf`、`.ini` 是 `键=值`，`#` 或 `;` 开头的行是注释。YAML、JSON 里嵌套的层级用下划线连成键名，例如 `web:` 下的 `port` 等同于 `web_port`。
+- **格式**：`.conf`、`.ini` 是 `键=值`，`#` 或 `;` 开头的行是注释；值一直到行尾，`#`、`;` 写在值后面也算值的一部分（密码里可以有这两个字符），注释要单独写一行。YAML、JSON 里嵌套的层级用下划线连成键名，例如 `web:` 下的 `port` 等同于 `web_port`。
 - **键名**不分大小写，`-`、`.`、空格都按 `_` 处理。
 - **值**：布尔值写 `true`/`false`（也接受 `1`/`0`）；数字写十进制整数。空值，或无法识别的布尔值和数字，都当作“没写”，使用默认值。
 - **相对路径**以运行目录为准：安装后是 `/etc/nps`（Windows 为 `C:\Program Files\nps`），在解压目录运行时是程序所在目录。只有 `instance_key_file` 例外，它相对 `nps.conf` 所在的目录。证书类的项可以直接填 PEM 文本，不必是文件路径。

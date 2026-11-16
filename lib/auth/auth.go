@@ -60,7 +60,7 @@ func ParseTrustedProxies(list string) *forwarded.PrefixSet {
 // AnyAddress is the set of every address.
 var AnyAddress = forwarded.NewPrefixSet(netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"))
 
-// CheckAuthWithAccountMap
+// CheckAuthWithAccountMap reports whether u and p log in.
 // u current login user
 // p current login passwd
 // user global user

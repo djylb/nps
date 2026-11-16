@@ -81,7 +81,7 @@ func (s *Conn) Close() error {
 	return errors.New("connection already closed")
 }
 
-// write
+// Write writes b to the connection.
 func (s *Conn) Write(b []byte) (n int, err error) {
 	if s == nil || s.IsClosed() {
 		return 0, errors.New("connection error")
@@ -129,7 +129,7 @@ func (s *Conn) FlushBuf() error {
 	return err
 }
 
-// read
+// Read reads into b from the connection.
 func (s *Conn) Read(b []byte) (n int, err error) {
 	if err = s.FlushBuf(); err != nil {
 		return 0, err

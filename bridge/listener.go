@@ -192,9 +192,6 @@ func (s *Bridge) Done() <-chan struct{} { return s.scope.Done() }
 // lifecycle.ErrClosed after Close; nil while it is open.
 func (s *Bridge) Cause() error { return s.scope.Cause() }
 
-// Close stops the bridge: it closes the listeners and the connections still
-// being served, disconnects the clients, stops P2P and returns once every
-// goroutine the bridge started has returned.
 // Drain ends the sessions of every client with a close while their carriers
 // still run, so npc redials at once instead of waiting out its resume
 // timeout. The server calls it before it stops the carriers.
@@ -205,6 +202,9 @@ func (s *Bridge) Drain() {
 	}
 }
 
+// Close stops the bridge: it drains the clients, closes the listeners and the
+// connections still being served, stops P2P and returns once every goroutine
+// the bridge started has returned.
 func (s *Bridge) Close() error {
 	s.closeOnce.Do(func() {
 		s.Drain()

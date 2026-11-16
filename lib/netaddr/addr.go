@@ -46,8 +46,8 @@ func dialLocalUDPAddr(network, target string) (*net.UDPAddr, error) {
 	}, nil
 }
 
-// ExtractHost
-// return "[2001:db8::1]:80"
+// ExtractHost returns the host and port of input, a URL or an address,
+// e.g. "[2001:db8::1]:80".
 func ExtractHost(input string) string {
 	if strings.Contains(input, "://") {
 		if u, err := url.Parse(input); err == nil && u.Host != "" {

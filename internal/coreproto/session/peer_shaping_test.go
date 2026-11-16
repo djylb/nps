@@ -245,7 +245,8 @@ func TestNestedFollowsReplaceAndClear(t *testing.T) {
 	p.a.SetShaping(nil)
 	waitFor(t, "clearing", func() bool { return p.provider.d.plan() == nil && p.outer.d.plan() == nil })
 	for _, slot := range []*planSlot{p.provider.d.plans, p.outer.d.plans} {
-		slot.mu.Lock() // the change is complete once keep has let go
+		slot.mu.Lock()
+		//lint:ignore SA2001 a barrier: the change is complete once keep has let go
 		slot.mu.Unlock()
 	}
 	before := [2]uint64{spent(vz), spent(pz)}

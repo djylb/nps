@@ -33,7 +33,8 @@ func TestUDPSplitByFirstPacket(t *testing.T) {
 	}
 	send([]byte{1, 2, 3, 4, 0xf1, 0, 9})
 	send([]byte{1, 2, 3, 4, 0xf2, 0, 9})
-	if !read(s.KCP) || !read(s.KCP) || read(s.QUIC) {
+	first, second := read(s.KCP), read(s.KCP)
+	if !first || !second || read(s.QUIC) {
 		t.Fatal("FEC packets not all KCP's")
 	}
 	send([]byte{0xc0, 0, 0, 0, 1, 8, 9})

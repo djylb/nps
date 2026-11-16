@@ -25,7 +25,7 @@ func NewSnappyConn(conn io.ReadWriteCloser) *SnappyConn {
 	return c
 }
 
-// snappy压缩写
+// Write compresses b with snappy and writes it.
 func (s *SnappyConn) Write(b []byte) (n int, err error) {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
@@ -38,7 +38,7 @@ func (s *SnappyConn) Write(b []byte) (n int, err error) {
 	return
 }
 
-// snappy压缩读
+// Read reads and decompresses snappy data into b.
 func (s *SnappyConn) Read(b []byte) (n int, err error) {
 	return s.r.Read(b)
 }
