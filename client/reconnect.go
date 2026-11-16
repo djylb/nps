@@ -39,6 +39,7 @@ type Reconnect struct {
 	upAt    time.Time // when the last session came up, zero without one
 	stable  bool      // the last session stayed up for reconnectStable
 	drained bool      // the server drained the last session
+	failure string    // the reason of the last failed connect (connectFailure)
 }
 
 // NewReconnect returns the pacing of a profile that has not failed yet.
@@ -66,8 +67,23 @@ func reconnectOf(ctx context.Context) *Reconnect {
 // up records that a session came up.
 func (r *Reconnect) up() {
 	r.mu.Lock()
-	r.upAt = r.clock.Now()
+	r.upAt, r.failure = r.clock.Now(), ""
 	r.mu.Unlock()
+}
+
+// failed records the reason of a connect that failed.
+func (r *Reconnect) failed(reason string) {
+	r.mu.Lock()
+	r.failure = reason
+	r.mu.Unlock()
+}
+
+// lastFailure is the reason of the last failed connect since a session came
+// up, "" when none failed.
+func (r *Reconnect) lastFailure() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.failure
 }
 
 // ended records how the session that came up last ended.

@@ -98,6 +98,7 @@ func runCore(ctx context.Context, d coreapi.Dialer, autoReconnect bool, after fu
 				})
 			}
 			reason, hint := connectFailure(err)
+			r.failed(reason)
 			args := []any{"server", d.Server(), "attempt", attempt, "reason", reason}
 			if hint != "" {
 				args = append(args, "hint", hint)

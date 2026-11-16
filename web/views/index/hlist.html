@@ -202,7 +202,7 @@
                 visible: false, //false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return '<span onclick="oCopy(this)">' + value + '</span>'
+                    return '<span onclick="oCopy(this)">' + escapeHtml(value) + '</span>'
                 }
             },
             {

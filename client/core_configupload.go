@@ -119,7 +119,8 @@ var errKeyIssued = errors.New("client key issued")
 // the next run is returned.
 func runCoreConfig(ctx context.Context, cnf *config.Config, issued string) (string, error) {
 	cnf.ConvertFileTunnels()
-	ctx, cancel := context.WithCancel(ctx)
+	rc := reconnectOf(ctx)
+	ctx, cancel := context.WithCancel(WithReconnect(ctx, rc))
 	defer cancel()
 	fsm := NewFileServerManager(ctx)
 	defer fsm.CloseAll()
@@ -153,9 +154,10 @@ func runCoreConfig(ctx context.Context, cnf *config.Config, issued string) (stri
 	})
 	if got == "" {
 		// The server keeps the clients it issued in memory only: after it
-		// restarts the issued key is unknown, so a run that never got a
-		// session on it registers again with the public key.
-		if issued != "" && !established && ctx.Err() == nil {
+		// restarts the issued key is unknown, so a run that reached the
+		// server but never got a session on it registers again with the
+		// public key. A server it could not reach says nothing of the key.
+		if issued != "" && !established && ctx.Err() == nil && keyMayBeUnknown(rc.lastFailure()) {
 			log.Info("issued client key not accepted, registering again with the public key", "server", cnf.CommonConfig.Server)
 			return "", err
 		}
@@ -196,4 +198,15 @@ func uploadConfig(ctx context.Context, s coreapi.ClientSession, cnf *config.Conf
 	}
 	logWebAccess(cnf, vkey)
 	return vkey, nil
+}
+
+// keyMayBeUnknown reports whether a connect that failed for reason
+// (connectFailure) may have failed on the key: the server was reached, or the
+// test runs without a dial.
+func keyMayBeUnknown(reason string) bool {
+	switch reason {
+	case "dns", "dial", "tls":
+		return false
+	}
+	return true
 }

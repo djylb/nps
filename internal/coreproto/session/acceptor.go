@@ -106,9 +106,12 @@ type Acceptor struct {
 	usage   map[uint64]*linkUsage // direct usage reported per link (§9.6)
 	clock   func() time.Time      // of the usage records; called with usageMu held
 
-	mu     sync.Mutex
-	sess   map[int][]*serverSession
-	grants map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
+	mu   sync.Mutex
+	sess map[int][]*serverSession
+	// closing is set by Close under mu: a session registered after its
+	// drain snapshot is drained at once.
+	closing bool
+	grants  map[int][]*pipeGrant // client_max_pipes: pipes admitted, not yet counted
 
 	stallMu                  sync.Mutex
 	stalled                  map[netip.Prefix]int
@@ -304,6 +307,7 @@ func (a *Acceptor) Close() error {
 	// Sessions end with NPS_DRAIN while their carriers still run, so npc
 	// redials at once instead of waiting out its resume timeout.
 	a.mu.Lock()
+	a.closing = true
 	var all []*serverSession
 	for _, l := range a.sess {
 		all = append(all, l...)
@@ -594,7 +598,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 			log.Debug("session options not applied", "err", err)
 		}
 	}
-	replaced := a.register(s)
+	replaced, closing := a.register(s)
 	a.dropGrant(t)
 	h := a.hooks.Load()
 	for _, old := range replaced {
@@ -610,7 +614,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	// The client may have changed between Commit and register.
 	if e := a.table.get(t.client); e == nil || !e.Enabled || e.handle != t.handle {
 		s.closeAuth("deleted")
-	} else if e.Crypt && s.mode == zmux.RecordTrusted {
+	} else if closing || e.Crypt && s.mode == zmux.RecordTrusted {
 		a.drain(s)
 	}
 	watched := make(chan struct{})
@@ -664,7 +668,7 @@ func (a *Acceptor) snapshotOf(s *serverSession) *wire.Snapshot {
 // register adds s and returns the sessions of the same instance and role it
 // replaces (§3.6); sessions of other instances are left alone, and so is the
 // client's own session when a pure visitor of the same process connects.
-func (a *Acceptor) register(s *serverSession) (replaced []*serverSession) {
+func (a *Acceptor) register(s *serverSession) (replaced []*serverSession, closing bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	kept := a.sess[s.t.client][:0:0]
@@ -676,7 +680,7 @@ func (a *Acceptor) register(s *serverSession) (replaced []*serverSession) {
 		}
 	}
 	a.sess[s.t.client] = append(kept, s)
-	return replaced
+	return replaced, a.closing
 }
 
 func (a *Acceptor) unregister(s *serverSession) {
