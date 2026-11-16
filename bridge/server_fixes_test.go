@@ -184,8 +184,12 @@ func TestQuotaStopsRelayAndCountsAsItGoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	up, down := g.Limiters()
-	up.Charge(100)
-	down.Charge(50)
+	if _, err := up.Acquire(t.Context(), 100, 100); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := down.Acquire(t.Context(), 50, 50); err != nil {
+		t.Fatal(err)
+	}
 	if v := task.Flow.Values(); v.InletFlow != 100 || v.ExportFlow != 50 {
 		t.Fatalf("tunnel flow %+v", v)
 	}
@@ -195,7 +199,10 @@ func TestQuotaStopsRelayAndCountsAsItGoes(t *testing.T) {
 	if !g.Valid() {
 		t.Fatal("under quota and not valid")
 	}
-	up.Charge(2 << 20)
+	// Take what is left of the quota.
+	if _, err := up.Acquire(t.Context(), 1, 2<<20); err != nil {
+		t.Fatal(err)
+	}
 	// A spent quota stops the relay only: the link stays for the direct path.
 	if !g.Valid() || g.RelayAllowed() {
 		t.Fatal("over quota: want valid without relay")
@@ -203,7 +210,7 @@ func TestQuotaStopsRelayAndCountsAsItGoes(t *testing.T) {
 	if _, err := g.Admit(func() {}); err == nil {
 		t.Fatal("a PIPE passed an exhausted quota")
 	}
-	if _, err := up.Ready(t.Context(), 1, 10); err == nil {
+	if _, err := up.Acquire(t.Context(), 1, 10); err == nil {
 		t.Fatal("a running PIPE goes on over quota")
 	}
 	if g2, err := b.coreResolveLink(1, accessOf("pw")); err != nil || g2.RelayAllowed() {

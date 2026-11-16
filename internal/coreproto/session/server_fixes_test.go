@@ -111,9 +111,12 @@ func TestPipeRefusedByAdmission(t *testing.T) {
 
 type countLimiter struct{ n *atomic.Int64 }
 
-func (l countLimiter) Ready(_ context.Context, _, m int) (int, error) { return m, nil }
-func (l countLimiter) TryReady(m int) int                             { return m }
-func (l countLimiter) Charge(n int)                                   { l.n.Add(int64(n)) }
+func (l countLimiter) Acquire(_ context.Context, _, m int64) (int64, error) {
+	l.n.Add(m)
+	return m, nil
+}
+func (l countLimiter) TryAcquire(_, m int64) (int64, error) { l.n.Add(m); return m, nil }
+func (l countLimiter) Refund(n int64)                       { l.n.Add(-n) }
 
 // A PIPE holds its slot while it runs and is metered as bytes pass.
 func TestPipeHoldsSlotAndMeters(t *testing.T) {

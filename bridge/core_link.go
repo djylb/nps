@@ -205,10 +205,11 @@ func watchExpiry(stop func(), flows ...*model.Flow) func() {
 }
 
 // pipeLimiter is the rate limits, the quota and the counting of a relay
-// (conn.CopyWaitGroup) for bytes the protocol forwards itself: charged as
-// they pass, so a long PIPE counts while it runs.
+// (conn.CopyWaitGroup) for bytes the protocol forwards itself: reserved
+// before they pass and counted at once, less what is given back, so a long
+// PIPE counts while it runs.
 type pipeLimiter struct {
-	limit    byterate.Limiter
+	limit    byterate.Reserver
 	counters []*byterate.Counter
 	inbound  bool
 }
@@ -226,29 +227,38 @@ func newPipeLimiter(rate byterate.Limiter, flows []*model.Flow, inbound bool) *p
 	return l
 }
 
-func (l *pipeLimiter) Ready(ctx context.Context, _, maxBytes int) (int, error) {
-	n, err := l.limit.Ready(ctx, int64(maxBytes))
-	return int(n), err
+func (l *pipeLimiter) Acquire(ctx context.Context, minBytes, maxBytes int64) (int64, error) {
+	n, err := l.limit.Acquire(ctx, minBytes, maxBytes)
+	l.count(n)
+	return n, err
 }
 
-func (l *pipeLimiter) TryReady(maxBytes int) int {
-	if l.limit.TryWait(int64(maxBytes)) != nil {
-		return 0
+func (l *pipeLimiter) TryAcquire(minBytes, maxBytes int64) (int64, error) {
+	n, err := l.limit.TryAcquire(minBytes, maxBytes)
+	l.count(n)
+	return n, err
+}
+
+func (l *pipeLimiter) Refund(n int64) {
+	if n <= 0 {
+		return
 	}
-	l.limit.Refund(int64(maxBytes))
-	return maxBytes
+	l.limit.Refund(n)
+	l.count(-n)
 }
 
-func (l *pipeLimiter) Charge(n int) {
+// count adds n bytes, negative when given back, to the traffic counters.
+func (l *pipeLimiter) count(n int64) {
+	if n == 0 {
+		return
+	}
 	for _, c := range l.counters {
 		if l.inbound {
-			c.Add(0, int64(n))
+			c.Add(0, n)
 		} else {
-			c.Add(int64(n), 0)
+			c.Add(n, 0)
 		}
 	}
-	// A refusal comes back from the next Ready.
-	_ = l.limit.Charge(int64(n))
 }
 
 func exitLinkType(network string) string {

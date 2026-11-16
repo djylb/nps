@@ -655,19 +655,19 @@ func TestPeerNestedCompression(t *testing.T) {
 // quotaLimiter refuses every byte once the grant stopped being valid.
 type quotaLimiter struct{ valid *atomic.Bool }
 
-func (q quotaLimiter) Ready(_ context.Context, _, maxBytes int) (int, error) {
+func (q quotaLimiter) Acquire(_ context.Context, _, maxBytes int64) (int64, error) {
 	if !q.valid.Load() {
 		return 0, errors.New("quota")
 	}
 	return maxBytes, nil
 }
-func (q quotaLimiter) TryReady(maxBytes int) int {
+func (q quotaLimiter) TryAcquire(_, maxBytes int64) (int64, error) {
 	if !q.valid.Load() {
-		return 0
+		return 0, errors.New("quota")
 	}
-	return maxBytes
+	return maxBytes, nil
 }
-func (quotaLimiter) Charge(int) {}
+func (quotaLimiter) Refund(int64) {}
 
 // A relay pipe stopped by a quota ends the link at once, well before the
 // nested session's resume timeout.

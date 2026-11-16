@@ -622,8 +622,8 @@ type quotaWatch struct {
 	stopped func()
 }
 
-func (q quotaWatch) Ready(ctx context.Context, minBytes, maxBytes int) (int, error) {
-	n, err := q.Limiter.Ready(ctx, minBytes, maxBytes)
+func (q quotaWatch) Acquire(ctx context.Context, minBytes, maxBytes int64) (int64, error) {
+	n, err := q.Limiter.Acquire(ctx, minBytes, maxBytes)
 	if err != nil && ctx.Err() == nil {
 		q.stopped()
 	}

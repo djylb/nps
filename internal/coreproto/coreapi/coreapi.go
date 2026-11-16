@@ -23,6 +23,15 @@ import (
 // server did not answer: its port may take only tls.
 var ErrPlainRefused = errors.New("no reply on the plain tcp carrier")
 
+// ErrDrained is matched by the end of a client session that the server
+// closed on purpose (its shutdown, a kick or a takeover): the client may come
+// back at once.
+var ErrDrained = errors.New("the server closed the session")
+
+// ErrAuthClosed is matched by the end of a client session that the server
+// closed for its key: the key is no longer valid or the client is disabled.
+var ErrAuthClosed = errors.New("the server refused the client key")
+
 // FirstBytes are the first bytes of a core protocol carrier on a port shared
 // with the old protocol: Establish Profiles 1 and 3, and Join.
 var FirstBytes = []string{"\x01", "\x02", "\x03"}
@@ -260,16 +269,18 @@ type LinkResolve struct {
 func AccessID(password []byte) []byte { return wire.AccessID(password) }
 
 // Limiter meters one direction of a relayed path. Its method set is what the
-// protocol's splice takes.
+// protocol's splice takes: bytes are reserved before they move and what was
+// not sent is given back.
 type Limiter interface {
-	// Ready waits until at least minBytes bytes (or the burst, if less) are
-	// allowed and returns the allowance, at most maxBytes. An error ends
-	// the direction.
-	Ready(ctx context.Context, minBytes, maxBytes int) (int, error)
-	// TryReady returns the allowance now, 0 when it would have to wait.
-	TryReady(maxBytes int) int
-	// Charge accounts n bytes forwarded, as they pass.
-	Charge(n int)
+	// Acquire waits until at least minBytes bytes (or the burst, if less)
+	// are allowed and takes them, at most maxBytes. It takes nothing on
+	// error; an error other than the end of ctx ends the direction.
+	Acquire(ctx context.Context, minBytes, maxBytes int64) (int64, error)
+	// TryAcquire takes what is allowed now, at least minBytes, or returns
+	// 0 with the reason and takes nothing.
+	TryAcquire(minBytes, maxBytes int64) (int64, error)
+	// Refund gives back n taken bytes that were not sent.
+	Refund(n int64)
 }
 
 // Forwarding resolves the source of an HTTP carrier behind trusted

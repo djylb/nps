@@ -8,7 +8,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.18.4
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261114150430-081ce2beb174
+	github.com/djylb/byterate v0.0.0-20261116000019-85642ff30659
 	github.com/djylb/geomatch v0.0.0-20261114151740-f426596f6e1b
 	github.com/djylb/guard v0.0.0-20261114154237-2b9a545d9253
 	github.com/djylb/holepunch v0.0.0-20261115010552-0943ae5b48d3
@@ -33,10 +33,10 @@ require (
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
 	github.com/xtaci/kcp-go/v5 v5.7.5
-	github.com/zmuxio/zmux-go v1.4.9
-	github.com/zmuxio/zmux-go/seal v1.4.9
-	github.com/zmuxio/zmux-go/zmuxquic v1.4.9
-	github.com/zmuxio/zmux-go/zmuxws v1.4.9
+	github.com/zmuxio/zmux-go v1.4.10
+	github.com/zmuxio/zmux-go/seal v1.4.10
+	github.com/zmuxio/zmux-go/zmuxquic v1.4.10
+	github.com/zmuxio/zmux-go/zmuxws v1.4.10
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
