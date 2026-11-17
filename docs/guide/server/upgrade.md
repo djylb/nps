@@ -80,7 +80,7 @@
 | `new_protocol` | 已移除，忽略并告警 | 删掉 |
 | `log_color` | 已移除，忽略并告警 | 删掉；用 `log_format` 选格式 |
 | `ip_limit` | 已移除，设置了会告警 | 在客户端、隧道或域名上开启“仅允许已登记的 IP” |
-| `allow_secret_local` | 已移除，写了 `true` 会告警 | 点对点访问的 `local_proxy` 在隧道开启“代理到服务器本地”且 `allow_local_proxy=true` 时生效 |
+| `allow_secret_local` | 已移除，写了 `true` 会告警 | 点对点访问的 `local_proxy` 在隧道开启“由服务端连接目标”且 `allow_local_proxy=true` 时生效 |
 | `allow_secret_link` | 已移除，写了会告警 | 删掉；点对点访问的访问端可以指定任意目标，要限制请在隧道的目标名单里配置 |
 | `quic_alpn` 里含 `h3` | 自动从中去掉并告警；去空后改用 `nps` | 删掉 `h3`；旧 npc 要用同一个 ALPN 连接 |
 

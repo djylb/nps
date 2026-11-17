@@ -195,8 +195,8 @@
 		<en-US>Password</en-US>
 	</lang>
 	<lang id="lg-local-proxy">
-		<zh-CN>由服务端连接目标（隧道开启“代理到服务器本地”才生效，否则仍由提供端连接）</zh-CN>
-		<en-US>Server reaches the target (only when the tunnel has "Proxy to server local" on; otherwise the provider does)</en-US>
+		<zh-CN>由服务端连接目标（隧道开启“由服务端连接目标”才生效，否则仍由提供端连接）</zh-CN>
+		<en-US>Server connects to the target (only when the tunnel has "Server connects to target" on; otherwise the provider does)</en-US>
 	</lang>
 	<lang id="lg-back">
 		<zh-CN>返回上一页</zh-CN>
@@ -299,8 +299,8 @@
 		<en-US>A standby path is used only when the others are unavailable.</en-US>
 	</lang>
 	<lang id="lg-hint-local-proxy">
-		<zh-CN>是：访问端从本机经本地代理出站。</zh-CN>
-		<en-US>Yes: the access side connects out through the local proxy.</en-US>
+		<zh-CN>是：目标由服务端去连接，不经提供端；隧道也要开启“由服务端连接目标”。</zh-CN>
+		<en-US>Yes: the server connects to the target instead of the provider; the tunnel must have "Server connects to target" on too.</en-US>
 	</lang>
 	<lang id="lg-dirs-bidi">
 		<zh-CN>双向（默认）</zh-CN>
@@ -943,8 +943,8 @@
 		<en-US>Inlet Flow</en-US>
 	</lang>
 	<lang id="word-localproxycol">
-		<zh-CN>代理到本地</zh-CN>
-		<en-US>Proxy to local</en-US>
+		<zh-CN>由服务端连接目标</zh-CN>
+		<en-US>Server connects to target</en-US>
 	</lang>
 	<lang id="word-relayflow">
 		<zh-CN>中继流量（上下行）</zh-CN>
@@ -1139,8 +1139,8 @@
 		<en-US>Proxy Protocol v2</en-US>
 	</lang>
 	<lang id="word-proxytolocal">
-		<zh-CN>代理到服务器本地</zh-CN>
-		<en-US>Proxy to server local</en-US>
+		<zh-CN>由服务端连接目标</zh-CN>
+		<en-US>Server connects to target</en-US>
 	</lang>
 	<lang id="word-allowrelay">
 		<zh-CN>允许中转</zh-CN>
@@ -1738,8 +1738,8 @@
 		<en-US>Line break if load balancing</en-US>
 	</lang>
 	<lang id="info-targettunnel">
-		<zh-CN>代理到本地可以只填写端口号，只有TCP模式支持负载均衡</zh-CN>
-		<en-US>Can only fill in ports if it is local machine proxy, only tcp supports load balancing</en-US>
+		<zh-CN>开启“由服务端连接目标”时可以只填写端口号，只有TCP模式支持负载均衡</zh-CN>
+		<en-US>With "Server connects to target" on, a port alone is enough; only TCP supports load balancing</en-US>
 	</lang>
 	<lang id="info-targetauth">
 		<zh-CN>密码认证留空不启用</zh-CN>

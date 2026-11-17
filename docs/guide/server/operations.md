@@ -108,7 +108,7 @@ allow_user_register=true
 allow_multi_ip=true
 ```
 
-**代理到服务器本地**：相当于在 nps 所在的机器上起一个 npc，把流量送回本机。设置 `allow_local_proxy=true`（普通用户还需要 `allow_user_local=true`），然后在隧道或域名上选择“代理到服务器本地”。例如本机网站在 `5000` 端口，添加域名并把目标设为 `127.0.0.1:5000`。
+**由服务端连接目标**：相当于在 nps 所在的机器上起一个 npc，把流量送回本机。设置 `allow_local_proxy=true`（普通用户还需要 `allow_user_local=true`），然后在隧道或域名上选择“由服务端连接目标”。例如本机网站在 `5000` 端口，添加域名并把目标设为 `127.0.0.1:5000`。
 
 ## 各项设置重载后的效果
 

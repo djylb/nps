@@ -161,8 +161,8 @@
 | `allow_time_limit` | `false`（示例文件 `true`） | 允许设置到期时间 | 立即 |
 | `allow_tunnel_num_limit` | `false`（示例文件 `true`） | 允许限制客户端的隧道数量 | 立即 |
 | `allow_connection_num_limit` | `false`（示例文件 `true`） | 允许限制客户端的并发连接数 | 立即 |
-| `allow_local_proxy` | `false`（示例文件 `true`） | 允许隧道使用“代理到服务器本地”，即从 nps 所在机器出站。只影响之后启动的隧道；改动后点对点访问的授权会失效，访问端会重新授权 | 立即 |
-| `allow_user_local` | 同 `allow_local_proxy`（示例文件 `false`） | 普通用户是否也能使用“代理到服务器本地”。示例文件里只有管理员能用 | 立即 |
+| `allow_local_proxy` | `false`（示例文件 `true`） | 允许隧道使用“由服务端连接目标”，即从 nps 所在机器出站。只影响之后启动的隧道；改动后点对点访问的授权会失效，访问端会重新授权 | 立即 |
+| `allow_user_local` | 同 `allow_local_proxy`（示例文件 `false`） | 普通用户是否也能使用“由服务端连接目标”。示例文件里只有管理员能用 | 立即 |
 | `allow_multi_ip` | `false`（示例文件 `true`） | 允许给隧道单独设置监听 IP | 立即 |
 | `flow_store_interval` | `0`（示例文件 `1`） | 分钟。每隔多久把流量统计写入磁盘，`0` 不定时保存 | 重启 |
 | `system_info_display` | `false`（示例文件 `true`） | 仪表盘显示服务器的系统负载 | 立即 |
@@ -313,7 +313,7 @@
 | `new_protocol` | 已移除。当前协议总是开启，直接删除这一行 |
 | `log_color` | 已移除。日志不再有单独的颜色开关，终端上自动着色，格式用 `log_format` 选 |
 | `ip_limit` | 已移除。它曾让所有客户端只接受已登记 IP 的访问者。现在逐个设置：在客户端、隧道或域名的编辑页打开“仅允许已登记的 IP”，或在 Web API 里用 `registered_only=1` |
-| `allow_secret_local` | 已移除。点对点访问端的本地代理，在隧道打开“代理到服务器本地”且 `allow_local_proxy` 为 `true` 时生效 |
+| `allow_secret_local` | 已移除。点对点访问端的本地代理，在隧道打开“由服务端连接目标”且 `allow_local_proxy` 为 `true` 时生效 |
 | `allow_secret_link` | 已移除。点对点访问端可以指定任意目标，除非隧道自己的目标名单另有限制 |
 
 `tls_bridge_port` 是 `bridge_tls_port` 的旧名，仍能读取，见“混合端口”一节的“已弃用的键”。

@@ -549,7 +549,6 @@
                 title: '<span langtag="word-localproxycol"></span>',
                 align: 'center',
                 halign: 'center',
-                detail: {{ if $p2p }}true{{ else }}false{{ end }}, // shown in the details of the point-to-point list only
                 visible: false,
                 formatter: function (value, row, index) {
                     return value ? '<span class="badge badge-primary" langtag="word-yes"></span>' : '<span class="badge badge-badge" langtag="word-no"></span>'
