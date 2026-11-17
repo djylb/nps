@@ -826,14 +826,15 @@ func (s *serverSession) LocalAddr() string      { return s.t.hello.LocalAddr }
 func (s *serverSession) Record() string         { return s.mode.String() }
 func (s *serverSession) Since() time.Time       { return s.since }
 
-// Pipes implements coreapi.Session: the carriers of the pipes that carry
-// data, in pipe order.
-func (s *serverSession) Pipes() []string {
+// Pipes implements coreapi.Session: the pipes that carry data, in pipe
+// order.
+func (s *serverSession) Pipes() []coreapi.PipeInfo {
 	stats := s.zc.PipeStats()
-	out := make([]string, 0, len(stats))
+	out := make([]coreapi.PipeInfo, 0, len(stats))
 	for _, p := range stats {
 		if usable(p) {
-			out = append(out, kindLabel(p.Variant, p.Carrier))
+			out = append(out, coreapi.PipeInfo{Carrier: kindLabel(p.Variant, p.Carrier), RTT: p.SmoothedRTT,
+				Attached: p.AttachedFor, Sent: p.BytesSent, Received: p.BytesReceived, Rate: p.DeliveryRate, Standby: p.Standby})
 		}
 	}
 	return out

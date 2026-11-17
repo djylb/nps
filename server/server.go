@@ -693,13 +693,9 @@ func (s *Server) DisconnectClient(clientId int) { s.bridge.DelClient(clientId) }
 // sorting lists.
 func (s *Server) ClientConnected(id int) bool { return s.bridge.Connected(id) }
 
-// ClientPipes summarizes the carriers of the pipes client id uses now.
-func (s *Server) ClientPipes(id int) string {
-	if l := s.bridge.ClientLink(id); l != nil {
-		return l.Pipes
-	}
-	return ""
-}
+// ClientLink describes how the core sessions of client id are carried now;
+// nil without one.
+func (s *Server) ClientLink(id int) *model.ClientLink { return s.bridge.ClientLink(id) }
 
 // GenerateTunnelPort picks a free port for t.
 func (s *Server) GenerateTunnelPort(t *model.Tunnel) int { return s.ports.GenerateTunnelPort(t) }

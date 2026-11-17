@@ -740,6 +740,34 @@
 		<zh-CN>信任承载链路（Trusted）</zh-CN>
 		<en-US>Carrier-trusted (Trusted)</en-US>
 	</lang>
+	<lang id="word-carrier">
+		<zh-CN>承载</zh-CN>
+		<en-US>Carrier</en-US>
+	</lang>
+	<lang id="word-rtt">
+		<zh-CN>延迟</zh-CN>
+		<en-US>RTT</en-US>
+	</lang>
+	<lang id="word-pipeuptime">
+		<zh-CN>已连接</zh-CN>
+		<en-US>Up</en-US>
+	</lang>
+	<lang id="word-pipesent">
+		<zh-CN>发送</zh-CN>
+		<en-US>Sent</en-US>
+	</lang>
+	<lang id="word-pipereceived">
+		<zh-CN>接收</zh-CN>
+		<en-US>Received</en-US>
+	</lang>
+	<lang id="word-piperate">
+		<zh-CN>速率</zh-CN>
+		<en-US>Rate</en-US>
+	</lang>
+	<lang id="word-standby">
+		<zh-CN>备用</zh-CN>
+		<en-US>Standby</en-US>
+	</lang>
 	<lang id="word-pipes">
 		<zh-CN>使用中的通道</zh-CN>
 		<en-US>Pipes in Use</en-US>

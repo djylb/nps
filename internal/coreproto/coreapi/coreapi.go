@@ -182,9 +182,9 @@ type Session interface {
 	// Record is the session's record mode, "sealed", "bound" or "trusted"
 	// (§3.2).
 	Record() string
-	// Pipes names the carrier of each pipe that carries data now, as
-	// Carrier does; it follows pipes joining and leaving.
-	Pipes() []string
+	// Pipes describes each pipe that carries data now, in pipe order; it
+	// follows pipes joining and leaving.
+	Pipes() []PipeInfo
 	Since() time.Time
 	// OpenLink opens a link to the exit, within ctx: a connection to the
 	// target, bytes for TCP, length-prefixed frames as the old protocol
@@ -267,6 +267,23 @@ type LinkResolve struct {
 
 // AccessID is what an access key is found by (§9.1).
 func AccessID(password []byte) []byte { return wire.AccessID(password) }
+
+// PipeInfo is one pipe of a session as the server sees it.
+type PipeInfo struct {
+	// Carrier names the carrier as Session.Carrier does.
+	Carrier string
+	// RTT is the smoothed round-trip time, 0 before a sample.
+	RTT time.Duration
+	// Attached is how long the pipe has been attached.
+	Attached time.Duration
+	// Sent and Received count the bytes over the pipe's life.
+	Sent, Received uint64
+	// Rate is the estimated delivery rate in bytes per second, 0 without
+	// an estimate.
+	Rate uint64
+	// Standby reports a pipe kept ready and not used while others are.
+	Standby bool
+}
 
 // Limiter meters one direction of a relayed path. Its method set is what the
 // protocol's splice takes: bytes are reserved before they move and what was

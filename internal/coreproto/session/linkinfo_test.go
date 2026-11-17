@@ -15,7 +15,7 @@ func TestSessionLinkInfo(t *testing.T) {
 		t.Fatalf("Record = %q", got)
 	}
 	waitUntil(t, "two pipes", func() bool { return len(cs.zc.Pipes()) == 2 && len(ss.Pipes()) == 2 })
-	if got := ss.Pipes(); got[0] != "tcp" || got[1] != "tcp" {
-		t.Fatalf("Pipes = %q", got)
+	if got := ss.Pipes(); got[0].Carrier != "tcp" || got[1].Carrier != "tcp" || got[0].Attached <= 0 {
+		t.Fatalf("Pipes = %+v", got)
 	}
 }

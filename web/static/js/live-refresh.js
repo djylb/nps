@@ -88,6 +88,24 @@
                     + '</span><span langtag="word-offline"></span><span>' + escapeHtml(event.OfflineTime || '-') + '</span>';
             }).join('') + '</div></div>';
     };
+    function npsDuration(sec) {
+        sec = Math.max(0, Number(sec) || 0);
+        var d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+        return d ? d + 'd' + h + 'h' : h ? h + 'h' + m + 'm' : m ? m + 'm' + (sec % 60) + 's' : sec + 's';
+    }
+    window.npsPipesHTML = function (pipes) {
+        if (!pipes || !pipes.length) return '';
+        var cells = ['word-carrier', 'word-rtt', 'word-pipeuptime', 'word-pipesent', 'word-pipereceived', 'word-piperate'].map(function (k) {
+            return '<b langtag="' + k + '"></b>';
+        });
+        pipes.forEach(function (p) {
+            cells.push(escapeHtml(p.Carrier) + (p.Standby ? ' <span class="label label-default" langtag="word-standby"></span>' : ''),
+                p.RTTMs ? p.RTTMs + ' ms' : '—', npsDuration(p.UpSec), changeunit(p.Sent || 0), changeunit(p.Received || 0),
+                p.Rate ? changeunit(p.Rate) + '/s' : '—');
+        });
+        return '<div style="overflow-x:auto;margin-top:4px"><div style="display:grid;grid-template-columns:repeat(6,max-content);column-gap:14px;row-gap:2px;white-space:nowrap;line-height:1.4">'
+            + cells.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div></div><br/>';
+    };
     window.initListLive = function (resource, baseURL) {
         var table = $('#table'), serial = 0, cursor = 0;
         table.on('load-success.bs.table page-change.bs.table search.bs.table sort.bs.table column-switch.bs.table expand-row.bs.table collapse-row.bs.table refresh.bs.table', function () { serial++; });
@@ -148,7 +166,7 @@
                     });
                     entry.tr.next('.detail-view').find('[data-live-field]').each(function () {
                         var field = $(this).attr('data-live-field'); if (!Object.prototype.hasOwnProperty.call(patch, field) || !changed[field]) return;
-                        var value = patch[field], html = field === 'ConnectionHistory' ? npsHistoryHTML(value) : field.indexOf('Flow.') === 0 ? changeunit(value) : escapeHtml(field === 'Link.Pipes' ? value || '—' : value);
+                        var value = patch[field], html = field === 'ConnectionHistory' ? npsHistoryHTML(value) : field === 'Link.PipeList' ? npsPipesHTML(value) : field.indexOf('Flow.') === 0 ? changeunit(value) : escapeHtml(field === 'Link.Pipes' ? value || '—' : value);
                         if ($(this).html() !== html) $(this).html(html).addClass('nps-live-changed');
                     });
                 });

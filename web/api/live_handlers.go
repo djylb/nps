@@ -25,7 +25,7 @@ func (a *App) LiveStatus(c Context) {
 		c.RespondJSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "Flow.DirectIn": kind == "tunnel", "Flow.DirectOut": kind == "tunnel", "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "Link.Pipes": kind == "client", "LastOnlineTime": kind == "client"}
+	allowed := map[string]bool{"Speed": true, "UploadRate": true, "DownloadRate": true, "Flow.InletFlow": true, "Flow.ExportFlow": true, "Flow.DirectIn": kind == "tunnel", "Flow.DirectOut": kind == "tunnel", "TotalFlow": true, "ActualFlow": true, "FlowRemain": true, "NowConn": true, "Client.IsConnect": kind != "client", "IsConnect": kind == "client", "Status": kind != "host", "RunStatus": kind == "tunnel", "IsClose": kind == "host", "ConnectionHistory": kind == "client", "Link.Pipes": kind == "client", "Link.PipeList": kind == "client", "LastOnlineTime": kind == "client"}
 	type item struct {
 		ID     int      `json:"id"`
 		Fields []string `json:"fields"`
@@ -119,6 +119,8 @@ func (a *App) LiveStatus(c Context) {
 		ratesRead := false
 		var values model.FlowValues
 		flowRead := false
+		var link *model.ClientLink
+		linkRead := false
 		for _, f := range it.Fields {
 			switch f {
 			case "Speed", "UploadRate", "DownloadRate":
@@ -168,8 +170,20 @@ func (a *App) LiveStatus(c Context) {
 				row[f] = client.LastSeenTime()
 			case "ConnectionHistory":
 				row[f] = history
-			case "Link.Pipes":
-				row[f] = rt.ClientPipes(client.Id)
+			case "Link.Pipes", "Link.PipeList":
+				if !linkRead {
+					link, linkRead = rt.ClientLink(client.Id), true
+				}
+				if f == "Link.Pipes" {
+					row[f] = ""
+					if link != nil {
+						row[f] = link.Pipes
+					}
+				} else if link != nil {
+					row[f] = link.PipeList
+				} else {
+					row[f] = []model.PipeStat{}
+				}
 			}
 		}
 		rows = append(rows, row)

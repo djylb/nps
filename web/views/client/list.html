@@ -158,6 +158,7 @@
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + escapeHtml(row.LocalAddr || '—') + '</span>&emsp;'
                 + (row.Link ? '<b langtag="word-pipes"></b>: ' + npsLiveValue('Link.Pipes', escapeHtml(row.Link.Pipes || '—')) + '&emsp;' : '')
                 + '<br/><br/>'
+            if (row.Link) status += '<div data-live-field="Link.PipeList">' + npsPipesHTML(row.Link.PipeList) + '</div>'
             status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
             var account = ''
             if (row.WebUserName || row.WebPassword) {

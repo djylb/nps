@@ -395,9 +395,22 @@ type ShapedStats struct {
 type ClientLink struct {
 	// Pipes counts the pipes in use by carrier, most first: "tls×2 + quic".
 	Pipes string `json:",omitempty"`
+	// PipeList describes each pipe in use, by session and then pipe order.
+	PipeList []PipeStat `json:",omitempty"`
 	// Records are the distinct record modes of the sessions: "sealed",
 	// "bound" or "trusted".
 	Records []string `json:",omitempty"`
+}
+
+// PipeStat is one pipe of a client's sessions for the web pages.
+type PipeStat struct {
+	Carrier  string
+	RTTMs    int64  // smoothed round-trip time, 0 before a sample
+	UpSec    int64  // seconds since the pipe attached
+	Sent     uint64 // bytes the server sent on it
+	Received uint64 // bytes the server received on it
+	Rate     uint64 // estimated delivery rate, bytes per second
+	Standby  bool
 }
 
 // Tunnel and host override of the compression of a client; "" follows the

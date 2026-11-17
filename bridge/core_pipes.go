@@ -18,12 +18,17 @@ func (s *Bridge) ClientLink(id int) *model.ClientLink {
 	if !ok {
 		return nil
 	}
-	var pipes, records []string
+	var carriers, records []string
+	var list []model.PipeStat
 	found := false
 	for _, node := range v.(*Client).nodeList() {
 		if cs := node.coreSession(); cs != nil {
 			found = true
-			pipes = append(pipes, cs.Pipes()...)
+			for _, p := range cs.Pipes() {
+				carriers = append(carriers, p.Carrier)
+				list = append(list, model.PipeStat{Carrier: p.Carrier, RTTMs: p.RTT.Milliseconds(), UpSec: int64(p.Attached.Seconds()),
+					Sent: p.Sent, Received: p.Received, Rate: p.Rate, Standby: p.Standby})
+			}
 			if r := cs.Record(); !slices.Contains(records, r) {
 				records = append(records, r)
 			}
@@ -33,7 +38,7 @@ func (s *Bridge) ClientLink(id int) *model.ClientLink {
 		return nil
 	}
 	slices.Sort(records)
-	return &model.ClientLink{Pipes: pipeSummary(pipes), Records: records}
+	return &model.ClientLink{Pipes: pipeSummary(carriers), PipeList: list, Records: records}
 }
 
 // pipeSummary counts carriers: "tls×2 + quic", the most used first, ties by
