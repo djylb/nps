@@ -335,11 +335,16 @@ func (s *clientSession) servePunch(lc *linkConn, fields []byte) {
 		return
 	}
 	defer path.Close()
-	// ServeConn hands the connection over; the path lives until it ends.
+	// ServeConn hands the connection over; the path lives until it ends or
+	// the provider link does, which a peer that keeps it alive would
+	// otherwise outlast.
 	if zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
 		_ = zmux.PipeConn(c).Close()
 	}) == nil {
-		<-path.QUIC.Context().Done()
+		select {
+		case <-path.QUIC.Context().Done():
+		case <-p.pctx.Done():
+		}
 	}
 }
 

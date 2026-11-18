@@ -37,6 +37,9 @@ const (
 	// frame ends and its encoder goes back to the pool (between one and one
 	// and a half of it): a live stream that is idle then holds no encoder.
 	compressIdle = time.Second
+	// idleGens is how many sweep generations, compressIdle/2 each, a stream
+	// goes without a write before the sweep ends its frame.
+	idleGens = 3
 	// compressFinishTimeout bounds writing the end of a compressed stream.
 	// A session may be suspended for its resume timeout meanwhile, default
 	// 30 s: the bound is for a peer that stopped reading, above that.
@@ -139,8 +142,8 @@ func putZstdDecoder(d *zstd.Decoder, maxWindow uint64) {
 	}
 }
 
-// idleSweep ends the frames of zstd streams with no write for two whole
-// generations of compressIdle/2. Writes only store the generation: the hot
+// idleSweep ends the frames of zstd streams with no write for three
+// generations of compressIdle/2, which is one to one and a half compressIdle. Writes only store the generation: the hot
 // path reads no clock, and no stream has a timer of its own.
 var idleSweep struct {
 	mu    sync.Mutex
@@ -172,7 +175,7 @@ func sweepIdle() {
 	var idle []*compressConn
 	idleSweep.mu.Lock()
 	for c := range idleSweep.conns {
-		if gen-c.wgen.Load() >= 2 {
+		if gen-c.wgen.Load() >= idleGens {
 			idle = append(idle, c)
 		}
 	}
@@ -237,9 +240,12 @@ type compressConn struct {
 	wfin bool
 	// framed is set once a frame was written, so that the end of the stream
 	// does not need one of its own.
-	framed  bool
-	wgen    atomic.Uint32 // idleSweep's generation at the last write
-	started bool
+	framed bool
+	wgen   atomic.Uint32 // idleSweep's generation at the last write
+	// idleEnding is set while the sweep holds wmu to end an idle frame.
+	idleEnding atomic.Bool
+	wdl        atomic.Int64 // the write deadline in Unix nanoseconds, 0 for none
+	started    bool
 	// abandon tells a Write in progress that Close gave up on the stream.
 	abandon atomic.Bool
 
@@ -291,9 +297,17 @@ func (c *compressConn) endIdleFrame(gen uint32) {
 		return // a write is in progress: not idle
 	}
 	defer c.wmu.Unlock()
-	if c.enc == nil || c.wfin || c.werr != nil || gen-c.wgen.Load() < 2 {
+	if c.enc == nil || c.wfin || c.werr != nil || gen-c.wgen.Load() < idleGens {
 		return
 	}
+	// The frame end is written under the application's write deadline: one
+	// that is near would fail it and the stream with it, so wait for a
+	// write that moves it.
+	if dl := c.wdl.Load(); dl != 0 && time.Until(time.Unix(0, dl)) < compressIdle {
+		return
+	}
+	c.idleEnding.Store(true)
+	defer c.idleEnding.Store(false)
 	err := c.enc.Close()
 	if err == nil {
 		err = c.bw.Flush()
@@ -536,7 +550,7 @@ func (c *compressConn) finishWrite() error {
 // Close ends both directions. A Write still in progress is stuck on a peer
 // that does not read, and then the stream is reset rather than finished.
 func (c *compressConn) Close() error {
-	if !c.wmu.TryLock() {
+	if !c.wmu.TryLock() && !c.lockAfterIdleEnd() {
 		c.abandon.Store(true)
 		c.c.abort(uint64(streamCancelled))
 		// The Write may have ended before it could see abandon.
@@ -561,8 +575,37 @@ func (c *compressConn) Close() error {
 
 func (c *compressConn) LocalAddr() net.Addr               { return c.c.LocalAddr() }
 func (c *compressConn) RemoteAddr() net.Addr              { return c.c.RemoteAddr() }
-func (c *compressConn) SetDeadline(t time.Time) error     { return c.c.SetDeadline(t) }
 func (c *compressConn) SetReadDeadline(t time.Time) error { return c.c.SetReadDeadline(t) }
+
+func (c *compressConn) SetDeadline(t time.Time) error {
+	c.noteWriteDeadline(t)
+	return c.c.SetDeadline(t)
+}
+
 func (c *compressConn) SetWriteDeadline(t time.Time) error {
+	c.noteWriteDeadline(t)
 	return c.c.SetWriteDeadline(t)
+}
+
+func (c *compressConn) noteWriteDeadline(t time.Time) {
+	if t.IsZero() {
+		c.wdl.Store(0)
+	} else {
+		c.wdl.Store(t.UnixNano())
+	}
+}
+
+// lockAfterIdleEnd takes wmu when the sweep holds it to end an idle frame,
+// a write of a few bytes, so that Close finishes the stream rather than
+// resetting it. A peer that does not read keeps that write waiting: after a
+// second Close resets the stream as for a stuck Write. It reports whether it
+// took wmu.
+func (c *compressConn) lockAfterIdleEnd() bool {
+	for deadline := time.Now().Add(time.Second); c.idleEnding.Load() && time.Now().Before(deadline); {
+		if c.wmu.TryLock() {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return c.wmu.TryLock()
 }

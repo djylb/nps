@@ -354,7 +354,13 @@ func (p *taskPasswords) reserve(t *model.Tunnel, strict bool) error {
 
 func normalizeTask(t *model.Tunnel) {
 	_ = legacyTask(t)
-	t.TargetType = model.NormalizeTargetType(t.TargetType)
+	// A running tunnel is read by its connections under its lock: write only
+	// a change, under that lock.
+	if tt := model.NormalizeTargetType(t.TargetType); tt != t.TargetType {
+		t.Lock()
+		t.TargetType = tt
+		t.Unlock()
+	}
 	t.CompileDestACL()
 	t.CompileSourceLists(acl.ScopeUser, taskOwner(t))
 }
