@@ -13022,6 +13022,11 @@ body.md-skin {
 .lg-account { display: flex; gap: 6px; margin-bottom: 4px; }
 .lg-account input { min-width: 0; }
 .lg-output { margin-bottom: 10px; }
+.lg-links { margin-bottom: 12px; }
+.lg-link { margin-bottom: 6px; }
+.lg-link label { display: block; margin-bottom: 2px; font-weight: normal; }
+.lg-link-value, .lg-link-value[readonly] { font-family: Menlo, Monaco, Consolas, "Courier New", monospace; font-size: 12px; color: var(--color); background: var(--bg-mid); border-color: var(--border-color); cursor: text; }
+.lg-link-value.lg-bad { opacity: .55; }
 .lg-output-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .lg-output-head .btn { min-height: 32px; }
 .lg-output-head { flex-wrap: wrap; gap: 6px; }

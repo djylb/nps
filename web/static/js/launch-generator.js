@@ -215,6 +215,10 @@
         var args = ['-launch=' + quote(linkOf(form, ctx), shell)].concat(form.access.map(function (a) { return '-L=' + quote(accessArg(a, ctx, connName(form)), shell); }));
         var doc = document_(form, ctx);
         return {
+            // link and access are the bare values, for a form such as LuCI
+            // that takes them one per field.
+            link: linkOf(form, ctx),
+            access: form.access.map(function (a) { return accessArg(a, ctx, connName(form)); }),
             one: head.concat(args).join(' '),
             multi: head.join(' ') + CONT[shell] + '\n  ' + args.join(CONT[shell] + '\n  '),
             jsonc: '// npc -launch=@npc.jsonc\n// contains keys in clear text\n' + JSON.stringify(doc, null, 2),
@@ -468,10 +472,25 @@
             }).join('') + '</div><button type="button" class="btn btn-primary btn-sm" data-copy="out"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></div>'
                 + '<pre id="lg-out" tabindex="0"></pre><div class="small text-muted" data-tabnote></div></div>';
         }
+        // The bare launch link, and each access, ready to paste on their own.
+        function linkRow(kind, i, label) {
+            return '<div class="lg-link"><label class="small text-muted" for="lg-link-' + i + '"><span langtag="' + label + '"></span></label>'
+                + '<div class="input-group input-group-sm"><input id="lg-link-' + i + '" class="form-control lg-link-value" readonly spellcheck="false" data-link="' + i + '">'
+                + '<span class="input-group-btn"><button type="button" class="btn btn-primary" data-copy-link="' + i + '"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></span></div></div>';
+        }
+        function linkBlock() {
+            return '<div class="lg-links">' + linkRow('launch', 0, 'lg-launch-link') + '<div data-links-access></div>'
+                + '<div class="small text-muted" langtag="lg-note-link"></div></div>';
+        }
         function refresh() {
             var out = outputs(form, ctx), errs = validate(form, ctx);
             var box = $root.find('#lg-outputs');
-            if (!box.children().length) box.html(outputTabs() + '<div class="text-muted small" data-note="service"></div>');
+            if (!box.children().length) box.html(linkBlock() + outputTabs() + '<div class="text-muted small" data-note="service"></div>');
+            $root.find('[data-link="0"]').val(out.link);
+            var acc = $root.find('[data-links-access]');
+            if (acc.children().length !== out.access.length) acc.html(out.access.map(function (_, i) { return linkRow('access', i + 1, 'lg-access-link'); }).join(''));
+            out.access.forEach(function (v, i) { $root.find('[data-link="' + (i + 1) + '"]').val(v); });
+            $root.find('[data-link]').toggleClass('lg-bad', errs.length > 0);
             $root.find('#lg-out').text(out[shown]).toggleClass('lg-bad', errs.length > 0);
             $root.find('[data-tabnote]').html(shown === 'jsonc' ? '<span langtag="lg-note-jsonc"></span>' : shown === 'base64' ? '<span langtag="lg-note-base64"></span>' : '');
             $root.find('.lg-errs').prop('hidden', !errs.length);
@@ -567,6 +586,8 @@
             render(focus);
         });
         $root.on('click', '[data-copy]', function () { copyText($('#lg-out').text()); });
+        $root.on('click', '[data-copy-link]', function () { copyText($root.find('[data-link="' + this.getAttribute('data-copy-link') + '"]').val()); });
+        $root.on('focus', '.lg-link-value', function () { this.select(); });
         $root.on('click', '[data-tab]', function () {
             shown = this.getAttribute('data-tab');
             $root.find('[data-tab]').each(function () {
