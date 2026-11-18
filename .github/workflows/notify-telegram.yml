@@ -1,0 +1,51 @@
+name: Release notice
+
+# Posts a published release, not a prerelease, to the Telegram topic.
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  telegram:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions: { }
+    steps:
+      - name: Send to Telegram
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+          TG_THREAD_ID: ${{ vars.TG_THREAD_ID }}
+          NAME: ${{ github.event.release.name || github.event.release.tag_name }}
+          BODY: ${{ github.event.release.body }}
+          URL: ${{ github.event.release.html_url }}
+        run: |
+          text=$(python3 - <<'PY'
+          import html, os, re
+          lines = []
+          for line in os.environ.get("BODY", "").replace("\r", "").split("\n"):
+              line = re.sub(r"^#{1,6}\s*", "", line)          # headings
+              line = re.sub(r"^(\s*)[-*+]\s+", r"\1• ", line)  # list items
+              line = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), line)
+              line = re.sub(r"`([^`]*)`", r"\1", line)
+              line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+              lines.append(line)
+          body = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+          # Telegram takes 4096 characters, counted after escaping.
+          limit = 3000
+          while len(html.escape(body, quote=False)) > 3500:
+              body, limit = body[:limit].rstrip() + "\n…", limit - 500
+          name, url = os.environ["NAME"], os.environ["URL"]
+          parts = ["<b>" + html.escape(name, quote=False) + "</b>"]
+          if body:
+              parts.append(html.escape(body, quote=False))
+          parts.append('<a href="' + html.escape(url) + '">Release</a>')
+          print("\n\n".join(parts))
+          PY
+          )
+          curl -fsS -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT_ID}" \
+            --data-urlencode "message_thread_id=${TG_THREAD_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "disable_web_page_preview=true" \
+            --data-urlencode "text=${text}"
