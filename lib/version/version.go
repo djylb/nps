@@ -7,7 +7,7 @@ import (
 )
 
 // VERSION is the release of nps and npc.
-const VERSION = "0.35.3"
+const VERSION = "0.35.4"
 
 // PrintVersion prints the release and the protocol version core.
 func PrintVersion(core string) {
