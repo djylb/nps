@@ -28,9 +28,15 @@ const (
 	compressAllowance = 16 << 20
 	// maxDecompressRead is the most one Read hands to the application (§7.4).
 	maxDecompressRead = 64 << 10
-	// zstdSendWindow is below the 8 MiB the format allows a sender: every
-	// open stream holds one on both sides.
-	zstdSendWindow = 1 << 20
+	// zstdSendWindow is far below the 8 MiB the format allows a sender: every
+	// open stream holds about three windows of encoder and decoder history,
+	// and a host with little memory may carry hundreds of streams. Proxied
+	// traffic gains little from matches further back.
+	zstdSendWindow = 64 << 10
+	// compressIdle is how long a zstd stream goes without a write before its
+	// frame ends and its encoder goes back to the pool (between one and one
+	// and a half of it): a live stream that is idle then holds no encoder.
+	compressIdle = time.Second
 	// compressFinishTimeout bounds writing the end of a compressed stream.
 	// A session may be suspended for its resume timeout meanwhile, default
 	// 30 s: the bound is for a peer that stopped reading, above that.
@@ -121,6 +127,81 @@ func putEncoder(alg uint64, e encoder) {
 	encoderPools[alg].Put(e)
 }
 
+// zstdDecoders keep the decoders of frames that ended, with their history
+// buffers.
+var zstdDecoders sync.Pool
+
+func putZstdDecoder(d *zstd.Decoder, maxWindow uint64) {
+	// Pooled decoders share one max window, the session default.
+	if maxWindow == DefaultCompressMaxWindow {
+		_ = d.Reset(nil)
+		zstdDecoders.Put(d)
+	}
+}
+
+// idleSweep ends the frames of zstd streams with no write for two whole
+// generations of compressIdle/2. Writes only store the generation: the hot
+// path reads no clock, and no stream has a timer of its own.
+var idleSweep struct {
+	mu    sync.Mutex
+	conns map[*compressConn]struct{}
+	timer *time.Timer
+	gen   atomic.Uint32
+}
+
+func sweepAdd(c *compressConn) {
+	idleSweep.mu.Lock()
+	defer idleSweep.mu.Unlock()
+	if idleSweep.conns == nil {
+		idleSweep.conns = map[*compressConn]struct{}{}
+	}
+	idleSweep.conns[c] = struct{}{}
+	if idleSweep.timer == nil {
+		idleSweep.timer = time.AfterFunc(compressIdle/2, sweepIdle)
+	}
+}
+
+func sweepRemove(c *compressConn) {
+	idleSweep.mu.Lock()
+	defer idleSweep.mu.Unlock()
+	delete(idleSweep.conns, c)
+}
+
+func sweepIdle() {
+	gen := idleSweep.gen.Add(1)
+	var idle []*compressConn
+	idleSweep.mu.Lock()
+	for c := range idleSweep.conns {
+		if gen-c.wgen.Load() >= 2 {
+			idle = append(idle, c)
+		}
+	}
+	if len(idleSweep.conns) == 0 {
+		idleSweep.timer = nil
+	} else {
+		idleSweep.timer.Reset(compressIdle / 2)
+	}
+	idleSweep.mu.Unlock()
+	// Ending a frame writes to the stream, which may wait for its peer.
+	for _, c := range idle {
+		go c.endIdleFrame(gen)
+	}
+}
+
+func getZstdDecoder(r io.Reader, maxWindow uint64) (*zstd.Decoder, error) {
+	if maxWindow == DefaultCompressMaxWindow {
+		if d, ok := zstdDecoders.Get().(*zstd.Decoder); ok {
+			if err := d.Reset(r); err == nil {
+				return d, nil
+			}
+		}
+	}
+	return zstd.NewReader(r,
+		zstd.WithDecoderConcurrency(1),
+		zstd.WithDecoderLowmem(true),
+		zstd.WithDecoderMaxWindow(maxWindow))
+}
+
 // countReader counts what the decoder took from the stream and keeps the
 // stream's own error apart from the decoder's verdicts.
 type countReader struct {
@@ -149,11 +230,15 @@ type compressConn struct {
 	alg    uint64
 	limits CompressLimits
 
-	wmu     sync.Mutex
-	enc     encoder
-	bw      *bufio.Writer
-	werr    error
-	wfin    bool
+	wmu  sync.Mutex
+	enc  encoder // nil between zstd frames
+	bw   *bufio.Writer
+	werr error
+	wfin bool
+	// framed is set once a frame was written, so that the end of the stream
+	// does not need one of its own.
+	framed  bool
+	wgen    atomic.Uint32 // idleSweep's generation at the last write
 	started bool
 	// abandon tells a Write in progress that Close gave up on the stream.
 	abandon atomic.Bool
@@ -161,6 +246,8 @@ type compressConn struct {
 	src  *countReader
 	br   *bufio.Reader
 	dec  io.Reader
+	zf   *zstdFrames   // zstd: the frames of the stream
+	zdec *zstd.Decoder // zstd: the decoder of the open frame, nil between frames
 	out  uint64
 	rerr error
 }
@@ -170,12 +257,63 @@ type compressConn struct {
 func newCompressConn(c *linkConn, alg uint64, limits CompressLimits) (*compressConn, error) {
 	cc := &compressConn{c: c, alg: alg, limits: limits.normalized()}
 	cc.bw = bufio.NewWriterSize(c, 16<<10)
+	if alg == wire.CompressZstd {
+		// The encoder is taken by the first write: an idle stream holds none.
+		if _, ok := encoderPools[alg]; !ok {
+			return nil, fmt.Errorf("compress: unknown algorithm %d", alg)
+		}
+		return cc, nil
+	}
 	e, err := getEncoder(alg, cc.bw)
 	if err != nil {
 		return nil, err
 	}
 	cc.enc = e
 	return cc, nil
+}
+
+// takeEncoder starts a zstd frame; the caller holds wmu.
+func (c *compressConn) takeEncoder() error {
+	e, err := getEncoder(c.alg, c.bw)
+	if err != nil {
+		return err
+	}
+	c.enc = e
+	c.wgen.Store(idleSweep.gen.Load())
+	sweepAdd(c)
+	return nil
+}
+
+// endIdleFrame ends the frame of a stream idle since before gen and gives
+// its encoder back.
+func (c *compressConn) endIdleFrame(gen uint32) {
+	if !c.wmu.TryLock() {
+		return // a write is in progress: not idle
+	}
+	defer c.wmu.Unlock()
+	if c.enc == nil || c.wfin || c.werr != nil || gen-c.wgen.Load() < 2 {
+		return
+	}
+	err := c.enc.Close()
+	if err == nil {
+		err = c.bw.Flush()
+	}
+	if err != nil {
+		c.werr = err
+		c.dropEncoder()
+		return
+	}
+	c.releaseEncoder()
+}
+
+// releaseEncoder gives back an encoder whose frame ended; the caller holds
+// wmu.
+func (c *compressConn) releaseEncoder() {
+	putEncoder(c.alg, c.enc)
+	c.enc = nil
+	if c.alg == wire.CompressZstd {
+		sweepRemove(c)
+	}
 }
 
 func (c *compressConn) startRead() error {
@@ -187,12 +325,7 @@ func (c *compressConn) startRead() error {
 	case wire.CompressFlate:
 		c.dec = flate.NewReader(c.br)
 	case wire.CompressZstd:
-		var d *zstd.Decoder
-		d, err = zstd.NewReader(c.br,
-			zstd.WithDecoderConcurrency(1),
-			zstd.WithDecoderLowmem(true),
-			zstd.WithDecoderMaxWindow(c.limits.MaxWindow))
-		c.dec = d
+		c.zf = &zstdFrames{src: c.br}
 	case wire.CompressSnappy:
 		c.dec = snappy.NewReader(c.br)
 	default:
@@ -213,7 +346,13 @@ func (c *compressConn) Read(p []byte) (int, error) {
 			return 0, c.fail(err)
 		}
 	}
-	n, err := c.dec.Read(p[:min(len(p), maxDecompressRead)])
+	var n int
+	var err error
+	if c.zf != nil {
+		n, err = c.readZstd(p[:min(len(p), maxDecompressRead)])
+	} else {
+		n, err = c.dec.Read(p[:min(len(p), maxDecompressRead)])
+	}
 	c.out += uint64(n)
 	if c.overRatio() {
 		return 0, c.fail(fmt.Errorf("%w: ratio limit", errCompress))
@@ -233,6 +372,33 @@ func (c *compressConn) Read(p []byte) (int, error) {
 		return n, c.src.err
 	}
 	return n, c.fail(fmt.Errorf("%w: %v", errCompress, err))
+}
+
+// readZstd reads the frames of the stream, each with a decoder taken for it
+// alone: a stream between frames holds none. It returns io.EOF at the end of
+// the stream.
+func (c *compressConn) readZstd(p []byte) (int, error) {
+	for {
+		if c.zdec == nil {
+			if err := c.zf.begin(); err != nil {
+				return 0, err
+			}
+			d, err := getZstdDecoder(c.zf, c.limits.MaxWindow)
+			if err != nil {
+				return 0, err
+			}
+			c.zdec = d
+		}
+		n, err := c.zdec.Read(p)
+		if err != io.EOF {
+			return n, err
+		}
+		putZstdDecoder(c.zdec, c.limits.MaxWindow)
+		c.zdec = nil
+		if n > 0 {
+			return n, nil
+		}
+	}
 }
 
 // finishRead checks what the end of the decoded data requires (§7.3).
@@ -282,6 +448,15 @@ func (c *compressConn) Write(p []byte) (int, error) {
 	if c.werr != nil {
 		return 0, c.werr
 	}
+	if c.enc == nil {
+		if err := c.takeEncoder(); err != nil {
+			c.werr = err
+			return 0, err
+		}
+	} else if c.alg == wire.CompressZstd {
+		c.wgen.Store(idleSweep.gen.Load())
+	}
+	c.framed = true
 	n, err := c.enc.Write(p)
 	if err == nil {
 		err = c.flush()
@@ -302,6 +477,9 @@ func (c *compressConn) dropEncoder() {
 	if c.enc != nil {
 		c.enc.Reset(nil)
 		c.enc = nil
+		if c.alg == wire.CompressZstd {
+			sweepRemove(c)
+		}
 	}
 }
 
@@ -330,6 +508,17 @@ func (c *compressConn) finishWrite() error {
 		c.dropEncoder()
 		return c.werr
 	}
+	if c.enc == nil {
+		if c.framed {
+			// The last frame ended when the stream went idle.
+			return c.c.CloseWrite()
+		}
+		// No frame yet: the stream gets an empty one.
+		if err := c.takeEncoder(); err != nil {
+			c.werr = err
+			return err
+		}
+	}
 	_ = c.c.SetWriteDeadline(time.Now().Add(compressFinishTimeout))
 	err := c.enc.Close()
 	if err == nil {
@@ -340,8 +529,7 @@ func (c *compressConn) finishWrite() error {
 		c.dropEncoder()
 		return err
 	}
-	putEncoder(c.alg, c.enc)
-	c.enc = nil
+	c.releaseEncoder()
 	return c.c.CloseWrite()
 }
 

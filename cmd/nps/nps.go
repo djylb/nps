@@ -174,6 +174,7 @@ func main() {
 		pprofAddr := net.JoinHostPort(pprofIp, pprofPort)
 		runenv.InitPProfByAddr(pprofAddr)
 	}
+	runenv.SetSoftMemoryLimit()
 
 	err := clock.SetTimezone(cfg.App.Timezone)
 	if err != nil {

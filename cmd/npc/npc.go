@@ -396,6 +396,9 @@ func (p *Npc) run() error {
 func run(ctx context.Context, cancel context.CancelFunc) {
 	install.StartUpdate()
 	runenv.InitPProfByAddr(*pprofAddr)
+	if n := runenv.SetSoftMemoryLimit(); n > 0 {
+		log.Info("soft memory limit set", "bytes", n)
+	}
 	setCoreDefaults()
 	mode, err := connprofile.ParsePipes(*pipes)
 	if err != nil {
