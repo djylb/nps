@@ -34,10 +34,10 @@ github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb h1:zptuf8xSHF2owIfK
 github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb/go.mod h1:C8lnT8mo42SNmVB1YL4hLW7PBJQ0Bbjn2YZ8a3TAY3c=
 github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3 h1:8OV+GyY1OqcRkDbfr9e071DB2xskvTVNoXcEswvNbIU=
 github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3/go.mod h1:8oP3ktaP9bdBDV0qFnB4JdHwN6p8naQXq9Qq4p4KVJY=
-github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530 h1:6H+bc2xNOCKn2K9bZD8OeIVdqop5LA6BLQRdf6T7tgE=
-github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530/go.mod h1:ryNOOf7OH8I1iPxbGMBMJfxz0P1+rAn8PQUWnAlRV68=
-github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530 h1:DaJMeOAqiC7PdhSb/qmabsxViq08coBnvQdw8DfsT1U=
-github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530/go.mod h1:ufzc8aa6YRDj1KihaJg1I2Onwxldwk+AdFB6uc26PIY=
+github.com/djylb/holepunch v0.0.0-20261118203847-f14e5a18fc7d h1:ShDxG2IsFKZtDboX0a+Bk/7Lr+S9txnb1dL9hx5bIvg=
+github.com/djylb/holepunch v0.0.0-20261118203847-f14e5a18fc7d/go.mod h1:ryNOOf7OH8I1iPxbGMBMJfxz0P1+rAn8PQUWnAlRV68=
+github.com/djylb/holepunch/quicpath v0.0.0-20261118203847-f14e5a18fc7d h1:WRnpjncYb74rPA7DrMo5PnJtucQZwrr/nTLN5/g7Owc=
+github.com/djylb/holepunch/quicpath v0.0.0-20261118203847-f14e5a18fc7d/go.mod h1:ufzc8aa6YRDj1KihaJg1I2Onwxldwk+AdFB6uc26PIY=
 github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd h1:aaGN1nYTKb1jS6C6X2P/Uvbc+cL25jGqSCjOTKzXtp0=
 github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd/go.mod h1:McCKtAsJJ1tbWGOXTgcSzON8LoELcxVDMTDIJ6CSGlg=
 github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd h1:6WRc/FnVVU7P/np9wgennlWQ4lCgAsji4FpOzuTjbeE=

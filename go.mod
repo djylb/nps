@@ -11,8 +11,8 @@ require (
 	github.com/djylb/byterate v0.0.0-20261118190716-37cde2b87f97
 	github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb
 	github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3
-	github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530
-	github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530
+	github.com/djylb/holepunch v0.0.0-20261118203847-f14e5a18fc7d
+	github.com/djylb/holepunch/quicpath v0.0.0-20261118203847-f14e5a18fc7d
 	github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd
 	github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd
 	github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda

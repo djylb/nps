@@ -237,17 +237,17 @@ type compressConn struct {
 	enc  encoder // nil between zstd frames
 	bw   *bufio.Writer
 	werr error
-	wfin bool
-	// framed is set once a frame was written, so that the end of the stream
-	// does not need one of its own.
-	framed bool
-	wgen   atomic.Uint32 // idleSweep's generation at the last write
+	wdl  atomic.Int64  // the write deadline in Unix nanoseconds, 0 for none
+	wgen atomic.Uint32 // idleSweep's generation at the last write
 	// idleEnding is set while the sweep holds wmu to end an idle frame.
 	idleEnding atomic.Bool
-	wdl        atomic.Int64 // the write deadline in Unix nanoseconds, 0 for none
-	started    bool
 	// abandon tells a Write in progress that Close gave up on the stream.
 	abandon atomic.Bool
+	wfin    bool
+	// framed is set once a frame was written, so that the end of the stream
+	// does not need one of its own.
+	framed  bool
+	started bool
 
 	src  *countReader
 	br   *bufio.Reader
