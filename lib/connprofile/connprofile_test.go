@@ -116,7 +116,7 @@ func TestParseErrors(t *testing.T) {
 		"tcp://a.com?tier=x", "tcp://a.com?standby=maybe", "tcp://a.com?count=0", "tcp://a.com?weight=-1",
 		"tcp://a.com?count=-1", "tcp://a.com?foo=1", "quic://a.com?alpn=", "tcp://a.com?alpn=x",
 		"a.com|tcp://", "tcp://a.com?%zz", "tcp://a.com?dirs=sideways", "tcp://a.com?tier=1&tier=2",
-		"tcp://a.com?dirs=up", "tcp://a.com?dirs=up|tls://b.com?dirs=down", "tcp://a.com?kinds=websocket",
+		"tcp://a.com?kinds=websocket",
 		"https://a.com?host=", "tcp://a.com?Tier=1",
 	} {
 		if _, err := Parse(in, "tcp"); err == nil {
@@ -156,7 +156,7 @@ func TestDirsAndMultiMembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cands[0].Starts() || cands[1].Dirs != DirUp || cands[2].Dirs != DirDown || cands[1].Starts() || cands[2].Count != 5 {
+	if cands[0].Dirs.Prefers() != DirBidi || cands[1].Dirs.Prefers() != DirUp || cands[2].Dirs.Prefers() != DirDown || cands[2].Count != 5 {
 		t.Fatalf("%+v", cands)
 	}
 	var got []string
@@ -308,7 +308,7 @@ func TestAttempts(t *testing.T) {
 	if a := Attempts([]Candidate{mustParse(t, "https://a.com/x?kinds=websocket&http=http/1.1")})[0]; a.Carrier != "wss" {
 		t.Fatalf("websocket attempt carrier %q", a.Carrier)
 	}
-	for _, bad := range []string{"http://a.com?http=h2", "https://a.com?http=h2&kinds=http3", "https://a.com?admit_key=xx", "http://a.com?dirs=up", "https://a.com?kinds=websocket,websocket", "https://a.com?kinds=x"} {
+	for _, bad := range []string{"http://a.com?http=h2", "https://a.com?http=h2&kinds=http3", "https://a.com?admit_key=xx", "https://a.com?kinds=websocket,websocket", "https://a.com?kinds=x"} {
 		if _, err := Parse(bad, ""); err == nil {
 			t.Fatalf("%s: no error", bad)
 		}

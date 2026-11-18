@@ -153,13 +153,18 @@ func TestDirs(t *testing.T) {
 	cs := e.dial(e.multi("key", "tcp://"+e.addr+"|tcp://"+e.addr+"?dirs=up|tcp://"+e.addr+"?dirs=down"))
 	e.waitOnline()
 	waitUntil(t, "three pipes", func() bool { return len(cs.zc.Pipes()) == 3 })
+	// Every pipe carries both directions; the one it does not prefer stands
+	// by.
 	var up, down int
 	for _, st := range cs.zc.PipeStats() {
+		if st.Outbound == zmux.OutboundNone || st.Inbound == zmux.InboundNone {
+			t.Fatal("a pipe of one direction")
+		}
 		switch {
-		case st.Outbound == zmux.OutboundNone:
-			down++
-		case st.Inbound == zmux.InboundNone:
+		case st.ReceiveStandby && !st.Standby:
 			up++
+		case st.Standby && !st.ReceiveStandby:
+			down++
 		}
 	}
 	if up != 1 || down != 1 {
@@ -409,7 +414,7 @@ func TestPipesOf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := pipesOf(c); n != 4 {
+	if n := pipesOf(c); n != 3 {
 		t.Fatalf("%d", n)
 	}
 }

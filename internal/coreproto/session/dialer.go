@@ -162,9 +162,6 @@ func (d *Dialer) Dial(ctx context.Context) (coreapi.ClientSession, error) {
 	}
 	var errs []error
 	for _, c := range cands {
-		if !c.Starts() {
-			continue
-		}
 		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		s, err := d.dialCandidate(dctx, c)
 		cancel()

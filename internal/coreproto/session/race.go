@@ -198,9 +198,6 @@ func (d *Dialer) dialEntry(ctx context.Context, attempts []connprofile.Candidate
 	var last error
 	var c connprofile.Candidate
 	for _, c = range attempts {
-		if !c.Starts() {
-			continue
-		}
 		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		s, err := d.attempt(dctx, c)
 		cancel()

@@ -58,9 +58,6 @@ func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.Pipe
 	}
 	errs := []error{errors.New("no candidate can carry a pipe")}
 	for _, c := range cands {
-		if !c.Starts() {
-			continue
-		}
 		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
 		ca, err := d.dialCarrier(dctx, c)
 		cancel()
@@ -147,25 +144,9 @@ func (s *clientSession) watch(ctx context.Context) {
 func pipesOf(members []connprofile.Candidate) int {
 	n := 0
 	for _, m := range members {
-		n += m.Count * len(pipeDirs(m.Dirs))
+		n += m.Count
 	}
 	return n
-}
-
-// pipeDirs is the pipes of one member, by direction from npc: a bidirectional
-// one, or an uplink and a downlink as asked.
-func pipeDirs(d connprofile.Dirs) []zmux.Direction {
-	if d&connprofile.DirBidi != 0 {
-		return []zmux.Direction{zmux.DirectionBidirectional}
-	}
-	var out []zmux.Direction
-	if d&connprofile.DirUp != 0 {
-		out = append(out, zmux.DirectionSendOnly)
-	}
-	if d&connprofile.DirDown != 0 {
-		out = append(out, zmux.DirectionReceiveOnly)
-	}
-	return out
 }
 
 // schedulerNamed is the scheduler of a name of connprofile.Schedulers; any
@@ -185,16 +166,22 @@ func schedulerNamed(name string) zmux.Scheduler {
 }
 
 // pipeOptions are the options of the pipes of c: the tier as a priority
-// counted from the best tier in use, the weight, and standby in both
-// directions.
+// counted from the best tier in use, the weight, and standby: in both
+// directions for a standby candidate, else in the direction c does not
+// prefer, which the pipe still carries when no other pipe can.
 func pipeOptions(c connprofile.Candidate, best int) zmux.PipeOptions {
 	tier := uint64(max(c.Tier-best, 0))
 	o := zmux.PipeOptions{Label: c.Key(), SendPriority: zmux.Set(tier), ReceivePriority: zmux.Set(tier)}
 	if c.Weight > 0 {
 		o.Weight = zmux.Set(uint64(c.Weight))
 	}
-	if c.Standby {
+	switch {
+	case c.Standby:
 		o.SendStandby, o.ReceiveStandby = zmux.Set(true), zmux.Set(true)
+	case c.Dirs.Prefers() == connprofile.DirUp:
+		o.ReceiveStandby = zmux.Set(true)
+	case c.Dirs.Prefers() == connprofile.DirDown:
+		o.SendStandby = zmux.Set(true)
 	}
 	return o
 }
@@ -257,22 +244,13 @@ func (s *clientSession) adoptFirst(o zmux.PipeOptions) ([]*zmux.Pipe, error) {
 	return []*zmux.Pipe{p}, nil
 }
 
-// join dials and joins one member of m. A member of two directions lives and
-// dies whole: the pool replaces it together.
+// join dials and joins one pipe of m.
 func (s *clientSession) join(ctx context.Context, m connprofile.Candidate, o zmux.PipeOptions) ([]*zmux.Pipe, error) {
-	var out []*zmux.Pipe
-	for _, dir := range pipeDirs(m.Dirs) {
-		o.Direction = dir
-		p, err := s.joinOne(ctx, m, o)
-		if err != nil {
-			for _, q := range out {
-				_ = q.Close()
-			}
-			return nil, err
-		}
-		out = append(out, p)
+	p, err := s.joinOne(ctx, m, o)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	return []*zmux.Pipe{p}, nil
 }
 
 // joinOne is dialCandidate for a further pipe: the mode of §3.2 per candidate

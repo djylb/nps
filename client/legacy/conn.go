@@ -96,8 +96,6 @@ var (
 	// lastCandidate remembers, per profile (tp + " " + server), the key of
 	// the candidate that connected last, which the next dial tries first.
 	lastCandidate sync.Map
-	// dirWarned says once that up and down candidates are skipped.
-	dirWarned sync.Once
 )
 
 // dialServer is NewConn returning the server information as well. server is
@@ -118,13 +116,6 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 	lastKey, _ := last.(string)
 	var errs []error
 	for _, cand := range connprofile.Order(cands, lastKey) {
-		if !cand.Starts() {
-			// one direction only: a member of a multi-pipe session
-			dirWarned.Do(func() {
-				log.Warn("one-direction candidates need zmux; skipped", "server", cand.Addr, "carrier", cand.Carrier)
-			})
-			continue
-		}
 		c, uuid, info, err := dialCandidate(cand, vkey, proxyUrl, localIP)
 		if err == nil {
 			lastCandidate.Store(profileKey, cand.Key())

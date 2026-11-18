@@ -34,7 +34,7 @@ func TestDialServerTriesCandidatesInOrder(t *testing.T) {
 		ports = append(ports, l.Addr().String())
 		_ = l.Close()
 	}
-	server := "tcp://" + ports[0] + "?standby=1|" + ports[1] + "|tcp://" + ports[2] + "?tier=-1|tcp://" + ports[2] + "?tier=-9&dirs=up"
+	server := "tcp://" + ports[0] + "?standby=1|" + ports[1] + "|tcp://" + ports[2] + "?tier=-1"
 	var tried []string
 	failed := func(c connprofile.Candidate, err error) { tried = append(tried, c.Addr+"/"+c.Carrier) }
 	_, _, _, err := dialServer("tcp", "key", server, "", "", failed)

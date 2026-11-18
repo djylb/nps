@@ -68,7 +68,7 @@ npc://<vkey>@<地址>:<端口>[/路径]?type=<协议>&<参数>#<连接名>
 | `standby` | `false` | 备用路径，其他路径都不可用时才用。只写 `standby` 也算 `true` |
 | `weight` | `0` | 非负整数。`pipes=multi` 时这条路径分得的份额 |
 | `count` | `1` | 不小于 1 的整数。`pipes=multi` 时这条路径的管道数 |
-| `dirs` | `bidi` | `bidi` 双向、`up` 仅客户端到服务端、`down` 仅服务端到客户端，可用逗号组合。至少一条路径要含 `bidi`，`http`、`https` 只能是 `bidi` |
+| `dirs` | `bidi` | 这条路径优先承载的方向：`bidi` 两个方向同等、`up` 客户端到服务端、`down` 服务端到客户端。连接本身始终双向，偏好以外的方向只在没有别的路径能用时才走它；任何路径都能建立会话 |
 | `host` | 地址本身 | HTTP Host 头，也是默认的 TLS 服务器名 |
 | `sni` | `host` 的主机名 | TLS 服务器名，地址是 IP 时默认不发送 |
 | `alpn` | `quic` 为 `h3` | 只用于 `tls`、`quic`。TLS ALPN，逗号分隔，顺序即偏好 |

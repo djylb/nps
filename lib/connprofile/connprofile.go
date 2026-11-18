@@ -74,14 +74,27 @@ func ParseScheduler(s string) (string, error) {
 	return m, nil
 }
 
-// Dirs is the set of directions a candidate carries (CARRIER_DIRS).
+// Dirs is the direction a candidate's pipes prefer (CARRIER_DIRS). A pipe
+// carries both directions whatever it prefers: the other one stands by on
+// it, for when no pipe preferring that one is left. A session starts on any
+// candidate.
 type Dirs uint8
 
 const (
-	DirBidi Dirs = 1 // both directions; only these can start a session
-	DirUp   Dirs = 2 // npc to server only
-	DirDown Dirs = 4 // server to npc only
+	DirBidi Dirs = 1 // both directions alike
+	DirUp   Dirs = 2 // npc to server
+	DirDown Dirs = 4 // server to npc
 )
+
+// Prefers is the one direction d prefers, or DirBidi for none: up and down
+// together are both alike.
+func (d Dirs) Prefers() Dirs {
+	switch d {
+	case DirUp, DirDown:
+		return d
+	}
+	return DirBidi
+}
 
 // HTTP carrier kinds of http and https candidates (zmux CarrierKind names).
 const (
@@ -212,10 +225,6 @@ func Attempts(cands []Candidate) []Candidate {
 	return out
 }
 
-// Starts reports whether a session can start on c (it carries both
-// directions).
-func (c Candidate) Starts() bool { return c.Dirs&DirBidi != 0 }
-
 // schemes maps a URL scheme to the carrier of this version and the scheme
 // of the next major version.
 var schemes = map[string][2]string{
@@ -282,9 +291,6 @@ func Parse(s, carrier string) ([]Candidate, error) {
 	}
 	if len(out) == 0 {
 		return nil, errors.New("server address is empty")
-	}
-	if !slices.ContainsFunc(out, Candidate.Starts) {
-		return nil, errors.New("no candidate carries both directions: a session starts on one with dirs=bidi (the default)")
 	}
 	return out, nil
 }
@@ -561,9 +567,6 @@ func parseURL(s string) (Candidate, error) {
 		warnOnce(s, "websocket runs over http/1.1 here; using http/1.1", "http", strings.Join(c.HTTP, ","))
 	}
 	if c.HTTPCarrier() {
-		if c.Dirs != DirBidi {
-			return Candidate{}, fmt.Errorf("dirs up and down are not available on %s, which is not Bound", u.Scheme)
-		}
 		if len(c.Attempts()) == 0 {
 			return Candidate{}, fmt.Errorf("no http version of %s can carry its kinds (h2 and h3 need https, http3 needs h3, exchange needs admit_key)", strings.Join(c.HTTP, ","))
 		}
