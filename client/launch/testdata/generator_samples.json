@@ -2,6 +2,10 @@
  {
   "name": "as client",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21&via=home"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21&via=home\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&role=client,visitor#home\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21&via=home\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"profiles\": {\n    \"home\": {\n      \"vkey\": \"v k@x$\",\n      \"paths\": [\n        {\n          \"url\": \"tls://1.2.3.4:8025\"\n        }\n      ],\n      \"role\": \"client,visitor\",\n      \"access\": [\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"tcp\",\n          \"local_port\": 2000,\n          \"local_ip\": \"127.0.0.1\"\n        }\n      ]\n    }\n  }\n}",
@@ -10,6 +14,10 @@
  {
   "name": "as client visitor key",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"127.0.0.1\"\n    }\n  ]\n}",
@@ -18,6 +26,11 @@
  {
   "name": "bash accounts",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls",
+  "access": [
+   "mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2",
+   "tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" \\\n  -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"mixed\",\n      \"local_port\": 1080,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a b\",\n          \"pass\": \"x:y&z\"\n        },\n        {\n          \"user\": \"c\",\n          \"pass\": \"2\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"::1\",\n      \"target\": \"10.0.0.9:80\",\n      \"conn_mode\": \"relay\",\n      \"local_proxy\": true\n    }\n  ]\n}",
@@ -26,6 +39,10 @@
  {
   "name": "bash paths",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\",\n      \"alpn\": \"h2\",\n      \"count\": 2\n    },\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/w s\",\n      \"http\": \"h2,http/1.1\",\n      \"tier\": 1,\n      \"weight\": 3\n    },\n    {\n      \"url\": \"quic://b.example:9\",\n      \"sni\": \"c;d&e\",\n      \"standby\": true\n    }\n  ],\n  \"session\": {\n    \"max_pipes\": 2,\n    \"scheduler_up\": \"spread_eta\"\n  },\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"127.0.0.1\"\n    }\n  ]\n}",
@@ -34,6 +51,11 @@
  {
   "name": "bash single protocols",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls",
+  "access": [
+   "socks5://127.0.0.1:1081?access=p%26%221%21&auth=a:1",
+   "http://127.0.0.1:8081?access=p%26%221%21&conn_mode=relay"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"socks5://127.0.0.1:1081?access=p%26%221%21&auth=a:1\" -L=\"http://127.0.0.1:8081?access=p%26%221%21&conn_mode=relay\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"socks5://127.0.0.1:1081?access=p%26%221%21&auth=a:1\" \\\n  -L=\"http://127.0.0.1:8081?access=p%26%221%21&conn_mode=relay\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"socks5\",\n      \"local_port\": 1081,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a\",\n          \"pass\": \"1\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"http\",\n      \"local_port\": 8081,\n      \"local_ip\": \"127.0.0.1\",\n      \"conn_mode\": \"relay\"\n    }\n  ]\n}",
@@ -42,6 +64,10 @@
  {
   "name": "bridge path default",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary;admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary;admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@[2001:db8::1]:8027/ws?type=wss&subprotocol=binary&alt=auto://1.2.3.4:8028/ws?subprotocol=binary;admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f&alt=https://1.2.3.4:8029/ws?subprotocol=binary&alt=ws://1.2.3.4:8026/own&alt=ws://1.2.3.4:8026/ws?subprotocol=other\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"auto://1.2.3.4:8028/ws?admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"https://1.2.3.4:8029/ws\",\n      \"subprotocol\": \"binary\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/own\"\n    },\n    {\n      \"url\": \"ws://1.2.3.4:8026/ws\",\n      \"subprotocol\": \"other\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"127.0.0.1\"\n    }\n  ]\n}",
@@ -50,6 +76,8 @@
  {
   "name": "client default",
   "shell": "bash",
+  "link": "npc://vkey@1.2.3.4:8024?type=tcp",
+  "access": [],
   "one": "./npc -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",
   "multi": "./npc \\\n  -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"vkey\",\n  \"paths\": [\n    {\n      \"url\": \"tcp://1.2.3.4:8024\"\n    }\n  ]\n}",
@@ -58,6 +86,11 @@
  {
   "name": "cmd paths",
   "shell": "cmd",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true",
+  "access": [
+   "mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2",
+   "tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true"
+  ],
   "one": ".\\npc.exe -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "multi": ".\\npc.exe ^\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" ^\n  -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" ^\n  -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\",\n      \"alpn\": \"h2\",\n      \"count\": 2\n    },\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/w s\",\n      \"http\": \"h2,http/1.1\",\n      \"tier\": 1,\n      \"weight\": 3\n    },\n    {\n      \"url\": \"quic://b.example:9\",\n      \"sni\": \"c;d&e\",\n      \"standby\": true\n    }\n  ],\n  \"session\": {\n    \"max_pipes\": 2,\n    \"scheduler_up\": \"spread_eta\"\n  },\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"mixed\",\n      \"local_port\": 1080,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a b\",\n          \"pass\": \"x:y&z\"\n        },\n        {\n          \"user\": \"c\",\n          \"pass\": \"2\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"::1\",\n      \"target\": \"10.0.0.9:80\",\n      \"conn_mode\": \"relay\",\n      \"local_proxy\": true\n    }\n  ]\n}",
@@ -66,6 +99,8 @@
  {
   "name": "docker",
   "shell": "cmd",
+  "link": "npc://vkey@1.2.3.4:8024?type=tcp",
+  "access": [],
   "one": "docker run -d --restart=always --name npc --net=host duan2001/npc -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",
   "multi": "docker run -d --restart=always --name npc --net=host duan2001/npc ^\n  -launch=\"npc://vkey@1.2.3.4:8024?type=tcp\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"vkey\",\n  \"paths\": [\n    {\n      \"url\": \"tcp://1.2.3.4:8024\"\n    }\n  ]\n}",
@@ -74,6 +109,10 @@
  {
   "name": "path choices",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=quic&alpn=h3&weight=2&count=3&pipes=multi&scheduler_up=spread_round_robin&alt=https://1.2.3.4:8029/ws?http=h3,h2,http/1.1;subprotocol=binary;kinds=exchange,websocket;tier=1&alt=tcp://1.2.3.4:8024?tier=2;standby=true;dirs=up&alt=tls://1.2.3.4:8025?tier=2;dirs=down",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21&conn_mode=direct&local_proxy=true"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=quic&alpn=h3&weight=2&count=3&pipes=multi&scheduler_up=spread_round_robin&alt=https://1.2.3.4:8029/ws?http=h3,h2,http/1.1;subprotocol=binary;kinds=exchange,websocket;tier=1&alt=tcp://1.2.3.4:8024?tier=2;standby=true;dirs=up&alt=tls://1.2.3.4:8025?tier=2;dirs=down\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21&conn_mode=direct&local_proxy=true\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=quic&alpn=h3&weight=2&count=3&pipes=multi&scheduler_up=spread_round_robin&alt=https://1.2.3.4:8029/ws?http=h3,h2,http/1.1;subprotocol=binary;kinds=exchange,websocket;tier=1&alt=tcp://1.2.3.4:8024?tier=2;standby=true;dirs=up&alt=tls://1.2.3.4:8025?tier=2;dirs=down\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21&conn_mode=direct&local_proxy=true\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"quic://1.2.3.4:8025\",\n      \"alpn\": \"h3\",\n      \"weight\": 2,\n      \"count\": 3\n    },\n    {\n      \"url\": \"https://1.2.3.4:8029/ws\",\n      \"http\": \"h3,h2,http/1.1\",\n      \"subprotocol\": \"binary\",\n      \"kinds\": \"exchange,websocket\",\n      \"tier\": 1\n    },\n    {\n      \"url\": \"tcp://1.2.3.4:8024\",\n      \"tier\": 2,\n      \"standby\": true,\n      \"dirs\": \"up\"\n    },\n    {\n      \"url\": \"tls://1.2.3.4:8025\",\n      \"tier\": 2,\n      \"dirs\": \"down\"\n    }\n  ],\n  \"session\": {\n    \"max_pipes\": 2,\n    \"scheduler_up\": \"spread_round_robin\"\n  },\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"127.0.0.1\",\n      \"conn_mode\": \"direct\",\n      \"local_proxy\": true\n    }\n  ]\n}",
@@ -82,6 +121,11 @@
  {
   "name": "powershell paths",
   "shell": "powershell",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true",
+  "access": [
+   "mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2",
+   "tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true"
+  ],
   "one": "& \"C:\\My Dir\\npc.exe\" -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "multi": "& \"C:\\My Dir\\npc.exe\" `\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls&alpn=h2&count=2&pipes=multi&scheduler_up=spread_eta&alt=wss://[2001:db8::1]:8027/w s?http=h2,http/1.1;tier=1;weight=3&alt=quic://b.example:9?sni=c%253Bd%2526e;standby=true\" `\n  -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2\" `\n  -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\",\n      \"alpn\": \"h2\",\n      \"count\": 2\n    },\n    {\n      \"url\": \"wss://[2001:db8::1]:8027/w s\",\n      \"http\": \"h2,http/1.1\",\n      \"tier\": 1,\n      \"weight\": 3\n    },\n    {\n      \"url\": \"quic://b.example:9\",\n      \"sni\": \"c;d&e\",\n      \"standby\": true\n    }\n  ],\n  \"session\": {\n    \"max_pipes\": 2,\n    \"scheduler_up\": \"spread_eta\"\n  },\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"mixed\",\n      \"local_port\": 1080,\n      \"local_ip\": \"127.0.0.1\",\n      \"auth\": [\n        {\n          \"user\": \"a b\",\n          \"pass\": \"x:y&z\"\n        },\n        {\n          \"user\": \"c\",\n          \"pass\": \"2\"\n        }\n      ]\n    },\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"::1\",\n      \"target\": \"10.0.0.9:80\",\n      \"conn_mode\": \"relay\",\n      \"local_proxy\": true\n    }\n  ]\n}",
@@ -90,6 +134,11 @@
  {
   "name": "service named",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls#ho%20me",
+  "access": [
+   "mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2&via=ho%20me",
+   "tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true&via=ho%20me"
+  ],
   "one": "./npc install -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls#ho%20me\" -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2&via=ho%20me\" -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true&via=ho%20me\"",
   "multi": "./npc install \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls#ho%20me\" \\\n  -L=\"mixed://127.0.0.1:1080?access=p%26%221%21&auth=a%20b:x:y%26z&auth=c:2&via=ho%20me\" \\\n  -L=\"tcp://[::1]:2000?access=p%26%221%21&target=10.0.0.9:80&conn_mode=relay&local_proxy=true&via=ho%20me\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"profiles\": {\n    \"ho me\": {\n      \"vkey\": \"v k@x$\",\n      \"paths\": [\n        {\n          \"url\": \"tls://1.2.3.4:8025\"\n        }\n      ],\n      \"access\": [\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"mixed\",\n          \"local_port\": 1080,\n          \"local_ip\": \"127.0.0.1\",\n          \"auth\": [\n            {\n              \"user\": \"a b\",\n              \"pass\": \"x:y&z\"\n            },\n            {\n              \"user\": \"c\",\n              \"pass\": \"2\"\n            }\n          ]\n        },\n        {\n          \"access\": \"p&\\\"1!\",\n          \"local_type\": \"tcp\",\n          \"local_port\": 2000,\n          \"local_ip\": \"::1\",\n          \"target\": \"10.0.0.9:80\",\n          \"conn_mode\": \"relay\",\n          \"local_proxy\": true\n        }\n      ]\n    }\n  }\n}",
@@ -98,6 +147,10 @@
  {
   "name": "tunnel default",
   "shell": "bash",
+  "link": "npc://v%20k%40x%24@1.2.3.4:8025?type=tls",
+  "access": [
+   "tcp://127.0.0.1:2000?access=p%26%221%21"
+  ],
   "one": "./npc -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "multi": "./npc \\\n  -launch=\"npc://v%20k%40x%24@1.2.3.4:8025?type=tls\" \\\n  -L=\"tcp://127.0.0.1:2000?access=p%26%221%21\"",
   "jsonc": "// npc -launch=@npc.jsonc\n// contains keys in clear text\n{\n  \"vkey\": \"v k@x$\",\n  \"paths\": [\n    {\n      \"url\": \"tls://1.2.3.4:8025\"\n    }\n  ],\n  \"access\": [\n    {\n      \"access\": \"p&\\\"1!\",\n      \"local_type\": \"tcp\",\n      \"local_port\": 2000,\n      \"local_ip\": \"127.0.0.1\"\n    }\n  ]\n}",
