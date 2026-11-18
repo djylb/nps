@@ -479,8 +479,7 @@
                 + '<span class="input-group-btn"><button type="button" class="btn btn-primary" data-copy-link="' + i + '"><i class="fa fa-copy" aria-hidden="true"></i> <span langtag="lg-copy"></span></button></span></div></div>';
         }
         function linkBlock() {
-            return '<div class="lg-links">' + linkRow('launch', 0, 'lg-launch-link') + '<div data-links-access></div>'
-                + '<div class="small text-muted" langtag="lg-note-link"></div></div>';
+            return '<div class="lg-links">' + linkRow('launch', 0, 'lg-launch-link') + '<div data-links-access></div></div>';
         }
         function refresh() {
             var out = outputs(form, ctx), errs = validate(form, ctx);

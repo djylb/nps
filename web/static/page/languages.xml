@@ -242,10 +242,6 @@
 		<zh-CN>本地访问（-L）</zh-CN>
 		<en-US>Local access (-L)</en-US>
 	</lang>
-	<lang id="lg-note-link">
-		<zh-CN>不带引号的原始值，可直接填进 OpenWrt LuCI 的“连接”“本地访问”、配置文件或其他启动器；在命令行里用请复制下方命令。</zh-CN>
-		<en-US>Raw values without quotes, for the OpenWrt LuCI connection and local access fields, config files or other launchers; on a command line copy the command below.</en-US>
-	</lang>
 	<lang id="lg-copy">
 		<zh-CN>复制</zh-CN>
 		<en-US>Copy</en-US>
