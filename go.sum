@@ -40,10 +40,10 @@ github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530 h1:DaJMeO
 github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530/go.mod h1:ufzc8aa6YRDj1KihaJg1I2Onwxldwk+AdFB6uc26PIY=
 github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd h1:aaGN1nYTKb1jS6C6X2P/Uvbc+cL25jGqSCjOTKzXtp0=
 github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd/go.mod h1:McCKtAsJJ1tbWGOXTgcSzON8LoELcxVDMTDIJ6CSGlg=
-github.com/djylb/netx v0.0.0-20261118144140-a3a23cb364d7 h1:rW+Uf3gUvxU+uawkFFKePHAZnyABQwNBFuOWrB4Q7ZE=
-github.com/djylb/netx v0.0.0-20261118144140-a3a23cb364d7/go.mod h1:Zi8xVsLCr7IPHcf3i+iSygxEeW623tZPjrFOcQ8T0no=
-github.com/djylb/portmux v0.0.0-20261118125658-11e473ad7ff7 h1:vq+F04LuHHqiyAec7wkIhBKS59lBJUwU+8krnX+Kd+o=
-github.com/djylb/portmux v0.0.0-20261118125658-11e473ad7ff7/go.mod h1:1eD9YnOokwMI5CVMBprPMKi/muhNeGx+cGNXSF1vHWk=
+github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd h1:6WRc/FnVVU7P/np9wgennlWQ4lCgAsji4FpOzuTjbeE=
+github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd/go.mod h1:Zi8xVsLCr7IPHcf3i+iSygxEeW623tZPjrFOcQ8T0no=
+github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda h1:9+zpg9U8lnN553ckHUNYGipvXXpXBItcRddBee5uEMY=
+github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda/go.mod h1:phzx0pAB0+cc0zGG8I+KHTYkf2Fu0XTc5nqbB83hVpw=
 github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d h1:fiBOC2AQXmJNSwPYtEVLO/62QqEJCV4/FSJX8JYCRm4=
 github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d/go.mod h1:jwvG+iLmIl5k7riU04b3EFqDv0HfOJe+OoRxMPjXkcc=
 github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2 h1:Eoz3nGqFCOgEWZW1DYpNFZ1hiECKbpjDvRokei0yjmw=

@@ -14,8 +14,8 @@ require (
 	github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530
 	github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530
 	github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd
-	github.com/djylb/netx v0.0.0-20261118144140-a3a23cb364d7
-	github.com/djylb/portmux v0.0.0-20261118125658-11e473ad7ff7
+	github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd
+	github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda
 	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
 	github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2
 	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
