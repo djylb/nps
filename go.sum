@@ -28,8 +28,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dchest/captcha v1.1.0 h1:2kt47EoYUUkaISobUdTbqwx55xvKOJxyScVfw25xzhQ=
 github.com/dchest/captcha v1.1.0/go.mod h1:7zoElIawLp7GUMLcj54K9kbw+jEyvz2K0FDdRRYhvWo=
-github.com/djylb/byterate v0.0.0-20261118144734-226ecfffafa4 h1:FTYxBwTRWfDIsA9t/vZo6VLW6te1G9eR1RVH8hJnVmY=
-github.com/djylb/byterate v0.0.0-20261118144734-226ecfffafa4/go.mod h1:KMrLjMmiyAEVI2ODBBs4Rz0kT533YFeWAWoOjtWZ2hk=
+github.com/djylb/byterate v0.0.0-20261118190716-37cde2b87f97 h1:dB93Na1+X36Jj4EQyNdBv+7ibrvkpmYRgIlR6MPVDbA=
+github.com/djylb/byterate v0.0.0-20261118190716-37cde2b87f97/go.mod h1:KMrLjMmiyAEVI2ODBBs4Rz0kT533YFeWAWoOjtWZ2hk=
 github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb h1:zptuf8xSHF2owIfKELzKfh88plbGo44HqZtRg0Y7G54=
 github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb/go.mod h1:C8lnT8mo42SNmVB1YL4hLW7PBJQ0Bbjn2YZ8a3TAY3c=
 github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3 h1:8OV+GyY1OqcRkDbfr9e071DB2xskvTVNoXcEswvNbIU=

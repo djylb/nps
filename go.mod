@@ -8,7 +8,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.18.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261118144734-226ecfffafa4
+	github.com/djylb/byterate v0.0.0-20261118190716-37cde2b87f97
 	github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb
 	github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3
 	github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530
