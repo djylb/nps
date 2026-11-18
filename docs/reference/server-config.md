@@ -261,7 +261,7 @@
 | `quic_max_idle_timeout` | `30` | 秒。`quic` 连接空闲多久后断开 | 重启 |
 | `quic_max_incoming_streams` | `100000` | 每条 `quic` 连接允许同时打开的数据流个数 | 重启 |
 | `mux_ping_interval` | `5` | 秒。0.34 及更早的 npc 连接上多路复用心跳的间隔 | 重启 |
-| `shaping_url` | 空 | 流量整形配置的下载地址。默认没有，配置了来源后，还要在客户端“编辑”页的“高级设置”里把“流量整形”设为“是”才对该客户端生效 | 重启 |
+| `shaping_url` | 空 | 流量整形配置的下载地址。默认没有，配置了来源后，还要在客户端“编辑”页的“高级设置”里把“流量整形”设为“是”才对该客户端生效。下载成功的配置缓存在 `conf/shaping_cache.json`，重启后下载成功前先用它 | 重启 |
 | `shaping_token` | 空 | 访问 `shaping_url` 时带的令牌 | 重启 |
 | `shaping_pubkey` | 空 | 十六进制的公钥。设置后，下载的内容签名不对就不采用 | 重启 |
 | `shaping_file` | `conf/shaping.json` | 本地的流量整形配置文件。没有设置 `shaping_url` 且这个文件存在时使用它 | 重启 |

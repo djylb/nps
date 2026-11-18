@@ -46,6 +46,8 @@ github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda h1:9+zpg9U8lnN553ckH
 github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda/go.mod h1:phzx0pAB0+cc0zGG8I+KHTYkf2Fu0XTc5nqbB83hVpw=
 github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d h1:fiBOC2AQXmJNSwPYtEVLO/62QqEJCV4/FSJX8JYCRm4=
 github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d/go.mod h1:jwvG+iLmIl5k7riU04b3EFqDv0HfOJe+OoRxMPjXkcc=
+github.com/djylb/shapebundle v0.0.0-20261118205253-40b0b61c8d8c h1:j03tl7btR7l2LHyRO4pxLGvabDPMRlhpvuSqVTSJgR0=
+github.com/djylb/shapebundle v0.0.0-20261118205253-40b0b61c8d8c/go.mod h1:pJWTB0FaJHoTWpPlVyfYcpcp7mY22fYJ/mvRFsT4W48=
 github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2 h1:Eoz3nGqFCOgEWZW1DYpNFZ1hiECKbpjDvRokei0yjmw=
 github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2/go.mod h1:1fiKc6PRXI1pZAWptpZS77+YWMhcioWJ3mzqjFRrz08=
 github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc h1:sDzU+rT2s2drGdRiHb/0gAIAkPmAD3krLKkHE3vTrRE=

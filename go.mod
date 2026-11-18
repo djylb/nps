@@ -17,6 +17,7 @@ require (
 	github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd
 	github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda
 	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
+	github.com/djylb/shapebundle v0.0.0-20261118205253-40b0b61c8d8c
 	github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2
 	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
 	github.com/djylb/upstream v0.0.0-20261117215339-b8515b6d7ad6

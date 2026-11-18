@@ -2,23 +2,26 @@ package session
 
 import (
 	"bytes"
+
 	"sync"
 	"sync/atomic"
+
+	"github.com/djylb/shapebundle"
 
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/seal"
 	"github.com/zmuxio/zmux-go/shaping"
 	"github.com/zmuxio/zmux-go/shaping/bundle"
-	"github.com/zmuxio/zmux-go/shaping/machine"
 )
 
-// shapingPlan is a parsed bundle, compiled per carrier kind. It is immutable.
+// shapingPlan is a parsed bundle with the shapers of every carrier kind made
+// (shapebundle.Profile), and its raw bytes, which npc receives as they are. It
+// is immutable.
 type shapingPlan struct {
-	raw        []byte
-	b          *bundle.Bundle
-	compiled   map[*bundle.Entry]*machine.Compiled
-	handshakes map[string]shaping.HandshakeShaper // by HandshakeView.Kind
+	raw       []byte
+	profile   *shapebundle.Profile
+	handshake shaping.HandshakeShaper // by HandshakeView.Kind
 }
 
 func newShapingPlan(raw []byte) (*shapingPlan, error) {
@@ -26,34 +29,12 @@ func newShapingPlan(raw []byte) (*shapingPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &shapingPlan{raw: bytes.Clone(raw), b: b, compiled: map[*bundle.Entry]*machine.Compiled{},
-		handshakes: map[string]shaping.HandshakeShaper{}}
-	// Every kind compiled now: the factory runs under the session lock.
-	for k := range 256 {
-		kind := zmux.CarrierKind(k)
-		e := b.Entry(kind)
-		c, ok := p.compiled[e]
-		if !ok {
-			c = e.Candidate.Compile(machine.Options{})
-			p.compiled[e] = c
-		}
-		if name := bundle.KindName(kind); name != bundle.DefaultKind || k == 0 {
-			if k == 0 {
-				name = ""
-			}
-			p.handshakes[name] = c.Handshake()
-		}
+	// Every kind is compiled now: the factory runs under the session lock.
+	pr, err := shapebundle.NewProfile(shapebundle.ProfileOptions{}, b)
+	if err != nil {
+		return nil, err
 	}
-	return p, nil
-}
-
-// handshake is the plan of a handshake message on the view's carrier kind.
-func (p *shapingPlan) handshake(v *shaping.HandshakeView, u *shaping.UnitPlan) bool {
-	h, ok := p.handshakes[v.Kind]
-	if !ok {
-		h = p.handshakes[""]
-	}
-	return h(v, u)
+	return &shapingPlan{raw: bytes.Clone(raw), profile: pr, handshake: pr.Handshake()}, nil
 }
 
 // sessionShaper is what SetShaper takes for a session started on boot: the
@@ -63,13 +44,7 @@ func (p *shapingPlan) sessionShaper(boot zmux.CarrierKind) (zmux.ShaperFactory, 
 	if p == nil {
 		return nil, nil
 	}
-	return func(sp zmux.ShapedPipe) shaping.Shaper {
-		f := p.compiled[p.b.Entry(sp.Carrier)].Factory()
-		if f == nil {
-			return nil
-		}
-		return f(sp)
-	}, p.compiled[p.b.Entry(boot)].Budget()
+	return p.profile.Factory(), p.profile.Budget(boot)
 }
 
 // nestedShaper is what a nested session takes: the entry of its direct paths,
