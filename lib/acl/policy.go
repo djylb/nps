@@ -221,6 +221,46 @@ func (d *Dest) DeniesName(addr string) bool {
 	return d != nil && d.deny != nil && d.deny.Matcher().Match(addr)
 }
 
+// withEmbeddedIPv4 adds to ips the IPv4 address each IPv6 one carries, that
+// a translator on the way delivers to: NAT64 (64:ff9b::/96, and the RFC 8215
+// /48 in the RFC 6052 layout), 6to4 and IPv4-compatible. A rule then decides
+// both, so another spelling does not get round a deny.
+func withEmbeddedIPv4(ips []netip.Addr) []netip.Addr {
+	out := ips
+	for i, ip := range ips {
+		v4, ok := embeddedIPv4(ip)
+		if !ok {
+			continue
+		}
+		if len(out) == len(ips) {
+			out = append(make([]netip.Addr, 0, 2*len(ips)), ips[:i+1]...)
+		}
+		out = append(out, v4)
+	}
+	if len(out) == len(ips) {
+		return ips
+	}
+	return out
+}
+
+func embeddedIPv4(ip netip.Addr) (netip.Addr, bool) {
+	if !ip.Is6() || ip.Is4In6() {
+		return netip.Addr{}, false // a mapped address is unmapped where it is matched
+	}
+	b := ip.As16()
+	switch {
+	case b[0] == 0 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b && [8]byte(b[4:12]) == [8]byte{}:
+		return netip.AddrFrom4([4]byte(b[12:16])), true // 64:ff9b::/96
+	case b[0] == 0 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b && b[4] == 0 && b[5] == 1:
+		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true // 64:ff9b:1::/48
+	case b[0] == 0x20 && b[1] == 0x02:
+		return netip.AddrFrom4([4]byte(b[2:6])), true // 2002::/16
+	case [12]byte(b[:12]) == [12]byte{} && !(b[12] == 0 && b[13] == 0 && b[14] == 0 && b[15] <= 1):
+		return netip.AddrFrom4([4]byte(b[12:16])), true // ::a.b.c.d, not :: or ::1
+	}
+	return netip.Addr{}, false
+}
+
 // AllowsResolved decides addr, a host:port, whose host is or resolved to
 // ips: a deny of the name or of any IP refuses; then it needs no allow rules
 // or an allow of the name or of every IP.
@@ -228,6 +268,7 @@ func (d *Dest) AllowsResolved(addr string, ips []netip.Addr) bool {
 	if d == nil {
 		return true
 	}
+	ips = withEmbeddedIPv4(ips)
 	_, p, err := net.SplitHostPort(addr)
 	if err != nil {
 		return false
@@ -271,6 +312,14 @@ func (d *Dest) AllowsResolved(addr string, ips []netip.Addr) bool {
 func (d *Dest) Allows(addr string) bool {
 	if d == nil {
 		return true
+	}
+	// An IPv6 literal that carries an IPv4 address is decided as both.
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		if ip, err := netip.ParseAddr(host); err == nil {
+			if _, ok := embeddedIPv4(ip); ok {
+				return d.AllowsResolved(addr, []netip.Addr{ip})
+			}
+		}
 	}
 	if d.allow != nil && d.opened.open(d.allow) {
 		return !d.DeniesName(addr)
