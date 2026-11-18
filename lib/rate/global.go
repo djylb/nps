@@ -49,6 +49,7 @@ func RootGroup() *byterate.Group { return &globalGroup }
 
 func init() {
 	globalGroup.SetLimiters(&globalRate, &globalRate)
-	globalGroup.SetTraffic(globalTraffic)
+	// A new Counter counts nothing else yet: no overlap to refuse.
+	_ = globalGroup.SetTraffic(globalTraffic)
 	globalTraffic.SampleEverySecond()
 }

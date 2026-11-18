@@ -100,7 +100,7 @@ func (r *Rate) Group() *byterate.Group {
 	r.groupOnce.Do(func() {
 		_ = r.group.SetParent(RootGroup())
 		r.group.SetLimiters(&r.l, &r.l)
-		r.group.SetTraffic(&r.traffic)
+		_ = r.group.SetTraffic(&r.traffic) // r's own Counter: no overlap
 		r.traffic.SampleEverySecond()
 	})
 	return &r.group

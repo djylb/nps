@@ -12,9 +12,9 @@ import (
 // the frame and block headers (RFC 8878 §3.1); the decoder checks the rest.
 type zstdFrames struct {
 	src  io.Reader
-	hdr  [18]byte // the largest header: magic, descriptor, window, dict id, size
 	head []byte   // header bytes read and not yet handed on
 	left int64    // bytes of the current block or checksum still to hand on
+	hdr  [18]byte // the largest header: magic, descriptor, window, dict id, size
 	next zstdStep
 	sum  bool // the frame ends with a checksum
 }
