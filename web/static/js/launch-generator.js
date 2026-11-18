@@ -228,7 +228,6 @@
         var errs = [];
         function port(v, at) { if (trim(v) !== '' && !(/^\d+$/.test(trim(v)) && +v >= 1 && +v <= 65535)) errs.push({at: at, id: 'lg-err-port'}); }
         function int(v, at, min, id) { if (trim(v) !== '' && !(/^-?\d+$/.test(trim(v)) && +v >= min)) errs.push({at: at, id: id}); }
-        var bidi = false;
         form.paths.forEach(function (p, i) {
             var e = effective(p, ctx), at = 'p' + i + '.';
             if (!e.host || !e.port) errs.push({at: at + 'addr', id: 'lg-err-addr'});
@@ -240,10 +239,7 @@
             if (isHTTP(p.carrier) && list(p.kinds).some(function (k) { return kindOptions(p.carrier).indexOf(k) < 0; })) errs.push({at: at + 'kinds', id: 'lg-err-kinds'});
             var dirs = trim(p.dirs);
             if (dirs && dirs.split(',').some(function (d) { return ['bidi', 'up', 'down'].indexOf(trim(d)) < 0; })) errs.push({at: at + 'dirs', id: 'lg-err-dirs'});
-            else if (dirs && (p.carrier === 'http' || p.carrier === 'https') && dirs !== 'bidi') errs.push({at: at + 'dirs', id: 'lg-err-dirs-http'});
-            if (!dirs || dirs.split(',').map(trim).indexOf('bidi') >= 0) bidi = true;
         });
-        if (!bidi) errs.push({at: 'p0.dirs', id: 'lg-err-bidi'});
         var seen = {};
         form.access.forEach(function (a, i) {
             var at = 'a' + i + '.';
@@ -515,7 +511,6 @@
                 var m = /^access\.(\d+)\.type$/.exec(bind);
                 if (m) afterType(+m[1]);
                 var c = /^paths\.(\d+)\.carrier$/.exec(bind);
-                if (c && (value === 'http' || value === 'https')) form.paths[+c[1]].dirs = '';
                 if (bind === 'os' && form.os !== 'linux') form.access.forEach(function (a) { if (a.type === 'transparent') a.type = 'mixed'; });
                 render();
                 return;

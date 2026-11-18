@@ -291,8 +291,8 @@
 		<en-US>Pipes on this path when all paths are used together, at least 1.</en-US>
 	</lang>
 	<lang id="lg-hint-dirs">
-		<zh-CN>双向：可建立会话；仅上行：只用于客户端到服务器；仅下行：只用于服务器到客户端。至少一条路径要双向，http/https 只能双向。</zh-CN>
-		<en-US>Both: can start a session; Up only: client to server; Down only: server to client. At least one path must be both; http and https carry both only.</en-US>
+		<zh-CN>这条路径优先承载的方向。连接本身始终双向，偏好以外的方向只在没有别的路径能用时才走它；任何路径都能建立会话。</zh-CN>
+		<en-US>The direction this path prefers. The connection always carries both; the other direction uses it only when no other path can. Any path can start a session.</en-US>
 	</lang>
 	<lang id="lg-hint-standby">
 		<zh-CN>备用路径只在其它路径都不可用时使用。</zh-CN>
@@ -303,16 +303,16 @@
 		<en-US>Yes: the server connects to the target instead of the provider; the tunnel must have "Server connects to target" on too.</en-US>
 	</lang>
 	<lang id="lg-dirs-bidi">
-		<zh-CN>双向（默认）</zh-CN>
-		<en-US>Both directions (default)</en-US>
+		<zh-CN>不区分（默认）</zh-CN>
+		<en-US>Both alike (default)</en-US>
 	</lang>
 	<lang id="lg-dirs-up">
-		<zh-CN>仅上行</zh-CN>
-		<en-US>Up only</en-US>
+		<zh-CN>优先上行</zh-CN>
+		<en-US>Prefer up</en-US>
 	</lang>
 	<lang id="lg-dirs-down">
-		<zh-CN>仅下行</zh-CN>
-		<en-US>Down only</en-US>
+		<zh-CN>优先下行</zh-CN>
+		<en-US>Prefer down</en-US>
 	</lang>
 	<lang id="lg-cm-auto">
 		<zh-CN>auto 自动（先中继，打洞成功后转直连）</zh-CN>
@@ -401,14 +401,6 @@
 	<lang id="lg-err-dirs">
 		<zh-CN>dirs 取 bidi、up、down 或逗号组合。</zh-CN>
 		<en-US>dirs is bidi, up, down or a comma list of them.</en-US>
-	</lang>
-	<lang id="lg-err-dirs-http">
-		<zh-CN>http/https 只能双向。</zh-CN>
-		<en-US>http and https carry both directions only.</en-US>
-	</lang>
-	<lang id="lg-err-bidi">
-		<zh-CN>至少一条路径要能建立会话（dirs 含 bidi）。</zh-CN>
-		<en-US>At least one path must be able to start a session (dirs includes bidi).</en-US>
 	</lang>
 	<lang id="lg-err-target">
 		<zh-CN>隧道没有默认目标，必须填写目标。</zh-CN>
