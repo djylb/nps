@@ -4,10 +4,27 @@ on:
   workflow_dispatch:
   release:
     types: [ published ]
-    branches: [ master ]
 
 jobs:
+  # The jobs upload to the release named by lib/version: a tag that does not
+  # match it would put the files on another release.
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+
+      - name: Match the version to the tag
+        run: |
+          version=$(grep -oP '(?<=const VERSION = ")[^"]*' lib/version/version.go)
+          echo "NPS version: $version"
+          if [ "${{ github.ref_type }}" = tag ] && [ "v$version" != "${{ github.ref_name }}" ]; then
+            echo "::error::lib/version says $version but the tag is ${{ github.ref_name }}"
+            exit 1
+          fi
+
   build_assets:
+    needs: check_version
     runs-on: ubuntu-latest
 
     steps:
@@ -60,6 +77,7 @@ jobs:
             -d '{"event_type":"trigger-update"}'
 
   build_assets_old:
+    needs: check_version
     runs-on: ubuntu-latest
 
     steps:
@@ -180,6 +198,7 @@ jobs:
         run: bash scripts/publish_manifest.sh dist
 
   build_android:
+    needs: check_version
     runs-on: ubuntu-latest
     env:
       API: '24'
