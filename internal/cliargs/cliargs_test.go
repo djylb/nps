@@ -39,7 +39,7 @@ func TestPrepare(t *testing.T) {
 		{"no rejoin of unknown", []string{"-other=1", ".2"}, []string{".2"}, []string{"-other=1"}},
 	} {
 		out, warnings := Prepare(fs, tc.args, nil, commands...)
-		if !slices.Equal(out, tc.out) && !(len(out) == 0 && len(tc.out) == 0) {
+		if !slices.Equal(out, tc.out) && (len(out) != 0 || len(tc.out) != 0) {
 			t.Errorf("%s: out = %q, want %q", tc.name, out, tc.out)
 		}
 		var want []string
@@ -103,7 +103,7 @@ func TestNPCRules(t *testing.T) {
 		if *connType != tc.connType {
 			t.Errorf("%s: type %q, want %q", tc.name, *connType, tc.connType)
 		}
-		if !slices.Equal(fs.Args(), tc.rest) && !(len(fs.Args()) == 0 && len(tc.rest) == 0) {
+		if !slices.Equal(fs.Args(), tc.rest) && (len(fs.Args()) != 0 || len(tc.rest) != 0) {
 			t.Errorf("%s: args %q, want %q", tc.name, fs.Args(), tc.rest)
 		}
 		if len(warnings) != 1 || !strings.Contains(warnings[0], tc.warning) {
@@ -139,7 +139,7 @@ func TestNPCOldServiceArgs(t *testing.T) {
 		if *server != tc.server || *vkey != tc.vkey || *connType != tc.connType || *debug != tc.debug {
 			t.Errorf("%s: got server %q vkey %q type %q debug %v", tc.name, *server, *vkey, *connType, *debug)
 		}
-		if !slices.Equal(fs.Args(), tc.rest) && !(len(fs.Args()) == 0 && len(tc.rest) == 0) {
+		if !slices.Equal(fs.Args(), tc.rest) && (len(fs.Args()) != 0 || len(tc.rest) != 0) {
 			t.Errorf("%s: args %q, want %q", tc.name, fs.Args(), tc.rest)
 		}
 		if len(warnings) != tc.warnings {

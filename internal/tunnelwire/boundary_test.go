@@ -57,7 +57,7 @@ func TestImportBoundary(t *testing.T) {
 			}
 			if inside {
 				first, _, _ := strings.Cut(imp, "/")
-				if strings.Contains(first, ".") && !strings.HasPrefix(imp, modulePath) && !(strings.HasSuffix(rel, "_test.go") && imp == leakcheckPath) {
+				if strings.Contains(first, ".") && !strings.HasPrefix(imp, modulePath) && (!strings.HasSuffix(rel, "_test.go") || imp != leakcheckPath) {
 					t.Errorf("%s imports %s; this package uses the standard library only", rel, imp)
 				}
 			} else if strings.HasPrefix(imp, modulePath) && !importerAllowed(rel) {

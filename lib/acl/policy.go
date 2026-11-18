@@ -255,7 +255,7 @@ func embeddedIPv4(ip netip.Addr) (netip.Addr, bool) {
 		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true // 64:ff9b:1::/48
 	case b[0] == 0x20 && b[1] == 0x02:
 		return netip.AddrFrom4([4]byte(b[2:6])), true // 2002::/16
-	case [12]byte(b[:12]) == [12]byte{} && !(b[12] == 0 && b[13] == 0 && b[14] == 0 && b[15] <= 1):
+	case [12]byte(b[:12]) == [12]byte{} && (b[12] != 0 || b[13] != 0 || b[14] != 0 || b[15] > 1):
 		return netip.AddrFrom4([4]byte(b[12:16])), true // ::a.b.c.d, not :: or ::1
 	}
 	return netip.Addr{}, false

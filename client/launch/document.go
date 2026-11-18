@@ -252,7 +252,7 @@ func stripJSONC(in []byte) []byte {
 			}
 			i--
 		case c == '/' && i+1 < len(in) && in[i+1] == '*':
-			for i += 2; i+1 < len(in) && !(in[i] == '*' && in[i+1] == '/'); i++ {
+			for i += 2; i+1 < len(in) && (in[i] != '*' || in[i+1] != '/'); i++ {
 			}
 			i++
 		case c == '}' || c == ']':

@@ -21,7 +21,7 @@ type bridgeRoutes interface {
 // bridgeTarget is the bridge target of a route that reaches the bridge of
 // this process, "" for any other route.
 func (s *HttpServer) bridgeTarget(h *model.Host, target *model.Target) string {
-	if target == nil || !(s.AllowLocalProxy && target.LocalProxy || h.Client.Id < 0) {
+	if target == nil || (!s.AllowLocalProxy || !target.LocalProxy) && h.Client.Id >= 0 {
 		return ""
 	}
 	t, ok := strings.CutPrefix(strings.TrimSpace(target.TargetStr), "bridge://")

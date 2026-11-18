@@ -28,7 +28,7 @@ func TestLanguagesCoverTags(t *testing.T) {
 	tag := regexp.MustCompile(`langtag=(?:"([a-zA-Z0-9_-]+)"|'([a-zA-Z0-9_-]+)')`)
 	for _, dir := range []string{filepath.Join("..", "views"), filepath.Join("..", "static", "js")} {
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !(strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".js")) {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".html") && !strings.HasSuffix(path, ".js") {
 				return err
 			}
 			src, err := os.ReadFile(path)

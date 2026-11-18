@@ -79,12 +79,14 @@ func TestHttp3CloseWaitsForBridgeAcceptLoop(t *testing.T) {
 	closed := make(chan error, 1)
 	go func() { closed <- s.Close() }()
 	select {
-	case <-closed:
+	case err := <-closed:
+		t.Logf("Close returned %v", err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close did not return")
 	}
 	select {
-	case <-started:
+	case err := <-started:
+		t.Logf("Start returned %v", err)
 	case <-time.After(time.Second):
 		t.Fatal("Start did not return after Close")
 	}

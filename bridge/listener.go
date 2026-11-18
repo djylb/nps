@@ -88,7 +88,7 @@ func (s *Bridge) StartTunnel(t Transports) error {
 	}
 
 	// quic, unless the kcp port above already takes it
-	if t.QUIC && !(t.KCP && n.BridgeKCPQUIC && kcpAddr == quicAddr) {
+	if t.QUIC && (!t.KCP || !n.BridgeKCPQUIC || kcpAddr != quicAddr) {
 		if err := s.listenQUIC(quicAddr, "quic", nil); err != nil {
 			return err
 		}

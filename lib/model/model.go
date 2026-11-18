@@ -839,7 +839,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 	host.RLock()
 	hv := host.viewLocked()
 	t := &Tunnel{
-		RateLimits:   host.RateLimits.shared(),
+		RateLimits:   host.shared(),
 		ServerIp:     "0.0.0.0",
 		Port:         port,
 		Mode:         "tcp",
@@ -868,7 +868,7 @@ func NewTunnelByHost(host *Host, port int) *Tunnel {
 func (t *Tunnel) Clone() *Tunnel {
 	t.RLock()
 	c := &Tunnel{
-		RateLimits:   t.RateLimits.copyConfig(),
+		RateLimits:   t.copyConfig(),
 		MaxConn:      t.MaxConn,
 		Id:           t.Id,
 		Port:         t.Port,
@@ -945,7 +945,7 @@ func (t *Tunnel) Update(other *Tunnel) {
 // buckets, connection slots and flow of previous, so that the connections
 // already open keep counting against the edited tunnel.
 func (t *Tunnel) AdoptRuntime(previous *Tunnel) {
-	t.RateLimits.adopt(&previous.RateLimits)
+	t.adopt(&previous.RateLimits)
 	t.ControlGroup()
 	t.adoptFlow(previous)
 }
@@ -981,7 +981,7 @@ func (t *Tunnel) SetMaxConn(limit int) {
 }
 func (t *Tunnel) GetConn() bool             { return t.ControlGroup().Acquire() == nil }
 func (t *Tunnel) CutConn()                  { t.RateLimiter().Group(nil).Release() }
-func (t *Tunnel) CurrentConnections() int32 { return t.RateLimits.connectionCount() }
+func (t *Tunnel) CurrentConnections() int32 { return t.connectionCount() }
 
 // HealthCheck is what can be set for a health check given by the server.
 type HealthCheck struct {
@@ -1100,7 +1100,7 @@ type Host struct {
 func (s *Host) Clone() *Host {
 	s.RLock()
 	c := &Host{
-		RateLimits:       s.RateLimits.copyConfig(),
+		RateLimits:       s.copyConfig(),
 		Compress:         s.Compress,
 		Id:               s.Id,
 		Host:             s.Host,
@@ -1192,7 +1192,7 @@ func (s *Host) SetMaxConn(limit int) {
 	s.rateMu.Unlock()
 	s.Unlock()
 }
-func (s *Host) CurrentConnections() int32 { return s.RateLimits.connectionCount() }
+func (s *Host) CurrentConnections() int32 { return s.connectionCount() }
 
 type Target struct {
 	TargetStr     string

@@ -53,7 +53,7 @@ func startHTTPS(t *testing.T, e *certSelectEnv) string {
 	}
 	l := &trackingListener{Listener: inner}
 	s := e.s.HttpsServer
-	s.HttpProxy.BaseServer = &proxy.BaseServer{Bridge: listlessBridge{}, ErrorContent: []byte("nps 404")}
+	s.BaseServer = &proxy.BaseServer{Bridge: listlessBridge{}, ErrorContent: []byte("nps 404")}
 	s.ErrorAlways = true
 	s.tlsNextProtos = []string{"http/1.1"}
 	s.httpsListener = l

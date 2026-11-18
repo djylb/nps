@@ -565,7 +565,7 @@ func (s *Bridge) serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
 	_ = c.SetDeadline(time.Time{})
 	head := requestHead(r)
 	if n := rw.Reader.Buffered(); n > 0 {
-		b, _ := rw.Reader.Peek(n)
+		b, _ := rw.Peek(n)
 		head = append(head, b...)
 	}
 	// ServeFallback owns the connection when it takes it.

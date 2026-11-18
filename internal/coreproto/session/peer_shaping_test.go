@@ -247,7 +247,7 @@ func TestNestedFollowsReplaceAndClear(t *testing.T) {
 	for _, slot := range []*planSlot{p.provider.d.plans, p.outer.d.plans} {
 		slot.mu.Lock()
 		//lint:ignore SA2001 a barrier: the change is complete once keep has let go
-		slot.mu.Unlock()
+		slot.mu.Unlock() //nolint:staticcheck // SA2001: a barrier, see above
 	}
 	before := [2]uint64{spent(vz), spent(pz)}
 	bulkEcho(t, c, 64<<10)

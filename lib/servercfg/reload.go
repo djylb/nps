@@ -70,7 +70,7 @@ func (r Report) String() string {
 		var s strings.Builder
 		s.WriteString("config reload failed, the previous settings were restored: " + strings.Join(parts, "; "))
 		for _, f := range r.RollbackFailed {
-			s.WriteString(fmt.Sprintf("; restoring %s failed: %s", f.Name, f.Error))
+			_, _ = fmt.Fprintf(&s, "; restoring %s failed: %s", f.Name, f.Error)
 		}
 		return s.String()
 	}

@@ -138,9 +138,10 @@ func dialServer(tp string, vkey string, server string, proxyUrl string, localIP 
 func dialCandidate(cand connprofile.Candidate, vkey, proxyUrl, localIP string) (c *conn.Conn, uuid string, info serverInfo, err error) {
 	tp := strings.ToLower(cand.Carrier)
 	// The old protocol has only the WebSocket kind of them.
-	if tp == "http" {
+	switch tp {
+	case "http":
 		tp = conn.TransportWS
-	} else if tp == "https" {
+	case "https":
 		tp = conn.TransportWSS
 	}
 	for _, target := range dialTargets(tp, cand.Addr) {

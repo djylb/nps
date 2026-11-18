@@ -25,7 +25,8 @@ func TestUdpModeServerRelaysLargeDatagrams(t *testing.T) {
 	defer func() {
 		_ = server.Close()
 		select {
-		case <-errCh:
+		case err := <-errCh:
+			t.Logf("Start returned %v", err)
 		case <-time.After(2 * time.Second):
 			t.Error("server did not stop in time")
 		}

@@ -1261,7 +1261,7 @@ func sessionCookiesFromIdentity(t *testing.T, cfg *servercfg.Snapshot, identity 
 	session.Values[webservice.SessionIdentityKey] = encoded
 	if len(identity.ClientIDs) > 0 {
 		session.Values["clientId"] = identity.ClientIDs[0]
-		session.Values["clientIds"] = strings.Trim(strings.Replace(fmt.Sprint(identity.ClientIDs), " ", ",", -1), "[]")
+		session.Values["clientIds"] = strings.Trim(strings.ReplaceAll(fmt.Sprint(identity.ClientIDs), " ", ","), "[]")
 	}
 	if err := session.Save(req, resp); err != nil {
 		t.Fatalf("session.Save() error = %v", err)

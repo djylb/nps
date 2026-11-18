@@ -128,11 +128,12 @@ func (a *App) LiveStatus(c Context) {
 					up, down = rates()
 					ratesRead = true
 				}
-				if f == "Speed" {
+				switch f {
+				case "Speed":
 					row[f] = up + down
-				} else if f == "UploadRate" {
+				case "UploadRate":
 					row[f] = up
-				} else {
+				default:
 					row[f] = down
 				}
 			case "Flow.InletFlow", "Flow.ExportFlow", "Flow.DirectIn", "Flow.DirectOut", "TotalFlow", "ActualFlow", "FlowRemain":
