@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -70,11 +71,17 @@ func (s *HttpServer) Close() error {
 	return nil
 }
 
+// writeErrorPage writes an error page; $status in it becomes the status code.
 func (s *HttpServer) writeErrorPage(rw http.ResponseWriter, statusCode int, content []byte) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(statusCode)
+	if bytes.Contains(content, statusPlaceholder) {
+		content = bytes.ReplaceAll(content, statusPlaceholder, strconv.AppendInt(nil, int64(statusCode), 10))
+	}
 	_, _ = rw.Write(content)
 }
+
+var statusPlaceholder = []byte("$status")
 
 func (s *HttpServer) writeLimitErrorPage(rw http.ResponseWriter, err error) bool {
 	var content []byte
@@ -151,7 +158,8 @@ func (s *HttpServer) serveProxy(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del("X-NPS-Http-Only")
 	}
 	if p.autoHttps && !req.httpOnly && !req.tls {
-		http.Redirect(w, r, s.httpsURL(r), http.StatusMovedPermanently)
+		// 308 keeps the method and body, which 301 lets a browser turn into a GET.
+		http.Redirect(w, r, s.httpsURL(r), http.StatusPermanentRedirect)
 		return
 	}
 

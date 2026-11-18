@@ -112,7 +112,7 @@ npc [子命令] [参数]
 | `-ntp_server` | 无 | NTP 服务器，用于校准时间 |
 | `-ntp_interval` | `5` | 分钟。两次 NTP 同步的间隔 |
 | `-timezone` | 无 | 时区，如 `Asia/Shanghai` |
-| `-pprof` | 无 | PProf 调试地址 `ip:port` |
+| `-pprof` | 无 | PProf 调试地址 `ip:port`，`:port` 只监听本机；填非本机地址时启动会告警 |
 | `-time` | `2` | 小时。`register` 登记的有效期 |
 | `-reveal` | `false` | 只用于 `npc launch show`：显示 vkey、访问密钥和代理密码 |
 | `-gen2fa` | `false` | 生成一个 TOTP 密钥后退出 |

@@ -197,7 +197,7 @@
 | `geoip_path` | `conf/geoip.dat` | IP 归属地数据文件，访问控制名单里按国家写规则时用。可用 `nps update-geo` 更新 | 重启 |
 | `geosite_path` | `conf/geosite.dat` | 域名分类数据文件，同上 | 重启 |
 | `acl_max_rules` | `1000` | 客户端、隧道、域名各自名单的最大规则条数，`0` 不限；全局名单不受此限 | 重启 |
-| `pprof_ip` | 空 | 性能分析接口的监听地址，仅排查问题时使用 | 重启 |
+| `pprof_ip` | 空 | 性能分析接口的监听地址，仅排查问题时使用。空为只监听本机 `127.0.0.1`；填其他地址时启动会告警 | 重启 |
 | `pprof_port` | `0` | 性能分析接口的端口，`0` 关闭 | 重启 |
 | `ip_register_max_hours` | `2` | 小时。用公共密钥，或没设置上限的客户端密钥登记 IP 时，登记的最长有效期 | 立即 |
 | `ip_register_ip` | `0.0.0.0` | 单独提供 IP 登记页面时的监听地址 | 重启 |
@@ -234,7 +234,7 @@
 | `http3_proxy_port` | 同 `https_proxy_port` | HTTP/3 的 UDP 端口，`0` 关闭。与 `mix_port` 相同时，同一个 UDP 端口既服务 HTTP/3 又接 `quic` 连接，此时 ALPN `h3` 归 HTTP/3 | 重启 |
 | `bridge_http3` | `true` | 允许客户端的 `quic` 连接复用 HTTP/3 的 UDP 端口 | 重启 |
 | `http_proxy_response_timeout` | `100` | 秒。等待内网服务返回响应头的时间 | 重启 |
-| `error_page` | `web/static/page/error.html` | 域名转发的错误页文件路径 | 重启 |
+| `error_page` | `web/static/page/error.html` | 域名转发的错误页文件路径。页面里的 `$status` 会换成状态码 | 重启 |
 | `error_page_time_limit` | 空 | 域名到期时显示的页面文件路径，空为不单独设置 | 重启 |
 | `error_page_flow_limit` | 空 | 域名流量用完时显示的页面文件路径，空为不单独设置 | 重启 |
 | `error_always` | `false` | 访问没有配置的域名时：`false` 直接断开连接，`true` 返回 404 错误页 | 重启 |

@@ -32,7 +32,7 @@ curl -I http://www.example.com
 - **目标类型 (HTTP/HTTPS)**：后端本身只提供 HTTPS 时选 HTTPS，目标填后端的 HTTPS 端口。
 - **多个目标**：目标按行填写多个，可以做负载均衡，并配合[健康检查](/guide/tunnels/health-check.md)。
 - **URL 路由**：只转发匹配某个路径前缀的请求，同一个域名可以按路径分给不同的后端。
-- **HTTPS 与证书**：“自动HTTPS (301)”、“自动证书”、“HTTPS 证书”“HTTPS 密钥”，以及“TLS 直通（由后端解密）”“TLS 终止（解密转发）”，用法见 [HTTPS 与反向代理](/guide/server/https-and-proxy.md)。
+- **HTTPS 与证书**：“自动HTTPS (308)”、“自动证书”、“HTTPS 证书”“HTTPS 密钥”，以及“TLS 直通（由后端解密）”“TLS 终止（解密转发）”，用法见 [HTTPS 与反向代理](/guide/server/https-and-proxy.md)。
 - **路由与请求响应**：“URL 重写”“重定向地址”“请求域名信息修改”“请求头部信息修改”“返回头部信息修改”“自动修复 CORS”“兼容模式”，说明见[站点与 HTTP](/reference/features-http.md)。
 - **账号认证**：“密码认证”每行 `用户名=密码`，访问网站时要先输入，留空不启用。
 - **访问控制与限制**：IP 黑白名单、“最大连接数”（HTTP 按并发请求计数，HTTPS 透传和 TLS 终止按连接计数）、限速、流量、时间限制，与 [TCP 隧道](/guide/tunnels/tcp.md)的同名选项一致。

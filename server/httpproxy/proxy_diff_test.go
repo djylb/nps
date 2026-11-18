@@ -649,8 +649,8 @@ func TestDiffAutoHttps(t *testing.T) {
 			name = strings.TrimPrefix(name, "[")
 			e.addHost(name, b.addr, func(h *model.Host) { h.AutoHttps = true })
 			r := e.mustGet(tc.host, "/a/b?c=d", nil)
-			if r.StatusCode != http.StatusMovedPermanently || r.Header.Get("Location") != tc.want {
-				t.Fatalf("got %d %q, want 301 %q", r.StatusCode, r.Header.Get("Location"), tc.want)
+			if r.StatusCode != http.StatusPermanentRedirect || r.Header.Get("Location") != tc.want {
+				t.Fatalf("got %d %q, want 308 %q", r.StatusCode, r.Header.Get("Location"), tc.want)
 			}
 			if len(e.bridge.opened()) != 0 {
 				t.Fatal("link opened for a redirect")
@@ -677,12 +677,12 @@ func TestDiffAutoHttps(t *testing.T) {
 		t.Fatalf("HTTP-only request forwarded with %v", m)
 	}
 	// A wrong password is redirected like any request.
-	if r := e.mustGet("auto.test", "/", http.Header{"X-Nps-Http-Only": {"wrong"}}); r.StatusCode != http.StatusMovedPermanently {
+	if r := e.mustGet("auto.test", "/", http.Header{"X-Nps-Http-Only": {"wrong"}}); r.StatusCode != http.StatusPermanentRedirect {
 		t.Fatalf("wrong HTTP-only password: %d", r.StatusCode)
 	}
 	// The upgrade of a WebSocket is redirected as well.
 	_, _, resp := e.wsDial("auto.test", "/ws", nil, false)
-	if resp.StatusCode != http.StatusMovedPermanently {
+	if resp.StatusCode != http.StatusPermanentRedirect {
 		t.Fatalf("WebSocket over HTTP: %d", resp.StatusCode)
 	}
 }
@@ -1273,7 +1273,7 @@ func TestDiffHostEditAppliesToNextRequest(t *testing.T) {
 		t.Fatalf("after edit: %v %q", r.Header, r.body)
 	}
 	e.editHost(h, func(h *model.Host) { h.AutoHttps = true })
-	if r := e.mustGet("edit.test", "/", nil); r.StatusCode != http.StatusMovedPermanently {
+	if r := e.mustGet("edit.test", "/", nil); r.StatusCode != http.StatusPermanentRedirect {
 		t.Fatalf("after enabling AutoHttps: %d", r.StatusCode)
 	}
 	e.editHost(h, func(h *model.Host) { h.AutoHttps = false; h.RedirectURL = "https://moved.example/" })

@@ -44,8 +44,13 @@ const legacySubprotocol = "binary"
 const (
 	drainTimeout = 5 * time.Second
 	// Shared bridge ports see many short carriers of old clients per source.
-	maxPending          = 4096
-	maxPendingPerSource = 64
+	maxPending = 4096
+	// Unauthenticated carriers count per source prefix: one network does not
+	// get round the limit by taking another address of its own. A prefix
+	// may hold a carrier-grade NAT of many clients, hence the room.
+	maxPendingPerSource = 256
+	sourcePrefixV4      = 24
+	sourcePrefixV6      = 56
 	// sessionMaxPipes is what the entry aims for per session. It is no
 	// policy (client_max_pipes is), only what zmux sizes its join replay
 	// window by.
@@ -170,6 +175,8 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		MaxSuspended:        maxSuspended,
 		MaxPending:          maxPending,
 		MaxPendingPerSource: maxPendingPerSource,
+		SourcePrefixV4:      sourcePrefixV4,
+		SourcePrefixV6:      sourcePrefixV6,
 		Admission: &zmux.Admission{
 			Peek: 1, MaxPeek: wire.MaxPeek, FallbackOnPeekTimeout: true, Decide: a.decide,
 		},
@@ -518,16 +525,15 @@ func (a *Acceptor) Stall(ctx context.Context, c net.Conn) {
 	}
 }
 
-// stallKey aggregates a source as the admission does: an IPv6 address to its
-// /64.
+// stallKey aggregates a source as the admission does, to its source prefix.
 func stallKey(src netip.AddrPort) netip.Prefix {
 	addr := src.Addr().Unmap()
 	if !addr.IsValid() {
 		return netip.Prefix{}
 	}
-	bits := addr.BitLen()
+	bits := sourcePrefixV4
 	if addr.Is6() {
-		bits = 64
+		bits = sourcePrefixV6
 	}
 	p, _ := addr.Prefix(bits)
 	return p

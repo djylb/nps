@@ -6,9 +6,9 @@
 
 开启后，nps 为这个域名自动申请并续签 HTTPS 证书。要求 nps 监听 80 或 443 端口，并且这两个端口能从公网访问。证书颁发机构、邮箱和缓存位置用 `ssl_ca`、`ssl_email`、`ssl_path` 设置；`force_auto_ssl=true` 时对所有域名强制申请，见[服务端配置](/reference/server-config.md)。证书和 HTTPS 的整体用法见[HTTPS 与反向代理](/guide/server/https-and-proxy.md)。
 
-## 自动 HTTPS (301)
+## 自动 HTTPS (308)
 
-开启后，浏览器用 http 访问会被 301 跳转到 https。
+开启后，浏览器用 http 访问会被 308 跳转到 https，请求方法和内容保持不变。
 
 ## 自动修复 CORS
 

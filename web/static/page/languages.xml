@@ -897,8 +897,8 @@
 		<en-US>TLS termination</en-US>
 	</lang>
 	<lang id="word-autohttps">
-		<zh-CN>自动HTTPS (301)</zh-CN>
-		<en-US>Auto HTTPS (301)</en-US>
+		<zh-CN>自动HTTPS (308)</zh-CN>
+		<en-US>Auto HTTPS (308)</en-US>
 	</lang>
 	<lang id="word-autohttpstitle">
 		<zh-CN>自动HTTPS</zh-CN>
