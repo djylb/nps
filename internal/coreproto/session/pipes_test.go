@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"io"
 	"net"
 	"sync"
@@ -72,7 +71,7 @@ func TestTwoPipesSurviveLoss(t *testing.T) {
 	s := e.waitOnline()
 	waitUntil(t, "two pipes", func() bool { return sumPipes(s) == 2 && len(cs.zc.Pipes()) == 2 })
 	first := cs.zc.Pipes()[0]
-	_ = first.Abort(errors.New("cut"))
+	_ = first.Abort()
 	st, err := s.zc.OpenStream()
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +114,7 @@ func TestStandbyTakeover(t *testing.T) {
 	waitUntil(t, "two pipes", func() bool { return len(cs.zc.Pipes()) == 2 })
 	for _, p := range cs.zc.Pipes() {
 		if st, ok := p.Stats(); ok && !st.Standby {
-			_ = p.Abort(errors.New("cut"))
+			_ = p.Abort()
 		}
 	}
 	// Traffic goes over what is left at once, before any replacement.

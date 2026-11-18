@@ -213,7 +213,7 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	base := nestedConfig(s.d.cfg.MaxLanes)
 	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: base, WrapPipe: &seal.ServerConfig{
 		Shaper: shape.slot.handshake,
-		Gate:   &linkGate{handle: handle, psk: psk}, Key: key, ClientAnchor: acceptAnyClient{},
+		Gate:   &linkGate{handle: handle, psk: psk}, StaticKey: key, ClientAnchor: acceptAnyClient{},
 		AllowRecordMode: allowNestedMode, MaxAppData: wire.MaxHelloRecv, AppData: nestedProviderHello,
 	}, SessionConfig: func(context.Context, *zmux.CarrierInfo, any) (*zmux.Config, error) {
 		return shape.configure(base.Clone()), nil
@@ -335,9 +335,12 @@ func (s *clientSession) servePunch(lc *linkConn, fields []byte) {
 		return
 	}
 	defer path.Close()
-	_ = zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
+	// ServeConn hands the connection over; the path lives until it ends.
+	if zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
 		_ = zmux.PipeConn(c).Close()
-	})
+	}) == nil {
+		<-path.QUIC.Context().Done()
+	}
 }
 
 func (s *clientSession) addProviderLink(p *providerLink) {

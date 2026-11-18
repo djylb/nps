@@ -49,10 +49,11 @@ type FlowConn struct {
 // be nil. The addresses and deadlines are those of the connection beneath.
 func NewFlowConn(conn io.ReadWriteCloser, task, client Flow) *FlowConn {
 	budgets := byterate.NewHierarchy(flowBudget(task), flowBudget(client))
-	opts := []byterate.Option{
-		byterate.WithLimiters(budgets, budgets),
-		byterate.WithCounter(flowTraffic(task)),
-		byterate.WithCounter(flowTraffic(client)),
+	opts := []byterate.Option{byterate.WithLimiters(budgets, budgets)}
+	for _, f := range []Flow{task, client} {
+		if c := flowTraffic(f); c != nil {
+			opts = append(opts, byterate.WithCounter(c))
+		}
 	}
 	var c net.Conn
 	if nc, ok := conn.(net.Conn); ok {

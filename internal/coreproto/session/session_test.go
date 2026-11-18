@@ -610,7 +610,7 @@ func TestTakeoverAndCoexistence(t *testing.T) {
 
 func TestPin(t *testing.T) {
 	e := start(t, "tcp", rec(1, "key-1", true))
-	right := seal.NodeKeyID(e.a.key.PublicKey().Bytes())
+	right := seal.StaticKeyID(e.a.key.PublicKey().Bytes())
 	wrong := right
 	wrong[0] ^= 1
 	bad := NewDialer(DialConfig{Candidates: e.cands(e.addr), VKey: "key-1", Pin: wrong[:], Timeout: 2 * time.Second})

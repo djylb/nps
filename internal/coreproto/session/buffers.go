@@ -18,6 +18,6 @@ const (
 func boundBuffers(c *zmux.Config) *zmux.Config {
 	c.MaxStreamReceiveWindow = streamWindow
 	c.MaxConnectionReceiveWindow = sessionWindow
-	c.MaxSendBuffer = sendBuffer
+	c.SendBufferMax = sendBuffer
 	return c
 }

@@ -6,7 +6,7 @@ import "github.com/djylb/byterate"
 // NewRateConn wraps, on top of the limit of the connection's client.
 var (
 	globalRate    byterate.Rate
-	globalTraffic = byterate.NewSharedCounter()
+	globalTraffic = new(byterate.Counter)
 	globalGroup   byterate.Group
 )
 

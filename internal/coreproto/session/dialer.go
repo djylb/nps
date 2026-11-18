@@ -44,7 +44,7 @@ const maxIncomingLinks = 1 << 30
 type DialConfig struct {
 	Candidates []connprofile.Candidate // from connprofile.Parse
 	VKey       string
-	Pin        []byte           // optional seal.NodeKeyID of the server
+	Pin        []byte           // optional seal.StaticKeyID of the server
 	Key        *ecdh.PrivateKey // nil: the key seal generates once per process
 	Agent      string
 	Label      string
@@ -457,7 +457,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 		RecordMode: mode,
 		Handle:     handle,
 		PSK:        psk,
-		Key:        d.cfg.Key,
+		StaticKey:  d.cfg.Key,
 		MaxAppData: wire.MaxHelloRecv,
 		AppData: func(_ context.Context, r seal.AppDataRequest) ([]byte, error) {
 			if r.Message == 3 {
@@ -497,7 +497,7 @@ func (d *Dialer) establish(ctx context.Context, ca carrier, mode zmux.RecordMode
 type anchor struct{ pin *proto.KeyID }
 
 func (a *anchor) Verify(_ context.Context, in seal.VerifyInput) (seal.VerifyVerdict, error) {
-	id := seal.NodeKeyID(in.PeerStatic)
+	id := seal.StaticKeyID(in.PeerStatic)
 	if a.pin != nil && id != *a.pin {
 		return seal.VerifyVerdict{}, seal.ErrVerifyRejected
 	}

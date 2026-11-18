@@ -177,7 +177,7 @@ func NewAcceptor(store Store, opts Options) (*Acceptor, error) {
 		Fallback: a.fallback,
 		WrapPipe: &admitPipe{a: a, cfg: &seal.ServerConfig{
 			Gate:            &gate{a: a},
-			Key:             key,
+			StaticKey:       key,
 			ClientAnchor:    acceptAnyClient{},
 			AppData:         a.appData,
 			MaxAppData:      wire.MaxHelloRecv,
@@ -285,7 +285,7 @@ func (a *Acceptor) appData(_ context.Context, r seal.AppDataRequest) ([]byte, er
 func (a *Acceptor) Start(ctx context.Context, h coreapi.Hooks) error {
 	a.hooks.Store(&h)
 	ctx, a.cancel = context.WithCancel(ctx)
-	id := seal.NodeKeyID(a.key.PublicKey().Bytes())
+	id := seal.StaticKeyID(a.key.PublicKey().Bytes())
 	log.Info("core protocol entry ready", "key_id", hex.EncodeToString(id[:]))
 	if a.shapingFrom != nil {
 		a.wg.Go(func() { a.shapingFrom(ctx, a.SetShaping) })
@@ -351,10 +351,13 @@ func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.
 
 // ServeQUIC implements coreapi.Entry. ALPN told the new protocol from the old
 // before this (§12), so a first stream that is no carrier just ends.
+// It returns when the connection ends: its caller closes qc after.
 func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn) {
-	_ = zmuxquic.ServeConn(ctx, a.zl, qc, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
+	if zmuxquic.ServeConn(ctx, a.zl, qc, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
 		_ = zmux.PipeConn(p).Close()
-	})
+	}) == nil {
+		<-qc.Context().Done()
+	}
 }
 
 func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {

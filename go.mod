@@ -5,21 +5,21 @@ go 1.27
 require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/beevik/ntp v1.6.0
-	github.com/brianvoe/gofakeit/v7 v7.18.4
+	github.com/brianvoe/gofakeit/v7 v7.18.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261116000019-85642ff30659
-	github.com/djylb/geomatch v0.0.0-20261114151740-f426596f6e1b
-	github.com/djylb/guard v0.0.0-20261114154237-2b9a545d9253
-	github.com/djylb/holepunch v0.0.0-20261115010552-0943ae5b48d3
-	github.com/djylb/holepunch/quicpath v0.0.0-20261115010552-0943ae5b48d3
-	github.com/djylb/lifecycle v0.0.0-20261114151509-12ee2033de95
-	github.com/djylb/netx v0.0.0-20261114154740-c89a319ecfb2
-	github.com/djylb/portmux v0.0.0-20261114154843-b107d8ad8413
+	github.com/djylb/byterate v0.0.0-20261118144734-226ecfffafa4
+	github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb
+	github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3
+	github.com/djylb/holepunch v0.0.0-20261117215339-d9a3dfdda530
+	github.com/djylb/holepunch/quicpath v0.0.0-20261117215339-d9a3dfdda530
+	github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd
+	github.com/djylb/netx v0.0.0-20261118144140-a3a23cb364d7
+	github.com/djylb/portmux v0.0.0-20261118125658-11e473ad7ff7
 	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
-	github.com/djylb/slogx v0.0.0-20261114151516-27c23f157cbd
+	github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2
 	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
-	github.com/djylb/upstream v0.0.0-20261114151745-c1d45d80e034
+	github.com/djylb/upstream v0.0.0-20261117215339-b8515b6d7ad6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/golang/snappy v1.0.0
@@ -32,15 +32,15 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
-	github.com/xtaci/kcp-go/v5 v5.7.5
-	github.com/zmuxio/zmux-go v1.4.10
-	github.com/zmuxio/zmux-go/seal v1.4.10
-	github.com/zmuxio/zmux-go/zmuxquic v1.4.10
-	github.com/zmuxio/zmux-go/zmuxws v1.4.10
+	github.com/xtaci/kcp-go/v5 v5.7.6
+	github.com/zmuxio/zmux-go v1.5.3
+	github.com/zmuxio/zmux-go/seal v1.5.3
+	github.com/zmuxio/zmux-go/zmuxquic v1.5.3
+	github.com/zmuxio/zmux-go/zmuxws v1.5.3
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 )
 
 require (
