@@ -157,6 +157,7 @@
                 + '<b langtag="word-address"></b>: <span onclick="oCopy(this)">' + row.Addr + '</span>&emsp;'
                 + '<b langtag="word-localaddress"></b>: <span onclick="oCopy(this)">' + escapeHtml(row.LocalAddr || '—') + '</span>&emsp;'
                 + (row.Link ? '<b langtag="word-pipes"></b>: ' + npsLiveValue('Link.Pipes', escapeHtml(row.Link.Pipes || '—')) + '&emsp;' : '')
+                + (row.Link ? '<b langtag="word-schedulerup"></b>: <span langtag="' + schedulerUpTag(row.Cnf && row.Cnf.SchedulerUp) + '"></span>&emsp;' : '')
                 + '<br/><br/>'
             if (row.Link) status += '<div data-live-field="Link.PipeList">' + npsPipesHTML(row.Link.PipeList) + '</div>'
             status += '<div data-live-field="ConnectionHistory">' + npsHistoryHTML(row.ConnectionHistory) + '</div><br/>'
@@ -548,6 +549,14 @@
     {{if eq true .isAdmin}}
     initListBatch('client', '{{.web_base_url}}');
     {{end}}
+
+    // schedulerUpTag names the uplink scheduler the server tells npc; empty
+    // tells nothing and npc keeps its own setting.
+    function schedulerUpTag(name) {
+        const tags = {affinity: 'word-sched-affinity', session_affinity: 'word-sched-session-affinity', spread_eta: 'word-sched-spread-eta',
+            spread_round_robin: 'word-sched-spread-round-robin', spread_rate_weighted: 'word-sched-spread-rate-weighted'};
+        return tags[name] || 'word-schedulerclient';
+    }
 
     function pingClient(el, id) {
         var $el = $(el);

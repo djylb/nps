@@ -17,7 +17,7 @@ require (
 	github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd
 	github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda
 	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
-	github.com/djylb/shapebundle v0.0.0-20261119025546-e473e5f3fe95
+	github.com/djylb/shapebundle v0.0.0-20261119123647-65f0e665577b
 	github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2
 	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
 	github.com/djylb/upstream v0.0.0-20261117215339-b8515b6d7ad6
@@ -33,11 +33,11 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
-	github.com/xtaci/kcp-go/v5 v5.7.6
-	github.com/zmuxio/zmux-go v1.5.3
-	github.com/zmuxio/zmux-go/seal v1.5.3
-	github.com/zmuxio/zmux-go/zmuxquic v1.5.3
-	github.com/zmuxio/zmux-go/zmuxws v1.5.3
+	github.com/xtaci/kcp-go/v5 v5.7.7
+	github.com/zmuxio/zmux-go v1.5.4
+	github.com/zmuxio/zmux-go/seal v1.5.4
+	github.com/zmuxio/zmux-go/zmuxquic v1.5.4
+	github.com/zmuxio/zmux-go/zmuxws v1.5.4
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
@@ -51,6 +51,7 @@ require (
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/ebitengine/purego v0.11.3 // indirect
+	github.com/emmansun/gmsm v0.45.3 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/gin-contrib/sse v1.2.1 // indirect
@@ -83,7 +84,6 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
