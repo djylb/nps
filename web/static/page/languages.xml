@@ -386,6 +386,10 @@
 		<zh-CN>服务端没有此载体的默认地址，请填写地址和端口。</zh-CN>
 		<en-US>The server has no default address for this carrier: enter the address and port.</en-US>
 	</lang>
+	<lang id="lg-err-host">
+		<zh-CN>地址只填域名或 IP，端口和路径请填在各自的输入框里。</zh-CN>
+		<en-US>Enter only a domain or IP as the address; the port and path have their own fields.</en-US>
+	</lang>
 	<lang id="lg-err-port">
 		<zh-CN>端口必须是 1-65535。</zh-CN>
 		<en-US>The port must be 1-65535.</en-US>

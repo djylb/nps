@@ -235,6 +235,9 @@
         form.paths.forEach(function (p, i) {
             var e = effective(p, ctx), at = 'p' + i + '.';
             if (!e.host || !e.port) errs.push({at: at + 'addr', id: 'lg-err-addr'});
+            // Only a host name or IP: a path or port typed here would end up
+            // inside the host of the link.
+            else if (/[\/?#@\s]/.test(e.host) || (e.host.indexOf(':') >= 0 && !/^[0-9a-fA-F:.]+(%[\w.-]+)?$/.test(e.host))) errs.push({at: at + 'addr', id: 'lg-err-host'});
             port(p.port, at + 'port');
             int(p.tier, at + 'tier', -1e9, 'lg-err-number');
             int(p.weight, at + 'weight', 0, 'lg-err-number');
@@ -362,7 +365,7 @@
                 + textField(b + 'addr', p.addr, at + 'addr', 'lg-addr', d.host || '')
                 + textField(b + 'port', p.port, at + 'port', 'lg-port', d.port || '');
             var adv = '';
-            if (isHTTP(c)) adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || '/ws');
+            if (isHTTP(c) || c === 'auto') adv += textField(b + 'path', p.path, at + 'path', 'lg-path', d.path || (c === 'auto' ? '' : '/ws'));
             if (usesALPN(c)) adv += plain(b + 'alpn', p.alpn, at + 'alpn', 'alpn', d.alpn || '');
             adv += plain(b + 'sni', p.sni, at + 'sni', 'sni') + plain(b + 'host', p.host, at + 'host', 'host');
             if (isHTTP(c)) adv += checks(b + 'http', p.http, httpOptions(c), at + 'http', 'lg-f-http', 'lg-hint-order') + plain(b + 'subprotocol', p.subprotocol, at + 'subprotocol', 'subprotocol', effective(p, ctx).subprotocol)
