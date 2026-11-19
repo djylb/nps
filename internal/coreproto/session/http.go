@@ -34,17 +34,21 @@ const httpAttemptTimeout = 8 * time.Second
 
 // HTTPCarriers implements coreapi.Entry.
 func (a *Acceptor) HTTPCarriers(next http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	h, err := zmuxhttp.NewHandler(a.zl, &zmuxhttp.Options{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
-	if err != nil || len(a.admitKey) == 0 {
-		return h, err
+	zh, err := zmuxhttp.NewHandler(a.zl, &zmuxhttp.Options{Next: next, Trusted: trustedOf(f), PairField: httpPairField})
+	if err != nil {
+		return nil, err
+	}
+	h := withRequest(zh)
+	if len(a.admitKey) == 0 {
+		return h, nil
 	}
 	ex, err := a.exchangeHandler(f)
 	if err != nil {
 		return nil, err
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withRequest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ex.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), exchangeNextKey{}, h)))
-	}), nil
+	})), nil
 }
 
 // exchangeNextKey holds what a request that is no exchange goes on to.

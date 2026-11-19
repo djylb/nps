@@ -248,6 +248,9 @@ func (s *clientSession) adoptFirst(o zmux.PipeOptions) ([]*zmux.Pipe, error) {
 func (s *clientSession) join(ctx context.Context, m connprofile.Candidate, o zmux.PipeOptions) ([]*zmux.Pipe, error) {
 	p, err := s.joinOne(ctx, m, o)
 	if err != nil {
+		if ctx.Err() == nil {
+			log.Debug("pipe join failed", "carrier", m.Carrier, "addr", m.Addr, "err", err)
+		}
 		return nil, err
 	}
 	return []*zmux.Pipe{p}, nil

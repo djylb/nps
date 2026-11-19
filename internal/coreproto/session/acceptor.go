@@ -219,13 +219,13 @@ func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeH
 	}
 	if peer, ok := seal.PeerOf(q); ok {
 		if t, ok := peer.Value.(*ticket); ok {
-			t.carrier, t.kind = carrierLabel(p), p.Carrier
+			t.carrier, t.kind = httpLabel(ctx, p), p.Carrier
 		}
 	}
 	// zmux reports the variant of every pipe in its statistics, and nothing
 	// else of a joined pipe says what carries it (serverSession.Pipes).
 	if q.Variant == "" {
-		q.Variant = carrierLabel(p)
+		q.Variant = httpLabel(ctx, p)
 	}
 	return q, nil
 }
@@ -257,6 +257,59 @@ func kindLabelTLS(label string, kind zmux.CarrierKind, tls bool) string {
 	}
 	return "ws"
 }
+
+// httpKey holds the request an HTTP carrier came in by (withRequest).
+type httpKey struct{}
+
+// httpReq is what the label of an HTTP carrier shows of its request.
+type httpReq struct {
+	tls   bool
+	major int
+}
+
+// withRequest lets the label of a carrier of h name the scheme and HTTP
+// version of its request: several kinds and versions share one entry.
+func withRequest(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), httpKey{}, httpReq{tls: r.TLS != nil, major: r.ProtoMajor})))
+	})
+}
+
+// httpLabel is carrierLabel, naming for a carrier of an HTTP request its
+// scheme, HTTP version and kind: "https h2 streaming", "wss".
+func httpLabel(ctx context.Context, p zmux.PipeIO) string {
+	r, ok := ctx.Value(httpKey{}).(httpReq)
+	kind, known := httpKinds[p.Carrier]
+	if !ok || !known || p.Label != "" {
+		return carrierLabel(p)
+	}
+	version := "http/1.1"
+	switch r.major {
+	case 2:
+		version = "h2"
+	case 3:
+		version = "h3"
+	}
+	if p.Carrier == zmux.CarrierWebSocket {
+		// "ws", "wss", "wss h2": WebSocket is told by its scheme.
+		scheme := "ws"
+		if r.tls {
+			scheme = "wss"
+		}
+		if r.major == 1 {
+			return scheme
+		}
+		return scheme + " " + version
+	}
+	scheme := "http"
+	if r.tls {
+		scheme = "https"
+	}
+	return scheme + " " + version + " " + kind
+}
+
+var httpKinds = map[zmux.CarrierKind]string{zmux.CarrierWebSocket: "", zmux.CarrierStream: "streaming",
+	zmux.CarrierSplit: "split", zmux.CarrierExchange: "exchange", zmux.CarrierHTTP3: "streaming"}
 
 func (w *admitPipe) report(err error, p zmux.PipeIO, hint zmux.PipeHint) {
 	var re *zmux.RejectError
@@ -384,7 +437,11 @@ func (a *Acceptor) serve(ctx context.Context, c net.Conn, info carrierCtx) {
 // WebSocket implements coreapi.Entry (§12): on the bridge path the subprotocol
 // binary is the core protocol; anything else stays with the old one.
 func (a *Acceptor) WebSocket(legacy http.Handler, f coreapi.Forwarding) (http.Handler, error) {
-	return zmuxws.NewHandler(a.zl, &zmuxhttp.Options{Next: legacy, Trusted: trustedOf(f)}, legacySubprotocol)
+	h, err := zmuxws.NewHandler(a.zl, &zmuxhttp.Options{Next: legacy, Trusted: trustedOf(f)}, legacySubprotocol)
+	if err != nil {
+		return nil, err
+	}
+	return withRequest(h), nil
 }
 
 // forwarding is the coreapi.Forwarding of zmux's resolver, so that the route
@@ -422,7 +479,7 @@ func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding)
 	if _, err := zmuxws.NewHandler(a.zl, o); err != nil {
 		return nil, err
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withRequest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		protocols := []string{zmuxws.NoSubprotocol}
 		for _, v := range r.Header.Values("Sec-WebSocket-Protocol") {
 			for p := range strings.SplitSeq(v, ",") {
@@ -439,7 +496,7 @@ func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding)
 			return
 		}
 		h.ServeHTTP(w, r)
-	}), nil
+	})), nil
 }
 
 // decide routes a carrier by its first bytes (§12, §13). It is the one place
