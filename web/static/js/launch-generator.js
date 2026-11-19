@@ -51,7 +51,7 @@
     }
 
     function newPath(carrier) { return assign({carrier: carrier}, PATH_FIELDS); }
-    function newAccess(ctx) { return {type: 'tcp', ip: '', port: '2000', target: '', mode: 'auto', local_proxy: ctx.kind === 'tunnel' && !!ctx.localProxy, key: '', auth: []}; }
+    function newAccess(ctx) { return {type: 'tcp', ip: '', port: '2000', target: '', mode: 'auto', local_proxy: false, key: '', auth: []}; }
     // serverDials is whether access a asks nps to reach the target: only
     // where the tunnel lets it (always offered for an access by key).
     function serverDials(a, ctx) { return !!a.local_proxy && (ctx.kind !== 'tunnel' || !!ctx.localProxy); }
