@@ -124,7 +124,7 @@ func (s DefaultPageService) buildIndex(input PageBuildInput) (PageBuildResult, e
 			target, _, _ = strings.Cut(strings.TrimSpace(view.Target.TargetStr), "\n")
 		}
 		data["launch_ctx"] = map[string]any{"kind": "tunnel", "id": task.Id, "vkey": vkey, "visitorKey": visitorKey, "password": view.Password,
-			"defaultTarget": target, "noRelay": view.NoRelay, "form": task.LaunchForm, "save": "index/savelaunch"}
+			"defaultTarget": target, "noRelay": view.NoRelay, "localProxy": cfg.Feature.AllowLocalProxy && view.Target != nil && view.Target.LocalProxy, "form": task.LaunchForm, "save": "index/savelaunch"}
 		data["name"] = "start command"
 	case "hostlist":
 		data["httpAccessPort"] = cfg.Network.HTTPProxyAccessPort

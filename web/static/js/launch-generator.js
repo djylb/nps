@@ -51,7 +51,10 @@
     }
 
     function newPath(carrier) { return assign({carrier: carrier}, PATH_FIELDS); }
-    function newAccess(ctx) { return {type: 'tcp', ip: '', port: '2000', target: '', mode: 'auto', local_proxy: false, key: '', auth: []}; }
+    function newAccess(ctx) { return {type: 'tcp', ip: '', port: '2000', target: '', mode: 'auto', local_proxy: ctx.kind === 'tunnel' && !!ctx.localProxy, key: '', auth: []}; }
+    // serverDials is whether access a asks nps to reach the target: only
+    // where the tunnel lets it (always offered for an access by key).
+    function serverDials(a, ctx) { return !!a.local_proxy && (ctx.kind !== 'tunnel' || !!ctx.localProxy); }
 
     function defaultForm(ctx) {
         prepare(ctx);
@@ -137,7 +140,7 @@
         var s = a.type + '://' + (ip.indexOf(':') >= 0 ? '[' + ip + ']' : ip) + ':' + trim(a.port) + '?access=' + encKey(accessKey(a, ctx));
         if (trim(a.target) && !proxyType(a.type)) s += '&target=' + enc(trim(a.target));
         if (a.mode && a.mode !== 'auto') s += '&conn_mode=' + a.mode;
-        if (a.local_proxy) s += '&local_proxy=true';
+        if (serverDials(a, ctx)) s += '&local_proxy=true';
         if (accountType(a.type)) (a.auth || []).forEach(function (u) { if (trim(u.user)) s += '&auth=' + enc(trim(u.user)) + ':' + enc(u.pass || ''); });
         if (via) s += '&via=' + enc(via);
         return s;
@@ -191,7 +194,7 @@
             o.local_ip = listenIP(a);
             if (trim(a.target) && !proxyType(a.type)) o.target = trim(a.target);
             if (a.mode && a.mode !== 'auto') o.conn_mode = a.mode;
-            if (a.local_proxy) o.local_proxy = true;
+            if (serverDials(a, ctx)) o.local_proxy = true;
             if (accountType(a.type)) {
                 var auth = (a.auth || []).filter(function (u) { return trim(u.user); }).map(function (u) { return {user: trim(u.user), pass: u.pass || ''}; });
                 if (auth.length) o.auth = auth;
@@ -278,6 +281,7 @@
             ctx.password = row.Password;
             ctx.noRelay = !!row.NoRelay;
             ctx.defaultTarget = row.Target && trim(row.Target.TargetStr).split('\n')[0];
+            ctx.localProxy = !!(row.Target && row.Target.LocalProxy);
         }
         return prepare(ctx);
     }
@@ -400,7 +404,7 @@
             var modes = [['auto', 'lg-cm-auto'], ['relay', 'lg-cm-relay'], ['direct', 'lg-cm-direct']];
             if (ctx.noRelay && a.mode !== 'relay') modes.splice(1, 1);
             var adv = field('lg-conn-mode', select(b + 'mode', a.mode, modes) + (ctx.noRelay ? hint('lg-hint-norelay') : ''), at + 'mode')
-                + field('lg-local-proxy', boolSelect(b + 'local_proxy', a.local_proxy) + hint('lg-hint-local-proxy'), at + 'local_proxy');
+                + (ctx.kind !== 'tunnel' || ctx.localProxy ? field('lg-local-proxy', boolSelect(b + 'local_proxy', a.local_proxy) + hint('lg-hint-local-proxy'), at + 'local_proxy') : '');
             if (accountType(a.type)) {
                 adv += '<div class="lg-field lg-wide"><label class="control-label font-bold"><span langtag="lg-accounts"></span></label>'
                     + (a.auth || []).map(function (u, j) {

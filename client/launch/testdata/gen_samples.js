@@ -7,7 +7,7 @@ const carriers = {
   ws: 'npc://@1.2.3.4:8026/ws?type=ws', wss: 'npc://@[2001:db8::1]:8027/ws?type=wss',
   auto: 'npc://@1.2.3.4:8028/ws?type=auto&admit_key=0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f', https: 'npc://@1.2.3.4:8029/ws?type=https',
 };
-const tunnel = () => ({kind: 'tunnel', vkey: 'v k@x$', password: 'p&"1!', defaultTarget: '10.0.0.1:22', carriers, primary: carriers.tls, bin: './npc'});
+const tunnel = () => ({kind: 'tunnel', vkey: 'v k@x$', password: 'p&"1!', defaultTarget: '10.0.0.1:22', localProxy: true, carriers, primary: carriers.tls, bin: './npc'});
 const client = () => ({kind: 'client', vkey: 'vkey', carriers, primary: carriers.tcp, bin: './npc'});
 function form(ctx, f) { const o = G.defaultForm(ctx); f(o); return o; }
 function multi(o) {

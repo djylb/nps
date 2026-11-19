@@ -307,8 +307,8 @@
 		<en-US>A standby path is used only when the others are unavailable.</en-US>
 	</lang>
 	<lang id="lg-hint-local-proxy">
-		<zh-CN>是：目标由服务端去连接，不经提供端；隧道也要开启“由服务端连接目标”。</zh-CN>
-		<en-US>Yes: the server connects to the target instead of the provider; the tunnel must have "Server connects to target" on too.</en-US>
+		<zh-CN>是：目标由服务端去连接，只经服务端中转；否：由提供端去连接。隧道开启“由服务端连接目标”时才生效。</zh-CN>
+		<en-US>Yes: the server connects to the target, relayed only; no: the provider connects to it. Takes effect only when the tunnel has "Server connects to target" on.</en-US>
 	</lang>
 	<lang id="lg-dirs-bidi">
 		<zh-CN>不区分（默认）</zh-CN>
