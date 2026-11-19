@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/djylb/nps/bridge"
@@ -142,6 +143,8 @@ func (stubRuntime) CanUpdateSelf() bool { return false }
 func (stubRuntime) UpdateSelf() (string, error) { return "", nil }
 
 func (stubRuntime) ReloadConfig() servercfg.Report { return servercfg.Report{} }
+
+func (stubRuntime) ReloadShaping(context.Context) (map[string]any, error) { return nil, nil }
 
 func TestDefaultClientServiceUsesInjectedRepositoryForList(t *testing.T) {
 	repo := stubRepository{

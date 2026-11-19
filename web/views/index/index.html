@@ -212,6 +212,16 @@
                                 </div>
                             </div>
                         </li>
+                        {{if .data.shaping}}
+                        <li class="list-group-item ">
+                            <div class="row">
+                                <div class="col-sm-4">
+                                    <strong langtag="word-shapingsource"></strong>
+                                </div>
+                                <div class="col-sm-8 text-right" id="shaping-state"></div>
+                            </div>
+                        </li>
+                        {{end}}
                         <li class="list-group-item ">
                             <div class="row">
                                 <div class="col-sm-2">
@@ -974,6 +984,47 @@
         }
     }
 
+    // renderShaping shows the state of the shaping source, when there is one.
+    let shapingShown = '';
+    function renderShaping(sh) {
+        const el = $('#shaping-state');
+        if (!sh || !el.length) return;
+        // Redrawn only on a change: the refresh button keeps its focus.
+        const key = JSON.stringify(sh);
+        if (key === shapingShown) return;
+        shapingShown = key;
+        const at = t => '<span style="white-space:nowrap">' + (t ? escapeHtml(new Date(t * 1000).toLocaleString()) : '-') + '</span>';
+        let state;
+        if (sh.lastError) {
+            state = '<span class="label label-danger" langtag="word-shapingfailed"></span> ' + at(sh.lastErrorAt);
+        } else if (sh.lastSuccess) {
+            state = '<span class="label label-primary" langtag="word-shapingloaded"></span> ' + at(sh.lastSuccess);
+        } else {
+            state = '<span class="label label-default" langtag="word-shapingwaiting"></span>';
+        }
+        let html = '<strong><span langtag="word-shaping' + (sh.source === 'url' ? 'url' : 'file') + '"></span></strong> ' + state
+            + ' <a class="btn btn-outline btn-info btn-xs ml-2" role="button" tabindex="0" onclick="reloadShaping(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();reloadShaping(this)}" langtitle="word-shapingreload"><i class="fa fa-sync" aria-hidden="true"></i></a>';
+        if (sh.lastError) html += '<br/><small class="text-danger" style="word-break:break-all">' + escapeHtml(sh.lastError) + '</small>';
+        if (sh.next) html += '<br/><small><span langtag="word-shapingnext"></span>: ' + at(sh.next) + '</small>';
+        el.html(html);
+        if ($.fn.setLang && window.languages && window.languages.content) $('body').setLang('#shaping-state');
+    }
+
+    function reloadShaping(btn) {
+        const $btn = $(btn);
+        if ($btn.data('busy')) return;
+        $btn.data('busy', true).addClass('disabled').find('i').addClass('fa-spin');
+        $.ajax({type: 'POST', url: '{{.web_base_url}}/index/reloadshaping', dataType: 'json', timeout: 35000})
+            .done(function (res) {
+                shapingShown = '';
+                if (res && res.data) renderShaping(res.data);
+            })
+            .fail(function (xhr, textStatus) {
+                showMsg(langreply(xhr.statusText || textStatus || 'error'), 'error', 5000);
+                $btn.data('busy', false).removeClass('disabled').find('i').removeClass('fa-spin');
+            });
+    }
+
     function refreshStats(eligible) {
         return $.ajax({url: '{{.web_base_url}}/index/stats', dataType: 'json', timeout: 10000}).done(function(res) {
             if (!eligible() || res.code !== 1) return;
@@ -1002,10 +1053,12 @@
             $('#overview_udp').text(d.udp);
             $('#overview_send').text(changeunit(d.io_send) + '/s');
             $('#overview_recv').text(changeunit(d.io_recv) + '/s');
+            renderShaping(d.shaping);
         });
     }
 
     $(function() {
+        renderShaping({{.data.shaping}});
         npsAutoRefresh(refreshStats, '#dashboard-live-controls');
         setInterval(function() {
             upTimeSeconds++;

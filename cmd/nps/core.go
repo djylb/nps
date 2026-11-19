@@ -28,11 +28,13 @@ func (s coreStore) RangeClients(fn func(coreapi.ClientRecord) bool) {
 }
 
 // newCoreEntry builds the new protocol entry and keeps it current with the store.
-func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, error) {
+// The shaping source is returned too, nil when none is configured, for
+// the dashboard.
+func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, *shapingSource, error) {
 	resumeS := cfg.Runtime.SessionResumeTimeout
 	src, err := newShapingSource(cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var from func(context.Context, func([]byte))
 	if src != nil {
@@ -40,7 +42,7 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 	}
 	admit, err := instancekey.AdmitKey(cfg.Web.InstanceKeyFile, cfg.Web.AdmitKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	a, err := session.NewAcceptor(coreStore{db}, session.Options{
 		AdmitKey:      admit,
@@ -53,7 +55,7 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 		MaxLanes:      cfg.Runtime.SessionMaxLanes,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	db.OnClientChanged(func(c *model.Client, deleted bool) {
 		if r, ok := bridge.CoreRecord(c); ok && !deleted {
@@ -62,5 +64,5 @@ func newCoreEntry(db *file.DbUtils, cfg *servercfg.Snapshot) (coreapi.Entry, err
 			a.ClientRemoved(c.Id)
 		}
 	})
-	return a, nil
+	return a, src, nil
 }

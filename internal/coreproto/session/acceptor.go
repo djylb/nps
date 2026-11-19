@@ -219,7 +219,7 @@ func (w *admitPipe) WrapPipe(ctx context.Context, p zmux.PipeIO, hint zmux.PipeH
 	}
 	if peer, ok := seal.PeerOf(q); ok {
 		if t, ok := peer.Value.(*ticket); ok {
-			t.carrier, t.kind = httpLabel(ctx, p), p.Carrier
+			t.carrier, t.kind = shortLabel(ctx, p), p.Carrier
 		}
 	}
 	// zmux reports the variant of every pipe in its statistics, and nothing
@@ -306,6 +306,27 @@ func httpLabel(ctx context.Context, p zmux.PipeIO) string {
 		scheme = "https"
 	}
 	return scheme + " " + version + " " + kind
+}
+
+// shortLabel names the carrier a session started on, for lists and logs:
+// the scheme of an HTTP carrier ("https", "wss", "h3") without the version
+// and kind its pipe statistics give.
+func shortLabel(ctx context.Context, p zmux.PipeIO) string {
+	r, ok := ctx.Value(httpKey{}).(httpReq)
+	if _, known := httpKinds[p.Carrier]; !ok || !known || p.Label != "" {
+		return carrierLabel(p)
+	}
+	switch {
+	case p.Carrier == zmux.CarrierHTTP3:
+		return "h3"
+	case p.Carrier == zmux.CarrierWebSocket && r.tls:
+		return "wss"
+	case p.Carrier == zmux.CarrierWebSocket:
+		return "ws"
+	case r.tls:
+		return "https"
+	}
+	return "http"
 }
 
 var httpKinds = map[zmux.CarrierKind]string{zmux.CarrierWebSocket: "", zmux.CarrierStream: "streaming",

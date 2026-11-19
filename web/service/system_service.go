@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strconv"
@@ -67,6 +68,9 @@ type SystemService interface {
 	// ReloadConfig reloads the config file into the running server and
 	// reports what took effect, what needs a restart and what failed.
 	ReloadConfig() servercfg.Report
+	// ReloadShaping fetches or reads the shaping bundle now and returns the
+	// state of its source after it; the error is that of the reload.
+	ReloadShaping(context.Context) (map[string]any, error)
 }
 
 // GeoDataStatus describes the geodata files of the access lists.
@@ -137,6 +141,16 @@ func (s DefaultSystemService) UpdateServer() (string, error) {
 		err = ErrServerUpdateRunning
 	}
 	return v, err
+}
+
+// ErrShapingUnavailable is a shaping reload without a running server.
+var ErrShapingUnavailable = errors.New("shaping reload unavailable")
+
+func (s DefaultSystemService) ReloadShaping(ctx context.Context) (map[string]any, error) {
+	if s.Runtime == nil {
+		return nil, ErrShapingUnavailable
+	}
+	return s.Runtime.ReloadShaping(ctx)
 }
 
 func (s DefaultSystemService) ReloadConfig() servercfg.Report {

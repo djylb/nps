@@ -31,6 +31,7 @@ import (
 	"github.com/djylb/nps/server/ports"
 	"github.com/djylb/nps/server/stats"
 	"github.com/djylb/nps/web/routers"
+	"github.com/djylb/shapebundle"
 	"github.com/djylb/slogx"
 	"github.com/gin-gonic/gin"
 	"github.com/kardianos/service"
@@ -407,13 +408,21 @@ func run() (*server.Server, error) {
 		cfgLog.Error("access log not opened", "file", cfg.Log.Access, "err", err)
 	}
 	closeAccessLog = closeLog
-	coreEntry, err := newCoreEntry(db, cfg)
+	coreEntry, shapingSrc, err := newCoreEntry(db, cfg)
 	if err != nil {
 		return nil, err
+	}
+	var shapingStatus server.ShapingStatusFunc
+	var shapingReload func(context.Context) error
+	if shapingSrc != nil {
+		shapingStatus = func() (string, shapebundle.Status) { return shapingSrc.Kind(), shapingSrc.Status() }
+		shapingReload = shapingSrc.Reload
 	}
 	//noinspection GoResourceLeak
 	srv := server.New(db, server.Config{
 		CoreEntry:           coreEntry,
+		ShapingStatus:       shapingStatus,
+		ShapingReload:       shapingReload,
 		AccessLog:           accessLog,
 		DisconnectTimeout:   cfg.Runtime.DisconnectTimeout,
 		SecureMode:          cfg.Security.SecureMode,

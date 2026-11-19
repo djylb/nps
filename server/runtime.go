@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"math"
 	stdnet "net"
 	"strconv"
@@ -169,6 +170,7 @@ func (s *Server) DashboardData(force bool) map[string]any {
 		}
 		dst["upTime"] = upTime
 		dst["tcpCount"] = tcpCount
+		s.dashShaping(dst)
 		if cpuVal != nil {
 			dst["cpu"] = cpuVal
 		}
@@ -267,6 +269,7 @@ func (s *Server) DashboardData(force bool) map[string]any {
 	data["p2pPort"] = connection.Network().P2PPort
 	data["p2pAddr"] = stdnet.JoinHostPort(netaddr.GetServerIp(connection.Network().P2PIP), strconv.Itoa(connection.Network().P2PPort))
 	data["logLevel"] = cfg.Log.Level
+	s.dashShaping(data)
 	data["upTime"] = runenv.GetRunTime()
 	data["upSecs"] = runenv.GetRunSecs()
 	data["startTime"] = runenv.GetStartTime()
@@ -350,6 +353,42 @@ func intStringOrEmpty(value int) string {
 		return ""
 	}
 	return strconv.Itoa(value)
+}
+
+// dashShaping puts the state of the shaping source in data, when there is
+// one: times in Unix seconds, 0 for none.
+func (s *Server) dashShaping(data map[string]any) {
+	if s.shaping == nil {
+		return
+	}
+	kind, st := s.shaping()
+	unix := func(t time.Time) int64 {
+		if t.IsZero() {
+			return 0
+		}
+		return t.Unix()
+	}
+	m := map[string]any{"source": kind, "lastSuccess": unix(st.LastSuccess), "lastErrorAt": unix(st.LastErrorAt), "next": unix(st.Next), "lastError": ""}
+	if st.LastError != nil {
+		m["lastError"] = st.LastError.Error()
+	}
+	data["shaping"] = m
+}
+
+// ErrNoShaping is a reload without a shaping source.
+var ErrNoShaping = errors.New("no shaping source configured")
+
+// ReloadShaping fetches or reads the shaping bundle now and returns the
+// state of the source after it, as the dashboard shows it.
+func (s *Server) ReloadShaping(ctx context.Context) (map[string]any, error) {
+	if s.shapingNow == nil {
+		return nil, ErrNoShaping
+	}
+	err := s.shapingNow(ctx)
+	data := map[string]any{}
+	s.dashShaping(data)
+	sh, _ := data["shaping"].(map[string]any)
+	return sh, err
 }
 
 func cloneDashboardData(src map[string]any) map[string]any {

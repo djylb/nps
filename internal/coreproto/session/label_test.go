@@ -29,4 +29,19 @@ func TestHTTPLabel(t *testing.T) {
 			t.Errorf("%v: %q, want %q", c.kind, got, c.want)
 		}
 	}
+	for _, c := range []struct {
+		ctx  context.Context
+		kind zmux.CarrierKind
+		want string
+	}{
+		{at(true, 2), zmux.CarrierStream, "https"},
+		{at(false, 1), zmux.CarrierSplit, "http"},
+		{at(true, 2), zmux.CarrierWebSocket, "wss"},
+		{at(true, 3), zmux.CarrierHTTP3, "h3"},
+		{context.Background(), zmux.CarrierStream, "http"},
+	} {
+		if got := shortLabel(c.ctx, zmux.PipeIO{Carrier: c.kind}); got != c.want {
+			t.Errorf("short %v: %q, want %q", c.kind, got, c.want)
+		}
+	}
 }

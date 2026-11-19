@@ -1042,6 +1042,38 @@
 		<zh-CN>P2P 端口</zh-CN>
 		<en-US>P2P Port</en-US>
 	</lang>
+	<lang id="word-shapingsource">
+		<zh-CN>流量整形</zh-CN>
+		<en-US>Traffic shaping</en-US>
+	</lang>
+	<lang id="word-shapingurl">
+		<zh-CN>远程</zh-CN>
+		<en-US>Remote</en-US>
+	</lang>
+	<lang id="word-shapingfile">
+		<zh-CN>本地文件</zh-CN>
+		<en-US>Local file</en-US>
+	</lang>
+	<lang id="word-shapingloaded">
+		<zh-CN>已加载</zh-CN>
+		<en-US>Loaded</en-US>
+	</lang>
+	<lang id="word-shapingfailed">
+		<zh-CN>加载失败</zh-CN>
+		<en-US>Failed</en-US>
+	</lang>
+	<lang id="word-shapingwaiting">
+		<zh-CN>等待加载</zh-CN>
+		<en-US>Waiting</en-US>
+	</lang>
+	<lang id="word-shapingreload">
+		<zh-CN>立即重新加载</zh-CN>
+		<en-US>Reload now</en-US>
+	</lang>
+	<lang id="word-shapingnext">
+		<zh-CN>下次更新</zh-CN>
+		<en-US>Next update</en-US>
+	</lang>
 	<lang id="word-p2paddr">
 		<zh-CN>P2P 地址</zh-CN>
 		<en-US>P2P Address</en-US>

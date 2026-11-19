@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -24,6 +25,9 @@ func (stubSystemService) RegisterManagementAccess(string, []int, bool) {}
 func (stubSystemService) UpdateServer() (string, error)                { return "", nil }
 func (stubSystemService) GeoDataStatus() GeoDataStatus                 { return GeoDataStatus{} }
 func (stubSystemService) ReloadConfig() servercfg.Report               { return servercfg.Report{} }
+func (stubSystemService) ReloadShaping(context.Context) (map[string]any, error) {
+	return nil, nil
+}
 func (stubSystemService) UpdateGeoData(string) (GeoDataStatus, error) {
 	return GeoDataStatus{}, nil
 }

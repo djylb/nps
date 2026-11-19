@@ -31,6 +31,7 @@ import (
 	"github.com/djylb/nps/server/connection"
 	"github.com/djylb/nps/server/httpproxy"
 	"github.com/djylb/nps/server/ports"
+	"github.com/djylb/shapebundle"
 	"github.com/djylb/slogx"
 	"github.com/quic-go/quic-go"
 )
@@ -74,7 +75,17 @@ type Config struct {
 	AccessLog func(httpproxy.AccessRecord)
 	// CoreEntry is the new protocol on the bridge ports.
 	CoreEntry coreapi.Entry
+	// ShapingStatus reports the source of the shaping bundle for the
+	// dashboard; nil when shaping_url and shaping_file are not set.
+	ShapingStatus ShapingStatusFunc
+	// ShapingReload fetches or reads the shaping bundle now; nil with
+	// ShapingStatus.
+	ShapingReload func(context.Context) error
 }
+
+// ShapingStatusFunc returns the kind of the shaping source ("url" or
+// "file") and what it last did.
+type ShapingStatusFunc func() (kind string, st shapebundle.Status)
 
 // Server is a running nps: the bridge the clients connect to, the tasks it
 // serves, the web manager and the background work around them. Start starts
@@ -100,6 +111,8 @@ type Server struct {
 	webhook      webhookState
 	appliers     configAppliers
 	dash         dashboard
+	shaping      ShapingStatusFunc
+	shapingNow   func(context.Context) error
 
 	// scope runs the background work of the server and owns what Close
 	// stops, closed in reverse order of registration: the web manager and
@@ -119,6 +132,8 @@ func New(db *file.DbUtils, cfg Config) *Server {
 		identity:   cfg.Identity,
 		noUpdate:   cfg.DisableRemoteUpdate,
 		accessLog:  cfg.AccessLog,
+		shaping:    cfg.ShapingStatus,
+		shapingNow: cfg.ShapingReload,
 		// Once the server stops, its work may end with any error.
 		scope: lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(func(error) bool { return true })),
 	}

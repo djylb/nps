@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/runenv"
@@ -32,6 +35,64 @@ const (
 type shapingSource struct {
 	fetch *shapebundle.FetcherConfig // shaping_url
 	file  string                     // shaping_file, without shaping_url
+
+	fetcher atomic.Pointer[shapebundle.Fetcher] // of shaping_url, once run
+	reread  chan chan error                     // asks runFile to read now
+	mu      sync.Mutex
+	status  shapebundle.Status // of shaping_file, under mu
+}
+
+// errShapingNotRunning is a reload before the source runs.
+var errShapingNotRunning = errors.New("shaping source not running")
+
+// Reload fetches or reads the bundle now, as the dashboard asks, instead of
+// at the next refresh; the source then goes on from this result.
+func (s *shapingSource) Reload(ctx context.Context) error {
+	if s.fetch != nil {
+		f := s.fetcher.Load()
+		if f == nil {
+			return errShapingNotRunning
+		}
+		_, err := f.Refresh(ctx)
+		return err
+	}
+	done := make(chan error, 1)
+	select {
+	case s.reread <- done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Kind is "url" for shaping_url, "file" for shaping_file.
+func (s *shapingSource) Kind() string {
+	if s.fetch != nil {
+		return "url"
+	}
+	return "file"
+}
+
+// Status is what the source last did and when it looks again: that of the
+// fetcher for shaping_url, the same for the reads of shaping_file.
+func (s *shapingSource) Status() shapebundle.Status {
+	if f := s.fetcher.Load(); f != nil {
+		return f.Status()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.status
+}
+
+func (s *shapingSource) setStatus(u func(*shapebundle.Status)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u(&s.status)
 }
 
 // newShapingSource returns the source of cfg, nil when none is configured.
@@ -42,7 +103,7 @@ func newShapingSource(cfg *servercfg.Snapshot) (*shapingSource, error) {
 		if !runenv.FileExists(file) {
 			return nil, nil
 		}
-		return &shapingSource{file: file}, nil
+		return &shapingSource{file: file, reread: make(chan chan error)}, nil
 	}
 	c := &shapebundle.FetcherConfig{
 		URL: n.ShapingURL, Body: []byte("{}"), Token: n.ShapingToken,
@@ -73,28 +134,32 @@ func (s *shapingSource) run(ctx context.Context, set func([]byte)) {
 		s.runFile(ctx, give)
 		return
 	}
-	var fails int
+	// A Reload from the dashboard calls OnUpdate outside Run.
+	var fails atomic.Int64
+	var gmu sync.Mutex
 	c := *s.fetch
 	c.OnUpdate = func(b *bundle.Bundle) {
-		if fails > 0 {
-			log.Info("shaping source loaded", "failures", fails)
-			fails = 0
+		if n := fails.Swap(0); n > 0 {
+			log.Info("shaping source loaded", "failures", n)
 		}
+		gmu.Lock()
+		defer gmu.Unlock()
 		give(b)
 	}
 	c.OnError = func(err error) {
-		if fails == 0 {
+		if fails.Add(1) == 1 {
 			log.Warn("shaping source not loaded, retrying", "err", err)
 		} else {
 			log.Debug("shaping source still not loaded", "err", err)
 		}
-		fails++
 	}
 	f, err := shapebundle.NewFetcher(c)
 	if err != nil {
 		log.Warn("shaping source not usable", "err", err)
+		s.setStatus(func(st *shapebundle.Status) { st.LastError, st.LastErrorAt = err, time.Now() })
 		return
 	}
+	s.fetcher.Store(f)
 	// The cached bundle, if any, serves until the first fetch.
 	_, _ = f.Load()
 	_ = f.Run(ctx)
@@ -105,23 +170,37 @@ func (s *shapingSource) run(ctx context.Context, set func([]byte)) {
 // retried with a growing delay.
 func (s *shapingSource) runFile(ctx context.Context, give func(*bundle.Bundle)) {
 	retry := shapingRetryMin
+	var asked chan error // a Reload waiting for this read
 	for {
 		wait := shapingRefresh
-		if b, err := shapebundle.ParseFile(s.file, bundle.ParseOptions{}); err != nil {
+		b, err := shapebundle.ParseFile(s.file, bundle.ParseOptions{})
+		if asked != nil {
+			asked <- err
+			asked = nil
+		}
+		if err != nil {
 			log.Warn("shaping file not loaded, retrying", "file", s.file, "err", err)
 			wait, retry = retry, min(retry*2, shapingRetryMax)
+			s.setStatus(func(st *shapebundle.Status) { st.LastError, st.LastErrorAt = err, time.Now() })
 		} else {
 			retry = shapingRetryMin
+			s.setStatus(func(st *shapebundle.Status) {
+				st.LastSuccess, st.LastError, st.LastErrorAt = time.Now(), nil, time.Time{}
+			})
 			give(b)
 			if d := time.Until(b.NextChange()); d > time.Second && d < wait {
 				wait = d
 			}
 		}
+		s.setStatus(func(st *shapebundle.Status) { st.Next = time.Now().Add(wait) })
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			t.Stop()
+			s.setStatus(func(st *shapebundle.Status) { st.Next = time.Time{} })
 			return
+		case asked = <-s.reread:
+			t.Stop()
 		case <-t.C:
 		}
 	}

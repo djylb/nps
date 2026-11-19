@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
+	"time"
 
 	"github.com/djylb/nps/lib/model"
 
@@ -17,6 +19,19 @@ func (a *App) DashboardStats(c Context) {
 		return
 	}
 	respondCode(c, 0)
+}
+
+// ReloadShaping fetches or reads the shaping bundle now. The answer carries
+// the state of the source in data either way; code 0 when the reload failed.
+func (a *App) ReloadShaping(c Context) {
+	ctx, cancel := context.WithTimeout(c.BaseContext(), 30*time.Second)
+	defer cancel()
+	sh, err := a.system().ReloadShaping(ctx)
+	if err != nil {
+		respondCodeData(c, 0, sh)
+		return
+	}
+	respondCodeData(c, 1, sh)
 }
 
 // Messages of UpdateServer; the dashboard reloads after serverUpdatedMsg.

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"github.com/djylb/nps/bridge"
@@ -78,6 +79,9 @@ type Runtime interface {
 	UpdateSelf() (string, error)
 	// ReloadConfig reloads the config file and reports what took effect.
 	ReloadConfig() servercfg.Report
+	// ReloadShaping fetches or reads the shaping bundle now and returns the
+	// state of its source for the dashboard.
+	ReloadShaping(context.Context) (map[string]any, error)
 }
 
 type Backend struct {
@@ -343,6 +347,10 @@ func (offlineRuntime) RemoveHostCache(int) {}
 func (offlineRuntime) TunnelRunning(int) bool { return false }
 
 func (offlineRuntime) CanUpdateSelf() bool { return false }
+
+func (offlineRuntime) ReloadShaping(context.Context) (map[string]any, error) {
+	return nil, ErrShapingUnavailable
+}
 
 func (offlineRuntime) UpdateSelf() (string, error) { return "", ErrServerUpdateUnavailable }
 
