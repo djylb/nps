@@ -43,7 +43,7 @@ jobs:
           print("\n\n".join(parts))
           PY
           )
-          curl -fsS -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+          curl -fsS --retry 3 --retry-delay 10 --retry-all-errors -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT_ID}" \
             ${TG_THREAD_ID:+--data-urlencode "message_thread_id=${TG_THREAD_ID}"} \
             --data-urlencode "parse_mode=HTML" \
