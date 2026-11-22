@@ -160,6 +160,16 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="form-group" id="proxy_protocol_each">
+                                <label class="control-label font-bold" langtag="word-proxyprotocoleach"></label>
+                                <div class="col-sm-12">
+                                    <select class="form-control selectpicker" name="proxy_protocol_each">
+                                        <option langtag="word-firstpacket" value="0"></option>
+                                        <option langtag="word-everypacket" value="1"></option>
+                                    </select>
+                                    <span class="help-block m-b-none" langtag="info-proxyprotocoleach"></span>
+                                </div>
+                            </div>
                             <div class="form-group" id="health_check">
                                 <label class="control-label font-bold" langtag="word-healthcheck"></label>
                                 <div class="col-sm-12">
@@ -359,9 +369,9 @@
         };
     });
     var arr = []
-    arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "proxy_protocol", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["all"] = ["health_check", "auth", "port", "target", "password", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "mix_proxy", "proxy_protocol", "proxy_protocol_each", "local_proxy", "client_id", "server_ip", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     arr["tcp"] = ["compress_alg", "health_check", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
-    arr["udp"] = ["compress_alg", "port", "target", "proxy_protocol", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
+    arr["udp"] = ["compress_alg", "port", "target", "proxy_protocol", "proxy_protocol_each", "local_proxy", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     arr["mixProxy"] = ["compress_alg", "auth", "port", "client_id", "server_ip", "mix_proxy", "dest_acl_mode", "dest_acl_rules", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit", "iplistpriority", "blackiplist", "whiteiplist", "registered_only"]
     //arr["socks5"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
     //arr["httpProxy"] = ["auth", "port", "client_id", "server_ip", "flow_reset", "max_conn", "flow_limit", "upload_limit", "download_limit", "time_limit"]
@@ -379,8 +389,15 @@
         for (var i = 0; i < arr[o].length; i++) {
             $("#" + arr[o][i]).css("display", "block")
         }
+        toggleProxyProtocolEach()
         toggleDestAclRules()
         refreshResourceSections($("form.resource-form"));
+    }
+
+    function toggleProxyProtocolEach() {
+        var o = $("#type").val()
+        var on = (o === "udp" || o === "all") && $("select[name='proxy_protocol']").val() !== "0"
+        $("#proxy_protocol_each").css("display", on ? "block" : "none")
     }
 
     function toggleDestAclRules() {
@@ -400,6 +417,9 @@
         $("#type").on("change", function () {
             resetForm()
             applyResourceSectionDefaults($("form.resource-form"), $("#type").val())
+        })
+        $("select[name='proxy_protocol']").on("change", function () {
+            toggleProxyProtocolEach()
         })
         $("select[name='dest_acl_mode']").on("change", function () {
             toggleDestAclRules()

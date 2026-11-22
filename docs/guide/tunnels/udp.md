@@ -33,6 +33,7 @@ UDP 隧道的字段与 [TCP 隧道](/guide/tunnels/tcp.md)基本相同，区别�
 - 目标只有一个，不支持负载均衡，也不支持[健康检查](/guide/tunnels/health-check.md)。
 - 最大连接数按活跃的转发会话计数，而不是按连接。
 - “服务端端口”同样可以填端口范围。
+- 开启代理协议（Proxy Protocol）后，可以选“UDP 加头方式”：默认“仅首包”，只在每个会话的第一个 UDP 包前加 PROXY 头；选“每个包”则每个 UDP 包都带 PROXY 头，符合 PROXY v2 规范，后端按包读取头时选它。
 
 ## 相关页面
 

@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/tunnelwire"
+	"github.com/djylb/nps/internal/tunnelwire/control"
+	"github.com/djylb/nps/lib/model"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -166,5 +169,42 @@ func TestHealthSetBodiesFitFrames(t *testing.T) {
 	}
 	if len(bodies) < 2 || total != len(targets) {
 		t.Fatalf("%d bodies, %d targets", len(bodies), total)
+	}
+}
+
+// TestTargetWireProxyProtocolEach checks that ProxyProtocolEach survives the
+// JSON control message, is left out when false so released peers see the
+// message they always did, and reads as false from a message without it.
+func TestTargetWireProxyProtocolEach(t *testing.T) {
+	for _, each := range []bool{false, true} {
+		in := &model.Target{TargetStr: "127.0.0.1:53", ProxyProtocol: 2, ProxyProtocolEach: each}
+		b, err := json.Marshal(targetToWire(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if has := bytes.Contains(b, []byte("ProxyProtocolEach")); has != each {
+			t.Errorf("each=%v: %s", each, b)
+		}
+		var w control.Target
+		if err := json.Unmarshal(b, &w); err != nil {
+			t.Fatal(err)
+		}
+		out := targetFromWire(&w)
+		if out.TargetStr != in.TargetStr || out.ProxyProtocol != 2 || out.ProxyProtocolEach != each {
+			t.Errorf("each=%v: round trip gave %+v", each, out)
+		}
+	}
+	const old = `{"TargetStr":"127.0.0.1:53","LocalProxy":true,"ProxyProtocol":1}`
+	var w control.Target
+	if err := json.Unmarshal([]byte(old), &w); err != nil {
+		t.Fatal(err)
+	}
+	if out := targetFromWire(&w); out.ProxyProtocol != 1 || !out.LocalProxy || out.ProxyProtocolEach {
+		t.Errorf("message without the field gave %+v", out)
+	}
+	var fields map[string]any
+	b, _ := json.Marshal(targetToWire(targetFromWire(&w)))
+	if err := json.Unmarshal(b, &fields); err != nil || len(fields) != 3 {
+		t.Errorf("target without the option encodes as %s, want the fields of %s", b, old)
 	}
 }

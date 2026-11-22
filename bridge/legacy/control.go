@@ -118,14 +118,14 @@ func targetFromWire(m *control.Target) *model.Target {
 	if m == nil {
 		return nil
 	}
-	return &model.Target{TargetStr: m.TargetStr, LocalProxy: m.LocalProxy, ProxyProtocol: m.ProxyProtocol}
+	return &model.Target{TargetStr: m.TargetStr, LocalProxy: m.LocalProxy, ProxyProtocol: m.ProxyProtocol, ProxyProtocolEach: m.ProxyProtocolEach}
 }
 
 func targetToWire(t *model.Target) *control.Target {
 	if t == nil {
 		return nil
 	}
-	return &control.Target{TargetStr: t.TargetStr, LocalProxy: t.LocalProxy, ProxyProtocol: t.ProxyProtocol}
+	return &control.Target{TargetStr: t.TargetStr, LocalProxy: t.LocalProxy, ProxyProtocol: t.ProxyProtocol, ProxyProtocolEach: t.ProxyProtocolEach}
 }
 
 func accountFromWire(m *control.MultiAccount) *model.MultiAccount {

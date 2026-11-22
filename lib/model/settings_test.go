@@ -21,7 +21,7 @@ var (
 	accounts = []string{"UserAuth.AccountMap", "MultiAccount.Content", "MultiAccount.AccountMap"}
 
 	tunnelUnset = slices.Concat(serverState, accessLists, accounts, []string{"Status", "RunStatus", "IsHttp", "ServiceKind", "ServiceName", "Generated", "LaunchForm"})
-	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash"})
+	hostUnset   = slices.Concat(serverState, accessLists, accounts, []string{"IsClose", "CertType", "CertHash", "Target.ProxyProtocolEach"})
 )
 
 // TestEntrySettingsCoverModel fails for a field added to Tunnel or Host
@@ -92,6 +92,8 @@ func TestEntrySettingSet(t *testing.T) {
 		{"DestAclMode", "-3", -3, false},
 		{"Flow.FlowLimit", "12", int64(12), false},
 		{"Target.ProxyProtocol", "x", 0, false},
+		{"Target.ProxyProtocolEach", "1", true, false},
+		{"Target.ProxyProtocolEach", "maybe", false, true},
 		{"HttpProxy", " T ", true, false},
 		{"Socks5Proxy", "maybe", false, true},
 		{"Remark", " a ", " a ", false},

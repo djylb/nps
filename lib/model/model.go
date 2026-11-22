@@ -1195,9 +1195,13 @@ func (s *Host) SetMaxConn(limit int) {
 func (s *Host) CurrentConnections() int32 { return s.connectionCount() }
 
 type Target struct {
-	TargetStr     string
-	LocalProxy    bool
-	ProxyProtocol int // 0=off, 1=v1, 2=v2
+	TargetStr  string
+	LocalProxy bool
+	// ProxyProtocolEach puts the PROXY header in front of every UDP datagram
+	// instead of the first of a session only. TCP and hosts ignore it. Left
+	// out of JSON when false, as entries of released peers have it.
+	ProxyProtocolEach bool `json:",omitempty"`
+	ProxyProtocol     int // 0=off, 1=v1, 2=v2
 
 	// pool balances the addresses parsed from source, the TargetStr it was
 	// last synchronized with. Both are guarded by mu.

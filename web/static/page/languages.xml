@@ -1174,6 +1174,18 @@
 		<zh-CN>V2-二进制格式</zh-CN>
 		<en-US>Proxy Protocol v2</en-US>
 	</lang>
+	<lang id="word-proxyprotocoleach">
+		<zh-CN>UDP 加头方式</zh-CN>
+		<en-US>UDP PROXY Header</en-US>
+	</lang>
+	<lang id="word-firstpacket">
+		<zh-CN>仅首包</zh-CN>
+		<en-US>First Datagram Only</en-US>
+	</lang>
+	<lang id="word-everypacket">
+		<zh-CN>每个包</zh-CN>
+		<en-US>Every Datagram</en-US>
+	</lang>
 	<lang id="word-proxytolocal">
 		<zh-CN>由服务端连接目标</zh-CN>
 		<en-US>Server connects to target</en-US>
@@ -2660,6 +2672,10 @@
 	<lang id="info-compressalg">
 		<zh-CN>留空跟随客户端的压缩设置；选择算法则只对这条使用该算法，“不压缩”则这条不压缩。</zh-CN>
 		<en-US>Empty follows the client's compression setting; an algorithm applies to this entry only, and Off disables compression for it.</en-US>
+	</lang>
+	<lang id="info-proxyprotocoleach">
+		<zh-CN>选“每个包”时每个 UDP 包都带 PROXY 头，符合 PROXY v2 规范；选“仅首包”时只在每个 UDP 会话的第一个包前加。</zh-CN>
+		<en-US>With Every Datagram, each UDP datagram carries the PROXY header, as the PROXY v2 specification describes; with First Datagram Only, only the first datagram of each UDP session carries it.</en-US>
 	</lang>
 	<lang id="info-allowrelay">
 		<zh-CN>选“否”时服务端不中转这条隧道的数据，访问端与客户端只能直连；直连失败则访问失败。</zh-CN>

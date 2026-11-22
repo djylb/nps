@@ -70,9 +70,12 @@ type RateLimits struct {
 
 // Target is where an entry forwards to.
 type Target struct {
-	TargetStr     string
-	LocalProxy    bool
-	ProxyProtocol int
+	TargetStr  string
+	LocalProxy bool
+	// ProxyProtocolEach is left out when false, so released peers, which do
+	// not know it, see the messages they always did.
+	ProxyProtocolEach bool `json:",omitempty"`
+	ProxyProtocol     int
 }
 
 // MultiAccount holds the accounts of an entry.

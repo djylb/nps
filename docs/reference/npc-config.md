@@ -126,6 +126,7 @@ target_addr=192.168.1.10:22
 | `dest_acl_mode` | 目标访问控制模式 |
 | `dest_acl_rules` | 目标访问控制规则，多条用逗号分隔 |
 | `proxy_protocol` | 向目标发送 Proxy Protocol |
+| `proxy_protocol_each` | `true` 时每个 UDP 包都带 PROXY 头（符合 PROXY v2 规范）；默认 `false`，只在首包带；只对 UDP 生效 |
 | `multi_account` | 账号文件路径，文件里每行 `用户=密码` |
 | `max_conn` | 最大连接数 |
 | `upload_limit`、`download_limit` | 上传、下载限速 |

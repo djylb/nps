@@ -279,6 +279,7 @@ func configPortTask(t *model.Tunnel, client *model.Client, id int, ports, target
 		tl.Target = &model.Target{TargetStr: model.PortTaskTarget(t.TargetAddr, targets[i])}
 		if t.Target != nil {
 			tl.Target.ProxyProtocol = t.Target.ProxyProtocol
+			tl.Target.ProxyProtocolEach = t.Target.ProxyProtocolEach
 		}
 	}
 	if tl.MultiAccount == nil {

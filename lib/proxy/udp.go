@@ -126,7 +126,10 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 
 	buf := conn.BufPool.Get()
 	defer conn.BufPool.Put(buf)
-	// The PROXY header, if any, goes in front of the first datagram only.
+	// The PROXY header, if any, goes in front of the first datagram, or of
+	// every datagram with ProxyProtocolEach. It is built once; each datagram
+	// is read past the room kept for it at the start of buf.
+	each := route.Target.ProxyProtocolEach
 	var header []byte
 	if hdr := conn.ProxyProtocolHeader(route.Target.ProxyProtocol, addr, &net.UDPAddr{Port: s.Task.Port}); hdr != nil {
 		if header, err = hdr.AppendBinary(nil); err != nil {
@@ -149,8 +152,10 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 				return
 			}
 			in.Add(int64(n - len(header)))
-			// Later datagrams are read to the start of buf again.
-			header = nil
+			if !each {
+				// Later datagrams are read to the start of buf again.
+				header = nil
+			}
 			continue
 		}
 		if _, err := tunnel.Write(buf[:n]); err != nil {

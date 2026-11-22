@@ -130,7 +130,7 @@ func storedHost(c *model.Client) *model.Host {
 
 var commonFormFull = map[string]string{
 	"client_id": "1", "id": "1", "compress": "ZSTD ",
-	"target": " 127.0.0.1:80\r\n127.0.0.1:81 ", "proxy_protocol": "2", "local_proxy": "true",
+	"target": " 127.0.0.1:80\r\n127.0.0.1:81 ", "proxy_protocol": "2", "proxy_protocol_each": "1", "local_proxy": "true",
 	"health_check": "true", "health_check_type": "http", "health_check_path": "/h&x<y>",
 	"health_check_interval": "5", "health_check_timeout": "3", "health_check_max_fail": "2",
 	"auth": "u=p\r\nv=<w>", "remark": "r<&>'\"", "max_conn": "7", "upload_limit": "100",
@@ -139,7 +139,7 @@ var commonFormFull = map[string]string{
 }
 
 var commonFormInvalid = map[string]string{
-	"proxy_protocol": "abc", "local_proxy": "maybe", "health_check": "yes", "health_check_interval": "x",
+	"proxy_protocol": "abc", "proxy_protocol_each": "maybe", "local_proxy": "maybe", "health_check": "yes", "health_check_interval": "x",
 	"max_conn": "-5", "upload_limit": "-1", "download_limit": " 12 ", "flow_limit": "1.5",
 	"time_limit": "garbage", "flow_reset": "2", "target": "BRIDGE://x", "iplistpriority": "z",
 }

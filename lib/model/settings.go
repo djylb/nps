@@ -78,6 +78,8 @@ var TunnelSettings = append([]EntrySetting{
 	{Field: "DestAclRules", Form: "dest_acl_rules", FormRaw: true, Conf: "dest_acl_rules", ConfList: true, Custom: true},
 	{Field: "ReadOnly", Conf: "read_only"},
 	{Field: "NoRelay", Form: "no_relay"},
+	// Only UDP tunnels use it, so hosts have no such setting.
+	{Field: "Target.ProxyProtocolEach", Form: "proxy_protocol_each", Conf: "proxy_protocol_each", Custom: true},
 }, entrySettings...)
 
 // HostSettings are the settings of a Host.

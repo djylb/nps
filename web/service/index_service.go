@@ -330,9 +330,10 @@ func formTarget(t *model.Target, isAdmin, allowLocal bool, clientID int, fallbac
 		t = new(model.Target)
 	}
 	return &model.Target{
-		TargetStr:     sanitizeBridgeTarget(t.TargetStr, isAdmin, fallback),
-		ProxyProtocol: t.ProxyProtocol,
-		LocalProxy:    localProxyEnabled(clientID, t.LocalProxy, allowLocal),
+		TargetStr:         sanitizeBridgeTarget(t.TargetStr, isAdmin, fallback),
+		ProxyProtocol:     t.ProxyProtocol,
+		ProxyProtocolEach: t.ProxyProtocolEach,
+		LocalProxy:        localProxyEnabled(clientID, t.LocalProxy, allowLocal),
 	}
 }
 

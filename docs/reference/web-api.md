@@ -106,6 +106,7 @@ curl -X POST "http://203.0.113.10:8081/client/list?auth_key=$SIGN&timestamp=$TS"
 | `dest_acl_rules` | 目标访问控制条目，多行，写法见[混合代理](/guide/tunnels/mixed-proxy.md) |
 | `auth` | 代理的账号认证，多行，每行 `账号=密码`；留空不启用 |
 | `proxy_protocol` | 向目标发送 Proxy Protocol：`0` 关闭，`1` V1，`2` V2 |
+| `proxy_protocol_each` | `1` 时每个 UDP 包都带 PROXY 头（符合 PROXY v2 规范）；默认 `0`，只在首包带；只对 UDP 和 all 类型生效 |
 | `local_proxy` | 由服务端连接目标（`0`/`1`），受 `allow_local_proxy` 约束 |
 | `no_relay` | 点对点隧道禁止经服务端中转（`0` 允许，默认；`1` 禁止，只能直连） |
 | `remark` | 备注 |
