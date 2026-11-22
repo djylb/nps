@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -16,6 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/lifecycle"
+	"github.com/djylb/timeshim"
 	"github.com/quic-go/quic-go"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
@@ -93,24 +96,30 @@ type DialConfig struct {
 
 // Dialer establishes the sessions of a profile.
 type Dialer struct {
-	cfg   DialConfig
-	plans *planSlot // of this server and key
-
-	mu          sync.Mutex
-	record      uint64               // last CONFIG record
-	resumeMs    uint64               // last CONFIG resume_timeout_ms, 0 for none
+	// tlsCache resumes the TLS of carriers (TLS 1.3 tickets): a redial or a
+	// further pipe skips the full handshake; seal authenticates inside it
+	// all the same.
+	tlsCache    tls.ClientSessionCache
+	clock       timeshim.Clock       // of the redial waits; tests replace it
+	autoOK      map[string]bool      // type=auto entries that connected, per network
+	autoDropped map[string]bool      // those whose session soon ended
+	jitter      func() float64       // in [0, 1); tests replace it
 	boundFailed map[string]time.Time // (candidate, network) where Bound failed and Sealed worked, when
-	last        string               // candidate that connected last
+	plans       *planSlot            // of this server and key
 	now         func() time.Time     // tests
-	limits      CompressLimits
-	kinds       zmux.CarrierCache                                                    // HTTP carrier kinds per candidate (§14)
-	autoOK      map[string]bool                                                      // type=auto entries that connected, per network
-	autoDropped map[string]bool                                                      // those whose session soon ended
-	autoWinner  string                                                               // the entry of the session being kept, for pipes=multi
-	attempt     func(context.Context, connprofile.Candidate) (*clientSession, error) // tests replace it
-	h3Known     map[string]bool                                                      // candidates on which h3 has worked (§2.4b)
+	recovery    *recoveryGate        // processRecovery; tests replace it
 	h3Clients   map[string]*http.Client
-	closers     []func() // of the HTTP clients the last session kept
+	h3Known     map[string]bool                                                      // candidates on which h3 has worked (§2.4b)
+	attempt     func(context.Context, connprofile.Candidate) (*clientSession, error) // tests replace it
+	autoWinner  string                                                               // the entry of the session being kept, for pipes=multi
+	last        string                                                               // candidate that connected last
+	closers     []func()                                                             // of the HTTP clients the last session kept
+	cfg         DialConfig
+	kinds       zmux.CarrierCache // HTTP carrier kinds per candidate (§14)
+	limits      CompressLimits
+	record      uint64 // last CONFIG record
+	resumeMs    uint64 // last CONFIG resume_timeout_ms, 0 for none
+	mu          sync.Mutex
 	// visitorOnly marks the sessions dialed from now on as pure visitors
 	// (wire.Hello.VisitorOnly); OuterSessions sets it before each dial.
 	visitorOnly atomic.Bool
@@ -127,7 +136,8 @@ func NewDialer(cfg DialConfig) *Dialer {
 	if cfg.MaxConfig <= 0 {
 		cfg.MaxConfig = maxConfigBody
 	}
-	d := &Dialer{cfg: cfg, autoOK: map[string]bool{}, autoDropped: map[string]bool{}, boundFailed: map[string]time.Time{}, h3Known: map[string]bool{}, h3Clients: map[string]*http.Client{}, now: time.Now, limits: cfg.CompressLimits.normalized()}
+	d := &Dialer{cfg: cfg, autoOK: map[string]bool{}, autoDropped: map[string]bool{}, boundFailed: map[string]time.Time{}, h3Known: map[string]bool{}, h3Clients: map[string]*http.Client{}, now: time.Now, limits: cfg.CompressLimits.normalized(),
+		tlsCache: tls.NewLRUClientSessionCache(0), recovery: processRecovery, clock: timeshim.Real, jitter: rand.Float64}
 	d.attempt = d.dialCandidate
 	d.plans = planSlotOf(d.Server() + "\x00" + cfg.VKey)
 	return d
@@ -286,7 +296,7 @@ func (d *Dialer) noteBoundFailedLocked(key string) {
 }
 
 func (d *Dialer) dialCarrier(ctx context.Context, c connprofile.Candidate) (carrier, error) {
-	tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: c.ALPN, ServerName: serverName(c)}
+	tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: c.ALPN, ServerName: serverName(c), ClientSessionCache: d.tlsCache}
 	switch c.Carrier {
 	case "tcp", "tls":
 		nc, err := d.cfg.Dial(ctx, "tcp", c.Addr)
@@ -503,59 +513,68 @@ func (a *anchor) Verify(_ context.Context, in seal.VerifyInput) (seal.VerifyVerd
 
 // clientSession implements coreapi.ClientSession.
 type clientSession struct {
-	d       *Dialer
-	zc      *zmux.Conn
-	mode    zmux.RecordMode
-	carrier string
-	done    chan struct{}
-	err     error
+	autoStart    time.Time // when it connected
+	suspendSince time.Time // of the last EventSessionSuspended; only event uses it
+	err          error
+	ctx          context.Context             // of the callbacks, ended with the session
+	healthRunner coreapi.HealthRunner        // made by the first snapshot with checks; under mu
+	configured   chan struct{}               // closed by the first snapshot
+	onApply      func(uint64, wire.Snapshot) // tests; under mu
+	d            *Dialer
+	provided     map[uint64]*providerLink // links this client provides, by id; under mu
+	zc           *zmux.Conn
+	plan         *shapingPlan // the bundle in use; under mu
+	done         chan struct{}
+	wg           *sync.WaitGroup                 // the pipe pools of a multi-pipe session
+	scope        *lifecycle.Scope                // the zmux callbacks (start)
+	services     map[string]coreapi.LocalService // what this session offers, by id; under mu
+	redialBound  map[string]bool                 // candidate|network of Bound tries of unknown result; under redialMu
+	carrier      string
+	redialKey    string // candidate of the carrier given to zmux last; under redialMu
+	autoEntry    string // the race entry of the session, "" for none
+	serviceSeq   uint64 // seq of the last SERVICE snapshot; under mu
+	redialTries  int    // redials of this suspension (redialWait); under redialMu
+	applied      uint64 // seq of the applied snapshot; under mu
 
-	visitorOnly    bool          // dialed as a pure visitor
-	configured     chan struct{} // closed by the first snapshot
 	configuredOnce sync.Once
 
-	boot         zmux.CarrierKind     // of the first pipe
-	plan         *shapingPlan         // the bundle in use; under mu
-	healthRunner coreapi.HealthRunner // made by the first snapshot with checks; under mu
+	// The redial of the session's only pipe. redialMu is held alone, and
+	// guards redialKey, redialMode, redialBound and redialTries.
+	redialMu   sync.Mutex
+	mu         sync.Mutex      // guards provided, applied, services, serviceSeq and onApply
+	redialMode zmux.RecordMode // its mode (Config.RecordPolicy); under redialMu
 
-	wg *sync.WaitGroup
-
-	// The redial of the session's only pipe. redialMu is held alone.
-	redialMu    sync.Mutex
-	redialKey   string          // candidate of the carrier given to zmux last
-	redialMode  zmux.RecordMode // its mode (Config.RecordPolicy)
-	redialBound map[string]bool // candidate|network of Bound tries of unknown result
-
-	mu         sync.Mutex
-	provided   map[uint64]*providerLink        // links this client provides, by id
-	applied    uint64                          // seq of the applied snapshot
-	services   map[string]coreapi.LocalService // what this session offers, by id
-	serviceSeq uint64                          // seq of the last SERVICE snapshot
-	onApply    func(uint64, wire.Snapshot)     // tests
-
-	autoEntry string    // the race entry of the session, "" for none
-	autoStart time.Time // when it connected
+	visitorOnly bool // dialed as a pure visitor
+	mode        zmux.RecordMode
+	boot        zmux.CarrierKind // of the first pipe
 }
 
 func (s *clientSession) start(boot connprofile.Candidate) {
 	ctx, cancel := context.WithCancel(context.Background())
-	s.wg.Go(func() { s.serveStreams(ctx) })
-	s.wg.Go(func() { s.watch(ctx) })
+	s.ctx = ctx
+	// The session runs on zmux callbacks, each a task of s.scope; only the
+	// pipe pools of a multi-pipe session keep goroutines (s.wg).
+	s.scope = newSessionScope()
+	if err := handleStreams(s.zc, s.scope, func(st *zmux.Stream) { s.serveStream(ctx, st) }); err != nil {
+		log.Debug("session streams not served", "err", err)
+	}
+	if err := s.zc.HandleUniStreams(s.receiveTask, unboundedHandlers); err != nil {
+		log.Debug("session uni streams not served", "err", err)
+	}
+	if err := s.zc.HandleEvents(s.event); err != nil {
+		log.Debug("session events not watched", "err", err)
+	}
 	if s.d.multi() {
 		s.wg.Go(func() { s.maintain(ctx, boot) })
 	}
-	s.wg.Go(func() {
-		for {
-			st, err := s.zc.AcceptUniStream(ctx)
-			if err != nil {
-				return
-			}
-			s.wg.Go(func() { s.receive(st) })
-		}
-	})
 	go func() {
 		s.err = closeCause(s.zc.Wait())
 		cancel()
+		// No callback starts past Drain, and the running ones end before
+		// the cleanup below: zmux's Wait waits for none of them. They add
+		// nothing to s.wg, which is waited for after them.
+		s.scope.Drain()
+		_ = s.scope.Wait(context.Background())
 		s.wg.Wait()
 		// nothing applies snapshots any more
 		if s.healthRunner != nil {
@@ -566,6 +585,18 @@ func (s *clientSession) start(boot connprofile.Candidate) {
 		s.d.closeHTTP()
 		close(s.done)
 	}()
+}
+
+// receiveTask is receive as a task of the session's scope; a stream that
+// comes once the scope drains is refused like one of an unknown op.
+func (s *clientSession) receiveTask(st *zmux.ReceiveStream) {
+	task, err := s.scope.Enter()
+	if err != nil {
+		st.CancelRead(zmux.StreamErrorCode(wire.CodeDrain))
+		return
+	}
+	defer task.End()
+	s.receive(st)
 }
 
 // ended applies §3.2: Trusted lost before any CONFIG forgets the delivered

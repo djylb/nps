@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djylb/nps/lib/logevent"
@@ -28,15 +29,34 @@ type healthPeer interface {
 	DelHealthGroup(name string) error
 }
 
-// healthPush is the state of the health groups of one connection. Its goroutine
-// alone changes sent, under mu; mu is never held across network I/O.
+// healthPush is the state of the health groups of one connection. Its sends
+// run as an on-demand task: kick marks it dirty and starts the task unless one
+// runs, and the task syncs until nothing is dirty, so at most one sync of a
+// connection runs at a time. That task alone changes sent, under mu; mu is never
+// held across network I/O.
 type healthPush struct {
-	store Store
-	mu    sync.Mutex
-	sent  map[string]healthGroup
-	down  map[string]map[string]bool // group -> targets the checks took out
-	quit  chan struct{}
-	done  chan struct{}
+	store  Store
+	peer   healthPeer
+	client *Client
+	node   *Node
+	resync *healthResyncer
+	slot   *sync.Map // the slot of resync that holds it
+
+	// mu guards sent and down.
+	sent map[string]healthGroup
+	down map[string]map[string]bool // group -> targets the checks took out
+	id   int
+	mu   sync.Mutex
+
+	// run guards dirty, running and closed. wg counts the running task; it is
+	// added to only under run while not closed, and waited on only after closed
+	// was set, so no Add follows a Wait.
+	wg      sync.WaitGroup
+	run     sync.Mutex
+	end     sync.Once
+	dirty   bool
+	running bool
+	closed  bool
 }
 
 // apply takes an unhealthy target out of the rotation of the group's entry, or
@@ -90,10 +110,66 @@ func (p *healthPush) forget(name string) {
 	}
 }
 
-// stop ends the goroutine. Each of its calls is bounded, so this waits briefly.
+// kick has the task compare the groups with the entries, starting it unless
+// it runs; a running task sees the change too. It never blocks.
+func (p *healthPush) kick() {
+	p.run.Lock()
+	defer p.run.Unlock()
+	p.dirty = true
+	if p.running || p.closed {
+		return
+	}
+	p.running = true
+	p.wg.Add(1)
+	go p.loop()
+}
+
+// loop syncs until nothing is dirty. A failed send ends the push for good, as
+// the connection it writes on is broken.
+func (p *healthPush) loop() {
+	defer p.wg.Done()
+	for {
+		p.run.Lock()
+		if !p.dirty || p.closed {
+			p.running = false
+			p.run.Unlock()
+			return
+		}
+		p.dirty = false
+		p.run.Unlock()
+		if err := p.sync(p.id, p.peer, p.client, p.node); err != nil {
+			log.Debug("sending health groups failed", "client", p.id, "err", err)
+			p.run.Lock()
+			p.closed, p.running = true, false
+			p.run.Unlock()
+			p.finish()
+			return
+		}
+	}
+}
+
+// finish ends the push once: the node no longer has it, and the verdicts of
+// this connection end with it.
+func (p *healthPush) finish() {
+	p.end.Do(func() {
+		if p.resync != nil {
+			p.resync.remove(p)
+		}
+		p.node.healthPush.CompareAndSwap(p, nil)
+		for _, name := range slices.Collect(maps.Keys(p.sent)) {
+			p.forget(name)
+		}
+	})
+}
+
+// stop ends the push and waits for a send in flight; each of its calls is
+// bounded, so this waits briefly.
 func (p *healthPush) stop() {
-	close(p.quit)
-	<-p.done
+	p.run.Lock()
+	p.closed = true
+	p.run.Unlock()
+	p.wg.Wait()
+	p.finish()
 }
 
 func tunnelHealthGroup(id int) string { return "t" + strconv.Itoa(id) }
@@ -152,7 +228,7 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 			groups[group] = g
 		}
 	}
-	store.RangeTunnels(func(v *model.Tunnel) bool {
+	store.RangeClientTunnels(id, func(v *model.Tunnel) bool {
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && v.Status && (v.Mode == "tcp" || v.Mode == "secret")
 		target := v.Target
@@ -162,7 +238,7 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 		}
 		return true
 	})
-	store.RangeHosts(func(v *model.Host) bool {
+	store.RangeClientHosts(id, func(v *model.Host) bool {
 		v.RLock()
 		mine := v.Client != nil && v.Client.Id == id && !v.IsClose
 		target, domain := v.Target, v.Host
@@ -180,48 +256,79 @@ func desiredHealthGroups(store Store, id int, node *Node, client *Client) map[st
 func (c *Client) healthNode() string {
 	var first string
 	for _, n := range c.nodeList() {
-		if n.healthKick.Load() != nil && !n.IsOffline() && (first == "" || n.UUID < first) {
+		if n.healthPush.Load() != nil && !n.IsOffline() && (first == "" || n.UUID < first) {
 			first = n.UUID
 		}
 	}
 	return first
 }
 
-// startHealthPush starts the one goroutine that sends health groups to peer and
-// owns what was sent to it. npc forgets the groups with the
-// connection, so a new connection starts empty and gets them all. It returns
-// after the goroutine ended; since each write is bounded and fails once c is
-// closed, stopping waits briefly at most.
+// startHealthPush starts sending health groups to peer and owning what was
+// sent to it. npc forgets the groups with the connection, so a new connection
+// starts empty and gets them all. Each write is bounded and fails once the
+// connection is closed, so stopping waits briefly at most.
 func (s *Bridge) startHealthPush(id int, peer healthPeer, client *Client, node *Node) *healthPush {
-	kick := make(chan struct{}, 1)
-	p := &healthPush{store: s.store, sent: make(map[string]healthGroup), quit: make(chan struct{}), done: make(chan struct{})}
-	node.healthKick.Store(&kick)
+	p := &healthPush{store: s.store, id: id, peer: peer, client: client, node: node, sent: make(map[string]healthGroup)}
+	node.healthPush.Store(p)
+	s.health.add(s, p)
 	kickClientHealth(client) // who checks shared targets may have changed
-	go func() {
-		defer close(p.done)
-		defer node.healthKick.CompareAndSwap(&kick, nil)
-		// The verdicts of this connection end with it.
-		defer func() {
-			for _, name := range slices.Collect(maps.Keys(p.sent)) {
-				p.forget(name)
-			}
-		}()
-		ticker := time.NewTicker(healthResync)
-		defer ticker.Stop()
-		for {
-			if err := p.sync(id, peer, client, node); err != nil {
-				log.Debug("sending health groups failed", "client", id, "err", err)
-				return
-			}
-			select {
-			case <-p.quit:
-				return
-			case <-kick:
-			case <-ticker.C:
-			}
-		}
-	}()
+	p.kick()                 // a node not yet in the client's list
 	return p
+}
+
+// healthSlots is how many slots the periodic resync walks through in one
+// healthResync: each tick kicks the pushes of one slot, so the compares are
+// spread out instead of all running at once.
+const healthSlots = 30
+
+// healthResyncer kicks every push once per healthResync from one ticker,
+// which runs while there are pushes.
+type healthResyncer struct {
+	quit  chan struct{}         // closed when n drops to 0; nil while no ticker runs
+	slots [healthSlots]sync.Map // *healthPush -> struct{}
+	n     int                   // pushes in the slots, guarded by mu
+	mu    sync.Mutex
+	next  atomic.Uint32
+}
+
+func (r *healthResyncer) add(s *Bridge, p *healthPush) {
+	p.resync = r
+	p.slot = &r.slots[r.next.Add(1)%healthSlots]
+	p.slot.Store(p, struct{}{})
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.n++; r.quit == nil {
+		r.quit = make(chan struct{})
+		go r.loop(r.quit, s.scope.Done())
+	}
+}
+
+func (r *healthResyncer) remove(p *healthPush) {
+	p.slot.Delete(p)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.n--; r.n == 0 {
+		close(r.quit)
+		r.quit = nil
+	}
+}
+
+func (r *healthResyncer) loop(quit, done <-chan struct{}) {
+	ticker := time.NewTicker(healthResync / healthSlots)
+	defer ticker.Stop()
+	for i := 0; ; i = (i + 1) % healthSlots {
+		select {
+		case <-quit:
+			return
+		case <-done:
+			return
+		case <-ticker.C:
+		}
+		r.slots[i].Range(func(k, _ any) bool {
+			k.(*healthPush).kick()
+			return true
+		})
+	}
 }
 
 // sync makes what node checks through peer match the entries. A changed or
@@ -262,11 +369,8 @@ func (s *Bridge) kickHealth() {
 
 func kickClientHealth(c *Client) {
 	for _, n := range c.nodeList() {
-		if kick := n.healthKick.Load(); kick != nil {
-			select {
-			case *kick <- struct{}{}:
-			default:
-			}
+		if p := n.healthPush.Load(); p != nil {
+			p.kick()
 		}
 	}
 }

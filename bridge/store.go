@@ -29,6 +29,10 @@ type Store interface {
 
 	RangeTunnels(fn func(*model.Tunnel) bool)
 	RangeHosts(fn func(*model.Host) bool)
+	// RangeClientTunnels and RangeClientHosts call fn for the entries of
+	// client id alone, until fn returns false.
+	RangeClientTunnels(id int, fn func(*model.Tunnel) bool)
+	RangeClientHosts(id int, fn func(*model.Host) bool)
 	NextTunnelID() int
 	NextHostID() int
 

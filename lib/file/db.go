@@ -220,6 +220,7 @@ func (s *DbUtils) NewTask(t *model.Tunnel) error {
 	t.Flow.SetOwner(tunnelOwnerArgs(t)...)
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
+	s.JsonDb.indexTunnel(t.Id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	s.tunnelCreated(t)
 	return nil
@@ -240,6 +241,7 @@ func (s *DbUtils) UpdateTask(t *model.Tunnel) error {
 	}
 	normalizeTask(t)
 	s.JsonDb.Tasks.Store(t.Id, t)
+	s.JsonDb.indexTunnel(t.Id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	s.tunnelSaved(t)
 	return nil
@@ -384,6 +386,7 @@ func (s *DbUtils) SaveGlobal(t *model.Glob) error {
 func (s *DbUtils) DelTask(id int) error {
 	s.JsonDb.taskPasswords.release(id)
 	v, existed := s.JsonDb.Tasks.LoadAndDelete(id)
+	s.JsonDb.indexTunnel(id)
 	logStoreError(s.JsonDb.StoreTasksToJsonFile())
 	if existed {
 		s.tunnelDeleted(v.(*model.Tunnel))
@@ -445,6 +448,7 @@ func (s *DbUtils) DelHost(id int) error {
 	if existed {
 		s.JsonDb.hostIndex.Remove(v.(*model.Host).Host, id)
 	}
+	s.JsonDb.indexHost(id)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	if existed {
 		s.hostDeleted(v.(*model.Host))
@@ -512,6 +516,7 @@ func (s *DbUtils) NewHost(t *model.Host) error {
 	t.Flow.SetOwner(hostOwnerArgs(t)...)
 	t.CompileSourceLists(acl.ScopeUser, hostOwner(t))
 	s.JsonDb.Hosts.Store(t.Id, t)
+	s.JsonDb.indexHost(t.Id)
 	logStoreError(s.JsonDb.StoreHostToJsonFile())
 	s.hostCreated(t)
 	return nil

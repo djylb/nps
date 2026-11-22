@@ -5,39 +5,39 @@ go 1.27
 require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/beevik/ntp v1.6.0
-	github.com/brianvoe/gofakeit/v7 v7.18.9
+	github.com/brianvoe/gofakeit/v7 v7.18.10
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/dchest/captcha v1.1.0
-	github.com/djylb/byterate v0.0.0-20261118190716-37cde2b87f97
-	github.com/djylb/geomatch v0.0.0-20261117162504-ff4d30a636bb
-	github.com/djylb/guard v0.0.0-20261117162457-7fafcd0cf6f3
-	github.com/djylb/holepunch v0.0.0-20261118203847-f14e5a18fc7d
-	github.com/djylb/holepunch/quicpath v0.0.0-20261118203847-f14e5a18fc7d
-	github.com/djylb/lifecycle v0.0.0-20261117215338-8f84ea8661cd
-	github.com/djylb/netx v0.0.0-20261118191910-b28403c6c1bd
-	github.com/djylb/portmux v0.0.0-20261118193504-eeca1ffc1cda
+	github.com/djylb/byterate v0.0.0-20261122060128-f8527e0128d2
+	github.com/djylb/geomatch v0.0.0-20261121070142-336d323f8e05
+	github.com/djylb/guard v0.0.0-20261121065206-f7fc37908331
+	github.com/djylb/holepunch v0.0.0-20261121064619-a04921f52898
+	github.com/djylb/holepunch/quicpath v0.0.0-20261121064619-a04921f52898
+	github.com/djylb/lifecycle v0.0.0-20261122114950-c718e1697155
+	github.com/djylb/netx v0.0.0-20261122082912-c25ca8c3a7d1
+	github.com/djylb/portmux v0.0.0-20261122084647-d6c9fcb7fa2b
 	github.com/djylb/selfupdate v0.0.0-20261114151835-165eed6f084d
-	github.com/djylb/shapebundle v0.0.0-20261119123647-65f0e665577b
+	github.com/djylb/shapebundle v0.0.0-20261122084652-050e57af808a
 	github.com/djylb/slogx v0.0.0-20261117170327-810bc7ea58d2
-	github.com/djylb/timeshim v0.0.0-20261114151544-5e7682ca67cc
-	github.com/djylb/upstream v0.0.0-20261117215339-b8515b6d7ad6
+	github.com/djylb/timeshim v0.0.0-20261121052148-1ed9b7a27ad0
+	github.com/djylb/upstream v0.0.0-20261122060130-77b4afe9cc8c
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.4.0
 	github.com/kardianos/service v1.3.0
-	github.com/klauspost/compress v1.20.4
+	github.com/klauspost/compress v1.20.5
 	github.com/quic-go/quic-go v0.65.0
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
-	github.com/xtaci/kcp-go/v5 v5.7.7
-	github.com/zmuxio/zmux-go v1.5.4
-	github.com/zmuxio/zmux-go/seal v1.5.4
-	github.com/zmuxio/zmux-go/zmuxquic v1.5.4
-	github.com/zmuxio/zmux-go/zmuxws v1.5.4
+	github.com/xtaci/kcp-go/v5 v5.7.8
+	github.com/zmuxio/zmux-go v1.5.7
+	github.com/zmuxio/zmux-go/seal v1.5.7
+	github.com/zmuxio/zmux-go/zmuxquic v1.5.7
+	github.com/zmuxio/zmux-go/zmuxws v1.5.7
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
@@ -51,7 +51,7 @@ require (
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/ebitengine/purego v0.11.3 // indirect
-	github.com/emmansun/gmsm v0.45.3 // indirect
+	github.com/emmansun/gmsm v0.45.4 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/gin-contrib/sse v1.2.1 // indirect
@@ -79,6 +79,7 @@ require (
 	github.com/pion/transport/v5 v5.1.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
+	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
@@ -90,7 +91,7 @@ require (
 	github.com/ugorji/go/codec v1.3.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
-	go.mongodb.org/mongo-driver/v2 v2.10.0 // indirect
+	go.mongodb.org/mongo-driver/v2 v2.10.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	golang.org/x/arch v0.33.0 // indirect

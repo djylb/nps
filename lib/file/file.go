@@ -35,32 +35,37 @@ func NewJsonDb(runPath string) *JsonDb {
 }
 
 type JsonDb struct {
-	Tasks            sync.Map
-	Hosts            sync.Map
-	HostsTmp         sync.Map
-	Clients          sync.Map
-	Global           *model.Glob
-	RunPath          string
-	ClientIncreaseId int32  //client increased id
-	TaskIncreaseId   int32  //task increased id
-	HostIncreaseId   int32  //host increased id
-	TaskFilePath     string //task file path
-	HostFilePath     string //host file path
-	ClientFilePath   string //client file path
-	GlobalFilePath   string //global file path
-
+	vkeyIndex      *index.StringIDIndex   // blake2b of a verify key -> client id
+	hostIndex      *index.DomainIndex     // host name -> host ids
 	entriesChanged atomic.Pointer[func()] // see DbUtils.OnEntriesChanged
+	Global         *model.Glob
+	taskPasswords  *taskPasswords
 
-	hostIndex     *index.DomainIndex   // host name -> host ids
-	vkeyIndex     *index.StringIDIndex // blake2b of a verify key -> client id
-	taskPasswords *taskPasswords
+	Tasks    sync.Map
+	Hosts    sync.Map
+	HostsTmp sync.Map
+	Clients  sync.Map
+
+	HostFilePath   string //host file path
+	TaskFilePath   string //task file path
+	RunPath        string
+	GlobalFilePath string //global file path
+	ClientFilePath string //client file path
+
+	// client id -> ids of its tunnels and hosts, derived from Tasks and Hosts
+	hostClients, tunnelClients clientEntries
 
 	// one lock per file, so that two writes of a file never interleave
 	hostLock, taskLock, clientLock, globalLock sync.Mutex
+
+	HostIncreaseId   int32 //host increased id
+	TaskIncreaseId   int32 //task increased id
+	ClientIncreaseId int32 //client increased id
 }
 
 func (s *JsonDb) LoadTaskFromJsonFile() error {
 	s.taskPasswords.reset()
+	s.tunnelClients.reset()
 	converted := false
 	var companions []*model.Tunnel
 	defer func() {
@@ -103,6 +108,7 @@ func (s *JsonDb) LoadTaskFromJsonFile() error {
 		post.CompileDestACL()
 		post.CompileSourceLists(acl.ScopeUser, taskOwner(post))
 		s.Tasks.Store(post.Id, post)
+		s.indexTunnel(post.Id)
 		if post.Id > int(s.TaskIncreaseId) {
 			s.TaskIncreaseId = int32(post.Id)
 		}
@@ -149,6 +155,7 @@ func (s *JsonDb) LoadClientFromJsonFile() error {
 
 func (s *JsonDb) LoadHostFromJsonFile() error {
 	s.hostIndex.Destroy()
+	s.hostClients.reset()
 	return loadSyncMapFromFile(s.HostFilePath, model.Host{}, func(v any) {
 		var err error
 		post := v.(*model.Host)
@@ -176,6 +183,7 @@ func (s *JsonDb) LoadHostFromJsonFile() error {
 		post.CompileSourceLists(acl.ScopeUser, hostOwner(post))
 		s.Hosts.Store(post.Id, post)
 		s.hostIndex.Add(post.Host, post.Id)
+		s.indexHost(post.Id)
 		if post.Id > int(s.HostIncreaseId) {
 			s.HostIncreaseId = int32(post.Id)
 		}

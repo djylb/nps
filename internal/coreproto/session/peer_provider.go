@@ -14,7 +14,6 @@ import (
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
 	"github.com/djylb/nps/lib/acl"
-	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	zcarrier "github.com/zmuxio/zmux-go/carrier"
 	"github.com/zmuxio/zmux-go/seal"
@@ -211,13 +210,15 @@ func (s *clientSession) newProviderLink(ctx context.Context, id uint64, b *wire.
 	}
 	shape := s.d.nestedShaping()
 	base := nestedConfig(s.d.cfg.MaxLanes)
-	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: base, WrapPipe: &seal.ServerConfig{
-		Shaper: shape.slot.handshake,
-		Gate:   &linkGate{handle: handle, psk: psk}, StaticKey: key, ClientAnchor: acceptAnyClient{},
-		AllowRecordMode: allowNestedMode, MaxAppData: wire.MaxHelloRecv, AppData: nestedProviderHello,
-	}, SessionConfig: func(context.Context, *zmux.CarrierInfo, any) (*zmux.Config, error) {
-		return shape.configure(base.Clone()), nil
-	}})
+	zl, err := zmux.NewListener(&zmux.ListenerConfig{Config: base,
+		// A stream that is no carrier ends: zmux closes it on return.
+		Fallback: func(context.Context, *zmux.Takeover) {}, WrapPipe: &seal.ServerConfig{
+			Shaper: shape.slot.handshake,
+			Gate:   &linkGate{handle: handle, psk: psk}, StaticKey: key, ClientAnchor: acceptAnyClient{},
+			AllowRecordMode: allowNestedMode, MaxAppData: wire.MaxHelloRecv, AppData: nestedProviderHello,
+		}, SessionConfig: func(context.Context, *zmux.CarrierInfo, any) (*zmux.Config, error) {
+			return shape.configure(base.Clone()), nil
+		}})
 	if err != nil {
 		return nil, err
 	}
@@ -263,20 +264,19 @@ func (p *providerLink) run(lc *linkConn) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Go(func() { p.runUsage(zc) })
-	wg.Go(func() {
-		for {
-			st, err := zc.AcceptStream(p.ctx)
-			if err != nil {
-				return
-			}
-			wg.Go(func() {
-				p.serveNested(st, zc)
-				p.sampleUsage(zc)
-			})
-		}
-	})
+	// The streams are tasks of sc, which ends before the final report and
+	// the nested session's close: zmux's Wait waits for none of them.
+	sc := newSessionScope()
+	if err := handleStreams(zc, sc, func(st *zmux.Stream) {
+		p.serveNested(st, zc)
+		p.sampleUsage(zc)
+	}); err != nil {
+		log.Debug("nested streams not served", "link", p.id, "err", err)
+	}
 	_ = zc.Wait()
 	p.cancel()
+	sc.Drain()
+	_ = sc.Wait(context.Background())
 }
 
 // serveNested is one TCP or UDP stream of the visitor, under the link's
@@ -338,9 +338,7 @@ func (s *clientSession) servePunch(lc *linkConn, fields []byte) {
 	// ServeConn hands the connection over; the path lives until it ends or
 	// the provider link does, which a peer that keeps it alive would
 	// otherwise outlast.
-	if zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC, func(_ context.Context, _ *quic.Conn, c zmux.PipeIO) {
-		_ = zmux.PipeConn(c).Close()
-	}) == nil {
+	if zmuxquic.ServeConn(p.pctx, p.zl, path.QUIC) == nil {
 		select {
 		case <-path.QUIC.Context().Done():
 		case <-p.pctx.Done():

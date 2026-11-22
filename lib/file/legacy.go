@@ -50,6 +50,7 @@ func (s *JsonDb) addFileCompanions(list []*model.Tunnel) bool {
 		c.CompileDestACL()
 		c.CompileSourceLists(acl.ScopeUser, taskOwner(c))
 		s.Tasks.Store(c.Id, c)
+		s.indexTunnel(c.Id)
 	}
 	return added
 }

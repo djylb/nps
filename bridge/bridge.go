@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"strings"
 	"sync"
@@ -78,52 +79,55 @@ func dispatch[T any](ch chan<- T, v T) bool {
 }
 
 type Bridge struct {
-	presenceMu         sync.Mutex
-	Client             *sync.Map
-	VirtualTcpListener *netx.ChanListener
-	VirtualTlsListener *netx.ChanListener
-	VirtualWsListener  *netx.ChanListener
-	VirtualWssListener *netx.ChanListener
+	cert  tls.Certificate
+	ports ports.Allowed
+	store Store
+	// routeCarriers holds the http.Handler of startRouteCarriers.
+	routeCarriers atomic.Value
+	core          coreapi.Entry
+
+	// conns, the child of scope (below), runs the handling of the accepted
+	// connections and owns those still open; a panic there is logged and
+	// leaves the bridge running.
+	conns *lifecycle.Scope
+
 	VirtualMixListener *netx.ChanListener
 	OpenHost           chan *model.Host
 	OpenTask           chan *model.Tunnel
 	CloseTask          chan *model.Tunnel
 	CloseClient        chan int
 	runList            *sync.Map //map[int]interface{}
-	store              Store
-	disconnectTime     int
-	secureMode         bool
-	selectMode         SelectMode
-	ports              ports.Allowed
-	cert               tls.Certificate
-	fingerprint        []byte // of cert
+	VirtualWssListener *netx.ChanListener
+	webListener        atomic.Pointer[netx.ChanListener]
+	Client             *sync.Map
+	fallback           atomic.Pointer[Fallback]
+	VirtualWsListener  *netx.ChanListener
+	VirtualTlsListener *netx.ChanListener
+	ticketKey          func() [32]byte // session ticket key of every carrier TLS config, made on first use
+	latest             func() string
 	newUUID            func() string
-	routeMu            sync.Mutex                 // serializes publishing routes with pruning them
-	closingMu          sync.Mutex                 // guards closing
+	// scope runs the listeners and the background work and owns the
+	// listeners; a listener that fails closes it.
+	scope              *lifecycle.Scope
+	VirtualTcpListener *netx.ChanListener
 	closing            map[int]struct{}           // clients left whose close signal is pending and that published nothing since
 	p2p                atomic.Pointer[p2pService] // nil while P2P is off
 	secrets            *secretGrants              // grants of point-to-point access
 	lookup             atomic.Pointer[TunnelLookup]
-	core               coreapi.Entry
-	maxNodeServices    int
-	latest             func() string
+	ipRegListener      atomic.Pointer[netx.ChanListener]
 	accessGuesses      sync.Map // client id -> *guessBucket
-	fallback           atomic.Pointer[Fallback]
 	corePushes         sync.Map // coreapi.Session -> *healthPush
 	coreServicesOf     sync.Map // coreapi.Session -> []coreapi.ServiceInfo
-	webListener        atomic.Pointer[netx.ChanListener]
-	ipRegListener      atomic.Pointer[netx.ChanListener]
-
-	// scope runs the listeners and the background work and owns the
-	// listeners; a listener that fails closes it. conns, its child, runs the
-	// handling of the accepted connections and owns those still open; a
-	// panic there is logged and leaves the bridge running.
-	scope     *lifecycle.Scope
-	conns     *lifecycle.Scope
-	closeOnce sync.Once
-
-	// routeCarriers holds the http.Handler of startRouteCarriers.
-	routeCarriers atomic.Value
+	fingerprint        []byte   // of cert
+	health             healthResyncer
+	disconnectTime     int
+	maxNodeServices    int
+	closeOnce          sync.Once
+	closingMu          sync.Mutex // guards closing
+	routeMu            sync.Mutex // serializes publishing routes with pruning them
+	presenceMu         sync.Mutex
+	selectMode         SelectMode
+	secureMode         bool
 }
 
 // NewTunnel returns a bridge of the entries in store; runList holds the
@@ -164,9 +168,13 @@ func newBridge(runList *sync.Map, disconnectTime int) *Bridge {
 	scope := lifecycle.New(context.Background(), lifecycle.CancelOnError().Expected(anyError))
 	conns, _ := scope.Child("conns", lifecycle.Isolate(func(err error) { log.Debug("connection handler failed", "err", err) }))
 	return &Bridge{
-		scope:          scope,
-		conns:          conns,
-		newUUID:        func() string { return crypt.GetUUID().String() },
+		scope:   scope,
+		conns:   conns,
+		newUUID: func() string { return crypt.GetUUID().String() },
+		ticketKey: sync.OnceValue(func() (k [32]byte) {
+			_, _ = rand.Read(k[:]) // crypto/rand.Read does not fail
+			return k
+		}),
 		Client:         &sync.Map{},
 		OpenHost:       make(chan *model.Host, 100),
 		OpenTask:       make(chan *model.Tunnel, 100),

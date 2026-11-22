@@ -304,3 +304,55 @@ func TestSingleProtocolListeners(t *testing.T) {
 		t.Error("http listener served SOCKS5")
 	}
 }
+
+// A port held by another process is retried until it frees, the client stays
+// up meanwhile; without reconnecting the conflict is the error.
+func TestLocalServerBindRetry(t *testing.T) {
+	old := bindRetry
+	bindRetry = 20 * time.Millisecond
+	t.Cleanup(func() { bindRetry = old })
+	held, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := held.Addr().(*net.TCPAddr).Port
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	l := &config.LocalServer{Type: config.LocalMixed, ConnMode: config.ConnRelay, Ip: "127.0.0.1", Port: port, Password: "pw"}
+	stub := func(_, _ string, _ bool) coreapi.Visitor { return stubVisitor(func(string, net.Conn) {}) }
+
+	cfg := config.NewCommonConfig()
+	cfg.AutoReconnection = false
+	once := NewSecretManager(t.Context(), func() {}, cfg)
+	once.coreVisitor = stub
+	if err := once.StartLocalServer(l); err == nil {
+		t.Fatal("bind conflict without reconnecting accepted")
+	}
+	once.Close()
+
+	cfg = config.NewCommonConfig()
+	cfg.AutoReconnection = true
+	mgr := NewSecretManager(t.Context(), func() {}, cfg)
+	mgr.coreVisitor = stub
+	t.Cleanup(mgr.Close)
+	if err := mgr.StartLocalServer(l); err != nil {
+		t.Fatalf("StartLocalServer() = %v, want retry", err)
+	}
+	_ = held.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		c, err := net.DialTimeout("tcp", addr, time.Second)
+		if err == nil {
+			_ = c.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("port not opened after it freed: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	mgr.Close()
+	if c, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
+		_ = c.Close()
+		t.Fatal("port still open after Close")
+	}
+}

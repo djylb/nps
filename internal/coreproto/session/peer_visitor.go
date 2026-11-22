@@ -508,7 +508,9 @@ func (l *visitorLink) start(ctx context.Context) error {
 	shape.attach(zc)
 	l.zc, l.shape = zc, shape
 	l.ctx, l.cancel = context.WithCancel(l.v.ctx)
-	l.wg.Go(func() { rejectStreams(l.ctx, zc, func(wire.Op) bool { return false }) })
+	if err := rejectStreams(zc, func(wire.Op) bool { return false }); err != nil {
+		log.Debug("nested streams not refused", "link", l.id, "err", err)
+	}
 	l.wg.Go(l.run)
 	path := "relay"
 	if mode == zmux.RecordBound {

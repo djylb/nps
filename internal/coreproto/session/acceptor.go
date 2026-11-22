@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/djylb/lifecycle"
 	"github.com/djylb/netx"
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/internal/coreproto/wire"
@@ -434,9 +435,7 @@ func (a *Acceptor) QUICConfig(base *quic.Config) *quic.Config { return zmuxquic.
 // before this (§12), so a first stream that is no carrier just ends.
 // It returns when the connection ends: its caller closes qc after.
 func (a *Acceptor) ServeQUIC(ctx context.Context, qc *quic.Conn) {
-	if zmuxquic.ServeConn(ctx, a.zl, qc, func(_ context.Context, _ *quic.Conn, p zmux.PipeIO) {
-		_ = zmux.PipeConn(p).Close()
-	}) == nil {
+	if zmuxquic.ServeConn(ctx, a.zl, qc) == nil {
 		<-qc.Context().Done()
 	}
 }
@@ -522,8 +521,8 @@ func (a *Acceptor) WebSocketAnyProtocol(next http.Handler, f coreapi.Forwarding)
 
 // decide routes a carrier by its first bytes (§12, §13). It is the one place
 // that does, for every entry point of the listener.
-func (a *Acceptor) decide(_ context.Context, info *zmux.CarrierInfo, prefix []byte) zmux.Decision {
-	if info.Head {
+func (a *Acceptor) decide(_ context.Context, info zmux.CarrierInfo, prefix []byte) zmux.Decision {
+	if info.Stage == zmux.StageHead {
 		// The HTTP handler matched the path and subprotocol.
 		return zmux.Decision{Verdict: zmux.VerdictAccept}
 	}
@@ -558,7 +557,20 @@ func (a *Acceptor) decide(_ context.Context, info *zmux.CarrierInfo, prefix []by
 
 // fallback takes what the admission did not: TST goes to the old protocol,
 // anything else to the domain proxy, or stalls when there is none. It owns c.
-func (a *Acceptor) fallback(ctx context.Context, c net.Conn) {
+func (a *Acceptor) fallback(ctx context.Context, t *zmux.Takeover) {
+	if _, ok := zmuxquic.TakeoverConn(t); ok {
+		// ALPN told the protocols apart: a QUIC stream that is no carrier
+		// just ends, closed by zmux on return.
+		return
+	}
+	// The routes below own the carrier and may serve it after return.
+	if t.Detach() != nil {
+		return
+	}
+	c, ok := t.Conn()
+	if !ok {
+		c = zmux.PipeConn(t.Pipe())
+	}
 	head := make([]byte, len(legacyMagic))
 	// The prefix is replayed at once; the deadline matters only for a
 	// carrier that took the peek timeout with fewer bytes.
@@ -675,7 +687,7 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 		_ = zc.Close()
 		return
 	}
-	s := &serverSession{a: a, zc: zc, t: t, mode: peer.RecordMode, since: time.Now(), kicked: make(chan struct{}, 1)}
+	s := &serverSession{a: a, zc: zc, t: t, mode: peer.RecordMode, since: time.Now(), ctx: ctx, hooks: a.hooks.Load(), scope: newSessionScope()}
 	if e := a.table.get(t.client); e != nil {
 		s.configOnly = e.ConfigOnly
 		s.visitorKey = e.VisitorOnly
@@ -706,19 +718,25 @@ func (a *Acceptor) handle(ctx context.Context, zc *zmux.Conn) {
 	} else if closing || e.Crypt && s.mode == zmux.RecordTrusted {
 		a.drain(s)
 	}
-	watched := make(chan struct{})
-	a.wg.Go(func() {
-		defer close(watched)
-		s.watch(ctx, h)
-	})
-	a.wg.Go(func() { rejectUniStreams(ctx, zc, wire.Op.FromClient) })
-	a.wg.Go(func() { s.serveStreams(ctx) })
-	a.wg.Go(func() { s.pushLoop(ctx) })
+	// The session runs on zmux callbacks, each a task of s.scope: no
+	// goroutine stays per session while nothing happens on it.
+	if err := zc.HandleEvents(s.event); err != nil {
+		log.Debug("session events not watched", "client", t.client, "err", err)
+	}
+	if err := rejectUniStreams(zc, wire.Op.FromClient); err != nil {
+		log.Debug("session uni streams not served", "client", t.client, "err", err)
+	}
+	if err := handleStreams(zc, s.scope, func(st *zmux.Stream) { s.serveStream(ctx, st) }); err != nil {
+		log.Debug("session streams not served", "client", t.client, "err", err)
+	}
 	s.kick()
 	_ = zc.Wait()
-	// The last SuspendChanged has run: Offline is the end of the session's
-	// hooks.
-	<-watched
+	// No callback starts past Drain; the scope ends with the last running
+	// one, the last SuspendChanged among them: Offline is the end of the
+	// session's hooks. zmux's Wait waits for none of them, and they may
+	// still use the session, so they end before its cleanup.
+	s.scope.Drain()
+	_ = s.scope.Wait(context.Background())
 	a.unregister(s)
 	if h != nil && h.Offline != nil && s.node() {
 		reason, _ := s.closing.Load().(string)
@@ -872,32 +890,42 @@ func (a *Acceptor) Kick(id int, auth bool) {
 
 // serverSession implements coreapi.Session.
 type serverSession struct {
-	a       *Acceptor
-	zc      *zmux.Conn
-	t       *ticket
-	since   time.Time
-	seq     atomic.Uint64
-	kicked  chan struct{} // a newer snapshot wants pushing
-	closing atomic.Value  // string: reason of a close this side made
+	since        time.Time
+	suspendSince time.Time // of the last EventSessionSuspended; only event uses it
+	ctx          context.Context
+	closing      atomic.Value // string: reason of a close this side made
+	t            *ticket
+	hooks        *coreapi.Hooks
+	// scope holds the session's zmux callbacks and its pusher as tasks;
+	// handle drains it when the session ended and waits for it before the
+	// session's cleanup.
+	scope  *lifecycle.Scope
+	a      *Acceptor
+	zc     *zmux.Conn
+	health []wire.HealthGroup // under healthMu
+
+	seq        atomic.Uint64
+	serviceSeq uint64 // of the applied SERVICE snapshot; under serviceMu
+
+	healthMu  sync.Mutex
+	serviceMu sync.Mutex
+
+	// dirty: a newer snapshot wants pushing; pushing: a pusher runs (kick).
+	pushing atomic.Bool
+	dirty   atomic.Bool
 	// suspended is true between EventSessionSuspended and
-	// EventSessionResumed; only watch writes it.
+	// EventSessionResumed; only event writes it.
 	suspended atomic.Bool
-	// configOnly is a session of the public key.
-	configOnly bool
-	// visitorOnly is a session that only visits (wire.Hello.VisitorOnly),
-	// whatever its key: it makes links and is never a provider or a node of
-	// its client, so it does not displace the client's own session.
-	visitorOnly bool
 	// visitorKey is a session of the visitor key: visitorOnly whatever its
 	// Hello says, and it uploads or registers nothing.
 	visitorKey bool
 	mode       zmux.RecordMode
-
-	healthMu sync.Mutex
-	health   []wire.HealthGroup
-
-	serviceMu  sync.Mutex
-	serviceSeq uint64 // of the applied SERVICE snapshot
+	// visitorOnly is a session that only visits (wire.Hello.VisitorOnly),
+	// whatever its key: it makes links and is never a provider or a node of
+	// its client, so it does not displace the client's own session.
+	visitorOnly bool
+	// configOnly is a session of the public key.
+	configOnly bool
 }
 
 // node reports whether the session is a node of its client: online, offline
@@ -941,28 +969,28 @@ func (s *serverSession) closeAuth(reason string) {
 // Suspended implements coreapi.Session.
 func (s *serverSession) Suspended() bool { return s.suspended.Load() && !s.Closed() }
 
-// watch follows the state of the session from its events until it ends.
-func (s *serverSession) watch(ctx context.Context, h *coreapi.Hooks) {
-	var since time.Time
-	for {
-		ev, err := s.zc.NextEvent(ctx)
-		if err != nil {
-			return
-		}
-		switch ev.Kind {
-		case zmux.EventSessionSuspended:
-			since = time.Now()
-			s.suspended.Store(true)
-			slogx.Emit(ctx, log, &logevent.SessionSuspended, s.logFields()...)
-		case zmux.EventSessionResumed:
-			s.suspended.Store(false)
-			slogx.Emit(ctx, log, &logevent.SessionResumed, append(s.logFields(), "dur_ms", time.Since(since).Milliseconds())...)
-		default:
-			continue
-		}
-		if h != nil && h.SuspendChanged != nil {
-			h.SuspendChanged(s)
-		}
+// event follows the state of the session (zmux.Conn.HandleEvents: one at a
+// time). An event that comes once the session's callbacks drain is dropped:
+// the session ended, and Offline follows.
+func (s *serverSession) event(ev zmux.Event) {
+	task, err := s.scope.Enter()
+	if err != nil {
+		return
+	}
+	defer task.End()
+	switch ev.Kind {
+	case zmux.EventSessionSuspended:
+		s.suspendSince = time.Now()
+		s.suspended.Store(true)
+		slogx.Emit(s.ctx, log, &logevent.SessionSuspended, s.logFields()...)
+	case zmux.EventSessionResumed:
+		s.suspended.Store(false)
+		slogx.Emit(s.ctx, log, &logevent.SessionResumed, append(s.logFields(), "dur_ms", time.Since(s.suspendSince).Milliseconds())...)
+	default:
+		return
+	}
+	if h := s.hooks; h != nil && h.SuspendChanged != nil {
+		h.SuspendChanged(s)
 	}
 }
 
@@ -971,35 +999,48 @@ func (s *serverSession) logFields() []any {
 }
 
 // kick asks for a new snapshot; concurrent changes coalesce into one push of
-// the latest state.
+// the latest state. A pusher runs only while there is something to push, at
+// most one per session, so that seq order is the order of their content
+// (§4.3).
 func (s *serverSession) kick() {
-	select {
-	case s.kicked <- struct{}{}:
-	default:
+	s.dirty.Store(true)
+	if !s.pushing.CompareAndSwap(false, true) {
+		return // the running pusher sees dirty
+	}
+	task, err := s.scope.Enter()
+	if err != nil {
+		// The session ended: nothing is pushed any more.
+		s.pushing.Store(false)
+		return
+	}
+	go s.push(&task)
+}
+
+// push sends snapshots until none is wanted; it owns task and ends it.
+func (s *serverSession) push(task *lifecycle.Task) {
+	defer task.End()
+	for {
+		for s.dirty.Swap(false) {
+			if s.zc.Context().Err() != nil || s.ctx.Err() != nil {
+				s.pushing.Store(false)
+				return
+			}
+			if err := s.pushConfig(s.ctx, s.a.snapshotOf(s)); err != nil {
+				log.Debug("config push failed", "client", s.t.client, "err", err)
+			}
+		}
+		s.pushing.Store(false)
+		// A kick between the last Swap and the Store left it to this
+		// pusher; take it back unless a new pusher already did.
+		if !s.dirty.Load() || !s.pushing.CompareAndSwap(false, true) {
+			return
+		}
 	}
 }
 
 // configWriteTimeout bounds pushing one snapshot to a peer that stopped
 // reading.
 const configWriteTimeout = 30 * time.Second
-
-// pushLoop sends snapshots, one at a time, so that seq order is the order of
-// their content (§4.3).
-func (s *serverSession) pushLoop(ctx context.Context) {
-	stop := s.zc.Context().Done()
-	for {
-		select {
-		case <-s.kicked:
-			if err := s.pushConfig(ctx, s.a.snapshotOf(s)); err != nil {
-				log.Debug("config push failed", "client", s.t.client, "err", err)
-			}
-		case <-stop:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
-}
 
 // pushConfig opens one stream carrying a full snapshot (§4.3). It waits for
 // stream credit until ctx or the session ends, so a push is never dropped;

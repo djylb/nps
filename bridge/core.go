@@ -590,6 +590,12 @@ func requestHead(r *http.Request) []byte {
 
 // tlsConfig is the configuration of the TLS bridge listener (no ALPN by
 // default, §13).
+// tlsConfig is the TLS configuration of a carrier connection. Each call
+// builds it anew, so it follows the configured ALPN, but all share the
+// bridge's session ticket key: a client resumes its TLS session across
+// connections, as Go does only within one Config otherwise.
 func (s *Bridge) tlsConfig() *tls.Config {
-	return &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: connection.Network().NewProtocolTLSALPN, GetCertificate: s.fallbackCert}
+	cfg := &tls.Config{Certificates: []tls.Certificate{s.cert}, NextProtos: connection.Network().NewProtocolTLSALPN, GetCertificate: s.fallbackCert}
+	cfg.SetSessionTicketKeys([][32]byte{s.ticketKey()})
+	return cfg
 }

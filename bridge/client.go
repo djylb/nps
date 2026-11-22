@@ -120,9 +120,9 @@ type Node struct {
 	udpWarned atomic.Bool // "udp link needs a newer npc" was logged
 	// tunnelDeadline is when the node stops waiting for a new tunnel.
 	tunnelDeadline time.Time
-	// healthKick wakes the sender of health groups of the node's signal
-	// connection; nil while there is none.
-	healthKick atomic.Pointer[chan struct{}]
+	// healthPush sends the health groups of the node's connection; nil
+	// while there is none.
+	healthPush atomic.Pointer[healthPush]
 }
 
 func NewNode(uuid, vs string, bv int) *Node {

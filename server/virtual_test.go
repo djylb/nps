@@ -45,13 +45,24 @@ func generatedFixture(t *testing.T, noStore bool) (*Server, *file.DbUtils, *mode
 	}
 	s := New(db, Config{CoreEntry: stubEntry{}, DisconnectTimeout: 30})
 	t.Cleanup(func() { _ = s.Close() })
-	tn := &model.Tunnel{Id: db.NextTunnelID(), Mode: "tcp", Port: freeTunnelPort(t), ServerIp: "127.0.0.1", Client: c, Status: true,
+	tn := &model.Tunnel{Id: db.NextTunnelID(), Mode: "tcp", ServerIp: "127.0.0.1", Client: c, Status: true,
 		NoStore: noStore, Generated: !noStore, Flow: new(model.Flow), Target: &model.Target{TargetStr: model.ServiceTarget("file", "x")}}
+	// freeTunnelPort frees its port before AddTunnel binds it, so another
+	// test binary running at the same time may take it in between: a port
+	// taken that way is replaced, any other error fails.
+	tn.Port = freeTunnelPort(t)
 	if err := db.NewTask(tn); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AddTunnel(tn); err != nil {
-		t.Fatal(err)
+	for attempt := 1; ; attempt++ {
+		err := s.AddTunnel(tn)
+		if err == nil {
+			break
+		}
+		if attempt == 10 || err.Error() != "the port open error" {
+			t.Fatal(err)
+		}
+		tn.Port = freeTunnelPort(t)
 	}
 	if !listening(tn.Port) {
 		t.Fatal("does not listen")

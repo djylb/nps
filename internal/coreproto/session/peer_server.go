@@ -242,17 +242,6 @@ func (a *Acceptor) providerOf(id int) *serverSession {
 	return best
 }
 
-// serveStreams serves what a client opens.
-func (s *serverSession) serveStreams(ctx context.Context) {
-	for {
-		st, err := s.zc.AcceptStream(ctx)
-		if err != nil {
-			return
-		}
-		s.a.wg.Go(func() { s.serveStream(ctx, st) })
-	}
-}
-
 func (s *serverSession) conn(st *zmux.Stream) *linkConn {
 	return &linkConn{Stream: st, local: s.zc.LocalAddr(), remote: net.TCPAddrFromAddrPort(s.t.src)}
 }

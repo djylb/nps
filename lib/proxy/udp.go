@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/djylb/netx"
+	"github.com/djylb/netx/udpflow"
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/model"
 	"github.com/djylb/nps/lib/rate"
@@ -21,7 +22,7 @@ const (
 
 type UdpModeServer struct {
 	*BaseServer
-	listener *netx.PacketListener
+	listener *udpflow.PacketListener
 }
 
 func NewUdpModeServer(bridge NetBridge, task *model.Tunnel, allowLocalProxy bool) *UdpModeServer {
@@ -41,12 +42,12 @@ func (s *UdpModeServer) Bind() error {
 			return err
 		}
 		pc := rate.NewVisitorPacketConn(udp, s.Task.Client.Rate, s.Task.RateLimiter())
-		s.listener = netx.NewPacketListener(pc,
-			netx.WithPacketAcceptFilter(func(peer net.Addr, _ []byte) bool {
+		s.listener = udpflow.NewPacketListener(pc,
+			udpflow.WithPacketAcceptFilter(func(peer net.Addr, _ []byte) bool {
 				return !s.Bridge.IsServer() || !datagramDenied(peer, s.Bridge.GlobalSource(), s.Task.Client, s.Task.View().Source)
 			}),
-			netx.WithPacketIdleTimeout(udpSessionIdleTimeout),
-			netx.WithPacketQueue(udpSessionQueue),
+			udpflow.WithPacketIdleTimeout(udpSessionIdleTimeout),
+			udpflow.WithPacketQueue(udpSessionQueue),
 		)
 		return nil
 	})
@@ -160,7 +161,7 @@ func (s *UdpModeServer) serve(visitor net.Conn) {
 }
 
 func (s *UdpModeServer) Close() error {
-	var listener *netx.PacketListener
+	var listener *udpflow.PacketListener
 	s.MarkClosed(func() { listener = s.listener })
 	if listener != nil {
 		_ = listener.Close()

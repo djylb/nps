@@ -199,14 +199,27 @@ func requestUDPAssociateFromIPv4(t *testing.T, c net.Conn, ip net.IP, port int) 
 	return readSocks5Reply(t, c)
 }
 
+// freeTCPPort returns a port free for TCP and UDP on 127.0.0.1: a SOCKS5
+// server binds its UDP socket on its TCP port, and a port the system picks
+// for TCP may be in a range reserved for UDP (Windows), so such a port is
+// replaced.
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen() error = %v", err)
+	for range 32 {
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Listen() error = %v", err)
+		}
+		port := listener.Addr().(*net.TCPAddr).Port
+		udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+		_ = listener.Close()
+		if err == nil {
+			_ = udp.Close()
+			return port
+		}
 	}
-	defer func() { _ = listener.Close() }()
-	return listener.Addr().(*net.TCPAddr).Port
+	t.Fatal("no port free for TCP and UDP")
+	return 0
 }
 
 func waitForTCP(t *testing.T, addr string) {

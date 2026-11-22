@@ -23,11 +23,16 @@ const (
 	reconnectStable = 30 * time.Second
 	// reconnectJitter spreads the clients a server restart dropped together.
 	reconnectJitter = 0.2
+	// reconnectDrainWindow is the full-jitter window of the reconnect after a
+	// stable session the server drained: every client of a restarted server
+	// comes back at once, spread over it rather than in one burst.
+	reconnectDrainWindow = time.Second
 )
 
 // Reconnect paces the reconnects of one client profile: exponential backoff
-// with jitter, reset by a session that stayed up, and no wait after a stable
-// session the server drained (its restart). It is the one pacing of every
+// with jitter, reset by a session that stayed up, and a wait in
+// [0, reconnectDrainWindow) after a stable session the server drained (its
+// restart). It is the one pacing of every
 // reconnect loop of the core protocol client; the session loop reports into
 // the Reconnect its context carries (WithReconnect).
 type Reconnect struct {
@@ -104,7 +109,7 @@ func (r *Reconnect) Delay() time.Duration {
 	if stable {
 		r.fails = 0
 		if drained {
-			return 0
+			return time.Duration(r.jitter() * float64(reconnectDrainWindow))
 		}
 	}
 	d := ReconnectFirst

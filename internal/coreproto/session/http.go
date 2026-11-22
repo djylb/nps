@@ -117,7 +117,7 @@ func (d *Dialer) h3Client(c connprofile.Candidate) *http.Client {
 	}
 	rt := &h3Transport{host: c.Host}
 	rt.t = &http3.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13, ServerName: serverName(c), NextProtos: []string{http3.NextProtoH3}},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13, ServerName: serverName(c), NextProtos: []string{http3.NextProtoH3}, ClientSessionCache: d.tlsCache},
 		QUICConfig:      &quic.Config{KeepAlivePeriod: 10 * time.Second, MaxIdleTimeout: 30 * time.Second},
 		Dial: func(ctx context.Context, addr string, tc *tls.Config, qc *quic.Config) (*quic.Conn, error) {
 			conn, err := d.dialQUICConn(ctx, addr, tc, qc)
@@ -224,7 +224,7 @@ func (d *Dialer) httpTransport(c connprofile.Candidate, versions []string) *http
 			if err != nil {
 				return nil, err
 			}
-			tc := tls.Client(nc, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: tlsProtos(versions), ServerName: serverName(c)})
+			tc := tls.Client(nc, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: tlsProtos(versions), ServerName: serverName(c), ClientSessionCache: d.tlsCache})
 			if err := tc.HandshakeContext(ctx); err != nil {
 				_ = nc.Close()
 				return nil, err
@@ -416,7 +416,7 @@ func (d *Dialer) httpMode(m connprofile.Candidate) (zmux.CarrierChoice, error) {
 		case connprofile.KindWebSocket:
 			cd := &captureDialer{dial: d.cfg.Dial}
 			scheme := map[string]string{"http": "ws", "https": "wss"}[m.Carrier]
-			tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, ServerName: serverName(m)}
+			tlsCfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, ServerName: serverName(m), ClientSessionCache: d.tlsCache}
 			protocols := []string{zmuxws.NoSubprotocol}
 			if m.Subprotocol != "" {
 				protocols = []string{m.Subprotocol}

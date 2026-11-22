@@ -12,6 +12,7 @@ import (
 	"github.com/djylb/nps/lib/connprofile"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/slogx"
+	"github.com/djylb/timeshim"
 	"github.com/quic-go/quic-go"
 	"github.com/zmuxio/zmux-go"
 	"github.com/zmuxio/zmux-go/zmuxquic"
@@ -37,8 +38,74 @@ func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
 		cfg.MaxPipes = max(pipesOf(connprofile.MultiMembers(d.cfg.Candidates))+1, 2)
 	case cfg.ResumeTimeout > 0:
 		cfg.Redial, cfg.RecordPolicy = s.redial, s.redialRecord
+		// redial paces itself (redialWait); zmux adds no wait of its own.
+		cfg.RedialBackoff = noRedialBackoff
 	}
 	return cfg
+}
+
+const (
+	// redialFirst is the full-jitter window of the first redial of a
+	// suspension: every client of a server that lost its network redials at
+	// once, spread over it rather than in one burst.
+	redialFirst = time.Second
+	// redialMax caps the window of the later redials, each of which doubles
+	// it.
+	redialMax = time.Minute
+	// recoveryConcurrency is how many recovery carriers the npc process
+	// dials at a time (recoveryGate).
+	recoveryConcurrency = 128
+)
+
+// noRedialBackoff leaves the pacing of Redial to redialWait: zmux's own
+// backoff starts with an immediate call and has a ±20 % jitter only.
+var noRedialBackoff = zmux.Backoff{Min: time.Nanosecond, Max: time.Nanosecond, Jitter: -1}
+
+// recoveryGate bounds the carriers that recovering sessions dial at once,
+// TLS handshake included, over every profile of the process: a server that
+// comes back sees the clients it lost in turns, not all of their handshakes
+// together.
+type recoveryGate struct{ slots chan struct{} }
+
+func newRecoveryGate(n int) *recoveryGate { return &recoveryGate{slots: make(chan struct{}, n)} }
+
+// processRecovery is the gate of the npc process; a Dialer takes it unless a
+// test gives it another.
+var processRecovery = newRecoveryGate(recoveryConcurrency) //nolint:gochecknoglobals // process-wide budget by design
+
+// acquire waits for a slot until ctx ends; release gives it back.
+func (g *recoveryGate) acquire(ctx context.Context) (release func(), err error) {
+	select {
+	case g.slots <- struct{}{}:
+		return func() { <-g.slots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// recoveryDial is dialCarrier for a recovering session, under the gate.
+func (d *Dialer) recoveryDial(ctx context.Context, c connprofile.Candidate) (carrier, error) {
+	release, err := d.recovery.acquire(ctx)
+	if err != nil {
+		return carrier{}, err
+	}
+	defer release()
+	return d.dialCarrier(ctx, c)
+}
+
+// redialWait is the wait before the next redial of s and counts it: the
+// first of a suspension is in [0, redialFirst), each after a failure in a
+// window twice the last, up to redialMax; redialDone starts over.
+func (s *clientSession) redialWait() time.Duration {
+	s.redialMu.Lock()
+	n := s.redialTries
+	s.redialTries++
+	s.redialMu.Unlock()
+	w := redialFirst
+	for i := 0; i < n && w < redialMax; i++ {
+		w *= 2
+	}
+	return time.Duration(s.d.jitter() * float64(min(w, redialMax)))
 }
 
 // redial gives zmux a new carrier for the only pipe of a session, the
@@ -47,6 +114,9 @@ func (d *Dialer) sessionConfig(s *clientSession) *zmux.Config {
 // did not join makes way for the candidate after it.
 func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.PipeIO, error) {
 	d := s.d
+	if err := timeshim.Sleep(ctx, d.clock, s.redialWait()); err != nil {
+		return zmux.PipeIO{}, err
+	}
 	d.mu.Lock()
 	cands := d.attempts(d.cfg.Candidates)
 	d.mu.Unlock()
@@ -59,7 +129,7 @@ func (s *clientSession) redial(ctx context.Context, _ zmux.Direction) (zmux.Pipe
 	errs := []error{errors.New("no candidate can carry a pipe")}
 	for _, c := range cands {
 		dctx, cancel := context.WithTimeout(ctx, d.attemptTimeout(c))
-		ca, err := d.dialCarrier(dctx, c)
+		ca, err := d.recoveryDial(dctx, c)
 		cancel()
 		if err == nil {
 			s.planRedial(c, ca)
@@ -111,7 +181,7 @@ func (s *clientSession) redialRecord(zmux.RecordPolicyInput) zmux.RecordMode {
 func (s *clientSession) redialDone() {
 	s.redialMu.Lock()
 	key := s.redialKey
-	s.redialKey, s.redialBound = "", nil
+	s.redialKey, s.redialBound, s.redialTries = "", nil, 0
 	s.redialMu.Unlock()
 	if key != "" {
 		s.d.mu.Lock()
@@ -120,23 +190,22 @@ func (s *clientSession) redialDone() {
 	}
 }
 
-// watch reports the suspensions of the session from its events until it ends.
-func (s *clientSession) watch(ctx context.Context) {
-	var since time.Time
-	for {
-		ev, err := s.zc.NextEvent(ctx)
-		if err != nil {
-			return
-		}
-		switch ev.Kind {
-		case zmux.EventSessionSuspended:
-			since = time.Now()
-			slogx.Emit(ctx, log, &logevent.SessionSuspended, "server", s.d.Server(), "carrier", s.carrier)
-		case zmux.EventSessionResumed:
-			s.redialDone()
-			slogx.Emit(ctx, log, &logevent.SessionResumed, "server", s.d.Server(), "carrier", s.carrier, "dur_ms", time.Since(since).Milliseconds())
-		default: // the pipe events are not logged here
-		}
+// event reports the suspensions of the session (zmux.Conn.HandleEvents: one
+// at a time); one that comes once the session's callbacks drain is dropped.
+func (s *clientSession) event(ev zmux.Event) {
+	task, err := s.scope.Enter()
+	if err != nil {
+		return
+	}
+	defer task.End()
+	switch ev.Kind {
+	case zmux.EventSessionSuspended:
+		s.suspendSince = time.Now()
+		slogx.Emit(s.ctx, log, &logevent.SessionSuspended, "server", s.d.Server(), "carrier", s.carrier)
+	case zmux.EventSessionResumed:
+		s.redialDone()
+		slogx.Emit(s.ctx, log, &logevent.SessionResumed, "server", s.d.Server(), "carrier", s.carrier, "dur_ms", time.Since(s.suspendSince).Milliseconds())
+	default: // the pipe events are not logged here
 	}
 }
 
@@ -262,7 +331,7 @@ func (s *clientSession) joinOne(ctx context.Context, m connprofile.Candidate, o 
 	d := s.d
 	ctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
 	defer cancel()
-	ca, err := d.dialCarrier(ctx, m)
+	ca, err := d.recoveryDial(ctx, m)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +350,7 @@ func (s *clientSession) joinOne(ctx context.Context, m connprofile.Candidate, o 
 		return p, err
 	}
 	log.Debug("bound failed on a join, trying sealed", "carrier", m.Carrier, "err", err)
-	if ca, err = d.dialCarrier(ctx, m); err != nil {
+	if ca, err = d.recoveryDial(ctx, m); err != nil {
 		return nil, err
 	}
 	o.RecordMode = zmux.Set(zmux.RecordSealed)

@@ -18,7 +18,7 @@ import (
 )
 
 // healthEnv stores a client with one entry that has checks over two targets.
-func healthEnv(t *testing.T) (*file.DbUtils, *model.Client, *model.Tunnel) {
+func healthEnv(t testing.TB) (*file.DbUtils, *model.Client, *model.Tunnel) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "conf"), 0o755); err != nil {

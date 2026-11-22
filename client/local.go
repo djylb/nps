@@ -8,6 +8,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/djylb/nps/internal/coreproto/coreapi"
 	"github.com/djylb/nps/lib/acl"
@@ -197,16 +198,25 @@ type localServer interface {
 	Close() error
 }
 
+// bindRetry is the pause between attempts to open a local port that failed
+// to open, such as one a stopping process still holds.
+var bindRetry = time.Second
+
 // serve binds srv now, so that a port conflict is reported here, and serves
-// it until the manager closes.
+// it until the manager closes. Without reconnecting a bind failure is the
+// error; with it, the port is retried on its own until it opens, and the
+// connection stays up meanwhile.
 func (mgr *SecretManager) serve(mode, network, ip string, port int, srv localServer) error {
 	route := mode + ":" + strconv.Itoa(port)
 	listen := net.JoinHostPort(ip, strconv.Itoa(port))
-	if err := srv.Bind(); err != nil {
+	err := srv.Bind()
+	if err != nil {
 		slogx.Emit(context.Background(), log, &logevent.ListenFailed, "route", route, "listen", listen, "network", network,
 			"reason", logevent.NetReason(err), "err", err)
-		_ = srv.Close()
-		return err
+		if !mgr.cfg.AutoReconnection || !AutoReconnect {
+			_ = srv.Close()
+			return err
+		}
 	}
 	mgr.mu.Lock()
 	if mgr.ctx.Err() != nil {
@@ -214,18 +224,45 @@ func (mgr *SecretManager) serve(mode, network, ip string, port int, srv localSer
 		_ = srv.Close()
 		return errors.New("parent context canceled")
 	}
+	// Registered before it is bound, Close stops the retries: Bind fails with
+	// ErrServerClosed once srv is closed.
 	mgr.proxyServers = append(mgr.proxyServers, srv)
 	mgr.wg.Add(1)
 	mgr.mu.Unlock()
-	slogx.Emit(context.Background(), log, &logevent.Listening, "route", route, "listen", listen, "network", network)
 	// The label names the local server in stack dumps and tracebacks.
 	go pprof.Do(context.Background(), pprof.Labels("local", route+"/"+network), func(context.Context) {
 		defer mgr.wg.Done()
+		if err != nil {
+			if !mgr.rebind(srv) {
+				return
+			}
+		}
+		slogx.Emit(context.Background(), log, &logevent.Listening, "route", route, "listen", listen, "network", network)
 		if err := srv.Start(); err != nil {
 			log.Error("local server stopped", "route", route, "network", network, "err", err)
 		}
 	})
 	return nil
+}
+
+// rebind retries Bind every bindRetry until it succeeds, reporting true, or
+// the manager closes.
+func (mgr *SecretManager) rebind(srv localServer) bool {
+	t := time.NewTicker(bindRetry)
+	defer t.Stop()
+	for {
+		select {
+		case <-mgr.ctx.Done():
+			return false
+		case <-t.C:
+		}
+		switch err := srv.Bind(); {
+		case err == nil:
+			return true
+		case errors.Is(err, proxy.ErrServerClosed):
+			return false
+		}
+	}
 }
 
 // Close stops the listeners, the direct paths and the relay tunnel, and

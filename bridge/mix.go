@@ -153,10 +153,8 @@ func (s *Bridge) dispatchMix(ctx context.Context, c net.Conn, e *mixEntry) {
 		return
 	}
 	if head[0] == 0x16 {
-		cfg := s.tlsConfig()
-		cfg.GetCertificate = s.fallbackCert
 		//noinspection GoResourceLeak
-		s.admitMix(ctx, tls.Server(pc, cfg), conn.TransportTLS, e)
+		s.admitMix(ctx, tls.Server(pc, s.tlsConfig()), conn.TransportTLS, e)
 		return
 	}
 	if e.plain {

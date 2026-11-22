@@ -103,15 +103,20 @@ func NewHttpsServer(httpServer *HttpServer, l net.Listener) *HttpsServer {
 
 // newCertFiles returns the cache of the certificates of the hosts, sized and
 // timed by the ssl_cache settings: ssl_cache_reload is how often, in
-// seconds, the files are checked for changes, never if zero.
+// seconds, the files are checked for changes, never if zero; ssl_cache_idle
+// is how long, in minutes, an unused certificate stays, for good if zero.
 func newCertFiles(cfg servercfg.SSLConfig) *tlsconn.CertFiles {
 	check := time.Duration(cfg.CacheReload) * time.Second
 	if check <= 0 {
 		check = -1
 	}
+	idle := time.Duration(cfg.CacheIdle) * time.Minute
+	if idle <= 0 {
+		idle = -1
+	}
 	return &tlsconn.CertFiles{
 		MaxEntries:    max(cfg.CacheMax, 0),
-		IdleTimeout:   time.Duration(cfg.CacheIdle) * time.Minute,
+		IdleTimeout:   idle,
 		CheckInterval: check,
 		OnError: func(err *tlsconn.CertError) {
 			slogx.Emit(context.Background(), proxyLog, &logevent.CertFailed, slogx.KeyMsg, "certificate reload failed, the previous one stays in use", "reason", "load_failed", "err", err)

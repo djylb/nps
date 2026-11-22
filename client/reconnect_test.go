@@ -48,12 +48,13 @@ func TestReconnectBackoff(t *testing.T) {
 		t.Fatalf("delay after a stable session %v, want 1s", d)
 	}
 
-	// The drain of a stable session is redialed at once.
+	// The drain of a stable session is redialed within the drain window,
+	// fully jittered (0.5 of it here).
 	r.up()
 	c.Advance(reconnectStable)
 	r.ended(fmt.Errorf("%w: x", coreapi.ErrDrained))
-	if d := r.Delay(); d != 0 {
-		t.Fatalf("delay after a drain %v, want 0", d)
+	if d := r.Delay(); d != reconnectDrainWindow/2 {
+		t.Fatalf("delay after a drain %v, want %v", d, reconnectDrainWindow/2)
 	}
 	if d := r.Delay(); d != time.Second {
 		t.Fatalf("delay after the drain's redial failed %v, want 1s", d)
@@ -73,5 +74,21 @@ func TestReconnectWaitEndsWithContext(t *testing.T) {
 	cancel()
 	if NewReconnect().Wait(ctx) {
 		t.Fatal("Wait went on after the context ended")
+	}
+}
+
+// TestReconnectDrainFullJitter checks the bounds of the wait after a drain:
+// [0, reconnectDrainWindow).
+func TestReconnectDrainFullJitter(t *testing.T) {
+	for _, j := range []float64{0, 0.25, 0.999999} {
+		r, c := fixedReconnect()
+		r.jitter = func() float64 { return j }
+		r.up()
+		c.Advance(reconnectStable)
+		r.ended(coreapi.ErrDrained)
+		d := r.Delay()
+		if d < 0 || d >= reconnectDrainWindow || d != time.Duration(j*float64(reconnectDrainWindow)) {
+			t.Fatalf("jitter %v: delay %v, want %v in [0, %v)", j, d, time.Duration(j*float64(reconnectDrainWindow)), reconnectDrainWindow)
+		}
 	}
 }

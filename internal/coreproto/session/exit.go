@@ -18,18 +18,8 @@ import (
 // exitDialTimeout is how long the exit tries a target (§4.4).
 const exitDialTimeout = 5 * time.Second
 
-// serveStreams answers what the server opens: TCP and UDP links, and refusals
-// for everything else.
-func (s *clientSession) serveStreams(ctx context.Context) {
-	for {
-		st, err := s.zc.AcceptStream(ctx)
-		if err != nil {
-			return
-		}
-		s.wg.Go(func() { s.serveStream(ctx, st) })
-	}
-}
-
+// serveStream answers what the server opens: TCP and UDP links, and
+// refusals for everything else.
 func (s *clientSession) serveStream(ctx context.Context, st *zmux.Stream) {
 	lc := &linkConn{Stream: st, local: s.zc.LocalAddr(), remote: s.zc.RemoteAddr()}
 	op, fields, err := wire.ParseOpenOp(st.Preamble())
