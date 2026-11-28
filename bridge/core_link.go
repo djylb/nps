@@ -20,6 +20,7 @@ import (
 	"github.com/djylb/nps/lib/conn"
 	"github.com/djylb/nps/lib/logevent"
 	"github.com/djylb/nps/lib/model"
+	"github.com/djylb/nps/lib/netaddr"
 	"github.com/djylb/nps/lib/proxy"
 	"github.com/djylb/nps/lib/servercfg"
 	"github.com/djylb/slogx"
@@ -282,10 +283,7 @@ func linkPolicyOf(p *proxy.SecretPolicy) coreapi.LinkPolicy {
 	}
 	for line := range strings.Lines(p.Targets) {
 		if t := strings.TrimSpace(line); t != "" {
-			if !strings.Contains(t, ":") {
-				t = "127.0.0.1:" + t
-			}
-			out.Targets = append(out.Targets, t)
+			out.Targets = append(out.Targets, netaddr.FormatAddress(t))
 		}
 	}
 	out.Scope = scopeOfACL(p.DestAclMode, p.DestAclRules)

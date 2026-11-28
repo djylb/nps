@@ -579,3 +579,30 @@ func TestTunnelServerFirstBanner(t *testing.T) {
 		})
 	}
 }
+
+// A target without a host (":8080") is the local machine of npc: the old
+// protocol dialled it that way, so hosts and tunnels saved before the core
+// protocol still hold it.
+func TestCoreLinkTargetWithoutHost(t *testing.T) {
+	f := newCoreFixture(t, Primary, model.Config{})
+	f.joinCore(t, client.NewCoreExit("", 0))
+	f.waitConnected(t)
+	_, port, err := net.SplitHostPort(echoListener(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{":" + port, port} {
+		c, err := f.b.Session(f.client.Id).OpenLink(conn.NewLink(conn.LinkTCP, target, false, false, "1.1.1.1:1", false), 0)
+		if err != nil {
+			t.Fatalf("target %q: %v", target, err)
+		}
+		if _, err := c.Write([]byte("ping")); err != nil {
+			t.Fatalf("target %q: %v", target, err)
+		}
+		buf := make([]byte, 4)
+		if _, err := io.ReadFull(c, buf); err != nil || string(buf) != "ping" {
+			t.Fatalf("target %q: echo %q, %v", target, buf, err)
+		}
+		_ = c.Close()
+	}
+}

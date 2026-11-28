@@ -102,6 +102,19 @@ func TestPortHelpers(t *testing.T) {
 	if got := FormatAddress("127.0.0.1:8080"); got != "127.0.0.1:8080" {
 		t.Fatalf("FormatAddress(addr) = %q, want %q", got, "127.0.0.1:8080")
 	}
+	if got := FormatAddress(":8080"); got != "127.0.0.1:8080" {
+		t.Fatalf("FormatAddress(:port) = %q, want %q", got, "127.0.0.1:8080")
+	}
+	if got := FormatAddress("[::1]:8080"); got != "[::1]:8080" {
+		t.Fatalf("FormatAddress([::1]:port) = %q, want %q", got, "[::1]:8080")
+	}
+	// Only a missing host is filled in: IPv6 addresses, with or without a
+	// port, stay as written, and "::8080" is an IPv6 address, not ":8080".
+	for _, s := range []string{"::1", "2001:db8::1", "::8080", "[::]:8080", "[2001:db8::1]:443", "[fe80::1%eth0]:80", "example.com:443"} {
+		if got := FormatAddress(s); got != s {
+			t.Fatalf("FormatAddress(%q) = %q, want it unchanged", s, got)
+		}
+	}
 }
 
 func TestIPAndBindHelpers(t *testing.T) {

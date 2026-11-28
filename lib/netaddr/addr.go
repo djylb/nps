@@ -182,8 +182,16 @@ func GetPorts(s string) []int {
 	return ps
 }
 
-// FormatAddress if the s is just a port,return 127.0.0.1:s
+// FormatAddress fills in the local machine when s names only a port: "8080"
+// and ":8080" both become "127.0.0.1:8080". net.Dial reads an empty host as
+// the local machine, so a target saved that way means the same thing.
 func FormatAddress(s string) string {
+	if h, p, err := net.SplitHostPort(s); err == nil {
+		if h == "" && p != "" {
+			return net.JoinHostPort("127.0.0.1", p)
+		}
+		return s
+	}
 	if strings.Contains(s, ":") {
 		return s
 	}
