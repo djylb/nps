@@ -102,6 +102,15 @@ func TestPortHelpers(t *testing.T) {
 	if got := FormatAddress("127.0.0.1:8080"); got != "127.0.0.1:8080" {
 		t.Fatalf("FormatAddress(addr) = %q, want %q", got, "127.0.0.1:8080")
 	}
+	if got := FormatAddress(":8080"); got != "127.0.0.1:8080" {
+		t.Fatalf("FormatAddress(:port) = %q, want %q", got, "127.0.0.1:8080")
+	}
+	if got := FormatAddress("[::1]:8080"); got != "[::1]:8080" {
+		t.Fatalf("FormatAddress([::1]:port) = %q, want %q", got, "[::1]:8080")
+	}
+	if got := FormatAddress("::1"); got != "::1" {
+		t.Fatalf("FormatAddress(ipv6) = %q, want %q", got, "::1")
+	}
 }
 
 func TestIPAndBindHelpers(t *testing.T) {
